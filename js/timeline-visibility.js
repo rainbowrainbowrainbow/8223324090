@@ -1,65 +1,95 @@
 /**
- * Timeline element visibility constructor.
+ * Timeline visual settings center.
  *
- * Keeps one timeline engine, but lets elevated users tune which controls are
- * visible for each business context. Settings are client-side and scoped by
- * TimelineBusinessContext.storageKey().
+ * Keeps one timeline engine, but lets elevated users tune visual blocks for
+ * each business timeline. Settings are scoped by TimelineBusinessContext.
  */
 (function () {
     const STORAGE_NAME = 'timeline_element_visibility';
     const DISABLED_ATTR = 'data-timeline-visibility-prev-disabled';
+    const VISUAL_VARIABLES = ['visible', 'order', 'density', 'emphasis', 'customLabel', 'adminNote'];
+    const DENSITY_VALUES = ['default', 'compact', 'comfortable'];
+    const EMPHASIS_VALUES = ['normal', 'muted', 'accent'];
+
+    function visualBlock(id, area, title, selector, options = {}) {
+        return {
+            id,
+            key: id,
+            area,
+            title,
+            label: title,
+            selector,
+            targetWrapper: options.targetWrapper === true,
+            defaultVisible: options.defaultVisible !== false,
+            description: options.description || `${title} — візуальний блок таймлайну в зоні "${area}".`,
+            howToUse: options.howToUse || 'Міняйте тільки видимість, порядок, щільність, акцент, службову назву та внутрішню нотатку. Це не змінює дані бронювання.',
+            impact: options.impact || 'Впливає лише на вигляд цього таймлайну для активного бізнесу; API, ролі та бізнес-логіка не змінюються.',
+            variables: [...VISUAL_VARIABLES]
+        };
+    }
 
     const TIMELINE_VISIBILITY_ELEMENTS = [
-        { key: 'dateControls', label: 'Дата і навігація', selector: '.date-controls', area: 'Верхня панель' },
-        { key: 'statusFilters', label: 'Фільтри статусів', selector: '.status-filter-controls', area: 'Верхня панель' },
-        { key: 'viewModes', label: 'День / тиждень', selector: '.view-mode-controls', area: 'Верхня панель' },
-        { key: 'zoomControls', label: 'Масштаб 15/30/60 хв', selector: '.zoom-controls', area: 'Верхня панель' },
-        { key: 'compactToggle', label: 'Компактний режим', selector: '#compactModeToggle', area: 'Верхня панель', targetWrapper: true },
-        { key: 'undo', label: 'Скасувати дію', selector: '#undoBtn', area: 'Верхня панель' },
-        { key: 'roomLoad', label: 'Кімнати / кабінети', selector: '#roomLoadBtn', area: 'Верхня панель' },
-        { key: 'createBooking', label: 'Створити бронювання', selector: '#newBookingBtn', area: 'Верхня панель' },
-        { key: 'productSales', label: 'Продажі', selector: '#productSalesBtn', area: 'Верхня панель' },
-        { key: 'export', label: 'Експорт', selector: '#exportTimelineBtn', area: 'Верхня панель' },
-        { key: 'actionMenu', label: 'Меню дій', selector: '#adminDropdown', area: 'Верхня панель' },
-        { key: 'history', label: 'Історія змін', selector: '#historyBtn', area: 'Меню дій' },
-        { key: 'digest', label: 'Дайджест дня', selector: '#digestBtn', area: 'Меню дій' },
-        { key: 'quickStats', label: 'Швидка статистика', selector: '#quickStatsBar', area: 'Робоча зона' },
-        { key: 'assistantWidget', label: 'Помічник', selector: '#kleshnyaWidget', area: 'Робоча зона' },
-        { key: 'warnings', label: 'Попередження', selector: '#warningBanner, #filterModeBanner', area: 'Робоча зона' },
-        { key: 'timelineScale', label: 'Шкала часу', selector: '#timeScale', area: 'Таймлайн' },
-        { key: 'timelineGrid', label: 'Сітка таймлайну', selector: '#timelineScroll, #timelineLines', area: 'Таймлайн' },
-        { key: 'addLine', label: 'Додати лінію / спеціаліста', selector: '#addLineBtn', area: 'Таймлайн' },
-        { key: 'legend', label: 'Легенда', selector: '.legend', area: 'Таймлайн' },
-        { key: 'minimap', label: 'Мінімапа', selector: '#minimapContainer', area: 'Таймлайн' },
-        { key: 'roomLoadPanel', label: 'Панель навантаження кімнат', selector: '#roomLoadPanel', area: 'Таймлайн' },
-        { key: 'bookingPanel', label: 'Панель бронювання', selector: '#bookingPanel', area: 'Форма бронювання' },
-        { key: 'bookingClose', label: 'Закрити панель бронювання', selector: '#closePanel', area: 'Форма бронювання' },
-        { key: 'bookingSelectedInfo', label: 'Обрані дата / час / лінія', selector: '#bookingPanel .selected-info', area: 'Форма бронювання' },
-        { key: 'bookingRoom', label: 'Кімната', selector: '#roomSelect', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'freeRooms', label: 'Вільні кімнати', selector: '#freeRoomsBtn', area: 'Форма бронювання' },
-        { key: 'freeRoomsPanel', label: 'Панель вільних кімнат', selector: '#freeRoomsPanel', area: 'Форма бронювання' },
-        { key: 'costume', label: 'Костюм', selector: '#costumeSelect', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'extraHost', label: 'Додатковий ведучий', selector: '#extraHostSection', area: 'Форма бронювання' },
-        { key: 'secondAnimator', label: 'Другий аніматор', selector: '#secondAnimatorSection', area: 'Форма бронювання' },
-        { key: 'hostsWarning', label: 'Попередження про ведучих', selector: '#hostsWarning', area: 'Форма бронювання' },
-        { key: 'notes', label: 'Примітки', selector: '#bookingNotes', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'groupName', label: 'Група / банкет', selector: '#bookingGroupName', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'customerToggle', label: 'Перемикач даних клієнта', selector: '#customerDataToggle', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'customerData', label: 'Дані клієнта', selector: '#customerDataSection', area: 'Форма бронювання' },
-        { key: 'customerSearch', label: 'Пошук клієнта', selector: '#customerSearch', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'customerFields', label: 'Поля клієнта', selector: '#customerName, #customerPhone, #customerInstagram, #customerChildName, #customerChildBirthday, #customerSource', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'customerInfo', label: 'Інфо про клієнта', selector: '#customerInfo', area: 'Форма бронювання' },
-        { key: 'programSearch', label: 'Пошук програми / консультації', selector: '#programSearch', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'programs', label: 'Картки програм / консультацій', selector: '#programsIcons', area: 'Форма бронювання' },
-        { key: 'programDetails', label: 'Деталі програми', selector: '#programDetails', area: 'Форма бронювання' },
-        { key: 'customProgram', label: 'Кастомна програма', selector: '#customProgramSection', area: 'Форма бронювання' },
-        { key: 'customProgramFields', label: 'Поля кастомної позиції', selector: '#customName, #customDuration', area: 'Форма бронювання', targetWrapper: true },
-        { key: 'pinata', label: 'Піньята', selector: '#pinataModeSection, #pinataSharedFields, #clientPinataServiceFields, #pinataFillerSection', area: 'Форма бронювання' },
-        { key: 'kidsCount', label: 'Кількість дітей', selector: '#kidsCountSection', area: 'Форма бронювання' },
-        { key: 'tshirtSizes', label: 'Розміри футболок', selector: '#tshirtSizesSection', area: 'Форма бронювання' },
-        { key: 'bookingStatus', label: 'Статус бронювання', selector: '#bookingPanel .status-section', area: 'Форма бронювання' },
-        { key: 'bookingSubmit', label: 'Кнопка збереження бронювання', selector: '#bookingSubmitBtn', area: 'Форма бронювання' }
-    ];
+        visualBlock('dateControls', 'Верхня панель', 'Дата і навігація', '.date-controls', {
+            description: 'Календарний фокус, сьогоднішня дата та перемикання дня.',
+            impact: 'Якщо сховати, оператору складніше перейти на іншу дату без клавіатури або URL.'
+        }),
+        visualBlock('statusFilters', 'Верхня панель', 'Фільтри статусів', '.status-filter-controls', {
+            description: 'Швидке фокусування бронювань за робочими статусами.',
+            impact: 'Не змінює статуси, але прибирає швидку фільтрацію дня.'
+        }),
+        visualBlock('viewModes', 'Верхня панель', 'День / тиждень', '.view-mode-controls'),
+        visualBlock('zoomControls', 'Верхня панель', 'Масштаб 15/30/60 хв', '.zoom-controls'),
+        visualBlock('compactToggle', 'Верхня панель', 'Компактний режим', '#compactModeToggle', { targetWrapper: true }),
+        visualBlock('undo', 'Верхня панель', 'Скасувати дію', '#undoBtn'),
+        visualBlock('roomLoad', 'Верхня панель', 'Кімнати / кабінети', '#roomLoadBtn'),
+        visualBlock('createBooking', 'Верхня панель', 'Створити бронювання', '#newBookingBtn', {
+            impact: 'Приховування не забороняє створення через інші входи, але прибирає головну швидку кнопку.'
+        }),
+        visualBlock('productSales', 'Верхня панель', 'Продажі', '#productSalesBtn'),
+        visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn'),
+        visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),
+        visualBlock('history', 'Меню дій', 'Історія змін', '#historyBtn'),
+        visualBlock('digest', 'Меню дій', 'Дайджест дня', '#digestBtn'),
+        visualBlock('quickStats', 'Робоча зона', 'Швидка статистика', '#quickStatsBar'),
+        visualBlock('assistantWidget', 'Робоча зона', 'Помічник', '#kleshnyaWidget'),
+        visualBlock('warnings', 'Робоча зона', 'Попередження', '#warningBanner, #filterModeBanner'),
+        visualBlock('timelineScale', 'Таймлайн', 'Шкала часу', '#timeScale'),
+        visualBlock('timelineGrid', 'Таймлайн', 'Сітка таймлайну', '#timelineScroll, #timelineLines', {
+            description: 'Основна робоча зона з часовою сіткою, рядками і картками бронювань.',
+            impact: 'Якщо сховати, сторінка втрачає головну дошку розкладу, але дані бронювань лишаються незмінними.'
+        }),
+        visualBlock('addLine', 'Таймлайн', 'Додати лінію / спеціаліста', '#addLineBtn'),
+        visualBlock('legend', 'Таймлайн', 'Легенда', '.legend'),
+        visualBlock('minimap', 'Таймлайн', 'Мінімапа', '#minimapContainer'),
+        visualBlock('roomLoadPanel', 'Таймлайн', 'Панель навантаження кімнат', '#roomLoadPanel'),
+        visualBlock('bookingPanel', 'Форма бронювання', 'Панель бронювання', '#bookingPanel'),
+        visualBlock('bookingClose', 'Форма бронювання', 'Закрити панель бронювання', '#closePanel'),
+        visualBlock('bookingSelectedInfo', 'Форма бронювання', 'Обрані дата / час / лінія', '#bookingPanel .selected-info'),
+        visualBlock('bookingRoom', 'Форма бронювання', 'Кімната', '#roomSelect', { targetWrapper: true }),
+        visualBlock('freeRooms', 'Форма бронювання', 'Вільні кімнати', '#freeRoomsBtn'),
+        visualBlock('freeRoomsPanel', 'Форма бронювання', 'Панель вільних кімнат', '#freeRoomsPanel'),
+        visualBlock('costume', 'Форма бронювання', 'Костюм', '#costumeSelect', { targetWrapper: true }),
+        visualBlock('extraHost', 'Форма бронювання', 'Додатковий ведучий', '#extraHostSection'),
+        visualBlock('secondAnimator', 'Форма бронювання', 'Другий аніматор', '#secondAnimatorSection'),
+        visualBlock('hostsWarning', 'Форма бронювання', 'Попередження про ведучих', '#hostsWarning'),
+        visualBlock('notes', 'Форма бронювання', 'Примітки', '#bookingNotes', { targetWrapper: true }),
+        visualBlock('groupName', 'Форма бронювання', 'Група / банкет', '#bookingGroupName', { targetWrapper: true }),
+        visualBlock('customerToggle', 'Форма бронювання', 'Перемикач даних клієнта', '#customerDataToggle', { targetWrapper: true }),
+        visualBlock('customerData', 'Форма бронювання', 'Дані клієнта', '#customerDataSection'),
+        visualBlock('customerSearch', 'Форма бронювання', 'Пошук клієнта', '#customerSearch', { targetWrapper: true }),
+        visualBlock('customerFields', 'Форма бронювання', 'Поля клієнта', '#customerName, #customerPhone, #customerInstagram, #customerChildName, #customerChildBirthday, #customerSource', { targetWrapper: true }),
+        visualBlock('customerInfo', 'Форма бронювання', 'Інфо про клієнта', '#customerInfo'),
+        visualBlock('programSearch', 'Форма бронювання', 'Пошук програми / консультації', '#programSearch', { targetWrapper: true }),
+        visualBlock('programs', 'Форма бронювання', 'Картки програм / консультацій', '#programsIcons'),
+        visualBlock('programDetails', 'Форма бронювання', 'Деталі програми', '#programDetails'),
+        visualBlock('customProgram', 'Форма бронювання', 'Кастомна програма', '#customProgramSection'),
+        visualBlock('customProgramFields', 'Форма бронювання', 'Поля кастомної позиції', '#customName, #customDuration', { targetWrapper: true }),
+        visualBlock('pinata', 'Форма бронювання', 'Піньята', '#pinataModeSection, #pinataSharedFields, #clientPinataServiceFields, #pinataFillerSection'),
+        visualBlock('kidsCount', 'Форма бронювання', 'Кількість дітей', '#kidsCountSection'),
+        visualBlock('tshirtSizes', 'Форма бронювання', 'Розміри футболок', '#tshirtSizesSection'),
+        visualBlock('bookingStatus', 'Форма бронювання', 'Статус бронювання', '#bookingPanel .status-section'),
+        visualBlock('bookingSubmit', 'Форма бронювання', 'Кнопка збереження бронювання', '#bookingSubmitBtn')
+    ].map((item, index) => ({ ...item, defaultOrder: (index + 1) * 10 }));
 
     const VISIBILITY_PRESETS = [
         {
@@ -91,6 +121,7 @@
     const state = {
         initialized: false,
         constructorActive: false,
+        selectedBlockId: TIMELINE_VISIBILITY_ELEMENTS[0]?.id || null,
         panel: null,
         toggleBtn: null,
         accessTimer: null,
@@ -105,6 +136,15 @@
 
     function currentContext() {
         return contextApi()?.current?.() || { key: 'event_genix', productName: 'Таймлайн ПАРК', storagePrefix: 'pzp' };
+    }
+
+    function currentContextKey() {
+        const ctx = currentContext();
+        return ctx.key || ctx.apiValue || 'event_genix';
+    }
+
+    function currentTimelineId() {
+        return `timeline:${currentContextKey()}`;
     }
 
     function storageKey() {
@@ -137,79 +177,9 @@
         try {
             return raw ? JSON.parse(raw) : null;
         } catch (error) {
-            console.warn('[TimelineVisibility] Failed to parse visibility settings', error);
+            console.warn('[TimelineVisibility] Failed to parse visual settings', error);
             return null;
         }
-    }
-
-    function normalizeSettings(parsed) {
-        return {
-            version: 1,
-            overrides: parsed?.overrides && typeof parsed.overrides === 'object' ? parsed.overrides : {},
-            updatedAt: parsed?.updatedAt || null,
-            updatedBy: parsed?.updatedBy || null
-        };
-    }
-
-    function loadSettings() {
-        const contextKey = currentContext().key;
-        if (state.serverSettings.has(contextKey)) return normalizeSettings(state.serverSettings.get(contextKey));
-        return normalizeSettings(safeParseJson(localStorage.getItem(storageKey())));
-    }
-
-    function saveSettings(settings) {
-        const payload = {
-            version: 1,
-            overrides: settings.overrides || {},
-            updatedAt: new Date().toISOString()
-        };
-        localStorage.setItem(storageKey(), JSON.stringify(payload));
-        state.serverSettings.set(currentContext().key, payload);
-        scheduleServerSave(payload);
-    }
-
-    async function loadServerSettings() {
-        const contextKey = currentContext().key;
-        if (state.serverLoadPromise) return state.serverLoadPromise;
-        state.serverLoadPromise = fetch(apiUrl('/settings/timeline-visibility'), {
-            headers: authHeaders(false)
-        })
-            .then(response => response.ok ? response.json() : null)
-            .then(data => {
-                if (data) {
-                    const normalized = normalizeSettings(data);
-                    state.serverSettings.set(contextKey, normalized);
-                    localStorage.setItem(storageKey(), JSON.stringify(normalized));
-                }
-                return data;
-            })
-            .catch(error => {
-                console.warn('[TimelineVisibility] Server visibility settings unavailable', error);
-                return null;
-            })
-            .finally(() => {
-                state.serverLoadPromise = null;
-            });
-        return state.serverLoadPromise;
-    }
-
-    function scheduleServerSave(settings) {
-        if (!canConfigure()) return;
-        window.clearTimeout(state.serverSaveTimer);
-        state.serverSaveTimer = window.setTimeout(async () => {
-            try {
-                const response = await fetch(apiUrl('/settings/timeline-visibility'), {
-                    method: 'PUT',
-                    headers: authHeaders(true),
-                    body: JSON.stringify({ overrides: settings.overrides || {} })
-                });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                state.serverSettings.set(currentContext().key, normalizeSettings(data));
-            } catch (error) {
-                console.warn('[TimelineVisibility] Failed to save server visibility settings', error);
-            }
-        }, 250);
     }
 
     function defaultHiddenKeys() {
@@ -222,70 +192,271 @@
         return new Set(keys);
     }
 
-    function isHidden(key) {
-        const settings = loadSettings();
-        if (Object.prototype.hasOwnProperty.call(settings.overrides, key)) {
-            return Boolean(settings.overrides[key]);
-        }
-        return defaultHiddenKeys().has(key);
+    function defaultVisibleFor(item) {
+        if (item.defaultVisible === false) return false;
+        return !defaultHiddenKeys().has(item.id);
     }
 
-    function setHidden(key, hidden) {
+    function hasOwn(source, key) {
+        return Object.prototype.hasOwnProperty.call(source || {}, key);
+    }
+
+    function safeOrder(value, fallback) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(-999, Math.min(999, Math.round(n)));
+    }
+
+    function safeText(value, limit) {
+        return String(value || '').trim().slice(0, limit);
+    }
+
+    function normalizeBlockSettings(item, rawBlock = {}, index = 0, overrides = {}) {
+        const raw = rawBlock && typeof rawBlock === 'object' && !Array.isArray(rawBlock) ? rawBlock : {};
+        const legacyHidden = hasOwn(overrides, item.id) ? Boolean(overrides[item.id]) : null;
+        const visible = hasOwn(raw, 'visible')
+            ? raw.visible !== false
+            : (legacyHidden === null ? defaultVisibleFor(item) : !legacyHidden);
+        const density = DENSITY_VALUES.includes(String(raw.density || '')) ? String(raw.density) : 'default';
+        const emphasis = EMPHASIS_VALUES.includes(String(raw.emphasis || '')) ? String(raw.emphasis) : 'normal';
+        return {
+            visible,
+            order: safeOrder(raw.order, item.defaultOrder || ((index + 1) * 10)),
+            density,
+            emphasis,
+            customLabel: safeText(raw.customLabel, 80),
+            adminNote: safeText(raw.adminNote, 280)
+        };
+    }
+
+    function normalizeSettings(parsed) {
+        const raw = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        const rawBlocks = raw.blocks && typeof raw.blocks === 'object' && !Array.isArray(raw.blocks) ? raw.blocks : {};
+        const rawOverrides = raw.overrides && typeof raw.overrides === 'object' && !Array.isArray(raw.overrides) ? raw.overrides : {};
+        const blocks = {};
+        const overrides = {};
+        TIMELINE_VISIBILITY_ELEMENTS.forEach((item, index) => {
+            const block = normalizeBlockSettings(item, rawBlocks[item.id], index, rawOverrides);
+            blocks[item.id] = block;
+            overrides[item.id] = block.visible === false;
+        });
+        return {
+            version: 2,
+            timelineId: raw.timelineId || currentTimelineId(),
+            context: raw.context || currentContextKey(),
+            blocks,
+            overrides,
+            updatedAt: raw.updatedAt || null,
+            updatedBy: raw.updatedBy || null
+        };
+    }
+
+    function compactSettingsForSave(settings) {
+        const normalized = normalizeSettings(settings);
+        const blocks = {};
+        const overrides = {};
+        TIMELINE_VISIBILITY_ELEMENTS.forEach(item => {
+            const block = normalized.blocks[item.id];
+            blocks[item.id] = {
+                visible: block.visible !== false,
+                order: block.order,
+                density: block.density,
+                emphasis: block.emphasis,
+                customLabel: block.customLabel,
+                adminNote: block.adminNote
+            };
+            overrides[item.id] = block.visible === false;
+        });
+        return {
+            version: 2,
+            timelineId: currentTimelineId(),
+            blocks,
+            overrides,
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    function loadSettings() {
+        const contextKey = currentContextKey();
+        if (state.serverSettings.has(contextKey)) return normalizeSettings(state.serverSettings.get(contextKey));
+        return normalizeSettings(safeParseJson(localStorage.getItem(storageKey())));
+    }
+
+    function saveSettings(settings) {
+        const payload = compactSettingsForSave(settings);
+        localStorage.setItem(storageKey(), JSON.stringify(payload));
+        state.serverSettings.set(currentContextKey(), payload);
+        scheduleServerSave(payload);
+    }
+
+    async function loadServerSettings() {
+        const contextKey = currentContextKey();
+        if (state.serverLoadPromise) return state.serverLoadPromise;
+        state.serverLoadPromise = fetch(apiUrl('/settings/timeline-visibility'), {
+            headers: authHeaders(false)
+        })
+            .then(response => response.ok ? response.json() : null)
+            .then(data => {
+                if (data) {
+                    mergeServerRegistry(data.registry);
+                    const normalized = normalizeSettings(data);
+                    state.serverSettings.set(contextKey, normalized);
+                    localStorage.setItem(storageKey(), JSON.stringify(normalized));
+                }
+                return data;
+            })
+            .catch(error => {
+                console.warn('[TimelineVisibility] Server visual settings unavailable', error);
+                return null;
+            })
+            .finally(() => {
+                state.serverLoadPromise = null;
+            });
+        return state.serverLoadPromise;
+    }
+
+    function mergeServerRegistry(registry) {
+        if (!Array.isArray(registry)) return;
+        const byId = new Map(registry.map(item => [item?.id, item]).filter(([id]) => id));
+        TIMELINE_VISIBILITY_ELEMENTS.forEach(item => {
+            const serverItem = byId.get(item.id);
+            if (!serverItem) return;
+            ['title', 'description', 'howToUse', 'impact', 'defaultVisible', 'variables'].forEach(key => {
+                if (serverItem[key] !== undefined) item[key] = serverItem[key];
+            });
+            item.label = item.title || item.label;
+        });
+    }
+
+    function scheduleServerSave(settings) {
+        if (!canConfigure()) return;
+        window.clearTimeout(state.serverSaveTimer);
+        state.serverSaveTimer = window.setTimeout(async () => {
+            try {
+                const response = await fetch(apiUrl('/settings/timeline-visibility'), {
+                    method: 'PUT',
+                    headers: authHeaders(true),
+                    body: JSON.stringify({
+                        version: 2,
+                        timelineId: settings.timelineId || currentTimelineId(),
+                        blocks: settings.blocks || {},
+                        overrides: settings.overrides || {}
+                    })
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                mergeServerRegistry(data.registry);
+                state.serverSettings.set(currentContextKey(), normalizeSettings(data));
+            } catch (error) {
+                console.warn('[TimelineVisibility] Failed to save server visual settings', error);
+            }
+        }, 250);
+    }
+
+    function blockById(id) {
+        return TIMELINE_VISIBILITY_ELEMENTS.find(item => item.id === id) || TIMELINE_VISIBILITY_ELEMENTS[0] || null;
+    }
+
+    function blockSettings(id) {
+        return loadSettings().blocks[id] || normalizeBlockSettings(blockById(id) || {}, {}, 0, {});
+    }
+
+    function isHidden(id) {
+        return blockSettings(id).visible === false;
+    }
+
+    function updateBlockVariable(id, variable, value, options = {}) {
+        const item = blockById(id);
+        if (!item || !VISUAL_VARIABLES.includes(variable)) return;
         const settings = loadSettings();
-        settings.overrides[key] = Boolean(hidden);
+        const block = { ...(settings.blocks[id] || blockSettings(id)) };
+        if (variable === 'visible') block.visible = value !== false;
+        if (variable === 'order') block.order = safeOrder(value, item.defaultOrder || 10);
+        if (variable === 'density') block.density = DENSITY_VALUES.includes(String(value)) ? String(value) : 'default';
+        if (variable === 'emphasis') block.emphasis = EMPHASIS_VALUES.includes(String(value)) ? String(value) : 'normal';
+        if (variable === 'customLabel') block.customLabel = safeText(value, 80);
+        if (variable === 'adminNote') block.adminNote = safeText(value, 280);
+        settings.blocks[id] = block;
+        settings.overrides[id] = block.visible === false;
         saveSettings(settings);
         applyVisibility();
         renderPanelList();
-        notify(`${hidden ? 'Приховано' : 'Показано'}: ${labelForKey(key)}`);
+        if (options.renderEditor !== false) renderBlockEditor();
+        renderBlockDetails();
+    }
+
+    function setHidden(id, hidden) {
+        updateBlockVariable(id, 'visible', !hidden);
+        notify(`${hidden ? 'Приховано' : 'Показано'}: ${labelForKey(id)}`);
     }
 
     function resetSettings() {
+        const payload = {
+            version: 2,
+            timelineId: currentTimelineId(),
+            blocks: {},
+            overrides: {},
+            updatedAt: new Date().toISOString()
+        };
         localStorage.removeItem(storageKey());
-        state.serverSettings.set(currentContext().key, { version: 1, overrides: {}, updatedAt: new Date().toISOString() });
-        scheduleServerSave({ overrides: {} });
+        state.serverSettings.set(currentContextKey(), payload);
+        scheduleServerSave(payload);
         applyVisibility();
         renderPanelList();
-        notify('Видимість таймлайну повернено до стандартних налаштувань');
+        renderBlockEditor();
+        renderBlockDetails();
+        notify('Налаштування таймлайну повернено до стандарту цього бізнесу');
     }
 
     function applyVisibilityPreset(presetKey) {
         const preset = VISIBILITY_PRESETS.find(item => item.key === presetKey) || VISIBILITY_PRESETS[0];
         const hidden = preset.hidden === null ? defaultHiddenKeys() : new Set(preset.hidden || []);
-        const overrides = {};
+        const settings = loadSettings();
         TIMELINE_VISIBILITY_ELEMENTS.forEach(item => {
-            overrides[item.key] = hidden.has(item.key);
+            settings.blocks[item.id] = {
+                ...blockSettings(item.id),
+                visible: !hidden.has(item.id),
+                density: 'default',
+                emphasis: 'normal'
+            };
+            settings.overrides[item.id] = hidden.has(item.id);
         });
-        const payload = {
-            version: 1,
-            overrides,
-            updatedAt: new Date().toISOString()
-        };
-        localStorage.setItem(storageKey(), JSON.stringify(payload));
-        state.serverSettings.set(currentContext().key, payload);
-        scheduleServerSave(payload);
+        saveSettings(settings);
         applyVisibility();
         renderPanelList();
+        renderBlockEditor();
+        renderBlockDetails();
         notify(`Застосовано preset: ${preset.label}`);
     }
 
-    function labelForKey(key) {
-        return TIMELINE_VISIBILITY_ELEMENTS.find(item => item.key === key)?.label || key;
+    function labelForKey(id) {
+        const item = blockById(id);
+        const settings = blockSettings(id);
+        return settings.customLabel || item?.title || item?.label || id;
+    }
+
+    function orderedElements() {
+        const settings = loadSettings();
+        return TIMELINE_VISIBILITY_ELEMENTS
+            .slice()
+            .sort((a, b) => (settings.blocks[a.id]?.order || a.defaultOrder) - (settings.blocks[b.id]?.order || b.defaultOrder) || a.defaultOrder - b.defaultOrder);
     }
 
     function getElementTargets(item) {
         const nodes = Array.from(document.querySelectorAll(item.selector));
         return nodes.map(node => {
             if (!item.targetWrapper) return node;
-            return node.closest('.form-section') || node.closest('label') || node;
+            return node.closest('.form-section') || node.closest('.form-group') || node.closest('label') || node;
         }).filter(Boolean);
     }
 
     function markConfigurableElements() {
         TIMELINE_VISIBILITY_ELEMENTS.forEach(item => {
             getElementTargets(item).forEach(el => {
-                if (el.dataset.timelineVisibilityKey && el.dataset.timelineVisibilityKey !== item.key) return;
-                el.dataset.timelineVisibilityKey = item.key;
-                el.dataset.timelineVisibilityLabel = item.label;
+                if (el.dataset.timelineVisibilityKey && el.dataset.timelineVisibilityKey !== item.id) return;
+                el.dataset.timelineVisibilityKey = item.id;
+                el.dataset.timelineBlockId = item.id;
+                el.dataset.timelineVisibilityLabel = labelForKey(item.id);
                 el.classList.add('timeline-configurable-element');
             });
         });
@@ -318,22 +489,22 @@
         document.querySelectorAll('.timeline-visibility-chip').forEach(chip => chip.remove());
     }
 
-    function ensureVisibilityChip(el, item, hidden) {
+    function ensureVisibilityChip(el, item) {
         const isControlTarget = el.matches('button,input,select,textarea,a[href]');
         const host = isControlTarget ? el.parentElement : el;
         if (!host) return;
         let chip = Array.from(host.children).find(child =>
-            child.classList?.contains('timeline-visibility-chip') && child.dataset.key === item.key
+            child.classList?.contains('timeline-visibility-chip') && child.dataset.key === item.id
         );
         if (!chip) {
             chip = document.createElement('button');
             chip.type = 'button';
             chip.className = 'timeline-visibility-chip';
-            chip.dataset.key = item.key;
+            chip.dataset.key = item.id;
             chip.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
-                setHidden(item.key, !isHidden(item.key));
+                selectBlock(item.id);
             });
             if (isControlTarget) {
                 el.insertAdjacentElement('afterend', chip);
@@ -342,8 +513,26 @@
             }
         }
         chip.classList.toggle('is-inline', isControlTarget);
-        chip.textContent = hidden ? 'Показати' : 'Сховати';
-        chip.setAttribute('aria-label', `${hidden ? 'Показати' : 'Сховати'} ${item.label}`);
+        chip.textContent = 'Налаштувати';
+        chip.setAttribute('aria-label', `Налаштувати ${labelForKey(item.id)}`);
+    }
+
+    function clearVisualClasses(el) {
+        DENSITY_VALUES.forEach(value => el.classList.remove(`timeline-block-density-${value}`));
+        EMPHASIS_VALUES.forEach(value => el.classList.remove(`timeline-block-emphasis-${value}`));
+    }
+
+    function applyVisualVariables(el, item, settings) {
+        clearVisualClasses(el);
+        el.classList.add(`timeline-block-density-${settings.density || 'default'}`);
+        el.classList.add(`timeline-block-emphasis-${settings.emphasis || 'normal'}`);
+        el.dataset.timelineBlockDensity = settings.density || 'default';
+        el.dataset.timelineBlockEmphasis = settings.emphasis || 'normal';
+        if (Number(settings.order) !== Number(item.defaultOrder)) {
+            el.style.order = String(settings.order);
+        } else {
+            el.style.removeProperty('order');
+        }
     }
 
     function applyVisibility() {
@@ -351,18 +540,23 @@
         if (!state.constructorActive) removeVisibilityChips();
 
         TIMELINE_VISIBILITY_ELEMENTS.forEach(item => {
-            const hidden = isHidden(item.key);
+            const settings = blockSettings(item.id);
+            const hidden = settings.visible === false;
             getElementTargets(item).forEach(el => {
+                applyVisualVariables(el, item, settings);
                 el.classList.toggle('timeline-hidden-by-config', hidden && !state.constructorActive);
                 el.classList.toggle('timeline-constructor-disabled', hidden && state.constructorActive);
                 el.classList.toggle('timeline-constructor-visible', !hidden && state.constructorActive);
+                el.classList.toggle('timeline-constructor-selected', state.constructorActive && state.selectedBlockId === item.id);
                 el.setAttribute('data-timeline-visibility-state', hidden ? 'hidden' : 'visible');
+                el.setAttribute('data-timeline-block-id', item.id);
                 setNestedDisabled(el, hidden);
-                if (state.constructorActive) ensureVisibilityChip(el, item, hidden);
+                if (state.constructorActive) ensureVisibilityChip(el, item);
             });
         });
 
         document.body?.classList.toggle('timeline-constructor-active', state.constructorActive);
+        document.body?.setAttribute('data-timeline-id', currentTimelineId());
         if (typeof window.refreshTimelineActionMenuVisibility === 'function') {
             window.refreshTimelineActionMenuVisibility();
         }
@@ -385,10 +579,10 @@
         button.type = 'button';
         button.id = 'timelineConstructorBtn';
         button.className = 'timeline-constructor-btn hidden';
-        button.title = 'Налаштувати видимість елементів таймлайну';
-        button.setAttribute('aria-label', 'Налаштувати видимість елементів таймлайну');
+        button.title = 'Налаштування таймлайну';
+        button.setAttribute('aria-label', 'Налаштування таймлайну');
         button.setAttribute('aria-pressed', 'false');
-        button.innerHTML = '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Видимість</span>';
+        button.innerHTML = '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Налаштування</span>';
         bindConstructorButton(button);
         actionButtons.appendChild(button);
         state.toggleBtn = button;
@@ -413,21 +607,42 @@
         const panel = document.createElement('section');
         panel.id = 'timelineConstructorPanel';
         panel.className = 'timeline-constructor-panel hidden';
-        panel.setAttribute('aria-label', 'Конструктор видимості таймлайну');
+        panel.setAttribute('aria-label', 'Налаштування таймлайну');
         panel.innerHTML = `
             <div class="timeline-constructor-panel-header">
                 <div>
-                    <strong>Конструктор таймлайну</strong>
+                    <strong>Налаштування таймлайну</strong>
                     <span id="timelineConstructorContext"></span>
                 </div>
-                <button type="button" id="timelineConstructorClose" class="timeline-constructor-close" aria-label="Закрити конструктор">✕</button>
+                <button type="button" id="timelineConstructorClose" class="timeline-constructor-close" aria-label="Закрити налаштування">✕</button>
             </div>
             <div class="timeline-constructor-panel-body">
-                <p>Вимикай елементи тут або прямо на сторінці. У звичайному режимі вимкнені елементи зникнуть.</p>
-                <div class="timeline-constructor-presets" aria-label="Preset-и видимості таймлайну">
+                <div class="timeline-constructor-presets" aria-label="Preset-и вигляду таймлайну">
                     ${VISIBILITY_PRESETS.map(preset => `<button type="button" class="timeline-constructor-preset" data-visibility-preset="${preset.key}"><span>${escapeHtml(preset.label)}</span><small>${escapeHtml(preset.description)}</small></button>`).join('')}
                 </div>
-                <div id="timelineConstructorList" class="timeline-constructor-list"></div>
+                <div class="timeline-visual-settings-grid">
+                    <section class="timeline-visual-settings-zone timeline-visual-blocks-zone" aria-label="Блоки таймлайну">
+                        <div class="timeline-visual-zone-head">
+                            <strong>Блоки</strong>
+                            <span>Зони та елементи цього таймлайну</span>
+                        </div>
+                        <div id="timelineConstructorList" class="timeline-constructor-list"></div>
+                    </section>
+                    <section class="timeline-visual-settings-zone" aria-label="Візуальні змінні">
+                        <div class="timeline-visual-zone-head">
+                            <strong>Візуал</strong>
+                            <span>Параметри вибраного блоку</span>
+                        </div>
+                        <div id="timelineConstructorVisualEditor" class="timeline-visual-editor"></div>
+                    </section>
+                    <section class="timeline-visual-settings-zone" aria-label="Опис і вплив">
+                        <div class="timeline-visual-zone-head">
+                            <strong>Опис і вплив</strong>
+                            <span>Що змінюється та як не нашкодити</span>
+                        </div>
+                        <div id="timelineConstructorDetails" class="timeline-visual-details"></div>
+                    </section>
+                </div>
             </div>
             <div class="timeline-constructor-panel-actions">
                 <button type="button" id="timelineConstructorReset" class="timeline-constructor-secondary">Скинути</button>
@@ -441,11 +656,14 @@
         panel.querySelectorAll('[data-visibility-preset]').forEach(button => {
             button.addEventListener('click', event => applyVisibilityPreset(event.currentTarget.dataset.visibilityPreset));
         });
+        panel.addEventListener('click', handlePanelClick);
+        panel.addEventListener('change', handlePanelChange);
+        panel.addEventListener('input', handlePanelInput);
         state.panel = panel;
     }
 
     function groupedElements() {
-        return TIMELINE_VISIBILITY_ELEMENTS.reduce((groups, item) => {
+        return orderedElements().reduce((groups, item) => {
             const area = item.area || 'Інше';
             if (!groups[area]) groups[area] = [];
             groups[area].push(item);
@@ -456,7 +674,10 @@
     function renderPanelList() {
         const list = document.getElementById('timelineConstructorList');
         const contextLabel = document.getElementById('timelineConstructorContext');
-        if (contextLabel) contextLabel.textContent = currentContext().productName || currentContext().navLabel || '';
+        if (contextLabel) {
+            const label = currentContext().productName || currentContext().navLabel || currentContextKey();
+            contextLabel.textContent = `${label} · ${currentTimelineId()}`;
+        }
         if (!list) return;
 
         const groups = groupedElements();
@@ -464,22 +685,134 @@
             <div class="timeline-constructor-group">
                 <div class="timeline-constructor-group-title">${escapeHtml(area)}</div>
                 ${items.map(item => {
-                    const hidden = isHidden(item.key);
+                    const settings = blockSettings(item.id);
+                    const active = state.selectedBlockId === item.id;
                     return `
-                        <label class="timeline-constructor-row">
-                            <span>${escapeHtml(item.label)}</span>
-                            <input type="checkbox" data-key="${item.key}" ${hidden ? '' : 'checked'} aria-label="${escapeHtml(item.label)}">
-                        </label>
+                        <div class="timeline-constructor-row${active ? ' is-selected' : ''}" data-block-row="${escapeHtml(item.id)}">
+                            <button type="button" class="timeline-constructor-row-main" data-select-block="${escapeHtml(item.id)}">
+                                <span>${escapeHtml(labelForKey(item.id))}</span>
+                                <small>${escapeHtml(item.id)}</small>
+                            </button>
+                            <input type="checkbox" data-block-visible="${escapeHtml(item.id)}" ${settings.visible === false ? '' : 'checked'} aria-label="${escapeHtml(labelForKey(item.id))}">
+                        </div>
                     `;
                 }).join('')}
             </div>
         `).join('');
+    }
 
-        list.querySelectorAll('input[type="checkbox"][data-key]').forEach(input => {
-            input.addEventListener('change', event => {
-                setHidden(event.target.dataset.key, !event.target.checked);
-            });
-        });
+    function renderBlockEditor() {
+        const host = document.getElementById('timelineConstructorVisualEditor');
+        const item = blockById(state.selectedBlockId);
+        if (!host || !item) return;
+        const settings = blockSettings(item.id);
+        host.innerHTML = `
+            <label class="timeline-visual-field timeline-visual-field--switch">
+                <span>Показувати блок</span>
+                <input type="checkbox" data-editor-visible="${escapeHtml(item.id)}" ${settings.visible === false ? '' : 'checked'}>
+            </label>
+            <label class="timeline-visual-field">
+                <span>Порядок</span>
+                <input type="number" min="-999" max="999" step="1" value="${escapeHtml(settings.order)}" data-editor-order="${escapeHtml(item.id)}">
+            </label>
+            <label class="timeline-visual-field">
+                <span>Щільність</span>
+                <select data-editor-density="${escapeHtml(item.id)}">
+                    <option value="default"${settings.density === 'default' ? ' selected' : ''}>Стандарт</option>
+                    <option value="compact"${settings.density === 'compact' ? ' selected' : ''}>Компактно</option>
+                    <option value="comfortable"${settings.density === 'comfortable' ? ' selected' : ''}>Вільніше</option>
+                </select>
+            </label>
+            <label class="timeline-visual-field">
+                <span>Акцент</span>
+                <select data-editor-emphasis="${escapeHtml(item.id)}">
+                    <option value="normal"${settings.emphasis === 'normal' ? ' selected' : ''}>Звичайний</option>
+                    <option value="muted"${settings.emphasis === 'muted' ? ' selected' : ''}>Тихий</option>
+                    <option value="accent"${settings.emphasis === 'accent' ? ' selected' : ''}>Акцент</option>
+                </select>
+            </label>
+            <label class="timeline-visual-field">
+                <span>Назва в налаштуваннях</span>
+                <input type="text" maxlength="80" value="${escapeHtml(settings.customLabel)}" placeholder="${escapeHtml(item.title)}" data-editor-label="${escapeHtml(item.id)}">
+            </label>
+            <label class="timeline-visual-field">
+                <span>Внутрішня нотатка</span>
+                <textarea maxlength="280" rows="4" placeholder="Наприклад: не ховати у вихідні" data-editor-note="${escapeHtml(item.id)}">${escapeHtml(settings.adminNote)}</textarea>
+            </label>
+        `;
+    }
+
+    function renderBlockDetails() {
+        const host = document.getElementById('timelineConstructorDetails');
+        const item = blockById(state.selectedBlockId);
+        if (!host || !item) return;
+        const settings = blockSettings(item.id);
+        host.innerHTML = `
+            <div class="timeline-visual-detail-card">
+                <span class="timeline-visual-id">${escapeHtml(item.id)}</span>
+                <h4>${escapeHtml(labelForKey(item.id))}</h4>
+                <p>${escapeHtml(item.description)}</p>
+            </div>
+            <div class="timeline-visual-detail-card">
+                <strong>Як правильно змінювати</strong>
+                <p>${escapeHtml(item.howToUse)}</p>
+            </div>
+            <div class="timeline-visual-detail-card">
+                <strong>На що впливає</strong>
+                <p>${escapeHtml(item.impact)}</p>
+            </div>
+            <div class="timeline-visual-detail-card">
+                <strong>Змінні v1</strong>
+                <p>${escapeHtml((item.variables || VISUAL_VARIABLES).join(', '))}</p>
+                <small>Поточний стан: ${settings.visible === false ? 'приховано' : 'видимо'}, ${settings.density}, ${settings.emphasis}</small>
+            </div>
+        `;
+    }
+
+    function handlePanelClick(event) {
+        const selectButton = event.target.closest('[data-select-block]');
+        if (selectButton) {
+            event.preventDefault();
+            selectBlock(selectButton.dataset.selectBlock);
+        }
+    }
+
+    function handlePanelChange(event) {
+        const target = event.target;
+        if (target.matches('[data-block-visible]')) {
+            updateBlockVariable(target.dataset.blockVisible, 'visible', target.checked);
+        }
+        if (target.matches('[data-editor-visible]')) {
+            updateBlockVariable(target.dataset.editorVisible, 'visible', target.checked);
+        }
+        if (target.matches('[data-editor-order]')) {
+            updateBlockVariable(target.dataset.editorOrder, 'order', target.value);
+        }
+        if (target.matches('[data-editor-density]')) {
+            updateBlockVariable(target.dataset.editorDensity, 'density', target.value);
+        }
+        if (target.matches('[data-editor-emphasis]')) {
+            updateBlockVariable(target.dataset.editorEmphasis, 'emphasis', target.value);
+        }
+    }
+
+    function handlePanelInput(event) {
+        const target = event.target;
+        if (target.matches('[data-editor-label]')) {
+            updateBlockVariable(target.dataset.editorLabel, 'customLabel', target.value, { renderEditor: false });
+        }
+        if (target.matches('[data-editor-note]')) {
+            updateBlockVariable(target.dataset.editorNote, 'adminNote', target.value, { renderEditor: false });
+        }
+    }
+
+    function selectBlock(id) {
+        if (!blockById(id)) return;
+        state.selectedBlockId = id;
+        renderPanelList();
+        renderBlockEditor();
+        renderBlockDetails();
+        applyVisibility();
     }
 
     function toggleConstructorMode(active) {
@@ -489,14 +822,16 @@
         state.toggleBtn?.classList.toggle('is-active', state.constructorActive);
         state.toggleBtn?.setAttribute('aria-pressed', String(state.constructorActive));
         if (state.toggleBtn) {
-            state.toggleBtn.title = state.constructorActive ? 'Завершити налаштування видимості' : 'Налаштувати видимість елементів таймлайну';
+            state.toggleBtn.title = state.constructorActive ? 'Завершити налаштування таймлайну' : 'Налаштування таймлайну';
             state.toggleBtn.setAttribute('aria-label', state.toggleBtn.title);
             state.toggleBtn.innerHTML = state.constructorActive
                 ? '<span class="timeline-constructor-btn-icon" aria-hidden="true">✓</span><span class="timeline-constructor-btn-label">Готово</span>'
-                : '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Видимість</span>';
+                : '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Налаштування</span>';
         }
         state.panel?.classList.toggle('hidden', !state.constructorActive);
         renderPanelList();
+        renderBlockEditor();
+        renderBlockDetails();
         applyVisibility();
     }
 
@@ -509,6 +844,8 @@
             if (!data) return;
             applyVisibility();
             renderPanelList();
+            renderBlockEditor();
+            renderBlockDetails();
         });
     }
 
@@ -539,6 +876,8 @@
             if (!data) return;
             applyVisibility();
             renderPanelList();
+            renderBlockEditor();
+            renderBlockDetails();
         });
         refreshAccess();
         window.addEventListener('app:user-changed', refreshAccess);

@@ -22,6 +22,11 @@ const {
     resourceToLine,
     timelineResourceAvailability
 } = require('../services/timelineResources');
+const {
+    TIMELINE_VISUAL_BLOCKS,
+    sanitizeTimelineVisibilityPayload,
+    timelineVisibilityResponse
+} = require('../services/timelineVisibilitySettings');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -374,6 +379,69 @@ test('settings UI exposes real timeline resource management for multi-cabinet mo
     assert.match(app, /settingsTimelineControlCenter/);
     assert.match(css, /\.timeline-resource-row/);
     assert.match(css, /\.timeline-control-center/);
+});
+
+test('timeline visual settings v2 keeps stable block ids, metadata, and legacy overrides', () => {
+    const response = timelineVisibilityResponse({
+        version: 1,
+        overrides: {
+            dateControls: true,
+            bookingClose: false,
+            unknownBlock: true
+        }
+    }, 'dar');
+
+    assert.equal(response.version, 2);
+    assert.equal(response.timelineId, 'timeline:dar');
+    assert.equal(response.blocks.dateControls.visible, false);
+    assert.equal(response.blocks.bookingClose.visible, true);
+    assert.equal(response.overrides.dateControls, true);
+    assert.equal(response.overrides.bookingClose, false);
+    assert.equal(response.blocks.unknownBlock, undefined);
+    assert.ok(Array.isArray(response.registry));
+    assert.ok(response.registry.length >= 40);
+
+    for (const block of TIMELINE_VISUAL_BLOCKS) {
+        assert.match(block.id, /^[a-zA-Z0-9_-]+$/);
+        assert.ok(block.description && block.description.length > 10, `${block.id} needs description`);
+        assert.ok(block.howToUse && block.howToUse.length > 10, `${block.id} needs howToUse`);
+        assert.ok(block.impact && block.impact.length > 10, `${block.id} needs impact`);
+        assert.deepEqual(block.variables, ['visible', 'order', 'density', 'emphasis', 'customLabel', 'adminNote']);
+    }
+
+    const sanitized = sanitizeTimelineVisibilityPayload({
+        blocks: {
+            timelineGrid: {
+                visible: false,
+                order: 42,
+                density: 'compact',
+                emphasis: 'accent',
+                customLabel: 'Головна сітка',
+                adminNote: 'Не ховати в операційні дні',
+                unsafe: 'ignored'
+            },
+            unknownBlock: { visible: false }
+        },
+        overrides: {
+            bookingClose: true,
+            unknownBlock: true
+        }
+    }, 'maysternya_doli');
+
+    assert.equal(sanitized.version, 2);
+    assert.equal(sanitized.timelineId, 'timeline:maysternya_doli');
+    assert.deepEqual(sanitized.blocks.timelineGrid, {
+        visible: false,
+        order: 42,
+        density: 'compact',
+        emphasis: 'accent',
+        customLabel: 'Головна сітка',
+        adminNote: 'Не ховати в операційні дні'
+    });
+    assert.equal(sanitized.blocks.unknownBlock, undefined);
+    assert.equal(sanitized.overrides.timelineGrid, true);
+    assert.equal(sanitized.overrides.bookingClose, true);
+    assert.equal(sanitized.overrides.unknownBlock, undefined);
 });
 
 test('business operating profile owns shell start page and module visibility', () => {

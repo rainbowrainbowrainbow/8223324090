@@ -2658,13 +2658,15 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
                     ${selected ? `<button type="button" class="booking-menu-catalog-note-btn" data-menu-catalog-edit-note="${escapeHtml(product.id)}" aria-label="Примітка ${escapeHtml(title)}">✎</button>` : ''}
                     ${selected ? `<button type="button" class="booking-menu-catalog-remove" data-menu-catalog-remove="${escapeHtml(product.id)}" aria-label="Видалити ${escapeHtml(title)}">×</button>` : ''}
                 </div>
-                <div class="booking-menu-catalog-main">
-                    <div class="booking-menu-catalog-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-                    <div class="booking-menu-catalog-meta">
-                        <span class="booking-menu-catalog-kind">${escapeHtml(typeLabel)}</span>
-                        <span>${priceControl}${unit ? ` / ${escapeHtml(unit)}` : ''}</span>
-                        ${section ? `<span>${escapeHtml(section)}</span>` : ''}
-                        ${note ? `<span class="booking-menu-catalog-note-preview">${escapeHtml(note)}</span>` : ''}
+                <div class="booking-menu-catalog-content">
+                    <div class="booking-menu-catalog-main">
+                        <div class="booking-menu-catalog-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                        <div class="booking-menu-catalog-meta">
+                            <span class="booking-menu-catalog-kind">${escapeHtml(typeLabel)}</span>
+                            <span>${priceControl}${unit ? ` / ${escapeHtml(unit)}` : ''}</span>
+                            ${section ? `<span>${escapeHtml(section)}</span>` : ''}
+                            ${note ? `<span class="booking-menu-catalog-note-preview">${escapeHtml(note)}</span>` : ''}
+                        </div>
                     </div>
                     ${bookingMenuCatalogInsightActionsHtml(product, title)}
                 </div>
@@ -6731,12 +6733,12 @@ async function showBookingDetails(bookingId) {
     `;
 
     document.getElementById('bookingDetails').innerHTML = `
-        <div class="booking-detail-header booking-detail-header--unique" style="background:${headerGradient};color:#fff;padding:16px 20px;border-radius:12px 12px 0 0;margin:-20px -20px 16px -20px;">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <span style="font-size:28px;">${categoryIcon}</span>
-                <div>
-                    <h3 style="margin:0;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.3);">${escapeHtml(bookingDetailTitle)}</h3>
-                    <p style="margin:4px 0 0;opacity:0.9;font-size:13px;">${escapeHtml(booking.room)}${booking.category ? ' · ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} · #${escapeHtml(uniqueCode)}</p>
+        <div class="booking-detail-header booking-detail-header--unique" style="--booking-detail-header-bg:${headerGradient};">
+            <div class="booking-detail-heading">
+                <span class="booking-detail-icon" aria-hidden="true">${categoryIcon}</span>
+                <div class="booking-detail-title-group">
+                    <h3 class="booking-detail-title">${escapeHtml(bookingDetailTitle)}</h3>
+                    <p class="booking-detail-subtitle">${escapeHtml(booking.room)}${booking.category ? ' · ' + escapeHtml(CATEGORY_NAMES[booking.category] || booking.category) : ''} · #${escapeHtml(uniqueCode)}</p>
                 </div>
             </div>
         </div>

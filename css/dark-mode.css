@@ -1229,6 +1229,19 @@ body.dark-mode .btn-close {
     background: var(--gray-100);
 }
 
+body.dark-mode .booking-panel-close {
+    border-color: rgba(148, 163, 184, 0.24);
+    background: rgba(15, 23, 42, 0.76);
+    color: var(--gray-200);
+}
+
+body.dark-mode .booking-panel-close:hover,
+body.dark-mode .booking-panel-close:focus-visible {
+    border-color: rgba(248, 113, 113, 0.42);
+    background: rgba(127, 29, 29, 0.34);
+    color: #FECACA;
+}
+
 body.dark-mode .btn-cancel {
     background: var(--gray-100);
     color: #D1D5DB;

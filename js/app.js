@@ -701,6 +701,15 @@ function initBookingFormListeners() {
     document.getElementById('closePanel')?.addEventListener('click', () => closeBookingPanel(false));
     // v5.35: Close panel when clicking the backdrop overlay
     document.getElementById('panelBackdrop')?.addEventListener('click', () => closeBookingPanel(false));
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        const panel = document.getElementById('bookingPanel');
+        if (!panel || panel.classList.contains('hidden')) return;
+        const menuPanel = document.getElementById('bookingMenuCatalogPanel');
+        if (menuPanel && !menuPanel.hidden && !menuPanel.classList.contains('hidden')) return;
+        event.preventDefault();
+        closeBookingPanel(false);
+    });
     document.getElementById('bookingForm')?.addEventListener('submit', resolveTimelineBootHandler(
         'handleBookingSubmit',
         'Форма бронювання ще не завантажилась. Оновіть сторінку й повторіть дію.'

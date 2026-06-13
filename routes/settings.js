@@ -28,6 +28,10 @@ const {
     resourceTypeForDisplayMode,
     timelineResourceAvailability
 } = require('../services/timelineResources');
+const {
+    sanitizeTimelineVisibilityPayload,
+    timelineVisibilityResponse
+} = require('../services/timelineVisibilitySettings');
 const { buildBusinessOperatingProfile } = require('../services/businessProfile');
 const {
     businessCabinetCatalog,
@@ -374,16 +378,6 @@ function timelineVisibilitySettingsKey(context) {
     return `timeline_visibility:${context || DEFAULT_TIMELINE_CONTEXT}`;
 }
 
-function sanitizeTimelineVisibilityPayload(body) {
-    const rawOverrides = body?.overrides && typeof body.overrides === 'object' ? body.overrides : {};
-    const overrides = {};
-    for (const [key, value] of Object.entries(rawOverrides)) {
-        if (!/^[a-zA-Z0-9_-]{1,80}$/.test(key)) continue;
-        overrides[key] = Boolean(value);
-    }
-    return { version: 1, overrides };
-}
-
 function timelineDisplaySettingsKey(context) {
     return `timeline_display:${context || DEFAULT_TIMELINE_CONTEXT}`;
 }
@@ -405,13 +399,7 @@ router.get('/settings/timeline-visibility', async (req, res) => {
 
         let parsed = null;
         try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-        res.json({
-            context,
-            version: 1,
-            overrides: parsed?.overrides && typeof parsed.overrides === 'object' ? parsed.overrides : {},
-            updatedAt: parsed?.updatedAt || null,
-            updatedBy: parsed?.updatedBy || null
-        });
+        res.json(timelineVisibilityResponse(parsed || {}, context));
     } catch (err) {
         log.error('GET /settings/timeline-visibility error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -424,7 +412,7 @@ router.put('/settings/timeline-visibility', async (req, res) => {
         if (!requireTimelineAction(req, res, context, 'settings')) return;
         const key = timelineVisibilitySettingsKey(context);
         const payload = {
-            ...sanitizeTimelineVisibilityPayload(req.body || {}),
+            ...sanitizeTimelineVisibilityPayload(req.body || {}, context),
             context,
             updatedAt: new Date().toISOString(),
             updatedBy: req.user?.username || req.user?.id || null
@@ -440,11 +428,16 @@ router.put('/settings/timeline-visibility', async (req, res) => {
         logAdminAction('timeline_visibility_update', 'settings', {
             username: req.user?.username,
             target: key,
-            details: { context, keys: Object.keys(payload.overrides || {}) },
+            details: {
+                context,
+                timelineId: payload.timelineId,
+                blocks: Object.keys(payload.blocks || {}),
+                legacyOverrideKeys: Object.keys(payload.overrides || {})
+            },
             ip: req.ip,
             requestId: req.headers['x-request-id']
         });
-        res.json(payload);
+        res.json(timelineVisibilityResponse(payload, context));
     } catch (err) {
         log.error('PUT /settings/timeline-visibility error', err);
         res.status(500).json({ error: 'Internal server error' });

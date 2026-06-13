@@ -4,6 +4,22 @@
 
 ---
 
+## v0.75.39 - Timeline Visual Settings
+
+### Timeline / Visual settings center / Constructor / Release / (Клешня, 13.06.2026) [codex]
+- **Конструктор таймлайну став центром налаштувань** - кнопка на таймлайні тепер відкриває детальну панель `Налаштування таймлайну`, а не тільки простий список видимості.
+- **Кожен таймлайн отримав стабільний `timelineId`** - `timeline:event_genix`, `timeline:dar`, `timeline:maysternya_doli` і майбутні бізнес-контексти мають окремий visual/settings scope.
+- **Блоки описані як registry v2** - у кожного visual block є `id`, зона, selector, опис, інструкція, вплив, default visibility і змінні `visible`, `order`, `density`, `emphasis`, `customLabel`, `adminNote`.
+- **Settings API лишився backward-compatible** - `/api/settings/timeline-visibility` повертає `version: 2`, `registry`, `blocks` і legacy `overrides`, а збереження йде в існуючий `settings` key без нових міграцій.
+- **Constructor mode став наочнішим** - блоки на сторінці отримують `data-timeline-block-id`, підсвітку вибору, inline-chip `Налаштувати`, а reset повертає конкретний timeline до дефолтів.
+- **AI-кнопки страв стали компактнішими** - `Відкрити`, `Промо`, `Алергени` і `Комбінації` винесені в спокійнішу бічну колонку картки, щоб не з'їдати основний простір і не кричати кольоровими рамками.
+- **Booking drawer отримав явне закриття** - права панель бронювання має помітну кнопку `Закрити` / `✕` у sticky-header і закривається по Escape через існуючий safe close-flow.
+- **Картка деталей бронювання стала ширшою і стабільнішою** - modal більше не стискає меню й дії в вузький popup, а copy-кнопки в рядках не зсувають контент при hover.
+- **Sticky шкала часу більше не перекривається бронюваннями** - під час скролу картки лишаються під підписами годин, а drag/resize шар збережено вище для інтерактивного редагування.
+- **Бізнес-логіку бронювань не змінено** - ролі, permission-hidden controls, API бронювань, DB schema, міграції, env і deploy config лишилися поза змінами.
+
+---
+
 ## v0.75.38 - Menu OpenAI Drafts
 
 ### Booking drawer / Kitchen catalog / OpenAI menu drafts / Release / (Клешня, 13.06.2026) [codex]

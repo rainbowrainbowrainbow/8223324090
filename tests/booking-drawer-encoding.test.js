@@ -59,6 +59,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
         'bookingSubmitBtn'
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
     assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
+    assert.match(bookingPanelHtml, /id="closePanel" class="btn-close booking-panel-close" type="button" title="Закрити панель бронювання" aria-label="Закрити панель бронювання"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
     assert.match(html, new RegExp(`js/kitchen-menu-images\\.js\\?v=${escapedAssetVersion}`));
     assert.ok(html.indexOf('js/kitchen-menu-images.js') < html.indexOf('js/config.js'), 'kitchen menu image manifest loads before config');
@@ -145,6 +146,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(panelCss, /margin:\s*20px -24px -18px/);
     assert.doesNotMatch(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*position:\s*sticky;/);
     assert.doesNotMatch(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*calc\(var\(--booking-panel-pad-x\) \* -1\)/);
+    assert.match(panelCss, /\.panel-header\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0;/);
+    assert.match(panelCss, /\.booking-panel-close\s*\{[\s\S]*min-width:\s*44px;[\s\S]*border-radius:\s*999px;/);
+    assert.match(responsiveCss, /\.booking-panel-close-label\s*\{\s*display:\s*none;\s*\}/);
 
     assert.match(panelCss, /\.btn-submit:disabled/);
     assert.match(panelCss, /\.booking-mode-card:focus-within/);
@@ -163,6 +167,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*auto;[\s\S]*aspect-ratio:\s*3 \/ 1;[\s\S]*min-height:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*40px minmax\(52px,\s*1fr\) 40px 40px 40px;[\s\S]*flex:\s*0 0 auto;[\s\S]*width:\s*100%;[\s\S]*min-height:\s*40px;[\s\S]*max-width:\s*none;[\s\S]*margin-top:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-content\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) 92px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-action\s*\{[\s\S]*min-height:\s*24px;[\s\S]*font-size:\s*10px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-action--allergens\s*\{[\s\S]*border-color:\s*rgba\(245,\s*158,\s*11,\s*0\.16\);/);
     const minimumCatalogCardWidth = 280;
     const catalogCardHorizontalPadding = 24;
     const minimumStepperColumnsWidth = 40 + 52 + 40 + 40 + 40;

@@ -900,6 +900,10 @@
         font-size: var(--font-base);
     }
 
+    .booking-panel-close {
+        padding: 0 12px;
+    }
+
     .booking-form {
         padding: 12px var(--booking-panel-pad-x) var(--booking-footer-space);
     }
@@ -1257,6 +1261,8 @@
 
     /* v7.8.6: Booking panel extra compact on small screens */
     .panel-header { padding: 10px 12px; }
+    .booking-panel-close { width: 44px; padding: 0; }
+    .booking-panel-close-label { display: none; }
     .booking-form { padding: 10px var(--booking-panel-pad-x) var(--booking-footer-space); }
     .selected-info { padding: 8px 10px; margin-bottom: 10px; }
     .form-section { margin-bottom: 10px; }

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.27",
+  "version": "0.75.28",
   "eventGenix": {
-    "releaseLabel": "Menu Square Fallback"
+    "releaseLabel": "Menu Wide Fallback"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

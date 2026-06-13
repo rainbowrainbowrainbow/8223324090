@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.28 - Menu Wide Fallback
+
+### Booking drawer / Kitchen catalog / Wide image test / Release / (Клешня, 13.06.2026) [codex]
+- **Fallback-фото меню переведено у прямокутний формат 2:1** - активний asset тепер `images/kitchen-menu/fallback-burger-wide.jpg`, збережений під пропорцію тестового зображення `1774x887`.
+- **Картки каталогу отримали широку фото-зону** - thumbnail більше не стискає фото в квадрат, а займає верх картки у стабільному `aspect-ratio: 2 / 1`.
+- **Текст і степер більше не конфліктують із фото** - картка стала дворядковою: фото зверху, назва/ціна/кількість нижче, щоб довгі назви не вилазили за рамку.
+- **Кошик теж використовує прямокутний thumbnail** - компактна картинка лишається 2:1, але не ламає рядок вибраної позиції.
+- **Regression guards оновлено** - тести перевіряють wide fallback URL, нову ширину catalog grid і наявність asset-файлу.
+- **Релізні маркери піднято до `0.75.28`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.27 - Menu Square Fallback
 
 ### Booking drawer / Kitchen catalog / Square image test / Release / (Клешня, 13.06.2026) [codex]

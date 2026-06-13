@@ -10,6 +10,16 @@
     const VISUAL_VARIABLES = ['visible', 'order', 'density', 'emphasis', 'customLabel', 'adminNote'];
     const DENSITY_VALUES = ['default', 'compact', 'comfortable'];
     const EMPHASIS_VALUES = ['normal', 'muted', 'accent'];
+    const DENSITY_LABELS = {
+        default: 'Стандарт',
+        compact: 'Компактно',
+        comfortable: 'Вільніше'
+    };
+    const EMPHASIS_LABELS = {
+        normal: 'Звичайний',
+        muted: 'Тихий',
+        accent: 'Акцент'
+    };
 
     function visualBlock(id, area, title, selector, options = {}) {
         return {
@@ -127,7 +137,9 @@
         accessTimer: null,
         serverSettings: new Map(),
         serverLoadPromise: null,
-        serverSaveTimer: null
+        serverSaveTimer: null,
+        saveStatus: 'idle',
+        saveMessage: 'Зміни зберігаються автоматично для цього timeline.'
     };
 
     function contextApi() {
@@ -302,6 +314,7 @@
                     const normalized = normalizeSettings(data);
                     state.serverSettings.set(contextKey, normalized);
                     localStorage.setItem(storageKey(), JSON.stringify(normalized));
+                    setSaveStatus('saved', 'Серверні налаштування завантажено.');
                 }
                 return data;
             })
@@ -329,10 +342,15 @@
     }
 
     function scheduleServerSave(settings) {
-        if (!canConfigure()) return;
+        if (!canConfigure()) {
+            setSaveStatus('saved', 'Збережено локально для поточної сесії.');
+            return;
+        }
+        setSaveStatus('dirty', 'Є незбережені зміни. Синхронізую...');
         window.clearTimeout(state.serverSaveTimer);
         state.serverSaveTimer = window.setTimeout(async () => {
             try {
+                setSaveStatus('saving', 'Зберігаю налаштування на сервері...');
                 const response = await fetch(apiUrl('/settings/timeline-visibility'), {
                     method: 'PUT',
                     headers: authHeaders(true),
@@ -346,11 +364,28 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 mergeServerRegistry(data.registry);
-                state.serverSettings.set(currentContextKey(), normalizeSettings(data));
+                const normalized = normalizeSettings(data);
+                state.serverSettings.set(currentContextKey(), normalized);
+                localStorage.setItem(storageKey(), JSON.stringify(normalized));
+                setSaveStatus('saved', `Збережено ${new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`);
             } catch (error) {
                 console.warn('[TimelineVisibility] Failed to save server visual settings', error);
+                setSaveStatus('error', 'Не вдалося зберегти на сервері. Локальна копія лишилась.');
             }
         }, 250);
+    }
+
+    function setSaveStatus(status, message) {
+        state.saveStatus = status || 'idle';
+        state.saveMessage = message || 'Зміни зберігаються автоматично для цього timeline.';
+        renderSaveStatus();
+    }
+
+    function renderSaveStatus() {
+        const status = document.getElementById('timelineConstructorSaveStatus');
+        if (!status) return;
+        status.dataset.status = state.saveStatus || 'idle';
+        status.textContent = state.saveMessage || 'Зміни зберігаються автоматично для цього timeline.';
     }
 
     function blockById(id) {
@@ -388,6 +423,22 @@
     function setHidden(id, hidden) {
         updateBlockVariable(id, 'visible', !hidden);
         notify(`${hidden ? 'Приховано' : 'Показано'}: ${labelForKey(id)}`);
+    }
+
+    async function confirmResetSettings() {
+        const label = currentContext().productName || currentContext().navLabel || currentContextKey();
+        if (typeof window.confirmModal !== 'function' && typeof confirmModal !== 'function') {
+            notify('Підтвердження недоступне. Оновіть сторінку і повторіть reset.', 'error');
+            return;
+        }
+        const confirmFn = window.confirmModal || confirmModal;
+        const ok = await confirmFn(`Скинути налаштування таймлайну для "${label}" до стандарту?\nЦе прибере видимість, порядок, щільність, акценти, службові назви та нотатки тільки для цього timeline.`, {
+            type: 'warning',
+            okText: 'Скинути',
+            cancelText: 'Не скидати'
+        });
+        if (!ok) return;
+        resetSettings();
     }
 
     function resetSettings() {
@@ -533,6 +584,11 @@
         } else {
             el.style.removeProperty('order');
         }
+        if (settings.customLabel) {
+            el.setAttribute('data-timeline-custom-label', settings.customLabel);
+        } else {
+            el.removeAttribute('data-timeline-custom-label');
+        }
     }
 
     function applyVisibility() {
@@ -645,14 +701,17 @@
                 </div>
             </div>
             <div class="timeline-constructor-panel-actions">
-                <button type="button" id="timelineConstructorReset" class="timeline-constructor-secondary">Скинути</button>
-                <button type="button" id="timelineConstructorDone" class="timeline-constructor-primary">Готово</button>
+                <span id="timelineConstructorSaveStatus" class="timeline-constructor-save-status" data-status="idle">Зміни зберігаються автоматично для цього timeline.</span>
+                <div class="timeline-constructor-action-buttons">
+                    <button type="button" id="timelineConstructorReset" class="timeline-constructor-secondary">Скинути</button>
+                    <button type="button" id="timelineConstructorDone" class="timeline-constructor-primary">Готово</button>
+                </div>
             </div>
         `;
         document.body.appendChild(panel);
         panel.querySelector('#timelineConstructorClose')?.addEventListener('click', () => toggleConstructorMode(false));
         panel.querySelector('#timelineConstructorDone')?.addEventListener('click', () => toggleConstructorMode(false));
-        panel.querySelector('#timelineConstructorReset')?.addEventListener('click', resetSettings);
+        panel.querySelector('#timelineConstructorReset')?.addEventListener('click', confirmResetSettings);
         panel.querySelectorAll('[data-visibility-preset]').forEach(button => {
             button.addEventListener('click', event => applyVisibilityPreset(event.currentTarget.dataset.visibilityPreset));
         });
@@ -660,6 +719,7 @@
         panel.addEventListener('change', handlePanelChange);
         panel.addEventListener('input', handlePanelInput);
         state.panel = panel;
+        renderSaveStatus();
     }
 
     function groupedElements() {
@@ -710,10 +770,12 @@
             <label class="timeline-visual-field timeline-visual-field--switch">
                 <span>Показувати блок</span>
                 <input type="checkbox" data-editor-visible="${escapeHtml(item.id)}" ${settings.visible === false ? '' : 'checked'}>
+                <small>Ховає тільки visual block. Ролі, API і дані бронювань не змінюються.</small>
             </label>
             <label class="timeline-visual-field">
                 <span>Порядок</span>
                 <input type="number" min="-999" max="999" step="1" value="${escapeHtml(settings.order)}" data-editor-order="${escapeHtml(item.id)}">
+                <small>Менше число ставить блок вище або лівіше в межах його зони.</small>
             </label>
             <label class="timeline-visual-field">
                 <span>Щільність</span>
@@ -722,6 +784,7 @@
                     <option value="compact"${settings.density === 'compact' ? ' selected' : ''}>Компактно</option>
                     <option value="comfortable"${settings.density === 'comfortable' ? ' selected' : ''}>Вільніше</option>
                 </select>
+                <small>Компактно стискає відступи; вільніше додає повітря для важливих зон.</small>
             </label>
             <label class="timeline-visual-field">
                 <span>Акцент</span>
@@ -730,14 +793,17 @@
                     <option value="muted"${settings.emphasis === 'muted' ? ' selected' : ''}>Тихий</option>
                     <option value="accent"${settings.emphasis === 'accent' ? ' selected' : ''}>Акцент</option>
                 </select>
+                <small>Тихий зменшує візуальну вагу; акцент підсвічує блок для адміністратора.</small>
             </label>
             <label class="timeline-visual-field">
                 <span>Назва в налаштуваннях</span>
                 <input type="text" maxlength="80" value="${escapeHtml(settings.customLabel)}" placeholder="${escapeHtml(item.title)}" data-editor-label="${escapeHtml(item.id)}">
+                <small>Службова назва тільки для цієї панелі. Бойовий текст кнопок не перейменовується.</small>
             </label>
             <label class="timeline-visual-field">
                 <span>Внутрішня нотатка</span>
                 <textarea maxlength="280" rows="4" placeholder="Наприклад: не ховати у вихідні" data-editor-note="${escapeHtml(item.id)}">${escapeHtml(settings.adminNote)}</textarea>
+                <small>Видима тільки в налаштуваннях. Використовуйте для правил і причин зміни.</small>
             </label>
         `;
     }
@@ -764,7 +830,15 @@
             <div class="timeline-visual-detail-card">
                 <strong>Змінні v1</strong>
                 <p>${escapeHtml((item.variables || VISUAL_VARIABLES).join(', '))}</p>
-                <small>Поточний стан: ${settings.visible === false ? 'приховано' : 'видимо'}, ${settings.density}, ${settings.emphasis}</small>
+                <small>Поточний стан: ${settings.visible === false ? 'приховано' : 'видимо'}, ${escapeHtml(DENSITY_LABELS[settings.density] || settings.density)}, ${escapeHtml(EMPHASIS_LABELS[settings.emphasis] || settings.emphasis)}</small>
+            </div>
+            <div class="timeline-visual-detail-card">
+                <strong>Службова назва</strong>
+                <p>${settings.customLabel ? escapeHtml(settings.customLabel) : 'Не задано. У списку використовується стандартна назва блоку.'}</p>
+            </div>
+            <div class="timeline-visual-detail-card">
+                <strong>Внутрішня нотатка</strong>
+                <p>${settings.adminNote ? escapeHtml(settings.adminNote) : 'Нотатки немає. Додайте коротке пояснення, якщо зміна може вплинути на роботу операторів.'}</p>
             </div>
         `;
     }
@@ -849,9 +923,9 @@
         });
     }
 
-    function notify(message) {
+    function notify(message, type) {
         if (typeof window.showNotification === 'function') {
-            window.showNotification(message);
+            window.showNotification(message, type);
         }
     }
 

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.41 - Timeline Settings Hardening
+
+### Timeline / Visual settings center / Guardrails / Release / (Клешня, 13.06.2026) [codex]
+- **Панель налаштувань таймлайну показує стан автозбереження** - у footer додано статуси `dirty`, `saving`, `saved` і `error`, щоб адміністратор бачив, чи зміни вже пішли на сервер.
+- **Reset став безпечнішим** - скидання visual settings тепер проходить через confirmation modal і стосується тільки поточного `timelineId`.
+- **Змінні `density`, `emphasis`, `customLabel` і `adminNote` стали зрозумілішими** - у редакторі додано короткі пояснення, а опис блоку показує службову назву й внутрішню нотатку окремо від бойового UI.
+- **Візуальні змінні отримали реальніші ефекти** - compact/comfortable щільність і accent/muted акцент застосовуються до toolbar, timeline grid і booking drawer без перевизначення permission-hidden controls.
+- **Додано operator guardrails document** - `docs/TIMELINE_VISUAL_SETTINGS_CENTER.md` фіксує scope, UAT, deploy branch hygiene і правила безпечної зміни блоків.
+- **Релізні маркери піднято до `0.75.41`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані під `Timeline Settings Hardening`.
+- **Бізнес-логіку бронювань не змінено** - API бронювань, ролі, permission-hidden controls, DB schema, міграції, env і deploy config лишилися поза змінами.
+
+---
+
 ## v0.75.40 - Timeline Toolbar Visibility
 
 ### Timeline / Toolbar / Release / (Клешня, 13.06.2026) [codex]

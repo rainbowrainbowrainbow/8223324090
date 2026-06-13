@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.40 - Timeline Toolbar Visibility
+
+### Timeline / Toolbar / Release / (Клешня, 13.06.2026) [codex]
+- **Action-кнопки таймлайну більше не ховаються під панеллю інструментів** - `Створити бронювання`, `Продажі` і `Експорт` отримали стабільну grid-зону `actions`, власний шар поверх службової плашки `Дії` і більше не провалюються під toolbar при desktop/laptop ширинах.
+- **Регресійний guard оновлено** - UI smoke тепер перевіряє, що toolbar має зони `date/status/view/tools/actions`, `action-buttons` мають вищий `z-index`, а dropdown `Дії` лишається поверх тільки коли реально відкритий.
+- **Релізні маркери піднято до `0.75.40`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані під `Timeline Toolbar Visibility`.
+- **Бізнес-логіку бронювань не змінено** - API бронювань, ролі, permission-hidden controls, DB schema, міграції, env і deploy config лишилися поза змінами.
+
+---
+
 ## v0.75.39 - Timeline Visual Settings
 
 ### Timeline / Visual settings center / Constructor / Release / (Клешня, 13.06.2026) [codex]

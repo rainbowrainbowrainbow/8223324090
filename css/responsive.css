@@ -183,18 +183,36 @@
     }
 }
 
-/* v0.66.3: timeline toolbar header keeps action menus outside clipping containers. */
+/* v0.66.3 / v0.75.39: timeline toolbar header keeps action menus outside clipping containers
+   and reserves a stable action slot so create/sales/export cannot slide under the tools bar. */
 @media (min-width: 769px) {
     body.timeline-dashboard-page .control-panel {
         position: relative;
         z-index: 30;
         isolation: isolate;
+        grid-template-columns: minmax(0, auto) minmax(280px, 1fr) minmax(max-content, auto) !important;
+        grid-template-rows: auto auto !important;
+        grid-template-areas:
+            "date status view"
+            "tools tools actions";
         overflow: visible !important;
         align-items: stretch !important;
     }
 
     body.timeline-dashboard-page .control-panel > * {
         min-width: 0 !important;
+    }
+
+    body.timeline-dashboard-page .date-controls {
+        grid-area: date !important;
+    }
+
+    body.timeline-dashboard-page .status-filter-controls {
+        grid-area: status !important;
+    }
+
+    body.timeline-dashboard-page .view-mode-controls {
+        grid-area: view !important;
     }
 
     body.timeline-dashboard-page .date-controls,
@@ -207,9 +225,18 @@
     }
 
     body.timeline-dashboard-page .v32-controls {
+        grid-area: tools !important;
+        position: relative;
+        z-index: 20;
         min-height: 42px;
         align-items: center;
         row-gap: 6px;
+    }
+
+    body.timeline-dashboard-page .action-buttons {
+        grid-area: actions !important;
+        position: relative;
+        z-index: 80;
     }
 
     body.timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] {

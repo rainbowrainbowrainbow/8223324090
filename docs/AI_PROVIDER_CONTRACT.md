@@ -13,17 +13,19 @@
 | Sound music | Kie.ai Suno API | `KIE_API_KEY`, `KIE_CALLBACK_SECRET`, `PUBLIC_BASE_URL` або `KIE_SUNO_CALLBACK_URL`, optional `KIE_SUNO_MODEL` | Створення йде через Kie Suno task, polling через Suno record-info, готовий файл обов'язково копіюється в CRM uploads. |
 | CRM assistant rail text replies | OpenAI direct | `OPENAI_API_KEY`, `OPENAI_API_BASE`, `OPENAI_ASSISTANT_MODEL` | Поки лишається окремий rail provider boundary у `services/dashboardAssistant.js`. |
 | CRM assistant audio/transcription | OpenAI direct | `OPENAI_API_KEY`, `OPENAI_TRANSCRIPTION_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voice input/output для assistant rail. |
+| Kitchen menu AI review drafts | OpenAI direct | `OPENAI_API_KEY`, `OPENAI_API_BASE`, `OPENAI_MENU_AI_MODEL` | `/api/products/menu-ai-draft` викликає OpenAI Responses API для review-only чернеток меню. Default model: `gpt-5.4-mini`. За відсутності ключа API повертає fallback-чернетку без зміни booking source of truth. |
 
 ## Provider Diagnostics
 
-- `/api/settings/ai/providers` повертає server-side карту provider-ів без секретів: OpenRouter shared text rail, Kie media rail, direct OpenAI assistant rail і legacy direct exceptions.
+- `/api/settings/ai/providers` повертає server-side карту provider-ів без секретів: OpenRouter shared text rail, Kie media rail, direct OpenAI assistant/menu rail і legacy direct exceptions.
 - `/chat-settings` показує цю карту для creator/director/admin, щоб було видно, де бракує `OPENROUTER_API_KEY`, `KIE_API_KEY`, `KIE_CALLBACK_SECRET` або `OPENAI_API_KEY`.
-- CRM assistant rail за рішенням продукту лишається на direct OpenAI. Інші нові text/token rails мають іти через OpenRouter.
+- CRM assistant rail і kitchen menu AI review за рішенням продукту лишаються на direct OpenAI. Інші нові text/token rails мають іти через OpenRouter, якщо немає окремого product decision.
 
 ## Legacy Direct Exceptions
 
 - `services/warehousePhotoIntake.js` ще використовує direct OpenAI vision для warehouse photo intake. Планова міграція: OpenRouter vision-capable model або окремий provider contract для vision.
 - `services/dashboardAssistant.js` і `services/dashboardAssistantAudio.js` не є legacy cleanup debt у цьому пакеті: CRM assistant rail навмисно лишається direct OpenAI.
+- `routes/products.js` для kitchen menu AI review не є legacy cleanup debt: це окремий review-only flow під direct OpenAI.
 
 ## Required Media Rules
 

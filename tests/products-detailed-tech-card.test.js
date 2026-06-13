@@ -49,7 +49,9 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /All ingredient rows must be linked to active warehouse stock before write-off/);
     assert.match(productsRoute, /MENU_ALLERGEN_CATALOG/);
     assert.match(productsRoute, /normalizeAllergenList/);
-    assert.match(productsRoute, /openRouterChat/);
+    assert.match(productsRoute, /generateMenuAiDraftWithOpenAI/);
+    assert.match(productsRoute, /OPENAI_MENU_AI_MODEL/);
+    assert.match(productsRoute, /\/responses/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
     assert.match(productsRoute, /router\.get\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /router\.put\('\/:id\/ai-card-draft'/);

@@ -17,7 +17,6 @@ const {
     requireBusinessScope,
     requireWritableBusinessScope
 } = require('../services/businessContext');
-const { openRouterChat } = require('../services/copilot');
 const {
     PROGRAM_ICON_SETTINGS_KEY,
     PROGRAM_ICON_PROVIDER,
@@ -42,6 +41,72 @@ const {
 const log = createLogger('Products');
 
 const PRODUCT_PRICE_JOIN = buildProductPriceJoin;
+const MENU_AI_DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+
+function getOpenAIApiBase() {
+    return String(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/+$/, '');
+}
+
+function resolveMenuAiOpenAIModel() {
+    const configured = process.env.OPENAI_MENU_AI_MODEL
+        || process.env.OPENAI_ASSISTANT_MODEL
+        || MENU_AI_DEFAULT_OPENAI_MODEL;
+    return String(configured || MENU_AI_DEFAULT_OPENAI_MODEL).trim().replace(/^openai\//i, '') || MENU_AI_DEFAULT_OPENAI_MODEL;
+}
+
+function requireMenuAiOpenAIKey() {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error('OPENAI_API_KEY is not configured');
+    return key;
+}
+
+function extractOpenAIResponseText(response) {
+    if (response && typeof response.output_text === 'string' && response.output_text.trim()) {
+        return response.output_text.trim();
+    }
+
+    const chunks = [];
+    for (const item of response?.output || []) {
+        for (const content of item?.content || []) {
+            if (typeof content?.text === 'string') chunks.push(content.text);
+            if (typeof content?.output_text === 'string') chunks.push(content.output_text);
+        }
+    }
+    return chunks.join('\n').trim();
+}
+
+async function generateMenuAiDraftWithOpenAI(prompt) {
+    const apiKey = requireMenuAiOpenAIKey();
+    const model = resolveMenuAiOpenAIModel();
+    const response = await fetch(`${getOpenAIApiBase()}/responses`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model,
+            input: [
+                { role: 'system', content: prompt.system },
+                { role: 'user', content: prompt.user }
+            ],
+            temperature: 0.35,
+            max_output_tokens: 1800,
+            store: false
+        })
+    });
+
+    if (!response.ok) {
+        const detail = await response.text().catch(() => '');
+        const safeDetail = detail ? `: ${detail.slice(0, 300)}` : '';
+        throw new Error(`OpenAI menu AI draft failed (${response.status})${safeDetail}`);
+    }
+
+    const payload = await response.json();
+    const text = extractOpenAIResponseText(payload);
+    if (!text) throw new Error('OpenAI menu AI draft returned empty response');
+    return { text, model };
+}
 
 function buildProductPriceRuleCode(productId) {
     const rawId = String(productId || 'product');
@@ -1222,14 +1287,11 @@ router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUT
         let aiAvailable = true;
         let generationSource = 'ai';
         let generationReason = null;
+        let generationModel = null;
         try {
             const prompt = buildMenuAiPrompt(currentCard, warehouseItems, blockKey, feedback);
-            const raw = await openRouterChat({
-                system: prompt.system,
-                messages: [{ role: 'user', content: prompt.user }],
-                temperature: 0.35,
-                max_tokens: 1800
-            });
+            const { text: raw, model } = await generateMenuAiDraftWithOpenAI(prompt);
+            generationModel = model;
             generatedDraft = buildMenuAiDraftFromRaw(parseAIJsonObject(raw), {
                 source: 'ai',
                 aiAvailable: true,
@@ -1265,6 +1327,7 @@ router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUT
             aiAvailable,
             source: generationSource,
             reason: generationReason,
+            model: generationModel,
             draft: generatedDraft,
             warehouseCandidates: warehouseItems.slice(0, 120).map(item => mapWarehouseCandidate(item))
         });

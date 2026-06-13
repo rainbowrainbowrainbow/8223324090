@@ -309,7 +309,7 @@ async function getAIProviderDiagnostics() {
             crmAssistantRail: 'openai_direct',
             sharedTextRails: 'openrouter',
             mediaGeneration: 'kie',
-            note: 'Chat/Guardian/Copilot/summary token rails use OpenRouter. CRM assistant rail remains direct OpenAI by product decision.'
+            note: 'Chat/Guardian/Copilot/summary token rails use OpenRouter. CRM assistant rail and menu AI review remain direct OpenAI by product decision.'
         },
         providers: {
             openrouter: secretState(['OPENROUTER_API_KEY', 'OPENROUTER_KEY'], openRouterConfigured, {
@@ -317,8 +317,9 @@ async function getAIProviderDiagnostics() {
                 defaultModel: DEFAULT_MODELS.openrouter
             }),
             openaiAssistant: secretState(['OPENAI_API_KEY'], openAIConfigured, {
-                role: 'crm_assistant_rail_only',
-                model: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini'
+                role: 'crm_assistant_and_menu_review',
+                model: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
+                menuModel: process.env.OPENAI_MENU_AI_MODEL || process.env.OPENAI_ASSISTANT_MODEL || 'gpt-5.4-mini'
             }),
             kie: secretState(['KIE_API_KEY'], kieConfigured, {
                 role: 'media_generation',
@@ -338,6 +339,14 @@ async function getAIProviderDiagnostics() {
                 model: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
                 keyEnv: 'OPENAI_API_KEY',
                 boundary: 'kept_direct_openai'
+            },
+            {
+                id: 'menu_ai_review',
+                provider: 'openai',
+                status: openAIConfigured ? 'ready' : 'missing_key',
+                model: process.env.OPENAI_MENU_AI_MODEL || process.env.OPENAI_ASSISTANT_MODEL || 'gpt-5.4-mini',
+                keyEnv: 'OPENAI_API_KEY',
+                boundary: 'booking_menu_review_only'
             },
             {
                 id: 'chat_ai',

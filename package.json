@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.36",
+  "version": "0.75.38",
   "eventGenix": {
-    "releaseLabel": "Menu Dish AI Review"
+    "releaseLabel": "Menu OpenAI Drafts"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -46,7 +46,7 @@ npm run dev
 
 The server uses `PORT` or defaults to `3000`. It expects PostgreSQL through `DATABASE_URL` or standard `PGHOST`/`PGUSER`/`PGDATABASE` variables. In production, `JWT_SECRET` is required by startup validation. Telegram, report-bot, Supabase, and AI integrations are optional unless you are working on those areas.
 
-AI provider ownership is documented in `docs/AI_PROVIDER_CONTRACT.md`. In short: OpenRouter owns shared text/token rails and prompt refinement, Kie owns media generation for program images plus Sound TTS/Suno music, and the CRM assistant rail still has a separate direct OpenAI boundary for replies, transcription, and speech. `/chat-settings` exposes `/api/settings/ai/providers` diagnostics so operators can see the active provider map without exposing secrets.
+AI provider ownership is documented in `docs/AI_PROVIDER_CONTRACT.md`. In short: OpenRouter owns shared text/token rails and prompt refinement, Kie owns media generation for program images plus Sound TTS/Suno music, and direct OpenAI owns the CRM assistant rail plus kitchen menu AI review drafts. `/chat-settings` exposes `/api/settings/ai/providers` diagnostics so operators can see the active provider map without exposing secrets.
 
 Dashboard assistant AI/voice runs only through backend secrets:
 
@@ -58,7 +58,16 @@ OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_VOICE=alloy
 ```
 
-Do not place OpenAI keys in HTML, browser JavaScript, localStorage, screenshots, changelog text, or seeded data. Without `OPENAI_API_KEY`, `/api/crm-assistant/*` returns a controlled `openai_not_configured` error and the global CRM assistant rail stays in text fallback mode.
+Kitchen menu AI review drafts use the same server-side OpenAI key and can be pinned separately:
+
+```bash
+OPENAI_API_KEY=<server-side-secret>
+OPENAI_MENU_AI_MODEL=gpt-5.4-mini
+# optional:
+OPENAI_API_BASE=https://api.openai.com/v1
+```
+
+Do not place OpenAI keys in HTML, browser JavaScript, localStorage, screenshots, changelog text, or seeded data. Without `OPENAI_API_KEY`, `/api/crm-assistant/*` returns a controlled `openai_not_configured` error, the global CRM assistant rail stays in text fallback mode, and `/api/products/menu-ai-draft` returns its controlled fallback draft.
 
 ## Public Landing Materials
 

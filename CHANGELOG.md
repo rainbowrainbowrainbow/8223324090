@@ -4,6 +4,29 @@
 
 ---
 
+## v0.75.38 - Menu OpenAI Drafts
+
+### Booking drawer / Kitchen catalog / OpenAI menu drafts / Release / (Клешня, 13.06.2026) [codex]
+- **Menu AI review переведено на direct OpenAI** - `/api/products/menu-ai-draft` тепер викликає OpenAI Responses API напряму через серверний `OPENAI_API_KEY`, без OpenRouter для цього flow.
+- **Модель винесено в окремий env** - для меню додано `OPENAI_MENU_AI_MODEL`, default `gpt-5.4-mini`; якщо випадково задати OpenRouter-style `openai/gpt-5.4-mini`, backend нормалізує його до OpenAI slug.
+- **Fallback лишився безпечним** - якщо ключа немає або OpenAI повертає помилку, CRM повертає контрольовану fallback-чернетку й не змінює `bookingPackage.menuPositions`.
+- **Provider diagnostics оновлено** - `/api/settings/ai/providers` показує `menu_ai_review` як direct OpenAI surface без розкриття секретів.
+- **Документацію ключів оновлено** - README і `docs/AI_PROVIDER_CONTRACT.md` фіксують, де підключати `OPENAI_API_KEY` і `OPENAI_MENU_AI_MODEL`.
+- **Релізні маркери піднято до `0.75.38`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.75.37 - Menu Catalog Layout Fix
+
+### Booking drawer / Kitchen catalog / Desktop layout / Release / (Клешня, 13.06.2026) [codex]
+- **Картки каталогу більше не наїжджають одна на одну** - product tile отримав достатню мінімальну висоту під фото, stepper, назву, метадані й AI-кнопки, а overflow тепер лишається всередині рамки картки.
+- **Нижній підсумок каталогу став нормальною плашкою** - footer має власний відступ, непрозорий фон, тінь і більший scroll-safe запас, тому нижні картки не просвічують під `0 позицій / Готово`.
+- **Sticky-заголовки секцій виглядають як суцільна плашка** - `Бургери`, `Гарніри` та інші групи лишаються закріпленими під час скролу, але тепер перекривають верхній просвіт повноширинним фоном.
+- **Перевірка була безпечна для даних** - API, DB, міграції, env і `bookingPackage.menuPositions` не змінювались; фікс обмежений CSS layout і статичними regression guards.
+- **Релізні маркери піднято до `0.75.37`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.36 - Menu Dish AI Review
 
 ### Booking drawer / Kitchen catalog / AI review workflow / Release / (Клешня, 13.06.2026) [codex]

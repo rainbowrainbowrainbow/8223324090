@@ -2257,7 +2257,7 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 360px));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 300px));
     grid-auto-rows: auto;
     justify-content: start;
     align-content: start;
@@ -2315,7 +2315,7 @@ body.booking-menu-catalog-active {
     gap: 10px;
     align-items: stretch;
     box-sizing: border-box;
-    min-height: 304px;
+    min-height: 248px;
     padding: 12px;
     border: 1px solid rgba(148, 163, 184, 0.16);
     border-radius: 14px;
@@ -2674,7 +2674,7 @@ body.booking-menu-catalog-active {
     }
 
     .booking-menu-catalog-list {
-        grid-template-columns: minmax(0, min(100%, 360px));
+        grid-template-columns: minmax(0, min(100%, 300px));
         justify-content: center;
         padding: 10px 12px calc(96px + env(safe-area-inset-bottom, 0px));
         scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
@@ -2682,7 +2682,7 @@ body.booking-menu-catalog-active {
     }
 
     .booking-menu-catalog-item {
-        min-height: 288px;
+        min-height: 244px;
         gap: 10px;
     }
 

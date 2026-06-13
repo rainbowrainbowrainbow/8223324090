@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.31 - Menu Card Layout Fix
+
+### Booking drawer / Kitchen catalog / Card layout hotfix / Release / (Клешня, 13.06.2026) [codex]
+- **Зламане накладання карток меню виправлено** - product tile більше не дозволяє тексту, фото й кнопкам займати один і той самий простір.
+- **Картку переведено з grid на flex-column** - фото, опис і керування тепер фізично йдуть окремими вертикальними блоками.
+- **Додано мінімальну висоту картки й фото** - картки не схлопуються до вузьких білих смуг навіть при довгих назвах або різних фото.
+- **Control row розтягнуто на всю ширину картки** - `-`, кількість, `+`, примітка й видалення більше не обрізаються праворуч.
+- **Regression guards оновлено** - тести фіксують flex-column layout, мінімальну висоту та нижній блок керування.
+- **Релізні маркери піднято до `0.75.31`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.30 - Menu Photo Cards
 
 ### Booking drawer / Kitchen catalog / Photo cards / Release / (Клешня, 13.06.2026) [codex]

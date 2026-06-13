@@ -366,6 +366,7 @@ const BookingPackageState = {
     catalogFilter: 'all',
     catalogEditing: null,
     catalogInsight: null,
+    catalogInsightNudgeTimer: null,
     catalogProductsLoading: false,
     catalogProductsLastLoadKey: null
 };
@@ -1978,8 +1979,22 @@ function bookingMenuCatalogInsightDraftText(insight = {}) {
 }
 
 function closeBookingMenuCatalogInsight() {
+    window.clearTimeout(BookingPackageState.catalogInsightNudgeTimer);
+    BookingPackageState.catalogInsightNudgeTimer = null;
     BookingPackageState.catalogInsight = null;
     renderBookingMenuCatalogInsight();
+}
+
+function nudgeBookingMenuCatalogInsightCard() {
+    const card = document.querySelector('#bookingMenuInsightPanel .booking-menu-insight-card');
+    if (!card) return;
+    card.classList.remove('is-nudged');
+    void card.offsetWidth;
+    card.classList.add('is-nudged');
+    window.clearTimeout(BookingPackageState.catalogInsightNudgeTimer);
+    BookingPackageState.catalogInsightNudgeTimer = window.setTimeout(() => {
+        card.classList.remove('is-nudged');
+    }, 260);
 }
 
 function setBookingMenuCatalogInsight(productId, mode = 'details') {
@@ -3171,7 +3186,7 @@ function initBookingPackageWorkspace() {
         const insightApprove = event.target.closest('[data-menu-insight-approve]');
         const insightSave = event.target.closest('[data-menu-insight-save]');
         if (event.target.closest('#bookingMenuInsightPanel') && !event.target.closest('.booking-menu-insight-card')) {
-            closeBookingMenuCatalogInsight();
+            nudgeBookingMenuCatalogInsightCard();
             return;
         }
         if (insightClose) {

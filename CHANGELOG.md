@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.42 - Menu Catalog Interaction Polish
+
+### Booking drawer / Kitchen menu catalog / Interaction polish / Release / (Клешня, 13.06.2026) [codex]
+- **Картки меню стали компактнішими** - desktop і mobile catalog cards зменшені по ширині, висоті, padding, stepper-кнопках і action-зоні, щоб у ряд вміщалось більше позицій без зайвої порожнечі.
+- **Додано мʼякий hover для карток** - картка отримує легкий `translateY(-2px)`, стриману рамку й тінь без зміни layout; для `prefers-reduced-motion` анімація вимикається.
+- **AI-панель дій більше не закривається від промаху по фону** - `Відкрити`, `Промо`, `Алергени` і `Комбінації` відкривають стабільну review-панель, яку можна закрити через `×` або Escape; клік по backdrop тепер лише підказує nudge-анімацією.
+- **Регресійні guards оновлено** - UI smoke фіксує compact card geometry, hover/reduced-motion contract, nudge-поведінку та AI-panel interaction flow.
+- **Релізні маркери піднято до `0.75.42`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані під `Menu Catalog Interaction Polish`.
+- **Дані бронювань і AI/API контракт не змінено** - `bookingPackage.menuPositions`, `/api/products/menu-ai-draft`, збереження review state, DB schema, міграції, env і deploy config лишилися поза змінами.
+
+---
+
 ## v0.75.41 - Timeline Settings Hardening
 
 ### Timeline / Visual settings center / Guardrails / Release / (Клешня, 13.06.2026) [codex]

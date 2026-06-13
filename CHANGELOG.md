@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.33 - Menu Card Width
+
+### Booking drawer / Kitchen catalog / Card width tuning / Release / (Клешня, 13.06.2026) [codex]
+- **Картки каталогу більше не розтягуються на всю ширину рядка** - grid тепер тримає desktop-картку в стабільному діапазоні `340px`-`360px`, замість роздування до 500+ px через `1fr`.
+- **Фото-слот узгоджено з новим форматом генерації** - превʼю меню отримало ratio `3:1`, тобто картинки `1080x360`, `1440x480` або інші `6x2` лягають без зайвого кропу.
+- **Мобільний layout лишився стабільним** - на вузьких екранах картка центрується й не стає ширшою за `360px`, а кнопки керування залишаються видимими.
+- **Regression guards оновлено** - тести фіксують нову ширину карток, `3:1` фото-слот і порядок controls.
+- **Релізні маркери піднято до `0.75.33`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.32 - Menu Button Visibility
 
 ### Booking drawer / Kitchen catalog / Button visibility hotfix / Release / (Клешня, 13.06.2026) [codex]

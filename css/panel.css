@@ -2403,6 +2403,14 @@ body.booking-menu-catalog-active {
     font-size: 23px;
 }
 
+.booking-menu-catalog-thumb--insight {
+    width: 128px;
+    height: 64px;
+    min-height: 0;
+    aspect-ratio: 2 / 1;
+    border-radius: 14px;
+}
+
 .booking-menu-catalog-title {
     display: -webkit-box;
     overflow: hidden;
@@ -2438,6 +2446,53 @@ body.booking-menu-catalog-active {
 .booking-menu-catalog-kind {
     color: #99f6e4;
     font-weight: 900;
+}
+
+.booking-menu-catalog-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.booking-menu-catalog-action {
+    display: inline-grid;
+    place-items: center;
+    min-width: 0;
+    min-height: 30px;
+    padding: 0 7px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.6);
+    color: rgba(226, 232, 240, 0.86);
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: 0;
+    text-align: center;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.booking-menu-catalog-action--details,
+.booking-menu-catalog-action--promo {
+    border-color: rgba(20, 184, 166, 0.34);
+    background: rgba(20, 184, 166, 0.12);
+    color: #99f6e4;
+}
+
+.booking-menu-catalog-action--allergens {
+    border-color: rgba(245, 158, 11, 0.34);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fde68a;
+}
+
+.booking-menu-catalog-action--pairings {
+    border-color: rgba(96, 165, 250, 0.34);
+    background: rgba(59, 130, 246, 0.14);
+    color: #bfdbfe;
 }
 
 .booking-menu-catalog-stepper {
@@ -2570,6 +2625,255 @@ body.booking-menu-catalog-active {
     font-size: 13px;
     font-weight: 950;
     cursor: pointer;
+}
+
+.booking-menu-insight-panel {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-modal, 30000) + 4);
+    display: grid;
+    place-items: center;
+    padding: clamp(14px, 3vw, 34px);
+    background: rgba(2, 6, 23, 0.52);
+}
+
+.booking-menu-insight-panel.hidden,
+.booking-menu-insight-panel[hidden] {
+    display: none;
+}
+
+.booking-menu-insight-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: min(760px, 100%);
+    max-height: min(86dvh, 760px);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 18% 8%, rgba(20, 184, 166, 0.16), transparent 34%),
+        rgba(15, 23, 42, 0.98);
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.booking-menu-insight-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.booking-menu-insight-header small {
+    display: block;
+    margin-bottom: 4px;
+    color: rgba(153, 246, 228, 0.78);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.booking-menu-insight-header strong {
+    display: block;
+    color: #f8fafc;
+    font-size: 18px;
+    font-weight: 950;
+    line-height: 1.2;
+}
+
+.booking-menu-insight-header button {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 10px;
+    background: rgba(30, 41, 59, 0.86);
+    color: #e2e8f0;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.booking-menu-insight-body {
+    display: grid;
+    gap: 12px;
+    min-height: 0;
+    padding: 16px;
+    overflow: auto;
+}
+
+.booking-menu-insight-product {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    background: rgba(30, 41, 59, 0.54);
+}
+
+.booking-menu-insight-product strong,
+.booking-menu-insight-product small {
+    display: block;
+    min-width: 0;
+}
+
+.booking-menu-insight-product strong {
+    margin-top: 4px;
+    color: #f8fafc;
+    font-size: 16px;
+    font-weight: 950;
+}
+
+.booking-menu-insight-product small {
+    margin-top: 4px;
+    color: rgba(203, 213, 225, 0.72);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-menu-insight-badge {
+    display: inline-flex;
+    width: fit-content;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(20, 184, 166, 0.18);
+    color: #99f6e4;
+    font-size: 10px;
+    font-weight: 950;
+    text-transform: uppercase;
+}
+
+.booking-menu-insight-flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.booking-menu-insight-step {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.64);
+    color: rgba(203, 213, 225, 0.72);
+    font-size: 12px;
+    font-weight: 900;
+    text-align: center;
+}
+
+.booking-menu-insight-step.active {
+    border-color: rgba(20, 184, 166, 0.4);
+    background: rgba(20, 184, 166, 0.14);
+    color: #ccfbf1;
+}
+
+.booking-menu-insight-prompt {
+    width: 100%;
+    min-height: 260px;
+    resize: vertical;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 12px;
+    background: rgba(2, 6, 23, 0.72);
+    color: #e2e8f0;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.booking-menu-insight-result {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid rgba(20, 184, 166, 0.26);
+    border-radius: 12px;
+    background: rgba(13, 148, 136, 0.1);
+}
+
+.booking-menu-insight-result strong {
+    color: #ccfbf1;
+    font-size: 13px;
+    font-weight: 950;
+}
+
+.booking-menu-insight-result pre {
+    margin: 0;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: rgba(240, 253, 250, 0.92);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.booking-menu-insight-status {
+    padding: 10px 12px;
+    border: 1px solid rgba(96, 165, 250, 0.24);
+    border-radius: 10px;
+    background: rgba(59, 130, 246, 0.1);
+    color: rgba(219, 234, 254, 0.88);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-menu-insight-status.saving {
+    border-color: rgba(250, 204, 21, 0.28);
+    background: rgba(250, 204, 21, 0.1);
+    color: #fef3c7;
+}
+
+.booking-menu-insight-status.success {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: rgba(34, 197, 94, 0.12);
+    color: #dcfce7;
+}
+
+.booking-menu-insight-status.error {
+    border-color: rgba(248, 113, 113, 0.34);
+    background: rgba(248, 113, 113, 0.12);
+    color: #fee2e2;
+}
+
+.booking-menu-insight-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.booking-menu-insight-actions button {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid rgba(20, 184, 166, 0.38);
+    border-radius: 10px;
+    background: rgba(20, 184, 166, 0.16);
+    color: #99f6e4;
+    font-size: 13px;
+    font-weight: 950;
+    cursor: pointer;
+}
+
+.booking-menu-insight-actions button[data-menu-insight-approve] {
+    border-color: rgba(34, 197, 94, 0.42);
+    background: rgba(34, 197, 94, 0.18);
+    color: #bbf7d0;
+}
+
+.booking-menu-insight-actions button[data-menu-insight-save] {
+    border-color: rgba(96, 165, 250, 0.42);
+    background: rgba(96, 165, 250, 0.18);
+    color: #dbeafe;
+}
+
+.booking-menu-insight-actions button:disabled {
+    opacity: 0.62;
+    cursor: default;
 }
 
 @media (max-width: 900px) {
@@ -2706,6 +3010,30 @@ body.booking-menu-catalog-active {
     .booking-menu-catalog-stepper {
         grid-template-columns: 40px minmax(52px, 1fr) 40px 40px 40px;
         justify-content: flex-start;
+    }
+
+    .booking-menu-catalog-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .booking-menu-insight-panel {
+        padding: 10px;
+    }
+
+    .booking-menu-insight-card {
+        max-height: calc(100dvh - 20px);
+        border-radius: 14px;
+    }
+
+    .booking-menu-insight-product,
+    .booking-menu-insight-flow {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .booking-menu-catalog-thumb--insight {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 3 / 1;
     }
 
     .booking-menu-catalog-footer {

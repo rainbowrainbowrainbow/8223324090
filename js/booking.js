@@ -365,6 +365,7 @@ const BookingPackageState = {
     editIndex: null,
     catalogFilter: 'all',
     catalogEditing: null,
+    catalogInsight: null,
     catalogProductsLoading: false,
     catalogProductsLastLoadKey: null
 };
@@ -1670,6 +1671,36 @@ const BOOKING_MENU_CATALOG_FILTERS = [
     { key: 'other', label: 'Інше' }
 ];
 const BOOKING_MENU_CATALOG_POPULAR_LIMIT = 12;
+const BOOKING_MENU_CATALOG_INSIGHT_MODES = Object.freeze({
+    details: {
+        label: 'Відкрити',
+        title: 'Деталі по блюду',
+        badge: 'деталі',
+        status: 'Сценарій для короткої картки страви',
+        aiBlockKey: 'nameDescription'
+    },
+    promo: {
+        label: 'Промо',
+        title: 'Промо-опис',
+        badge: 'промо',
+        status: 'Сценарій для продаючого опису',
+        aiBlockKey: 'nameDescription'
+    },
+    allergens: {
+        label: 'Алергени',
+        title: 'Перевірка алергенів',
+        badge: 'алергени',
+        status: 'Сценарій для технічної перевірки складу',
+        aiBlockKey: 'allergens'
+    },
+    pairings: {
+        label: 'Комбінації',
+        title: 'З чим комбінувати',
+        badge: 'комбо',
+        status: 'Сценарій для рекомендацій у замовленні',
+        aiBlockKey: 'priceCost'
+    }
+});
 
 function bookingMenuProductCatalogText(product = {}) {
     return [
@@ -1742,6 +1773,474 @@ function bookingMenuCatalogPositionIndex(productId, positions = getBookingMenuPo
 function bookingMenuCatalogPosition(productId, positions = getBookingMenuPositions()) {
     const index = bookingMenuCatalogPositionIndex(productId, positions);
     return index >= 0 ? positions[index] : null;
+}
+
+function bookingMenuCatalogProductById(productId) {
+    return getBookingMenuProducts().find(item => String(item.id || '') === String(productId || '')) || null;
+}
+
+function bookingMenuCatalogInsightActionsHtml(product = {}, title = '') {
+    const productId = String(product.id || '').trim();
+    if (!productId) return '';
+    const safeTitle = escapeHtml(title || bookingMenuProductTitle(product) || 'позиція меню');
+    return `
+        <div class="booking-menu-catalog-actions" aria-label="Дії для ${safeTitle}">
+            ${Object.entries(BOOKING_MENU_CATALOG_INSIGHT_MODES).map(([mode, config]) => `
+                <button type="button" class="booking-menu-catalog-action booking-menu-catalog-action--${escapeHtml(mode)}"
+                    data-menu-catalog-insight="${escapeHtml(mode)}"
+                    data-menu-catalog-product-id="${escapeHtml(productId)}"
+                    aria-label="${escapeHtml(config.title)}: ${safeTitle}">
+                    ${escapeHtml(config.label)}
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function bookingMenuCatalogInsightContext(product = {}) {
+    const title = bookingMenuProductTitle(product) || 'Позиція меню';
+    const typeLabel = bookingKitchenTypeLabel(bookingKitchenType(product));
+    const section = product.menuSection || product.menu_section || product.section || '';
+    const unit = product.servingUnit || product.priceUnit || product.unit || '';
+    const price = toBookingMoney(product.price || product.unitPrice || 0);
+    return {
+        title,
+        typeLabel,
+        section,
+        unit,
+        price,
+        code: product.code || '',
+        description: product.description || product.shortDescription || product.label || '',
+        category: product.category || product.domain || ''
+    };
+}
+
+function bookingMenuCatalogPromptFor(product = {}, mode = 'details') {
+    const config = BOOKING_MENU_CATALOG_INSIGHT_MODES[mode] || BOOKING_MENU_CATALOG_INSIGHT_MODES.details;
+    const ctx = bookingMenuCatalogInsightContext(product);
+    const base = [
+        `Страва: ${ctx.title}`,
+        `Тип: ${ctx.typeLabel}`,
+        ctx.section ? `Розділ меню: ${ctx.section}` : '',
+        ctx.unit ? `Одиниця продажу: ${ctx.unit}` : '',
+        ctx.price ? `Поточна ціна в CRM: ${formatPrice(ctx.price)}` : '',
+        ctx.code ? `Код позиції: ${ctx.code}` : '',
+        ctx.category ? `Категорія/домен: ${ctx.category}` : '',
+        ctx.description ? `Опис із CRM: ${ctx.description}` : ''
+    ].filter(Boolean).join('\n');
+    const sharedRules = [
+        'Пиши українською для оператора Event Genix.',
+        'Не вигадуй склад, вагу, сертифікацію або медичні твердження, якщо цього немає у вхідних даних.',
+        'Якщо даних бракує, окремо переліч питання, які має підтвердити людина.',
+        'Фінальний текст має бути придатний для ручної перевірки перед публікацією в CRM.'
+    ].join('\n');
+    const tasks = {
+        details: [
+            'Задача: підготуй компактну картку деталей страви для оператора.',
+            'Формат відповіді:',
+            '1. Короткий опис для менеджера.',
+            '2. Що уточнити перед замовленням.',
+            '3. Як краще показати цю позицію клієнту.'
+        ].join('\n'),
+        promo: [
+            'Задача: підготуй 3 промо-описи для продажу цієї позиції.',
+            'Формат відповіді:',
+            '1. Короткий опис до 120 символів.',
+            '2. Теплий опис для батьків.',
+            '3. Дуже коротка фраза для меню/месенджера.',
+            'Не обіцяй властивості, яких немає у вхідних даних.'
+        ].join('\n'),
+        allergens: [
+            'Задача: склади чекліст потенційних алергенів і ризиків для кухні.',
+            'Формат відповіді:',
+            '1. Потенційні алергени, які треба перевірити.',
+            '2. Що уточнити у кухні або постачальника.',
+            '3. Безпечне формулювання для CRM після людського підтвердження.',
+            'Обовʼязково додай, що це не медична порада і фінальний склад має підтвердити відповідальна людина.'
+        ].join('\n'),
+        pairings: [
+            'Задача: запропонуй, з чим краще комбінувати цю позицію у дитячому парку.',
+            'Формат відповіді:',
+            '1. 3 комбінації з їжею/напоями/тортом.',
+            '2. Для яких сценаріїв події підходить кожна комбінація.',
+            '3. Що запропонувати як upsell без навʼязування.'
+        ].join('\n')
+    };
+    return [
+        `Режим: ${config.title}`,
+        '',
+        'Вхідні дані з CRM:',
+        base,
+        '',
+        tasks[mode] || tasks.details,
+        '',
+        'Правила:',
+        sharedRules,
+        '',
+        'Після відповіді людина має перевірити факти й тільки тоді переносити текст у CRM.'
+    ].join('\n');
+}
+
+function bookingMenuCatalogAiBlockKey(mode = 'details') {
+    return BOOKING_MENU_CATALOG_INSIGHT_MODES[mode]?.aiBlockKey || 'nameDescription';
+}
+
+function bookingMenuCatalogAiBusinessContext() {
+    if (typeof getTimelineProductsBusinessContext === 'function') {
+        return getTimelineProductsBusinessContext();
+    }
+    return AppState.productsBusinessContext || 'event_genix';
+}
+
+function bookingMenuCatalogCurrentCardForAi(product = {}, mode = 'details') {
+    const ctx = bookingMenuCatalogInsightContext(product);
+    return {
+        id: product.id || null,
+        productId: product.id || null,
+        code: ctx.code || product.code || '',
+        name: ctx.title,
+        title: ctx.title,
+        domain: product.domain || 'kitchen',
+        category: product.category || '',
+        kitchenType: bookingKitchenType(product),
+        menuSection: ctx.section,
+        price: ctx.price,
+        unit: ctx.unit,
+        servingUnit: product.servingUnit || product.priceUnit || product.unit || '',
+        shortDescription: product.shortDescription || product.short_description || '',
+        description: product.description || ctx.description || '',
+        promoDescription: product.promoDescription || product.promo_description || '',
+        ingredients: product.ingredients || product.composition || '',
+        allergens: product.allergens || [],
+        priceVariantNote: product.priceVariantNote || product.price_variant_note || '',
+        source: 'booking-menu-catalog',
+        promptMode: mode,
+        operatorPrompt: bookingMenuCatalogPromptFor(product, mode)
+    };
+}
+
+function bookingMenuCatalogInsightDraftBlock(insight = {}) {
+    const blockKey = bookingMenuCatalogAiBlockKey(insight.mode);
+    return insight.draft?.blocks?.[blockKey] || null;
+}
+
+function bookingMenuCatalogInsightApprovedBlocks(insight = {}) {
+    const blockKey = bookingMenuCatalogAiBlockKey(insight.mode);
+    const block = bookingMenuCatalogInsightDraftBlock(insight);
+    const data = block?.proposal || {};
+    if (!block || !Object.keys(data).length) return {};
+    return {
+        [blockKey]: {
+            key: blockKey,
+            status: 'approved',
+            approvedAt: new Date().toISOString(),
+            data
+        }
+    };
+}
+
+function bookingMenuCatalogInsightDraftText(insight = {}) {
+    const blockKey = bookingMenuCatalogAiBlockKey(insight.mode);
+    const proposal = bookingMenuCatalogInsightDraftBlock(insight)?.proposal || {};
+    if (!Object.keys(proposal).length) return '';
+    if (blockKey === 'nameDescription') {
+        return [
+            proposal.name ? `Назва: ${proposal.name}` : '',
+            proposal.shortDescription ? `Коротко: ${proposal.shortDescription}` : '',
+            proposal.description ? `Опис: ${proposal.description}` : '',
+            proposal.promoDescription ? `Промо: ${proposal.promoDescription}` : ''
+        ].filter(Boolean).join('\n\n');
+    }
+    if (blockKey === 'allergens') {
+        const allergens = Array.isArray(proposal.allergens) ? proposal.allergens : [];
+        return allergens.length
+            ? allergens.map(item => {
+                const label = item.label || item.name || item.key || 'Алерген';
+                return `• ${label}${item.reason ? ` — ${item.reason}` : ''}`;
+            }).join('\n')
+            : 'AI не знайшов явних алергенів. Перевірте склад вручну.';
+    }
+    if (blockKey === 'priceCost') {
+        return [
+            proposal.suggestedPrice ? `Рекомендована ціна: ${proposal.suggestedPrice}` : '',
+            proposal.estimatedCost !== null && proposal.estimatedCost !== undefined ? `Оцінка собівартості: ${proposal.estimatedCost}` : '',
+            proposal.priceVariantNote ? `Комбінації / upsell: ${proposal.priceVariantNote}` : '',
+            proposal.note ? `Коментар: ${proposal.note}` : ''
+        ].filter(Boolean).join('\n\n') || JSON.stringify(proposal, null, 2);
+    }
+    if (blockKey === 'ingredients') {
+        const rows = Array.isArray(proposal.ingredients) ? proposal.ingredients : [];
+        return rows.length
+            ? rows.map(row => `• ${row.label || row.name || 'Інгредієнт'} — ${row.quantity || ''} ${row.unit || ''}${row.notes ? ` (${row.notes})` : ''}`.trim()).join('\n')
+            : JSON.stringify(proposal, null, 2);
+    }
+    return JSON.stringify(proposal, null, 2);
+}
+
+function closeBookingMenuCatalogInsight() {
+    BookingPackageState.catalogInsight = null;
+    renderBookingMenuCatalogInsight();
+}
+
+function setBookingMenuCatalogInsight(productId, mode = 'details') {
+    const product = bookingMenuCatalogProductById(productId);
+    if (!product || !BOOKING_MENU_CATALOG_INSIGHT_MODES[mode]) {
+        closeBookingMenuCatalogInsight();
+        return;
+    }
+    BookingPackageState.catalogInsight = {
+        productId: String(product.id || productId),
+        mode,
+        approved: false,
+        copied: false,
+        generating: false,
+        saving: false,
+        saved: false,
+        error: '',
+        draft: null,
+        approvedBlocks: {}
+    };
+    renderBookingMenuCatalogInsight();
+    setTimeout(() => document.getElementById('bookingMenuInsightPrompt')?.focus(), 0);
+}
+
+function bookingMenuCatalogCurrentInsight() {
+    const insight = BookingPackageState.catalogInsight;
+    if (!insight) return null;
+    const product = bookingMenuCatalogProductById(insight.productId);
+    const config = BOOKING_MENU_CATALOG_INSIGHT_MODES[insight.mode];
+    if (!product || !config) return null;
+    return {
+        ...insight,
+        product,
+        config,
+        prompt: bookingMenuCatalogPromptFor(product, insight.mode),
+        aiBlockKey: bookingMenuCatalogAiBlockKey(insight.mode)
+    };
+}
+
+function renderBookingMenuCatalogInsight() {
+    const panel = document.getElementById('bookingMenuInsightPanel');
+    const body = document.getElementById('bookingMenuInsightBody');
+    const title = document.getElementById('bookingMenuInsightTitle');
+    if (!panel || !body || !title) return;
+    const insight = bookingMenuCatalogCurrentInsight();
+    if (!insight) {
+        panel.hidden = true;
+        panel.classList.add('hidden');
+        panel.setAttribute('aria-hidden', 'true');
+        body.innerHTML = '';
+        return;
+    }
+    const productContext = bookingMenuCatalogInsightContext(insight.product);
+    panel.hidden = false;
+    panel.classList.remove('hidden');
+    panel.setAttribute('aria-hidden', 'false');
+    title.textContent = `${insight.config.title}: ${productContext.title}`;
+    const draftText = bookingMenuCatalogInsightDraftText(insight);
+    const statusClass = insight.error ? ' error' : (insight.saved ? ' success' : (insight.generating || insight.saving ? ' saving' : ''));
+    body.innerHTML = `
+        <div class="booking-menu-insight-product">
+            ${bookingMenuCatalogVisualHtml(insight.product, productContext.title, 'booking-menu-catalog-thumb--insight')}
+            <div>
+                <span class="booking-menu-insight-badge">${escapeHtml(insight.config.badge)}</span>
+                <strong>${escapeHtml(productContext.title)}</strong>
+                <small>${escapeHtml(insight.config.status)}${productContext.section ? ` · ${escapeHtml(productContext.section)}` : ''} · AI block: ${escapeHtml(insight.aiBlockKey)}</small>
+            </div>
+        </div>
+        <div class="booking-menu-insight-flow">
+            <div class="booking-menu-insight-step active">1. Перевірити страву</div>
+            <div class="booking-menu-insight-step${insight.draft ? ' active' : ''}">2. Згенерувати AI</div>
+            <div class="booking-menu-insight-step${insight.approved ? ' active' : ''}">3. Затвердити людиною</div>
+            <div class="booking-menu-insight-step${insight.saved ? ' active' : ''}">4. Зберегти</div>
+        </div>
+        <textarea id="bookingMenuInsightPrompt" class="booking-menu-insight-prompt" readonly>${escapeHtml(insight.prompt)}</textarea>
+        ${draftText ? `
+            <div class="booking-menu-insight-result">
+                <strong>AI-чернетка для перевірки</strong>
+                <pre>${escapeHtml(draftText)}</pre>
+            </div>
+        ` : ''}
+        <div class="booking-menu-insight-status${statusClass}" aria-live="polite">
+            ${insight.error
+                ? escapeHtml(insight.error)
+                : insight.saving
+                    ? 'Зберігаю перевірений AI-блок у картку продукту...'
+                    : insight.generating
+                        ? 'Генерую AI-чернетку для цієї конкретної позиції...'
+                        : insight.saved
+                            ? 'Перевірку збережено в картці продукту. Позиції бронювання не змінювались.'
+                            : insight.approved
+                                ? 'AI-чернетку підтверджено людиною. Тепер її можна зберегти як review state продукту.'
+                                : insight.draft
+                                    ? 'AI-чернетку отримано. Перевірте факти й тільки потім підтвердьте.'
+                                    : insight.copied
+                                        ? 'Промпт скопійовано. Можна також згенерувати через підключений AI endpoint.'
+                                        : 'Промпт зібрано для цієї конкретної страви. Згенеруйте AI або скопіюйте промпт вручну.'}
+        </div>
+        <div class="booking-menu-insight-actions">
+            <button type="button" data-menu-insight-copy>Скопіювати промпт</button>
+            <button type="button" data-menu-insight-generate ${insight.generating || insight.saving ? 'disabled' : ''}>Згенерувати AI</button>
+            <button type="button" data-menu-insight-approve ${insight.approved || !insight.draft || insight.generating || insight.saving ? 'disabled' : ''}>Підтвердити перевірку</button>
+            <button type="button" data-menu-insight-save ${!insight.approved || insight.saved || insight.generating || insight.saving ? 'disabled' : ''}>Зберегти перевірку</button>
+        </div>
+    `;
+}
+
+async function generateBookingMenuCatalogInsightDraft() {
+    const insight = bookingMenuCatalogCurrentInsight();
+    if (!insight || insight.generating || insight.saving) return;
+    if (typeof apiGenerateProductMenuAiDraft !== 'function') {
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            error: 'AI endpoint не підключений на цій сторінці. Скопіюйте промпт вручну.'
+        };
+        renderBookingMenuCatalogInsight();
+        return;
+    }
+    BookingPackageState.catalogInsight = {
+        ...BookingPackageState.catalogInsight,
+        generating: true,
+        error: '',
+        saved: false
+    };
+    renderBookingMenuCatalogInsight();
+    try {
+        const response = await apiGenerateProductMenuAiDraft({
+            businessContext: bookingMenuCatalogAiBusinessContext(),
+            currentCard: bookingMenuCatalogCurrentCardForAi(insight.product, insight.mode),
+            blockKey: insight.aiBlockKey,
+            feedback: insight.prompt,
+            draft: insight.draft || {}
+        });
+        if (!response?.success) {
+            throw new Error(response?.error || 'Не вдалося згенерувати AI-чернетку');
+        }
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            generating: false,
+            draft: response.draft || null,
+            aiAvailable: response.aiAvailable !== false,
+            source: response.source || null,
+            reason: response.reason || '',
+            approved: false,
+            approvedBlocks: {},
+            error: response.aiAvailable === false && response.reason
+                ? `AI тимчасово недоступний, використано fallback: ${response.reason}`
+                : ''
+        };
+    } catch (err) {
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            generating: false,
+            error: err.message || 'Не вдалося згенерувати AI-чернетку'
+        };
+    }
+    renderBookingMenuCatalogInsight();
+}
+
+async function copyBookingMenuCatalogInsightPrompt() {
+    const insight = bookingMenuCatalogCurrentInsight();
+    if (!insight) return;
+    const prompt = insight.prompt;
+    let copied = false;
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(prompt);
+        copied = true;
+    } else {
+        const input = document.getElementById('bookingMenuInsightPrompt');
+        input?.focus();
+        input?.select?.();
+        copied = Boolean(document.execCommand?.('copy'));
+    }
+    BookingPackageState.catalogInsight = {
+        ...BookingPackageState.catalogInsight,
+        copied
+    };
+    renderBookingMenuCatalogInsight();
+}
+
+function approveBookingMenuCatalogInsightPrompt() {
+    if (!BookingPackageState.catalogInsight) return;
+    const approvedBlocks = bookingMenuCatalogInsightApprovedBlocks(bookingMenuCatalogCurrentInsight() || {});
+    const hasDraftApproval = Object.keys(approvedBlocks).length > 0;
+    const draft = BookingPackageState.catalogInsight.draft
+        ? {
+            ...BookingPackageState.catalogInsight.draft,
+            status: hasDraftApproval ? 'approved' : BookingPackageState.catalogInsight.draft.status
+        }
+        : null;
+    BookingPackageState.catalogInsight = {
+        ...BookingPackageState.catalogInsight,
+        approved: true,
+        copied: true,
+        saved: false,
+        draft,
+        approvedBlocks,
+        error: ''
+    };
+    renderBookingMenuCatalogInsight();
+}
+
+async function saveBookingMenuCatalogInsightDraft() {
+    const insight = bookingMenuCatalogCurrentInsight();
+    if (!insight || !insight.approved || !insight.draft || insight.saving) return;
+    if (typeof apiSaveProductMenuAiDraft !== 'function') {
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            error: 'Збереження AI review state не підключене на цій сторінці.'
+        };
+        renderBookingMenuCatalogInsight();
+        return;
+    }
+    const approvedBlocks = Object.keys(insight.approvedBlocks || {}).length
+        ? insight.approvedBlocks
+        : bookingMenuCatalogInsightApprovedBlocks(insight);
+    if (!Object.keys(approvedBlocks).length) {
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            error: 'Немає підтвердженого AI-блоку для збереження.'
+        };
+        renderBookingMenuCatalogInsight();
+        return;
+    }
+    BookingPackageState.catalogInsight = {
+        ...BookingPackageState.catalogInsight,
+        saving: true,
+        error: ''
+    };
+    renderBookingMenuCatalogInsight();
+    try {
+        const response = await apiSaveProductMenuAiDraft(insight.productId, {
+            businessContext: bookingMenuCatalogAiBusinessContext(),
+            status: 'approved',
+            draft: {
+                ...insight.draft,
+                status: 'approved'
+            },
+            approvedBlocks
+        });
+        if (!response?.success) {
+            throw new Error(response?.error || 'Не вдалося зберегти AI review state');
+        }
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            saving: false,
+            saved: true,
+            approvedBlocks: response.approvedBlocks || approvedBlocks,
+            error: ''
+        };
+        if (typeof showNotification === 'function') {
+            showNotification('AI-перевірку меню збережено', 'success');
+        }
+    } catch (err) {
+        BookingPackageState.catalogInsight = {
+            ...BookingPackageState.catalogInsight,
+            saving: false,
+            error: err.message || 'Не вдалося зберегти AI review state'
+        };
+    }
+    renderBookingMenuCatalogInsight();
 }
 
 function bookingMenuCatalogQuantity(productId, positions = getBookingMenuPositions()) {
@@ -2065,6 +2564,7 @@ function setBookingMenuCatalogOpen(open, options = {}) {
     } else {
         BookingPackageState.catalogEditing = null;
         BookingPackageState.catalogFilter = 'all';
+        closeBookingMenuCatalogInsight();
         setBookingMenuCatalogCartOpen(false);
         const search = document.getElementById('bookingMenuCatalogSearch');
         if (search) search.value = '';
@@ -2166,6 +2666,7 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
                         ${section ? `<span>${escapeHtml(section)}</span>` : ''}
                         ${note ? `<span class="booking-menu-catalog-note-preview">${escapeHtml(note)}</span>` : ''}
                     </div>
+                    ${bookingMenuCatalogInsightActionsHtml(product, title)}
                 </div>
                 ${noteEditor}
             </div>
@@ -2235,6 +2736,7 @@ function renderBookingMenuCatalog() {
     renderBookingMenuCatalogTabs(products);
     if (panel && !panel.hidden) renderBookingMenuCatalogList(products);
     renderBookingMenuCatalogCart();
+    renderBookingMenuCatalogInsight();
     updateBookingMenuCatalogSummary();
 }
 
@@ -2395,6 +2897,7 @@ function resetBookingPackageWorkspace() {
     BookingPackageState.editIndex = null;
     BookingPackageState.catalogFilter = 'all';
     BookingPackageState.catalogEditing = null;
+    BookingPackageState.catalogInsight = null;
     ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetTables'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
@@ -2659,6 +3162,43 @@ function initBookingPackageWorkspace() {
         const editPrice = event.target.closest('[data-menu-catalog-edit-price]');
         const editNote = event.target.closest('[data-menu-catalog-edit-note]');
         const clearSearch = event.target.closest('[data-menu-catalog-clear-search]');
+        const insightAction = event.target.closest('[data-menu-catalog-insight]');
+        const insightClose = event.target.closest('[data-menu-insight-close]');
+        const insightCopy = event.target.closest('[data-menu-insight-copy]');
+        const insightGenerate = event.target.closest('[data-menu-insight-generate]');
+        const insightApprove = event.target.closest('[data-menu-insight-approve]');
+        const insightSave = event.target.closest('[data-menu-insight-save]');
+        if (event.target.closest('#bookingMenuInsightPanel') && !event.target.closest('.booking-menu-insight-card')) {
+            closeBookingMenuCatalogInsight();
+            return;
+        }
+        if (insightClose) {
+            closeBookingMenuCatalogInsight();
+            return;
+        }
+        if (insightCopy) {
+            copyBookingMenuCatalogInsightPrompt().catch(() => renderBookingMenuCatalogInsight());
+            return;
+        }
+        if (insightGenerate) {
+            generateBookingMenuCatalogInsightDraft();
+            return;
+        }
+        if (insightApprove) {
+            approveBookingMenuCatalogInsightPrompt();
+            return;
+        }
+        if (insightSave) {
+            saveBookingMenuCatalogInsightDraft();
+            return;
+        }
+        if (insightAction) {
+            setBookingMenuCatalogInsight(
+                insightAction.dataset.menuCatalogProductId,
+                insightAction.dataset.menuCatalogInsight
+            );
+            return;
+        }
         if (clearSearch) {
             const search = document.getElementById('bookingMenuCatalogSearch');
             if (search) search.value = '';
@@ -2736,6 +3276,10 @@ function initBookingPackageWorkspace() {
         if (!panel || panel.hidden) return;
         if (event.target?.matches?.('[data-menu-catalog-quantity-input], [data-menu-catalog-price-input], [data-menu-catalog-note-input]')) return;
         event.preventDefault();
+        if (BookingPackageState.catalogInsight) {
+            closeBookingMenuCatalogInsight();
+            return;
+        }
         setBookingMenuCatalogOpen(false);
     });
     document.getElementById('maysternyaCloseSlotBtn')?.addEventListener('click', closeMaysternyaTimelineSlot);

@@ -36,11 +36,15 @@ function createBookingMenuCatalogHarness() {
                     <aside id="bookingMenuCatalogCart">
                         <span id="bookingMenuCatalogCartSummary"></span>
                         <button id="bookingMenuCatalogCartCloseBtn"></button>
-                        <div id="bookingMenuCatalogCartList"></div>
-                    </aside>
-                    <span id="bookingMenuCatalogEntrySummary"></span>
-                    <span id="bookingMenuCatalogSummary"></span>
-                    <span id="bookingMenuCatalogFooterCount"></span>
+                    <div id="bookingMenuCatalogCartList"></div>
+                </aside>
+                <div id="bookingMenuInsightPanel" class="booking-menu-insight-panel hidden" hidden aria-hidden="true">
+                    <strong id="bookingMenuInsightTitle"></strong>
+                    <div id="bookingMenuInsightBody"></div>
+                </div>
+                <span id="bookingMenuCatalogEntrySummary"></span>
+                <span id="bookingMenuCatalogSummary"></span>
+                <span id="bookingMenuCatalogFooterCount"></span>
                     <span id="bookingMenuCatalogFooterTotal"></span>
                     <button id="bookingMenuCatalogMobileCartBtn"></button>
                 </section>
@@ -76,6 +80,7 @@ function createBookingMenuCatalogHarness() {
             editIndex: null,
             catalogFilter: 'all',
             catalogEditing: null,
+            catalogInsight: null,
             catalogProductsLoading: false
         },
         AppState: {
@@ -147,7 +152,39 @@ function createBookingMenuCatalogHarness() {
         isBookingKitchenEnabled: () => true,
         getSmartBookingValidationState: () => ({ canSubmit: true, warnings: [] }),
         updateBookingSubmitState: () => {},
-        updateBookingContextHeaderSummaryCalls: 0
+        updateBookingContextHeaderSummaryCalls: 0,
+        __menuAiDraftCalls: [],
+        __menuAiSaveCalls: [],
+        apiGenerateProductMenuAiDraft: async payload => {
+            context.__menuAiDraftCalls.push(payload);
+            return {
+                success: true,
+                aiAvailable: true,
+                source: 'test',
+                draft: {
+                    status: 'draft',
+                    blocks: {
+                        allergens: {
+                            key: 'allergens',
+                            status: 'draft',
+                            proposal: {
+                                allergens: [
+                                    { key: 'gluten', label: 'Gluten', reason: 'Test bakery ingredients' }
+                                ]
+                            }
+                        }
+                    }
+                }
+            };
+        },
+        apiSaveProductMenuAiDraft: async (id, payload) => {
+            context.__menuAiSaveCalls.push({ id, payload });
+            return {
+                success: true,
+                approvedBlocks: payload.approvedBlocks || {}
+            };
+        },
+        showNotification: () => {}
     };
     context.window.KITCHEN_MENU_IMAGES = Object.freeze({
         basePath: '/images/kitchen-menu/',
@@ -194,7 +231,7 @@ test('booking package normalizes menu positions with price and subtotal', () => 
     assert.match(buildLegacyBanquetMenu(positions), /Cake - 2,5 x 120 .* \(no nuts\)/);
 });
 
-test('booking menu catalog inline edits keep menuPositions, legacy text, and reset state in sync', () => {
+test('booking menu catalog inline edits keep menuPositions, legacy text, and reset state in sync', async () => {
     const ctx = createBookingMenuCatalogHarness();
     const doc = ctx.document;
     doc.getElementById('bookingMenuCatalogPanel').hidden = false;
@@ -204,6 +241,9 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Популярне/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-group-heading/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-thumb/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="promo"/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="allergens"/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="pairings"/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/juice\.webp/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
     ctx.setBookingMenuCatalogOpen(true);
@@ -256,6 +296,32 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('banquetMenu').value, /Cake - 2,5 шт x 140 грн \(без горіхів\)/);
     assert.equal(ctx.BookingForm._dirty, true);
 
+    ctx.setBookingMenuCatalogInsight('cake_custom', 'allergens');
+    assert.match(doc.getElementById('bookingMenuInsightBody').innerHTML, /data-menu-insight-generate/);
+    await ctx.generateBookingMenuCatalogInsightDraft();
+    assert.equal(ctx.__menuAiDraftCalls.length, 1);
+    assert.equal(ctx.__menuAiDraftCalls[0].blockKey, 'allergens');
+    assert.equal(ctx.__menuAiDraftCalls[0].businessContext, 'event_genix');
+    assert.match(ctx.__menuAiDraftCalls[0].feedback, /Cake/);
+    assert.match(doc.getElementById('bookingMenuInsightBody').textContent, /Gluten/);
+    assert.equal(ctx.BookingPackageState.catalogInsight.mode, 'allergens');
+    assert.equal(doc.getElementById('bookingMenuInsightPanel').hidden, false);
+    assert.match(doc.getElementById('bookingMenuInsightTitle').textContent, /Cake/);
+    assert.match(doc.getElementById('bookingMenuInsightBody').textContent, /Потенційні алергени/);
+    assert.match(doc.getElementById('bookingMenuInsightBody').textContent, /не медична порада/);
+    assert.match(doc.getElementById('bookingMenuInsightBody').textContent, /Cake/);
+    ctx.approveBookingMenuCatalogInsightPrompt();
+    assert.equal(ctx.BookingPackageState.catalogInsight.approved, true);
+    assert.ok(ctx.BookingPackageState.catalogInsight.approvedBlocks.allergens);
+    await ctx.saveBookingMenuCatalogInsightDraft();
+    assert.equal(ctx.__menuAiSaveCalls.length, 1);
+    assert.equal(ctx.__menuAiSaveCalls[0].id, 'cake_custom');
+    assert.equal(ctx.__menuAiSaveCalls[0].payload.businessContext, 'event_genix');
+    assert.ok(ctx.__menuAiSaveCalls[0].payload.approvedBlocks.allergens);
+    assert.equal(ctx.BookingPackageState.catalogInsight.saved, true);
+    assert.equal(ctx.getBookingMenuPositions().length, 1);
+    assert.match(doc.getElementById('bookingMenuInsightBody').innerHTML, /booking-menu-insight-status success/);
+
     doc.getElementById('bookingMenuCatalogSearch').value = 'juice';
     ctx.BookingPackageState.catalogFilter = 'food';
     ctx.renderBookingMenuCatalog();
@@ -290,6 +356,8 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuCatalogSearch').value, '');
     assert.equal(ctx.BookingPackageState.catalogFilter, 'all');
     assert.equal(ctx.BookingPackageState.catalogEditing, null);
+    assert.equal(ctx.BookingPackageState.catalogInsight, null);
+    assert.equal(doc.getElementById('bookingMenuInsightPanel').hidden, true);
     assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), false);
     assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
 });
@@ -549,6 +617,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuCatalogList/);
     assert.match(html, /bookingMenuCatalogCart/);
     assert.match(html, /bookingMenuCatalogCartList/);
+    assert.match(html, /bookingMenuInsightPanel/);
+    assert.match(html, /bookingMenuInsightTitle/);
+    assert.match(html, /bookingMenuInsightBody/);
     assert.match(html, /bookingMenuCatalogMobileCartBtn/);
     assert.match(html, /bookingPackageSummary/);
     assert.match(html, /bookingStickyFooter/);
@@ -585,6 +656,17 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /data-menu-catalog-quantity-input/);
     assert.match(bookingJs, /data-menu-catalog-price-input/);
     assert.match(bookingJs, /data-menu-catalog-note-input/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_INSIGHT_MODES/);
+    assert.match(bookingJs, /data-menu-catalog-insight/);
+    assert.match(bookingJs, /function bookingMenuCatalogPromptFor/);
+    assert.match(bookingJs, /function renderBookingMenuCatalogInsight/);
+    assert.match(bookingJs, /function generateBookingMenuCatalogInsightDraft/);
+    assert.match(bookingJs, /function saveBookingMenuCatalogInsightDraft/);
+    assert.match(bookingJs, /function approveBookingMenuCatalogInsightPrompt/);
+    assert.match(bookingJs, /apiGenerateProductMenuAiDraft/);
+    assert.match(bookingJs, /apiSaveProductMenuAiDraft/);
+    assert.match(bookingJs, /data-menu-insight-generate/);
+    assert.match(bookingJs, /data-menu-insight-save/);
     assert.match(bookingJs, /function commitBookingMenuCatalogInlineInput/);
     assert.match(bookingJs, /function commitActiveBookingMenuCatalogInput/);
     assert.match(bookingJs, /document\.body\?\.classList\.toggle\('booking-menu-catalog-active', nextOpen\)/);
@@ -740,6 +822,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-mobile-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-cart-open \.booking-menu-catalog-cart/);
+    assert.match(panelCss, /\.booking-menu-catalog-actions/);
+    assert.match(panelCss, /\.booking-menu-catalog-action--pairings/);
+    assert.match(panelCss, /\.booking-menu-insight-panel/);
+    assert.match(panelCss, /\.booking-menu-insight-prompt/);
+    assert.match(panelCss, /\.booking-menu-insight-result/);
+    assert.match(panelCss, /\.booking-menu-insight-status\.success/);
     assert.match(panelCss, /\.booking-menu-catalog-group-heading/);
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);

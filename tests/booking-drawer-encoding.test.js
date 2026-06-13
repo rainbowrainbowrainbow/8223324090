@@ -52,6 +52,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
         'bookingMenuCatalogList',
         'bookingMenuCatalogCart',
         'bookingMenuCatalogCartList',
+        'bookingMenuInsightPanel',
+        'bookingMenuInsightTitle',
+        'bookingMenuInsightBody',
         'bookingMenuCatalogMobileCartBtn',
         'bookingSubmitBtn'
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
@@ -101,6 +104,17 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /data-menu-catalog-quantity-input/);
     assert.match(bookingJs, /data-menu-catalog-price-input/);
     assert.match(bookingJs, /data-menu-catalog-note-input/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_INSIGHT_MODES/);
+    assert.match(bookingJs, /data-menu-catalog-insight/);
+    assert.match(bookingJs, /function bookingMenuCatalogPromptFor/);
+    assert.match(bookingJs, /function renderBookingMenuCatalogInsight/);
+    assert.match(bookingJs, /function generateBookingMenuCatalogInsightDraft/);
+    assert.match(bookingJs, /function saveBookingMenuCatalogInsightDraft/);
+    assert.match(bookingJs, /function approveBookingMenuCatalogInsightPrompt/);
+    assert.match(bookingJs, /apiGenerateProductMenuAiDraft/);
+    assert.match(bookingJs, /apiSaveProductMenuAiDraft/);
+    assert.match(bookingJs, /data-menu-insight-generate/);
+    assert.match(bookingJs, /data-menu-insight-save/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_FILTERS/);
     assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
     assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
@@ -172,6 +186,12 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-mobile-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-cart-open \.booking-menu-catalog-cart/);
     assert.match(panelCss, /\.booking-menu-catalog-stepper/);
+    assert.match(panelCss, /\.booking-menu-catalog-actions/);
+    assert.match(panelCss, /\.booking-menu-catalog-action--allergens/);
+    assert.match(panelCss, /\.booking-menu-insight-panel/);
+    assert.match(panelCss, /\.booking-menu-insight-prompt/);
+    assert.match(panelCss, /\.booking-menu-insight-result/);
+    assert.match(panelCss, /\.booking-menu-insight-status\.success/);
     assert.match(panelCss, /\.booking-menu-catalog-group-heading/);
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);

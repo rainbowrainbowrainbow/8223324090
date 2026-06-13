@@ -4,6 +4,30 @@
 
 ---
 
+## v0.75.36 - Menu Dish AI Review
+
+### Booking drawer / Kitchen catalog / AI review workflow / Release / (Клешня, 13.06.2026) [codex]
+- **Кнопки страв тепер запускають реальний AI review flow** - `Відкрити`, `Промо`, `Алергени` і `Комбінації` підключені до наявного `/api/products/menu-ai-draft`, а не лише показують prompt для ручного копіювання.
+- **Збереження йде через існуючу картку продукту** - після генерації оператор бачить AI-чернетку, підтверджує її людиною і тільки тоді CRM пише review state через `/api/products/:id/ai-card-draft`.
+- **Source of truth бронювання не змінено** - `bookingPackage.menuPositions` лишається окремим списком замовлених позицій; AI-чернетки не міняють кількість, ціну, примітки або legacy `banquetMenu`.
+- **Алергени й комбінації лишаються review-only** - результат показується як чернетка для перевірки, без автоматичного застосування до публічних полів меню.
+- **Regression guards оновлено** - тести покривають generate/approve/save flow, data attributes, CSS-стани результату та те, що позиції меню не змінюються під час AI review.
+- **Релізні маркери піднято до `0.75.36`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.75.35 - Menu Dish AI Drafts
+
+### Booking drawer / Kitchen catalog / Dish prompt workflow / Release / (Клешня, 13.06.2026) [codex]
+- **У картках страв додано програмовані дії** - у кожної позиції каталогу є кнопки `Відкрити`, `Промо`, `Алергени` і `Комбінації`, які працюють окремо від основних `- / кількість / +`.
+- **Додано frontend-сценарій для OpenAI без зовнішньої інтеграції** - CRM формує персональний prompt для конкретної страви, режиму й даних із каталогу, але не викликає OpenAI напряму.
+- **Людська перевірка стала частиною flow** - панель показує кроки `перевірити страву -> скопіювати промпт -> підтвердити людиною`, щоб промо, алергени й комбінації не потрапляли в CRM без review.
+- **Алергени зроблено обережно** - prompt прямо забороняє вигадувати склад і просить перелічити питання до кухні або постачальника, якщо даних бракує.
+- **Regression guards оновлено** - тести перевіряють action-кнопки, prompt-панель, reset state і те, що `menuPositions` лишається незмінним source of truth.
+- **Релізні маркери піднято до `0.75.35`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.75.34 - Menu Compact Cards
 
 ### Booking drawer / Kitchen catalog / Compact card density / Release / (Клешня, 13.06.2026) [codex]

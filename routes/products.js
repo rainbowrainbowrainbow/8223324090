@@ -141,6 +141,8 @@ const productProgramIconRateLimit = createWriteRateLimiter('product-program-icon
 const MENU_AI_BLOCK_KEYS = ['nameDescription', 'allergens', 'ingredients', 'priceCost'];
 const MENU_AI_BLOCK_KEY_SET = new Set(MENU_AI_BLOCK_KEYS);
 const MENU_AI_STATUS_VALUES = new Set(['draft', 'needs_changes', 'approved', 'applied']);
+const MENU_IMAGE_STUDIO_SIZES = new Set(['1536x864', '1024x576', '1024x1024']);
+const MENU_IMAGE_STUDIO_STYLES = new Set(['catalog', 'realistic', 'clean-dark']);
 const MENU_ALLERGEN_CATALOG = [
     { key: 'gluten', label: 'Глютен', aliases: ['пшениця', 'борошно', 'wheat'] },
     { key: 'milk', label: 'Молоко', aliases: ['молочні', 'лактоза', 'вершки', 'сир'] },
@@ -437,6 +439,24 @@ function normalizeMenuAiBlock(key, block = {}) {
     };
 }
 
+function normalizeMenuImageStudio(value = {}) {
+    const raw = safeJsonObject(value);
+    const imageUrl = cleanNullableString(raw.imageUrl || raw.image_url, 2000);
+    const prompt = cleanNullableString(raw.prompt, 5000);
+    const preparedAt = raw.preparedAt || raw.prepared_at || null;
+    if (!imageUrl && !prompt && !preparedAt) return {};
+    return {
+        version: 1,
+        status: normalizeAiStatus(raw.status, 'draft'),
+        source: cleanNullableString(raw.source, 40) || 'products-menu',
+        size: MENU_IMAGE_STUDIO_SIZES.has(raw.size) ? raw.size : '1536x864',
+        style: MENU_IMAGE_STUDIO_STYLES.has(raw.style) ? raw.style : 'catalog',
+        imageUrl,
+        prompt,
+        preparedAt
+    };
+}
+
 function normalizeMenuAiDraft(value = {}, options = {}) {
     const raw = safeJsonObject(value);
     const rawBlocks = safeJsonObject(raw.blocks || raw);
@@ -450,6 +470,7 @@ function normalizeMenuAiDraft(value = {}, options = {}) {
         source: cleanNullableString(options.source || raw.source, 40) || 'operator',
         aiAvailable: options.aiAvailable === undefined ? raw.aiAvailable !== false : options.aiAvailable === true,
         generatedAt: options.generatedAt || raw.generatedAt || raw.generated_at || new Date().toISOString(),
+        imageStudio: normalizeMenuImageStudio(options.imageStudio || raw.imageStudio || raw.image_studio || {}),
         blocks
     };
 }

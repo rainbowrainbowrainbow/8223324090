@@ -36,6 +36,8 @@ test('products compatibility page keeps business-aware products IA with restored
     assert.match(html, /id="pf-allergens"/);
     assert.match(html, /id="productAiAutofillBtn"/);
     assert.match(html, /id="productAiReviewModal"/);
+    assert.match(html, /js\/kitchen-menu-images\.js/);
+    assert.match(html, /css\/pages-products\.css/);
     assert.match(html, /Холодні закуски/);
     assert.match(html, /Коктейлі та холодні напої/);
     assert.match(html, /id="productDocumentModal"/);
@@ -85,6 +87,14 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /allergens/);
     assert.match(pageJs, /MENU_AI_BLOCKS/);
     assert.match(pageJs, /openMenuAiReviewWizard/);
+    assert.match(pageJs, /function productMenuImageManifestUrl/);
+    assert.match(pageJs, /window\.KITCHEN_MENU_IMAGES/);
+    assert.match(pageJs, /function renderKitchenCardVisual/);
+    assert.match(pageJs, /function renderKitchenMenuAiActions/);
+    assert.match(pageJs, /function renderKitchenMenuImageStudio/);
+    assert.match(pageJs, /function saveKitchenMenuImageDraft/);
+    assert.match(pageJs, /imageStudio/);
+    assert.match(pageJs, /buildKitchenMenuImagePrompt/);
     assert.match(pageJs, /applyMenuAiReviewFinal/);
     assert.match(pageJs, /techCard/);
     assert.match(pageJs, /ingredients/);
@@ -145,6 +155,8 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(productsRoute, /availabilityStatus/);
     assert.match(productsRoute, /allergens/);
     assert.match(productsRoute, /ai_card_draft/);
+    assert.match(productsRoute, /normalizeMenuImageStudio/);
+    assert.match(productsRoute, /MENU_IMAGE_STUDIO_SIZES/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
     assert.match(kitchenMigration, /domain VARCHAR\(30\)/);
     assert.match(kitchenMigration, /kitchen_type VARCHAR\(30\)/);

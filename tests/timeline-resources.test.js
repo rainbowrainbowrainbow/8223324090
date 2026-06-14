@@ -179,6 +179,9 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(linesRoute, /normalizeTimelineView\(req\.query\.timelineView\)/);
     assert.match(linesRoute, /roomTimelineLinesForContext\(businessContext\)/);
     assert.match(linesRoute, /fallbackRoomLines\(businessContext\)/);
+    assert.match(linesRoute, /ROOM_TIMELINE_TAKEAWAY_LINE/);
+    assert.match(linesRoute, /withTakeawayRoomLine\(resources\.map\(resourceToLine\), businessContext\)/);
+    assert.match(linesRoute, /id: 'room-takeaway'/);
     assert.match(bookingsRoute, /projectBookingsForTimelineView/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
@@ -203,6 +206,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.equal(normalizeTimelineDisplaySettings({ mode: 'park', defaultTimelineView: 'rooms' }, 'event_genix').defaultTimelineView, 'rooms');
     assert.match(timeline, /assignmentMode = isRoomTimelineView\(\) \? 'room' : 'line'/);
     assert.match(booking, /ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
+    assert.match(booking, /BOOKING_TAKEAWAY_ROOM_VALUE = 'На виніс'/);
+    assert.match(booking, /takeawayOption\.dataset\.serviceRoom = 'takeaway'/);
     assert.match(booking, /bookingPrimaryAnimatorSelect/);
     assert.match(booking, /prefillRoomFirstCustomerFromRoomLine/);
     assert.match(booking, /shouldEditBookingInAnimatorView/);

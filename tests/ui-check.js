@@ -1229,6 +1229,9 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
 const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
+const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
+const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
+const programsCss = fs.readFileSync(path.join(ROOT, 'css/pages-products.css'), 'utf8');
 const indexHtmlForBookingPanel = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const bookingPanelStart = indexHtmlForBookingPanel.indexOf('<aside id="bookingPanel"');
 const bookingPanelEnd = indexHtmlForBookingPanel.indexOf('</aside>', bookingPanelStart);
@@ -1384,6 +1387,7 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && bookingCode.includes('data-menu-catalog-price-input')
     && bookingCode.includes('data-menu-catalog-note-input')
     && bookingCode.includes('BOOKING_MENU_CATALOG_INSIGHT_MODES')
+    && bookingCode.includes('BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED = false')
     && bookingCode.includes('data-menu-catalog-insight')
     && bookingCode.includes('function bookingMenuCatalogPromptFor')
     && bookingCode.includes('function renderBookingMenuCatalogInsight')
@@ -1470,6 +1474,21 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && panelCss.includes('.booking-menu-catalog-item.selected')
     && panelCss.includes('.booking-menu-catalog-inline-input')
     && panelCss.includes('@media (max-width: 900px)'));
+check('Products menu tab owns menu-card images, AI review entrypoints, and image prompt drafts',
+    programsHtml.includes(`js/kitchen-menu-images.js?v=${pkg.version}`)
+    && programsHtml.includes(`css/pages-products.css?v=${pkg.version}`)
+    && programsCss.includes('.kitchen-product-media')
+    && programsCss.includes('.kitchen-menu-image-studio')
+    && programsCss.includes('.kitchen-menu-ai-actions')
+    && programsPageCode.includes('function productMenuImageManifestUrl')
+    && programsPageCode.includes('window.KITCHEN_MENU_IMAGES')
+    && programsPageCode.includes('function renderKitchenCardVisual')
+    && programsPageCode.includes('function renderKitchenMenuAiActions')
+    && programsPageCode.includes('function renderKitchenMenuImageStudio')
+    && programsPageCode.includes('function saveKitchenMenuImageDraft')
+    && programsPageCode.includes('buildKitchenMenuImagePrompt')
+    && programsPageCode.includes('imageStudio')
+    && bookingCode.includes('BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED = false'));
 check('Timeline booking no longer exposes silent booking toggle',
     !bookingPanelHtml.includes('bookingSkipNotificationSection')
     && !bookingPanelHtml.includes('skipNotificationToggle')

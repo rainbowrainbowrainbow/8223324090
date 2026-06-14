@@ -24,6 +24,24 @@ const {
 
 const log = createLogger('Lines');
 
+const ROOM_TIMELINE_TAKEAWAY_LINE = Object.freeze({
+    id: 'room-takeaway',
+    resourceId: 'room-takeaway',
+    resourceType: 'room',
+    name: 'На виніс',
+    shortName: 'На виніс',
+    color: '#14B8A6',
+    fromSheet: false,
+    staffId: null,
+    shiftStart: null,
+    shiftEnd: null,
+    shiftStatus: null,
+    source: 'rooms_virtual',
+    resourceSource: 'rooms_virtual',
+    sortOrder: 0,
+    metadata: { serviceRoom: true, takeaway: true }
+});
+
 const MAYSTERNYA_DEFAULT_LINES = [
     { id: 'md-consult-room', name: 'Олександр', color: '#0EA586', fromSheet: false, staffId: null, shiftStart: null, shiftEnd: null, shiftStatus: null, source: 'maysternya_default' }
 ];
@@ -32,9 +50,46 @@ function normalizeTimelineView(value) {
     return String(value || '').trim().toLowerCase() === 'rooms' ? 'rooms' : 'animators';
 }
 
+function isTakeawayRoomLine(line = {}) {
+    return [
+        line.id,
+        line.resourceId,
+        line.resource_id,
+        line.name,
+        line.shortName,
+        line.short_name
+    ].some(value => {
+        const normalized = String(value || '').trim().toLowerCase();
+        return normalized === 'room-takeaway' || normalized === 'на виніс';
+    });
+}
+
+function withTakeawayRoomLine(lines = [], businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    const safeLines = Array.isArray(lines) ? lines : [];
+    const existingTakeaway = safeLines.find(isTakeawayRoomLine);
+    const takeawayLine = existingTakeaway
+        ? {
+            ...existingTakeaway,
+            sortOrder: 0,
+            metadata: {
+                ...(existingTakeaway.metadata || {}),
+                serviceRoom: true,
+                takeaway: true
+            }
+        }
+        : {
+            ...ROOM_TIMELINE_TAKEAWAY_LINE,
+            businessContext
+        };
+    return [
+        takeawayLine,
+        ...safeLines.filter(line => line !== existingTakeaway)
+    ];
+}
+
 function fallbackRoomLines(businessContext) {
     const colors = ['#10B981', '#3B82F6', '#F97316', '#8B5CF6', '#06B6D4'];
-    return ALL_ROOMS.map((name, index) => ({
+    return withTakeawayRoomLine(ALL_ROOMS.map((name, index) => ({
         id: name,
         resourceId: name,
         resourceType: 'room',
@@ -49,7 +104,7 @@ function fallbackRoomLines(businessContext) {
         shiftStatus: null,
         source: 'rooms_fallback',
         sortOrder: index * 10
-    }));
+    })), businessContext);
 }
 
 async function roomTimelineLinesForContext(businessContext) {
@@ -58,7 +113,7 @@ async function roomTimelineLinesForContext(businessContext) {
         type: 'room',
         includeInactive: false
     });
-    if (resources.length) return resources.map(resourceToLine);
+    if (resources.length) return withTakeawayRoomLine(resources.map(resourceToLine), businessContext);
     return fallbackRoomLines(businessContext);
 }
 

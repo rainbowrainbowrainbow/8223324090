@@ -1,0 +1,244 @@
+.kitchen-product-card {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    overflow: hidden;
+}
+
+.kitchen-product-media {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    aspect-ratio: 3.45 / 1;
+    min-height: 102px;
+    overflow: hidden;
+    border: 1px solid rgba(20, 184, 166, 0.26);
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 16% 0%, rgba(20, 184, 166, 0.16), transparent 34%),
+        rgba(15, 23, 42, 0.82);
+}
+
+.kitchen-product-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.kitchen-product-media span {
+    position: absolute;
+    inset: auto 10px 8px auto;
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(15, 23, 42, 0.72);
+    font-size: 20px;
+}
+
+.kitchen-product-media.has-image:not(.is-image-missing) span {
+    display: none;
+}
+
+.kitchen-product-media.uses-fallback-image img {
+    filter: saturate(0.94) brightness(0.92);
+}
+
+.kitchen-product-media.is-image-missing {
+    min-height: 92px;
+}
+
+.kitchen-product-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.kitchen-menu-product-card .kitchen-product-body {
+    grid-template-columns: minmax(0, 1fr) minmax(92px, 116px);
+}
+
+.kitchen-product-main {
+    min-width: 0;
+}
+
+.kitchen-product-header {
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.kitchen-product-header .program-price {
+    text-align: right;
+    line-height: 1.18;
+}
+
+.kitchen-menu-ai-actions {
+    display: grid;
+    gap: 6px;
+    align-self: start;
+}
+
+.kitchen-menu-ai-action {
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid rgba(20, 184, 166, 0.24);
+    border-radius: 10px;
+    background: rgba(20, 184, 166, 0.10);
+    color: var(--primary-dark, #0f766e);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.kitchen-menu-ai-action:hover,
+.kitchen-menu-ai-action:focus-visible {
+    border-color: rgba(20, 184, 166, 0.42);
+    background: rgba(20, 184, 166, 0.16);
+    outline: none;
+}
+
+.kitchen-menu-ai-action--allergens {
+    border-color: rgba(245, 158, 11, 0.18);
+    background: rgba(245, 158, 11, 0.10);
+    color: #b45309;
+}
+
+.kitchen-menu-ai-action--pairings {
+    border-color: rgba(59, 130, 246, 0.22);
+    background: rgba(59, 130, 246, 0.10);
+    color: #2563eb;
+}
+
+.kitchen-menu-image-studio {
+    display: grid;
+    gap: 10px;
+    padding: 11px;
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    border-radius: 14px;
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.kitchen-menu-image-head,
+.kitchen-menu-image-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.kitchen-menu-image-head {
+    justify-content: space-between;
+}
+
+.kitchen-menu-image-head div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.kitchen-menu-image-head strong {
+    color: var(--text-primary, #0f172a);
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.kitchen-menu-image-head span,
+.kitchen-menu-image-controls label span,
+.kitchen-menu-image-prompt summary {
+    color: var(--gray-500, #64748b);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.kitchen-menu-image-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: rgba(20, 184, 166, 0.12);
+    color: var(--primary-dark, #0f766e) !important;
+}
+
+.kitchen-menu-image-controls label {
+    display: grid;
+    gap: 4px;
+    min-width: 118px;
+    flex: 1 1 118px;
+}
+
+.kitchen-menu-image-controls select {
+    min-height: 34px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--text-primary, #0f172a);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.kitchen-menu-image-controls button {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 12px;
+}
+
+.kitchen-menu-image-prompt {
+    display: grid;
+    gap: 6px;
+}
+
+.kitchen-menu-image-prompt summary {
+    cursor: pointer;
+}
+
+.kitchen-menu-image-prompt textarea {
+    width: 100%;
+    min-height: 96px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--text-primary, #0f172a);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+body.dark-mode .kitchen-menu-image-studio {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.10);
+}
+
+body.dark-mode .kitchen-menu-image-controls select,
+body.dark-mode .kitchen-menu-image-prompt textarea,
+body.dark-mode .kitchen-menu-ai-action {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+}
+
+body.dark-mode .kitchen-menu-image-head strong {
+    color: #f8fafc;
+}
+
+@media (max-width: 720px) {
+    .kitchen-menu-product-card .kitchen-product-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .kitchen-menu-ai-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .kitchen-product-media {
+        aspect-ratio: 2.6 / 1;
+    }
+}

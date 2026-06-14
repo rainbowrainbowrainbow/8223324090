@@ -325,6 +325,7 @@ let productIconSettingsCache = null;
 let productIconSettingsSaving = false;
 
 const SOURCE_DOCUMENT_KIND_VALUES = new Set(['google_doc', 'pdf', 'link']);
+const PRODUCT_MENU_FALLBACK_IMAGE = '/images/kitchen-menu/fallback-burger-wide.jpg';
 
 const MENU_SECTION_ORDER = [
     'Холодні закуски',
@@ -371,6 +372,18 @@ const MENU_AI_BLOCKS = [
     { key: 'allergens', label: 'Алергени' },
     { key: 'ingredients', label: 'Інгредієнти/грами' },
     { key: 'priceCost', label: 'Ціна/собівартість' }
+];
+
+const MENU_IMAGE_SIZE_OPTIONS = [
+    { value: '1536x864', label: '1536×864 · wide' },
+    { value: '1024x576', label: '1024×576 · web' },
+    { value: '1024x1024', label: '1024×1024 · square' }
+];
+
+const MENU_IMAGE_STYLE_OPTIONS = [
+    { value: 'catalog', label: 'Каталог' },
+    { value: 'realistic', label: 'Реалістично' },
+    { value: 'clean-dark', label: 'Dark CRM' }
 ];
 
 function normalizeAllergenKey(value) {
@@ -911,6 +924,248 @@ function renderProgramIconPanel(product = {}, canManage = false) {
     `;
 }
 
+function productMenuSafeImageUrl(value) {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    return /^(https?:|data:image\/|\/|uploads\/|images\/)/i.test(url) ? url : '';
+}
+
+function productMenuTitle(product = {}) {
+    return String(product.name || product.label || product.code || product.id || '').trim();
+}
+
+function productMenuImageManifestUrl(product = {}) {
+    const manifest = (typeof window !== 'undefined' && window.KITCHEN_MENU_IMAGES) ? window.KITCHEN_MENU_IMAGES : null;
+    if (!manifest) return '';
+    const basePath = String(manifest.basePath || '/images/kitchen-menu/').replace(/\/?$/, '/');
+    const byId = manifest.byId || {};
+    const byCode = manifest.byCode || {};
+    const byName = manifest.byName || {};
+    const nameKey = productMenuTitle(product).trim().toLowerCase();
+    const manifestValue = byId[String(product.id || '')]
+        || byCode[String(product.code || '').trim().toUpperCase()]
+        || byCode[String(product.code || '').trim()]
+        || byName[nameKey]
+        || '';
+    if (!manifestValue) return '';
+    const directUrl = productMenuSafeImageUrl(manifestValue);
+    if (directUrl) return directUrl;
+    return productMenuSafeImageUrl(`${basePath}${String(manifestValue).replace(/^\/+/, '')}`);
+}
+
+function productMenuImageUrl(product = {}) {
+    const explicitUrl = productMenuSafeImageUrl(
+        product.imageUrl
+        || product.image_url
+        || product.photoUrl
+        || product.photo_url
+        || product.coverUrl
+        || product.cover_url
+        || product.thumbnailUrl
+        || product.thumbnail_url
+        || product.iconUrl
+        || product.icon_url
+        || ''
+    );
+    return explicitUrl || productMenuImageManifestUrl(product);
+}
+
+function productMenuEmoji(product = {}) {
+    const icon = String(product.icon || product.emoji || '').trim();
+    if (icon) return Array.from(icon).slice(0, 4).join('');
+    const text = [
+        productMenuTitle(product),
+        product.menuSection,
+        product.menu_section,
+        product.category,
+        product.kitchenType,
+        product.kitchen_type
+    ].filter(Boolean).join(' ').toLowerCase();
+    if (/торт|cake|нутел|наполеон|прага|медовик|естерхаз|орео|чіз|чиз|йогурт|десерт/.test(text)) return '🎂';
+    if (/піца|пиц|pizza/.test(text)) return '🍕';
+    if (/бургер|burger/.test(text)) return '🍔';
+    if (/картоп|фрі|fri|fries|діпи|гарнір|пюре/.test(text)) return '🍟';
+    if (/салат|цезар|salad/.test(text)) return '🥗';
+    if (/кава|американо|еспресо|капуч|лате|чай|coffee|tea/.test(text)) return '☕';
+    if (/сік|сок|лимонад|молочн|коктейл|вода|напій|напої|juice|drink|cola/.test(text)) return '🥤';
+    return getKitchenType(product) === 'cake' ? '🎂' : '🍽️';
+}
+
+function renderKitchenCardVisual(product = {}) {
+    const productImage = productMenuImageUrl(product);
+    const imageUrl = productImage || PRODUCT_MENU_FALLBACK_IMAGE;
+    const usesFallback = !productImage;
+    const title = productMenuTitle(product) || 'Позиція меню';
+    return `
+        <div class="kitchen-product-media${imageUrl ? ' has-image' : ''}${usesFallback ? ' uses-fallback-image' : ''}" title="${escapeHtml(title)}">
+            ${imageUrl ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="" data-product-menu-fallback="${usesFallback ? '1' : '0'}" onerror="window.productMenuCardHandleImageError && window.productMenuCardHandleImageError(this)">` : ''}
+            <span aria-hidden="true">${escapeHtml(productMenuEmoji(product))}</span>
+        </div>
+    `;
+}
+
+function productMenuCardHandleImageError(img) {
+    const media = img?.closest?.('.kitchen-product-media');
+    if (!img || !media) return;
+    if (img.dataset.productMenuFallback !== '1') {
+        img.dataset.productMenuFallback = '1';
+        img.src = PRODUCT_MENU_FALLBACK_IMAGE;
+        media.classList.add('uses-fallback-image');
+        return;
+    }
+    media.classList.add('is-image-missing');
+    img.removeAttribute('src');
+}
+
+if (typeof window !== 'undefined') {
+    window.productMenuCardHandleImageError = productMenuCardHandleImageError;
+}
+
+function getMenuImageStudioDraft(product = {}) {
+    const raw = product.aiCardDraft?.imageStudio || product.ai_card_draft?.imageStudio || {};
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+function menuImageOptionHtml(options = [], selected = '') {
+    return options.map(option => `<option value="${escapeHtml(option.value)}"${option.value === selected ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+}
+
+function buildKitchenMenuImagePrompt(product = {}, settings = {}) {
+    const allergens = getProductAllergenLabels(product).join(', ');
+    const lines = [
+        `Menu item: ${productMenuTitle(product) || 'Untitled menu item'}`,
+        product.code ? `CRM code: ${product.code}` : '',
+        product.menuSection ? `Menu section: ${product.menuSection}` : '',
+        product.weightValue ? `Weight/output: ${product.weightValue}` : '',
+        product.servingUnit ? `Serving unit: ${product.servingUnit}` : '',
+        Number(product.price || 0) > 0 ? `Price in CRM: ${Number(product.price || 0)} UAH` : '',
+        product.shortDescription ? `Short description: ${product.shortDescription}` : '',
+        product.description ? `Description: ${product.description}` : '',
+        product.ingredients ? `Ingredients: ${product.ingredients}` : '',
+        allergens ? `Known allergens to avoid hiding visually: ${allergens}` : '',
+        product.techCard ? `Kitchen tech notes: ${product.techCard}` : '',
+        `Image size: ${settings.size || '1536x864'}`,
+        `Style preset: ${settings.style || 'catalog'}`,
+        'Create an appetizing product catalog photo for a Ukrainian children entertainment center CRM.',
+        'Show the real dish clearly, clean composition, no text, no logo, no watermark, no hands, no people.',
+        'Keep it useful for a menu card: bright food, readable silhouette, natural colors, not overly dark.'
+    ];
+    return lines.filter(Boolean).join('\n');
+}
+
+function renderKitchenMenuAiActions(product = {}, canManage = false) {
+    if (!canManage || getKitchenType(product) !== 'menu') return '';
+    const productId = escapeJsString(product.id);
+    return `
+        <div class="kitchen-menu-ai-actions" aria-label="AI дії для ${escapeHtml(productMenuTitle(product))}">
+            <button type="button" class="kitchen-menu-ai-action" onclick="openKitchenMenuAiFromCard('${productId}', 'nameDescription', 'details')">Опис</button>
+            <button type="button" class="kitchen-menu-ai-action" onclick="openKitchenMenuAiFromCard('${productId}', 'nameDescription', 'promo')">Промо</button>
+            <button type="button" class="kitchen-menu-ai-action kitchen-menu-ai-action--allergens" onclick="openKitchenMenuAiFromCard('${productId}', 'allergens', 'allergens')">Алергени</button>
+            <button type="button" class="kitchen-menu-ai-action kitchen-menu-ai-action--pairings" onclick="openKitchenMenuAiFromCard('${productId}', 'priceCost', 'pairings')">Комбо</button>
+        </div>
+    `;
+}
+
+function renderKitchenMenuImageStudio(product = {}, canManage = false) {
+    if (!canManage || getKitchenType(product) !== 'menu') return '';
+    const draft = getMenuImageStudioDraft(product);
+    const size = MENU_IMAGE_SIZE_OPTIONS.some(item => item.value === draft.size) ? draft.size : '1536x864';
+    const style = MENU_IMAGE_STYLE_OPTIONS.some(item => item.value === draft.style) ? draft.style : 'catalog';
+    const productId = escapeJsString(product.id);
+    const sourceImage = productMenuImageUrl(product);
+    const hasPreparedPrompt = Boolean(draft.prompt);
+    return `
+        <div class="kitchen-menu-image-studio" data-menu-image-product="${escapeHtml(product.id)}">
+            <div class="kitchen-menu-image-head">
+                <div>
+                    <strong>Фото меню</strong>
+                    <span>${sourceImage ? 'Підтягнуто з каталогу' : 'Fallback, потрібна генерація'}</span>
+                </div>
+                <span class="kitchen-menu-image-status">${hasPreparedPrompt ? 'prompt готовий' : 'draft'}</span>
+            </div>
+            <div class="kitchen-menu-image-controls">
+                <label>
+                    <span>Розмір</span>
+                    <select data-menu-image-size>${menuImageOptionHtml(MENU_IMAGE_SIZE_OPTIONS, size)}</select>
+                </label>
+                <label>
+                    <span>Стиль</span>
+                    <select data-menu-image-style>${menuImageOptionHtml(MENU_IMAGE_STYLE_OPTIONS, style)}</select>
+                </label>
+                <button type="button" class="btn-page-secondary" onclick="saveKitchenMenuImageDraft('${productId}', this)">
+                    ${hasPreparedPrompt ? 'Перегенерувати prompt' : 'Згенерувати prompt'}
+                </button>
+            </div>
+            ${hasPreparedPrompt ? `
+                <details class="kitchen-menu-image-prompt">
+                    <summary>Prompt для фото</summary>
+                    <textarea readonly>${escapeHtml(draft.prompt)}</textarea>
+                </details>
+            ` : ''}
+        </div>
+    `;
+}
+
+function menuAiFeedbackForMode(mode = '') {
+    const map = {
+        details: 'Сфокусуйся на короткому описі для операторської картки меню. Збережи факти з розділу, ваги, складу й техкарти.',
+        promo: 'Сфокусуйся на promoDescription: теплий продажний опис без вигаданих властивостей, медичних тверджень або непідтвердженого складу.',
+        allergens: 'Сфокусуйся на перевірці алергенів по складу, техкарті й складських рядках. Якщо даних бракує, покажи що треба підтвердити.',
+        pairings: 'Сфокусуйся на комбінаціях, upsell і priceVariantNote для замовлення. Не змінюй реальну ціну без підтвердження оператора.'
+    };
+    return map[mode] || '';
+}
+
+async function openKitchenMenuAiFromCard(productId, initialStep = 'nameDescription', mode = '') {
+    if (!guardProductWrite('створювати AI-чернетки меню')) return;
+    await openProductForm(productId);
+    await openMenuAiReviewWizard({
+        initialStep,
+        feedback: menuAiFeedbackForMode(mode)
+    });
+}
+
+async function saveKitchenMenuImageDraft(productId, trigger = null) {
+    if (!guardProductWrite('готувати image prompt меню')) return;
+    const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
+    if (!product || getKitchenType(product) !== 'menu') {
+        showNotification('Image studio доступний тільки для меню-позицій', 'error');
+        return;
+    }
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const size = panel?.querySelector?.('[data-menu-image-size]')?.value || '1536x864';
+    const style = panel?.querySelector?.('[data-menu-image-style]')?.value || 'catalog';
+    const imageStudio = {
+        version: 1,
+        status: 'draft',
+        source: 'products-menu',
+        size,
+        style,
+        imageUrl: productMenuImageUrl(product) || PRODUCT_MENU_FALLBACK_IMAGE,
+        prompt: buildKitchenMenuImagePrompt(product, { size, style }),
+        preparedAt: new Date().toISOString()
+    };
+    const currentDraft = product.aiCardDraft || {};
+    try {
+        const result = await apiSaveProductMenuAiDraft(productId, {
+            businessContext: getProductApiBusinessContext(),
+            status: currentDraft.status || 'draft',
+            draft: {
+                ...currentDraft,
+                status: currentDraft.status || 'draft',
+                imageStudio
+            },
+            approvedBlocks: product.aiCardApprovedBlocks || {}
+        });
+        if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти image prompt');
+        if (result.product) updateProductInState(result.product);
+        showNotification('Image prompt для меню збережено в картці продукту', 'success');
+        renderProducts();
+    } catch (err) {
+        showNotification(err.message || 'Не вдалося зберегти image prompt', 'error');
+    }
+}
+
 function renderProgramProducts(grid, canManage) {
     let filtered = allProducts.filter(p => getProductDomain(p) === 'program');
     if (currentCategory !== 'all') {
@@ -1012,33 +1267,39 @@ function renderKitchenProducts(grid, canManage) {
         const subtype = getKitchenType(p);
         const shortText = p.shortDescription || p.description || '';
         return `
-            <div class="card program-card kitchen-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
-                <div class="card-header">
-                    <div>
-                        <span class="program-icon">${escapeHtml(p.icon || (subtype === 'cake' ? '🎂' : '🍽️'))}</span>
-                        <span class="card-title">${escapeHtml(p.name)}</span>
-                        ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
-                        ${renderMenuCompletenessBadge(p)}
+            <div class="card program-card kitchen-card kitchen-product-card${subtype === 'menu' ? ' kitchen-menu-product-card' : ''}${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
+                ${renderKitchenCardVisual(p)}
+                <div class="kitchen-product-body">
+                    <div class="kitchen-product-main">
+                        <div class="card-header kitchen-product-header">
+                            <div>
+                                <span class="card-title">${escapeHtml(p.name)}</span>
+                                ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
+                                ${renderMenuCompletenessBadge(p)}
+                            </div>
+                            <span class="program-price">${renderKitchenPrice(p)}</span>
+                        </div>
+                        <div class="card-meta">
+                            <span>${escapeHtml(p.code || '')}</span>
+                            <span>${subtype === 'cake' ? 'Торт' : (p.menuSection ? escapeHtml(p.menuSection) : 'Меню')}</span>
+                            ${p.weightValue ? `<span>${escapeHtml(p.weightValue)}</span>` : ''}
+                            ${p.priceUnit ? `<span>${escapeHtml(p.priceUnit)}</span>` : ''}
+                            ${p.availabilityStatus ? `<span>${escapeHtml(MENU_AVAILABILITY_LABELS[p.availabilityStatus] || p.availabilityStatus)}</span>` : ''}
+                        </div>
+                        ${shortText ? `<p class="program-desc">${escapeHtml(shortText).substring(0, 150)}${shortText.length > 150 ? '...' : ''}</p>` : ''}
+                        <div class="kitchen-card-badges">
+                            ${p.ingredients ? '<span class="kitchen-badge">Інгредієнти</span>' : ''}
+                            ${getProductAllergenLabels(p).length ? '<span class="kitchen-badge">Алергени</span>' : ''}
+                            ${p.techCard ? '<span class="kitchen-badge">Техкарта</span>' : ''}
+                            ${p.techCardMode === 'detailed' ? `<span class="kitchen-badge">Детальна техкарта · ${Number(p.techCardLinkedIngredientCount || 0)}/${Number(p.techCardIngredientCount || 0)}</span>` : ''}
+                            ${p.priceVariantNote ? '<span class="kitchen-badge">Варіанти ціни</span>' : ''}
+                            ${subtype === 'cake' && p.cakeDecoration ? '<span class="kitchen-badge">Оформлення</span>' : ''}
+                        </div>
                     </div>
-                    <span class="program-price">${renderKitchenPrice(p)}</span>
-                </div>
-                <div class="card-meta">
-                    <span>${escapeHtml(p.code || '')}</span>
-                    <span>${subtype === 'cake' ? 'Торт' : (p.menuSection ? escapeHtml(p.menuSection) : 'Меню')}</span>
-                    ${p.weightValue ? `<span>${escapeHtml(p.weightValue)}</span>` : ''}
-                    ${p.priceUnit ? `<span>${escapeHtml(p.priceUnit)}</span>` : ''}
-                    ${p.availabilityStatus ? `<span>${escapeHtml(MENU_AVAILABILITY_LABELS[p.availabilityStatus] || p.availabilityStatus)}</span>` : ''}
-                </div>
-                ${shortText ? `<p class="program-desc">${escapeHtml(shortText).substring(0, 150)}${shortText.length > 150 ? '...' : ''}</p>` : ''}
-                <div class="kitchen-card-badges">
-                    ${p.ingredients ? '<span class="kitchen-badge">Інгредієнти</span>' : ''}
-                    ${getProductAllergenLabels(p).length ? '<span class="kitchen-badge">Алергени</span>' : ''}
-                    ${p.techCard ? '<span class="kitchen-badge">Техкарта</span>' : ''}
-                    ${p.techCardMode === 'detailed' ? `<span class="kitchen-badge">Детальна техкарта · ${Number(p.techCardLinkedIngredientCount || 0)}/${Number(p.techCardIngredientCount || 0)}</span>` : ''}
-                    ${p.priceVariantNote ? '<span class="kitchen-badge">Варіанти ціни</span>' : ''}
-                    ${subtype === 'cake' && p.cakeDecoration ? '<span class="kitchen-badge">Оформлення</span>' : ''}
+                    ${renderKitchenMenuAiActions(p, canManage)}
                 </div>
                 ${renderKitchenDetailPanel(p)}
+                ${renderKitchenMenuImageStudio(p, canManage)}
                 ${canManage ? `
                     <div class="card-actions">
                         <button type="button" class="btn-page-secondary" onclick="openProductForm('${productId}')">✏️ Редагувати</button>
@@ -1751,7 +2012,7 @@ function getWarehouseOptionHtml(selectedId = '') {
         .join('');
 }
 
-async function openMenuAiReviewWizard() {
+async function openMenuAiReviewWizard(options = {}) {
     if (!guardProductWrite('створювати AI-чернетки меню')) return;
     const domain = document.getElementById('pf-domain')?.value;
     const kitchenType = document.getElementById('pf-kitchen-type')?.value;
@@ -1764,22 +2025,28 @@ async function openMenuAiReviewWizard() {
     const elements = getMenuAiElements();
     if (elements.productName) elements.productName.textContent = currentCard.name || currentCard.code || 'Нова меню-картка';
     elements.modal?.classList.remove('hidden');
+    const requestedStep = MENU_AI_BLOCKS.some(block => block.key === options.initialStep)
+        ? options.initialStep
+        : 'nameDescription';
+    if (elements.feedback && options.feedback) elements.feedback.value = options.feedback;
     setMenuAiReviewSaving(true, 'Готуємо чернетку...');
     setMenuAiReviewStatus('Готуємо AI-чернетку картки меню...', 'saving');
     try {
         const response = await apiGenerateProductMenuAiDraft({
             businessContext: getProductApiBusinessContext(),
             currentCard,
-            blockKey: 'all'
+            blockKey: 'all',
+            feedback: options.feedback || ''
         });
         if (!response?.success) {
             throw new Error(response?.error || 'AI draft failed');
         }
         menuAiReviewState = {
-            currentStep: 'nameDescription',
+            currentStep: requestedStep,
             draft: response.draft,
             approvedBlocks: {},
-            aiAvailable: response.aiAvailable !== false
+            aiAvailable: response.aiAvailable !== false,
+            initialFeedback: options.feedback || ''
         };
         renderMenuAiReviewWizard();
         setMenuAiReviewStatus(response.aiAvailable === false
@@ -1832,7 +2099,7 @@ function renderMenuAiReviewWizard() {
         elements.body.innerHTML = renderMenuAiBlockBody(currentKey);
         wireMenuAiBlockBody(currentKey);
     }
-    if (elements.feedback) elements.feedback.value = getMenuAiBlock(currentKey)?.feedback || '';
+    if (elements.feedback) elements.feedback.value = getMenuAiBlock(currentKey)?.feedback || menuAiReviewState.initialFeedback || '';
 }
 
 function renderMenuAiBlockBody(key) {

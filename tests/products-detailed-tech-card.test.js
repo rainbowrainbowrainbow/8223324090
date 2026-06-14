@@ -56,6 +56,8 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /router\.get\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /router\.put\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /AI-assisted menu card draft, never canonical truth/);
+    assert.match(productsRoute, /normalizeMenuImageStudio/);
+    assert.match(productsRoute, /imageStudio/);
     assert.match(productsRoute, /buildFallbackMenuAiDraft/);
     assert.match(productsRoute, /loadMenuAiWarehouseItems/);
     assert.match(productsRoute, /ai_card_approved_blocks/);
@@ -89,6 +91,8 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(programsHtml, /id="pf-allergens"/);
     assert.match(programsHtml, /id="productAiAutofillBtn"/);
     assert.match(programsHtml, /id="productAiReviewModal"/);
+    assert.match(programsHtml, /js\/kitchen-menu-images\.js/);
+    assert.match(programsHtml, /css\/pages-products\.css/);
     assert.match(programsHtml, /id="productAiApproveBlockBtn"/);
     assert.match(programsHtml, /id="productAiRegenerateBlockBtn"/);
     assert.match(programsHtml, /AI створює лише чернетку/);
@@ -100,6 +104,10 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(programsJs, /MENU_AI_BLOCKS/);
     assert.match(programsJs, /getAllergensFromForm/);
     assert.match(programsJs, /openMenuAiReviewWizard/);
+    assert.match(programsJs, /renderKitchenCardVisual/);
+    assert.match(programsJs, /renderKitchenMenuAiActions/);
+    assert.match(programsJs, /saveKitchenMenuImageDraft/);
+    assert.match(programsJs, /buildKitchenMenuImagePrompt/);
     assert.match(programsJs, /approveMenuAiBlock/);
     assert.match(programsJs, /regenerateMenuAiBlock/);
     assert.match(programsJs, /applyMenuAiReviewFinal/);

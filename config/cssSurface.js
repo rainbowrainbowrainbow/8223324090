@@ -496,6 +496,13 @@ const CSS_SURFACE = [
         reason: 'Sales funnel kanban stage hint controls and tooltip styles imported by pages.css.'
     },
     {
+        file: 'css/pages-products.css',
+        owner: 'products',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Products kitchen menu photo cards, product-side AI actions, and menu image prompt studio styles.'
+    },
+    {
         file: 'css/pages-hr-foundation.css',
         owner: 'shared-ui',
         category: 'shared',

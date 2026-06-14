@@ -106,6 +106,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /data-menu-catalog-price-input/);
     assert.match(bookingJs, /data-menu-catalog-note-input/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_INSIGHT_MODES/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED = false/);
     assert.match(bookingJs, /data-menu-catalog-insight/);
     assert.match(bookingJs, /function bookingMenuCatalogPromptFor/);
     assert.match(bookingJs, /function renderBookingMenuCatalogInsight/);

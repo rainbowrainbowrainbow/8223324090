@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.45">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.45">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.45">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.45">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.45">
-    <link rel="stylesheet" href="css/features.css?v=0.75.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.45">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.45">
+    <link rel="stylesheet" href="css/base.css?v=0.75.46">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.46">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.46">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.46">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.46">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.46">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.46">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.46">
+    <link rel="stylesheet" href="css/features.css?v=0.75.46">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.46">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.46">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.46">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.46">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.45">✨ 0.75.45</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.46">✨ 0.75.46</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.45 — Timeline Now Line Polish</p>
+                <p class="tagline">AI First CRM v0.75.46 — Menu Product Image Studio</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.45</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.46</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1732,12 +1732,25 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.75.46 — Menu Product Image Studio</h4>
+                    <ul>
+                        <li><b>Картки меню у Products отримали фото</b> — вкладка <code>Продукти → Кухня → Меню</code> підтягує зображення з <code>KITCHEN_MENU_IMAGES</code> і має fallback без emoji-only вигляду.</li>
+                        <li><b>Картка стала схожою на booking catalog</b> — фото зверху, компактний title/price/meta блок, а розділ, вага, одиниця, склад, алергени й техкарта лишилися на місці.</li>
+                        <li><b>AI review переїхав у Products/Menu</b> — дії <code>Опис</code>, <code>Промо</code>, <code>Алергени</code>, <code>Комбо</code> відкривають існуючий review wizard через <code>/api/products/menu-ai-draft</code>.</li>
+                        <li><b>Booking catalog лишився picker</b> — видимі admin AI-кнопки у booking drawer вимкнені, а <code>bookingPackage.menuPositions</code> не змінювався.</li>
+                        <li><b>У режимі банкетних залів перший рядок — “На виніс”</b> — торти й їжа на виніс мають окрему службову строку перед реальними залами без зміни списку фізичних кімнат.</li>
+                        <li><b>Додано Image Studio draft</b> — у меню-картці можна вибрати розмір/стиль, підготувати prompt для фото і зберегти його в існуючий <code>ai_card_draft</code>.</li>
+                        <li><b>Prompts бачать повний меню-контекст</b> — AI отримує розділ, вагу/вихід, одиницю, ціну, склад, алергени й техкарту.</li>
+                        <li><b>DB/env/deploy config не змінювались</b> — міграції, секрети, Railway config і бізнес-логіка бронювань лишилися без змін.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.75.45 — Timeline Now Line Polish</h4>
                     <ul>
-                        <li><b>Лінія поточного часу тягнеться до низу всього timeline</b> — у режимі кімнат now-line бере висоту з <code>timelineLines.scrollHeight</code> і не обривається посеред списку.</li>
-                        <li><b>Зверху більше не видно зайвої червоної риски</b> — now-line стартує від реальних рядків timeline, а не від верху scroll-контейнера зі шкалою часу.</li>
-                        <li><b>Regression guard додано</b> — UI smoke фіксує measured <code>top/height</code> для now-line.</li>
-                        <li><b>Дані бронювань не змінювались</b> — API, DB, міграції, env і deploy config лишилися без змін.</li>
+                        <li><b>Лінія поточного часу тягнеться до низу timeline</b> — у режимі кімнат now-line рахує висоту від реальних рядків і більше не обривається посеред довгого списку.</li>
+                        <li><b>Зверху більше не видно зайву червону риску</b> — now-line стартує з робочої сітки, а не з верхнього краю scroll-контейнера.</li>
+                        <li><b>Regression guard додано</b> — UI smoke фіксує measured <code>top/height</code> для now-line, щоб не повернути старий контракт.</li>
+                        <li><b>Дані бронювань не змінювались</b> — API, DB schema, міграції, env, deploy config і правила бронювань лишилися без змін.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -12905,30 +12918,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.45"></script>
-    <script src="js/timeline-visibility.js?v=0.75.45"></script>
-    <script src="js/kitchen-menu-images.js?v=0.75.45"></script>
-    <script src="js/config.js?v=0.75.45"></script>
-    <script src="js/api.js?v=0.75.45"></script>
-    <script src="js/ui.js?v=0.75.45"></script>
-    <script src="js/auth.js?v=0.75.45"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.45"></script>
-    <script src="js/timeline.js?v=0.75.45"></script>
-    <script src="js/booking.js?v=0.75.45"></script>
-    <script src="js/settings.js?v=0.75.45"></script>
-    <script src="js/booking-form.js?v=0.75.45"></script>
-    <script src="js/booking-linked.js?v=0.75.45"></script>
-    <script src="js/settings-dashboard.js?v=0.75.45"></script>
-    <script src="js/settings-history.js?v=0.75.45"></script>
-    <script src="js/settings-afisha.js?v=0.75.45"></script>
-    <script src="js/settings-certificates.js?v=0.75.45"></script>
-    <script src="js/offline.js?v=0.75.45"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.45"></script>
-    <script src="js/search.js?v=0.75.45"></script>
-    <script src="js/ws.js?v=0.75.45"></script>
-    <script src="js/app.js?v=0.75.45"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.45"></script>
-    <script src="js/components/sidebar.js?v=0.75.45"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.45"></script>
+    <script src="js/timeline-context.js?v=0.75.46"></script>
+    <script src="js/timeline-visibility.js?v=0.75.46"></script>
+    <script src="js/kitchen-menu-images.js?v=0.75.46"></script>
+    <script src="js/config.js?v=0.75.46"></script>
+    <script src="js/api.js?v=0.75.46"></script>
+    <script src="js/ui.js?v=0.75.46"></script>
+    <script src="js/auth.js?v=0.75.46"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.46"></script>
+    <script src="js/timeline.js?v=0.75.46"></script>
+    <script src="js/booking.js?v=0.75.46"></script>
+    <script src="js/settings.js?v=0.75.46"></script>
+    <script src="js/booking-form.js?v=0.75.46"></script>
+    <script src="js/booking-linked.js?v=0.75.46"></script>
+    <script src="js/settings-dashboard.js?v=0.75.46"></script>
+    <script src="js/settings-history.js?v=0.75.46"></script>
+    <script src="js/settings-afisha.js?v=0.75.46"></script>
+    <script src="js/settings-certificates.js?v=0.75.46"></script>
+    <script src="js/offline.js?v=0.75.46"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.46"></script>
+    <script src="js/search.js?v=0.75.46"></script>
+    <script src="js/ws.js?v=0.75.46"></script>
+    <script src="js/app.js?v=0.75.46"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.46"></script>
+    <script src="js/components/sidebar.js?v=0.75.46"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.46"></script>
 </body>
 </html>

@@ -382,6 +382,7 @@ const BOOKING_WORKSPACE_SCHEMA_VERSION = 1;
 const NO_EVENT_TIMELINE_DURATION = 30;
 const BOOKING_PROGRAM_ONLY_WORKSPACE = true;
 const ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service';
+const BOOKING_TAKEAWAY_ROOM_VALUE = 'На виніс';
 const MAYSTERNYA_ONLINE_ROOM = 'Онлайн';
 const MAYSTERNYA_CLOSED_ROOM = 'Зайнято';
 const MAYSTERNYA_DEFAULT_PROGRAM_ID = 'md_full_consult_40';
@@ -633,6 +634,15 @@ function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), option
     empty.value = '';
     empty.textContent = `Оберіть ${String(placeholder).toLowerCase()}`;
     fragment.appendChild(empty);
+
+    if (isRoomFirstTimelineView()) {
+        const takeawayOption = document.createElement('option');
+        takeawayOption.value = BOOKING_TAKEAWAY_ROOM_VALUE;
+        takeawayOption.textContent = BOOKING_TAKEAWAY_ROOM_VALUE;
+        takeawayOption.dataset.serviceRoom = 'takeaway';
+        fragment.appendChild(takeawayOption);
+        availableRooms.add(BOOKING_TAKEAWAY_ROOM_VALUE);
+    }
 
     groups.forEach(group => {
         const visibleOptions = group.options.filter(option => {
@@ -1666,6 +1676,7 @@ if (typeof window !== 'undefined') {
 const BOOKING_MENU_CATALOG_ALL_FILTER = { key: 'all', label: 'Усе' };
 const BOOKING_MENU_CATALOG_CAKE_FILTER = { key: 'cake', label: 'Торти' };
 const BOOKING_MENU_CATALOG_OTHER_FILTER = { key: 'section:other-menu', label: 'Інше меню' };
+const BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED = false;
 const BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS = [
     {
         key: 'section:cold-appetizers',
@@ -1877,6 +1888,7 @@ function bookingMenuCatalogProductById(productId) {
 }
 
 function bookingMenuCatalogInsightActionsHtml(product = {}, title = '') {
+    if (!BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED) return '';
     const productId = String(product.id || '').trim();
     if (!productId) return '';
     const safeTitle = escapeHtml(title || bookingMenuProductTitle(product) || 'позиція меню');
@@ -1899,15 +1911,20 @@ function bookingMenuCatalogInsightContext(product = {}) {
     const typeLabel = bookingKitchenTypeLabel(bookingKitchenType(product));
     const section = product.menuSection || product.menu_section || product.section || '';
     const unit = product.servingUnit || product.priceUnit || product.unit || '';
+    const weightValue = product.weightValue || product.weight_value || '';
     const price = toBookingMoney(product.price || product.unitPrice || 0);
     return {
         title,
         typeLabel,
         section,
         unit,
+        weightValue,
         price,
         code: product.code || '',
         description: product.description || product.shortDescription || product.label || '',
+        ingredients: product.ingredients || product.composition || '',
+        techCard: product.techCard || product.tech_card || '',
+        allergens: product.allergens || [],
         category: product.category || product.domain || ''
     };
 }
@@ -1920,10 +1937,14 @@ function bookingMenuCatalogPromptFor(product = {}, mode = 'details') {
         `Тип: ${ctx.typeLabel}`,
         ctx.section ? `Розділ меню: ${ctx.section}` : '',
         ctx.unit ? `Одиниця продажу: ${ctx.unit}` : '',
+        ctx.weightValue ? `Вага/вихід: ${ctx.weightValue}` : '',
         ctx.price ? `Поточна ціна в CRM: ${formatPrice(ctx.price)}` : '',
         ctx.code ? `Код позиції: ${ctx.code}` : '',
         ctx.category ? `Категорія/домен: ${ctx.category}` : '',
-        ctx.description ? `Опис із CRM: ${ctx.description}` : ''
+        ctx.description ? `Опис із CRM: ${ctx.description}` : '',
+        ctx.ingredients ? `Склад із CRM: ${ctx.ingredients}` : '',
+        ctx.techCard ? `Техкарта: ${ctx.techCard}` : '',
+        Array.isArray(ctx.allergens) && ctx.allergens.length ? `Алергени: ${ctx.allergens.map(item => item.label || item.name || item.key || item).join(', ')}` : ''
     ].filter(Boolean).join('\n');
     const sharedRules = [
         'Пиши українською для оператора Event Genix.',
@@ -2003,11 +2024,13 @@ function bookingMenuCatalogCurrentCardForAi(product = {}, mode = 'details') {
         menuSection: ctx.section,
         price: ctx.price,
         unit: ctx.unit,
+        weightValue: ctx.weightValue,
         servingUnit: product.servingUnit || product.priceUnit || product.unit || '',
         shortDescription: product.shortDescription || product.short_description || '',
         description: product.description || ctx.description || '',
         promoDescription: product.promoDescription || product.promo_description || '',
         ingredients: product.ingredients || product.composition || '',
+        techCard: product.techCard || product.tech_card || '',
         allergens: product.allergens || [],
         priceVariantNote: product.priceVariantNote || product.price_variant_note || '',
         source: 'booking-menu-catalog',

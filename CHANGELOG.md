@@ -4,6 +4,21 @@
 
 ---
 
+## v0.75.46 - Menu Product Image Studio
+
+### Products / Kitchen menu / AI review / Image prompt studio / Release / (Клешня, 14.06.2026) [codex]
+- **Картки `Продукти → Кухня → Меню` отримали реальні фото** - сторінка продуктів підключає `js/kitchen-menu-images.js`, тягне `MENU-*`/`CAKE-*` з manifest і використовує стабільний fallback замість emoji-only картки.
+- **Меню-картки стали ближчими до booking catalog UI** - фото зверху, компактний title/price/meta блок, збережені розділ, вага/вихід, одиниця, статус, склад, алергени й техкарта.
+- **AI review entrypoints переїхали в Products/Menu** - картка меню має дії `Опис`, `Промо`, `Алергени`, `Комбо`, які відкривають існуючий review wizard через `/api/products/menu-ai-draft`.
+- **Booking catalog лишився user-facing picker** - видимі admin AI-кнопки в booking drawer вимкнені, а `bookingPackage.menuPositions` і вибір позицій не змінювались.
+- **У режимі банкетних залів перший рядок - `На виніс`** - торти й їжа на виніс отримали окрему службову строку перед реальними залами без зміни `ALL_ROOMS`, availability API або фізичних кімнат.
+- **Додано image prompt studio для меню** - оператор може вибрати розмір/стиль, згенерувати prompt для фото і зберегти його в існуючому `ai_card_draft` без нових колонок.
+- **Prompts отримують повніший меню-контекст** - у підказках використовуються `menuSection`, вага/вихід, одиниця, ціна, склад, алергени й техкарта, щоб AI не губив операційні дані.
+- **Regression guards оновлено** - product, detailed-tech-card, booking і UI smoke тести фіксують product-side ownership, фото manifest, imageStudio draft і вимкнені booking admin actions.
+- **DB/env/deploy config не змінювались** - міграції, секрети, Railway config і бізнес-логіка бронювань лишилися поза змінами.
+
+---
+
 ## v0.75.45 - Timeline Now Line Polish
 
 ### Timeline / Current time line / Room mode / Release / (Клешня, 14.06.2026) [codex]

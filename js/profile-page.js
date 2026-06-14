@@ -2489,14 +2489,21 @@ async function saveProfileAvatar(type) {
 function renderProfileTaskRow(task, tag = '') {
     const dueAt = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || task.deadline;
     const due = dueAt ? profileFormatTime(dueAt) : 'Без дедлайну';
-    const priority = task.priority || 'medium';
+    const priority = normalizeCabinetPriority(task.priority || task.taskPriority || task.priority_level);
+    const priorityLabel = cabinetTaskPriorityLabel(priority);
+    const classes = [
+        'profile-task-row',
+        task.isOverdue || tag === 'Прострочено' ? 'is-overdue' : '',
+        `priority-${priority}`,
+        priority === 'urgent' ? 'is-urgent' : ''
+    ].filter(Boolean).join(' ');
     return `
-        <div class="profile-task-row ${task.isOverdue || tag === 'Прострочено' ? 'is-overdue' : ''}">
+        <div class="${classes}" data-task-priority="${escapeHtml(priority)}">
             <div>
                 <b>${escapeHtml(task.title || 'Без назви')}</b>
                 <span>${escapeHtml(tag || task.status || 'todo')} · ${escapeHtml(due)}</span>
             </div>
-            <small>${escapeHtml(priority)}</small>
+            <small class="profile-task-priority profile-task-priority--${escapeHtml(priority)}">${escapeHtml(priorityLabel)}</small>
         </div>`;
 }
 

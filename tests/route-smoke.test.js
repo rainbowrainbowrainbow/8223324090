@@ -123,6 +123,12 @@ function clearModules() {
         '../routes/chat',
         '../routes/report-bot',
         '../routes/telegram',
+        '../services/maysternyaBookingWebhook',
+        '../services/booking',
+        '../services/timelineResources',
+        '../services/leadBookingLink',
+        '../services/historyLog',
+        '../services/eventBus',
         '../services/costumeInventory'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -283,9 +289,15 @@ function createFakePool() {
         ]),
         onboardingProgress: new Map(),
         tasks: [],
+        bookings: [],
+        customers: [],
+        historyRows: [],
+        outboxEvents: [],
         nextOnboardingTemplateId: 12,
         nextOnboardingProgressId: 1001,
         nextTaskId: 880,
+        nextBookingSeq: 1,
+        nextCustomerId: 970,
         documentAlertsByStaff: new Map([
             [42, [{
                 source: 'document',
@@ -330,6 +342,7 @@ function createFakePool() {
         totalCount: 1,
         idleCount: 1,
         waitingCount: 0,
+        generateBookingNumber: async () => `BK-2099-${String(hrState.nextBookingSeq++).padStart(4, '0')}`,
         connect: async function() {
             return {
                 query: this.query.bind(this),
@@ -341,10 +354,188 @@ function createFakePool() {
             queries.push({ text, params });
 
             if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) {
-                return { rows: [], rowCount: 0 };
+                return { rows: [], rowCount: 0, command: text.toUpperCase() };
+            }
+            if (/SELECT pg_advisory_xact_lock/i.test(text)) {
+                return { rows: [], rowCount: 1 };
             }
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
+            }
+            if (/SELECT \* FROM bookings WHERE COALESCE\(business_context, 'event_genix'\) = \$1 AND COALESCE\(extra_data->>'externalId'/i.test(text)) {
+                const row = hrState.bookings.find(booking =>
+                    booking.business_context === params[0]
+                    && booking.extra_data?.externalId === params[1]
+                    && booking.status !== 'cancelled'
+                );
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/SELECT value FROM settings WHERE key = \$1/i.test(text)) {
+                return { rows: [{ value: JSON.stringify({ mode: 'simple', resourceModel: 'specialist' }) }], rowCount: 1 };
+            }
+            if (/SELECT \* FROM timeline_resources WHERE business_context = \$1 AND resource_id = \$2/i.test(text)) {
+                const resourceId = String(params[1] || '');
+                if (params[0] === 'maysternya_doli' && resourceId === 'md-consult-room') {
+                    return {
+                        rows: [{
+                            id: 1001,
+                            business_context: 'maysternya_doli',
+                            resource_id: 'md-consult-room',
+                            type: 'specialist',
+                            name: 'Онлайн консультація',
+                            short_name: 'Онлайн',
+                            color: '#14b8a6',
+                            capacity: 1,
+                            equipment: [],
+                            is_active: true,
+                            sort_order: 10,
+                            metadata: {},
+                            created_at: '2099-01-01T00:00:00.000Z',
+                            updated_at: '2099-01-01T00:00:00.000Z'
+                        }],
+                        rowCount: 1
+                    };
+                }
+                return { rows: [], rowCount: 0 };
+            }
+            if (/SELECT \* FROM timeline_resources WHERE business_context = \$1 AND \(LOWER\(BTRIM\(name\)\)/i.test(text)) {
+                if (params[0] === 'maysternya_doli' && String(params[1] || '').toLowerCase() === 'онлайн консультація') {
+                    return {
+                        rows: [{
+                            id: 1001,
+                            business_context: 'maysternya_doli',
+                            resource_id: 'md-consult-room',
+                            type: 'specialist',
+                            name: 'Онлайн консультація',
+                            short_name: 'Онлайн',
+                            color: '#14b8a6',
+                            capacity: 1,
+                            equipment: [],
+                            is_active: true,
+                            sort_order: 10,
+                            metadata: {},
+                            created_at: '2099-01-01T00:00:00.000Z',
+                            updated_at: '2099-01-01T00:00:00.000Z'
+                        }],
+                        rowCount: 1
+                    };
+                }
+                return { rows: [], rowCount: 0 };
+            }
+            if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND line_id = \$2/i.test(text)) {
+                const rows = hrState.bookings.filter(booking =>
+                    booking.date === params[0]
+                    && booking.line_id === params[1]
+                    && booking.business_context === params[2]
+                    && booking.status !== 'cancelled'
+                );
+                return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+            }
+            if (/SELECT id, category, time, duration FROM bookings WHERE date = \$1 AND program_id = \$2/i.test(text)) {
+                const rows = hrState.bookings.filter(booking =>
+                    booking.date === params[0]
+                    && booking.program_id === params[1]
+                    && booking.business_context === params[2]
+                    && booking.status !== 'cancelled'
+                );
+                return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+            }
+            if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(text)) {
+                const rows = hrState.bookings.filter(booking =>
+                    booking.date === params[0]
+                    && booking.room === params[1]
+                    && booking.business_context === params[2]
+                    && booking.status !== 'cancelled'
+                );
+                return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+            }
+            if (/SELECT id FROM customers WHERE phone = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 LIMIT 1/i.test(text)) {
+                const row = hrState.customers.find(customer =>
+                    customer.phone === params[0] && customer.business_context === params[1]
+                );
+                return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/INSERT INTO customers \(business_context, name, phone, instagram, child_name, child_birthday, source\)/i.test(text)) {
+                const row = {
+                    id: hrState.nextCustomerId++,
+                    business_context: params[0],
+                    name: params[1],
+                    phone: params[2] || null,
+                    instagram: params[3] || null,
+                    child_name: params[4] || null,
+                    child_birthday: params[5] || null,
+                    source: params[6] || null
+                };
+                hrState.customers.push(row);
+                return { rows: [{ id: row.id }], rowCount: 1 };
+            }
+            if (/INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(text)) {
+                const row = {
+                    id: params[0],
+                    business_context: params[1],
+                    date: params[2],
+                    time: params[3],
+                    line_id: params[4],
+                    program_id: params[5],
+                    program_code: params[6],
+                    label: params[7],
+                    program_name: params[8],
+                    category: params[9],
+                    duration: params[10],
+                    price: params[11],
+                    hosts: params[12],
+                    second_animator: params[13],
+                    pinata_filler: params[14],
+                    pinata_mode: params[15],
+                    pinata_number: params[16],
+                    pinata_filler_number: params[17],
+                    client_pinata_service_price: params[18],
+                    client_pinata_service_note: params[19],
+                    costume: params[20],
+                    room: params[21],
+                    notes: params[22],
+                    created_by: params[23],
+                    linked_to: params[24],
+                    status: params[25],
+                    kids_count: params[26],
+                    group_name: params[27],
+                    extra_data: JSON.parse(params[28] || '{}'),
+                    skip_notification: params[29],
+                    customer_id: params[30],
+                    payment_method: params[31],
+                    created_at: '2099-01-01T00:00:00.000Z',
+                    updated_at: '2099-01-01T00:00:00.000Z'
+                };
+                hrState.bookings.push(row);
+                return { rows: [{ ...row }], rowCount: 1 };
+            }
+            if (/UPDATE customers SET\s+first_visit = LEAST/i.test(text)) {
+                return { rows: [], rowCount: 1 };
+            }
+            if (/SELECT id FROM leads WHERE COALESCE\(business_context, \$1\) = \$1/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
+            if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                return { rows: [], rowCount: params[1] ? 1 : 0 };
+            }
+            if (/INSERT INTO history \(business_context, action, username, data\)/i.test(text)) {
+                hrState.historyRows.push({
+                    business_context: params[0],
+                    action: params[1],
+                    username: params[2],
+                    data: JSON.parse(params[3] || '{}')
+                });
+                return { rows: [], rowCount: 1 };
+            }
+            if (/INSERT INTO outbox_events \(aggregate_type, aggregate_id, event_type, payload, idempotency_key\)/i.test(text)) {
+                hrState.outboxEvents.push({
+                    aggregate_type: params[0],
+                    aggregate_id: params[1],
+                    event_type: params[2],
+                    payload: JSON.parse(params[3] || '{}'),
+                    idempotency_key: params[4]
+                });
+                return { rows: [], rowCount: 1 };
             }
             if (/SELECT version FROM schema_migrations WHERE version = ANY\(\$1::text\[\]\)/i.test(text)) {
                 return {
@@ -1425,7 +1616,11 @@ describe('route-level API safety smoke', () => {
         missingSchemaColumns = new Set();
 
         const fakePool = createFakePool();
-        installMock('../db', { pool: fakePool, query: fakePool.query.bind(fakePool) });
+        installMock('../db', {
+            pool: fakePool,
+            query: fakePool.query.bind(fakePool),
+            generateBookingNumber: fakePool.generateBookingNumber
+        });
         installMock('../services/leadNotifier', {
             notifyNewLead: async lead => { notifiedLeads.push(lead); }
         });
@@ -1434,6 +1629,7 @@ describe('route-level API safety smoke', () => {
             getChannels: async () => [{ id: 1, name: 'General', unread: 0 }]
         });
         installMock('../services/websocket', {
+            broadcast: () => {},
             broadcastToChannel: () => {},
             sendToUser: () => {}
         });
@@ -1596,7 +1792,145 @@ describe('route-level API safety smoke', () => {
         assert.ok(res.data.webhooks.universal.sources.includes('maysternya_bot'));
         assert.ok(res.data.webhooks.universal.sources.includes('maysternya_site'));
         assert.match(res.data.webhooks.universal.dryRun, /dryRun=true/);
+        assert.equal(res.data.webhooks.maysternyaBooking.endpoint, '/api/leads/webhook/maysternya-booking');
+        assert.equal(res.data.webhooks.maysternyaBooking.businessContext, 'maysternya_doli');
         assert.equal(queries.length, 0);
+    });
+
+    it('creates Maysternya Doli timeline bookings through the token-guarded booking webhook', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-booking-1',
+            date: '2099-06-14',
+            time: '14:00',
+            duration: 60,
+            resource_id: 'md-consult-room',
+            programId: 'natal-chart',
+            programCode: 'NATAL',
+            programName: 'Натальна карта',
+            category: 'consultation',
+            price: 1800,
+            customer: {
+                name: 'Марія Тест',
+                phone: '+380501112233'
+            },
+            telegram: {
+                id: '123456789',
+                username: 'maria_test'
+            },
+            notes: 'Оплата в боті'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, true);
+        assert.equal(res.data.businessContext, 'maysternya_doli');
+        assert.equal(res.data.booking.businessContext, 'maysternya_doli');
+        assert.equal(res.data.booking.status, 'confirmed');
+        assert.equal(res.data.booking.createdBy, 'maysternya_bot');
+        assert.equal(res.data.booking.lineId, 'md-consult-room');
+
+        const insert = queries.find(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text));
+        assert.ok(insert);
+        assert.equal(insert.params[1], 'maysternya_doli');
+        assert.equal(insert.params[4], 'md-consult-room');
+        assert.equal(insert.params[23], 'maysternya_bot');
+        assert.equal(insert.params[25], 'confirmed');
+        const extraData = JSON.parse(insert.params[28]);
+        assert.equal(extraData.source, 'maysternya_bot');
+        assert.equal(extraData.externalId, 'md-booking-1');
+
+        assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO history \(business_context, action, username, data\)/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO outbox_events/i.test(q.text)));
+    });
+
+    it('keeps Maysternya bot booking webhook idempotent by external id', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-booking-1',
+            date: '2099-06-14',
+            time: '14:00',
+            duration: 60,
+            resource_id: 'md-consult-room',
+            programName: 'Натальна карта',
+            customer: { name: 'Марія Тест' }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, false);
+        assert.equal(res.data.bookingId, 'BK-2099-0001');
+        assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
+    });
+
+    it('validates Maysternya bot booking webhook in dry-run mode without writing', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking?dryRun=true', {
+            external_id: 'md-booking-dry',
+            date: '2099-06-15',
+            time: '10:00',
+            duration: 45,
+            resource_name: 'Онлайн консультація',
+            service: { name: 'Таро консультація', code: 'TARO', price: 1200 },
+            customer: { name: 'Dry Run' }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.dryRun, true);
+        assert.equal(res.data.created, false);
+        assert.equal(res.data.preview.resourceId, 'md-consult-room');
+        assert.equal(res.data.preview.programName, 'Таро консультація');
+        assert.equal(res.data.preview.programCode, 'TARO');
+        assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
+    });
+
+    it('rejects Maysternya bot booking webhook without provider token', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-no-token'
+        });
+
+        assert.equal(res.status, 401);
+    });
+
+    it('rejects incomplete Maysternya bot booking payloads with missing fields', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-missing-fields',
+            date: '2099-06-14'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'missing_fields');
+        assert.ok(res.data.missingFields.includes('time'));
+        assert.ok(res.data.missingFields.includes('resource_id'));
+        assert.ok(res.data.missingFields.includes('customer'));
+    });
+
+    it('returns conflict details when Maysternya bot booking slot is occupied', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-booking-conflict',
+            date: '2099-06-14',
+            time: '14:30',
+            duration: 30,
+            resource_id: 'md-consult-room',
+            programName: 'Повторна консультація',
+            customer: { name: 'Конфлікт' }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'booking_time_conflict');
+        assert.equal(res.data.conflictBookingId, 'BK-2099-0001');
     });
 
     it('accepts Maysternya Doli bot leads through the token-guarded universal webhook', async () => {

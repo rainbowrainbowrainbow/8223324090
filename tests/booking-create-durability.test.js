@@ -447,6 +447,15 @@ async function withApp(dbOptions, fn) {
                 : null;
         },
         lockBookingConflictResources: async () => [],
+        isLineConflictBlockingLine: value => {
+            const lineId = String(value || '').trim().toLowerCase();
+            return Boolean(lineId && lineId !== 'banquet-service' && lineId !== 'room-takeaway');
+        },
+        isRoomConflictBlockingRoom: value => {
+            const room = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            return Boolean(room && room !== 'інше' && room !== 'other' && room !== 'на виніс' && room !== 'room-takeaway');
+        },
+        BANQUET_SERVICE_LINE_ID: 'banquet-service',
         checkServerConflicts: async () => ({ overlap: false }),
         checkServerDuplicate: async () => null,
         checkRoomConflict: async () => null,

@@ -45,6 +45,8 @@ const MIN_PAUSE = 15;
 const VALID_BOOKING_STATUSES = Object.freeze(['confirmed', 'preliminary', 'cancelled']);
 const BOOKING_CONFLICT_LOCK_NAMESPACE = 'booking_conflict_v1';
 const BANQUET_SERVICE_LINE_ID = 'banquet-service';
+const TAKEAWAY_ROOM_ID = 'room-takeaway';
+const TAKEAWAY_ROOM_LABEL = 'На виніс';
 
 const ALL_ROOMS = [
     'Марвел', 'Ніндзя', 'Майнкрафт', 'Монстер Хай', 'Ельза',
@@ -62,16 +64,31 @@ function bookingConflictLockPart(value) {
     return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function isTakeawayRoomValue(value) {
+    const room = bookingConflictLockPart(value);
+    return room === TAKEAWAY_ROOM_ID || room === bookingConflictLockPart(TAKEAWAY_ROOM_LABEL);
+}
+
+function isRoomConflictBlockingRoom(value) {
+    const room = bookingConflictLockPart(value);
+    return Boolean(room && room !== bookingConflictLockPart('Інше') && room !== 'other' && !isTakeawayRoomValue(room));
+}
+
+function isLineConflictBlockingLine(value) {
+    const lineId = bookingConflictLockPart(value);
+    return Boolean(lineId && lineId !== BANQUET_SERVICE_LINE_ID && lineId !== TAKEAWAY_ROOM_ID);
+}
+
 function addBookingConflictLockKeys(keys, booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     const context = normalizeTimelineContext(booking.businessContext || booking.business_context || businessContext);
     const date = bookingConflictLockPart(booking.date);
     if (!date) return keys;
 
     const lineId = bookingConflictLockPart(booking.lineId || booking.line_id || booking.resourceId || booking.resource_id);
-    if (lineId && lineId !== BANQUET_SERVICE_LINE_ID) keys.add(`line:${context}:${date}:${lineId}`);
+    if (isLineConflictBlockingLine(lineId)) keys.add(`line:${context}:${date}:${lineId}`);
 
     const room = bookingConflictLockPart(booking.room);
-    if (room && room !== 'інше' && room !== 'other') keys.add(`room:${context}:${date}:${room}`);
+    if (isRoomConflictBlockingRoom(room)) keys.add(`room:${context}:${date}:${room}`);
 
     return keys;
 }
@@ -99,7 +116,7 @@ function activeBookingStatusSql(column = 'status') {
 // --- Conflict checks ---
 
 async function checkRoomConflict(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
-    if (!room || room === 'Інше') return null;
+    if (!isRoomConflictBlockingRoom(room)) return null;
     const context = normalizeTimelineContext(businessContext);
     const params = excludeId ? [date, room, context, excludeId] : [date, room, context];
     const result = await client.query(
@@ -120,7 +137,7 @@ async function checkRoomConflict(client, date, room, time, duration, excludeId =
 }
 
 async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
-    if (bookingConflictLockPart(lineId) === BANQUET_SERVICE_LINE_ID) {
+    if (!isLineConflictBlockingLine(lineId)) {
         return { overlap: false, noPause: false, conflictWith: null };
     }
     const context = normalizeTimelineContext(businessContext);
@@ -413,8 +430,9 @@ function getKyivTimeStr() {
 
 module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
-    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES, BANQUET_SERVICE_LINE_ID,
-    normalizeBookingStatus, lockBookingConflictResources,
+    timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
+    BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
+    normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,
     checkRoomConflict, checkServerConflicts, checkServerDuplicate,
     mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
     getKyivDate, getKyivDateStr, getKyivTimeStr

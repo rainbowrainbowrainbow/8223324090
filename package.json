@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.48",
+  "version": "0.75.51",
   "eventGenix": {
-    "releaseLabel": "Menu Dish Image Generation"
+    "releaseLabel": "Maysternya Bot Timeline Booking"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

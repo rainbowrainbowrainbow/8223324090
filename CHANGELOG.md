@@ -4,6 +4,41 @@
 
 ---
 
+## v0.75.51 - Maysternya Bot Timeline Booking
+
+### Leads / Maysternya / Bot booking / Timeline / Release / (Клешня, 14.06.2026) [codex]
+- **Бот `Майстерня долі` отримав окремий booking webhook** - `POST /api/leads/webhook/maysternya-booking` приймає повний payload від зовнішнього бота під Bearer `UNIVERSAL_WEBHOOK_TOKEN`.
+- **Бронювання одразу створюються на timeline Майстерні** - CRM нормалізує payload у `confirmed` booking з `business_context=maysternya_doli`, `created_by=maysternya_bot` і bot metadata в `extra_data`.
+- **Trello більше не є цільовим сховищем для цих бронювань** - запис іде в CRM `bookings` з customer/linking, lead handoff, history, outbox event і websocket broadcast.
+- **Idempotency і dry-run додані для бота** - повторний `external_id` не створює дубль, а `?dryRun=true` або `X-CRM-Dry-Run` перевіряє payload, resource і conflicts без запису.
+- **Conflict і auth guard прикриті тестами** - endpoint відкритий для JWT boundary, але route без Bearer token повертає `401`, а зайнятий слот повертає `409` з `conflictBookingId`.
+- **DB/env/deploy config не змінювались** - без міграцій і без нових секретів; використано існуючий `UNIVERSAL_WEBHOOK_TOKEN`.
+
+---
+
+## v0.75.50 - Profile Urgent Task Highlight
+
+### Profile / Tasks / Urgent priority / Release / (Клешня, 14.06.2026) [codex]
+- **Профільний compact task list тепер теж бачить `Терміново`** - старі рядки `.profile-task-row` у профілі отримали `data-task-priority`, клас `priority-urgent` і не гублять urgent-стан поза новим cabinet tasker.
+- **Термінові задачі в профілі стали помітними з першого погляду** - додано червону бокову смугу, тонований фон, сильніший заголовок і окрему плашку пріоритету `Терміново`.
+- **Dark mode прикритий окремо** - urgent-рядки профілю мають контрастний темний фон, рожеву смугу і читабельну плашку без злиття з базовою темою.
+- **Regression guard посилено** - UI smoke тепер перевіряє не тільки cabinet cards/tasks.html/legacy modal, а й `.profile-task-row[data-task-priority="urgent"]`.
+- **DB/API/env/deploy config не змінювались** - це visual fix для існуючого `priority=urgent`, без міграцій, ролей, payload або бізнес-логіки задач.
+
+---
+
+## v0.75.49 - Takeaway Room Conflict Logic
+
+### Timeline / Room-first / Takeaway / Conflict rules / Release / (Клешня, 14.06.2026) [codex]
+- **`На виніс` більше не резервує фізичну кімнату** - службовий рядок лишається видимим у room-first timeline, але не створює room-conflict для паралельних замовлень на виніс.
+- **Серверні room conflicts розділено від timeline projection** - `На виніс` і `room-takeaway` показуються як рядок таймлайну, але `checkRoomConflict` не блокує їх як реальну кімнату.
+- **Advisory locks не серіалізують takeout-слоти** - conflict lock keys більше не додають room/line lock для `На виніс`, `room-takeaway` і `banquet-service`, тому одночасні takeout-бронювання не чекають одне одного як кімнати.
+- **Atomic edit і linked-activity logic прикриті тим самим правилом** - atomic update не шукає room conflict для takeout, а shared-room visual links не створюються для службового рядка.
+- **Regression guard додано** - тест перевіряє, що takeout room лишається розпізнаним, але не запускає SQL room-conflict і не бере advisory lock.
+- **DB/env/deploy config не змінювались** - міграції, схема, секрети, ролі, Railway config і payload бронювання лишилися без змін.
+
+---
+
 ## v0.75.48 - Menu Dish Image Generation
 
 ### Products / Kitchen menu / OpenAI image generation / Release / (Клешня, 14.06.2026) [codex]

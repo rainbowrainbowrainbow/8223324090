@@ -27,6 +27,14 @@ const {
     sanitizeTimelineVisibilityPayload,
     timelineVisibilityResponse
 } = require('../services/timelineVisibilitySettings');
+const {
+    checkRoomConflict,
+    checkServerConflicts,
+    isLineConflictBlockingLine,
+    isRoomConflictBlockingRoom,
+    isTakeawayRoomValue,
+    lockBookingConflictResources
+} = require('../services/booking');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -185,6 +193,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(bookingsRoute, /projectBookingsForTimelineView/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
+    assert.match(bookingsRoute, /isRoomConflictBlockingRoom/);
+    assert.match(bookingsRoute, /if \(!isRoomConflictBlockingRoom\(candidate\.room\)\) return null/);
     assert.match(api, /function timelineApiUrlWithView/);
     assert.match(api, /timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
     assert.match(timeline, /TIMELINE_VIEW_ROOMS = 'rooms'/);
@@ -220,6 +230,45 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);
     assert.match(migration, /'room-marvel', 'room', 'Марвел'/);
+});
+
+test('takeaway room stays visible but does not reserve a physical room slot', async () => {
+    assert.equal(isTakeawayRoomValue('На виніс'), true);
+    assert.equal(isTakeawayRoomValue('room-takeaway'), true);
+    assert.equal(isRoomConflictBlockingRoom('На виніс'), false);
+    assert.equal(isRoomConflictBlockingRoom('room-takeaway'), false);
+    assert.equal(isRoomConflictBlockingRoom('Монстер Хай'), true);
+    assert.equal(isLineConflictBlockingLine('room-takeaway'), false);
+    assert.equal(isLineConflictBlockingLine('banquet-service'), false);
+
+    const conflictQueries = [];
+    const conflictClient = {
+        query: async (sql, params) => {
+            conflictQueries.push({ sql, params });
+            return { rows: [] };
+        }
+    };
+    const conflict = await checkRoomConflict(conflictClient, '2026-06-14', 'На виніс', '12:00', 30);
+    assert.equal(conflict, null);
+    assert.equal(conflictQueries.length, 0);
+    const lineConflict = await checkServerConflicts(conflictClient, '2026-06-14', 'room-takeaway', '12:00', 30);
+    assert.deepEqual(lineConflict, { overlap: false, noPause: false, conflictWith: null });
+    assert.equal(conflictQueries.length, 0);
+
+    const lockQueries = [];
+    const lockClient = {
+        query: async (sql, params) => {
+            lockQueries.push({ sql, params });
+            return { rows: [] };
+        }
+    };
+    const lockKeys = await lockBookingConflictResources(lockClient, [{
+        date: '2026-06-14',
+        lineId: 'banquet-service',
+        room: 'На виніс'
+    }]);
+    assert.deepEqual(lockKeys, []);
+    assert.equal(lockQueries.length, 0);
 });
 
 test('free-room path becomes business-aware resource availability for cabinet modes', () => {

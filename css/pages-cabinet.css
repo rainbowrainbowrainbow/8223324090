@@ -1566,6 +1566,67 @@ body.dark-mode .cabinet-task-composer-hint {
     color: #047857;
 }
 
+.profile-task-row.priority-urgent,
+.profile-task-row.is-urgent,
+.profile-task-row[data-task-priority="urgent"] {
+    border-color: rgba(244, 63, 94, 0.30);
+    background:
+        linear-gradient(90deg, rgba(244, 63, 94, 0.18), rgba(244, 63, 94, 0.08) 48%, rgba(255, 255, 255, 0)),
+        #fff1f2;
+    box-shadow: inset 4px 0 0 #e11d48, 0 8px 22px rgba(225, 29, 72, 0.08);
+}
+
+.profile-task-row.priority-urgent b,
+.profile-task-row.is-urgent b,
+.profile-task-row[data-task-priority="urgent"] b {
+    color: #9f1239;
+    font-weight: 950;
+}
+
+.profile-task-priority {
+    flex: 0 0 auto;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.12);
+    padding: 3px 8px;
+    line-height: 1.15;
+}
+
+.profile-task-priority--urgent {
+    border-color: rgba(244, 63, 94, 0.52);
+    background: #e11d48;
+    color: #fff !important;
+    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
+}
+
+body.dark-mode .profile-task-row.priority-urgent,
+body.dark-mode .profile-task-row.is-urgent,
+body.dark-mode .profile-task-row[data-task-priority="urgent"] {
+    background:
+        linear-gradient(90deg, rgba(244, 63, 94, 0.28), rgba(244, 63, 94, 0.14) 52%, rgba(15, 23, 42, 0)),
+        var(--profile-dark-surface-soft, #172033);
+    border-color: rgba(251, 113, 133, 0.42);
+    box-shadow: inset 4px 0 0 #fb7185, inset 0 0 0 1px rgba(251, 113, 133, 0.16);
+}
+
+body.dark-mode .profile-task-row.priority-urgent b,
+body.dark-mode .profile-task-row.is-urgent b,
+body.dark-mode .profile-task-row[data-task-priority="urgent"] b {
+    color: #fecdd3;
+}
+
+body.dark-mode .profile-task-priority {
+    border-color: rgba(148, 163, 184, 0.24);
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--profile-dark-muted, #9ca3af);
+}
+
+body.dark-mode .profile-task-priority--urgent {
+    border-color: rgba(251, 113, 133, 0.62);
+    background: #be123c;
+    color: #fff !important;
+}
+
 .cabinet-task-card {
     display: flex;
     justify-content: space-between;

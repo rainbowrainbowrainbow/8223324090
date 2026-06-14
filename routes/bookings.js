@@ -15,6 +15,8 @@ const {
     minutesToTime,
     normalizeBookingStatus,
     lockBookingConflictResources,
+    isLineConflictBlockingLine,
+    isRoomConflictBlockingRoom,
     BANQUET_SERVICE_LINE_ID
 } = require('../services/booking');
 const { normalizePinataFields } = require('../services/pinataMode');
@@ -892,6 +894,7 @@ async function bookingVisualLinkPairExists(client, businessContext, sourceId, ta
 
 async function createSharedRoomActivityLinks(client, businessContext, bookingRow, user) {
     if (!bookingRow?.id || !isRootBookingRow(bookingRow) || !isRealRoom(bookingRow.room)) return [];
+    if (!isRoomConflictBlockingRoom(bookingRow.room)) return [];
     if (!bookingRow.date || !bookingRow.time) return [];
     try {
         const result = await client.query(
@@ -1239,7 +1242,9 @@ function findEducationSeriesLocalConflict(candidates, currentIndex) {
         if (other.lineId && current.lineId && String(other.lineId) === String(current.lineId)) {
             return { type: 'line', conflict: other };
         }
-        if (isRealRoom(other.room) && isRealRoom(current.room) && String(other.room) === String(current.room)) {
+        if (isRealRoom(other.room) && isRealRoom(current.room)
+            && isRoomConflictBlockingRoom(other.room) && isRoomConflictBlockingRoom(current.room)
+            && String(other.room) === String(current.room)) {
             return { type: 'room', conflict: other };
         }
         const sameTeacher = (currentLesson.teacherId && otherLesson.teacherId && currentLesson.teacherId === otherLesson.teacherId)
@@ -1284,7 +1289,7 @@ async function resolveBookingCustomerId(client, booking, businessContext) {
 }
 
 async function findAtomicLineConflict(client, candidate, excludeIds) {
-    if (String(candidate.line_id || '').trim() === BANQUET_SERVICE_LINE_ID) return null;
+    if (!isLineConflictBlockingLine(candidate.line_id)) return null;
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
@@ -1303,6 +1308,7 @@ async function findAtomicLineConflict(client, candidate, excludeIds) {
 
 async function findAtomicRoomConflict(client, candidate, excludeIds) {
     if (!isRealRoom(candidate.room)) return null;
+    if (!isRoomConflictBlockingRoom(candidate.room)) return null;
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings

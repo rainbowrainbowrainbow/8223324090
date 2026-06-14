@@ -44,6 +44,10 @@ const {
     requireWritableBusinessScope
 } = require('../services/businessContext');
 const { normalizeCustomerSource, getCustomerSourceLabel } = require('../services/customerSource');
+const {
+    createMaysternyaBotBooking,
+    isMaysternyaBookingDryRun
+} = require('../services/maysternyaBookingWebhook');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 
@@ -924,6 +928,39 @@ async function handleUniversalWebhook(req, res) {
     }
 }
 
+async function handleMaysternyaBookingWebhook(req, res) {
+    try {
+        const token = bearerTokenFromHeader(req.headers['authorization']);
+        if (!timingSafeTextEqual(token, UNIVERSAL_WEBHOOK_TOKEN)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const result = await createMaysternyaBotBooking(req.body || {}, {
+            dryRun: isMaysternyaBookingDryRun(req)
+        });
+        if (result.error) {
+            const error = result.error;
+            return res.status(error.statusCode || 400).json({
+                success: false,
+                ok: false,
+                error: error.message || 'Maysternya booking webhook failed',
+                code: error.code || 'maysternya_booking_error',
+                missingFields: error.missingFields || undefined,
+                conflictBookingId: error.conflictBookingId || undefined
+            });
+        }
+        return res.json(result.response);
+    } catch (err) {
+        log.error('Maysternya booking webhook error', err);
+        return res.status(err.statusCode || 500).json({
+            success: false,
+            ok: false,
+            error: err.publicMessage || err.message || 'Internal error',
+            code: err.code || 'internal_error'
+        });
+    }
+}
+
 function normalizeCelebrants(value, legacy = {}) {
     const items = [];
     const rawItems = parseJsonArray(value);
@@ -1477,6 +1514,9 @@ router.post('/landing', async (req, res) => {
 // Public provider-secret guarded webhook for external CRM/bot lead capture.
 router.post('/webhook/universal', handleUniversalWebhook);
 
+// Public provider-secret guarded webhook for Maysternya Doli bot timeline bookings.
+router.post('/webhook/maysternya-booking', handleMaysternyaBookingWebhook);
+
 // GET /api/leads/webhook/status — public read-only webhook configuration status.
 router.get('/webhook/status', (req, res) => {
     res.json({
@@ -1491,6 +1531,12 @@ router.get('/webhook/status', (req, res) => {
                 endpoint:   '/api/leads/webhook/universal?source=<name>',
                 sources:    ['maysternya_bot', 'maysternya_site', 'tiktok', 'turbo', 'bnderoga', 'custom'],
                 dryRun:     'Add ?dryRun=true or header X-CRM-Dry-Run: true to validate without writing a lead.',
+            },
+            maysternyaBooking: {
+                configured: !!UNIVERSAL_WEBHOOK_TOKEN,
+                endpoint: '/api/leads/webhook/maysternya-booking',
+                businessContext: 'maysternya_doli',
+                dryRun: 'Add ?dryRun=true or header X-CRM-Dry-Run: true to validate without creating a booking.',
             }
         }
     });

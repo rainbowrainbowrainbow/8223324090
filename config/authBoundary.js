@@ -181,6 +181,12 @@ const PUBLIC_API_ROUTES = [
         reason: 'External lead capture webhook is guarded by UNIVERSAL_WEBHOOK_TOKEN instead of user JWT.'
     },
     {
+        method: 'POST',
+        path: '/leads/webhook/maysternya-booking',
+        owner: 'leads',
+        reason: 'Maysternya Doli bot booking webhook is guarded by UNIVERSAL_WEBHOOK_TOKEN and creates scoped timeline bookings without user JWT.'
+    },
+    {
         method: 'GET',
         path: '/leads/webhook/status',
         owner: 'leads',

@@ -1931,7 +1931,7 @@ function taskKindBadge(t) {
 
 function renderTaskPriorityControl(task = {}) {
     const current = task.priority || 'normal';
-    return `<select class="task-priority-select" data-task-priority-select data-task-id="${task.id}" aria-label="Пріоритет задачі">
+    return `<select class="task-priority-select task-priority-select--${escapeHtml(current)}" data-task-priority-select data-task-id="${task.id}" aria-label="Пріоритет задачі">
         ${TASK_PRIORITY_OPTIONS.map(item => `<option value="${item.value}" ${item.value === current ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
     </select>`;
 }
@@ -2924,7 +2924,7 @@ function renderTaskCard(t) {
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
+    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>

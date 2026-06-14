@@ -17,7 +17,8 @@
     color: var(--gray-400);
 }
 
-.task-card[data-priority="high"] {
+.task-card[data-priority="high"],
+.task-card.priority-high {
     border-left-color: #EF4444;
 }
 
@@ -667,8 +668,28 @@ html[data-theme="dark"] .cabinet-day-stat.is-hot {
     }
 }
 
-.task-card[data-priority="urgent"] {
+.task-card[data-priority="urgent"],
+.task-card.priority-urgent {
     border-left-color: #E11D48;
+    background:
+        linear-gradient(90deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.05) 42%, rgba(255, 255, 255, 0)),
+        var(--white, #fff);
+    box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.16);
+}
+
+.task-card[data-priority="urgent"] .task-card-title,
+.task-card.priority-urgent .task-card-title {
+    color: #9f1239;
+    font-weight: 950;
+}
+
+.task-priority-select--urgent,
+.task-card[data-priority="urgent"] .task-priority-select,
+.task-card.priority-urgent .task-priority-select {
+    border-color: rgba(244, 63, 94, 0.48);
+    background: #e11d48;
+    color: #fff;
+    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
 }
 
 /* ==========================================

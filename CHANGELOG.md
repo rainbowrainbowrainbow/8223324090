@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.47 - Urgent Task Visibility
+
+### Profile / Tasks / Urgent priority / Release / (Клешня, 14.06.2026) [codex]
+- **Термінові задачі стали видимими всюди в робочих списках** - задачі з `priority=urgent` отримали червону смугу, тонований фон і сильніший заголовок замість простого тексту в select.
+- **Профіль / Мої задачі підсвічує urgent окремо** - `profile.html` / `js/profile-page.js` додає `data-task-priority`, `priority-urgent` і червоний `cabinet-task-priority-select--urgent` для карток мого кабінету.
+- **Основна сторінка задач отримала той самий сигнал** - `tasks.html` / `js/tasks-page.js` додає `data-priority` і modifier-клас для urgent-карток, а CSS підсвічує і картку, і select пріоритету.
+- **Legacy profile modal також прикритий** - старий список задач у `auth.js` / `modals.css` виділяє `urgent` і `critical` у inbox та вкладці задач.
+- **Sidebar отримав блок `Продуктивність`** - під `Обране` додано швидкий пункт `Мій день`, який веде на `/profile?tab=myday` і підсвічується з урахуванням query-параметра.
+- **Regression guard оновлено** - UI smoke перевіряє DOM-ознаки й CSS для urgent-задач у профілі, задачах і темній темі.
+- **DB/API/env/deploy config не змінювались** - це тільки visual layer для існуючого пріоритету задач.
+
+---
+
 ## v0.75.46 - Menu Product Image Studio
 
 ### Products / Kitchen menu / AI review / Image prompt studio / Release / (Клешня, 14.06.2026) [codex]

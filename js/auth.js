@@ -1798,7 +1798,8 @@ function _profileTabToday(data) {
     if (data.tasks.overdueList && data.tasks.overdueList.length > 0) {
         data.tasks.overdueList.forEach(t => {
             const ago = Math.round((new Date() - new Date(t.deadline)) / 3600000);
-            inboxItems.push(`<div class="prof-inbox-item danger" data-task-id="${t.id}">
+            const urgentCls = t.priority === 'urgent' || t.priority === 'critical' ? ' urgent' : '';
+            inboxItems.push(`<div class="prof-inbox-item danger${urgentCls}" data-task-id="${t.id}">
                 <span class="prof-inbox-icon">!</span>
                 <div class="prof-inbox-body">
                     <div class="prof-inbox-title">${_escHtml(t.title)}</div>
@@ -1823,7 +1824,8 @@ function _profileTabToday(data) {
             const dl = new Date(t.deadline);
             const mins = Math.round((dl - new Date()) / 60000);
             const timeStr = mins < 60 ? `${mins} хв` : `${Math.round(mins / 60)} год`;
-            inboxItems.push(`<div class="prof-inbox-item warning" data-task-id="${t.id}">
+            const urgentCls = t.priority === 'urgent' || t.priority === 'critical' ? ' urgent' : '';
+            inboxItems.push(`<div class="prof-inbox-item warning${urgentCls}" data-task-id="${t.id}">
                 <span class="prof-inbox-icon">&#9202;</span>
                 <div class="prof-inbox-body">
                     <div class="prof-inbox-title">${_escHtml(t.title)}</div>
@@ -1880,7 +1882,9 @@ function _profileTabTasks(data) {
         const icon = t.isBlocked ? '&#128274;' : (t.status === 'in_progress' ? '&#9673;' : (t.isOverdue ? '&#9888;' : '&#9675;'));
         const cls = t.isOverdue ? 'overdue' : (t.isBlocked ? 'blocked' : t.status);
         const deadlineStr = t.deadline ? profileFormatTime(t.deadline) : '';
-        const priorityCls = t.priority === 'critical' || t.priority === 'high' ? 'high-priority' : '';
+        const priorityCls = t.priority === 'urgent' || t.priority === 'critical'
+            ? 'urgent-priority high-priority'
+            : (t.priority === 'high' ? 'high-priority' : '');
         const blockedLabel = t.isBlocked ? '<span class="prof-blocked-lbl">Заблоковано</span>' : '';
 
         // Action buttons based on current status

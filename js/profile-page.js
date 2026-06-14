@@ -3738,7 +3738,7 @@ function renderCabinetSnoozeMenu(taskIdAttr) {
 
 function renderCabinetTaskPriorityControl(task = {}, taskIdAttr = '') {
     const selected = normalizeCabinetPriority(task.priority || 'normal');
-    return `<select class="cabinet-task-priority-select" data-cabinet-task-priority-select data-task-id="${taskIdAttr}" aria-label="Пріоритет задачі" ${taskIdAttr ? '' : 'disabled'}>
+    return `<select class="cabinet-task-priority-select cabinet-task-priority-select--${escapeHtml(selected)}" data-cabinet-task-priority-select data-task-id="${taskIdAttr}" aria-label="Пріоритет задачі" ${taskIdAttr ? '' : 'disabled'}>
         ${CABINET_TASK_PRIORITIES.map(item => `<option value="${item.value}" ${item.value === selected ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
     </select>`;
 }
@@ -4192,12 +4192,13 @@ function renderCabinetTaskCard(task, compact = false) {
     const cardClass = [
         'cabinet-task-card',
         'is-personal-day-card',
+        `priority-${priority}`,
         isDecomposed ? 'is-decomposed' : '',
         isDecomposed && subtasksExpanded ? 'is-subtasks-expanded' : '',
         isDecomposed && !subtasksExpanded ? 'is-subtasks-collapsed' : ''
     ].filter(Boolean).join(' ');
     return `
-        <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
+        <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">

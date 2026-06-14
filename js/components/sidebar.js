@@ -29,6 +29,9 @@ const Sidebar = (() => {
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
+    const PRODUCTIVITY_QUICK_ITEMS = Object.freeze([
+        { href: '/profile?tab=myday', icon: 'task', label: 'Мій день', description: 'особистий фокус' }
+    ]);
     const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
     const UTILITY_RAIL_MAX_FAVORITES = 4;
@@ -493,8 +496,23 @@ const Sidebar = (() => {
 
     function _isSidebarItemActive(item, currentPath, currentHash) {
         if (!item || item.noActive || item.isHashLink) return false;
-        const itemBase = item.href.split('#')[0];
-        const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
+        const href = String(item.href || '');
+        const itemPathWithSearch = href.split('#')[0];
+        const searchIndex = itemPathWithSearch.indexOf('?');
+        const itemBase = searchIndex >= 0 ? (itemPathWithSearch.slice(0, searchIndex) || '/') : itemPathWithSearch;
+        const itemSearch = searchIndex >= 0 ? itemPathWithSearch.slice(searchIndex + 1) : '';
+        const itemHash = href.includes('#') ? href.split('#')[1] : '';
+        if (itemSearch) {
+            try {
+                const expected = new URLSearchParams(itemSearch);
+                const current = new URLSearchParams(window.location.search || '');
+                for (const [key, value] of expected.entries()) {
+                    if (current.get(key) !== value) return false;
+                }
+            } catch {
+                return false;
+            }
+        }
         const activeHashes = Array.isArray(item.activeHashes) ? item.activeHashes.map(String) : [];
         if (activeHashes.length && currentPath === itemBase) {
             if (currentHash) return activeHashes.includes(currentHash);
@@ -508,7 +526,7 @@ const Sidebar = (() => {
             const firstHash = NAV_ITEMS.find(n => !n.type && n.href?.startsWith(itemBase + '#'));
             return firstHash?.href === item.href;
         }
-        return currentPath === item.href && !currentHash;
+        return currentPath === itemBase && !currentHash;
     }
 
     function _normalizeExtraHref(value) {
@@ -819,15 +837,22 @@ const Sidebar = (() => {
         if (!sidebar || !links) return;
         const deck = document.getElementById('sidebarCommandDeck');
         const extras = document.getElementById('sidebarDesignExtras');
+        const productivity = document.getElementById('sidebarProductivityQuick');
         _removeSidebarTodayDock();
 
         if (deck && deck.parentElement !== sidebar) sidebar.insertBefore(deck, links);
         if (extras && extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
+        if (productivity && productivity.parentElement !== sidebar) sidebar.insertBefore(productivity, links);
 
         if (deck) sidebar.insertBefore(deck, links);
         if (extras) {
             if (deck) _insertSidebarSectionAfter(sidebar, extras, deck);
             else sidebar.insertBefore(extras, links);
+        }
+        if (productivity) {
+            if (extras) _insertSidebarSectionAfter(sidebar, productivity, extras);
+            else if (deck) _insertSidebarSectionAfter(sidebar, productivity, deck);
+            else sidebar.insertBefore(productivity, links);
         }
     }
 
@@ -871,6 +896,24 @@ const Sidebar = (() => {
         return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(item.href)}"${targetAttrs}>
             ${body}
         </a>`;
+    }
+
+    function _renderProductivityQuickBlock(currentPath, currentHash) {
+        const quickLinks = PRODUCTIVITY_QUICK_ITEMS
+            .map(item => _renderExtraMenuLink(item, currentPath, currentHash))
+            .join('');
+        return `
+            <div class="sidebar-productivity-head-row">
+                <div class="sidebar-design-extras-head sidebar-productivity-head" role="heading" aria-level="2">
+                    <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
+                    <span class="sidebar-design-extras-copy">
+                        <span class="sidebar-design-extras-title">Продуктивність</span>
+                    </span>
+                </div>
+            </div>
+            <div class="sidebar-design-extra-list sidebar-productivity-list">
+                ${quickLinks}
+            </div>`;
     }
 
     function _renderExtraMenuEditor(selectableItems, selectedHrefs) {
@@ -1985,6 +2028,16 @@ const Sidebar = (() => {
                 </div>
                 ${extraEditorOpen ? _renderExtraMenuEditor(selectableExtraItems, selectedExtraHrefs) : ''}`;
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
+
+        let productivity = document.getElementById('sidebarProductivityQuick');
+        if (!productivity) {
+            productivity = document.createElement('div');
+            productivity.id = 'sidebarProductivityQuick';
+        }
+        productivity.className = 'sidebar-design-extras sidebar-productivity-quick';
+        productivity.innerHTML = _renderProductivityQuickBlock(currentPath, currentHash);
+        if (productivity.parentElement !== sidebar) sidebar.insertBefore(productivity, links);
+
         _syncSidebarSectionOrder(sidebar, links);
         _bindExtraMenuEditor(extras);
 

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.46">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.46">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.46">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.46">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.46">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.46">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.46">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.46">
-    <link rel="stylesheet" href="css/features.css?v=0.75.46">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.46">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.46">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.46">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.46">
+    <link rel="stylesheet" href="css/base.css?v=0.75.47">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.47">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.47">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.47">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.47">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.47">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.47">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.47">
+    <link rel="stylesheet" href="css/features.css?v=0.75.47">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.47">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.47">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.47">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.47">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.46">✨ 0.75.46</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.47">✨ 0.75.47</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.46 — Menu Product Image Studio</p>
+                <p class="tagline">AI First CRM v0.75.47 — Urgent Task Visibility</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.46</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.47</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1731,6 +1731,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.75.47 — Urgent Task Visibility</h4>
+                    <ul>
+                        <li><b>Термінові задачі тепер видно з першого погляду</b> — картки з пріоритетом <code>Терміново</code> отримали червону смугу, тонований фон і сильніший заголовок.</li>
+                        <li><b>Профіль / Мої задачі підсвічує urgent</b> — у робочому профілі задачі з <code>priority=urgent</code> мають окремий DOM-стан і червоний select пріоритету.</li>
+                        <li><b>Сторінка задач теж має той самий сигнал</b> — <code>tasks.html</code> отримав <code>data-priority</code>, modifier-класи та стилі для світлої й темної теми.</li>
+                        <li><b>Старий profile modal не випав</b> — inbox і список задач у legacy-профілі також виділяють <code>urgent</code>/<code>critical</code>.</li>
+                        <li><b>У sidebar додано блок <code>Продуктивність</code></b> — під <code>Обране</code> зʼявився швидкий пункт <code>Мій день</code>, який відкриває персональний фокус у профілі.</li>
+                        <li><b>Бізнес-логіку не змінювали</b> — API, DB, міграції, ролі, права й правила задач лишилися без змін; це тільки visual layer для існуючого пріоритету.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.75.46 — Menu Product Image Studio</h4>
                     <ul>
@@ -12918,30 +12929,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.46"></script>
-    <script src="js/timeline-visibility.js?v=0.75.46"></script>
-    <script src="js/kitchen-menu-images.js?v=0.75.46"></script>
-    <script src="js/config.js?v=0.75.46"></script>
-    <script src="js/api.js?v=0.75.46"></script>
-    <script src="js/ui.js?v=0.75.46"></script>
-    <script src="js/auth.js?v=0.75.46"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.46"></script>
-    <script src="js/timeline.js?v=0.75.46"></script>
-    <script src="js/booking.js?v=0.75.46"></script>
-    <script src="js/settings.js?v=0.75.46"></script>
-    <script src="js/booking-form.js?v=0.75.46"></script>
-    <script src="js/booking-linked.js?v=0.75.46"></script>
-    <script src="js/settings-dashboard.js?v=0.75.46"></script>
-    <script src="js/settings-history.js?v=0.75.46"></script>
-    <script src="js/settings-afisha.js?v=0.75.46"></script>
-    <script src="js/settings-certificates.js?v=0.75.46"></script>
-    <script src="js/offline.js?v=0.75.46"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.46"></script>
-    <script src="js/search.js?v=0.75.46"></script>
-    <script src="js/ws.js?v=0.75.46"></script>
-    <script src="js/app.js?v=0.75.46"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.46"></script>
-    <script src="js/components/sidebar.js?v=0.75.46"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.46"></script>
+    <script src="js/timeline-context.js?v=0.75.47"></script>
+    <script src="js/timeline-visibility.js?v=0.75.47"></script>
+    <script src="js/kitchen-menu-images.js?v=0.75.47"></script>
+    <script src="js/config.js?v=0.75.47"></script>
+    <script src="js/api.js?v=0.75.47"></script>
+    <script src="js/ui.js?v=0.75.47"></script>
+    <script src="js/auth.js?v=0.75.47"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.47"></script>
+    <script src="js/timeline.js?v=0.75.47"></script>
+    <script src="js/booking.js?v=0.75.47"></script>
+    <script src="js/settings.js?v=0.75.47"></script>
+    <script src="js/booking-form.js?v=0.75.47"></script>
+    <script src="js/booking-linked.js?v=0.75.47"></script>
+    <script src="js/settings-dashboard.js?v=0.75.47"></script>
+    <script src="js/settings-history.js?v=0.75.47"></script>
+    <script src="js/settings-afisha.js?v=0.75.47"></script>
+    <script src="js/settings-certificates.js?v=0.75.47"></script>
+    <script src="js/offline.js?v=0.75.47"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.47"></script>
+    <script src="js/search.js?v=0.75.47"></script>
+    <script src="js/ws.js?v=0.75.47"></script>
+    <script src="js/app.js?v=0.75.47"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.47"></script>
+    <script src="js/components/sidebar.js?v=0.75.47"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.47"></script>
 </body>
 </html>

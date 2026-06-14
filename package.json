@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.53",
+  "version": "0.75.54",
   "eventGenix": {
-    "releaseLabel": "Maysternya Booking Reliability"
+    "releaseLabel": "Sidebar Productivity Controls"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

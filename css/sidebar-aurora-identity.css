@@ -1382,22 +1382,32 @@ body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
   background: rgba(20,184,166,0.10) !important;
 }
 
-/* v0.75.47: productivity quick block sits under Favorites and opens Profile -> My Day. */
+/* v0.75.54: productivity quick block uses the same collapsible/settings shell as Favorites. */
 .sidebar-nav:not(.collapsed) .sidebar-productivity-quick {
   margin-top: -4px;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-productivity-quick .sidebar-productivity-head-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 7px;
+  align-items: center;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-productivity-quick .sidebar-productivity-head {
-  cursor: default;
+  cursor: pointer;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-productivity-quick .sidebar-productivity-list {
   display: grid;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-productivity-quick .sidebar-productivity-list[hidden] {
+  display: none;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-productivity-quick .sidebar-productivity-editor {
+  margin-top: 8px;
 }
 
 body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-design-extras-head {

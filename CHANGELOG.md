@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.54 - Sidebar Productivity Controls
+
+### Sidebar / Productivity / Quick access / Release / (Клешня, 14.06.2026) [codex]
+- **`Продуктивність` стала повноцінною секцією як `Обране`** - блок отримав той самий header shell із кнопкою згортання, chevron-станом і окремою gear-кнопкою налаштувань.
+- **Стан секції зберігається окремо** - розгорнуто/згорнуто, відкритий editor і вибрані productivity shortcuts живуть у власних localStorage ключах та не чіпають користувацьке `Обране`.
+- **Налаштування продуктивності отримали checkbox-редактор** - через gear можна вибрати `Мій день`, `Мої задачі`, `Сьогодні`, `Очікування` і `Досягнення`; дефолтом лишається `Мій день`.
+- **Візуальний контракт вирівняно з `Обране`** - `Продуктивність` використовує ті самі розміри, відступи, gear hover/spin, hidden-list поведінку і sidebar editor controls.
+- **Regression guard оновлено** - UI smoke тепер перевіряє storage keys, collapse/settings data-атрибути, editor renderer і CSS `[hidden]` guard для productivity list.
+- **DB/API/env/deploy config не змінювались** - без міграцій, ролей, auth, webhook, secrets, Railway config або нових залежностей; це frontend/sidebar release.
+
+---
+
 ## v0.75.53 - Maysternya Booking Reliability
 
 ### Leads / Maysternya / Booking webhook / Reliability / Release / (Клешня, 14.06.2026) [codex]

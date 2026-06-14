@@ -28,9 +28,17 @@ const Sidebar = (() => {
     const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v3';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
+    const PRODUCTIVITY_MENU_STORAGE_KEY = 'eg_sidebar_productivity_menu_items_v1';
+    const PRODUCTIVITY_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_productivity_menu_edit_v1';
+    const PRODUCTIVITY_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_productivity_menu_collapsed_v1';
     const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
+    const PRODUCTIVITY_QUICK_DEFAULT_HREFS = ['/profile?tab=myday'];
     const PRODUCTIVITY_QUICK_ITEMS = Object.freeze([
-        { href: '/profile?tab=myday', icon: 'task', label: 'Мій день', description: 'особистий фокус' }
+        { href: '/profile?tab=myday', icon: 'task', label: 'Мій день', description: 'особистий фокус' },
+        { href: '/tasks?view=my', icon: 'task', label: 'Мої задачі', description: 'повний список', access: 'tasks', businessModule: 'tasks' },
+        { href: '/tasks?view=today', icon: 'calendar', label: 'Сьогодні', description: 'план на день', access: 'tasks', businessModule: 'tasks' },
+        { href: '/tasks?view=waiting', icon: 'alert', label: 'Очікування', description: 'завислі задачі', access: 'tasks', businessModule: 'tasks' },
+        { href: '/profile?tab=achievements', icon: 'analytics', label: 'Досягнення', description: 'прогрес і нагороди' }
     ]);
     const UTILITY_RAIL_PRIMARY_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const UTILITY_RAIL_CONTEXT_GROUPS = ['sales', 'product', 'team', 'system'];
@@ -673,6 +681,67 @@ const Sidebar = (() => {
             .filter(item => item && (includeHidden || !item.hidden));
     }
 
+    function _getSelectableProductivityItems(role) {
+        const user = _getCurrentSidebarUser();
+        return PRODUCTIVITY_QUICK_ITEMS
+            .filter(item => {
+                if (item.access && role && !hasAccess(item, role)) return false;
+                if (!_businessAllowsSidebarItem(item, user)) return false;
+                if (!_isNavItemVisible(item, user, role)) return false;
+                return true;
+            })
+            .map(item => ({
+                ...item,
+                href: _normalizeExtraHref(item.href),
+                custom: true
+            }))
+            .filter(item => item.href);
+    }
+
+    function _hasSavedProductivitySelection() {
+        try {
+            return localStorage.getItem(PRODUCTIVITY_MENU_STORAGE_KEY) !== null;
+        } catch {
+            return false;
+        }
+    }
+
+    function _getSavedProductivityHrefs() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(PRODUCTIVITY_MENU_STORAGE_KEY) || '[]');
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(_normalizeExtraHref).filter(Boolean);
+        } catch {
+            return [];
+        }
+    }
+
+    function _saveProductivitySelection(hrefs, role) {
+        const available = new Set(_getSelectableProductivityItems(role).map(item => item.href));
+        const selected = (Array.isArray(hrefs) ? hrefs : [])
+            .map(_normalizeExtraHref)
+            .filter(href => href && available.has(href));
+        try {
+            localStorage.setItem(PRODUCTIVITY_MENU_STORAGE_KEY, JSON.stringify(selected));
+        } catch {}
+        return selected;
+    }
+
+    function _getSelectedProductivityHrefs(role) {
+        const saved = _hasSavedProductivitySelection()
+            ? _getSavedProductivityHrefs()
+            : PRODUCTIVITY_QUICK_DEFAULT_HREFS.slice();
+        const available = new Set(_getSelectableProductivityItems(role).map(item => item.href));
+        return saved.map(_normalizeExtraHref).filter(href => href && available.has(href));
+    }
+
+    function _getProductivityItems(role) {
+        const byHref = new Map(_getSelectableProductivityItems(role).map(item => [item.href, item]));
+        return _getSelectedProductivityHrefs(role)
+            .map(href => byHref.get(href))
+            .filter(Boolean);
+    }
+
     function _railKeyForItem(item) {
         return `${_normalizeExtraHref(item?.href || '')}|${item?.action || ''}`;
     }
@@ -807,6 +876,34 @@ const Sidebar = (() => {
         } catch {}
     }
 
+    function _isProductivityEditorOpen() {
+        try {
+            return localStorage.getItem(PRODUCTIVITY_MENU_EDIT_STORAGE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    }
+
+    function _setProductivityEditorOpen(open) {
+        try {
+            localStorage.setItem(PRODUCTIVITY_MENU_EDIT_STORAGE_KEY, open ? 'true' : 'false');
+        } catch {}
+    }
+
+    function _isProductivityCollapsed() {
+        try {
+            return localStorage.getItem(PRODUCTIVITY_MENU_COLLAPSED_STORAGE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    }
+
+    function _setProductivityCollapsed(collapsed) {
+        try {
+            localStorage.setItem(PRODUCTIVITY_MENU_COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
+        } catch {}
+    }
+
     function _isSidebarCurrencySignalEnabled() {
         try {
             return localStorage.getItem(SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY) !== 'false';
@@ -898,22 +995,142 @@ const Sidebar = (() => {
         </a>`;
     }
 
-    function _renderProductivityQuickBlock(currentPath, currentHash) {
-        const quickLinks = PRODUCTIVITY_QUICK_ITEMS
+    function _renderProductivityEditor(selectableItems, selectedHrefs) {
+        const selected = new Set(selectedHrefs);
+        const selectedCount = selectableItems.filter(item => selected.has(item.href)).length;
+        const pickerHtml = selectableItems.length ? selectableItems.map(item => {
+            const checked = selected.has(item.href);
+            const meta = item.description || item.href;
+            const searchText = `${item.label || ''} ${meta || ''} ${item.href || ''}`.toLowerCase();
+            return `<label class="sidebar-extra-check" data-sidebar-productivity-row data-sidebar-productivity-search-text="${_escAttr(searchText)}">
+                <input type="checkbox" data-sidebar-productivity-page value="${_escAttr(item.href)}"${checked ? ' checked' : ''}>
+                <span class="sidebar-extra-checkmark" aria-hidden="true"></span>
+                <span class="sidebar-extra-check-copy">
+                    <b>${_escAttr(item.label)}</b>
+                    <small>${_escAttr(meta)}</small>
+                </span>
+            </label>`;
+        }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних productivity-сторінок.</div>';
+        return `<div class="sidebar-extra-editor sidebar-productivity-editor" data-sidebar-productivity-editor>
+            <div class="sidebar-extra-editor-title">
+                <span>Сторінки продуктивності</span>
+                <small data-sidebar-productivity-count>${selectedCount} вибрано</small>
+            </div>
+            <div class="sidebar-extra-editor-tools">
+                <input type="search" class="sidebar-extra-search" data-sidebar-productivity-search placeholder="Знайти productivity-сторінку..." aria-label="Знайти сторінку продуктивності">
+            </div>
+            <div class="sidebar-extra-picker" data-sidebar-productivity-picker>
+                ${pickerHtml}
+            </div>
+            <div class="sidebar-extra-form-actions">
+                <button type="button" class="sidebar-extra-save" data-sidebar-productivity-save>Зберегти</button>
+            </div>
+        </div>`;
+    }
+
+    function _renderProductivityQuickBlock(currentPath, currentHash, options = {}) {
+        const items = Array.isArray(options.items) ? options.items : [];
+        const quickLinks = items
             .map(item => _renderExtraMenuLink(item, currentPath, currentHash))
             .join('');
+        const listHidden = Boolean(options.listHidden);
+        const editorOpen = Boolean(options.editorOpen);
+        const selectedHrefs = Array.isArray(options.selectedHrefs) ? options.selectedHrefs : [];
+        const selectableItems = Array.isArray(options.selectableItems) ? options.selectableItems : [];
         return `
-            <div class="sidebar-productivity-head-row">
-                <div class="sidebar-design-extras-head sidebar-productivity-head" role="heading" aria-level="2">
+            <div class="sidebar-design-extras-head-row sidebar-productivity-head-row">
+                <button type="button" class="sidebar-design-extras-head sidebar-productivity-head" data-sidebar-productivity-toggle-section aria-expanded="${listHidden ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span class="sidebar-design-extras-copy">
                         <span class="sidebar-design-extras-title">Продуктивність</span>
                     </span>
-                </div>
+                    <span class="sidebar-design-extras-chevron" aria-hidden="true">${listHidden ? '⌄' : '⌃'}</span>
+                </button>
+                <button type="button" class="sidebar-design-extras-manage" data-sidebar-productivity-toggle-editor aria-expanded="${editorOpen ? 'true' : 'false'}" aria-label="${editorOpen ? 'Завершити налаштування продуктивності' : 'Налаштувати продуктивність'}" title="${editorOpen ? 'Готово' : 'Налаштувати продуктивність'}">
+                    <span class="sidebar-design-extras-gear" aria-hidden="true">⚙</span>
+                    <span class="sidebar-design-extras-manage-text">${editorOpen ? 'Готово' : 'Редагувати'}</span>
+                </button>
             </div>
-            <div class="sidebar-design-extra-list sidebar-productivity-list">
-                ${quickLinks}
-            </div>`;
+            <div class="sidebar-design-extra-list sidebar-productivity-list"${listHidden ? ' hidden' : ''}>
+                ${quickLinks || '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і додай потрібні входи.</div>'}
+            </div>
+            ${editorOpen ? _renderProductivityEditor(selectableItems, selectedHrefs) : ''}`;
+    }
+
+    function _updateProductivityEditorCount(productivity) {
+        const count = productivity?.querySelectorAll('[data-sidebar-productivity-page]:checked').length || 0;
+        const counter = productivity?.querySelector('[data-sidebar-productivity-count]');
+        if (counter) counter.textContent = `${count} вибрано`;
+    }
+
+    function _applyProductivityEditorFilter(productivity) {
+        const query = String(productivity?.querySelector('[data-sidebar-productivity-search]')?.value || '').trim().toLowerCase();
+        productivity?.querySelectorAll('[data-sidebar-productivity-row]').forEach(row => {
+            const haystack = row.dataset.sidebarProductivitySearchText || '';
+            row.hidden = Boolean(query && !haystack.includes(query));
+        });
+    }
+
+    function _bindProductivityQuickBlock(productivity) {
+        if (!productivity) return;
+        const sectionToggle = productivity.querySelector('[data-sidebar-productivity-toggle-section]');
+        if (sectionToggle && sectionToggle.dataset.sidebarProductivitySectionBound !== 'true') {
+            sectionToggle.dataset.sidebarProductivitySectionBound = 'true';
+            sectionToggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const editorWasOpen = _isProductivityEditorOpen();
+                if (editorWasOpen) {
+                    _setProductivityEditorOpen(false);
+                    _setProductivityCollapsed(false);
+                } else {
+                    const nextCollapsed = !productivity.classList.contains('is-collapsed');
+                    _setProductivityCollapsed(nextCollapsed);
+                }
+                _ensureCommandDeck();
+            });
+        }
+
+        const toggle = productivity.querySelector('[data-sidebar-productivity-toggle-editor]');
+        if (toggle && toggle.dataset.sidebarProductivityToggleBound !== 'true') {
+            toggle.dataset.sidebarProductivityToggleBound = 'true';
+            toggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const nextOpen = !_isProductivityEditorOpen();
+                _setProductivityEditorOpen(nextOpen);
+                _setProductivityCollapsed(true);
+                _ensureCommandDeck();
+            });
+        }
+
+        const savedUser = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(savedUser);
+        const getCheckedHrefs = () => [...productivity.querySelectorAll('[data-sidebar-productivity-page]:checked')].map(input => input.value);
+        const saveCurrentCheckboxes = () => {
+            _saveProductivitySelection(getCheckedHrefs(), role);
+            _setProductivityEditorOpen(false);
+            _setProductivityCollapsed(true);
+            _ensureCommandDeck();
+        };
+
+        const search = productivity.querySelector('[data-sidebar-productivity-search]');
+        if (search && search.dataset.sidebarProductivitySearchBound !== 'true') {
+            search.dataset.sidebarProductivitySearchBound = 'true';
+            search.addEventListener('input', () => _applyProductivityEditorFilter(productivity));
+        }
+
+        productivity.querySelectorAll('[data-sidebar-productivity-page]').forEach((input) => {
+            if (input.dataset.sidebarProductivityPageBound === 'true') return;
+            input.dataset.sidebarProductivityPageBound = 'true';
+            input.addEventListener('change', () => _updateProductivityEditorCount(productivity));
+        });
+
+        const save = productivity.querySelector('[data-sidebar-productivity-save]');
+        if (save && save.dataset.sidebarProductivitySaveBound !== 'true') {
+            save.dataset.sidebarProductivitySaveBound = 'true';
+            save.addEventListener('click', saveCurrentCheckboxes);
+        }
     }
 
     function _renderExtraMenuEditor(selectableItems, selectedHrefs) {
@@ -2034,12 +2251,25 @@ const Sidebar = (() => {
             productivity = document.createElement('div');
             productivity.id = 'sidebarProductivityQuick';
         }
-        productivity.className = 'sidebar-design-extras sidebar-productivity-quick';
-        productivity.innerHTML = _renderProductivityQuickBlock(currentPath, currentHash);
+        const productivityItems = _getProductivityItems(role);
+        const selectableProductivityItems = _getSelectableProductivityItems(role);
+        const selectedProductivityHrefs = _getSelectedProductivityHrefs(role);
+        const productivityEditorOpen = _isProductivityEditorOpen();
+        const productivityCollapsed = _isProductivityCollapsed();
+        const productivityListHidden = productivityEditorOpen || productivityCollapsed;
+        productivity.className = `sidebar-design-extras sidebar-productivity-quick${productivityEditorOpen ? ' is-editing' : ''}${productivityCollapsed && !productivityEditorOpen ? ' is-collapsed' : ''}`;
+        productivity.innerHTML = _renderProductivityQuickBlock(currentPath, currentHash, {
+            items: productivityItems,
+            selectableItems: selectableProductivityItems,
+            selectedHrefs: selectedProductivityHrefs,
+            editorOpen: productivityEditorOpen,
+            listHidden: productivityListHidden
+        });
         if (productivity.parentElement !== sidebar) sidebar.insertBefore(productivity, links);
 
         _syncSidebarSectionOrder(sidebar, links);
         _bindExtraMenuEditor(extras);
+        _bindProductivityQuickBlock(productivity);
 
         const alertsChip = document.getElementById('focusChipAlerts');
         if (alertsChip && alertsChip.dataset.alertsBound !== 'true') {

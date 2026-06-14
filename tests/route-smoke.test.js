@@ -927,6 +927,31 @@ function createFakePool() {
                     }))
                 };
             }
+            if (/INSERT INTO leads/i.test(text) && /booking_id/i.test(text) && params[1] === 'Lead Side Effect Fails') {
+                throw new Error('synthetic lead handoff failure');
+            }
+            if (/INSERT INTO leads/i.test(text) && /booking_id/i.test(text) && /raw_payload/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 602,
+                        business_context: params[0] || 'event_genix',
+                        client_name: params[1],
+                        phone: params[2],
+                        telegram_id: params[3],
+                        instagram: params[4],
+                        source: params[5],
+                        source_channel: params[6],
+                        external_id: params[7],
+                        event_date: params[9],
+                        notes: params[11],
+                        raw_payload: JSON.parse(params[12] || '{}'),
+                        status: params[13],
+                        pipeline_stage: params[14],
+                        booking_id: params[15],
+                        created_at: new Date('2026-05-11T00:00:00Z').toISOString()
+                    }]
+                };
+            }
             if (/INSERT INTO leads/i.test(text) && /source_channel/i.test(text) && /raw_payload/i.test(text)) {
                 return {
                     rows: [{
@@ -947,9 +972,6 @@ function createFakePool() {
                         created_at: new Date('2026-05-11T00:00:00Z').toISOString()
                     }]
                 };
-            }
-            if (/INSERT INTO leads/i.test(text) && /booking_id/i.test(text) && params[1] === 'Lead Side Effect Fails') {
-                throw new Error('synthetic lead handoff failure');
             }
             if (/INSERT INTO leads/i.test(text)) {
                 return {
@@ -1814,7 +1836,10 @@ describe('route-level API safety smoke', () => {
             price: 1800,
             customer: {
                 name: 'Марія Тест',
-                phone: '+380501112233'
+                phone: '+380501112233',
+                email: 'maria@example.com',
+                whatsapp: '+380501112244',
+                contactChannels: ['telegram', 'whatsapp', 'email']
             },
             telegram: {
                 id: '123456789',
@@ -1845,7 +1870,20 @@ describe('route-level API safety smoke', () => {
         assert.equal(extraData.externalId, 'md-booking-1');
 
         assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone/i.test(q.text)));
-        assert.ok(queries.some(q => /INSERT INTO leads/i.test(q.text) && /source_channel/i.test(q.text)));
+        const leadInsert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /booking_id/i.test(q.text) && /raw_payload/i.test(q.text));
+        assert.ok(leadInsert);
+        assert.equal(leadInsert.params[3], '123456789');
+        assert.equal(leadInsert.params[5], 'maysternya_bot');
+        assert.equal(leadInsert.params[6], 'maysternya_bot');
+        assert.equal(leadInsert.params[7], 'md-booking-1');
+        const leadRawPayload = JSON.parse(leadInsert.params[12]);
+        assert.equal(leadRawPayload.email, 'maria@example.com');
+        assert.equal(leadRawPayload.whatsapp, '+380501112244');
+        assert.ok(leadRawPayload.contact_channels.includes('telegram'));
+        assert.ok(leadRawPayload.contact_channels.includes('whatsapp'));
+        assert.ok(leadRawPayload.contact_channels.includes('email'));
+        assert.equal(leadRawPayload.normalized.source_channel, 'maysternya_bot');
+        assert.equal(leadRawPayload.normalized.telegram_username, 'maria_test');
         assert.ok(queries.some(q => /INSERT INTO history \(business_context, action, username, data\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO outbox_events/i.test(q.text)));
     });

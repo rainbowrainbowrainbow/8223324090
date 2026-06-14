@@ -135,9 +135,92 @@ describe('lead booking link repair', () => {
         const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
         assert.ok(insert);
         assert.equal(insert.params[0], 'maysternya_doli');
-        assert.equal(insert.params[4], 'BK-2099-0101');
-        assert.equal(insert.params[9], 'booked');
-        assert.equal(insert.params[10], 'deposit_received');
+        assert.equal(insert.params[5], 'booking');
+        assert.equal(insert.params[6], 'booking');
+        assert.equal(insert.params[7], 'BK-2099-0101');
+        assert.equal(insert.params[13], 'booked');
+        assert.equal(insert.params[14], 'deposit_received');
+        assert.equal(insert.params[15], 'BK-2099-0101');
+    });
+
+    it('persists Maysternya bot booking contacts into lead metadata', async () => {
+        const queries = [];
+        const client = {
+            query: async (sql, params = []) => {
+                const text = String(sql).replace(/\s+/g, ' ').trim();
+                queries.push({ text, params });
+                if (/SELECT id FROM leads WHERE/i.test(text)) {
+                    return { rows: [], rowCount: 0 };
+                }
+                if (/INSERT INTO leads/i.test(text)) {
+                    return { rows: [{ id: 91 }], rowCount: 1 };
+                }
+                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                throw new Error(`Unexpected query: ${text}`);
+            }
+        };
+
+        const result = await ensureLeadForBooking(client, {
+            booking: {
+                id: 'BK-2099-0103',
+                externalId: 'telegram-booking-abc',
+                status: 'confirmed',
+                date: '2099-05-25',
+                time: '16:00',
+                programId: 'maysternya-paid-session',
+                programName: 'Paid consultation',
+                leadSource: 'maysternya_bot',
+                sourceChannel: 'maysternya_bot',
+                requestTopic: 'Natal chart',
+                sessionType: 'PAID_SESSION',
+                rawPayload: {
+                    external_id: 'telegram-booking-abc',
+                    customer: { email: 'client@example.com' }
+                },
+                customer: {
+                    name: 'Bot Client',
+                    phone: '+380501112233',
+                    instagram: '@bot_client',
+                    email: 'client@example.com',
+                    whatsapp: '+380501112244',
+                    telegramId: '123456789',
+                    telegramUsername: '@botclient',
+                    contactChannels: ['telegram', 'whatsapp', 'email']
+                }
+            },
+            customerId: 703,
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(result.attached, true);
+        assert.equal(result.created, true);
+        const lookup = queries.find(q => /SELECT id FROM leads WHERE/i.test(q.text));
+        assert.ok(lookup);
+        assert.equal(lookup.params[4], 'telegram-booking-abc');
+        assert.equal(lookup.params[5], 'maysternya_bot');
+        assert.equal(lookup.params[6], '123456789');
+
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
+        assert.ok(insert);
+        assert.match(insert.text, /telegram_id/i);
+        assert.match(insert.text, /raw_payload/i);
+        assert.equal(insert.params[0], 'maysternya_doli');
+        assert.equal(insert.params[3], '123456789');
+        assert.equal(insert.params[5], 'maysternya_bot');
+        assert.equal(insert.params[6], 'maysternya_bot');
+        assert.equal(insert.params[7], 'telegram-booking-abc');
+        assert.match(insert.params[11], /Telegram: @botclient \/ ID 123456789/);
+        assert.match(insert.params[11], /WhatsApp: \+380501112244/);
+        assert.match(insert.params[11], /Email: client@example\.com/);
+        const rawPayload = JSON.parse(insert.params[12]);
+        assert.equal(rawPayload.email, 'client@example.com');
+        assert.equal(rawPayload.whatsapp, '+380501112244');
+        assert.deepEqual(rawPayload.contact_channels.slice(0, 3), ['telegram', 'whatsapp', 'email']);
+        assert.equal(rawPayload.normalized.source_channel, 'maysternya_bot');
+        assert.equal(rawPayload.normalized.crm_booking_id, 'BK-2099-0103');
+        assert.equal(rawPayload.normalized.telegram_username, 'botclient');
     });
 
     it('reuses an existing scoped lead for booking CRM handoff', async () => {

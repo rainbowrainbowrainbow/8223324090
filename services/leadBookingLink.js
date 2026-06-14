@@ -72,6 +72,67 @@ function cleanText(value, maxLength = 500) {
   return text ? text.slice(0, maxLength) : null;
 }
 
+function parseJsonObject(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseTextList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => cleanText(item, 80)).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(item => cleanText(item, 80)).filter(Boolean);
+    } catch {}
+    return value.split(/[,;]+/).map(item => cleanText(item, 80)).filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeTelegramId(value) {
+  const text = cleanText(value, 20);
+  if (!text || !/^\d{1,19}$/.test(text)) return null;
+  try {
+    return BigInt(text) <= 9223372036854775807n ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+function compactObject(value) {
+  return Object.fromEntries(
+    Object.entries(value || {}).filter(([, item]) => {
+      if (item === undefined || item === null || item === '') return false;
+      if (Array.isArray(item)) return item.length > 0;
+      if (typeof item === 'object') return Object.keys(item).length > 0;
+      return true;
+    })
+  );
+}
+
+function uniqueTextList(values, limit = 12) {
+  const seen = new Set();
+  const items = [];
+  for (const value of values.flatMap(parseTextList)) {
+    const normalized = cleanText(value, 80);
+    const key = normalized ? normalized.toLowerCase() : '';
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(normalized);
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
 function bookingLeadStage(booking) {
   return String(booking?.status || '').toLowerCase() === 'preliminary'
     ? 'waiting'
@@ -85,17 +146,34 @@ function bookingLeadStatus(stage) {
 function bookingLeadClientName(booking) {
   return cleanText(
     booking?.customer?.name
+    || booking?.customer?.fullName
+    || booking?.customer?.full_name
     || booking?.customerName
     || booking?.groupName
     || booking?.label
+    || booking?.customer?.telegramUsername
+    || booking?.customer?.telegram_username
+    || booking?.telegramUsername
+    || booking?.telegram_username
+    || booking?.customer?.phone
+    || booking?.customer?.whatsapp
     || booking?.programName
     || 'Клієнт',
     200
   );
 }
 
-function bookingLeadNotes(booking) {
+function bookingLeadNotes(booking, meta = {}) {
   const parts = [
+    booking?.id ? `Booking ID: ${booking.id}` : null,
+    meta.requestTopic ? `Topic: ${meta.requestTopic}` : null,
+    meta.sessionType ? `Session: ${meta.sessionType}` : null,
+    meta.telegramUsername || meta.telegramId
+      ? `Telegram: ${[meta.telegramUsername ? `@${meta.telegramUsername}` : null, meta.telegramId ? `ID ${meta.telegramId}` : null].filter(Boolean).join(' / ')}`
+      : null,
+    meta.whatsapp ? `WhatsApp: ${meta.whatsapp}` : null,
+    meta.email ? `Email: ${meta.email}` : null,
+    meta.contactChannels?.length ? `Contact channels: ${meta.contactChannels.join(', ')}` : null,
     booking?.programName || booking?.programCode || booking?.label
       ? `Бронювання: ${booking.programName || booking.programCode || booking.label}`
       : null,
@@ -104,6 +182,131 @@ function bookingLeadNotes(booking) {
     booking?.notes ? `Нотатки: ${booking.notes}` : null,
   ].filter(Boolean);
   return cleanText(parts.join('\n'), 1500);
+}
+
+function bookingLeadSource(booking) {
+  return cleanText(booking?.leadSource || booking?.lead_source, 50) || 'booking';
+}
+
+function bookingLeadSourceChannel(booking, source) {
+  return cleanText(
+    booking?.sourceChannel
+    || booking?.source_channel
+    || booking?.leadSourceChannel
+    || booking?.lead_source_channel,
+    50
+  ) || source || 'booking';
+}
+
+function bookingLeadExternalId(booking, bookingId) {
+  return cleanText(
+    booking?.externalId
+    || booking?.external_id
+    || booking?.leadExternalId
+    || booking?.lead_external_id
+    || bookingId,
+    200
+  );
+}
+
+function bookingLeadContactMeta(booking, customer, { phone, instagram }) {
+  const telegramId = normalizeTelegramId(
+    customer.telegramId
+    || customer.telegram_id
+    || booking?.telegramId
+    || booking?.telegram_id
+    || booking?.telegram?.id
+  );
+  const telegramUsername = cleanText(
+    customer.telegramUsername
+    || customer.telegram_username
+    || booking?.telegramUsername
+    || booking?.telegram_username
+    || booking?.telegram?.username,
+    100
+  );
+  const whatsapp = cleanText(customer.whatsapp || customer.whatsapp_phone || booking?.whatsapp || booking?.whatsapp_phone, 50);
+  const email = cleanText(customer.email || customer.contact_email || booking?.email || booking?.contact_email, 200);
+  const requestTopic = cleanText(
+    booking?.requestTopic
+    || booking?.request_topic
+    || customer.requestTopic
+    || customer.request_topic,
+    200
+  );
+  const sessionType = cleanText(
+    booking?.sessionType
+    || booking?.session_type
+    || customer.sessionType
+    || customer.session_type,
+    120
+  );
+  const contactChannels = uniqueTextList([
+    customer.contactChannels,
+    customer.contact_channels,
+    booking?.contactChannels,
+    booking?.contact_channels,
+    telegramId || telegramUsername ? ['telegram'] : [],
+    whatsapp ? ['whatsapp'] : [],
+    phone ? ['phone'] : [],
+    instagram ? ['instagram'] : [],
+    email ? ['email'] : []
+  ]);
+  return {
+    telegramId,
+    telegramUsername: telegramUsername ? telegramUsername.replace(/^@+/, '') : null,
+    whatsapp,
+    email,
+    requestTopic,
+    sessionType,
+    contactChannels,
+    message: cleanText(customer.message || booking?.message || booking?.notes, 1000)
+  };
+}
+
+function bookingLeadRawPayload(booking, meta) {
+  const customer = booking?.customer || {};
+  const original = parseJsonObject(booking?.rawPayload || booking?.raw_payload || customer.rawPayload || customer.raw_payload);
+  const originalNormalized = parseJsonObject(original.normalized);
+  const topLevel = compactObject({
+    external_id: meta.externalId,
+    booking_id: meta.bookingId,
+    bookingId: meta.bookingId,
+    phone: meta.phone,
+    instagram: meta.instagram,
+    telegram_id: meta.telegramId,
+    telegram_username: meta.telegramUsername,
+    whatsapp: meta.whatsapp,
+    email: meta.email,
+    contact_channels: meta.contactChannels,
+    request_topic: meta.requestTopic,
+    session_type: meta.sessionType,
+    message: meta.message,
+    booking_date: booking?.date || null,
+    booking_time: booking?.time || null
+  });
+  const normalized = compactObject({
+    ...originalNormalized,
+    source_channel: meta.sourceChannel,
+    crm_booking_id: meta.bookingId,
+    external_id: meta.externalId,
+    telegram_id: meta.telegramId,
+    telegram_username: meta.telegramUsername,
+    whatsapp: meta.whatsapp,
+    contact_channels: meta.contactChannels,
+    request_topic: meta.requestTopic,
+    session_type: meta.sessionType,
+    booking_date: booking?.date || null,
+    booking_time: booking?.time || null
+  });
+  if (!Object.keys(original).length && !Object.keys(topLevel).length && !Object.keys(normalized).length) {
+    return null;
+  }
+  return compactObject({
+    ...original,
+    ...topLevel,
+    normalized
+  });
 }
 
 async function linkCustomerToLead(client, { leadId, customerId, businessContext }) {
@@ -125,22 +328,34 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
   const context = normalizeBusinessContext(businessContext);
   const bookingId = booking?.id ? String(booking.id) : '';
   const customer = booking?.customer || {};
-  const phone = cleanText(customer.phone || booking?.phone, 50);
+  const phone = cleanText(customer.phone || booking?.phone || customer.whatsapp || booking?.whatsapp, 50);
   const instagram = cleanText(customer.instagram || booking?.instagram, 100);
   const clientName = bookingLeadClientName(booking);
+  const source = bookingLeadSource(booking);
+  const sourceChannel = bookingLeadSourceChannel(booking, source);
+  const externalId = bookingLeadExternalId(booking, bookingId);
+  const contactMeta = bookingLeadContactMeta(booking, customer, { phone, instagram });
 
-  if (!bookingId || (!clientName && !phone && !instagram && !customerId)) {
+  if (!bookingId || (!clientName && !phone && !instagram && !contactMeta.telegramId && !contactMeta.telegramUsername && !contactMeta.whatsapp && !contactMeta.email && !customerId)) {
     return { attached: false, reason: 'missing_context' };
   }
 
   const stage = bookingLeadStage(booking);
   const status = bookingLeadStatus(stage);
   const programId = cleanText(booking?.programId || booking?.program_id, 50);
-  const notes = bookingLeadNotes(booking);
+  const notes = bookingLeadNotes(booking, contactMeta);
   const childrenCount = Number.parseInt(booking?.kidsCount || booking?.childrenCount || booking?.children_count, 10);
   const safeChildrenCount = Number.isInteger(childrenCount) && childrenCount >= 0 ? childrenCount : null;
+  const rawPayload = bookingLeadRawPayload(booking, {
+    ...contactMeta,
+    bookingId,
+    externalId,
+    sourceChannel,
+    phone,
+    instagram
+  });
+  const rawPayloadJson = rawPayload ? JSON.stringify(rawPayload) : null;
 
-  const lookupParams = [context, bookingId, phone, instagram].filter(value => value !== undefined);
   const lookup = await client.query(
     `SELECT id
      FROM leads
@@ -148,6 +363,12 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
        AND status NOT IN ('closed','lost')
        AND (
             booking_id = $2
+            OR (
+              $5::text IS NOT NULL
+              AND external_id = $5
+              AND COALESCE(source_channel, '') = $6
+            )
+            OR ($7::bigint IS NOT NULL AND telegram_id = $7::bigint)
             OR (
               booking_id IS NULL
               AND (
@@ -160,7 +381,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
        CASE WHEN booking_id = $2 THEN 0 ELSE 1 END,
        id DESC
      LIMIT 1`,
-    lookupParams
+    [context, bookingId, phone, instagram, externalId, sourceChannel, contactMeta.telegramId]
   );
 
   let leadId = parseLeadId(lookup.rows[0]?.id);
@@ -172,47 +393,67 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
        SET booking_id = COALESCE(booking_id, $1),
            client_name = COALESCE(NULLIF(client_name, ''), $2),
            phone = COALESCE(NULLIF(phone, ''), $3),
-           instagram = COALESCE(NULLIF(instagram, ''), $4),
-           program_id = COALESCE(program_id, $5),
-           event_date = COALESCE(event_date, $6::date),
-           children_count = COALESCE(children_count, $7),
-           source = COALESCE(NULLIF(source, ''), 'booking'),
-           source_channel = COALESCE(NULLIF(source_channel, ''), 'booking'),
+           telegram_id = COALESCE(telegram_id, $4::bigint),
+           instagram = COALESCE(NULLIF(instagram, ''), $5),
+           source = COALESCE(NULLIF(source, ''), $6),
+           source_channel = COALESCE(NULLIF(source_channel, ''), $7),
+           external_id = COALESCE(NULLIF(external_id, ''), $8),
+           program_id = COALESCE(program_id, $9),
+           event_date = COALESCE(event_date, $10::date),
+           children_count = COALESCE(children_count, $11),
            pipeline_stage = CASE
-             WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal') THEN $8
+             WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal') THEN $12
              ELSE pipeline_stage
            END,
            status = CASE
-             WHEN COALESCE(status, 'new') IN ('new','contact','proposal') THEN $9
+             WHEN COALESCE(status, 'new') IN ('new','contact','proposal') THEN $13
              ELSE status
            END,
            booked_at = COALESCE(booked_at, NOW()),
            notes = CASE
-             WHEN $10::text IS NULL OR $10::text = '' THEN notes
-             WHEN notes IS NULL OR notes = '' THEN $10
+             WHEN $14::text IS NULL OR $14::text = '' THEN notes
+             WHEN notes IS NULL OR notes = '' THEN $14
              WHEN POSITION($1 IN notes) > 0 THEN notes
-             ELSE notes || E'\n' || $10
+             ELSE notes || E'\n' || $14
+           END,
+           raw_payload = CASE
+             WHEN $15::jsonb IS NULL THEN raw_payload
+             ELSE COALESCE(raw_payload, '{}'::jsonb) || $15::jsonb
            END,
            updated_at = NOW()
-       WHERE id = $11
-         AND COALESCE(business_context, $12) = $12`,
-      [bookingId, clientName, phone, instagram, programId, booking?.date || null, safeChildrenCount,
-       stage, status, notes, leadId, context]
+       WHERE id = $16
+         AND COALESCE(business_context, $17) = $17`,
+      [bookingId, clientName, phone, contactMeta.telegramId, instagram, source, sourceChannel, externalId,
+       programId, booking?.date || null, safeChildrenCount, stage, status, notes, rawPayloadJson, leadId, context]
     );
   } else {
     const inserted = await client.query(
       `INSERT INTO leads
-         (business_context, client_name, phone, instagram, source, source_channel,
-          external_id, program_id, event_date, children_count, notes, status,
+         (business_context, client_name, phone, telegram_id, instagram, source, source_channel,
+          external_id, program_id, event_date, children_count, notes, raw_payload, status,
           pipeline_stage, booking_id, booked_at)
-       VALUES ($1,$2,$3,$4,'booking','booking',$5,$6,$7,$8,$9,$10,$11,$5,NOW())
+       VALUES ($1,$2,$3,$4::bigint,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,NOW())
        ON CONFLICT (business_context, source_channel, external_id)
          WHERE external_id IS NOT NULL DO UPDATE SET
-           booking_id = EXCLUDED.booking_id,
+           booking_id = COALESCE(leads.booking_id, EXCLUDED.booking_id),
+           client_name = COALESCE(NULLIF(leads.client_name, ''), EXCLUDED.client_name),
+           phone = COALESCE(NULLIF(leads.phone, ''), EXCLUDED.phone),
+           telegram_id = COALESCE(leads.telegram_id, EXCLUDED.telegram_id),
+           instagram = COALESCE(NULLIF(leads.instagram, ''), EXCLUDED.instagram),
+           program_id = COALESCE(leads.program_id, EXCLUDED.program_id),
+           event_date = COALESCE(leads.event_date, EXCLUDED.event_date),
+           children_count = COALESCE(leads.children_count, EXCLUDED.children_count),
+           notes = CASE
+             WHEN EXCLUDED.notes IS NULL OR EXCLUDED.notes = '' THEN leads.notes
+             WHEN leads.notes IS NULL OR leads.notes = '' THEN EXCLUDED.notes
+             WHEN POSITION(EXCLUDED.booking_id IN leads.notes) > 0 THEN leads.notes
+             ELSE leads.notes || E'\n' || EXCLUDED.notes
+           END,
+           raw_payload = COALESCE(leads.raw_payload, '{}'::jsonb) || COALESCE(EXCLUDED.raw_payload, '{}'::jsonb),
            updated_at = NOW()
        RETURNING id`,
-      [context, clientName, phone, instagram, bookingId, programId,
-       booking?.date || null, safeChildrenCount, notes, status, stage]
+      [context, clientName, phone, contactMeta.telegramId, instagram, source, sourceChannel, externalId,
+       programId, booking?.date || null, safeChildrenCount, notes, rawPayloadJson, status, stage, bookingId]
     );
     leadId = parseLeadId(inserted.rows[0]?.id);
     created = Boolean(leadId);

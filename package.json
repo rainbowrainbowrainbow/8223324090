@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.54",
+  "version": "0.75.55",
   "eventGenix": {
-    "releaseLabel": "Sidebar Productivity Controls"
+    "releaseLabel": "Maysternya Lead Contact Handoff"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

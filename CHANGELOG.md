@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.55 - Maysternya Lead Contact Handoff
+
+### Leads / Maysternya / Booking webhook / Contact capture / Release / (Клешня, 14.06.2026) [codex]
+- **Bot booking webhook тепер передає повний контакт клієнта в лід** - у handoff ідуть `phone`, `instagram`, `telegram_id`, Telegram username, WhatsApp, email і contact channels.
+- **Лід Майстерні отримує правильне джерело** - booking handoff створює/оновлює запис із `source_channel=maysternya_bot` та `external_id` з payload бота, а не як безликий `booking`.
+- **Raw metadata більше не губиться** - `raw_payload` ліда зберігає original payload, normalized booking id, дату/час, тему, тип сесії, telegram/whatsapp/email і список каналів контакту.
+- **Повторні бронювання краще склеюються з існуючим лідом** - пошук тепер враховує `booking_id`, scoped `external_id`, телефон, Instagram і `telegram_id`.
+- **Некоректний contact value не кладеться в phone** - email або username із вкладеного `contact.value` не перетворюються на телефон клієнта.
+- **Regression guard додано** - unit і route-smoke тести перевіряють Maysternya booking lead insert, `raw_payload`, source channel і contact metadata.
+- **DB/env config не змінювались** - без міграцій, нових секретів, Railway variables або залежностей; використано існуючі колонки `leads`.
+
+---
+
 ## v0.75.54 - Sidebar Productivity Controls
 
 ### Sidebar / Productivity / Quick access / Release / (Клешня, 14.06.2026) [codex]

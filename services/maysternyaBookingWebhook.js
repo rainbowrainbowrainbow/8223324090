@@ -57,6 +57,16 @@ function cleanDateOnly(value) {
   return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
+function cleanPhoneLike(value, maxLength = 50) {
+  const text = cleanText(value, maxLength);
+  return text && /\d{5,}/.test(text.replace(/[^\d]/g, '')) ? text : null;
+}
+
+function cleanEmailLike(value, maxLength = 200) {
+  const text = cleanText(value, maxLength);
+  return text && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? text : null;
+}
+
 function parseJsonObject(value) {
   if (!value) return {};
   if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -67,6 +77,34 @@ function parseJsonObject(value) {
   } catch {
     return {};
   }
+}
+
+function parseTextList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => cleanText(item, 80)).filter(Boolean).slice(0, 12);
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(item => cleanText(item, 80)).filter(Boolean).slice(0, 12);
+    } catch {}
+    return value.split(/[,;]+/).map(item => cleanText(item, 80)).filter(Boolean).slice(0, 12);
+  }
+  return [];
+}
+
+function uniqueTextList(values, limit = 12) {
+  const seen = new Set();
+  const items = [];
+  for (const value of values.flatMap(parseTextList)) {
+    const text = cleanText(value, 80);
+    const key = text ? text.toLowerCase() : '';
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(text);
+    if (items.length >= limit) break;
+  }
+  return items;
 }
 
 function parsePositiveNumber(value, fallback = null) {
@@ -115,8 +153,11 @@ function normalizeMaysternyaBookingPayload(body = {}) {
   const customer = parseJsonObject(
     body.customer || body.client || payload.customer || payload.client || booking.customer || booking.client
   );
+  const contact = parseJsonObject(
+    body.contact || payload.contact || customer.contact || booking.contact
+  );
   const telegram = parseJsonObject(
-    body.telegram || payload.telegram || customer.telegram || booking.telegram
+    body.telegram || payload.telegram || customer.telegram || contact.telegram || booking.telegram
   );
   const program = parseJsonObject(
     body.program || body.service || payload.program || payload.service || booking.program || booking.service
@@ -234,6 +275,79 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     customer.telegramUsername,
     telegram.username
   );
+  const contactValue = firstClean(contact.value, contact.contact_value, contact.contactValue);
+  const contactValuePhone = cleanPhoneLike(contactValue, 30);
+  const contactValueEmail = cleanEmailLike(contactValue, 200);
+  const customerPhone = firstCleanMax(30,
+    body.phone,
+    body.phone_number,
+    body.phoneNumber,
+    payload.phone,
+    payload.phone_number,
+    payload.phoneNumber,
+    customer.phone,
+    customer.phone_number,
+    customer.phoneNumber,
+    contact.phone,
+    contact.phone_number,
+    contact.phoneNumber,
+    contactValuePhone
+  );
+  const customerEmail = firstCleanMax(200,
+    body.email,
+    body.contact_email,
+    body.contactEmail,
+    payload.email,
+    payload.contact_email,
+    payload.contactEmail,
+    customer.email,
+    customer.contact_email,
+    customer.contactEmail,
+    contact.email,
+    contact.contact_email,
+    contact.contactEmail,
+    contactValueEmail
+  );
+  const customerWhatsapp = firstCleanMax(50,
+    body.whatsapp,
+    body.whatsapp_phone,
+    body.whatsappPhone,
+    payload.whatsapp,
+    payload.whatsapp_phone,
+    payload.whatsappPhone,
+    customer.whatsapp,
+    customer.whatsapp_phone,
+    customer.whatsappPhone,
+    contact.whatsapp,
+    contact.whatsapp_phone,
+    contact.whatsappPhone
+  );
+  const contactPreference = firstCleanMax(50,
+    body.contact_preference,
+    body.contactPreference,
+    payload.contact_preference,
+    payload.contactPreference,
+    customer.contact_preference,
+    customer.contactPreference,
+    contact.preference,
+    contact.channel,
+    contact.type
+  );
+  const contactChannels = uniqueTextList([
+    body.contact_channels,
+    body.contactChannels,
+    payload.contact_channels,
+    payload.contactChannels,
+    customer.contact_channels,
+    customer.contactChannels,
+    contact.channels,
+    contact.channel ? [contact.channel] : [],
+    telegramId || telegramUsername ? ['telegram'] : [],
+    customerWhatsapp ? ['whatsapp'] : [],
+    customerPhone ? ['phone'] : [],
+    customerEmail ? ['email'] : [],
+    body.instagram || payload.instagram || customer.instagram ? ['instagram'] : []
+  ]);
 
   return {
     externalId,
@@ -248,6 +362,8 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     programId,
     programCode,
     programName,
+    requestTopic: firstCleanMax(200, body.request_topic, body.requestTopic, payload.request_topic, payload.requestTopic, booking.request_topic, booking.requestTopic, program.request_topic, program.requestTopic, programName),
+    sessionType: firstCleanMax(120, body.session_type, body.sessionType, payload.session_type, payload.sessionType, booking.session_type, booking.sessionType, program.session_type, program.sessionType, program.category, programCode, programName),
     category: firstCleanMax(50, body.category, payload.category, booking.category, program.category) || 'maysternya',
     price: parsePositiveNumber(firstClean(body.price, body.amount, payload.price, payload.amount, booking.price, booking.amount, program.price), 0),
     room: firstCleanMax(100, body.room, payload.room, booking.room) || null,
@@ -259,8 +375,12 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     skipNotification: body.skipNotification ?? body.skip_notification ?? payload.skipNotification ?? payload.skip_notification ?? booking.skipNotification ?? booking.skip_notification ?? false,
     customer: {
       name: firstCleanMax(200, body.name, body.client_name, body.clientName, payload.name, payload.client_name, payload.clientName, customer.name, customer.full_name, customer.fullName),
-      phone: firstCleanMax(30, body.phone, payload.phone, customer.phone, customer.phone_number, customer.phoneNumber),
+      phone: customerPhone,
       instagram: firstCleanMax(100, body.instagram, payload.instagram, customer.instagram),
+      email: customerEmail,
+      whatsapp: customerWhatsapp,
+      contactPreference,
+      contactChannels,
       childName: firstCleanMax(200, body.childName, body.child_name, payload.childName, payload.child_name, customer.childName, customer.child_name),
       childBirthday: cleanDateOnly(firstClean(body.childBirthday, body.child_birthday, payload.childBirthday, payload.child_birthday, customer.childBirthday, customer.child_birthday)),
       source: MAYSTERNYA_BOT_SOURCE
@@ -622,15 +742,26 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
 
     const mappedForLead = {
       id,
+      externalId: booking.externalId,
       status: 'confirmed',
       date: booking.date,
       time: booking.time,
       programId,
       programName,
+      leadSource: MAYSTERNYA_BOT_SOURCE,
+      sourceChannel: MAYSTERNYA_BOT_SOURCE,
+      requestTopic: booking.requestTopic,
+      sessionType: booking.sessionType,
       kidsCount: booking.kidsCount,
       customer: booking.customer,
       phone: booking.customer.phone,
       instagram: booking.customer.instagram,
+      telegramId: booking.telegram.id,
+      telegramUsername: booking.telegram.username,
+      whatsapp: booking.customer.whatsapp,
+      email: booking.customer.email,
+      contactChannels: booking.customer.contactChannels,
+      rawPayload: booking.rawPayload,
       notes: booking.notes
     };
     await runOptionalMaysternyaBookingStep(client, 'Maysternya booking lead handoff', async () => {

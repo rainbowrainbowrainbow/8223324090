@@ -1086,8 +1086,8 @@ body.dark-mode .booking-banquet-unlink-btn {
 /* v5.18.1: Global now-line — one continuous semi-transparent line */
 .now-line-global {
     position: absolute;
-    top: 0;
-    bottom: 0;
+    top: var(--timeline-now-line-top, 0);
+    height: var(--timeline-now-line-height, 100%);
     width: 1.5px;
     background: rgba(239, 68, 68, 0.45);
     z-index: 15;

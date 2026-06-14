@@ -1754,15 +1754,29 @@ function renderNowLine() {
         ? timelineMinutesToPixels(nowMin - startMin, gridAnchor)
         : ((nowMin - startMin) / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
 
-    // v5.18.1: Single continuous semi-transparent line spanning entire timeline
+    // Single continuous line inside the actual timeline grid, not over the sticky time scale.
     const timelineScroll = document.getElementById('timelineScroll');
-    if (timelineScroll) {
+    const timelineLines = document.getElementById('timelineLines');
+    if (timelineScroll && timelineLines) {
         const globalLine = document.createElement('div');
         globalLine.className = 'now-line-global';
-        // Offset from left: 110px line-header margin + left within grid
+        const scrollRect = timelineScroll.getBoundingClientRect?.();
+        const gridRect = gridAnchor?.getBoundingClientRect?.();
+        const measuredLeft = scrollRect && gridRect
+            ? (gridRect.left - scrollRect.left + timelineScroll.scrollLeft + left)
+            : null;
+        const contentTop = timelineLines.offsetTop
+            || Math.max(0, (timelineLines.getBoundingClientRect?.().top || 0) - (scrollRect?.top || 0) + (timelineScroll.scrollTop || 0));
+        const contentHeight = Math.max(
+            timelineLines.scrollHeight || 0,
+            timelineLines.offsetHeight || 0,
+            timelineLines.getBoundingClientRect?.().height || 0
+        );
         const timeScale = document.getElementById('timeScale');
         const marginLeft = timeScale ? parseInt(getComputedStyle(timeScale).marginLeft) || 110 : 110;
-        globalLine.style.left = `${marginLeft + left}px`;
+        globalLine.style.left = `${Math.round(measuredLeft ?? (marginLeft + left))}px`;
+        globalLine.style.setProperty('--timeline-now-line-top', `${Math.round(contentTop)}px`);
+        globalLine.style.setProperty('--timeline-now-line-height', `${Math.round(contentHeight)}px`);
         timelineScroll.appendChild(globalLine);
     }
 }

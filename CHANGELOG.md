@@ -4,6 +4,16 @@
 
 ---
 
+## v0.75.45 - Timeline Now Line Polish
+
+### Timeline / Current time line / Room mode / Release / (Клешня, 14.06.2026) [codex]
+- **Лінія поточного часу тягнеться до низу всього timeline** - у режимі кімнат now-line рахує висоту від `timelineLines.scrollHeight`, тому не обривається посеред довгого списку кімнат.
+- **Лінія більше не вилізає над шкалою часу** - now-line стартує від реальних рядків timeline, а не від верху scroll-контейнера, тому зверху не видно зайвої червоної риски/маркера.
+- **Regression guard додано** - UI smoke фіксує measured `top/height` для now-line і не дає повернути старий `top: 0; bottom: 0` контракт.
+- **Дані бронювань не змінювались** - API, DB schema, міграції, env, deploy config і правила бронювань лишилися поза змінами.
+
+---
+
 ## v0.75.44 - Menu Catalog Laptop Density
 
 ### Booking drawer / Kitchen menu catalog / Laptop density / Release / (Клешня, 14.06.2026) [codex]

@@ -122,6 +122,133 @@ body.dark-mode.page-exiting::before {
     transform: none !important;
 }
 
+/* v0.75.45: Legacy assistant/layout block controls get one CRM-style interaction contract. */
+.crm-layout-control-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 100%;
+    margin: 0 0 8px;
+    padding: 4px;
+    border: 1px solid rgba(45, 212, 191, 0.18);
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.28);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    position: relative;
+    z-index: 60;
+}
+
+button.crm-layout-control-button {
+    appearance: none;
+    min-height: 30px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid rgba(45, 212, 191, 0.22);
+    border-radius: 9px;
+    background: rgba(15, 23, 42, 0.66);
+    color: #dffcf7;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1;
+    letter-spacing: 0;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition:
+        border-color 0.16s ease,
+        background 0.16s ease,
+        color 0.16s ease,
+        box-shadow 0.16s ease,
+        transform 0.16s ease;
+}
+
+button.crm-layout-control-button::before {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 6px;
+    background: rgba(45, 212, 191, 0.13);
+    color: #5eead4;
+    font-size: 11px;
+    font-weight: 950;
+}
+
+button.crm-layout-control-move::before { content: "↕"; }
+button.crm-layout-control-hide::before { content: "−"; }
+button.crm-layout-control-reset-item::before,
+button.crm-layout-control-reset-all::before { content: "↺"; }
+
+button.crm-layout-control-button:hover,
+button.crm-layout-control-button:focus-visible {
+    outline: none;
+    border-color: rgba(94, 234, 212, 0.50);
+    background: rgba(20, 184, 166, 0.16);
+    color: #ffffff;
+    box-shadow:
+        inset 0 -2px 0 rgba(94, 234, 212, 0.42),
+        0 0 0 3px rgba(20, 184, 166, 0.10);
+}
+
+button.crm-layout-control-button:active,
+button.crm-layout-control-button.is-crm-layout-active {
+    transform: translateY(1px);
+    border-color: rgba(94, 234, 212, 0.72);
+    background: rgba(20, 184, 166, 0.24);
+    color: #ffffff;
+    cursor: grabbing;
+}
+
+button.crm-layout-control-move {
+    cursor: grab;
+    touch-action: none;
+}
+
+.crm-layout-block-managed {
+    --crm-layout-x: 0px;
+    --crm-layout-y: 0px;
+    transition:
+        transform 0.16s ease,
+        opacity 0.16s ease,
+        box-shadow 0.16s ease,
+        border-color 0.16s ease;
+}
+
+.crm-layout-block-managed.is-crm-layout-offset {
+    transform: translate3d(var(--crm-layout-x), var(--crm-layout-y), 0);
+}
+
+.crm-layout-block-managed.is-crm-layout-moving {
+    z-index: 25000 !important;
+    opacity: 0.94;
+    cursor: grabbing;
+    transition: none;
+    box-shadow:
+        0 0 0 1px rgba(94, 234, 212, 0.46),
+        0 18px 48px rgba(2, 8, 23, 0.42) !important;
+}
+
+.crm-layout-block-managed.is-crm-layout-hidden {
+    display: none !important;
+}
+
+body.crm-layout-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+
+body.dark-mode .crm-layout-control-strip,
+[data-theme="dark"] .crm-layout-control-strip {
+    border-color: rgba(94, 234, 212, 0.18);
+    background: rgba(9, 15, 28, 0.42);
+}
+
 body.dark-mode .crm-business-readonly-banner,
 [data-theme="dark"] .crm-business-readonly-banner,
 body.dark-mode .crm-business-readonly-chip,

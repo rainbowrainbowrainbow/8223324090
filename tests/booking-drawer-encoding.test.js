@@ -116,7 +116,12 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /apiSaveProductMenuAiDraft/);
     assert.match(bookingJs, /data-menu-insight-generate/);
     assert.match(bookingJs, /data-menu-insight-save/);
-    assert.match(bookingJs, /BOOKING_MENU_CATALOG_FILTERS/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS/);
+    assert.match(bookingJs, /section:pizza/);
+    assert.match(bookingJs, /Холодні закуски/);
+    assert.match(bookingJs, /Холодні напої/);
+    assert.doesNotMatch(bookingJs, /key:\s*'food'/);
+    assert.doesNotMatch(bookingJs, /key:\s*'drink'/);
     assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
     assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
     assert.match(bookingJs, /bookingMenuCatalogHandleImageError/);
@@ -158,23 +163,24 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /body\.booking-menu-catalog-active/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*position:\s*fixed;/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);
-    assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(320px,\s*380px\)[\s\S]*overflow:\s*hidden;/);
-    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(252px,\s*280px\)\);[\s\S]*justify-content:\s*start;/);
-    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*padding:\s*0 14px calc\(140px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
+    assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*330px\)[\s\S]*overflow:\s*hidden;/);
+    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(224px,\s*1fr\)\);[\s\S]*justify-content:\s*start;/);
+    assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*padding:\s*0 10px calc\(96px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*scroll-padding-top:\s*48px;/);
-    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*304px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*252px;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*overflow:\s*hidden;/);
     assert.match(panelCss, /\.booking-menu-catalog-item:hover,\s*\.booking-menu-catalog-item:focus-within\s*\{[\s\S]*transform:\s*translateY\(-2px\);/);
     assert.match(panelCss, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*\.booking-menu-catalog-item:hover,[\s\S]*transform:\s*none;/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
-    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*auto;[\s\S]*aspect-ratio:\s*3 \/ 1;[\s\S]*min-height:\s*0;/);
-    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*36px minmax\(48px,\s*1fr\) 36px 36px 36px;[\s\S]*flex:\s*0 0 auto;[\s\S]*width:\s*100%;[\s\S]*min-height:\s*36px;[\s\S]*max-width:\s*none;[\s\S]*margin-top:\s*0;/);
-    assert.match(panelCss, /\.booking-menu-catalog-content\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) 88px;/);
-    assert.match(panelCss, /\.booking-menu-catalog-action\s*\{[\s\S]*min-height:\s*24px;[\s\S]*font-size:\s*10px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*auto;[\s\S]*aspect-ratio:\s*3\.35 \/ 1;[\s\S]*min-height:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*32px minmax\(44px,\s*1fr\) 32px 32px 32px;[\s\S]*flex:\s*0 0 auto;[\s\S]*width:\s*100%;[\s\S]*min-height:\s*32px;[\s\S]*max-width:\s*none;[\s\S]*margin-top:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-content\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) 78px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-action\s*\{[\s\S]*min-height:\s*20px;[\s\S]*font-size:\s*9\.5px;/);
+    assert.match(panelCss, /@media \(max-height:\s*820px\), \(max-width:\s*1440px\)[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(260px,\s*300px\)[\s\S]*min-height:\s*236px;/);
     assert.match(panelCss, /\.booking-menu-catalog-action--allergens\s*\{[\s\S]*border-color:\s*rgba\(245,\s*158,\s*11,\s*0\.16\);/);
-    const minimumCatalogCardWidth = 280;
-    const catalogCardHorizontalPadding = 24;
-    const minimumStepperColumnsWidth = 40 + 52 + 40 + 40 + 40;
+    const minimumCatalogCardWidth = 224;
+    const catalogCardHorizontalPadding = 18;
+    const minimumStepperColumnsWidth = 32 + 44 + 32 + 32 + 32;
     const minimumStepperGapWidth = 4 * 4;
     assert.ok(
         minimumStepperColumnsWidth + minimumStepperGapWidth <= minimumCatalogCardWidth - catalogCardHorizontalPadding,
@@ -205,7 +211,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-insight-status\.success/);
     assert.match(panelCss, /\.booking-menu-insight-card\.is-nudged/);
     assert.match(bookingJs, /function nudgeBookingMenuCatalogInsightCard/);
-    assert.match(panelCss, /\.booking-menu-catalog-group-heading\s*\{[\s\S]*isolation:\s*isolate;[\s\S]*margin:\s*0 -14px 2px;[\s\S]*box-shadow:\s*0 14px 28px/);
+    assert.match(panelCss, /\.booking-menu-catalog-group-heading\s*\{[\s\S]*isolation:\s*isolate;[\s\S]*margin:\s*0 -10px 2px;[\s\S]*box-shadow:\s*0 14px 28px/);
     assert.match(panelCss, /\.booking-menu-catalog-group-heading::before\s*\{[\s\S]*inset:\s*0 -100vw 0 0;[\s\S]*background:\s*inherit;[\s\S]*box-shadow:\s*inherit;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);

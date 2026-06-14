@@ -169,6 +169,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     const bookingsRoute = read('routes/bookings.js');
     const api = read('js/api.js');
     const timeline = read('js/timeline.js');
+    const ui = read('js/ui.js');
     const timelineContext = read('js/timeline-context.js');
     const booking = read('js/booking.js');
     const resources = read('services/timelineResources.js');
@@ -188,6 +189,12 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
     assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);
     assert.match(timeline, /function roomLoadBookingMinutes/);
+    assert.match(ui, /function getTimelineExportLineBookings/);
+    assert.match(ui, /timelineBookingsForLine\(bookings,\s*line\)/);
+    assert.match(ui, /normalizeTimelineExportBookings/);
+    assert.match(ui, /normalizeTimelineExportLines/);
+    assert.match(ui, /getTimelineExportLineBookings\(dd\.bookings,\s*line\)/);
+    assert.doesNotMatch(ui, /String\(b\.lineId \|\| ''\) === String\(line\.id \|\| ''\)/);
     assert.match(timelineContext, /roomTimelineEnabled/);
     assert.match(timelineContext, /defaultTimelineView/);
     assert.match(resources, /TIMELINE_VIEW_MODES/);

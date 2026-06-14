@@ -1663,15 +1663,83 @@ if (typeof window !== 'undefined') {
     window.bookingMenuCatalogHandleImageError = bookingMenuCatalogHandleImageError;
 }
 
-const BOOKING_MENU_CATALOG_FILTERS = [
-    { key: 'all', label: 'Усе' },
-    { key: 'popular', label: 'Популярне' },
-    { key: 'food', label: 'Їжа' },
-    { key: 'drink', label: 'Напої' },
-    { key: 'cake', label: 'Торти' },
-    { key: 'other', label: 'Інше' }
+const BOOKING_MENU_CATALOG_ALL_FILTER = { key: 'all', label: 'Усе' };
+const BOOKING_MENU_CATALOG_CAKE_FILTER = { key: 'cake', label: 'Торти' };
+const BOOKING_MENU_CATALOG_OTHER_FILTER = { key: 'section:other-menu', label: 'Інше меню' };
+const BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS = [
+    {
+        key: 'section:cold-appetizers',
+        label: 'Холодні закуски',
+        aliases: ['холодні закуски'],
+        patterns: [/закуск|плато|нарізк|брускет|канап|оливки|сирн/]
+    },
+    {
+        key: 'section:salads',
+        label: 'Салати',
+        aliases: ['салати'],
+        patterns: [/салат|цезар|грецьк|овочев/]
+    },
+    {
+        key: 'section:hot-appetizers',
+        label: 'Гарячі закуски',
+        aliases: ['гарячі закуски'],
+        patterns: [/гаряч.*закуск|нагет|крил|сирн.*пал|кільц|лаваш|кесадил|жульєн|жульен/]
+    },
+    {
+        key: 'section:burgers',
+        label: 'Бургери',
+        aliases: ['бургери'],
+        patterns: [/бургер|burger/]
+    },
+    {
+        key: 'section:pizza',
+        label: 'Піца',
+        aliases: ['піца', 'пицца', 'pizza'],
+        patterns: [/піца|пиц|pizza|маргарит|пеперон|чотири сир|гавайськ/]
+    },
+    {
+        key: 'section:pizza-addons',
+        label: 'До піци',
+        aliases: ['додатки до піци', 'додатки до пиц', 'до піци'],
+        patterns: [/бортик|додат.*піц|соус.*піц|до піц|моцарел|пармезан/]
+    },
+    {
+        key: 'section:grill',
+        label: 'Мангал',
+        aliases: ['мангальне меню', 'мангал'],
+        patterns: [/мангал|шашлик|гриль|люля|ребер|ковбаск|барбекю/]
+    },
+    {
+        key: 'section:mains',
+        label: 'Основні',
+        aliases: ['основні страви', 'основные блюда'],
+        patterns: [/паста|стейк|котлет|курк|свинин|теляч|риба|основн/]
+    },
+    {
+        key: 'section:soups',
+        label: 'Перші',
+        aliases: ['перші страви', 'первые блюда'],
+        patterns: [/суп|борщ|бульйон|крем-суп|перш/]
+    },
+    {
+        key: 'section:sides',
+        label: 'Гарніри',
+        aliases: ['гарніри'],
+        patterns: [/гарнір|картоп|фрі|діпи|рис|пюре|овочі гриль/]
+    },
+    {
+        key: 'section:hot-drinks',
+        label: 'Гарячі напої',
+        aliases: ['гарячі напої'],
+        patterns: [/чай|кава|американо|еспресо|капуч|лате|какао|гаряч.*нап/]
+    },
+    {
+        key: 'section:cold-drinks',
+        label: 'Холодні напої',
+        aliases: ['коктейлі та холодні напої', 'холодні напої', 'коктейлі'],
+        patterns: [/сік|сок|вода|лимонад|коктейл|молочн|морс|компот|кола|cola|швепс|schweppes|холодн.*нап/]
+    }
 ];
-const BOOKING_MENU_CATALOG_POPULAR_LIMIT = 12;
 const BOOKING_MENU_CATALOG_INSIGHT_MODES = Object.freeze({
     details: {
         label: 'Відкрити',
@@ -1717,17 +1785,50 @@ function bookingMenuProductCatalogText(product = {}) {
     ].filter(Boolean).join(' ').toLowerCase();
 }
 
+function bookingMenuCatalogNormalizeText(value = '') {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/ʼ/g, "'")
+        .replace(/\s+/g, ' ');
+}
+
+function bookingMenuCatalogSectionFilterByKey(key) {
+    return BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS.find(item => item.key === key) || null;
+}
+
+function bookingMenuCatalogSectionFilterByLabel(label = '') {
+    const normalized = bookingMenuCatalogNormalizeText(label);
+    if (!normalized) return null;
+    return BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS.find(item => {
+        if (bookingMenuCatalogNormalizeText(item.label) === normalized) return true;
+        return (item.aliases || []).some(alias => bookingMenuCatalogNormalizeText(alias) === normalized);
+    }) || null;
+}
+
+function bookingMenuCatalogInferSectionFilter(product = {}) {
+    const exact = bookingMenuCatalogSectionFilterByLabel(product.menuSection || product.menu_section || '');
+    if (exact) return exact;
+    const text = bookingMenuCatalogNormalizeText(bookingMenuProductCatalogText(product));
+    if (!text) return null;
+    return BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS.find(item => (item.patterns || []).some(pattern => pattern.test(text))) || null;
+}
+
 function bookingMenuProductCatalogFilter(product = {}) {
     const type = bookingKitchenType(product);
     if (type === 'cake' || product.category === 'cake') return 'cake';
-    const text = bookingMenuProductCatalogText(product);
-    if (/(нап|сік|сок|вода|чай|кава|лимонад|компот|морс|cola|coffee|juice|drink)/i.test(text)) return 'drink';
-    if (type === 'menu' || product.domain === 'kitchen' || product.category === 'menu') return 'food';
-    return 'other';
+    const section = bookingMenuCatalogInferSectionFilter(product);
+    if (section) return section.key;
+    if (type === 'menu' || product.domain === 'kitchen' || product.category === 'menu') return BOOKING_MENU_CATALOG_OTHER_FILTER.key;
+    return BOOKING_MENU_CATALOG_OTHER_FILTER.key;
 }
 
 function bookingMenuCatalogFilterLabel(filter) {
-    return BOOKING_MENU_CATALOG_FILTERS.find(tab => tab.key === filter)?.label || 'Інше';
+    if (filter === BOOKING_MENU_CATALOG_ALL_FILTER.key) return BOOKING_MENU_CATALOG_ALL_FILTER.label;
+    if (filter === BOOKING_MENU_CATALOG_CAKE_FILTER.key) return BOOKING_MENU_CATALOG_CAKE_FILTER.label;
+    if (filter === BOOKING_MENU_CATALOG_OTHER_FILTER.key) return BOOKING_MENU_CATALOG_OTHER_FILTER.label;
+    return bookingMenuCatalogSectionFilterByKey(filter)?.label || BOOKING_MENU_CATALOG_OTHER_FILTER.label;
 }
 
 function bookingMenuCatalogSelectedIds() {
@@ -1736,31 +1837,26 @@ function bookingMenuCatalogSelectedIds() {
         .filter(Boolean));
 }
 
-function bookingMenuCatalogPopularIds(products = getBookingMenuProducts()) {
-    const ids = new Set(bookingMenuCatalogSelectedIds());
-    [...products]
-        .sort((a, b) => {
-            const sortA = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : 999999;
-            const sortB = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : 999999;
-            return sortA - sortB
-                || bookingMenuProductTitle(a).localeCompare(bookingMenuProductTitle(b), 'uk');
-        })
-        .slice(0, BOOKING_MENU_CATALOG_POPULAR_LIMIT)
-        .forEach(product => ids.add(String(product.id || '')));
-    return ids;
-}
-
 function bookingMenuCatalogMatchesFilter(product = {}, filter = 'all', products = getBookingMenuProducts()) {
     if (filter === 'all') return true;
-    if (filter === 'popular') return bookingMenuCatalogPopularIds(products).has(String(product.id || ''));
+    if (filter === 'cake') return bookingMenuProductCatalogFilter(product) === 'cake';
     return bookingMenuProductCatalogFilter(product) === filter;
 }
 
 function bookingMenuCatalogTabs(products = getBookingMenuProducts()) {
-    return BOOKING_MENU_CATALOG_FILTERS.map(tab => ({
-        ...tab,
-        count: products.filter(product => bookingMenuCatalogMatchesFilter(product, tab.key, products)).length
-    }));
+    const tabs = [{
+        ...BOOKING_MENU_CATALOG_ALL_FILTER,
+        count: products.length
+    }];
+    BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS.forEach(section => {
+        const count = products.filter(product => bookingMenuCatalogMatchesFilter(product, section.key, products)).length;
+        if (count > 0) tabs.push({ key: section.key, label: section.label, count });
+    });
+    const cakeCount = products.filter(product => bookingMenuCatalogMatchesFilter(product, 'cake', products)).length;
+    if (cakeCount > 0) tabs.push({ ...BOOKING_MENU_CATALOG_CAKE_FILTER, count: cakeCount });
+    const otherCount = products.filter(product => bookingMenuCatalogMatchesFilter(product, BOOKING_MENU_CATALOG_OTHER_FILTER.key, products)).length;
+    if (otherCount > 0) tabs.push({ ...BOOKING_MENU_CATALOG_OTHER_FILTER, count: otherCount });
+    return tabs;
 }
 
 function bookingMenuCatalogSearchText(product = {}) {
@@ -2427,20 +2523,27 @@ function commitActiveBookingMenuCatalogInput() {
 }
 
 function bookingMenuCatalogProductGroupLabel(product = {}, filter = 'all', selected = false) {
-    if (filter === 'popular') return selected ? 'Вже додано' : 'Популярне';
-    const section = String(product.menuSection || product.menu_section || '').trim();
-    if (section) return section;
+    const type = bookingKitchenType(product);
+    if (type === 'cake' || product.category === 'cake') return BOOKING_MENU_CATALOG_CAKE_FILTER.label;
+    const section = bookingMenuCatalogInferSectionFilter(product);
+    if (section) return section.label;
     return bookingMenuCatalogFilterLabel(bookingMenuProductCatalogFilter(product));
+}
+
+function bookingMenuCatalogGroupSortRank(product = {}) {
+    const type = bookingKitchenType(product);
+    if (type === 'cake' || product.category === 'cake') return 1000;
+    const section = bookingMenuCatalogInferSectionFilter(product);
+    if (!section) return 2000;
+    const index = BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS.findIndex(item => item.key === section.key);
+    return index >= 0 ? index : 2000;
 }
 
 function bookingMenuCatalogSortedProducts(products = [], filter = 'all') {
     const selectedIds = bookingMenuCatalogSelectedIds();
     return [...products].sort((a, b) => {
-        if (filter === 'popular') {
-            const selectedA = selectedIds.has(String(a.id || '')) ? 0 : 1;
-            const selectedB = selectedIds.has(String(b.id || '')) ? 0 : 1;
-            if (selectedA !== selectedB) return selectedA - selectedB;
-        }
+        const rankCompare = bookingMenuCatalogGroupSortRank(a) - bookingMenuCatalogGroupSortRank(b);
+        if (rankCompare) return rankCompare;
         const groupCompare = bookingMenuCatalogProductGroupLabel(a, filter, selectedIds.has(String(a.id || '')))
             .localeCompare(bookingMenuCatalogProductGroupLabel(b, filter, selectedIds.has(String(b.id || ''))), 'uk');
         if (groupCompare) return groupCompare;

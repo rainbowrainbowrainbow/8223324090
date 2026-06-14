@@ -130,6 +130,7 @@ const Sidebar = (() => {
         { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'today', quickAccessOnly: true },
 
         { type: 'group', key: 'sales', label: 'Продажі', icon: '🔥', priority: 2, defaultOpen: true },
+        { href: '/',             icon: '📅', label: 'Таймлайн', access: 'timeline',       group: 'sales' },
         { href: '/customers',    icon: '👥', label: 'Клієнти',       access: 'customers',      group: 'sales' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'sales', statusKey: 'leads' },
         { href: '/omni',         icon: '✉', label: 'Комунікації',    access: 'omni',           group: 'sales', statusKey: 'omni' },
@@ -2861,23 +2862,8 @@ const Sidebar = (() => {
         }
     }
 
-    function _paintUserAvatar(el, user) {
-        if (!el || !user) return;
-        const photo = user.avatar_url || user.avatarUrl || user.photo_url || user.photoUrl || user.image_url || user.imageUrl;
-        const emoji = user.avatar_emoji || user.avatarEmoji;
-        const customColor = user.avatar_color || user.avatarColor;
-        el.classList.toggle('has-photo', !!photo);
-        if (photo) {
-            el.innerHTML = `<img src="${_escAttr(photo)}" alt="">`;
-            el.style.background = 'transparent';
-            return;
-        }
-        if (emoji) {
-            el.textContent = emoji;
-            el.style.background = customColor || '#f59e0b';
-            return;
-        }
-        const label = user.name || user.username || '?';
+    function _sidebarAvatarFallback(user) {
+        const label = user?.name || user?.username || '?';
         const initial = label.trim().charAt(0).toUpperCase() || '?';
         const roleColors = {
             creator: '#f59e0b',
@@ -2892,8 +2878,41 @@ const Sidebar = (() => {
             marketer: '#f97316'
         };
         const colors = ['#6366f1','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444'];
-        el.textContent = initial;
-        el.style.background = customColor || roleColors[user.role] || colors[(user.id || 0) % colors.length];
+        return {
+            label: initial,
+            background: user?.avatar_color || user?.avatarColor || roleColors[user?.role] || colors[(user?.id || 0) % colors.length]
+        };
+    }
+
+    function _paintUserAvatar(el, user) {
+        if (!el || !user) return;
+        const photo = user.avatar_url || user.avatarUrl || user.photo_url || user.photoUrl || user.image_url || user.imageUrl;
+        const emoji = user.avatar_emoji || user.avatarEmoji;
+        const fallback = _sidebarAvatarFallback(user);
+        if (photo) {
+            el.classList.add('has-photo');
+            const img = document.createElement('img');
+            img.src = photo;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.addEventListener('error', () => {
+                el.classList.remove('has-photo');
+                el.textContent = fallback.label;
+                el.style.background = fallback.background;
+            }, { once: true });
+            el.replaceChildren(img);
+            el.style.background = 'transparent';
+            return;
+        }
+        el.classList.remove('has-photo');
+        if (emoji) {
+            el.textContent = emoji;
+            el.style.background = user.avatar_color || user.avatarColor || '#f59e0b';
+            return;
+        }
+        el.textContent = fallback.label;
+        el.style.background = fallback.background;
     }
 
     function _bindProfileEntry(el) {

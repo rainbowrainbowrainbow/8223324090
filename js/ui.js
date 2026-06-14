@@ -259,6 +259,503 @@ if (!window.CrmUiState) {
 }
 
 // ==========================================
+// LEGACY LAYOUT CONTROLS REPAIR
+// Gives old "Рухати / Сховати / Скинути" block controls one safe owner.
+// ==========================================
+if (!window.CrmLayoutControls) {
+    window.CrmLayoutControls = (() => {
+        const STORAGE_PREFIX = 'eg_crm_layout_controls_v1:';
+        const UNDO_LIMIT = 30;
+        const TEXT_TO_ACTION = new Map([
+            ['Рухати', 'move'],
+            ['Сховати', 'hide'],
+            ['Скинути', 'reset-item'],
+            ['Скинути вигляд', 'reset-all']
+        ]);
+        const undoStack = [];
+        const redoStack = [];
+        const managedByKey = new Map();
+        let observer = null;
+        let scanScheduled = false;
+        let keydownBound = false;
+        let dragState = null;
+
+        function pageStorageKey() {
+            const path = `${window.location.pathname || '/'}${window.location.search || ''}`;
+            return STORAGE_PREFIX + path;
+        }
+
+        function readStore() {
+            try {
+                const raw = localStorage.getItem(pageStorageKey());
+                const parsed = raw ? JSON.parse(raw) : {};
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch {
+                return {};
+            }
+        }
+
+        function writeStore(store) {
+            try {
+                const clean = {};
+                Object.entries(store || {}).forEach(([key, state]) => {
+                    const next = normalizeState(state);
+                    if (next.x || next.y || next.hidden) clean[key] = next;
+                });
+                if (Object.keys(clean).length) localStorage.setItem(pageStorageKey(), JSON.stringify(clean));
+                else localStorage.removeItem(pageStorageKey());
+            } catch {
+                // Layout persistence is a local convenience; broken storage must not break the page.
+            }
+        }
+
+        function normalizeText(value) {
+            return String(value || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function cssEscape(value) {
+            const text = String(value || '');
+            if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(text);
+            return text.replace(/[^a-zA-Z0-9_-]/g, char => `\\${char.codePointAt(0).toString(16)} `);
+        }
+
+        function actionOf(button) {
+            if (!button || button.tagName !== 'BUTTON') return '';
+            const explicit = normalizeText(button.dataset.crmLayoutAction || '');
+            if (explicit && ['move', 'hide', 'reset-item', 'reset-all'].includes(explicit)) return explicit;
+            return TEXT_TO_ACTION.get(normalizeText(button.textContent)) || '';
+        }
+
+        function isEditableTarget(target) {
+            return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]'));
+        }
+
+        function normalizeState(state = {}) {
+            return {
+                x: Math.round(Number(state.x || 0)),
+                y: Math.round(Number(state.y || 0)),
+                hidden: state.hidden === true
+            };
+        }
+
+        function stateEquals(a, b) {
+            const left = normalizeState(a);
+            const right = normalizeState(b);
+            return left.x === right.x && left.y === right.y && left.hidden === right.hidden;
+        }
+
+        function cssPathFor(el) {
+            const parts = [];
+            let node = el;
+            while (node && node.nodeType === 1 && node !== document.body && parts.length < 5) {
+                const name = node.tagName.toLowerCase();
+                if (node.id) {
+                    parts.unshift(`#${cssEscape(node.id)}`);
+                    break;
+                }
+                const parent = node.parentElement;
+                if (!parent) break;
+                const siblings = Array.from(parent.children).filter(item => item.tagName === node.tagName);
+                const index = siblings.indexOf(node) + 1;
+                parts.unshift(`${name}:nth-of-type(${Math.max(1, index)})`);
+                node = parent;
+            }
+            return parts.join('>');
+        }
+
+        function shortLabelFor(el) {
+            const labelSource = el.querySelector('h1,h2,h3,h4,strong,[aria-label]') || el;
+            const label = labelSource.getAttribute?.('aria-label') || labelSource.textContent || '';
+            return normalizeText(label).slice(0, 48);
+        }
+
+        function keyFor(el) {
+            if (!el) return '';
+            const existing = el.dataset.crmLayoutKey;
+            if (existing) return existing;
+            const explicit = el.getAttribute('data-layout-id') || el.getAttribute('data-widget-id') || el.getAttribute('data-board-item-id') || el.id || '';
+            const key = explicit
+                ? `explicit:${explicit}`
+                : `path:${cssPathFor(el)}:${shortLabelFor(el)}`;
+            el.dataset.crmLayoutKey = key;
+            return key;
+        }
+
+        function actionsIn(root) {
+            const actions = new Set();
+            if (!root || !root.querySelectorAll) return actions;
+            root.querySelectorAll('button').forEach(button => {
+                const action = actionOf(button);
+                if (action) actions.add(action);
+            });
+            return actions;
+        }
+
+        function findControlGroup(button) {
+            let node = button.parentElement;
+            while (node && node !== document.body) {
+                const actions = actionsIn(node);
+                if (actions.has('move') && (actions.has('hide') || actions.has('reset-item'))) return node;
+                if (actions.has('reset-all') && normalizeText(node.textContent).includes('Вигляд блоків')) return node;
+                node = node.parentElement;
+            }
+            return button.parentElement;
+        }
+
+        function isLikelyBlock(el) {
+            if (!el || el === document.body || el === document.documentElement) return false;
+            if (el.matches?.('button, input, textarea, select, option, script, style, link')) return false;
+            const rect = el.getBoundingClientRect?.();
+            if (!rect || rect.width < 120 || rect.height < 44) return false;
+            const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+            if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+            const text = normalizeText(el.textContent || '');
+            const actionOnly = Array.from(TEXT_TO_ACTION.keys()).every(label => text === label || text.replace(label, '').trim() === '');
+            return !actionOnly;
+        }
+
+        function findTarget(button) {
+            const explicitId = button.getAttribute('aria-controls') || button.dataset.target || button.dataset.layoutTarget || '';
+            if (explicitId) {
+                const explicit = document.getElementById(explicitId) || document.querySelector(`[data-layout-id="${cssEscape(explicitId)}"]`);
+                if (isLikelyBlock(explicit)) return explicit;
+            }
+
+            const group = findControlGroup(button);
+            let sibling = group?.nextElementSibling || null;
+            while (sibling) {
+                if (isLikelyBlock(sibling)) return sibling;
+                sibling = sibling.nextElementSibling;
+            }
+
+            let node = group;
+            while (node && node !== document.body) {
+                if (isLikelyBlock(node) && node.getBoundingClientRect().height > ((group?.getBoundingClientRect?.().height || 0) + 28)) {
+                    return node;
+                }
+                node = node.parentElement;
+            }
+
+            return button.closest('section, article, aside, .workspace-module, .dashboard-board-item, .crm-card, .panel, .card, .modal-content, .main-content > div');
+        }
+
+        function applyState(target, state) {
+            if (!target) return;
+            const next = normalizeState(state);
+            const key = keyFor(target);
+            managedByKey.set(key, target);
+            target.classList.add('crm-layout-block-managed');
+            target.classList.toggle('is-crm-layout-hidden', next.hidden);
+            target.classList.toggle('is-crm-layout-offset', !!(next.x || next.y));
+            target.style.setProperty('--crm-layout-x', `${next.x}px`);
+            target.style.setProperty('--crm-layout-y', `${next.y}px`);
+            if (!target.dataset.crmLayoutBaseTransform) {
+                target.dataset.crmLayoutBaseTransform = target.style.transform || '';
+            }
+        }
+
+        function stateFor(target) {
+            if (!target) return normalizeState();
+            const key = keyFor(target);
+            const stored = readStore()[key];
+            if (stored) return normalizeState(stored);
+            const x = parseFloat(target.style.getPropertyValue('--crm-layout-x') || target.dataset.crmLayoutX || '0') || 0;
+            const y = parseFloat(target.style.getPropertyValue('--crm-layout-y') || target.dataset.crmLayoutY || '0') || 0;
+            return normalizeState({ x, y, hidden: target.classList.contains('is-crm-layout-hidden') });
+        }
+
+        function saveState(target, state) {
+            const key = keyFor(target);
+            const store = readStore();
+            const next = normalizeState(state);
+            if (next.x || next.y || next.hidden) store[key] = next;
+            else delete store[key];
+            writeStore(store);
+        }
+
+        function pushUndo(entry) {
+            undoStack.push(entry);
+            if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+            redoStack.length = 0;
+        }
+
+        function applyEntryState(entry, direction) {
+            if (!entry) return false;
+            if (entry.type === 'all') {
+                const stateMap = direction === 'undo' ? entry.before : entry.after;
+                writeStore(stateMap || {});
+                scan(document, { applyStored: true });
+                return true;
+            }
+            const target = entry.target && entry.target.isConnected
+                ? entry.target
+                : managedByKey.get(entry.key);
+            if (!target) return false;
+            const next = direction === 'undo' ? entry.before : entry.after;
+            applyState(target, next);
+            saveState(target, next);
+            return true;
+        }
+
+        function undo() {
+            const entry = undoStack.pop();
+            if (!entry) return false;
+            if (applyEntryState(entry, 'undo')) {
+                redoStack.push(entry);
+                if (redoStack.length > UNDO_LIMIT) redoStack.shift();
+                notify('Зміну вигляду скасовано', 'success');
+                return true;
+            }
+            return false;
+        }
+
+        function redo() {
+            const entry = redoStack.pop();
+            if (!entry) return false;
+            if (applyEntryState(entry, 'redo')) {
+                undoStack.push(entry);
+                if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+                notify('Зміну вигляду повернуто', 'success');
+                return true;
+            }
+            return false;
+        }
+
+        function notify(message, type = 'info') {
+            if (typeof window.showNotification === 'function') window.showNotification(message, type);
+            else if (typeof window.showToast === 'function') window.showToast(message, type);
+        }
+
+        function hideTarget(button) {
+            const target = findTarget(button);
+            if (!target) return;
+            const before = stateFor(target);
+            const after = normalizeState({ ...before, hidden: true });
+            if (stateEquals(before, after)) return;
+            applyState(target, after);
+            saveState(target, after);
+            pushUndo({ type: 'one', key: keyFor(target), target, before, after });
+            notify('Блок сховано. Ctrl+Z поверне його.', 'success');
+        }
+
+        function resetTarget(button) {
+            const target = findTarget(button);
+            if (!target) return;
+            const before = stateFor(target);
+            const after = normalizeState();
+            if (stateEquals(before, after)) return;
+            applyState(target, after);
+            saveState(target, after);
+            pushUndo({ type: 'one', key: keyFor(target), target, before, after });
+            notify('Блок скинуто', 'success');
+        }
+
+        function resetAll() {
+            const before = readStore();
+            const hasStored = Object.keys(before).length > 0;
+            const liveTargets = Array.from(managedByKey.values()).filter(Boolean).filter(el => el.isConnected);
+            liveTargets.forEach(target => {
+                const state = stateFor(target);
+                if (state.x || state.y || state.hidden) {
+                    before[keyFor(target)] = state;
+                }
+            });
+            if (!hasStored && !Object.keys(before).length) return;
+            writeStore({});
+            liveTargets.forEach(target => applyState(target, normalizeState()));
+            pushUndo({ type: 'all', before, after: {} });
+            notify('Вигляд блоків скинуто', 'success');
+        }
+
+        function beginMove(event, button) {
+            if (event.button !== 0 || isEditableTarget(event.target)) return;
+            const target = findTarget(button);
+            if (!target) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const before = stateFor(target);
+            const key = keyFor(target);
+            applyState(target, before);
+            dragState = {
+                pointerId: event.pointerId,
+                button,
+                target,
+                key,
+                before,
+                latest: before,
+                startX: event.clientX,
+                startY: event.clientY,
+                moved: false
+            };
+            button.classList.add('is-crm-layout-active');
+            target.classList.add('is-crm-layout-moving');
+            document.body.classList.add('crm-layout-dragging');
+            document.addEventListener('pointermove', moveDrag, true);
+            document.addEventListener('pointerup', endDrag, true);
+            document.addEventListener('pointercancel', cancelDrag, true);
+        }
+
+        function moveDrag(event) {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            event.preventDefault();
+            const dx = event.clientX - dragState.startX;
+            const dy = event.clientY - dragState.startY;
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragState.moved = true;
+            const next = normalizeState({
+                ...dragState.before,
+                x: dragState.before.x + dx,
+                y: dragState.before.y + dy
+            });
+            dragState.latest = next;
+            applyState(dragState.target, next);
+        }
+
+        function cleanupDrag() {
+            if (dragState?.button) dragState.button.classList.remove('is-crm-layout-active');
+            if (dragState?.target) dragState.target.classList.remove('is-crm-layout-moving');
+            document.body.classList.remove('crm-layout-dragging');
+            document.removeEventListener('pointermove', moveDrag, true);
+            document.removeEventListener('pointerup', endDrag, true);
+            document.removeEventListener('pointercancel', cancelDrag, true);
+        }
+
+        function endDrag(event) {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            const entry = {
+                type: 'one',
+                key: dragState.key,
+                target: dragState.target,
+                before: dragState.before,
+                after: dragState.latest
+            };
+            const moved = dragState.moved && !stateEquals(entry.before, entry.after);
+            if (moved) {
+                saveState(entry.target, entry.after);
+                pushUndo(entry);
+            } else {
+                applyState(entry.target, entry.before);
+            }
+            cleanupDrag();
+            dragState = null;
+        }
+
+        function cancelDrag(event) {
+            if (!dragState || event.pointerId !== dragState.pointerId) return;
+            applyState(dragState.target, dragState.before);
+            cleanupDrag();
+            dragState = null;
+        }
+
+        function handleButtonEvent(event) {
+            const button = event.target?.closest?.('button.crm-layout-control-button');
+            if (!button) return;
+            const action = actionOf(button);
+            if (event.type === 'pointerdown' && action === 'move') {
+                beginMove(event, button);
+                return;
+            }
+            if (event.type !== 'click') return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (action === 'hide') hideTarget(button);
+            if (action === 'reset-item') resetTarget(button);
+            if (action === 'reset-all') resetAll();
+        }
+
+        function handleKeydown(event) {
+            const mod = event.ctrlKey || event.metaKey;
+            if (!mod || isEditableTarget(event.target)) return;
+            const key = String(event.key || '').toLowerCase();
+            const wantsUndo = key === 'z' && !event.shiftKey;
+            const wantsRedo = key === 'y' || (key === 'z' && event.shiftKey);
+            if (!wantsUndo && !wantsRedo) return;
+            const handled = wantsUndo ? undo() : redo();
+            if (handled) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        }
+
+        function shouldOwnButton(button, action) {
+            if (!button || !action || button.dataset.crmLayoutSkip === 'true') return false;
+            if (button.closest('[data-crm-layout-skip="true"]')) return false;
+            if (action === 'reset-all') {
+                const text = normalizeText(button.closest('section, article, div')?.textContent || document.body?.textContent || '');
+                return text.includes('Вигляд блоків') || document.querySelectorAll('.crm-layout-control-button[data-crm-layout-action="move"]').length > 0;
+            }
+            const group = findControlGroup(button);
+            const actions = actionsIn(group);
+            return actions.has('move') && (actions.has('hide') || actions.has('reset-item'));
+        }
+
+        function enhanceButton(button) {
+            const action = actionOf(button);
+            if (!shouldOwnButton(button, action)) return;
+            button.dataset.crmLayoutAction = action;
+            button.classList.add('crm-layout-control-button', `crm-layout-control-${action}`);
+            const group = findControlGroup(button);
+            if (group) group.classList.add('crm-layout-control-strip');
+            if (action === 'move') {
+                button.setAttribute('title', 'Затисніть і тягніть блок. Ctrl+Z скасовує рух.');
+                button.setAttribute('aria-label', 'Рухати блок');
+            } else if (action === 'hide') {
+                button.setAttribute('title', 'Сховати блок. Ctrl+Z поверне його.');
+            } else if (action === 'reset-item') {
+                button.setAttribute('title', 'Скинути позицію цього блоку');
+            } else if (action === 'reset-all') {
+                button.setAttribute('title', 'Скинути вигляд усіх блоків');
+            }
+            const target = action === 'reset-all' ? null : findTarget(button);
+            if (target) {
+                applyState(target, stateFor(target));
+            }
+        }
+
+        function scan(root = document, options = {}) {
+            const scope = root.querySelectorAll ? root : document;
+            scope.querySelectorAll('button').forEach(enhanceButton);
+            if (options.applyStored) {
+                const store = readStore();
+                managedByKey.forEach((target, key) => {
+                    if (target?.isConnected) applyState(target, store[key] || normalizeState());
+                });
+            }
+        }
+
+        function scheduleScan() {
+            if (scanScheduled) return;
+            scanScheduled = true;
+            requestAnimationFrame(() => {
+                scanScheduled = false;
+                scan(document);
+            });
+        }
+
+        function init() {
+            scan(document);
+            document.addEventListener('pointerdown', handleButtonEvent, true);
+            document.addEventListener('click', handleButtonEvent, true);
+            if (!keydownBound) {
+                keydownBound = true;
+                document.addEventListener('keydown', handleKeydown, true);
+            }
+            if (!observer && window.MutationObserver && document.body) {
+                observer = new MutationObserver(scheduleScan);
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init, { once: true });
+        } else {
+            init();
+        }
+
+        return { scan, undo, redo, resetAll };
+    })();
+}
+
+// ==========================================
 // STAFF ACCOUNT BADGE (v39.8.0)
 // ==========================================
 let _staffLinkCache = null;
@@ -1715,8 +2212,8 @@ async function renderMinimapAsync(container, snapshotDate) {
     ctx.fillStyle = minimapBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const bookings = await getBookingsForDate(date);
-    const lines = await getLinesForDate(date);
+    const bookings = normalizeTimelineExportBookings(await getBookingsForDate(date));
+    const lines = normalizeTimelineExportLines(await getLinesForDate(date));
 
     // Memoize: skip redraw if data hasn't changed
     const hash = date + ':' + bookings.length + ':' + bookings.map(b => b.id + b.status).join(',');
@@ -1729,7 +2226,7 @@ async function renderMinimapAsync(container, snapshotDate) {
 
     lines.forEach((line, i) => {
         const y = 2 + i * lh;
-        bookings.filter(b => String(b.lineId || '') === String(line.id || '')).forEach(b => {
+        getTimelineExportLineBookings(bookings, line).forEach(b => {
             const bStart = timeToMinutes(b.time) - start * 60;
             const x = (bStart / totalMin) * canvas.width;
             const w = Math.max((b.duration / totalMin) * canvas.width, 2);
@@ -1858,6 +2355,33 @@ function drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, 
     ctx.fillText(`${end}:00`, endX, headerHeight + padding - 10);
 }
 
+function normalizeTimelineExportLines(lines = []) {
+    const safeLines = Array.isArray(lines) ? lines : [];
+    if (typeof normalizeTimelineLinesForContext === 'function') {
+        return normalizeTimelineLinesForContext(safeLines);
+    }
+    return safeLines;
+}
+
+function normalizeTimelineExportBookings(bookings = []) {
+    const safeBookings = Array.isArray(bookings) ? bookings : [];
+    if (typeof normalizeTimelineBookingsForContext === 'function') {
+        return normalizeTimelineBookingsForContext(safeBookings);
+    }
+    return safeBookings;
+}
+
+function getTimelineExportLineBookings(bookings = [], line = {}) {
+    if (typeof timelineBookingsForLine === 'function') {
+        return timelineBookingsForLine(bookings, line);
+    }
+    const lineId = String(line?.id || line?.lineId || line?.line_id || '').trim();
+    return (Array.isArray(bookings) ? bookings : []).filter(booking => {
+        const bookingLineId = String(booking?.lineId || booking?.line_id || booking?.resourceId || booking?.resource_id || '').trim();
+        return bookingLineId && lineId && bookingLineId === lineId;
+    });
+}
+
 function drawExportLines(ctx, lines, bookings, start, padding, timeWidth, headerHeight, lineHeight, cellWidth, canvasWidth) {
     lines.forEach((line, index) => {
         const y = headerHeight + padding + index * lineHeight;
@@ -1872,7 +2396,7 @@ function drawExportLines(ctx, lines, bookings, start, padding, timeWidth, header
         ctx.font = 'bold 16px Arial';
         ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
 
-        const lineBookings = bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
+        const lineBookings = getTimelineExportLineBookings(bookings, line);
         lineBookings.forEach(booking => {
             const startMin = timeToMinutes(booking.time) - timeToMinutes(`${start}:00`);
             const bx = padding + timeWidth + (startMin / 15) * cellWidth;
@@ -1984,8 +2508,10 @@ async function exportTimelineImage() {
 
     const touchWindow = openTouchImageExportWindow();
     try {
-        const bookings = await getBookingsForDate(AppState.selectedDate);
-        const lines = await getLinesForDate(AppState.selectedDate);
+        const rawBookings = await getBookingsForDate(AppState.selectedDate);
+        const rawLines = await getLinesForDate(AppState.selectedDate);
+        const bookings = normalizeTimelineExportBookings(rawBookings);
+        const lines = normalizeTimelineExportLines(rawLines);
         const { start, end } = getTimeRange();
 
         const canvas = document.createElement('canvas');
@@ -2037,8 +2563,10 @@ async function exportMultiDayImage() {
     // Collect all data first
     const daysData = [];
     for (const date of dates) {
-        const bookings = await getBookingsForDate(date);
-        const lines = await getLinesForDate(date);
+        const rawBookings = await getBookingsForDate(date);
+        const rawLines = await getLinesForDate(date);
+        const bookings = normalizeTimelineExportBookings(rawBookings);
+        const lines = normalizeTimelineExportLines(rawLines);
         daysData.push({ date, bookings, lines });
     }
 
@@ -2094,9 +2622,6 @@ async function exportMultiDayImage() {
         yOffset += dayHeaderHeight;
 
         // Lines and bookings for this day
-        drawExportLines(ctx, dd.lines, dd.bookings, globalStart, padding, timeWidth, yOffset - (headerHeight + padding), lineHeight, cellWidth, canvasWidth);
-
-        // Actually draw at correct y position
         dd.lines.forEach((line, index) => {
             const y = yOffset + index * lineHeight;
 
@@ -2110,7 +2635,7 @@ async function exportMultiDayImage() {
             ctx.font = 'bold 14px Arial';
             ctx.fillText(line.name, padding + 12, y + lineHeight / 2 + 5);
 
-            const lineBookings = dd.bookings.filter(b => String(b.lineId || '') === String(line.id || ''));
+            const lineBookings = getTimelineExportLineBookings(dd.bookings, line);
             lineBookings.forEach(booking => {
                 const startMin = timeToMinutes(booking.time) - timeToMinutes(`${globalStart}:00`);
                 const bx = padding + timeWidth + (startMin / 15) * cellWidth;

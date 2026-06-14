@@ -4,6 +4,17 @@
 
 ---
 
+## v0.75.52 - Action History Unification
+
+### Timeline / Action history / UI consistency / Release / (Клешня, 14.06.2026) [codex]
+- **`Історія змін` стала окремою кнопкою таймлайну** - її винесено з меню `... Дії`, щоб оператор бачив прямий action замість стислого dropdown toggle.
+- **Історії дій зведено до shared renderer-а** - timeline modal, Work Queue reply/task history і task detail history використовують один frontend formatter для назв дій, виконавця, дати й old/new деталей.
+- **Модалка історії отримала єдиний вигляд** - фільтри, список, порожній/loading state, пагінація і dark mode вирівняні через спільні `action-history-*` стилі.
+- **Regression guard додано** - UI smoke перевіряє, що history більше не захована в dropdown і що timeline/tasks/dashboard не повернули окремі рендери.
+- **DB/API/env/deploy config не змінювались** - зміни обмежені frontend UI, стилями, release notes і version metadata.
+
+---
+
 ## v0.75.51 - Maysternya Bot Timeline Booking
 
 ### Leads / Maysternya / Bot booking / Timeline / Release / (Клешня, 14.06.2026) [codex]

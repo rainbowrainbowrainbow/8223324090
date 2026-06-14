@@ -4924,12 +4924,12 @@ async function openTaskDetail(taskId) {
                     <div id="_tdObserversHint" style="font-size:12px;color:var(--gray-500);margin-top:6px">Ctrl/Cmd + клік: вибрати кількох спостерігачів. Власник задачі вже має повний доступ.</div>
                     <button type="button" onclick="saveTaskObservers(${t.id})" style="margin-top:8px;border:1px solid rgba(20,184,166,0.34);background:rgba(20,184,166,0.12);color:#0f766e;border-radius:8px;padding:7px 10px;font-weight:800;cursor:pointer">Зберегти доступ</button>
                 </div>
-                <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px">
+                <div class="action-history-card task-detail-history-card">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
-                        <strong style="font-size:13px">Task Action History</strong>
-                        <button type="button" onclick="loadTaskHistory(${t.id})" style="border:1px solid var(--gray-200);background:none;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer">Оновити</button>
+                        <strong style="font-size:13px">Історія дій</strong>
+                        <button type="button" class="action-history-refresh" onclick="loadTaskHistory(${t.id})">Оновити</button>
                     </div>
-                    <div id="_tdHistory" style="font-size:12px;color:var(--gray-500)">Завантаження історії...</div>
+                    <div id="_tdHistory" class="task-detail-history-list">Завантаження історії...</div>
                 </div>
             </div>
             <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px;flex-wrap:wrap">
@@ -4969,6 +4969,7 @@ async function openTaskDetail(taskId) {
 window.openTaskDetail = openTaskDetail;
 
 function historyActionTitle(actionType) {
+    if (window.ActionHistoryView) return window.ActionHistoryView.titleFor(actionType, 'task');
     const labels = {
         task_completed: 'Задачу виконано',
         task_owner_reassigned: 'Відповідального змінено',
@@ -4985,6 +4986,7 @@ function historyActionTitle(actionType) {
 }
 
 function shortHistoryValue(value = {}) {
+    if (window.ActionHistoryView) return window.ActionHistoryView.valueLabel(value);
     if (!value || typeof value !== 'object') return '';
     if (value.status) return `статус: ${value.status}`;
     if (value.ownerUserId !== undefined) return `відповідальний: ${value.ownerUserId || 'немає'}`;
@@ -4997,6 +4999,14 @@ function shortHistoryValue(value = {}) {
 }
 
 function renderTaskHistory(history = []) {
+    if (window.ActionHistoryView) {
+        return window.ActionHistoryView.renderList(history, {
+            kind: 'task',
+            listClass: 'task-action-history-list',
+            rowClass: 'task-action-history-row',
+            emptyMessage: 'Ще немає історії дій'
+        });
+    }
     if (!history.length) return '<div style="color:var(--gray-400)">Ще немає історії дій</div>';
     return history.map(event => {
         const oldValue = shortHistoryValue(event.oldValue);

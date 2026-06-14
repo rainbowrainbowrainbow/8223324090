@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.51",
+  "version": "0.75.52",
   "eventGenix": {
-    "releaseLabel": "Maysternya Bot Timeline Booking"
+    "releaseLabel": "Action History Unification"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -18,8 +18,15 @@ let historyCurrentOffset = 0;
 async function showHistory() {
     if (!canViewHistory()) return;
     historyCurrentOffset = 0;
+    const modal = document.getElementById('historyModal');
+    const container = document.getElementById('historyList');
+    if (container) {
+        container.innerHTML = window.ActionHistoryView
+            ? window.ActionHistoryView.renderState('Завантажуємо історію змін...', { role: 'status' })
+            : '<div class="loading-spinner">Завантаження історії...</div>';
+    }
+    modal?.classList.remove('hidden');
     await loadHistoryPage();
-    document.getElementById('historyModal')?.classList.remove('hidden');
 }
 
 function getHistoryFilters() {
@@ -38,7 +45,8 @@ async function loadHistoryPage() {
         limit: HISTORY_PAGE_SIZE,
         offset: historyCurrentOffset
     });
-    const { items, total } = result;
+    const items = Array.isArray(result?.items) ? result.items : [];
+    const total = Number(result?.total || items.length || 0);
 
     // Stats
     const statsEl = document.getElementById('historyStats');
@@ -48,66 +56,18 @@ async function loadHistoryPage() {
 
     // Render items
     const container = document.getElementById('historyList');
-    if (items.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">Історія порожня</div><div class="empty-state-text">Тут з\'являться записи про створення, редагування та видалення бронювань</div></div>';
+    if (!container) return;
+    if (!window.ActionHistoryView) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">Історія порожня</div><div class="empty-state-text">Оновіть сторінку, щоб завантажити спільний renderer історії.</div></div>';
+    } else if (items.length === 0) {
+        container.innerHTML = '<div class="empty-state action-history-empty"><div class="empty-state-icon">📋</div><div class="empty-state-title">Історія порожня</div><div class="empty-state-text">Тут зʼявляться записи про створення, редагування та видалення бронювань</div></div>';
     } else {
-        container.innerHTML = items.map(item => {
-            const date = new Date(item.timestamp).toLocaleString('uk-UA');
-            const actionMap = {
-                create: 'Створено', delete: 'Видалено', permanent_delete: 'Видалено назавжди',
-                shift: 'Перенесено', edit: 'Змінено',
-                undo_create: '↩ Скасовано створення', undo_delete: '↩ Скасовано видалення',
-                undo_edit: '↩ Скасовано зміну', undo_shift: '↩ Скасовано перенос',
-                afisha_create: '🎪 Афіша створена', afisha_edit: '🎪 Афіша змінена',
-                afisha_move: '🎪 Афіша перенесена', afisha_delete: '🎪 Афіша видалена',
-                tasks_generated: '📋 Завдання створені',
-                automation_triggered: '🤖 Автоматизація',
-                certificate_create: '📄 Видано сертифікат',
-                certificate_batch: '📦 Пакет сертифікатів',
-                certificate_used: '✅ Сертифікат використано',
-                certificate_revoked: '❌ Сертифікат анульовано',
-                certificate_blocked: '🔒 Сертифікат заблоковано',
-                certificate_deleted: '🗑️ Сертифікат видалено',
-                certificate_delete: '🗑️ Сертифікат видалено',
-                certificate_edit: '✏️ Сертифікат змінено',
-                certificate_expired: '⏰ Сертифікат прострочено'
-            };
-            const actionText = actionMap[item.action] || item.action;
-            const isAfisha = item.action.startsWith('afisha_');
-            const isCert = item.action.startsWith('certificate_');
-            const actionClass = item.action.includes('undo') ? 'action-undo' : isCert ? 'action-edit' : (item.action === 'automation_triggered' || item.action === 'tasks_generated') ? 'action-edit' : (item.action.includes('edit') || item.action === 'afisha_move' || item.action === 'shift' ? 'action-edit' : (item.action.includes('create') ? 'action-create' : 'action-delete'));
-
-            let details;
-            if (isCert) {
-                const d = item.data || {};
-                if (item.action === 'certificate_batch') {
-                    details = `${d.quantity || 0} шт. — коди: ${(d.codes || []).join(', ')}`;
-                } else {
-                    details = `${escapeHtml(d.certCode || '')}${d.displayValue ? ' — ' + escapeHtml(d.displayValue) : ''}${d.typeText ? ' (' + escapeHtml(d.typeText) + ')' : ''}`;
-                }
-            } else if (item.action === 'afisha_move') {
-                details = `${escapeHtml(item.data?.title || '')}: ${escapeHtml(item.data?.from || '')} → ${escapeHtml(item.data?.to || '')}`;
-            } else if (isAfisha) {
-                details = `${escapeHtml(item.data?.title || '')} (${escapeHtml(item.data?.type || 'event')}, ${item.data?.duration || 60}хв): ${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')}`;
-            } else if (item.action === 'tasks_generated') {
-                details = `${escapeHtml(item.data?.title || '')} — ${item.data?.count || 0} завдань`;
-            } else if (item.action === 'automation_triggered') {
-                details = `${escapeHtml(item.data?.rule_name || '')} — бронювання ${escapeHtml(item.data?.booking_id || '')}`;
-            } else {
-                details = `${escapeHtml(item.data?.label || item.data?.programCode || '')}: ${escapeHtml(item.data?.room || '')} (${escapeHtml(item.data?.date || '')} ${escapeHtml(item.data?.time || '')})`;
-            }
-
-            return `
-                <div class="history-item ${actionClass}">
-                    <div class="history-header">
-                        <span class="history-action">${escapeHtml(actionText)}</span>
-                        <span class="history-user">${escapeHtml(item.user || '')}</span>
-                        <span class="history-date">${escapeHtml(date)}</span>
-                    </div>
-                    <div class="history-details">${details}</div>
-                </div>
-            `;
-        }).join('');
+        container.innerHTML = window.ActionHistoryView.renderList(items, {
+            kind: 'general',
+            listClass: 'history-list-inner',
+            rowClass: 'history-entry',
+            emptyMessage: 'Історія порожня'
+        });
     }
     container.scrollTop = 0;
 

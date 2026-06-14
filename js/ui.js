@@ -13,6 +13,308 @@ if (typeof escapeHtml !== 'function') {
 }
 
 // ==========================================
+// SHARED ACTION HISTORY RENDERER
+// One frontend contract for timeline, tasks, and Work Queue history rows.
+// ==========================================
+if (!window.ActionHistoryView) {
+    window.ActionHistoryView = (() => {
+        const GENERAL_LABELS = {
+            create: 'Створено',
+            edit: 'Змінено',
+            delete: 'Видалено',
+            permanent_delete: 'Видалено назавжди',
+            shift: 'Перенесено',
+            drag: 'Перенесено на таймлайні',
+            resize: 'Змінено тривалість',
+            undo_create: 'Скасовано створення',
+            undo_delete: 'Скасовано видалення',
+            undo_edit: 'Скасовано зміну',
+            undo_shift: 'Скасовано перенос',
+            undo_drag: 'Скасовано перенос',
+            undo_resize: 'Скасовано зміну тривалості',
+            booking_confirmed: 'Бронювання підтверджено',
+            booking_shared_room_link_created: 'Звʼязок кімнат створено',
+            booking_banquet_link_created: 'Банкетний звʼязок створено',
+            booking_banquet_link_deleted: 'Банкетний звʼязок видалено',
+            education_series_create: 'Серію занять створено',
+            education_series_cancel: 'Серію занять скасовано',
+            afisha_create: 'Афіша створена',
+            afisha_edit: 'Афіша змінена',
+            afisha_move: 'Афіша перенесена',
+            afisha_delete: 'Афіша видалена',
+            tasks_generated: 'Завдання створені',
+            automation_triggered: 'Автоматизація',
+            certificate_create: 'Сертифікат видано',
+            certificate_batch: 'Пакет сертифікатів',
+            certificate_used: 'Сертифікат використано',
+            certificate_revoked: 'Сертифікат анульовано',
+            certificate_blocked: 'Сертифікат заблоковано',
+            certificate_deleted: 'Сертифікат видалено',
+            certificate_delete: 'Сертифікат видалено',
+            certificate_edit: 'Сертифікат змінено',
+            certificate_expired: 'Сертифікат прострочено',
+            task_completed: 'Задачу виконано',
+            task_owner_reassigned: 'Відповідального змінено',
+            task_rescheduled: 'Дедлайн перенесено',
+            reply_expectation_cleared: 'Очікування відповіді очищено',
+            reply_sla_snoozed: 'SLA перенесено',
+            reply_owner_reassigned: 'Відповідального змінено',
+            reply_escalated: 'Ескалацію створено або перевикористано',
+            reply_escalation_closed: 'Ескалацію закрито'
+        };
+
+        const TASK_LABELS = {
+            task_completed: 'Задачу виконано',
+            task_owner_reassigned: 'Відповідального змінено',
+            task_rescheduled: 'Дедлайн перенесено',
+            task_observers_updated: 'Спостерігачів оновлено',
+            task_scheduled: 'Задачу заплановано',
+            task_schedule_moved: 'Розклад перенесено',
+            task_schedule_manual_override: 'Ручний розклад',
+            task_schedule_proposal_created: 'Пропозиція розкладу',
+            task_slot_missed: 'Слот пропущено',
+            task_discipline_penalty_applied: 'Штраф дисципліни застосовано'
+        };
+
+        const REPLY_LABELS = {
+            reply_expectation_cleared: 'Очікування відповіді очищено',
+            reply_sla_snoozed: 'SLA перенесено',
+            reply_owner_reassigned: 'Відповідального змінено',
+            reply_escalated: 'Ескалацію створено або перевикористано',
+            reply_escalation_closed: 'Ескалацію закрито'
+        };
+
+        const SUMMARY_LABELS = {
+            'Reply owner reassigned': 'Відповідального за відповідь змінено',
+            'Reply SLA moved': 'SLA відповіді перенесено',
+            'Reply expectation cleared': 'Очікування відповіді очищено',
+            'Reply execution action recorded': 'Дію відповіді записано',
+            'Task completed': 'Задачу виконано',
+            'Task owner reassigned': 'Відповідального задачі змінено',
+            'Task rescheduled': 'Дедлайн задачі перенесено',
+            'Task execution action': 'Дія задачі',
+            'Booking confirmed': 'Бронювання підтверджено'
+        };
+
+        const VALUE_LABELS = {
+            todo: 'до виконання',
+            done: 'виконано',
+            cancelled: 'скасовано',
+            in_progress: 'в роботі',
+            waiting_reply: 'очікування відповіді',
+            preliminary: 'попереднє',
+            confirmed: 'підтверджено'
+        };
+
+        function esc(value) {
+            const escape = window.escapeHtml || (str => String(str).replace(/[&<>"]/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;'
+            }[ch])));
+            return escape(value == null ? '' : String(value));
+        }
+
+        function humanizeToken(value, fallback = '') {
+            const text = String(value || '').trim();
+            if (!text) return fallback;
+            if (VALUE_LABELS[text]) return VALUE_LABELS[text];
+            return text
+                .replace(/[_-]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function titleFor(actionType, kind = 'general') {
+            const action = String(actionType || '').trim();
+            if (!action) return kind === 'reply' ? 'Дія відповіді' : kind === 'task' ? 'Дія задачі' : 'Дія';
+            if (kind === 'reply') return REPLY_LABELS[action] || humanizeToken(action, 'Дія відповіді');
+            if (kind === 'task') return TASK_LABELS[action] || humanizeToken(action, 'Дія задачі');
+            return GENERAL_LABELS[action] || humanizeToken(action, 'Дія');
+        }
+
+        function summaryLabel(summary) {
+            const value = String(summary || '').trim();
+            return SUMMARY_LABELS[value] || humanizeToken(value);
+        }
+
+        function formatDateTime(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            return date.toLocaleString('uk-UA');
+        }
+
+        function valueLabel(value) {
+            if (value === undefined || value === null || value === '') return 'немає';
+            if (typeof value === 'boolean') return value ? 'так' : 'ні';
+            if (typeof value === 'string') {
+                const date = new Date(value);
+                if (!Number.isNaN(date.getTime()) && /T|\d{4}-\d{2}-\d{2}/.test(value)) return formatDateTime(value);
+                return humanizeToken(value, value);
+            }
+            if (typeof value === 'object') return JSON.stringify(value);
+            return String(value);
+        }
+
+        function toneFor(actionType, kind = 'general') {
+            const action = String(actionType || '');
+            if (action.includes('delete') || action.includes('revoked') || action.includes('blocked')) return 'danger';
+            if (action.includes('undo') || action.includes('snoozed') || action.includes('rescheduled') || action.includes('moved')) return 'warning';
+            if (action.includes('create') || action.includes('completed') || action.includes('confirmed') || action.includes('closed') || action.includes('used')) return 'success';
+            if (kind === 'reply' && action.includes('escalated')) return 'warning';
+            return 'info';
+        }
+
+        function actorName(event = {}, kind = 'general') {
+            if (kind === 'general') return event.user || event.username || event.actor?.name || event.createdBy || 'system';
+            return event.actor?.name || event.actorName || (event.actor?.userId ? `Користувач #${event.actor.userId}` : 'Невідомий виконавець');
+        }
+
+        function eventTimestamp(event = {}) {
+            return event.timestamp || event.createdAt || event.created_at || event.changedAt || '';
+        }
+
+        function generalDetails(item = {}) {
+            const action = String(item.action || item.actionType || '');
+            const data = item.data && typeof item.data === 'object' ? item.data : {};
+            const isCert = action.startsWith('certificate_');
+            const isAfisha = action.startsWith('afisha_');
+
+            if (isCert) {
+                if (action === 'certificate_batch') {
+                    const codes = Array.isArray(data.codes) ? data.codes.join(', ') : '';
+                    return `${data.quantity || 0} шт.${codes ? `, коди: ${codes}` : ''}`;
+                }
+                return [data.certCode, data.displayValue, data.typeText ? `(${data.typeText})` : ''].filter(Boolean).join(' ');
+            }
+
+            if (action === 'afisha_move') {
+                return `${data.title || ''}: ${data.from || ''} -> ${data.to || ''}`.trim();
+            }
+
+            if (isAfisha) {
+                const meta = [data.type || 'event', data.duration ? `${data.duration} хв` : ''].filter(Boolean).join(', ');
+                const schedule = [data.date, data.time].filter(Boolean).join(' ');
+                return `${data.title || ''}${meta ? ` (${meta})` : ''}${schedule ? `, ${schedule}` : ''}`.trim();
+            }
+
+            if (action === 'tasks_generated') {
+                return `${data.title || ''}${data.count !== undefined ? `, ${data.count} завдань` : ''}`.trim();
+            }
+
+            if (action === 'automation_triggered') {
+                return `${data.rule_name || ''}${data.booking_id ? `, бронювання ${data.booking_id}` : ''}`.trim();
+            }
+
+            const subject = data.label || data.programCode || data.title || data.name || data.bookingId || data.id || '';
+            const room = data.room || data.lineName || data.lineId || '';
+            const schedule = [data.date, data.time].filter(Boolean).join(' ');
+            return [subject, room, schedule ? `(${schedule})` : ''].filter(Boolean).join(' ');
+        }
+
+        function taskChange(event = {}) {
+            const oldValue = event.oldValue || {};
+            const newValue = event.newValue || {};
+            switch (event.actionType) {
+                case 'task_completed':
+                    return `статус ${valueLabel(oldValue.status)} -> ${valueLabel(newValue.status)}`;
+                case 'task_owner_reassigned':
+                    return `${valueLabel(oldValue.assignedTo || oldValue.ownerUserId)} -> ${valueLabel(newValue.assignedTo || newValue.ownerUserId)}`;
+                case 'task_rescheduled':
+                    return `${valueLabel(oldValue.deadline || oldValue.date)} -> ${valueLabel(newValue.deadline || newValue.date)}`;
+                default:
+                    if (oldValue.status || newValue.status) return `${valueLabel(oldValue.status)} -> ${valueLabel(newValue.status)}`;
+                    if (oldValue.deadline !== undefined || newValue.deadline !== undefined) return `${valueLabel(oldValue.deadline)} -> ${valueLabel(newValue.deadline)}`;
+                    if (oldValue.scheduledStartAt !== undefined || newValue.scheduledStartAt !== undefined) return `${valueLabel(oldValue.scheduledStartAt || oldValue.scheduleSlot)} -> ${valueLabel(newValue.scheduledStartAt || newValue.scheduleSlot)}`;
+                    return summaryLabel(event.summary);
+            }
+        }
+
+        function replyChange(event = {}) {
+            const oldValue = event.oldValue || {};
+            const newValue = event.newValue || {};
+            switch (event.actionType) {
+                case 'reply_owner_reassigned':
+                    return `${valueLabel(oldValue.replyOwner || oldValue.replyOwnerUserId)} -> ${valueLabel(newValue.replyOwner || newValue.replyOwnerUserId)}`;
+                case 'reply_sla_snoozed':
+                    return `${valueLabel(oldValue.replySlaAt)} -> ${valueLabel(newValue.replySlaAt)}`;
+                case 'reply_expectation_cleared':
+                    return `очікування відповіді ${valueLabel(oldValue.replyExpected)} -> ${valueLabel(newValue.replyExpected)}`;
+                case 'reply_escalated':
+                case 'reply_escalation_closed':
+                    return `задача ${valueLabel(oldValue.replyEscalationTaskId)} -> ${valueLabel(newValue.replyEscalationTaskId)}`;
+                default:
+                    return summaryLabel(event.summary);
+            }
+        }
+
+        function normalizeEvent(event = {}, options = {}) {
+            const kind = options.kind || 'general';
+            const actionType = event.actionType || event.action || '';
+            const change = kind === 'task' ? taskChange(event) : kind === 'reply' ? replyChange(event) : generalDetails(event);
+            return {
+                title: titleFor(actionType, kind),
+                summary: kind === 'general' ? '' : summaryLabel(event.summary),
+                actor: actorName(event, kind),
+                timestamp: formatDateTime(eventTimestamp(event)),
+                details: change,
+                tone: toneFor(actionType, kind)
+            };
+        }
+
+        function renderRow(event, options = {}) {
+            const normalized = options.normalize ? options.normalize(event) : normalizeEvent(event, options);
+            const rowClass = ['action-history-row', `action-history-row--${normalized.tone || 'info'}`, options.rowClass]
+                .filter(Boolean)
+                .join(' ');
+            const meta = [normalized.actor, normalized.timestamp].filter(Boolean).join(' · ');
+            return `
+                <li class="${esc(rowClass)}">
+                    <div class="action-history-row-main">
+                        <strong>${esc(normalized.title)}</strong>
+                        ${normalized.summary ? `<span>${esc(normalized.summary)}</span>` : ''}
+                    </div>
+                    ${meta ? `<p class="action-history-row-meta">${esc(meta)}</p>` : ''}
+                    ${normalized.details ? `<code class="action-history-row-detail">${esc(normalized.details)}</code>` : ''}
+                </li>
+            `;
+        }
+
+        function renderState(message, options = {}) {
+            const tone = options.tone ? ` action-history-state--${options.tone}` : '';
+            const className = options.className ? ` ${options.className}` : '';
+            const role = options.role ? ` role="${esc(options.role)}"` : '';
+            return `<p class="action-history-state${tone}${className}"${role}>${esc(message)}</p>`;
+        }
+
+        function renderList(events = [], options = {}) {
+            if (!events.length) {
+                return renderState(options.emptyMessage || 'Історії дій ще немає.', {
+                    className: options.stateClass || '',
+                    tone: options.emptyTone || ''
+                });
+            }
+            const listClass = ['action-history-list', options.listClass].filter(Boolean).join(' ');
+            return `<ol class="${esc(listClass)}">${events.map(event => renderRow(event, options)).join('')}</ol>`;
+        }
+
+        return {
+            formatDateTime,
+            generalDetails,
+            normalizeEvent,
+            renderList,
+            renderRow,
+            renderState,
+            summaryLabel,
+            titleFor,
+            valueLabel
+        };
+    })();
+}
+
+// ==========================================
 // MODAL LAYER GUARD
 // Keeps page-local dialogs above assistant/drawer surfaces without one-off z-index fixes.
 // ==========================================

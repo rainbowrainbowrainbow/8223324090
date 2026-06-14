@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.51">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.51">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.51">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.51">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.51">
-    <link rel="stylesheet" href="css/features.css?v=0.75.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.51">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.51">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.51">
+    <link rel="stylesheet" href="css/base.css?v=0.75.52">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.52">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.52">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.52">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.52">
+    <link rel="stylesheet" href="css/features.css?v=0.75.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.52">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.52">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.51">✨ 0.75.51</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.52">✨ 0.75.52</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.51 — Maysternya Bot Timeline Booking</p>
+                <p class="tagline">AI First CRM v0.75.52 — Action History Unification</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.51</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.52</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -154,10 +154,10 @@
                     </label>
                     <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
                     <button id="roomLoadBtn" class="btn-room-load" title="Навантаження кімнат"><span class="timeline-control-icon" aria-hidden="true">🏠</span><span>Кімнати</span></button>
+                    <button type="button" id="historyBtn" class="btn-history hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span>Історія змін</span></button>
                     <div class="admin-dropdown" id="adminDropdown" data-menu-scope="timeline-actions">
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false"><span class="timeline-control-icon timeline-control-icon--dots" aria-hidden="true">⋯</span><span>Дії</span></button>
                         <div class="dropdown-content hidden" id="dropdownContent" role="menu" aria-label="Контекстні дії таймлайну">
-                            <button type="button" id="historyBtn" class="dropdown-item hidden" role="menuitem" title="Історія змін бронювань">📋 Історія змін</button>
                             <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест дня</button>
                         </div>
                     </div>
@@ -1003,7 +1003,7 @@
 
     <!-- Модальне вікно управління аніматорами (тільки для Сергія) -->
     <div id="animatorsModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Список аніматорів">
-        <div class="modal-content modal-large">
+        <div class="modal-content modal-large action-history-modal">
             <span class="modal-close">&times;</span>
             <h3>👥 Управління аніматорами</h3>
             <div class="animators-management">
@@ -1731,6 +1731,22 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.75.52 — Action History Unification</h4>
+                    <ul>
+                        <li><b>Кнопку “Історія змін” відремонтовано на таймлайні</b> — її винесено з меню <code>... Дії</code> у верхню панель як окрему кнопку з нормальним розміром, іконкою, hover-станом і стабільним відступом.</li>
+                        <li><b>Меню “Дії” стало чистішим</b> — у dropdown залишаються тільки контекстні дії на кшталт дайджесту, а журнал змін більше не виглядає як обрізаний пункт меню.</li>
+                        <li><b>Налаштування видимості таймлайну оновлено</b> — “Історія змін” тепер належить до групи “Верхня панель”, а не до “Меню дій”, тому її поведінка збігається з тим, де вона реально показується.</li>
+                        <li><b>Усі історії дій зведено до одного frontend renderer</b> — timeline modal, Work Queue reply history, Work Queue task history і task detail history тепер використовують спільний <code>ActionHistoryView</code>.</li>
+                        <li><b>Назви дій, виконавець, дата і деталі стали однаковими всюди</b> — видалення, скасування видалення, виконання задачі, зміна відповідального, дедлайну і статусу рендеряться через один форматтер.</li>
+                        <li><b>Модалку історії перемальовано в єдиний стиль</b> — список, кольорові маркери дій, loading/empty/error стани, фільтри, пошук, дата-діапазон і пагінація тепер мають спільні <code>action-history-*</code> CSS-класи.</li>
+                        <li><b>Dark mode і mobile поправлено</b> — фільтри більше не вилітають за межі модалки, кнопки не розтягують панель, а темна тема використовує існуючі theme tokens без зайвого CSS боргу.</li>
+                        <li><b>Dashboard і задачі прибрано від дубльованого рендеру</b> — старі локальні HTML-шаблони історії в Work Queue і task detail замінено на спільний renderer з fallback-станами.</li>
+                        <li><b>Додано regression guard</b> — UI smoke перевіряє, що history більше не захована в dropdown, а timeline/tasks/dashboard не повернули окремі реалізації історії.</li>
+                        <li><b>Релізні маркери синхронізовано до <code>0.75.52</code></b> — package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і <code>/api/version</code> оновлено під цей реліз.</li>
+                        <li><b>DB/API/env/deploy config не змінювались</b> — це frontend/UI hardening без міграцій, нових секретів, нових залежностей або зміни production-конфігурації.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.75.51 — Maysternya Bot Timeline Booking</h4>
                     <ul>
@@ -12972,30 +12988,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.51"></script>
-    <script src="js/timeline-visibility.js?v=0.75.51"></script>
-    <script src="js/kitchen-menu-images.js?v=0.75.51"></script>
-    <script src="js/config.js?v=0.75.51"></script>
-    <script src="js/api.js?v=0.75.51"></script>
-    <script src="js/ui.js?v=0.75.51"></script>
-    <script src="js/auth.js?v=0.75.51"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.51"></script>
-    <script src="js/timeline.js?v=0.75.51"></script>
-    <script src="js/booking.js?v=0.75.51"></script>
-    <script src="js/settings.js?v=0.75.51"></script>
-    <script src="js/booking-form.js?v=0.75.51"></script>
-    <script src="js/booking-linked.js?v=0.75.51"></script>
-    <script src="js/settings-dashboard.js?v=0.75.51"></script>
-    <script src="js/settings-history.js?v=0.75.51"></script>
-    <script src="js/settings-afisha.js?v=0.75.51"></script>
-    <script src="js/settings-certificates.js?v=0.75.51"></script>
-    <script src="js/offline.js?v=0.75.51"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.51"></script>
-    <script src="js/search.js?v=0.75.51"></script>
-    <script src="js/ws.js?v=0.75.51"></script>
-    <script src="js/app.js?v=0.75.51"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.51"></script>
-    <script src="js/components/sidebar.js?v=0.75.51"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.51"></script>
+    <script src="js/timeline-context.js?v=0.75.52"></script>
+    <script src="js/timeline-visibility.js?v=0.75.52"></script>
+    <script src="js/kitchen-menu-images.js?v=0.75.52"></script>
+    <script src="js/config.js?v=0.75.52"></script>
+    <script src="js/api.js?v=0.75.52"></script>
+    <script src="js/ui.js?v=0.75.52"></script>
+    <script src="js/auth.js?v=0.75.52"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.52"></script>
+    <script src="js/timeline.js?v=0.75.52"></script>
+    <script src="js/booking.js?v=0.75.52"></script>
+    <script src="js/settings.js?v=0.75.52"></script>
+    <script src="js/booking-form.js?v=0.75.52"></script>
+    <script src="js/booking-linked.js?v=0.75.52"></script>
+    <script src="js/settings-dashboard.js?v=0.75.52"></script>
+    <script src="js/settings-history.js?v=0.75.52"></script>
+    <script src="js/settings-afisha.js?v=0.75.52"></script>
+    <script src="js/settings-certificates.js?v=0.75.52"></script>
+    <script src="js/offline.js?v=0.75.52"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.52"></script>
+    <script src="js/search.js?v=0.75.52"></script>
+    <script src="js/ws.js?v=0.75.52"></script>
+    <script src="js/app.js?v=0.75.52"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.52"></script>
+    <script src="js/components/sidebar.js?v=0.75.52"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.52"></script>
 </body>
 </html>

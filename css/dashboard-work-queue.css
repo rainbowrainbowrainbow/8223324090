@@ -671,9 +671,10 @@
 
 .reply-action-history-state {
     margin-top: 8px;
-    padding: 8px;
-    border-radius: 7px;
-    background: rgba(15,23,42,0.04);
+    padding: 10px;
+    border: 1px solid rgba(148,163,184,0.2);
+    border-radius: 8px;
+    background: rgba(248,250,252,0.86);
     color: #475569;
     font-size: 12px;
     font-weight: 750;
@@ -687,7 +688,7 @@
 .reply-action-history-list {
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 8px;
     margin: 8px 0 0;
     padding: 0;
     list-style: none;
@@ -695,13 +696,15 @@
 
 .reply-action-history-row {
     display: grid;
-    gap: 4px;
-    padding: 8px;
+    gap: 6px;
+    padding: 10px 12px;
     border: 1px solid rgba(148,163,184,0.18);
-    border-radius: 7px;
-    background: rgba(248,250,252,0.9);
+    border-left: 4px solid #3B82F6;
+    border-radius: 8px;
+    background: rgba(248,250,252,0.94);
 }
 
+.reply-action-history-row .action-history-row-main,
 .reply-action-history-row div {
     display: flex;
     align-items: baseline;
@@ -712,7 +715,7 @@
 
 .reply-action-history-row strong {
     color: #0F172A;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 900;
 }
 
@@ -728,11 +731,11 @@
     display: inline-flex;
     width: fit-content;
     max-width: 100%;
-    padding: 3px 6px;
-    border-radius: 6px;
-    background: rgba(37,99,235,0.08);
-    color: #1D4ED8;
-    font-size: 11px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #334155;
+    font-size: 12px;
     font-family: inherit;
     font-weight: 850;
     overflow-wrap: anywhere;

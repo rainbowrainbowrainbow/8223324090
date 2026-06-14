@@ -3818,6 +3818,13 @@ async function renderMultiDayTimeline() {
     if (historyBtn) {
         historyBtn.classList.toggle('hidden', !canViewHistory());
     }
+    const digestBtn = document.getElementById('digestBtn');
+    if (digestBtn) {
+        digestBtn.classList.toggle('hidden', isViewer());
+    }
+    if (typeof refreshTimelineActionMenuVisibility === 'function') {
+        refreshTimelineActionMenuVisibility({ forceClosed: true, reason: 'render-multiday-actions' });
+    }
 
     const dates = buildMultiDayDates();
 

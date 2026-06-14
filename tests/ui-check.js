@@ -178,6 +178,12 @@ checkPage('index.html', (doc, html) => {
         && !doc.getElementById('certificatesBtn')
         && !timelineActionMenu?.querySelector('a[href="/programs"]')
         && !timelineActionMenu?.querySelector('a[href="/tasks"]'));
+    check('Timeline history opens as a primary toolbar action with shared history styling',
+        doc.querySelector('.v32-controls > #historyBtn.btn-history')
+        && !timelineActionMenu?.querySelector('#historyBtn')
+        && modalsCss.includes('.action-history-row')
+        && modalsCss.includes('.action-history-modal')
+        && htmlContains('js/settings.js', 'ActionHistoryView.renderList(items'));
     check('Timeline product sales modal omits payment/debt fields', !doc.getElementById('productSalesModal')?.textContent.includes('Оплачено') && !doc.getElementById('productSalesModal')?.textContent.includes('Борг'));
     check('Timeline product sales export buttons are styled as buttons', doc.getElementById('productSalesXlsxBtn')?.classList.contains('product-sales-export-btn') && doc.getElementById('productSalesCsvBtn')?.classList.contains('product-sales-export-btn'));
     check('Timeline product sales button has readable light text color', productSalesBtnRule.includes('color: var(--gray-800'));
@@ -906,6 +912,14 @@ const minigameCss = fs.readFileSync(path.join(ROOT, 'css', 'minigame.css'), 'utf
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
 const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
 const dashboardCss = cssTextWithImports('css/dashboard.css');
+check('Shared action history renderer owns timeline, task detail, and Work Queue histories',
+    uiCode.includes('window.ActionHistoryView')
+    && settingsCode.includes('ActionHistoryView.renderList(items')
+    && dashboardPageCode.includes("kind: 'reply'")
+    && dashboardPageCode.includes("kind: 'task'")
+    && tasksPageCodeForProfileChecks.includes('ActionHistoryView.renderList(history')
+    && globalModalsCss.includes('.action-history-list')
+    && dashboardCss.includes('.reply-action-history-row'));
 const assistantRailCode = fs.readFileSync(path.join(ROOT, 'js/assistant-rail.js'), 'utf8');
 const assistantFoundationCode = fs.readFileSync(path.join(ROOT, 'js/assistant-foundation.js'), 'utf8');
 const kleshnyaWidgetCode = fs.readFileSync(path.join(ROOT, 'js/kleshnya-widget.js'), 'utf8');

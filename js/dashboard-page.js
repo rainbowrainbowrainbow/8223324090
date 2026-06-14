@@ -2524,95 +2524,6 @@ const DashboardPage = (() => {
         }
     }
 
-    function replyActionHistoryTitle(actionType) {
-        switch (actionType) {
-            case 'reply_expectation_cleared':
-                return 'Очікування відповіді очищено';
-            case 'reply_sla_snoozed':
-                return 'SLA перенесено';
-            case 'reply_owner_reassigned':
-                return 'Відповідального змінено';
-            case 'reply_escalated':
-                return 'Ескалацію створено або перевикористано';
-            case 'reply_escalation_closed':
-                return 'Ескалацію закрито';
-            default:
-                return 'Дія відповіді';
-        }
-    }
-
-    function historyValueLabel(value) {
-        if (value === undefined || value === null || value === '') return 'немає';
-        if (typeof value === 'boolean') return value ? 'так' : 'ні';
-        if (typeof value === 'string') {
-            const date = new Date(value);
-            if (!Number.isNaN(date.getTime()) && /T|\d{4}-\d{2}-\d{2}/.test(value)) return formatQueueDateTime(value);
-            const valueMap = {
-                todo: 'до виконання',
-                done: 'виконано',
-                cancelled: 'скасовано',
-                in_progress: 'в роботі',
-                waiting_reply: 'очікування відповіді',
-                preliminary: 'попереднє',
-                confirmed: 'підтверджено'
-            };
-            return valueMap[value] || humanizeQueueActionLabel(value, value);
-        }
-        return String(value);
-    }
-
-    function humanizeHistorySummary(summary) {
-        const value = String(summary || '').trim();
-        const map = {
-            'Reply owner reassigned': 'Відповідального за відповідь змінено',
-            'Reply SLA moved': 'SLA відповіді перенесено',
-            'Reply expectation cleared': 'Очікування відповіді очищено',
-            'Reply execution action recorded': 'Дію відповіді записано',
-            'Task completed': 'Задачу виконано',
-            'Task owner reassigned': 'Відповідального задачі змінено',
-            'Task rescheduled': 'Дедлайн задачі перенесено',
-            'Task execution action': 'Дія задачі',
-            'Booking confirmed': 'Бронювання підтверджено'
-        };
-        return map[value] || humanizeQueueActionLabel(value, value);
-    }
-
-    function renderReplyActionHistoryChange(event) {
-        const oldValue = event?.oldValue || {};
-        const newValue = event?.newValue || {};
-        if (event?.actionType === 'reply_owner_reassigned') {
-            return `${historyValueLabel(oldValue.replyOwner || oldValue.replyOwnerUserId)} -> ${historyValueLabel(newValue.replyOwner || newValue.replyOwnerUserId)}`;
-        }
-        if (event?.actionType === 'reply_sla_snoozed') {
-            return `${historyValueLabel(oldValue.replySlaAt)} -> ${historyValueLabel(newValue.replySlaAt)}`;
-        }
-        if (event?.actionType === 'reply_expectation_cleared') {
-            return `очікування відповіді ${historyValueLabel(oldValue.replyExpected)} -> ${historyValueLabel(newValue.replyExpected)}`;
-        }
-        if (event?.actionType === 'reply_escalated' || event?.actionType === 'reply_escalation_closed') {
-            return `задача ${historyValueLabel(oldValue.replyEscalationTaskId)} -> ${historyValueLabel(newValue.replyEscalationTaskId)}`;
-        }
-        return humanizeHistorySummary(event?.summary);
-    }
-
-    function renderReplyActionHistoryRows(events) {
-        return (events || []).map(event => {
-            const actor = event.actor?.name || (event.actor?.userId ? `Користувач #${event.actor.userId}` : 'Невідомий виконавець');
-            const created = event.createdAt ? formatQueueDateTime(event.createdAt) : '';
-            const change = renderReplyActionHistoryChange(event);
-            return `
-                <li class="reply-action-history-row">
-                    <div>
-                        <strong>${escapeHtml(replyActionHistoryTitle(event.actionType))}</strong>
-                        <span>${escapeHtml(humanizeHistorySummary(event.summary))}</span>
-                    </div>
-                    <p>${escapeHtml(actor)}${created ? ` · ${escapeHtml(created)}` : ''}</p>
-                    ${change ? `<code>${escapeHtml(change)}</code>` : ''}
-                </li>
-            `;
-        }).join('');
-    }
-
     function renderReplyActionHistory(item) {
         if (!isReplyActionHistoryItem(item)) return '';
         syncReplyActionHistorySelection(item);
@@ -2620,16 +2531,27 @@ const DashboardPage = (() => {
         const status = state.status || 'idle';
         let body = '';
         if (status === 'loading' || status === 'idle') {
-            body = '<p class="reply-action-history-state" role="status">Завантажуємо історію дій по відповідях...</p>';
+            body = window.ActionHistoryView
+                ? window.ActionHistoryView.renderState('Завантажуємо історію дій по відповідях...', { className: 'reply-action-history-state', role: 'status' })
+                : '<p class="reply-action-history-state" role="status">Завантажуємо історію дій по відповідях...</p>';
         } else if (status === 'error') {
             body = `
                 <p class="reply-action-history-state error">Не вдалося завантажити історію дій по відповідях.</p>
                 <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadReplyActionHistory()">Спробувати ще раз</button>
             `;
         } else if (!state.events.length) {
-            body = '<p class="reply-action-history-state">Історії дій по відповідях ще немає.</p>';
+            body = window.ActionHistoryView
+                ? window.ActionHistoryView.renderState('Історії дій по відповідях ще немає.', { className: 'reply-action-history-state' })
+                : '<p class="reply-action-history-state">Історії дій по відповідях ще немає.</p>';
+        } else if (window.ActionHistoryView) {
+            body = window.ActionHistoryView.renderList(state.events, {
+                kind: 'reply',
+                listClass: 'reply-action-history-list',
+                rowClass: 'reply-action-history-row',
+                stateClass: 'reply-action-history-state'
+            });
         } else {
-            body = `<ol class="reply-action-history-list">${renderReplyActionHistoryRows(state.events)}</ol>`;
+            body = '<p class="reply-action-history-state error">Renderer історії недоступний. Оновіть сторінку.</p>';
         }
         return `
             <div class="work-queue-triage-card reply-action-history-card" id="replyActionHistoryPanel" aria-label="Історія дій по відповідях">
@@ -2660,52 +2582,6 @@ const DashboardPage = (() => {
         }
     }
 
-    function taskActionHistoryTitle(actionType) {
-        switch (actionType) {
-            case 'task_completed':
-                return 'Задачу виконано';
-            case 'task_owner_reassigned':
-                return 'Відповідального змінено';
-            case 'task_rescheduled':
-                return 'Дедлайн перенесено';
-            default:
-                return 'Дія задачі';
-        }
-    }
-
-    function renderTaskActionHistoryChange(event) {
-        const oldValue = event?.oldValue || {};
-        const newValue = event?.newValue || {};
-        if (event?.actionType === 'task_completed') {
-            return `статус ${historyValueLabel(oldValue.status)} -> ${historyValueLabel(newValue.status)}`;
-        }
-        if (event?.actionType === 'task_owner_reassigned') {
-            return `${historyValueLabel(oldValue.assignedTo || oldValue.ownerUserId)} -> ${historyValueLabel(newValue.assignedTo || newValue.ownerUserId)}`;
-        }
-        if (event?.actionType === 'task_rescheduled') {
-            return `${historyValueLabel(oldValue.deadline || oldValue.date)} -> ${historyValueLabel(newValue.deadline || newValue.date)}`;
-        }
-        return humanizeHistorySummary(event?.summary);
-    }
-
-    function renderTaskActionHistoryRows(events) {
-        return (events || []).map(event => {
-            const actor = event.actor?.name || (event.actor?.userId ? `Користувач #${event.actor.userId}` : 'Невідомий виконавець');
-            const created = event.createdAt ? formatQueueDateTime(event.createdAt) : '';
-            const change = renderTaskActionHistoryChange(event);
-            return `
-                <li class="reply-action-history-row">
-                    <div>
-                        <strong>${escapeHtml(taskActionHistoryTitle(event.actionType))}</strong>
-                        <span>${escapeHtml(humanizeHistorySummary(event.summary))}</span>
-                    </div>
-                    <p>${escapeHtml(actor)}${created ? ` · ${escapeHtml(created)}` : ''}</p>
-                    ${change ? `<code>${escapeHtml(change)}</code>` : ''}
-                </li>
-            `;
-        }).join('');
-    }
-
     function renderTaskActionHistory(item) {
         if (!isTaskActionHistoryItem(item)) return '';
         syncTaskActionHistorySelection(item);
@@ -2713,16 +2589,27 @@ const DashboardPage = (() => {
         const status = state.status || 'idle';
         let body = '';
         if (status === 'loading' || status === 'idle') {
-            body = '<p class="reply-action-history-state" role="status">Завантажуємо історію дій по задачі...</p>';
+            body = window.ActionHistoryView
+                ? window.ActionHistoryView.renderState('Завантажуємо історію дій по задачі...', { className: 'reply-action-history-state', role: 'status' })
+                : '<p class="reply-action-history-state" role="status">Завантажуємо історію дій по задачі...</p>';
         } else if (status === 'error') {
             body = `
                 <p class="reply-action-history-state error">Не вдалося завантажити історію дій по задачі.</p>
                 <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadTaskActionHistory()">Спробувати ще раз</button>
             `;
         } else if (!state.events.length) {
-            body = '<p class="reply-action-history-state">Історії дій по задачі ще немає.</p>';
+            body = window.ActionHistoryView
+                ? window.ActionHistoryView.renderState('Історії дій по задачі ще немає.', { className: 'reply-action-history-state' })
+                : '<p class="reply-action-history-state">Історії дій по задачі ще немає.</p>';
+        } else if (window.ActionHistoryView) {
+            body = window.ActionHistoryView.renderList(state.events, {
+                kind: 'task',
+                listClass: 'reply-action-history-list',
+                rowClass: 'reply-action-history-row',
+                stateClass: 'reply-action-history-state'
+            });
         } else {
-            body = `<ol class="reply-action-history-list">${renderTaskActionHistoryRows(state.events)}</ol>`;
+            body = '<p class="reply-action-history-state error">Renderer історії недоступний. Оновіть сторінку.</p>';
         }
         return `
             <div class="work-queue-triage-card reply-action-history-card" id="taskActionHistoryPanel" aria-label="Історія дій по задачі">

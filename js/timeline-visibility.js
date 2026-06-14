@@ -58,7 +58,7 @@
         visualBlock('productSales', 'Верхня панель', 'Продажі', '#productSalesBtn'),
         visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn'),
         visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),
-        visualBlock('history', 'Меню дій', 'Історія змін', '#historyBtn'),
+        visualBlock('history', 'Верхня панель', 'Історія змін', '#historyBtn'),
         visualBlock('digest', 'Меню дій', 'Дайджест дня', '#digestBtn'),
         visualBlock('quickStats', 'Робоча зона', 'Швидка статистика', '#quickStatsBar'),
         visualBlock('assistantWidget', 'Робоча зона', 'Помічник', '#kleshnyaWidget'),

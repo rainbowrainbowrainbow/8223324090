@@ -3113,6 +3113,36 @@ input[type="date"] {
     color: #0f766e;
 }
 
+/* v0.75.52: history is a primary timeline toolbar action, not a nested menu item. */
+.timeline-dashboard-page .v32-controls .btn-history {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    display: inline-grid !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: max-content !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    border-radius: 11px !important;
+    font-family: inherit !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+
+.timeline-dashboard-page .v32-controls .btn-history span:not(.timeline-control-icon) {
+    color: inherit !important;
+    font: inherit !important;
+    line-height: 1 !important;
+}
+
+.timeline-dashboard-page .v32-controls .btn-history.hidden {
+    display: none !important;
+}
+
 body.dark-mode .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle {
     background: rgba(15, 23, 42, 0.72) !important;
     border-color: rgba(148, 163, 184, 0.2) !important;

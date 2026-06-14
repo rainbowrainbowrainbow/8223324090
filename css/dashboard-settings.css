@@ -798,8 +798,8 @@
 }
 
 .dark-mode .reply-action-history-row code {
-    background: rgba(96,165,250,0.15);
-    color: #BFDBFE;
+    background: transparent;
+    color: #F8FAFC;
 }
 
 .dark-mode .work-queue-triage-link,

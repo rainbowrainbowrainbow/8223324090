@@ -1391,24 +1391,24 @@ body.dark-mode .btn-submit.btn-blue { box-shadow: 0 4px 14px rgba(59,130,246,0.1
 /* v5.16: History filters in dark */
 body.dark-mode .history-filter-select,
 body.dark-mode .history-filter-input {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
-    color: #E2E8F0;
+    background: var(--eg-panel-bg-soft);
+    border-color: var(--eg-border-default);
+    color: var(--eg-text-primary);
 }
 
 body.dark-mode .btn-history-reset {
-    background: var(--gray-200);
-    color: #9CA3AF;
+    background: var(--eg-panel-bg-soft);
+    color: var(--eg-text-muted);
 }
 
 body.dark-mode .btn-history-page {
-    background: var(--gray-100);
-    border-color: var(--gray-300);
-    color: #D1D5DB;
+    background: var(--eg-panel-bg-soft);
+    border-color: var(--eg-border-default);
+    color: var(--eg-text-secondary);
 }
 
 body.dark-mode .history-pagination {
-    border-top-color: var(--gray-200);
+    border-top-color: var(--eg-border-default);
 }
 
 /* v5.36: Afisha buttons in dark */
@@ -3756,6 +3756,7 @@ body.dark-mode .guardian-stats-summary {
 /* v0.63.54: timeline utility buttons align with the main control system. */
 .timeline-dashboard-page .v32-controls .toggle-mini,
 .timeline-dashboard-page .v32-controls .btn-room-load,
+.timeline-dashboard-page .v32-controls .btn-history,
 .timeline-dashboard-page .v32-controls .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle {
     height: 36px !important;
     min-height: 36px !important;

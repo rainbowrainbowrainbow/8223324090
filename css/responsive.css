@@ -836,6 +836,7 @@
     }
 
     .btn-room-load,
+    .btn-history,
     .btn-menu-toggle,
     .btn-new-booking,
     .btn-product-sales,
@@ -1122,12 +1123,14 @@
 
     /* v5.36: History filters — full stack on mobile */
     .history-filter-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         gap: 8px;
     }
 
     .history-filter-select,
-    .history-filter-input[type="text"] {
+    .history-filter-input[type="text"],
+    .btn-history-filter,
+    .btn-history-reset {
         width: 100%;
     }
 
@@ -1873,6 +1876,7 @@
 
     body.timeline-dashboard-page .toggle-mini,
     body.timeline-dashboard-page .btn-room-load,
+    body.timeline-dashboard-page .btn-history,
     body.timeline-dashboard-page .btn-undo,
     body.timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"],
     body.timeline-dashboard-page .btn-menu-toggle {
@@ -1911,6 +1915,17 @@
         padding: 0 8px !important;
         font-size: 12px !important;
         line-height: 1.15 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    body.timeline-dashboard-page .btn-history,
+    body.timeline-dashboard-page.timeline-compact-mode .btn-history {
+        width: 100% !important;
+        min-width: 0 !important;
+        min-height: 42px !important;
+        justify-content: center !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;

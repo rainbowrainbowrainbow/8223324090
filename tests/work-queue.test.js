@@ -1272,6 +1272,7 @@ describe('work queue endpoint', () => {
 
     it('renders a triage workspace with truthful bucket-specific depth', async () => {
         const repoRoot = path.resolve(__dirname, '..');
+        const uiJs = fs.readFileSync(path.join(repoRoot, 'js/ui.js'), 'utf8');
         const dashboardJs = fs.readFileSync(path.join(repoRoot, 'js/dashboard-page.js'), 'utf8');
         const dom = new JSDOM(`<!doctype html>
             <div id="currentUser"></div>
@@ -1568,8 +1569,12 @@ describe('work queue endpoint', () => {
             throw new Error(`Unexpected dashboard fetch: ${value}`);
         };
         dom.window.alert = () => {};
+        dom.window.requestAnimationFrame = (cb) => dom.window.setTimeout(() => cb(Date.now()), 0);
+        dom.window.cancelAnimationFrame = (id) => dom.window.clearTimeout(id);
         dom.window.confirmModal = async () => true;
 
+        vm.runInContext(uiJs, dom.getInternalVMContext());
+        dom.window.confirmModal = async () => true;
         vm.runInContext(dashboardJs, dom.getInternalVMContext());
         const DashboardPage = vm.runInContext('DashboardPage', dom.getInternalVMContext());
         await DashboardPage.init();

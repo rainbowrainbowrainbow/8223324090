@@ -1234,6 +1234,7 @@ const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-i
 const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
 const programsCss = fs.readFileSync(path.join(ROOT, 'css/pages-products.css'), 'utf8');
+const productsRoute = fs.readFileSync(path.join(ROOT, 'routes/products.js'), 'utf8');
 const indexHtmlForBookingPanel = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const bookingPanelStart = indexHtmlForBookingPanel.indexOf('<aside id="bookingPanel"');
 const bookingPanelEnd = indexHtmlForBookingPanel.indexOf('</aside>', bookingPanelStart);
@@ -1481,15 +1482,23 @@ check('Products menu tab owns menu-card images, AI review entrypoints, and image
     && programsHtml.includes(`css/pages-products.css?v=${pkg.version}`)
     && programsCss.includes('.kitchen-product-media')
     && programsCss.includes('.kitchen-menu-image-studio')
+    && programsCss.includes('.kitchen-menu-image-status.ready')
+    && programsCss.includes('.kitchen-menu-image-meta')
     && programsCss.includes('.kitchen-menu-ai-actions')
     && programsPageCode.includes('function productMenuImageManifestUrl')
     && programsPageCode.includes('window.KITCHEN_MENU_IMAGES')
     && programsPageCode.includes('function renderKitchenCardVisual')
     && programsPageCode.includes('function renderKitchenMenuAiActions')
     && programsPageCode.includes('function renderKitchenMenuImageStudio')
+    && programsPageCode.includes('function generateKitchenMenuImage')
     && programsPageCode.includes('function saveKitchenMenuImageDraft')
     && programsPageCode.includes('buildKitchenMenuImagePrompt')
+    && programsPageCode.includes('apiGenerateProductMenuImage')
     && programsPageCode.includes('imageStudio')
+    && apiCode.includes('function apiGenerateProductMenuImage')
+    && productsRoute.includes("router.post('/:id/menu-image/generate'")
+    && productsRoute.includes('/images/generations')
+    && productsRoute.includes('OPENAI_MENU_IMAGE_MODEL')
     && bookingCode.includes('BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED = false'));
 check('Timeline booking no longer exposes silent booking toggle',
     !bookingPanelHtml.includes('bookingSkipNotificationSection')

@@ -375,9 +375,9 @@ const MENU_AI_BLOCKS = [
 ];
 
 const MENU_IMAGE_SIZE_OPTIONS = [
-    { value: '1536x864', label: '1536×864 · wide' },
-    { value: '1024x576', label: '1024×576 · web' },
-    { value: '1024x1024', label: '1024×1024 · square' }
+    { value: '1536x1024', label: '1536×1024 · wide' },
+    { value: '1024x1024', label: '1024×1024 · square' },
+    { value: '1024x1536', label: '1024×1536 · vertical' }
 ];
 
 const MENU_IMAGE_STYLE_OPTIONS = [
@@ -1044,7 +1044,7 @@ function buildKitchenMenuImagePrompt(product = {}, settings = {}) {
         product.ingredients ? `Ingredients: ${product.ingredients}` : '',
         allergens ? `Known allergens to avoid hiding visually: ${allergens}` : '',
         product.techCard ? `Kitchen tech notes: ${product.techCard}` : '',
-        `Image size: ${settings.size || '1536x864'}`,
+        `Image size: ${settings.size || '1536x1024'}`,
         `Style preset: ${settings.style || 'catalog'}`,
         'Create an appetizing product catalog photo for a Ukrainian children entertainment center CRM.',
         'Show the real dish clearly, clean composition, no text, no logo, no watermark, no hands, no people.',
@@ -1069,19 +1069,25 @@ function renderKitchenMenuAiActions(product = {}, canManage = false) {
 function renderKitchenMenuImageStudio(product = {}, canManage = false) {
     if (!canManage || getKitchenType(product) !== 'menu') return '';
     const draft = getMenuImageStudioDraft(product);
-    const size = MENU_IMAGE_SIZE_OPTIONS.some(item => item.value === draft.size) ? draft.size : '1536x864';
+    const size = MENU_IMAGE_SIZE_OPTIONS.some(item => item.value === draft.size) ? draft.size : '1536x1024';
     const style = MENU_IMAGE_STYLE_OPTIONS.some(item => item.value === draft.style) ? draft.style : 'catalog';
     const productId = escapeJsString(product.id);
     const sourceImage = productMenuImageUrl(product);
     const hasPreparedPrompt = Boolean(draft.prompt);
+    const hasGeneratedPhoto = Boolean(draft.imageUrl && draft.generatedAt);
+    const statusLabel = hasGeneratedPhoto ? 'фото готове' : (hasPreparedPrompt ? 'prompt готовий' : 'draft');
+    const statusClass = hasGeneratedPhoto ? ' ready' : (hasPreparedPrompt ? ' prepared' : '');
+    const sourceLabel = hasGeneratedPhoto
+        ? `Згенеровано ${escapeHtml(draft.model || 'OpenAI')}`
+        : (sourceImage ? 'Підтягнуто з каталогу' : 'Fallback, потрібна генерація');
     return `
         <div class="kitchen-menu-image-studio" data-menu-image-product="${escapeHtml(product.id)}">
             <div class="kitchen-menu-image-head">
                 <div>
                     <strong>Фото меню</strong>
-                    <span>${sourceImage ? 'Підтягнуто з каталогу' : 'Fallback, потрібна генерація'}</span>
+                    <span>${sourceLabel}</span>
                 </div>
-                <span class="kitchen-menu-image-status">${hasPreparedPrompt ? 'prompt готовий' : 'draft'}</span>
+                <span class="kitchen-menu-image-status${statusClass}">${statusLabel}</span>
             </div>
             <div class="kitchen-menu-image-controls">
                 <label>
@@ -1092,10 +1098,15 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                     <span>Стиль</span>
                     <select data-menu-image-style>${menuImageOptionHtml(MENU_IMAGE_STYLE_OPTIONS, style)}</select>
                 </label>
-                <button type="button" class="btn-page-secondary" onclick="saveKitchenMenuImageDraft('${productId}', this)">
-                    ${hasPreparedPrompt ? 'Перегенерувати prompt' : 'Згенерувати prompt'}
+                <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" onclick="generateKitchenMenuImage('${productId}', this)">
+                    ${hasGeneratedPhoto ? 'Перегенерувати фото' : 'Згенерувати фото'}
                 </button>
             </div>
+            ${hasGeneratedPhoto ? `
+                <p class="kitchen-menu-image-meta">
+                    ${escapeHtml(draft.provider || 'openai')} · ${escapeHtml(draft.size || size)} · ${escapeHtml(draft.generatedAt || '')}
+                </p>
+            ` : ''}
             ${hasPreparedPrompt ? `
                 <details class="kitchen-menu-image-prompt">
                     <summary>Prompt для фото</summary>
@@ -1125,45 +1136,46 @@ async function openKitchenMenuAiFromCard(productId, initialStep = 'nameDescripti
     });
 }
 
-async function saveKitchenMenuImageDraft(productId, trigger = null) {
-    if (!guardProductWrite('готувати image prompt меню')) return;
+async function generateKitchenMenuImage(productId, trigger = null) {
+    if (!guardProductWrite('генерувати фото меню')) return;
     const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
     if (!product || getKitchenType(product) !== 'menu') {
         showNotification('Image studio доступний тільки для меню-позицій', 'error');
         return;
     }
     const panel = trigger?.closest?.('.kitchen-menu-image-studio');
-    const size = panel?.querySelector?.('[data-menu-image-size]')?.value || '1536x864';
+    const size = panel?.querySelector?.('[data-menu-image-size]')?.value || '1536x1024';
     const style = panel?.querySelector?.('[data-menu-image-style]')?.value || 'catalog';
-    const imageStudio = {
-        version: 1,
-        status: 'draft',
-        source: 'products-menu',
-        size,
-        style,
-        imageUrl: productMenuImageUrl(product) || PRODUCT_MENU_FALLBACK_IMAGE,
-        prompt: buildKitchenMenuImagePrompt(product, { size, style }),
-        preparedAt: new Date().toISOString()
-    };
-    const currentDraft = product.aiCardDraft || {};
+    const originalText = trigger?.textContent || '';
+    if (trigger) {
+        trigger.disabled = true;
+        trigger.textContent = 'Генерується...';
+    }
     try {
-        const result = await apiSaveProductMenuAiDraft(productId, {
+        if (typeof apiGenerateProductMenuImage !== 'function') {
+            throw new Error('Menu image generation API is not available');
+        }
+        const result = await apiGenerateProductMenuImage(productId, {
             businessContext: getProductApiBusinessContext(),
-            status: currentDraft.status || 'draft',
-            draft: {
-                ...currentDraft,
-                status: currentDraft.status || 'draft',
-                imageStudio
-            },
-            approvedBlocks: product.aiCardApprovedBlocks || {}
+            size,
+            style
         });
-        if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти image prompt');
+        if (!result?.success) throw new Error(result?.error || 'Не вдалося згенерувати фото меню');
         if (result.product) updateProductInState(result.product);
-        showNotification('Image prompt для меню збережено в картці продукту', 'success');
+        showNotification('Фото меню згенеровано й збережено в картці продукту', 'success');
         renderProducts();
     } catch (err) {
-        showNotification(err.message || 'Не вдалося зберегти image prompt', 'error');
+        showNotification(err.message || 'Не вдалося згенерувати фото меню', 'error');
+    } finally {
+        if (trigger?.isConnected) {
+            trigger.disabled = false;
+            trigger.textContent = originalText;
+        }
     }
+}
+
+async function saveKitchenMenuImageDraft(productId, trigger = null) {
+    return generateKitchenMenuImage(productId, trigger);
 }
 
 function renderProgramProducts(grid, canManage) {

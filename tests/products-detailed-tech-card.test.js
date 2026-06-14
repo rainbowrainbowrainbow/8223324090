@@ -53,6 +53,12 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /OPENAI_MENU_AI_MODEL/);
     assert.match(productsRoute, /\/responses/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'/);
+    assert.match(productsRoute, /OPENAI_MENU_IMAGE_MODEL/);
+    assert.match(productsRoute, /gpt-image-1-mini/);
+    assert.match(productsRoute, /\/images\/generations/);
+    assert.match(productsRoute, /uploadImageFromUrl/);
+    assert.match(productsRoute, /icon_url = \$1/);
     assert.match(productsRoute, /router\.get\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /router\.put\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /AI-assisted menu card draft, never canonical truth/);
@@ -106,12 +112,15 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(programsJs, /openMenuAiReviewWizard/);
     assert.match(programsJs, /renderKitchenCardVisual/);
     assert.match(programsJs, /renderKitchenMenuAiActions/);
+    assert.match(programsJs, /generateKitchenMenuImage/);
     assert.match(programsJs, /saveKitchenMenuImageDraft/);
     assert.match(programsJs, /buildKitchenMenuImagePrompt/);
+    assert.match(programsJs, /Згенерувати фото/);
     assert.match(programsJs, /approveMenuAiBlock/);
     assert.match(programsJs, /regenerateMenuAiBlock/);
     assert.match(programsJs, /applyMenuAiReviewFinal/);
     assert.match(programsJs, /apiGenerateProductMenuAiDraft/);
+    assert.match(programsJs, /apiGenerateProductMenuImage/);
     assert.match(programsJs, /apiSaveProductMenuAiDraft/);
     assert.match(programsJs, /renderTechCardIngredientRows/);
     assert.match(programsJs, /saveProductTechCardIfNeeded/);
@@ -122,6 +131,7 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(apiJs, /apiUpdateProductTechCard/);
     assert.match(apiJs, /apiWriteOffProductTechCard/);
     assert.match(apiJs, /apiGenerateProductMenuAiDraft/);
+    assert.match(apiJs, /apiGenerateProductMenuImage/);
     assert.match(apiJs, /apiGetProductMenuAiDraft/);
     assert.match(apiJs, /apiSaveProductMenuAiDraft/);
 });

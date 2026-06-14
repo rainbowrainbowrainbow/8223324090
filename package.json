@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.75.47",
+  "version": "0.75.48",
   "eventGenix": {
-    "releaseLabel": "Urgent Task Visibility"
+    "releaseLabel": "Menu Dish Image Generation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

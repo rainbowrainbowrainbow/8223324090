@@ -2175,6 +2175,28 @@ async function apiGenerateProductMenuAiDraft(payload = {}) {
     }
 }
 
+async function apiGenerateProductMenuImage(id, payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('генерувати фото меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'генерувати фото меню') };
+        }
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/generate`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error', code: body.code };
+        }
+        return body;
+    } catch (err) {
+        console.error('API generateProductMenuImage error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiGetProductMenuAiDraft(id, options = {}) {
     try {
         const params = new URLSearchParams();

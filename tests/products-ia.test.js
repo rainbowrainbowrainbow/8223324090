@@ -92,9 +92,11 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /function renderKitchenCardVisual/);
     assert.match(pageJs, /function renderKitchenMenuAiActions/);
     assert.match(pageJs, /function renderKitchenMenuImageStudio/);
+    assert.match(pageJs, /function generateKitchenMenuImage/);
     assert.match(pageJs, /function saveKitchenMenuImageDraft/);
     assert.match(pageJs, /imageStudio/);
     assert.match(pageJs, /buildKitchenMenuImagePrompt/);
+    assert.match(pageJs, /apiGenerateProductMenuImage/);
     assert.match(pageJs, /applyMenuAiReviewFinal/);
     assert.match(pageJs, /techCard/);
     assert.match(pageJs, /ingredients/);
@@ -158,6 +160,9 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(productsRoute, /normalizeMenuImageStudio/);
     assert.match(productsRoute, /MENU_IMAGE_STUDIO_SIZES/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'/);
+    assert.match(productsRoute, /OPENAI_MENU_IMAGE_MODEL/);
+    assert.match(productsRoute, /\/images\/generations/);
     assert.match(kitchenMigration, /domain VARCHAR\(30\)/);
     assert.match(kitchenMigration, /kitchen_type VARCHAR\(30\)/);
     assert.match(kitchenMigration, /cake_decoration TEXT/);
@@ -193,6 +198,7 @@ test('products lifecycle uses active working lists, duplicate guards, and soft-d
     assert.match(productsRoute, /availability_status = 'hidden'/);
     assert.doesNotMatch(productsRoute, /express-rate-limit/);
     assert.match(productsRoute, /createWriteRateLimiter\('product-menu-ai-draft'/);
+    assert.match(productsRoute, /createWriteRateLimiter\('product-menu-image-generation'/);
     assert.match(productsRoute, /loadMenuAiWarehouseItems\(pool, businessContext\)/);
     assert.match(productsRoute, /COALESCE\(ws\.business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$2/);
     assert.match(productsRoute, /INSERT INTO warehouse_history \(stock_id, change, reason, created_by, business_context\)/);

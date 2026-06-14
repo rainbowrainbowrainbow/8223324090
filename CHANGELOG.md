@@ -4,6 +4,20 @@
 
 ---
 
+## v0.75.48 - Menu Dish Image Generation
+
+### Products / Kitchen menu / OpenAI image generation / Release / (Клешня, 14.06.2026) [codex]
+- **Підключено реальну генерацію фото для карток блюд** - у вкладці `Продукти -> Кухня -> Меню` кнопка `Згенерувати фото` викликає server-side OpenAI Images API і більше не обмежується prompt-only чернеткою.
+- **Згенерований файл зберігається у CRM uploads** - відповідь OpenAI у base64/URL проходить через існуючий `services/imageStorage.js`, зберігається в `/uploads/catalog-images/items/...` і записується в `products.icon_url`.
+- **Booking catalog автоматично бачить нове фото** - бронювання не отримало окремої AI-логіки; воно просто читає поточне `iconUrl`/manifest фото, а `bookingPackage.menuPositions` лишається source of truth.
+- **Prompt збирається на сервері з реальних даних продукту** - модель отримує назву, код, розділ, вагу/вихід, одиницю, опис, склад, алергени й техкарту; frontend передає тільки дозволені `size` і `style`.
+- **Image Studio тепер зберігає audit trail** - у `ai_card_draft.imageStudio` фіксуються `provider`, `model`, `generatedAt`, `imageUrl`, prompt/settings і локальне сховище без нових колонок або міграцій.
+- **Розміри приведені до OpenAI-compatible preset-ів** - UI використовує `1536x1024`, `1024x1024`, `1024x1536`, а сервер мапить старі `1536x864`/`1024x576` на безпечний wide preset.
+- **Захист від випадкового misuse** - endpoint доступний тільки `admin/manager`, має окремий rate limit і працює лише для `domain=kitchen`, `kitchen_type=menu`.
+- **Env/Railway/DB config не змінювались** - код читає існуючий `OPENAI_API_KEY`, підтримує `OPENAI_MENU_IMAGE_MODEL`/`OPENAI_IMAGE_MODEL`, але секрети, deploy config і schema лишилися поза змінами.
+
+---
+
 ## v0.75.47 - Urgent Task Visibility
 
 ### Profile / Tasks / Urgent priority / Release / (Клешня, 14.06.2026) [codex]

@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { pool, generateBookingNumber } = require('../db');
 const {
   validateDate,
@@ -22,9 +23,11 @@ const {
   resourceTypeForDisplayMode
 } = require('./timelineResources');
 const { normalizeCustomerSource } = require('./customerSource');
+const { createLogger } = require('../utils/logger');
 
 const MAYSTERNYA_CONTEXT = 'maysternya_doli';
 const MAYSTERNYA_BOT_SOURCE = 'maysternya_bot';
+const log = createLogger('MaysternyaBookingWebhook');
 
 function cleanText(value, maxLength = 500) {
   if (value === undefined || value === null) return null;
@@ -39,6 +42,19 @@ function firstClean(...values) {
     if (text) return text;
   }
   return null;
+}
+
+function firstCleanMax(maxLength, ...values) {
+  for (const value of values) {
+    const text = cleanText(value, maxLength);
+    if (text) return text;
+  }
+  return null;
+}
+
+function cleanDateOnly(value) {
+  const text = cleanText(value, 10);
+  return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
 function parseJsonObject(value) {
@@ -137,7 +153,7 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     booking.booking_time,
     booking.bookingTime
   );
-  const resourceId = firstClean(
+  const resourceId = firstCleanMax(100,
     body.resource_id,
     body.resourceId,
     body.lineId,
@@ -151,7 +167,7 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     booking.lineId,
     booking.line_id
   );
-  const resourceName = firstClean(
+  const resourceName = firstCleanMax(120,
     body.resource_name,
     body.resourceName,
     body.lineName,
@@ -165,7 +181,7 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     booking.lineName,
     booking.line_name
   );
-  const programName = firstClean(
+  const programName = firstCleanMax(100,
     body.programName,
     body.program_name,
     body.service_name,
@@ -181,7 +197,7 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     program.name,
     program.title
   );
-  const programCode = firstClean(
+  const programCode = firstCleanMax(20,
     body.programCode,
     body.program_code,
     payload.programCode,
@@ -190,7 +206,7 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     booking.program_code,
     program.code
   );
-  const programId = firstClean(
+  const programId = firstCleanMax(50,
     body.programId,
     body.program_id,
     payload.programId,
@@ -232,21 +248,21 @@ function normalizeMaysternyaBookingPayload(body = {}) {
     programId,
     programCode,
     programName,
-    category: firstClean(body.category, payload.category, booking.category, program.category) || 'maysternya',
+    category: firstCleanMax(50, body.category, payload.category, booking.category, program.category) || 'maysternya',
     price: parsePositiveNumber(firstClean(body.price, body.amount, payload.price, payload.amount, booking.price, booking.amount, program.price), 0),
-    room: firstClean(body.room, payload.room, booking.room, resourceName, resourceId) || null,
+    room: firstCleanMax(100, body.room, payload.room, booking.room) || null,
     notes: firstClean(body.notes, body.message, body.comment, payload.notes, payload.message, payload.comment, booking.notes, booking.message),
-    paymentMethod: firstClean(body.payment_method, body.paymentMethod, payload.payment_method, payload.paymentMethod, booking.payment_method, booking.paymentMethod),
+    paymentMethod: firstCleanMax(30, body.payment_method, body.paymentMethod, payload.payment_method, payload.paymentMethod, booking.payment_method, booking.paymentMethod),
     kidsCount: parsePositiveInteger(firstClean(body.kidsCount, body.kids_count, payload.kidsCount, payload.kids_count, booking.kidsCount, booking.kids_count), null),
-    groupName: firstClean(body.groupName, body.group_name, payload.groupName, payload.group_name, booking.groupName, booking.group_name),
+    groupName: firstCleanMax(100, body.groupName, body.group_name, payload.groupName, payload.group_name, booking.groupName, booking.group_name),
     status: normalizeBookingStatus(firstClean(body.status, payload.status, booking.status), 'confirmed') || 'confirmed',
     skipNotification: body.skipNotification ?? body.skip_notification ?? payload.skipNotification ?? payload.skip_notification ?? booking.skipNotification ?? booking.skip_notification ?? false,
     customer: {
-      name: firstClean(body.name, body.client_name, body.clientName, payload.name, payload.client_name, payload.clientName, customer.name, customer.full_name, customer.fullName),
-      phone: firstClean(body.phone, payload.phone, customer.phone, customer.phone_number, customer.phoneNumber),
-      instagram: firstClean(body.instagram, payload.instagram, customer.instagram),
-      childName: firstClean(body.childName, body.child_name, payload.childName, payload.child_name, customer.childName, customer.child_name),
-      childBirthday: firstClean(body.childBirthday, body.child_birthday, payload.childBirthday, payload.child_birthday, customer.childBirthday, customer.child_birthday),
+      name: firstCleanMax(200, body.name, body.client_name, body.clientName, payload.name, payload.client_name, payload.clientName, customer.name, customer.full_name, customer.fullName),
+      phone: firstCleanMax(30, body.phone, payload.phone, customer.phone, customer.phone_number, customer.phoneNumber),
+      instagram: firstCleanMax(100, body.instagram, payload.instagram, customer.instagram),
+      childName: firstCleanMax(200, body.childName, body.child_name, payload.childName, payload.child_name, customer.childName, customer.child_name),
+      childBirthday: cleanDateOnly(firstClean(body.childBirthday, body.child_birthday, payload.childBirthday, payload.child_birthday, customer.childBirthday, customer.child_birthday)),
       source: MAYSTERNYA_BOT_SOURCE
     },
     telegram: {
@@ -450,6 +466,29 @@ async function publishBookingCreatedInTransaction(client, payload, idempotencyKe
   publish('booking.created', payload, idempotencyKey);
 }
 
+function maysternyaBookingEventKey(externalId) {
+  const raw = `maysternya_bot_booking_${String(externalId || '').trim()}`;
+  if (raw.length <= 200) return raw;
+  const hash = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 32);
+  return `${raw.slice(0, 160)}_${hash}`.slice(0, 200);
+}
+
+async function runOptionalMaysternyaBookingStep(client, label, step) {
+  await client.query('SAVEPOINT maysternya_booking_optional_step');
+  try {
+    const result = await step();
+    await client.query('RELEASE SAVEPOINT maysternya_booking_optional_step');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK TO SAVEPOINT maysternya_booking_optional_step')
+      .catch(rbErr => log.error(`Rollback to optional Maysternya booking savepoint failed (${label})`, rbErr));
+    await client.query('RELEASE SAVEPOINT maysternya_booking_optional_step')
+      .catch(relErr => log.error(`Release optional Maysternya booking savepoint failed (${label})`, relErr));
+    log.warn(`${label} failed (non-critical): ${err.message}`);
+    return null;
+  }
+}
+
 async function createMaysternyaBotBooking(body = {}, options = {}) {
   const booking = normalizeMaysternyaBookingPayload(body);
   const validation = maysternyaBookingValidationError(booking);
@@ -522,7 +561,8 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
     const programName = booking.programName || booking.programCode || booking.programId || 'Майстерня долі';
     const programCode = booking.programCode || booking.programId || 'MD';
     const programId = booking.programId || programCode;
-    const label = `${programName}${booking.duration ? ` (${booking.duration})` : ''}`;
+    const label = cleanText(`${programName}${booking.duration ? ` (${booking.duration})` : ''}`, 100);
+    const groupName = cleanText(booking.groupName || booking.customer.name || booking.externalId, 100);
 
     const insert = await client.query(
       `INSERT INTO bookings
@@ -561,7 +601,7 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
         null,
         'confirmed',
         booking.kidsCount,
-        booking.groupName || booking.customer.name || booking.externalId,
+        groupName,
         JSON.stringify(extraData),
         Boolean(booking.skipNotification),
         customerId,
@@ -593,42 +633,48 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
       instagram: booking.customer.instagram,
       notes: booking.notes
     };
-    await ensureLeadForBooking(client, {
-      booking: mappedForLead,
-      customerId,
-      businessContext: MAYSTERNYA_CONTEXT
+    await runOptionalMaysternyaBookingStep(client, 'Maysternya booking lead handoff', async () => {
+      await ensureLeadForBooking(client, {
+        booking: mappedForLead,
+        customerId,
+        businessContext: MAYSTERNYA_CONTEXT
+      });
     });
 
-    await insertHistory(client, {
-      businessContext: MAYSTERNYA_CONTEXT,
-      action: 'create',
-      username: MAYSTERNYA_BOT_SOURCE,
-      data: {
-        ...mapBookingRow(row),
-        source: MAYSTERNYA_BOT_SOURCE,
-        externalId: booking.externalId
-      }
+    await runOptionalMaysternyaBookingStep(client, 'Maysternya booking history', async () => {
+      await insertHistory(client, {
+        businessContext: MAYSTERNYA_CONTEXT,
+        action: 'create',
+        username: MAYSTERNYA_BOT_SOURCE,
+        data: {
+          ...mapBookingRow(row),
+          source: MAYSTERNYA_BOT_SOURCE,
+          externalId: booking.externalId
+        }
+      });
     });
 
-    await publishBookingCreatedInTransaction(
-      client,
-      {
-        booking_id: id,
-        business_context: MAYSTERNYA_CONTEXT,
-        date: booking.date,
-        time: booking.time,
-        room,
-        program_code: programCode,
-        program_name: programName,
-        status: 'confirmed',
-        price: booking.price || 0,
-        kids_count: booking.kidsCount,
-        created_by: MAYSTERNYA_BOT_SOURCE,
-        source: MAYSTERNYA_BOT_SOURCE,
-        external_id: booking.externalId
-      },
-      `maysternya_bot_booking_${booking.externalId}`
-    );
+    await runOptionalMaysternyaBookingStep(client, 'Maysternya booking event outbox', async () => {
+      await publishBookingCreatedInTransaction(
+        client,
+        {
+          booking_id: id,
+          business_context: MAYSTERNYA_CONTEXT,
+          date: booking.date,
+          time: booking.time,
+          room,
+          program_code: programCode,
+          program_name: programName,
+          status: 'confirmed',
+          price: booking.price || 0,
+          kids_count: booking.kidsCount,
+          created_by: MAYSTERNYA_BOT_SOURCE,
+          source: MAYSTERNYA_BOT_SOURCE,
+          external_id: booking.externalId
+        },
+        maysternyaBookingEventKey(booking.externalId)
+      );
+    });
 
     const commit = await client.query('COMMIT');
     if (String(commit?.command || 'COMMIT').toUpperCase() !== 'COMMIT') {

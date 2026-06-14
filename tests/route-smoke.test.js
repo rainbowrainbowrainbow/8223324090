@@ -353,8 +353,8 @@ function createFakePool() {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             queries.push({ text, params });
 
-            if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) {
-                return { rows: [], rowCount: 0, command: text.toUpperCase() };
+            if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(text)) {
+                return { rows: [], rowCount: 0, command: text.split(/\s+/)[0].toUpperCase() };
             }
             if (/SELECT pg_advisory_xact_lock/i.test(text)) {
                 return { rows: [], rowCount: 1 };
@@ -947,6 +947,9 @@ function createFakePool() {
                         created_at: new Date('2026-05-11T00:00:00Z').toISOString()
                     }]
                 };
+            }
+            if (/INSERT INTO leads/i.test(text) && /booking_id/i.test(text) && params[1] === 'Lead Side Effect Fails') {
+                throw new Error('synthetic lead handoff failure');
             }
             if (/INSERT INTO leads/i.test(text)) {
                 return {
@@ -1888,6 +1891,82 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.preview.programName, 'Таро консультація');
         assert.equal(res.data.preview.programCode, 'TARO');
         assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
+    });
+
+    it('keeps Maysternya bot booking creation when lead handoff side effect fails', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-booking-lead-side-effect-fail',
+            date: '2099-06-16',
+            time: '09:00',
+            duration: 60,
+            resource_id: 'md-consult-room',
+            programName: 'Side Effect Smoke',
+            customer: { name: 'Lead Side Effect Fails' }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.created, true);
+        assert.ok(queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
+        assert.ok(queries.some(q => /ROLLBACK TO SAVEPOINT maysternya_booking_optional_step/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO history \(business_context, action, username, data\)/i.test(q.text)));
+    });
+
+    it('truncates Maysternya bot booking payload fields to CRM column limits', async () => {
+        const longCustomerName = `Long Customer ${'x'.repeat(260)}`;
+        const longProgramName = `Long Program ${'p'.repeat(160)}`;
+        const longProgramId = `program-${'i'.repeat(80)}`;
+        const longProgramCode = `CODE-${'c'.repeat(40)}`;
+        const longCategory = `category-${'c'.repeat(80)}`;
+        const longRoom = `Room ${'r'.repeat(140)}`;
+        const longPaymentMethod = `method-${'m'.repeat(50)}`;
+        const longPhone = `+${'3'.repeat(80)}`;
+
+        const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
+            external_id: 'md-booking-long-fields',
+            date: '2099-06-17',
+            time: '11:00',
+            duration: 60,
+            resource_id: 'md-consult-room',
+            programId: longProgramId,
+            programCode: longProgramCode,
+            programName: longProgramName,
+            category: longCategory,
+            room: longRoom,
+            payment_method: longPaymentMethod,
+            customer: {
+                name: longCustomerName,
+                phone: longPhone
+            }
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+
+        const bookingInsert = queries.find(q => {
+            if (!/INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)) return false;
+            return JSON.parse(q.params[28] || '{}').externalId === 'md-booking-long-fields';
+        });
+        const customerInsert = queries.find(q =>
+            /INSERT INTO customers \(business_context, name, phone, instagram, child_name, child_birthday, source\)/i.test(q.text)
+            && String(q.params[1] || '').startsWith('Long Customer')
+        );
+
+        assert.ok(bookingInsert);
+        assert.ok(customerInsert);
+        assert.equal(customerInsert.params[1].length, 200);
+        assert.equal(customerInsert.params[2].length, 30);
+        assert.equal(bookingInsert.params[5].length, 50);
+        assert.equal(bookingInsert.params[6].length, 20);
+        assert.equal(bookingInsert.params[7].length, 100);
+        assert.equal(bookingInsert.params[8].length, 100);
+        assert.equal(bookingInsert.params[9].length, 50);
+        assert.equal(bookingInsert.params[21].length, 100);
+        assert.equal(bookingInsert.params[27].length, 100);
+        assert.equal(bookingInsert.params[31].length, 30);
     });
 
     it('rejects Maysternya bot booking webhook without provider token', async () => {

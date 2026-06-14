@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.53 - Maysternya Booking Reliability
+
+### Leads / Maysternya / Booking webhook / Reliability / Release / (Клешня, 14.06.2026) [codex]
+- **Real-create шлях booking webhook більше не валить бронювання через допоміжні side-effects** - `ensureLeadForBooking`, history log і outbox event виконуються під savepoint-захистом, тому помилка в lead/history/eventBus не відкочує вже валідний запис у `bookings`.
+- **Payload від Telegram бота обрізається під production DB limits** - клієнт, телефон, програма, код, категорія, кімната, група і payment method нормалізуються до фактичних `VARCHAR`-обмежень перед INSERT у `customers` і `bookings`.
+- **Outbox idempotency key захищено від довгого `external_id`** - для надто довгих зовнішніх ID ключ події скорочується з hash-хвостом, не перевищуючи `outbox_events.idempotency_key VARCHAR(200)`.
+- **Dry-run validation лишився незмінним** - resource `md-consult-room`, conflict checks і обов'язкові поля перевіряються як раніше; зміна покриває саме write path після dry-run.
+- **Regression guard додано** - route-smoke перевіряє створення booking при падінні lead handoff і окремо перевіряє truncation payload-полів до CRM column limits.
+- **DB/env config не змінювались** - без міграцій, нових секретів, нових залежностей або зміни Railway variables.
+
+---
+
 ## v0.75.52 - Action History Unification
 
 ### Timeline / Action history / UI consistency / Release / (Клешня, 14.06.2026) [codex]

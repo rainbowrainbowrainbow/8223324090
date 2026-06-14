@@ -382,7 +382,8 @@
     .booking-panel {
         --booking-panel-pad-x: 18px;
         --booking-footer-space: calc(28px + env(safe-area-inset-bottom, 0px));
-        width: min(92vw, 680px);
+        --booking-panel-width: min(92vw, 680px);
+        width: var(--booking-panel-width);
         max-width: 100vw;
         top: 0;
         height: 100vh;
@@ -706,6 +707,7 @@
     .booking-panel {
         --booking-panel-pad-x: 14px;
         --booking-footer-space: calc(32px + env(safe-area-inset-bottom, 0px));
+        --booking-panel-width: 100vw;
         width: 100%;
         max-width: 100vw;
     }
@@ -930,6 +932,26 @@
 
     .booking-panel-close {
         padding: 0 12px;
+    }
+
+    .booking-panel-edge-close {
+        top: calc(74px + env(safe-area-inset-top, 0px));
+        right: 12px;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        padding: 0;
+        border-radius: 999px;
+        transform: none;
+    }
+
+    .booking-panel-edge-close:hover,
+    .booking-panel-edge-close:focus-visible {
+        transform: translateY(-1px);
+    }
+
+    .booking-panel-edge-close-label {
+        display: none;
     }
 
     .booking-form {
@@ -1293,6 +1315,7 @@
     .panel-header { padding: 10px 12px; }
     .booking-panel-close { width: 44px; padding: 0; }
     .booking-panel-close-label { display: none; }
+    .booking-panel-edge-close { top: calc(64px + env(safe-area-inset-top, 0px)); right: 10px; }
     .booking-form { padding: 10px var(--booking-panel-pad-x) var(--booking-footer-space); }
     .selected-info { padding: 8px 10px; margin-bottom: 10px; }
     .form-section { margin-bottom: 10px; }

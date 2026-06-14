@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.56 - Booking Drawer Edge Close
+
+### Timeline / Booking drawer / UX / Close control / Release / (Клешня, 14.06.2026) [codex]
+- **У booking drawer додано окрему кнопку закриття зліва від панелі** - форму бронювання можна закрити без F5 навіть якщо header-кнопку сховали налаштування видимості або верхній layout.
+- **Закриття лишилось безпечним** - нова кнопка використовує той самий `closeBookingPanel(false)`, тому незбережені зміни все ще проходять через підтвердження.
+- **Кнопка спільна для всіх timeline бізнесів** - Park, Майстерня, simple/specialist і education режими працюють через один `#bookingPanel`, без окремих реалізацій.
+- **Responsive поведінку зафіксовано** - на desktop кнопка стоїть як docked tab на лівому краї drawer, а на вузьких екранах стає компактною круглою кнопкою всередині viewport.
+- **Фільтри каталогу меню більше не скроляться горизонтально** - категорії переносяться у два або більше рядків і лишаються доступними без нижнього scrollbar.
+- **Regression guard додано** - тести перевіряють DOM-кнопку, shared `data-booking-panel-close` binding і CSS-геометрію edge close.
+- **DB/API/env config не змінювались** - без міграцій, ролей, секретів, Railway variables або нових залежностей; це frontend/timeline UX release.
+
+---
+
 ## v0.75.55 - Maysternya Lead Contact Handoff
 
 ### Leads / Maysternya / Booking webhook / Contact capture / Release / (Клешня, 14.06.2026) [codex]

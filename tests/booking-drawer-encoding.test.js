@@ -34,6 +34,7 @@ test('booking drawer frontend sources do not contain mojibake markers', () => {
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
+    const appJs = read('js', 'app.js');
     const kitchenMenuImagesJs = read('js', 'kitchen-menu-images.js');
     const panelCss = read('css', 'panel.css');
     const responsiveCss = read('css', 'responsive.css');
@@ -59,6 +60,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
         'bookingSubmitBtn'
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
     assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
+    assert.match(bookingPanelHtml, /id="bookingPanelEdgeClose" class="booking-panel-edge-close" type="button" title="[^"]+" aria-label="[^"]+" data-booking-panel-close/);
     assert.match(bookingPanelHtml, /id="closePanel" class="btn-close booking-panel-close" type="button" title="Закрити панель бронювання" aria-label="Закрити панель бронювання"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
     assert.match(html, new RegExp(`js/kitchen-menu-images\\.js\\?v=${escapedAssetVersion}`));
@@ -140,8 +142,10 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /document\.createElement\('button'\)/);
     assert.match(bookingJs, /icon\.type = 'button'/);
     assert.match(bookingJs, /aria-pressed/);
+    assert.match(appJs, /document\.querySelectorAll\('\[data-booking-panel-close\]'\)/);
 
     assert.match(panelCss, /--booking-footer-space:\s*calc\(28px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
+    assert.match(panelCss, /--booking-panel-width:\s*clamp\(560px,\s*44vw,\s*760px\)/);
     assert.match(panelCss, /scroll-padding-bottom:\s*var\(--booking-footer-space\)/);
     assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*position:\s*static;/);
     assert.match(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*width:\s*100%;/);
@@ -154,7 +158,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*calc\(var\(--booking-panel-pad-x\) \* -1\)/);
     assert.match(panelCss, /\.panel-header\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0;/);
     assert.match(panelCss, /\.booking-panel-close\s*\{[\s\S]*min-width:\s*44px;[\s\S]*border-radius:\s*999px;/);
+    assert.match(panelCss, /\.booking-panel-edge-close\s*\{[\s\S]*position:\s*fixed;[\s\S]*right:\s*calc\(min\(var\(--booking-panel-width\),\s*100vw\) - 1px\);[\s\S]*transform:\s*translateY\(0\);/);
     assert.match(responsiveCss, /\.booking-panel-close-label\s*\{\s*display:\s*none;\s*\}/);
+    assert.match(responsiveCss, /\.booking-panel-edge-close\s*\{[\s\S]*right:\s*12px;[\s\S]*border-radius:\s*999px;[\s\S]*transform:\s*none;/);
 
     assert.match(panelCss, /\.btn-submit:disabled/);
     assert.match(panelCss, /\.booking-mode-card:focus-within/);
@@ -166,6 +172,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*330px\)[\s\S]*overflow:\s*hidden;/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(224px,\s*1fr\)\);[\s\S]*justify-content:\s*start;/);
+    assert.match(panelCss, /\.booking-menu-catalog-tabs\s*\{[\s\S]*flex-wrap:\s*wrap;[\s\S]*overflow-x:\s*visible;/);
+    assert.doesNotMatch(panelCss, /\.booking-menu-catalog-tabs\s*\{[\s\S]*overflow-x:\s*auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*padding:\s*0 10px calc\(96px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*scroll-padding-top:\s*48px;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*252px;/);

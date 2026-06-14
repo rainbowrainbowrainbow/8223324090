@@ -698,7 +698,9 @@ function resolveTimelineBootHandler(name, fallbackMessage) {
 }
 
 function initBookingFormListeners() {
-    document.getElementById('closePanel')?.addEventListener('click', () => closeBookingPanel(false));
+    document.querySelectorAll('[data-booking-panel-close]').forEach(button => {
+        button.addEventListener('click', () => closeBookingPanel(false));
+    });
     // v5.35: Close panel when clicking the backdrop overlay
     document.getElementById('panelBackdrop')?.addEventListener('click', () => closeBookingPanel(false));
     document.addEventListener('keydown', event => {

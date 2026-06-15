@@ -28,8 +28,7 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
            WHEN COALESCE(status, 'new') IN ('new','contact','proposal') THEN $5
            ELSE status
          END,
-         booked_at = COALESCE(booked_at, NOW()),
-         updated_at = NOW()
+         booked_at = COALESCE(booked_at, NOW())
      WHERE id = $2
        AND COALESCE(business_context, $3) = $3
      RETURNING id, booking_id, pipeline_stage, status`,
@@ -419,8 +418,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
            raw_payload = CASE
              WHEN $15::jsonb IS NULL THEN raw_payload
              ELSE COALESCE(raw_payload, '{}'::jsonb) || $15::jsonb
-           END,
-           updated_at = NOW()
+           END
        WHERE id = $16
          AND COALESCE(business_context, $17) = $17`,
       [bookingId, clientName, phone, contactMeta.telegramId, instagram, source, sourceChannel, externalId,
@@ -449,8 +447,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
              WHEN POSITION(EXCLUDED.booking_id IN leads.notes) > 0 THEN leads.notes
              ELSE leads.notes || E'\n' || EXCLUDED.notes
            END,
-           raw_payload = COALESCE(leads.raw_payload, '{}'::jsonb) || COALESCE(EXCLUDED.raw_payload, '{}'::jsonb),
-           updated_at = NOW()
+           raw_payload = COALESCE(leads.raw_payload, '{}'::jsonb) || COALESCE(EXCLUDED.raw_payload, '{}'::jsonb)
        RETURNING id`,
       [context, clientName, phone, contactMeta.telegramId, instagram, source, sourceChannel, externalId,
        programId, booking?.date || null, safeChildrenCount, notes, rawPayloadJson, status, stage, bookingId]

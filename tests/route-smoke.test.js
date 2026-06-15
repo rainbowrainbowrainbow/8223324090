@@ -2022,6 +2022,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.success, true);
         assert.equal(res.data.dryRun, true);
         assert.equal(res.data.created, false);
+        assert.equal(res.data.resourceId, 'md-consult-room');
+        assert.equal(res.data.resourceName, res.data.preview.resourceName);
         assert.equal(res.data.preview.resourceId, 'md-consult-room');
         assert.equal(res.data.preview.resourceName, 'Олександр');
         assert.equal(res.data.preview.programName, 'Таро консультація');

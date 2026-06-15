@@ -1014,6 +1014,8 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
           businessContext: MAYSTERNYA_CONTEXT,
           dryRun: true,
           created: false,
+          resourceId: resource.resourceId,
+          resourceName: resource.name,
           booking: null,
           preview: {
             externalId: booking.externalId,

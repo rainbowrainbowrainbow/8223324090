@@ -4,6 +4,17 @@
 
 ---
 
+## v0.76.1 - Maysternya Booking Webhook Fix
+
+### Maysternya / Booking webhook / Production fix / Release / (Клешня, 15.06.2026) [codex]
+- **Виправлено live create path для `POST /api/leads/webhook/maysternya-booking`** - lead handoff більше не пише в неканонічну колонку `leads.updated_at`, якої немає у production schema.
+- **Збережено атомарність створення бронювання** - якщо lead handoff падає, транзакція відкатується і booking не лишається напівствореним.
+- **Dry-run response вирівняно з create/availability contract** - `resourceId` і `resourceName` тепер повертаються top-level, а також лишаються всередині `preview`.
+- **Додано regression guards** - тести перевіряють Maysternya booking create/idempotency/conflict/dry-run і забороняють повертати залежність від `leads.updated_at` у `leadBookingLink`.
+- **DB/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, нових залежностей або production config змін.
+
+---
+
 ## v0.76.0 - Timeline View Settings Split
 
 ### Timeline / Settings / Park Views / Release / (Клешня, 15.06.2026) [codex]

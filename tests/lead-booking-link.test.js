@@ -45,6 +45,8 @@ describe('lead booking link repair', () => {
             && q.params[3] === 'deposit_received'
             && q.params[4] === 'booked'
         ));
+        const leadUpdate = queries.find(q => /UPDATE leads SET booking_id = \$1/i.test(q.text));
+        assert.doesNotMatch(leadUpdate.text, /updated_at/i);
         assert.ok(queries.some(q =>
             /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(q.text)
             && q.params[0] === 501
@@ -134,6 +136,7 @@ describe('lead booking link repair', () => {
         assert.equal(result.customerLinked, true);
         const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
         assert.ok(insert);
+        assert.doesNotMatch(insert.text, /updated_at/i);
         assert.equal(insert.params[0], 'maysternya_doli');
         assert.equal(insert.params[5], 'booking');
         assert.equal(insert.params[6], 'booking');
@@ -204,6 +207,7 @@ describe('lead booking link repair', () => {
 
         const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
         assert.ok(insert);
+        assert.doesNotMatch(insert.text, /updated_at/i);
         assert.match(insert.text, /telegram_id/i);
         assert.match(insert.text, /raw_payload/i);
         assert.equal(insert.params[0], 'maysternya_doli');
@@ -257,6 +261,9 @@ describe('lead booking link repair', () => {
         assert.equal(result.created, false);
         assert.equal(result.leadId, 88);
         assert.ok(!queries.some(q => /INSERT INTO leads/i.test(q.text)));
+        const leadUpdate = queries.find(q => /UPDATE leads SET booking_id = COALESCE\(booking_id, \$1\)/i.test(q.text));
+        assert.ok(leadUpdate);
+        assert.doesNotMatch(leadUpdate.text, /updated_at/i);
         assert.ok(queries.some(q => /booking_id IS NULL/i.test(q.text)));
         assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
     });

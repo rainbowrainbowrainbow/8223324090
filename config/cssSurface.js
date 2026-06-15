@@ -188,6 +188,13 @@ const CSS_SURFACE = [
         reason: 'Chat settings control-plane and AI provider configuration styles imported by chat.css.'
     },
     {
+        file: 'css/timeline-settings.css',
+        owner: 'timeline',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Standalone timeline settings center shell, block registry, preset, inspector, and responsive layout styles.'
+    },
+    {
         file: 'css/content.css',
         owner: 'content',
         category: 'page-scoped',

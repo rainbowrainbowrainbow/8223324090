@@ -462,6 +462,20 @@ checkPage('chat-settings.html', (doc) => {
     check('Chat settings page exposes AI provider diagnostics', !!doc.getElementById('aiProviderDiagnostics') && !!doc.getElementById('aiProviderRefreshBtn'));
 });
 
+checkPage('timeline-settings.html', (doc, html) => {
+    check('Timeline settings shell exists', !!doc.getElementById('mainApp') && !!doc.getElementById('sidebarLinks') && !!doc.querySelector('.timeline-settings-page'));
+    check('Timeline settings has context rail, workspace, and inspector', !!doc.getElementById('timelineSettingsContextList') && !!doc.getElementById('timelineSettingsBlockGroups') && !!doc.getElementById('timelineSettingsInspector'));
+    check('Timeline settings has required tabs and actions',
+        !!doc.querySelector('[data-timeline-settings-tab="blocks"]')
+        && !!doc.querySelector('[data-timeline-settings-tab="visual"]')
+        && !!doc.querySelector('[data-timeline-settings-tab="presets"]')
+        && !!doc.querySelector('[data-timeline-settings-tab="system"]')
+        && !!doc.getElementById('timelineSettingsBackLink')
+        && !!doc.getElementById('timelineSettingsResetBtn')
+        && !!doc.getElementById('timelineSettingsSaveBtn'));
+    check('Timeline settings loads context and page controllers', getHtmlScripts(html).includes('js/timeline-context.js') && getHtmlScripts(html).includes('js/timeline-settings-page.js'));
+});
+
 checkPage('sound.html', (doc, html) => {
     const soundCode = fs.readFileSync(path.join(ROOT, 'js', 'sound-page.js'), 'utf8');
     const soundCss = fs.readFileSync(path.join(ROOT, 'css', 'sound.css'), 'utf8');
@@ -619,7 +633,7 @@ const criticalJS = [
     'js/designs-page.js', 'js/copilot-page.js',
     'js/dashboard-page.js', 'js/finance-page.js', 'js/analytics-page.js',
     'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
-    'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js',
+    'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js', 'js/timeline-settings-page.js',
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
     'js/booking.js', 'js/timeline-interaction-model.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
@@ -674,7 +688,7 @@ check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length ===
 
 // Check shared layout shell guardrails
 console.log('\nlayout shell guardrails');
-const fullAppShellPages = new Set(['chat.html', 'chat-settings.html', 'copilot.html', 'designer.html', 'index.html', 'omni.html', 'training.html']);
+const fullAppShellPages = new Set(['chat.html', 'chat-settings.html', 'copilot.html', 'designer.html', 'index.html', 'omni.html', 'timeline-settings.html', 'training.html']);
 const shellPages = htmlFiles
     .map(file => {
         const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -741,8 +755,10 @@ const graduationCode = fs.readFileSync(path.join(ROOT, 'js/graduation.js'), 'utf
 const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
 const globalModalsCss = fs.readFileSync(path.join(ROOT, 'css/modals.css'), 'utf8');
 const timelineVisibilityCode = fs.readFileSync(path.join(ROOT, 'js/timeline-visibility.js'), 'utf8');
+const timelineSettingsPageCode = fs.readFileSync(path.join(ROOT, 'js/timeline-settings-page.js'), 'utf8');
 const timelineConfigCode = fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8');
 const timelineConstructorCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
+const timelineSettingsCss = fs.readFileSync(path.join(ROOT, 'css/timeline-settings.css'), 'utf8');
 check('Shared toast engine supports longer interactive task notifications', notificationCode.includes('TOAST_DEFAULT_DURATION_MS = 6000') && notificationCode.includes('TOAST_DEFAULT_FADE_MS = 750') && notificationCode.includes('pauseOnInteract') && notificationCode.includes('toast-action-btn') && uiCode.includes('window.CrmToast?.show') && uiCode.includes('Auto-dismiss after 6s') && baseCss.includes('.toast-actions') && baseCss.includes('var(--toast-exit-ms, 0.75s)'));
 check('Legacy layout block controls have CRM styling, drag, reset, and Ctrl+Z ownership', uiCode.includes('window.CrmLayoutControls') && uiCode.includes("'Рухати', 'move'") && uiCode.includes('function beginMove') && uiCode.includes('function resetAll') && uiCode.includes('function handleKeydown') && uiCode.includes('Ctrl+Z поверне') && layoutCss.includes('v0.75.45: Legacy assistant/layout block controls') && layoutCss.includes('button.crm-layout-control-button') && layoutCss.includes('body.crm-layout-dragging') && layoutCss.includes('.crm-layout-block-managed.is-crm-layout-offset'));
 check('Legacy header RoleSwitcher does not render DOM controls', authCode.includes('Compatibility tombstone: legacy RoleSwitcher UI is retired') && !authCode.includes("switcher.id = 'roleSwitcher'") && !authCode.includes('roleSwitcherDropdown'));
@@ -765,6 +781,36 @@ check('Timeline has sidebar-owned business switch and visual element visibility 
 check('Timeline visual settings center exposes v2 block metadata and visual variables', timelineVisibilityCode.includes('currentTimelineId') && timelineVisibilityCode.includes('timelineId') && timelineVisibilityCode.includes('data-timeline-block-id') && timelineVisibilityCode.includes('description') && timelineVisibilityCode.includes('howToUse') && timelineVisibilityCode.includes('impact') && timelineVisibilityCode.includes('customLabel') && timelineVisibilityCode.includes('adminNote') && timelineVisibilityCode.includes('timeline-visual-settings-grid') && timelineVisibilityCode.includes('timelineConstructorVisualEditor') && timelineVisibilityCode.includes('timelineConstructorDetails') && timelineConstructorCss.includes('.timeline-visual-settings-grid') && timelineConstructorCss.includes('.timeline-constructor-selected') && timelineConstructorCss.includes('.timeline-block-density-compact') && timelineConstructorCss.includes('.timeline-block-emphasis-accent:not(.timeline-permission-hidden)'));
 check('Timeline visual settings hardening exposes save status, reset confirmation, and admin-only label guidance', timelineVisibilityCode.includes('timelineConstructorSaveStatus') && timelineVisibilityCode.includes('setSaveStatus') && timelineVisibilityCode.includes('confirmResetSettings') && timelineVisibilityCode.includes('confirmModal') && timelineVisibilityCode.includes('Бойовий текст кнопок не перейменовується') && timelineVisibilityCode.includes('Видима тільки в налаштуваннях') && timelineConstructorCss.includes('.timeline-constructor-save-status[data-status="dirty"]') && timelineConstructorCss.includes('.timeline-constructor-save-status[data-status="error"]') && timelineConstructorCss.includes('.timeline-visual-field small') && timelineConstructorCss.includes('#timelineScroll.timeline-block-density-compact') && timelineConstructorCss.includes('#bookingPanel.timeline-block-density-comfortable'));
 check('Timeline visual settings drawer is docked and avoids covering the whole workspace', timelineConstructorCss.includes('top: 92px') && timelineConstructorCss.includes('width: min(780px') && timelineConstructorCss.includes('calc(100vw - var(--eg-claude-sidebar-w, 224px) - 34px)') && timelineConstructorCss.includes('body.timeline-constructor-active::after') && timelineConstructorCss.includes('pointer-events: none') && timelineConstructorCss.includes('grid-template-columns: minmax(250px, 0.86fr) minmax(310px, 1.14fr)') && timelineConstructorCss.includes('.timeline-visual-blocks-zone') && timelineConstructorCss.includes('grid-row: 1 / span 2') && timelineConstructorCss.includes('.timeline-constructor-panel-body') && timelineConstructorCss.includes('overflow: auto'));
+check('Timeline settings center has standalone route, access, sidebar entry, and shell styles',
+    htmlContains('server.js', "app.get('/timeline-settings'")
+    && authCode.includes("'/timeline-settings': ['creator', 'director']")
+    && htmlContains('middleware/auth.js', "'/timeline-settings': ['creator', 'director']")
+    && sidebarCode.includes("href: '/timeline-settings'")
+    && timelineSettingsCss.includes('.timeline-settings-shell')
+    && timelineSettingsCss.includes('.timeline-settings-context-btn')
+    && timelineSettingsCss.includes('.timeline-settings-tabs'));
+check('Timeline settings page uses existing visibility/display APIs with context query contract',
+    timelineSettingsPageCode.includes("'/settings/timeline-visibility'")
+    && timelineSettingsPageCode.includes("'/settings/timeline-display'")
+    && timelineSettingsPageCode.includes('businessContext=')
+    && timelineSettingsPageCode.includes("url.searchParams.set('context'")
+    && timelineSettingsPageCode.includes("url.searchParams.set('return'")
+    && timelineSettingsPageCode.includes('timelineSettingsBackLink'));
+check('Timeline settings page renders registry blocks, filters, presets, and system modes',
+    timelineSettingsPageCode.includes('renderBlocks')
+    && timelineSettingsPageCode.includes('timelineSettingsBlockGroups')
+    && timelineSettingsPageCode.includes('PRESETS')
+    && timelineSettingsPageCode.includes("key: 'operator_daily'")
+    && timelineSettingsPageCode.includes("key: 'compact_booking'")
+    && timelineSettingsPageCode.includes("key: 'clean_phone'")
+    && timelineSettingsPageCode.includes('MODULE_LABELS')
+    && timelineSettingsPageCode.includes('FEATURE_LABELS')
+    && htmlContains('timeline-settings.html', 'data-timeline-settings-filter="hidden"'));
+check('Timeline gear opens the standalone settings center instead of the overlay constructor entrypoint',
+    timelineVisibilityCode.includes('/timeline-settings')
+    && timelineVisibilityCode.includes('openSettingsCenter')
+    && timelineVisibilityCode.includes("url.searchParams.set('return'")
+    && !timelineVisibilityCode.includes('toggleConstructorMode(!state.constructorActive)'));
 check('Timeline visual settings center has operator documentation and safe-change guardrails', timelineVisualSettingsDoc.includes('timeline:event_genix') && timelineVisualSettingsDoc.includes('visible') && timelineVisualSettingsDoc.includes('order') && timelineVisualSettingsDoc.includes('density') && timelineVisualSettingsDoc.includes('emphasis') && timelineVisualSettingsDoc.includes('customLabel') && timelineVisualSettingsDoc.includes('adminNote') && timelineVisualSettingsDoc.includes('не змінює бізнес-логіку') && timelineVisualSettingsDoc.includes('UAT') && timelineVisualSettingsDoc.includes('codex/room-timeline-hardening'));
 check('Timeline display modes are real presentation settings', htmlContains('index.html', 'settingsTimelineDisplayMode') && htmlContains('index.html', 'settingsTimelineKitchenMode') && htmlContains('index.html', 'settingsTimelineRoomFirstEnabled') && htmlContains('index.html', 'settingsTimelineDefaultView') && htmlContains('js/timeline-context.js', 'const DISPLAY_MODES = {') && htmlContains('js/timeline-context.js', "education: {") && htmlContains('js/timeline-context.js', "parkKitchenEnabled") && htmlContains('js/timeline-context.js', "defaultTimelineView") && settingsCode.includes('/settings/timeline-display') && settingsCode.includes('roomTimelineEnabled') && settingsCode.includes('defaultTimelineView') && !settingsCode.includes("|| 'rooms'") && !settingsCode.includes("? 'rooms' : 'animators'") && appCode.includes('saveTimelineDisplaySettingsFromSettings') && appCode.includes('settingsTimelineDefaultView') && timelineConfigCode.includes('TIMELINE_DISPLAY_MODE') && timelineConfigCode.includes('EDUCATION_TIMELINE_PROGRAMS') && timelineCode.includes("presentation?.mode === 'education'") && timelineCode.includes('resourceType: \'cabinet\'') && htmlContains('css/panel.css', 'body.timeline-mode-park.timeline-park-without-kitchen #banquetFields'));
 check('Timeline room load panel is a visible toolbar popover and remains closable', featuresCss.includes('Timeline page room load is a toolbar popover') && featuresCss.includes('--room-load-anchor-top') && featuresCss.includes('body.timeline-dashboard-page .room-load-panel.visible') && featuresCss.includes('.room-load-close-label') && featuresCss.includes('html[data-theme="dark"] .room-load-panel') && timelineCode.includes('const positionRoomLoadPanel') && timelineCode.includes("panel.style.setProperty('--room-load-anchor-right'") && timelineCode.includes('closeRoomLoadPanel') && timelineCode.includes("event.key === 'Escape'") && timelineCode.includes("btn.setAttribute('aria-expanded', 'false')"));

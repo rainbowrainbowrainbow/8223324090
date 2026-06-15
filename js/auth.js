@@ -631,6 +631,7 @@ const PAGE_ACCESS = {
     '/warehouse': [..._MANAGER_UP, 'admin'],
     '/training':  _TRAINING_ACCESS,
     '/settings':  ['creator', 'director'],
+    '/timeline-settings': ['creator', 'director'],
     '/demo':      _MANAGER_UP,
     '/programs':  _PROGRAMS_ACCESS,
     '/hr':        _HR_PAGE_ACCESS,

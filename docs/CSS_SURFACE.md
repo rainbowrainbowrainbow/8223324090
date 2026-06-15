@@ -44,6 +44,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/chat-omni.css` | chat | `page-scoped` | active | Omni workspace rebuild and omnichannel health/account mode styles imported by `chat.css`. |
 | `css/chat-polish.css` | chat | `page-scoped` | active | Chat dashboard-surface polish and adjacent override layer imported by `chat.css`. |
 | `css/chat-settings.css` | chat | `page-scoped` | active | Chat settings control-plane and AI provider configuration styles imported by `chat.css`. |
+| `css/timeline-settings.css` | timeline | `page-scoped` | active | Standalone timeline settings center shell, block registry, preset, inspector, and responsive layout styles. |
 | `css/content.css` | content | `page-scoped` | active | Content matrix page styles. |
 | `css/controls.css` | shared-ui | `shared` | active | Shared form controls, buttons, and toolbar patterns. |
 | `css/copilot.css` | copilot | `page-scoped` | active | Sales/copilot workspace styles. |

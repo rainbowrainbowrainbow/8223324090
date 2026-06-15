@@ -43,6 +43,7 @@ const STATIC_HTML_ROUTE_PATHS = new Set([
     '/sales-funnel',
     '/chat',
     '/chat-settings',
+    '/timeline-settings',
     '/profile',
     '/certificates',
     '/afisha',

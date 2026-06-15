@@ -650,8 +650,21 @@
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            toggleConstructorMode(!state.constructorActive);
+            openSettingsCenter();
         });
+    }
+
+    function settingsCenterUrl() {
+        const url = new URL('/timeline-settings', window.location.origin);
+        url.searchParams.set('context', currentContextKey());
+        url.searchParams.set('return', `${window.location.pathname}${window.location.search}${window.location.hash}`);
+        if (state.selectedBlockId) url.searchParams.set('block', state.selectedBlockId);
+        return `${url.pathname}${url.search}`;
+    }
+
+    function openSettingsCenter() {
+        if (!canConfigure()) return;
+        window.location.assign(settingsCenterUrl());
     }
 
     function createPanel() {
@@ -973,6 +986,7 @@
         setHidden,
         resetSettings,
         applyVisibilityPreset,
+        openSettingsCenter,
         isHidden,
         registry: TIMELINE_VISIBILITY_ELEMENTS
     };

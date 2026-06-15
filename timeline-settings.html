@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';document.addEventListener('DOMContentLoaded',function(){document.body.classList.toggle('dark-mode',d);document.body.classList.remove('night-auto');});}catch(e){}})();
+    </script>
+    <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Genix | Налаштування таймлайну</title>
+    <meta name="description" content="Event Genix — окремий центр налаштувань таймлайну для блоків, візуалу, пресетів і системних режимів">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.75.67">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.67">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.67">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.67">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.67">
+    <link rel="stylesheet" href="css/timeline-settings.css?v=0.75.67">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.67">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.67">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body data-page-group="crm">
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+    <div id="loginScreen" class="login-screen hidden"></div>
+
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content timeline-settings-page" id="main-content">
+            <section class="timeline-settings-hero" aria-labelledby="timelineSettingsTitle">
+                <div class="timeline-settings-hero-copy">
+                    <div class="timeline-settings-eyebrow">Status On Timeline Settings Center</div>
+                    <h1 id="timelineSettingsTitle">Налаштування таймлайну</h1>
+                    <p>Окрема сторінка для блоків, пресетів, візуалу й системних режимів без перекриття робочого таймлайну.</p>
+                </div>
+                <div class="timeline-settings-hero-actions">
+                    <a id="timelineSettingsBackLink" class="timeline-settings-back" href="/">Повернутись до таймлайну</a>
+                    <button id="timelineSettingsResetBtn" type="button" class="timeline-settings-secondary">Скинути</button>
+                    <button id="timelineSettingsSaveBtn" type="button" class="timeline-settings-primary">Зберегти</button>
+                </div>
+            </section>
+
+            <div class="timeline-settings-alert" id="timelineSettingsAlert" hidden></div>
+
+            <section class="timeline-settings-shell" aria-label="Центр налаштувань таймлайну">
+                <aside class="timeline-settings-rail" aria-labelledby="timelineSettingsContextTitle">
+                    <div class="timeline-settings-panel-head">
+                        <div>
+                            <h2 id="timelineSettingsContextTitle">Timeline context</h2>
+                            <p>Налаштування зберігаються окремо для кожного бізнес-таймлайну.</p>
+                        </div>
+                    </div>
+                    <div id="timelineSettingsContextList" class="timeline-settings-context-list"></div>
+                    <div class="timeline-settings-meta-card">
+                        <span>Активний timeline</span>
+                        <strong id="timelineSettingsTimelineId">timeline:event_genix</strong>
+                        <small id="timelineSettingsContextHint">Використовуються існуючі API налаштувань.</small>
+                    </div>
+                </aside>
+
+                <section class="timeline-settings-workspace">
+                    <div class="timeline-settings-tabs" role="tablist" aria-label="Розділи налаштувань">
+                        <button type="button" class="active" role="tab" aria-selected="true" data-timeline-settings-tab="blocks">Блоки</button>
+                        <button type="button" role="tab" aria-selected="false" data-timeline-settings-tab="visual">Візуал</button>
+                        <button type="button" role="tab" aria-selected="false" data-timeline-settings-tab="presets">Пресети</button>
+                        <button type="button" role="tab" aria-selected="false" data-timeline-settings-tab="system">Системні режими</button>
+                    </div>
+
+                    <div id="timelineSettingsBlocksPanel" class="timeline-settings-tab-panel active" data-timeline-settings-panel="blocks">
+                        <div class="timeline-settings-toolbar">
+                            <label class="timeline-settings-search">
+                                <span>Пошук</span>
+                                <input id="timelineSettingsSearch" type="search" placeholder="Назва або id блоку">
+                            </label>
+                            <div class="timeline-settings-filters" aria-label="Швидкі фільтри">
+                                <button type="button" data-timeline-settings-filter="hidden">Приховані</button>
+                                <button type="button" data-timeline-settings-filter="accent">Акцент</button>
+                                <button type="button" data-timeline-settings-filter="notes">З нотаткою</button>
+                            </div>
+                        </div>
+                        <div id="timelineSettingsBlockGroups" class="timeline-settings-block-groups" aria-live="polite"></div>
+                    </div>
+
+                    <div id="timelineSettingsVisualPanel" class="timeline-settings-tab-panel" data-timeline-settings-panel="visual">
+                        <div class="timeline-settings-editor-head">
+                            <h2>Візуал вибраного блоку</h2>
+                            <p>Visible, order, density, emphasis, customLabel і adminNote змінюють тільки відображення цього timeline.</p>
+                        </div>
+                        <div id="timelineSettingsVisualEditor" class="timeline-settings-editor"></div>
+                    </div>
+
+                    <div id="timelineSettingsPresetsPanel" class="timeline-settings-tab-panel" data-timeline-settings-panel="presets">
+                        <div class="timeline-settings-editor-head">
+                            <h2>Пресети</h2>
+                            <p>Пресет формує frontend payload для timeline-visibility. Бронювання, ролі й API права не змінюються.</p>
+                        </div>
+                        <div id="timelineSettingsPresets" class="timeline-settings-preset-grid"></div>
+                    </div>
+
+                    <div id="timelineSettingsSystemPanel" class="timeline-settings-tab-panel" data-timeline-settings-panel="system">
+                        <div class="timeline-settings-editor-head">
+                            <h2>Системні режими</h2>
+                            <p>Це existing timeline-display settings: режим, стартова сторінка, ресурсна модель і базові модулі.</p>
+                        </div>
+                        <div id="timelineSettingsSystemEditor" class="timeline-settings-system-grid"></div>
+                    </div>
+                </section>
+
+                <aside class="timeline-settings-inspector" aria-labelledby="timelineSettingsInspectorTitle">
+                    <div class="timeline-settings-inspector-head">
+                        <div>
+                            <h2 id="timelineSettingsInspectorTitle">Деталі</h2>
+                            <p id="timelineSettingsSaveStatus" data-status="idle">Зміни не вносились.</p>
+                        </div>
+                    </div>
+                    <div id="timelineSettingsInspector" class="timeline-settings-inspector-body"></div>
+                    <div class="timeline-settings-preview" aria-label="Схема зон таймлайну">
+                        <div class="timeline-settings-preview-title">Preview зон</div>
+                        <div id="timelineSettingsPreview" class="timeline-settings-preview-body"></div>
+                    </div>
+                </aside>
+            </section>
+        </main>
+    </div>
+
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Profile">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Profile</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=0.75.67"></script>
+    <script src="js/notification.js?v=0.75.67"></script>
+    <script src="js/api.js?v=0.75.67"></script>
+    <script src="js/auth.js?v=0.75.67"></script>
+    <script src="js/components/sidebar.js?v=0.75.67"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/timeline-context.js?v=0.75.67"></script>
+    <script src="js/timeline-settings-page.js?v=0.75.67"></script>
+    <script src="js/ui.js?v=0.75.67"></script>
+    <script src="js/alerts.js?v=0.75.67"></script>
+</body>
+</html>

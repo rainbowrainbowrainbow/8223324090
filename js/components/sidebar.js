@@ -182,6 +182,7 @@ const Sidebar = (() => {
         { href: '/kleshnya',     icon: '🤖', label: 'Помічник',        access: 'chat',           group: 'system' },
         { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',  access: 'guardian_ops',   group: 'system' },
         { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',       group: 'system' },
+        { href: '/timeline-settings', icon: '📅', label: 'Налаштування таймлайну', access: 'settings', group: 'system' },
         { href: '/warehouse',    icon: '📦', label: 'Склад',         access: 'warehouse',      group: 'system' },
         { href: '/game',         icon: '🎮', label: 'Гра',           access: 'all',            group: 'system' },
         { href: '/demo',         icon: '🎬', label: 'Demo',          access: 'demo',           group: 'system' },

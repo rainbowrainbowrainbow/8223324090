@@ -4,6 +4,20 @@
 
 ---
 
+## v0.75.67 - Timeline Settings Center
+
+### Timeline / Settings / UX / Release / (Клешня, 15.06.2026) [codex]
+- **Додано окрему сторінку `/timeline-settings`** - налаштування таймлайну більше не перекривають робочу сітку overlay/drawer-ом, а відкриваються як повноцінний CRM settings center.
+- **Gear-кнопка таймлайну веде у settings center** - URL отримує `context=<business>` і `return=<currentPath>`, тому менеджер повертається назад у правильний таймлайн.
+- **Блоки таймлайну винесено в читабельний workspace** - є лівий вибір context, вкладки `Блоки`, `Візуал`, `Пресети`, `Системні режими`, права панель деталей і preview зон.
+- **Пошук, фільтри й пресети працюють поверх існуючого payload** - `visible`, `order`, `density`, `emphasis`, `customLabel`, `adminNote` зберігаються через `/api/settings/timeline-visibility`.
+- **Системні режими використовують існуючий `/api/settings/timeline-display`** - без нових endpoint-ів, таблиць, міграцій або зміни бронювань, ролей і прав.
+- **Access і навігацію додано тільки для `creator`/`director`** - route `/timeline-settings` підключено до shared page access і sidebar system entry.
+- **Regression guard оновлено** - UI smoke перевіряє сторінку, tabs, context contract, API contract і те, що gear більше не відкриває старий overlay як основний entrypoint.
+- **DB/env/Railway/CI/CD не змінювались** - без міграцій, секретів, нових залежностей або production config змін.
+
+---
+
 ## v0.75.66 - Status On
 
 ### Leads / Sales funnel / Queue UX / Release / (Клешня, 15.06.2026) [codex]

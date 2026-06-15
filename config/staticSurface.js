@@ -56,6 +56,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Dedicated Chat AI, Guardian, and integrations settings page.'
     },
     {
+        file: 'timeline-settings.html',
+        canonicalPath: '/timeline-settings',
+        owner: 'timeline',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Dedicated timeline settings center for visibility, visual presets, and display modes.'
+    },
+    {
         file: 'checkin.html',
         canonicalPath: '/checkin',
         owner: 'checkin',

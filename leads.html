@@ -11,15 +11,15 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.75.58">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.58">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.58">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.58">
-    <link rel="stylesheet" href="css/pages-leads.css?v=0.75.58">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.58">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.75.58">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.58">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.58">
+    <link rel="stylesheet" href="css/base.css?v=0.75.63">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.63">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.63">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.63">
+    <link rel="stylesheet" href="css/pages-leads.css?v=0.75.63">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.63">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.75.63">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.63">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.63">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -828,6 +828,14 @@
         <div id="leadsApp" class="leads-app">
             <!-- Stats by type -->
             <div class="leads-stats" id="leadsStats"></div>
+            <div class="lead-queue-tabs" id="leadQueueTabs" role="group" aria-label="Черги лідів">
+                <button type="button" class="lead-queue-tab active" data-lead-queue="active" aria-pressed="true">Активні</button>
+                <button type="button" class="lead-queue-tab" data-lead-queue="collaboration" aria-pressed="false">Співпраця</button>
+                <button type="button" class="lead-queue-tab" data-lead-queue="informational" aria-pressed="false">Інформаційні</button>
+                <button type="button" class="lead-queue-tab" data-lead-queue="screened" aria-pressed="false">Відсіяні</button>
+                <button type="button" class="lead-queue-tab" data-lead-queue="spam" aria-pressed="false">Спам</button>
+                <button type="button" class="lead-queue-tab" data-lead-queue="all" aria-pressed="false">Усі</button>
+            </div>
 
             <!-- Toolbar -->
             <div class="leads-toolbar">
@@ -1113,7 +1121,7 @@
     <!-- Lost Reason Modal -->
     <div class="lead-modal-overlay" id="lostReasonModal" role="dialog" aria-modal="true">
         <div class="lead-modal">
-            <h2>Причина втрати</h2>
+            <h2 id="lostReasonTitle">Причина втрати</h2>
             <div class="form-group">
                 <label>Причина</label>
                 <select id="lostReasonSelect">
@@ -1125,7 +1133,7 @@
                     <option value="Інше">Інше</option>
                 </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="lostReasonNotesGroup">
                 <label>Додатково</label>
                 <textarea id="lostReasonNotes" rows="2" placeholder="Деталі..."></textarea>
             </div>
@@ -1201,13 +1209,13 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.75.58"></script>
-    <script src="js/notification.js?v=0.75.58"></script>
-    <script src="js/api.js?v=0.75.58"></script>
-    <script src="js/auth.js?v=0.75.58"></script>
-    <script src="js/components/sidebar.js?v=0.75.58"></script>
+    <script src="js/config.js?v=0.75.63"></script>
+    <script src="js/notification.js?v=0.75.63"></script>
+    <script src="js/api.js?v=0.75.63"></script>
+    <script src="js/auth.js?v=0.75.63"></script>
+    <script src="js/components/sidebar.js?v=0.75.63"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.75.58"></script>
-    <script src="js/ui.js?v=0.75.58"></script>
-    <script src="js/alerts.js?v=0.75.58"></script></body>
+    <script src="js/leads-page.js?v=0.75.63"></script>
+    <script src="js/ui.js?v=0.75.63"></script>
+    <script src="js/alerts.js?v=0.75.63"></script></body>
 </html>

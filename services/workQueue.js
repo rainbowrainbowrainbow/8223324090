@@ -21,6 +21,8 @@ const REPLY_SLA_FILTERS = ['all', 'overdue', 'due_soon', 'on_track', 'none'];
 const REPLY_OWNER_FILTERS = ['all', 'with_owner', 'without_owner'];
 const REPLY_ESCALATION_FILTERS = ['all', 'escalated', 'not_escalated'];
 const CLOSED_LEAD_STAGES = ['completed', 'closed', 'lost'];
+const SALES_LEAD_TYPE = 'quality';
+const NON_SALES_LEAD_TYPES = ['spam', 'collaboration', 'informational', 'low_quality'];
 const ACTIVE_TASK_STATUS_SQL = "COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')";
 const PRIORITY_WEIGHT = { critical: 0, high: 1, normal: 2, medium: 2, low: 3 };
 
@@ -316,7 +318,18 @@ function leadFunnelHref(stage = '') {
     return normalized ? `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(normalized)}` : '/sales-funnel';
 }
 
-function normalizeLeadFunnelInsights(rows = []) {
+function normalizeLeadTypeStats(rows = []) {
+    const stats = { quality: 0, spam: 0, collaboration: 0, informational: 0, low_quality: 0 };
+    for (const row of rows || []) {
+        const type = row.lead_type || SALES_LEAD_TYPE;
+        if (Object.prototype.hasOwnProperty.call(stats, type)) {
+            stats[type] = Number(row.count || 0);
+        }
+    }
+    return stats;
+}
+
+function normalizeLeadFunnelInsights(rows = [], typeRows = []) {
     const stages = (Array.isArray(rows) ? rows : []).map(row => {
         const stage = normalizeFunnelStage(row.stage || row.pipeline_stage);
         const total = Number(row.total || 0);
@@ -333,17 +346,23 @@ function normalizeLeadFunnelInsights(rows = []) {
 
     const total = stages.reduce((sum, row) => sum + row.total, 0);
     const waitingAction = stages.reduce((sum, row) => sum + row.waitingAction, 0);
+    const classificationStats = normalizeLeadTypeStats(typeRows);
+    const operationalQueueStats = Object.fromEntries(NON_SALES_LEAD_TYPES.map(type => [type, classificationStats[type] || 0]));
     const hotStage = stages
         .slice()
         .sort((a, b) => b.waitingAction - a.waitingAction || b.total - a.total || a.label.localeCompare(b.label))[0] || null;
 
     return {
         model: 'lead_funnel_summary_v1',
-        source: 'leads.pipeline_stage + leads.last_contact_at_or_created_at',
+        source: 'quality leads.pipeline_stage + leads.last_contact_at_or_created_at',
+        salesLeadType: SALES_LEAD_TYPE,
+        excludedLeadTypes: NON_SALES_LEAD_TYPES,
         total,
         waitingAction,
         stages,
         hotStage,
+        classificationStats,
+        operationalQueueStats,
         href: '/sales-funnel'
     };
 }
@@ -800,6 +819,7 @@ async function buildWorkQueue({
               AND COALESCE(li.follow_up_done, false) = false
               AND li.follow_up_date::date <= $1::date
               AND COALESCE(l.pipeline_stage, 'new') <> ALL($2::text[])
+              AND COALESCE(l.lead_type, 'quality') = 'quality'
             ORDER BY li.follow_up_date ASC, li.created_at DESC
             LIMIT $3
         `, [tomorrowStr, CLOSED_LEAD_STAGES, safeLimit]);
@@ -905,6 +925,7 @@ async function buildWorkQueue({
               AND l.event_date::date >= $1::date
               AND l.event_date::date <= $2::date
               AND COALESCE(l.pipeline_stage, 'new') <> ALL($3::text[])
+              AND COALESCE(l.lead_type, 'quality') = 'quality'
             ORDER BY l.event_date ASC, l.updated_at DESC
             LIMIT $4
         `, [todayStr, eventSoonStr, CLOSED_LEAD_STAGES, safeLimit]);
@@ -918,20 +939,29 @@ async function buildWorkQueue({
     });
 
     const funnelInsights = await source(pool, warnings, 'leads_funnel_summary', async () => {
-        const result = await pool.query(`
-            SELECT COALESCE(NULLIF(l.pipeline_stage, ''), 'new') AS stage,
-                   COUNT(*)::int AS total,
-                   COUNT(*) FILTER (
-                       WHERE COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours'
-                   )::int AS waiting_action,
-                   MIN(COALESCE(l.last_contact_at, l.created_at)) AS oldest_touch_at
-            FROM leads l
-            WHERE COALESCE(l.pipeline_stage, 'new') <> ALL($1::text[])
-            GROUP BY COALESCE(NULLIF(l.pipeline_stage, ''), 'new')
-            ORDER BY waiting_action DESC, total DESC, stage ASC
-            LIMIT 8
-        `, [CLOSED_LEAD_STAGES]);
-        return normalizeLeadFunnelInsights(result.rows);
+        const [result, typeResult] = await Promise.all([
+            pool.query(`
+                SELECT COALESCE(NULLIF(l.pipeline_stage, ''), 'new') AS stage,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (
+                           WHERE COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours'
+                       )::int AS waiting_action,
+                       MIN(COALESCE(l.last_contact_at, l.created_at)) AS oldest_touch_at
+                FROM leads l
+                WHERE COALESCE(l.pipeline_stage, 'new') <> ALL($1::text[])
+                  AND COALESCE(l.lead_type, 'quality') = 'quality'
+                GROUP BY COALESCE(NULLIF(l.pipeline_stage, ''), 'new')
+                ORDER BY waiting_action DESC, total DESC, stage ASC
+                LIMIT 8
+            `, [CLOSED_LEAD_STAGES]),
+            pool.query(`
+                SELECT COALESCE(NULLIF(l.lead_type, ''), 'quality') AS lead_type,
+                       COUNT(*)::int AS count
+                FROM leads l
+                GROUP BY COALESCE(NULLIF(l.lead_type, ''), 'quality')
+            `)
+        ]);
+        return normalizeLeadFunnelInsights(result.rows, typeResult.rows);
     });
 
     const tomorrowBookings = await source(pool, warnings, 'bookings_tomorrow', async () => {

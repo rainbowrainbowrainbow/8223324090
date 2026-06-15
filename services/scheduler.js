@@ -1680,7 +1680,8 @@ async function checkHotLeads() {
             FROM leads l
             LEFT JOIN products p ON l.program_id = p.id
              AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
-            WHERE l.status = 'new'
+            WHERE COALESCE(l.pipeline_stage, 'new') = 'new'
+              AND COALESCE(l.lead_type, 'quality') = 'quality'
               AND l.created_at < NOW() - INTERVAL '24 hours'
               AND ${hotLeadBusiness}
         `, hotLeadParams);

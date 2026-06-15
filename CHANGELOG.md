@@ -4,6 +4,73 @@
 
 ---
 
+## v0.75.63 - Sales Lead Metrics Cleanup
+
+### Leads / Sales funnel / Analytics / Dashboard / Work queue / Release / (Клешня, 15.06.2026) [codex]
+- **Продажні метрики тепер рахують тільки `lead_type=quality`** - конверсія менеджерів, accepted/closed/lost, pipeline totals, hot/cold leads і dashboard funnel більше не змішують спам, інформаційні, неякісні та співпрацю з реальною продажною воронкою.
+- **Класифікаційні типи не приховано** - `/api/leads/stats`, `/api/leads/pipeline`, `/api/analytics/deals-lifecycle` і work queue funnel повертають `classificationStats` та `operationalQueueStats` для `spam`, `collaboration`, `informational`, `low_quality`.
+- **Backward-compatible поля збережено** - старі `stats`, `stageStats`, `pipeline`, `total` лишились у відповіді, але тепер це sales-зріз; повна картина доступна в `allStats`, `allStageStats`, `allPipeline`, `allTotal`.
+- **Dashboard alerts очищено від non-sales лідів** - “нові/холодні ліди” рахуються через canonical `pipeline_stage=new` і `lead_type=quality`, а work queue callback/event-soon/funnel insights не підтягують відсіяні типи.
+- **Kanban funnel bar рахує sales-зріз** - у черзі `Усі` менеджер бачить усі картки, але конверсійна смуга не псується non-sales класифікаціями.
+- **Scheduler hot leads стабілізовано** - автоматичні hot-lead задачі спираються на `pipeline_stage=new` і `lead_type=quality`.
+- **Regression guard оновлено** - додано статичні UI/API guard-и та work queue assertions для sales-only lead filters і окремих classification/operational лічильників.
+- **DB/env config не змінювались** - без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей.
+
+---
+
+## v0.75.62 - Collaboration Task Handoff
+
+### Leads / Sales funnel / Collaboration workflow / Tasks / Release / (Клешня, 15.06.2026) [codex]
+- **Вибір `Співпраця` тепер відкриває форму задачі** - менеджер задає назву, відповідального, дедлайн, пріоритет і коментар перед зміною типу ліда.
+- **Задача створюється явно через `POST /api/tasks`** - frontend передає `source_type=lead`, `source_id=<leadId>` і `businessContext` з ліда, тому задача одразу привʼязана до CRM-кейса.
+- **Тип ліда змінюється тільки після успішної задачі** - якщо task creation повернув помилку або duplicate conflict, `lead_type=collaboration` не зберігається і менеджер бачить помилку.
+- **Backend auto-create залишено як fallback** - старий `onCollaborationLead()` запускається тільки якщо PATCH не містить `collaboration_task_created=true`.
+- **Дублі не створюються** - frontend task route використовує існуючий duplicate reject, а backend fallback лишив `duplicateMode=skip`.
+- **Regression guard оновлено** - route-smoke перевіряє, що frontend-created task вимикає backend fallback, UI smoke фіксує форму співпраці, `/api/tasks/owners`, `/api/tasks` і прапор `collaboration_task_created`.
+- **DB/env config не змінювались** - без міграцій, ролей, task taxonomy, secrets, Railway variables, CI/CD або нових залежностей.
+
+---
+
+## v0.75.61 - Lead Queue Segments
+
+### Leads / Sales funnel / Lead queues / URL filters / UX / Release / (Клешня, 15.06.2026) [codex]
+- **У Sales Funnel додано робочі черги лідів** - менеджер більше не шукає типи тільки через статистичні лічильники, а перемикається між `Активні`, `Співпраця`, `Інформаційні`, `Відсіяні`, `Спам` і `Усі`.
+- **Default queue стала `Активні`** - сторінка без query відкриває якісні ліди через існуючий API-фільтр `lead_type=quality`.
+- **Кожна черга мапиться на існуючий `lead_type`** - `collaboration`, `informational`, `low_quality`, `spam`; `Усі` не ставить `lead_type` і показує всі типи.
+- **Стан черги живе в URL** - додано `lead_queue=collaboration|informational|screened|spam|all`; старий `lead_type` у URL лишився backward-compatible alias.
+- **Table і Kanban працюють однаково** - обидва режими завантажують той самий зріз через `GET /api/leads?lead_type=...`, а `Усі` в Kanban більше не відфільтровує неактивні типи на frontend.
+- **Empty state став queue-aware** - порожній екран пояснює, яка саме черга порожня і чи її звузили status/date/search/pipeline filters.
+- **DB/API/env config не змінювались** - без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей; backend schema не чіпалась.
+
+---
+
+## v0.75.60 - Lead Type Reason UX
+
+### Leads / Sales funnel / Lead type reasons / UX / Release / (Клешня, 15.06.2026) [codex]
+- **Для закривальних типів ліда додано явний вибір причини** - при виборі `Спам`, `Неякісний` або `Інформаційний` менеджер бачить компактну modal-форму перед PATCH.
+- **Причини розділено за типами** - спам має варіанти `Дубль`, `Бот/реклама`, `Некоректний контакт`, `Не наш запит`, `Інше`; неякісні ліди мають бюджет/дату/формат/відповідь/дубль; інформаційні запити мають ціни/програму/майбутнє/без дати.
+- **Поле деталей показується тільки для “Інше”** - менеджер може уточнити нестандартну причину без зайвого текстового поля для типових кейсів.
+- **PATCH тепер передає конкретний `lost_reason` із UI** - backend workflow routing лишився тим самим і продовжує використовувати дефолтну причину, якщо API викликали без явної причини.
+- **Повернення в `Якісний` лишилось через існуючу quality modal** - Kanban не робить тихий PATCH у quality, а відкриває вибір категорії якісного ліда.
+- **Regression guard оновлено** - route-smoke перевіряє, що explicit `lost_reason` не затирається workflow-дефолтом, UI smoke фіксує reason modal, варіанти причин і відсутність native prompt.
+- **DB/env config не змінювались** - без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей; використано існуюче поле `lost_reason`.
+
+---
+
+## v0.75.59 - Lead Type Workflow Routing
+
+### Leads / Sales funnel / Lead type workflow / Kanban / Release / (Клешня, 15.06.2026) [codex]
+- **Тип ліда тепер запускає workflow, а не лишається просто міткою** - `spam`, `informational`, `low_quality` і `collaboration` отримали серверні правила маршрутизації у `PATCH /api/leads/:id`.
+- **Спам прибирається з активної воронки** - вибір `Спам` переводить лід у `lost` з причиною `Спам` і не додає контакт у `mailing_list`.
+- **Інформаційні та неякісні звернення закриваються операційно** - вони виходять з активного Kanban, а інформаційні контакти далі проходять через існуючий mailing hook.
+- **Співпраця отримує реальну задачу** - backend створює прив'язану до ліда задачу через `getKleshnya().createTask` із `source_type=lead` та `duplicateMode=skip`.
+- **Kanban за замовчуванням показує активні продажі** - без фільтра типу в колонках лишаються якісні ліди, а спам, співпраця, інформаційні й неякісні записи відкриваються через лічильники типів.
+- **Помилково відсіяний лід можна повернути** - повторний вибір `Якісний` для неактивного типу повертає його в активну воронку з `pipeline_stage=new`.
+- **Regression guard оновлено** - route-smoke перевіряє whitelist `lead_type` і spam-routing, UI smoke фіксує активний Kanban-фільтр, backend workflow markers і scheduler guard.
+- **DB/env config не змінювались** - без міграцій, нових secrets, Railway variables або залежностей; використано існуючі поля `lead_type`, `pipeline_stage`, `lost_reason` і задачі.
+
+---
+
 ## v0.75.58 - Maysternya Booking Lead Handoff
 
 ### Leads / Maysternya / Booking webhook / Lead handoff / Release / (Клешня, 15.06.2026) [codex]

@@ -699,6 +699,19 @@ function createFakePool() {
                 return { rows: row ? [row] : [] };
             }
             if (/SELECT t\.\* FROM tasks t WHERE COALESCE\(t\.status, 'todo'\) NOT IN \('done','archived','cancelled'\)/i.test(text)) {
+                if (params[0] === 'duplicate collaboration handoff') {
+                    return {
+                        rows: [{
+                            id: 888,
+                            title: 'Duplicate collaboration handoff',
+                            status: 'todo',
+                            priority: 'normal',
+                            owner_user_id: 2,
+                            source_type: 'lead',
+                            source_id: '502'
+                        }]
+                    };
+                }
                 return { rows: [] };
             }
             if (/UPDATE tasks SET title = \$2,/i.test(text) && /WHERE id = \$1 RETURNING \*/i.test(text)) {
@@ -1000,6 +1013,10 @@ function createFakePool() {
                 const user = hrState.users.get(Number(params[0]));
                 return { rows: user ? [{ id: user.id, username: user.username, name: user.name, role: user.role }] : [] };
             }
+            if (/SELECT id, username, name FROM users WHERE id = \$1 AND COALESCE\(is_active, true\) = true LIMIT 1/i.test(text)) {
+                const user = hrState.users.get(Number(params[0]));
+                return { rows: user ? [{ id: user.id, username: user.username, name: user.name }] : [] };
+            }
             if (/FROM task_action_history/i.test(text)) {
                 return { rows: [{
                     id: 41,
@@ -1209,6 +1226,22 @@ function createFakePool() {
                     }]
                 };
             }
+            if (/SELECT t\.\* FROM tasks t WHERE/i.test(text) && /lower\(regexp_replace\(trim\(COALESCE\(t\.title, ''\)\)/i.test(text)) {
+                if (params[0] === 'duplicate collaboration handoff') {
+                    return {
+                        rows: [{
+                            id: 888,
+                            title: 'Duplicate collaboration handoff',
+                            status: 'todo',
+                            priority: 'normal',
+                            owner_user_id: 2,
+                            source_type: 'lead',
+                            source_id: '502'
+                        }]
+                    };
+                }
+                return { rows: [] };
+            }
             if (/INSERT INTO tasks \((?:business_context, )?title, description, date, priority, assigned_to, owner, owner_user_id, created_by,/i.test(text)) {
                 const offset = /^INSERT INTO tasks \(business_context,/i.test(text.trim()) ? 1 : 0;
                 const task = {
@@ -1249,10 +1282,35 @@ function createFakePool() {
             if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
+            if (/SELECT \* FROM leads WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR UPDATE/i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[0],
+                        business_context: params[1] || 'event_genix',
+                        client_name: 'Lead Smoke',
+                        phone: '+380000000009',
+                        instagram: 'lead_smoke',
+                        source: 'instagram',
+                        source_channel: 'instagram',
+                        assigned_to: null,
+                        status: 'new',
+                        pipeline_stage: 'new',
+                        lead_type: 'quality',
+                        lost_reason: null,
+                        notes: 'Lead note',
+                        created_at: '2099-05-01T10:00:00Z',
+                        updated_at: '2099-05-02T10:00:00Z'
+                    }]
+                };
+            }
             if (/SELECT id, pipeline_stage, status FROM leads WHERE id = \$1(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? FOR UPDATE/i.test(text)) {
                 return { rows: [{ id: params[0], pipeline_stage: 'new', status: 'new' }] };
             }
             if (/UPDATE leads SET .* WHERE id = \$\d+(?: AND COALESCE\(business_context, 'event_genix'\) = \$\d+)? RETURNING \*/i.test(text)) {
+                const paramFor = column => {
+                    const match = text.match(new RegExp(`${column} = \\$(\\d+)`, 'i'));
+                    return match ? params[Number(match[1]) - 1] : undefined;
+                };
                 const row = {
                     id: params[params.length - 2] || params[params.length - 1],
                     business_context: params[params.length - 1] || 'event_genix',
@@ -1264,22 +1322,32 @@ function createFakePool() {
                     assigned_to: null,
                     status: 'new',
                     pipeline_stage: 'new',
+                    lead_type: 'quality',
+                    lost_reason: null,
                     notes: 'Lead note',
                     created_at: '2099-05-01T10:00:00Z',
                     updated_at: '2099-05-02T10:00:00Z'
                 };
-                if (/assigned_to = \$1/i.test(text)) row.assigned_to = params[0];
-                if (/pipeline_stage = \$1/i.test(text)) {
-                    row.pipeline_stage = params[0];
-                    row.status = params[1] || row.status;
-                }
+                const assignedTo = paramFor('assigned_to');
+                const pipelineStage = paramFor('pipeline_stage');
+                const status = paramFor('status');
+                const leadType = paramFor('lead_type');
+                const lostReason = paramFor('lost_reason');
+                if (assignedTo !== undefined) row.assigned_to = assignedTo;
+                if (pipelineStage !== undefined) row.pipeline_stage = pipelineStage;
+                if (status !== undefined) row.status = status;
+                if (leadType !== undefined) row.lead_type = leadType;
+                if (lostReason !== undefined) row.lost_reason = lostReason;
                 return {
                     rows: [row]
                 };
             }
             if (/INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(text)) {
-                if (String(params[2] || '').includes('new -> lost')) {
+                if (String(params[0]) === '501' && String(params[2] || '').includes('new -> lost')) {
                     throw new Error('route smoke interaction insert failure');
+                }
+                if (String(params[0]) === '503' && String(params[3] || '').includes('leads.collaboration_task')) {
+                    throw new Error('route smoke collaboration audit insert failure');
                 }
                 return { rows: [], rowCount: 1 };
             }
@@ -1615,6 +1683,19 @@ function createFakePool() {
                 return { rows: [{ count: 0 }] };
             }
             if (/FROM tasks t\s+WHERE COALESCE\(t\.status, 'todo'\) NOT IN \('done','archived','cancelled'\)\s+AND lower\(regexp_replace/i.test(text)) {
+                if (params[0] === 'duplicate collaboration handoff') {
+                    return {
+                        rows: [{
+                            id: 888,
+                            title: 'Duplicate collaboration handoff',
+                            status: 'todo',
+                            priority: 'normal',
+                            owner_user_id: 2,
+                            source_type: 'lead',
+                            source_id: '502'
+                        }]
+                    };
+                }
                 return { rows: [] };
             }
 
@@ -2677,6 +2758,126 @@ describe('route-level API safety smoke', () => {
     it('rejects unknown lead status values instead of storing arbitrary statuses', async () => {
         const res = await request('PATCH', '/api/leads/501', { status: 'whatever' }, withAuth({}, 'manager'));
         assert.equal(res.status, 400, JSON.stringify(res.data));
+    });
+
+    it('rejects unknown lead_type values instead of storing arbitrary classifications', async () => {
+        const res = await request('PATCH', '/api/leads/501', { lead_type: 'maybe_spam' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+    });
+
+    it('routes spam leads out of the active pipeline without adding them to mailing', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/502', { lead_type: 'spam' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.lead_type, 'spam');
+        assert.equal(res.data.lead.pipeline_stage, 'lost');
+        assert.equal(res.data.lead.status, 'lost');
+        assert.equal(res.data.lead.lost_reason, 'Спам');
+        assert.ok(!queries.some(q => /INSERT INTO mailing_list/i.test(q.text)));
+    });
+
+    it('preserves explicit lead_type workflow lost_reason from the manager reason modal', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/502', {
+            lead_type: 'spam',
+            lost_reason: 'Дубль'
+        }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.lead_type, 'spam');
+        assert.equal(res.data.lead.pipeline_stage, 'lost');
+        assert.equal(res.data.lead.status, 'lost');
+        assert.equal(res.data.lead.lost_reason, 'Дубль');
+    });
+
+    it('skips backend collaboration auto-task when the frontend already created the linked task', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/502', {
+            lead_type: 'collaboration',
+            collaboration_task_created: true,
+            collaboration_task_id: 880
+        }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.lead_type, 'collaboration');
+        assert.equal(res.data.lead.pipeline_stage, 'contacted');
+        assert.equal(res.data.lead.status, 'contact');
+        assert.ok(!queries.some(q => /INSERT INTO tasks/i.test(q.text)), 'backend fallback must not create a duplicate collaboration task');
+    });
+
+    it('atomically creates a collaboration task and moves the lead in one transaction', async () => {
+        queries.length = 0;
+        const res = await request('POST', '/api/leads/502/collaboration-task', {
+            title: 'Atomic collaboration handoff',
+            ownerUserId: 2,
+            deadline: '2099-05-03T12:00',
+            priority: 'high',
+            comment: 'Partner request'
+        }, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.meta.atomic, true);
+        assert.equal(res.data.meta.taskCreatedBy, 'backend');
+        assert.equal(res.data.task.source_type, 'lead');
+        assert.equal(res.data.task.source_id, '502');
+        assert.equal(res.data.task.owner_user_id, 2);
+        assert.equal(res.data.lead.lead_type, 'collaboration');
+        assert.equal(res.data.lead.pipeline_stage, 'contacted');
+        assert.equal(res.data.lead.status, 'contact');
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^ROLLBACK$/i.test(q.text)));
+
+        const taskInsertIndex = queries.findIndex(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text));
+        const leadUpdateIndex = queries.findIndex(q => /UPDATE leads SET lead_type = \$1, pipeline_stage = \$2, status = \$3/i.test(q.text));
+        const interactionIndex = queries.findIndex(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)
+            && q.params[2] === 'Lead type workflow: quality -> collaboration');
+        assert.ok(taskInsertIndex >= 0, 'collaboration task should be inserted');
+        assert.ok(leadUpdateIndex > taskInsertIndex, 'lead update should happen after task insert in the same transaction');
+        assert.ok(interactionIndex > leadUpdateIndex, 'workflow audit should be logged after lead update');
+        const details = JSON.parse(queries[interactionIndex].params[3]);
+        assert.equal(details.source, 'leads.collaboration_task');
+        assert.equal(details.taskId, res.data.task.id);
+        assert.equal(details.newLeadType, 'collaboration');
+    });
+
+    it('rejects duplicate collaboration tasks without changing the lead', async () => {
+        queries.length = 0;
+        const res = await request('POST', '/api/leads/502/collaboration-task', {
+            title: 'Duplicate collaboration handoff',
+            ownerUserId: 2,
+            deadline: '2099-05-03T12:00'
+        }, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'TASK_DUPLICATE_ACTIVE');
+        assert.equal(res.data.existingId, 888);
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+        assert.ok(!queries.some(q => /INSERT INTO tasks/i.test(q.text)));
+        assert.ok(!queries.some(q => /UPDATE leads SET lead_type = \$1, pipeline_stage = \$2, status = \$3/i.test(q.text)));
+    });
+
+    it('rolls back collaboration handoff when the workflow audit cannot be written', async () => {
+        queries.length = 0;
+        const res = await request('POST', '/api/leads/503/collaboration-task', {
+            title: 'Collaboration audit rollback',
+            ownerUserId: 2,
+            deadline: '2099-05-03T12:00'
+        }, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 500, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO tasks \((?:business_context, )?title, description, date, priority/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE leads SET lead_type = \$1, pipeline_stage = \$2, status = \$3/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
     });
 
     it('preserves exact lead source linkage when creating manager callback tasks', async () => {

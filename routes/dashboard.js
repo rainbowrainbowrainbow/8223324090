@@ -24,6 +24,7 @@ const {
 } = require('../services/businessContext');
 
 const log = createLogger('Dashboard');
+const SALES_LEAD_TYPE_FILTER = "COALESCE(lead_type, 'quality') = 'quality'";
 const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
     TASK_ACTION_TYPES.COMPLETED,
     TASK_ACTION_TYPES.STATUS_CHANGED,
@@ -1132,7 +1133,7 @@ router.get('/widgets/:type', async (req, res) => {
                     pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') ${overdueTaskVisibility} ${overdueTaskBusinessCondition}`, overdueTaskParams),
                     pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql}`, unconfirmedParams),
                     pool.query("SELECT COUNT(*) as count FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true"),
-                    pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'")
+                    pool.query(`SELECT COUNT(*) as count FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND created_at < NOW() - INTERVAL '48 hours'`)
                 ]);
                 const ov = parseInt(overdueQS.rows[0].count);
                 const uc = parseInt(unconfirmedQS.rows[0].count);
@@ -1175,7 +1176,9 @@ router.get('/widgets/:type', async (req, res) => {
                     pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock
                                 WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
                     pool.query(`SELECT COUNT(*) as c FROM leads
-                                WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'`),
+                                WHERE COALESCE(pipeline_stage, 'new') = 'new'
+                                  AND ${SALES_LEAD_TYPE_FILTER}
+                                  AND created_at < NOW() - INTERVAL '48 hours'`),
                     pool.query(`SELECT
                                   (SELECT COUNT(*) FROM cash_register_shifts WHERE status = 'open') AS open_shifts,
                                   (SELECT COUNT(*) FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${shiftVisibility.sql}) AS today_bk`,
@@ -1229,7 +1232,8 @@ router.get('/widgets/:type', async (req, res) => {
                 const result = await pool.query(`
                     SELECT id, client_name AS name, phone, source, status, created_at
                     FROM leads
-                    WHERE status = 'new'
+                    WHERE COALESCE(pipeline_stage, 'new') = 'new'
+                      AND ${SALES_LEAD_TYPE_FILTER}
                     ORDER BY created_at DESC
                     LIMIT 8
                 `);
@@ -1719,7 +1723,7 @@ router.get('/today', async (req, res) => {
                         ${taskBusinessCondition}`, taskParams),
             pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql}`, revenueParams),
             pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
-            pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new'").catch(() => ({ rows: [{ count: 0 }] })),
+            pool.query(`SELECT COUNT(*) as count FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER}`).catch(() => ({ rows: [{ count: 0 }] })),
         ]);
 
         res.json({
@@ -1837,7 +1841,7 @@ router.get('/alerts', async (req, res) => {
                         LIMIT 5`, overdueParams),
             pool.query(`SELECT b.id, b.label, b.time FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ORDER BY b.time LIMIT 5`, unconfirmedParams),
             pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
-            pool.query(`SELECT COUNT(*) as c FROM leads WHERE status='new' AND created_at < NOW() - INTERVAL '48 hours'`),
+            pool.query(`SELECT COUNT(*) as c FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND created_at < NOW() - INTERVAL '48 hours'`),
             pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
                                (SELECT COUNT(*) FROM bookings b WHERE b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql}) AS today_bk`, shiftParams)
         ]);
@@ -1904,7 +1908,7 @@ async function broadcastAlerts() {
             // Booking alerts are object-visible; global websocket broadcast cannot apply per-user booking scope.
             Promise.resolve({ rows: [] }),
             pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
-            pool.query(`SELECT COUNT(*) as c FROM leads WHERE status='new' AND created_at < NOW() - INTERVAL '48 hours'`),
+            pool.query(`SELECT COUNT(*) as c FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND created_at < NOW() - INTERVAL '48 hours'`),
             pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
                                0 AS today_bk`)
         ]);

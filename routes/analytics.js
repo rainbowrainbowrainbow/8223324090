@@ -17,6 +17,18 @@ const {
     pushBusinessScopeCondition
 } = require('../services/businessContext');
 const log = createLogger('Analytics');
+const SALES_LEAD_TYPE_SQL = "COALESCE(l.lead_type, 'quality') = 'quality'";
+
+function leadTypeStatsFromRows(rows = []) {
+    const stats = { quality: 0, spam: 0, collaboration: 0, informational: 0, low_quality: 0 };
+    for (const row of rows || []) {
+        const type = row.lead_type || 'quality';
+        if (Object.prototype.hasOwnProperty.call(stats, type)) {
+            stats[type] = parseInt(row.count, 10) || 0;
+        }
+    }
+    return stats;
+}
 
 // RBAC: Analytics - manager-up, aligned with middleware/js/sidebar page access.
 router.use(requireRole('manager'));
@@ -890,6 +902,7 @@ router.get('/conversion', async (req, res) => {
             FROM leads l
             JOIN users u ON l.assigned_to = u.id
             WHERE l.created_at >= $1 AND l.created_at <= ($2::date + INTERVAL '1 day')
+              AND ${SALES_LEAD_TYPE_SQL}
               AND ${leadsBusiness}
             GROUP BY u.name, u.username
         `, leadsParams).catch(() => ({ rows: [] }));
@@ -945,7 +958,7 @@ router.get('/deals-lifecycle', async (req, res) => {
             FROM leads l
             WHERE ${dateExpr} >= $1::date
               AND ${dateExpr} <= $2::date
-              AND COALESCE(l.lead_type, 'quality') <> 'spam'
+              AND ${SALES_LEAD_TYPE_SQL}
               AND ${totalsBusiness}
         `, totalsParams);
 
@@ -963,7 +976,7 @@ router.get('/deals-lifecycle', async (req, res) => {
                 FROM leads l
                 WHERE ${dateExpr} >= $1::date
                   AND ${dateExpr} <= $2::date
-                  AND COALESCE(l.lead_type, 'quality') <> 'spam'
+                  AND ${SALES_LEAD_TYPE_SQL}
                   AND ${trendBusiness}
             )
             SELECT
@@ -976,9 +989,21 @@ router.get('/deals-lifecycle', async (req, res) => {
             ORDER BY days.day
         `, trendParams);
 
+        const { params: classificationParams, businessCondition: classificationBusiness } = scopedParams(businessScope, 'l', [from, to]);
+        const classification = await pool.query(`
+            SELECT COALESCE(NULLIF(l.lead_type, ''), 'quality') AS lead_type,
+                   COUNT(DISTINCT l.id)::int AS count
+            FROM leads l
+            WHERE ${dateExpr} >= $1::date
+              AND ${dateExpr} <= $2::date
+              AND ${classificationBusiness}
+            GROUP BY COALESCE(NULLIF(l.lead_type, ''), 'quality')
+        `, classificationParams);
+
         const row = totals.rows[0] || {};
         const accepted = parseInt(row.accepted, 10) || 0;
         const closed = parseInt(row.closed, 10) || 0;
+        const classificationStats = leadTypeStatsFromRows(classification.rows);
         const data = {
             success: true,
             period: { from, to },
@@ -987,9 +1012,18 @@ router.get('/deals-lifecycle', async (req, res) => {
             closed,
             lost: parseInt(row.lost, 10) || 0,
             total: parseInt(row.total, 10) || 0,
+            classificationStats,
+            operationalQueueStats: {
+                collaboration: classificationStats.collaboration,
+                informational: classificationStats.informational,
+                low_quality: classificationStats.low_quality,
+                spam: classificationStats.spam
+            },
             conversionRatio: accepted > 0 ? Math.round((closed / accepted) * 1000) / 10 : 0,
             trend: trend.rows,
             meta: {
+                salesLeadType: 'quality',
+                excludedLeadTypes: ['spam', 'collaboration', 'informational', 'low_quality'],
                 acceptedStages: ['deposit_received', 'waiting'],
                 closedStages: ['completed', 'closed'],
                 reportability: 'snapshot-only',

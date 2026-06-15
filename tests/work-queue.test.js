@@ -620,6 +620,16 @@ function createFakePool() {
                 ] };
             }
 
+            if (/FROM leads l/i.test(text) && /GROUP BY COALESCE\(NULLIF\(l\.lead_type, ''\), 'quality'\)/i.test(text)) {
+                return { rows: [
+                    { lead_type: 'quality', count: 15 },
+                    { lead_type: 'collaboration', count: 3 },
+                    { lead_type: 'informational', count: 2 },
+                    { lead_type: 'low_quality', count: 4 },
+                    { lead_type: 'spam', count: 5 }
+                ] };
+            }
+
             if (/FROM bookings b/i.test(text) && /b\.status IN \('confirmed', 'preliminary'\)/i.test(text)) {
                 return { rows: [{
                     id: 'BK-3',
@@ -772,8 +782,17 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.funnelInsights.waitingAction, 9);
         assert.equal(res.data.queue.meta.funnelInsights.hotStage.stage, 'info_sent');
         assert.equal(res.data.queue.meta.funnelInsights.stages[0].href, '/sales-funnel?view=kanban&pipeline_stage=info_sent');
+        assert.equal(res.data.queue.meta.funnelInsights.salesLeadType, 'quality');
+        assert.equal(res.data.queue.meta.funnelInsights.classificationStats.collaboration, 3);
+        assert.equal(res.data.queue.meta.funnelInsights.operationalQueueStats.spam, 5);
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
+        const callbackQuery = queries.find(q => /FROM lead_interactions li/i.test(q.text));
+        assert.match(callbackQuery.text, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/i);
+        const eventSoonQuery = queries.find(q => /FROM leads l/i.test(q.text) && /l\.event_date IS NOT NULL/i.test(q.text));
+        assert.match(eventSoonQuery.text, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/i);
+        const funnelQuery = queries.find(q => /FROM leads l/i.test(q.text) && /INTERVAL '48 hours'/i.test(q.text));
+        assert.match(funnelQuery.text, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/i);
         const waitingQuery = latestWaitingQuery();
         assert.ok(waitingQuery, 'waiting_reply must come from conversations.reply_expected');
         assert.match(waitingQuery.text, /awaiting_reply_since IS NOT NULL/i);

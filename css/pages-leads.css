@@ -17,6 +17,81 @@ body[data-page-group="mgmt"] .kanban-cards {
     flex: 1 1 auto;
 }
 
+.lead-queue-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 6px;
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 8px;
+    background: rgba(248,250,252,0.82);
+}
+
+.lead-queue-tab {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 36px;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: #334155;
+    font: 900 13px/1.15 var(--font-main);
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+
+.lead-queue-tab:hover,
+.lead-queue-tab:focus-visible {
+    outline: none;
+    border-color: rgba(16,185,129,0.42);
+    background: rgba(16,185,129,0.08);
+    color: #047857;
+}
+
+.lead-queue-tab.active {
+    border-color: rgba(16,185,129,0.72);
+    background: #10B981;
+    color: #fff;
+}
+
+body.dark-mode .lead-queue-tabs {
+    border-color: rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+}
+
+body.dark-mode .lead-queue-tab {
+    color: #CBD5E1;
+}
+
+body.dark-mode .lead-queue-tab:hover,
+body.dark-mode .lead-queue-tab:focus-visible {
+    border-color: rgba(52,211,153,0.46);
+    background: rgba(16,185,129,0.12);
+    color: #6EE7B7;
+}
+
+body.dark-mode .lead-queue-tab.active {
+    border-color: rgba(52,211,153,0.84);
+    background: #059669;
+    color: #fff;
+}
+
+@media (max-width: 720px) {
+    .lead-queue-tabs {
+        width: 100%;
+    }
+
+    .lead-queue-tab {
+        flex: 1 1 calc(33.333% - 6px);
+        min-width: 92px;
+    }
+}
+
 body[data-page-group="mgmt"] .kanban-column.is-drop-target {
     border-color: rgba(16,185,129,0.42);
     box-shadow: inset 0 0 0 1px rgba(16,185,129,0.18);

@@ -27,6 +27,7 @@ const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
+const { getAssignableTaskOwner } = require('../services/taskExecution');
 const {
     booleanValue,
     deriveReplySlaState,
@@ -92,6 +93,33 @@ const PIPELINE_STAGE_ORDER = [
 
 const VALID_PIPELINE_STAGES = new Set(PIPELINE_STAGE_ORDER);
 const VALID_LEAD_STATUSES = new Set(Object.keys(STATUS_TO_STAGE));
+const LEAD_TYPE_ORDER = [
+    'quality',
+    'spam',
+    'collaboration',
+    'informational',
+    'low_quality'
+];
+const VALID_LEAD_TYPES = new Set(LEAD_TYPE_ORDER);
+const SALES_LEAD_TYPE = 'quality';
+const NON_SALES_LEAD_TYPES = LEAD_TYPE_ORDER.filter(type => type !== SALES_LEAD_TYPE);
+const LEAD_TYPE_WORKFLOW = {
+    spam: {
+        pipelineStage: 'lost',
+        lostReason: 'Спам'
+    },
+    collaboration: {
+        pipelineStage: 'contacted'
+    },
+    informational: {
+        pipelineStage: 'lost',
+        lostReason: 'Інформаційний запит'
+    },
+    low_quality: {
+        pipelineStage: 'lost',
+        lostReason: 'Неякісний лід'
+    }
+};
 const LEADS_DEFAULT_LIMIT = 100;
 const LEADS_MAX_LIMIT = 500;
 
@@ -104,6 +132,18 @@ const LEAD_STATUS_FROM_STAGE_SQL = `CASE COALESCE(pipeline_stage, 'new')
     ${Object.entries(STAGE_TO_STATUS).map(([stage, status]) => `WHEN '${stage}' THEN '${status}'`).join(' ')}
     ELSE COALESCE(status, 'new')
 END`;
+
+function emptyStatusStats() {
+    return Object.fromEntries(Object.values(STAGE_TO_STATUS).map(status => [status, 0]));
+}
+
+function emptyStageStats() {
+    return Object.fromEntries(PIPELINE_STAGE_ORDER.map(stage => [stage, 0]));
+}
+
+function emptyLeadTypeStats() {
+    return Object.fromEntries(LEAD_TYPE_ORDER.map(type => [type, 0]));
+}
 
 const OPTIONAL_WORKSPACE_ERROR_CODES = new Set(['42P01', '42703', '42883']);
 const MAYSTERNYA_WEBHOOK_SOURCES = new Set([
@@ -380,6 +420,126 @@ function normalizeLeadPatchStageStatus({ pipelineStage, status }) {
     return { stageProvided: false };
 }
 
+function normalizeLeadType(value) {
+    const normalized = cleanText(value);
+    if (!normalized || !VALID_LEAD_TYPES.has(normalized)) {
+        return { error: 'Некоректний lead_type' };
+    }
+    return { value: normalized };
+}
+
+function leadTypeWorkflowRule(leadType) {
+    return LEAD_TYPE_WORKFLOW[leadType] || null;
+}
+
+function shouldAddLeadToMailing(lead, stage) {
+    const type = lead?.lead_type || 'quality';
+    if (type === 'spam') return false;
+    if (type === 'informational') return true;
+    return stage === 'lost';
+}
+
+function todayKyivDateString() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });
+}
+
+const COLLABORATION_TASK_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
+
+function normalizeCollaborationTaskPriority(value) {
+    const priority = cleanText(value) || 'normal';
+    return COLLABORATION_TASK_PRIORITIES.has(priority) ? priority : 'normal';
+}
+
+function collaborationLeadContact(lead = {}) {
+    return [
+        cleanText(lead.phone),
+        cleanText(lead.instagram) ? `@${String(lead.instagram).trim().replace(/^@+/, '')}` : null
+    ].filter(Boolean).join(' / ');
+}
+
+function defaultCollaborationTaskTitle(lead = {}) {
+    const contact = collaborationLeadContact(lead);
+    return `Співпраця: ${cleanText(lead.client_name) || contact || `лід #${lead.id}`}`;
+}
+
+function defaultCollaborationTaskDescription(lead = {}, comment = '') {
+    const contact = collaborationLeadContact(lead);
+    return [
+        `Запит на співпрацю з ліда #${lead.id}.`,
+        cleanText(lead.client_name) ? `Контакт: ${cleanText(lead.client_name)}` : null,
+        contact ? `Канал: ${contact}` : null,
+        cleanText(lead.notes) ? `Нотатки ліда: ${String(lead.notes).slice(0, 600)}` : null,
+        cleanText(comment) ? `Коментар менеджера: ${cleanText(comment)}` : null
+    ].filter(Boolean).join('\n');
+}
+
+function buildCollaborationTaskPayload(lead, body = {}, owner = {}, user = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const title = cleanText(body.title) || defaultCollaborationTaskTitle(lead);
+    const deadline = cleanText(body.deadline);
+    const date = normalizeDateOnly(body.date || deadline);
+    if (!title) return { error: 'Назва задачі обовʼязкова' };
+    if (!deadline || !date) return { error: 'Дедлайн задачі обовʼязковий' };
+
+    const ownerLabel = owner.label || owner.name || owner.username || null;
+    return {
+        businessContext,
+        title,
+        description: cleanText(body.description) || defaultCollaborationTaskDescription(lead, body.comment),
+        date,
+        deadline,
+        priority: normalizeCollaborationTaskPriority(body.priority),
+        assigned_to: ownerLabel,
+        owner: ownerLabel,
+        owner_user_id: owner.id,
+        task_type: 'human',
+        category: 'operational',
+        source_type: 'lead',
+        source_id: String(lead.id),
+        source_entity_type: 'lead',
+        source_entity_id: String(lead.id),
+        created_by: user?.username || user?.id || 'lead_collaboration',
+        created_by_user_id: user?.id || null,
+        control_meta: {
+            source: 'leads.collaboration_task',
+            leadTypeWorkflow: true
+        },
+        duplicateMode: 'reject'
+    };
+}
+
+async function logCollaborationWorkflow(queryable, { oldLead, updatedLead, task, userId }) {
+    const oldStage = oldLead?.pipeline_stage || 'new';
+    const newStage = updatedLead?.pipeline_stage || 'contacted';
+    const oldStatus = oldLead?.status || STAGE_TO_STATUS[oldStage] || 'new';
+    const newStatus = updatedLead?.status || STAGE_TO_STATUS[newStage] || 'contact';
+    const oldLeadType = oldLead?.lead_type || SALES_LEAD_TYPE;
+    await queryable.query(`
+        INSERT INTO lead_interactions (lead_id, user_id, type, summary, details, created_at)
+        VALUES ($1, $2, 'status_change', $3, $4::jsonb, NOW())
+    `, [
+        updatedLead.id,
+        userId || null,
+        `Lead type workflow: ${oldLeadType} -> collaboration`,
+        JSON.stringify({
+            oldLeadType,
+            newLeadType: 'collaboration',
+            oldStage,
+            newStage,
+            oldStatus,
+            newStatus,
+            taskId: task?.id || null,
+            source: 'leads.collaboration_task'
+        })
+    ]);
+}
+
+function runAfterCommitCallbacks(callbacks = []) {
+    callbacks.forEach(callback => {
+        try { callback(); }
+        catch (err) { log.error('Lead collaboration after-commit callback failed', err); }
+    });
+}
+
 function parseLeadListLimit(value) {
     const parsed = parseInt(value, 10);
     if (!Number.isInteger(parsed) || parsed <= 0) return LEADS_DEFAULT_LIMIT;
@@ -426,7 +586,9 @@ function buildLeadListFilters(query, businessScope) {
         conditions.push(`l.source = $${params.length}`);
     }
     if (lead_type) {
-        params.push(lead_type);
+        const normalizedLeadType = normalizeLeadType(lead_type);
+        if (normalizedLeadType.error) return { error: normalizedLeadType.error };
+        params.push(normalizedLeadType.value);
         conditions.push(`l.lead_type = $${params.length}`);
     }
     if (search) {
@@ -1646,6 +1808,7 @@ router.get('/hot', async (req, res) => {
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
             WHERE COALESCE(l.pipeline_stage, 'new') = 'new'
+              AND COALESCE(l.lead_type, 'quality') = 'quality'
               AND ${scopeSql}
               AND l.created_at < NOW() - INTERVAL '24 hours'
             ORDER BY l.created_at ASC
@@ -1668,30 +1831,72 @@ router.get('/stats', async (req, res) => {
         if (period === 'today') dateFilter = "AND created_at >= CURRENT_DATE";
         else if (period === 'week') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
         else if (period === 'month') dateFilter = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
-        const statusParams = [];
+        const allStatusParams = [];
         const typeParams = [];
-        const stageParams = [];
-        const statusScopeSql = leadScopeCondition(statusParams, businessScope, '');
+        const allStageParams = [];
+        const salesStatusParams = [];
+        const salesStageParams = [];
+        const allStatusScopeSql = leadScopeCondition(allStatusParams, businessScope, '');
         const typeScopeSql = leadScopeCondition(typeParams, businessScope, '');
-        const stageScopeSql = leadScopeCondition(stageParams, businessScope, '');
+        const allStageScopeSql = leadScopeCondition(allStageParams, businessScope, '');
+        const salesStatusScopeSql = leadScopeCondition(salesStatusParams, businessScope, '');
+        const salesStageScopeSql = leadScopeCondition(salesStageParams, businessScope, '');
 
-        const [byStatus, byType, byStage] = await Promise.all([
-            pool.query(`SELECT ${LEAD_STATUS_FROM_STAGE_SQL} AS status, COUNT(*) AS count FROM leads WHERE ${statusScopeSql} ${dateFilter} GROUP BY ${LEAD_STATUS_FROM_STAGE_SQL}`, statusParams),
-            pool.query(`SELECT lead_type, COUNT(*) AS count FROM leads WHERE ${typeScopeSql} ${dateFilter} GROUP BY lead_type`, typeParams),
-            pool.query(`SELECT pipeline_stage, COUNT(*) AS count FROM leads WHERE ${stageScopeSql} ${dateFilter} GROUP BY pipeline_stage`, stageParams),
+        const [byStatusAll, byType, byStageAll, byStatusSales, byStageSales] = await Promise.all([
+            pool.query(`SELECT ${LEAD_STATUS_FROM_STAGE_SQL} AS status, COUNT(*) AS count FROM leads WHERE ${allStatusScopeSql} ${dateFilter} GROUP BY ${LEAD_STATUS_FROM_STAGE_SQL}`, allStatusParams),
+            pool.query(`SELECT COALESCE(NULLIF(lead_type, ''), 'quality') AS lead_type, COUNT(*) AS count FROM leads WHERE ${typeScopeSql} ${dateFilter} GROUP BY COALESCE(NULLIF(lead_type, ''), 'quality')`, typeParams),
+            pool.query(`SELECT COALESCE(NULLIF(pipeline_stage, ''), 'new') AS pipeline_stage, COUNT(*) AS count FROM leads WHERE ${allStageScopeSql} ${dateFilter} GROUP BY COALESCE(NULLIF(pipeline_stage, ''), 'new')`, allStageParams),
+            pool.query(`SELECT ${LEAD_STATUS_FROM_STAGE_SQL} AS status, COUNT(*) AS count FROM leads WHERE ${salesStatusScopeSql} ${dateFilter} AND COALESCE(lead_type, 'quality') = 'quality' GROUP BY ${LEAD_STATUS_FROM_STAGE_SQL}`, salesStatusParams),
+            pool.query(`SELECT COALESCE(NULLIF(pipeline_stage, ''), 'new') AS pipeline_stage, COUNT(*) AS count FROM leads WHERE ${salesStageScopeSql} ${dateFilter} AND COALESCE(lead_type, 'quality') = 'quality' GROUP BY COALESCE(NULLIF(pipeline_stage, ''), 'new')`, salesStageParams),
         ]);
 
-        const stats = {};
-        for (const r of byStatus.rows) stats[r.status] = parseInt(r.count);
-        const total = Object.values(stats).reduce((s, v) => s + v, 0);
+        const allStats = emptyStatusStats();
+        for (const r of byStatusAll.rows) allStats[r.status] = parseInt(r.count, 10) || 0;
+        const allTotal = Object.values(allStats).reduce((s, v) => s + v, 0);
 
-        const typeStats = {};
-        for (const r of byType.rows) typeStats[r.lead_type || 'quality'] = parseInt(r.count);
+        const typeStats = emptyLeadTypeStats();
+        for (const r of byType.rows) {
+            const type = VALID_LEAD_TYPES.has(r.lead_type) ? r.lead_type : SALES_LEAD_TYPE;
+            typeStats[type] = parseInt(r.count, 10) || 0;
+        }
 
-        const stageStats = {};
-        for (const r of byStage.rows) stageStats[r.pipeline_stage || 'new'] = parseInt(r.count);
+        const allStageStats = emptyStageStats();
+        for (const r of byStageAll.rows) {
+            const stage = VALID_PIPELINE_STAGES.has(r.pipeline_stage) ? r.pipeline_stage : 'new';
+            allStageStats[stage] = parseInt(r.count, 10) || 0;
+        }
 
-        res.json({ success: true, stats, typeStats, stageStats, total });
+        const salesStats = emptyStatusStats();
+        for (const r of byStatusSales.rows) salesStats[r.status] = parseInt(r.count, 10) || 0;
+        const salesTotal = Object.values(salesStats).reduce((s, v) => s + v, 0);
+
+        const salesStageStats = emptyStageStats();
+        for (const r of byStageSales.rows) {
+            const stage = VALID_PIPELINE_STAGES.has(r.pipeline_stage) ? r.pipeline_stage : 'new';
+            salesStageStats[stage] = parseInt(r.count, 10) || 0;
+        }
+
+        const operationalQueueStats = Object.fromEntries(NON_SALES_LEAD_TYPES.map(type => [type, typeStats[type] || 0]));
+
+        res.json({
+            success: true,
+            stats: salesStats,
+            typeStats,
+            stageStats: salesStageStats,
+            total: salesTotal,
+            salesStats,
+            salesStageStats,
+            salesTotal,
+            classificationStats: typeStats,
+            operationalQueueStats,
+            allStats,
+            allStageStats,
+            allTotal,
+            meta: {
+                salesLeadType: SALES_LEAD_TYPE,
+                excludedLeadTypes: NON_SALES_LEAD_TYPES
+            }
+        });
     } catch (err) {
         log.error('GET /leads/stats error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
@@ -1741,17 +1946,31 @@ router.patch('/:id', async (req, res) => {
         const leadId = parseInt(req.params.id, 10);
         const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, celebrants, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
         const kanbanOrderIds = normalizeKanbanOrder(req.body?.kanban_order, leadId);
+        const collaborationTaskHandled = [
+            req.body?.collaboration_task_created,
+            req.body?.collaborationTaskCreated,
+            req.body?.skip_collaboration_task_auto_create,
+            req.body?.skipCollaborationTaskAutoCreate
+        ].some(truthyWebhookValue);
         const updates = [];
         const params = [];
         const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
         const potentialValue = parseOptionalNonNegativeInt(potential_value, 'potential_value');
-        const stageStatus = normalizeLeadPatchStageStatus({ pipelineStage: pipeline_stage, status });
+        const leadTypePatch = lead_type !== undefined ? normalizeLeadType(lead_type) : { value: undefined };
+        const leadTypeRule = leadTypePatch.value ? leadTypeWorkflowRule(leadTypePatch.value) : null;
+        const stageStatus = normalizeLeadPatchStageStatus({
+            pipelineStage: leadTypeRule?.pipelineStage || pipeline_stage,
+            status: leadTypeRule?.pipelineStage ? undefined : status
+        });
 
         if (assignedTo.error) {
             return res.status(400).json({ success: false, error: assignedTo.error });
         }
         if (potentialValue.error) {
             return res.status(400).json({ success: false, error: potentialValue.error });
+        }
+        if (leadTypePatch.error) {
+            return res.status(400).json({ success: false, error: leadTypePatch.error });
         }
         if (stageStatus.error) {
             return res.status(400).json({ success: false, error: stageStatus.error });
@@ -1771,6 +1990,7 @@ router.patch('/:id', async (req, res) => {
         if (assignedTo.provided) { params.push(assignedTo.value); updates.push(`assigned_to = $${params.length}`); }
         if (booking_id !== undefined) { params.push(booking_id); updates.push(`booking_id = $${params.length}`); }
         if (lost_reason !== undefined) { params.push(lost_reason); updates.push(`lost_reason = $${params.length}`); }
+        else if (leadTypeRule?.lostReason) { params.push(leadTypeRule.lostReason); updates.push(`lost_reason = $${params.length}`); }
         if (client_name !== undefined) { params.push(client_name); updates.push(`client_name = $${params.length}`); }
         if (phone !== undefined) { params.push(phone); updates.push(`phone = $${params.length}`); }
         if (instagram !== undefined) { params.push(instagram); updates.push(`instagram = $${params.length}`); }
@@ -1784,7 +2004,7 @@ router.patch('/:id', async (req, res) => {
         }
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
         if (milestone_tags !== undefined) { params.push(milestone_tags); updates.push(`milestone_tags = $${params.length}`); }
-        if (lead_type !== undefined) { params.push(lead_type); updates.push(`lead_type = $${params.length}`); }
+        if (lead_type !== undefined) { params.push(leadTypePatch.value); updates.push(`lead_type = $${params.length}`); }
         if (quality_category !== undefined) { params.push(quality_category || null); updates.push(`quality_category = $${params.length}`); }
         if (source_channel !== undefined) { params.push(source_channel || null); updates.push(`source_channel = $${params.length}`); }
         if (potentialValue.provided) { params.push(potentialValue.value); updates.push(`potential_value = $${params.length}`); }
@@ -1928,8 +2148,13 @@ router.patch('/:id', async (req, res) => {
                 log.error('onDepositReceived error (non-blocking)', e)
             );
         }
-        // v29.1: Auto-add to mailing on informational/lost
-        if (lead_type === 'informational' || newStage === 'lost') {
+        if (leadTypePatch.value === 'collaboration' && !collaborationTaskHandled) {
+            onCollaborationLead(updatedLead, req.user).catch(e =>
+                log.error('onCollaborationLead error (non-blocking)', e)
+            );
+        }
+        // v29.1: Auto-add to mailing on informational/lost, but never for spam.
+        if (shouldAddLeadToMailing(updatedLead, newStage)) {
             addToMailingIfNeeded(updatedLead).catch(e =>
                 log.error('addToMailing error (non-blocking)', e)
             );
@@ -1943,6 +2168,122 @@ router.patch('/:id', async (req, res) => {
     } catch (err) {
         log.error('PATCH /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення' });
+    }
+});
+
+// POST /api/leads/:id/collaboration-task — atomic collaboration handoff
+router.post('/:id/collaboration-task', async (req, res) => {
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const leadId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
+        }
+
+        const ownerId = parseOptionalPositiveInt(req.body?.ownerUserId ?? req.body?.owner_user_id, 'ownerUserId');
+        if (ownerId.error) {
+            return res.status(400).json({ success: false, error: ownerId.error });
+        }
+        if (!ownerId.provided || !ownerId.value) {
+            return res.status(400).json({ success: false, error: 'Оберіть відповідального для задачі співпраці' });
+        }
+
+        const afterCommit = [];
+        await client.query('BEGIN');
+        transactionStarted = true;
+
+        const leadResult = await client.query(
+            `SELECT *
+             FROM leads
+             WHERE id = $1
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [leadId, businessContext]
+        );
+        if (leadResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            transactionStarted = false;
+            return res.status(404).json({ success: false, error: 'Лід не знайдено' });
+        }
+
+        const oldLead = leadResult.rows[0];
+        const owner = await getAssignableTaskOwner(ownerId.value, { actor: req.user, pool: client });
+        const taskPayload = buildCollaborationTaskPayload(oldLead, req.body, owner, req.user, businessContext);
+        if (taskPayload.error) {
+            await client.query('ROLLBACK');
+            transactionStarted = false;
+            return res.status(400).json({ success: false, error: taskPayload.error });
+        }
+
+        const task = await getKleshnya().createTask(taskPayload, { pool: client, afterCommit });
+        const updateResult = await client.query(
+            `UPDATE leads
+                SET lead_type = $1,
+                    pipeline_stage = $2,
+                    status = $3,
+                    last_contact_at = COALESCE(last_contact_at, NOW())
+              WHERE id = $4
+                AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+              RETURNING *`,
+            ['collaboration', 'contacted', 'contact', leadId, businessContext]
+        );
+        if (updateResult.rows.length === 0) {
+            const err = new Error('Лід не знайдено під час оновлення');
+            err.statusCode = 404;
+            throw err;
+        }
+
+        const updatedLead = updateResult.rows[0];
+        await logCollaborationWorkflow(client, {
+            oldLead,
+            updatedLead,
+            task,
+            userId: req.user?.id
+        });
+
+        await client.query('COMMIT');
+        transactionStarted = false;
+        runAfterCommitCallbacks(afterCommit);
+
+        res.json({
+            success: true,
+            lead: updatedLead,
+            task,
+            meta: {
+                atomic: true,
+                taskCreatedBy: 'backend',
+                duplicateMode: 'reject',
+                source: 'leads.collaboration_task'
+            }
+        });
+    } catch (err) {
+        if (transactionStarted) {
+            await client.query('ROLLBACK').catch(() => {});
+        }
+        if (err?.code === 'TASK_DUPLICATE_ACTIVE' || err?.statusCode === 409) {
+            return res.status(409).json({
+                success: false,
+                error: 'duplicate',
+                code: 'TASK_DUPLICATE_ACTIVE',
+                message: err.message || 'Активна задача для цього ліда вже існує',
+                existingId: err.task?.id || null,
+                existingStatus: err.task?.status || null
+            });
+        }
+        if (err?.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+            return res.status(err.statusCode).json({
+                success: false,
+                error: err.message || 'Не вдалося створити задачу співпраці',
+                code: err.code || null
+            });
+        }
+        log.error('POST /leads/:id/collaboration-task error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося виконати співпрацю атомарно' });
+    } finally {
+        client.release();
     }
 });
 
@@ -2099,11 +2440,25 @@ router.get('/pipeline', async (req, res) => {
         `, countParams);
 
         const stages = {};
+        const allStages = {};
+        const typeStats = emptyLeadTypeStats();
+        const operationalQueueStats = Object.fromEntries(NON_SALES_LEAD_TYPES.map(type => [type, 0]));
         const stageOrder = ['new', 'contacted', 'info_sent', 'deal', 'deposit_received', 'waiting', 'completed', 'closed', 'lost'];
-        for (const s of stageOrder) stages[s] = 0;
+        for (const s of stageOrder) {
+            stages[s] = 0;
+            allStages[s] = 0;
+        }
         for (const r of result.rows) {
             const key = r.pipeline_stage || 'new';
-            stages[key] = (stages[key] || 0) + parseInt(r.count);
+            const type = VALID_LEAD_TYPES.has(r.lead_type) ? r.lead_type : SALES_LEAD_TYPE;
+            const count = parseInt(r.count, 10) || 0;
+            allStages[key] = (allStages[key] || 0) + count;
+            typeStats[type] = (typeStats[type] || 0) + count;
+            if (type === SALES_LEAD_TYPE) {
+                stages[key] = (stages[key] || 0) + count;
+            } else if (Object.prototype.hasOwnProperty.call(operationalQueueStats, type)) {
+                operationalQueueStats[type] += count;
+            }
         }
 
         const listResult = await fetchLeadList({
@@ -2120,6 +2475,16 @@ router.get('/pipeline', async (req, res) => {
         res.json({
             success: true,
             pipeline: stages,
+            salesPipeline: stages,
+            allPipeline: allStages,
+            classificationStats: typeStats,
+            operationalQueueStats,
+            salesTotal: Object.values(stages).reduce((sum, value) => sum + value, 0),
+            allTotal: Object.values(allStages).reduce((sum, value) => sum + value, 0),
+            meta: {
+                salesLeadType: SALES_LEAD_TYPE,
+                excludedLeadTypes: NON_SALES_LEAD_TYPES
+            },
             leads: listResult.leads,
             pagination: listResult.pagination,
             canonicalSource: '/api/leads?order=kanban'
@@ -2922,6 +3287,30 @@ async function onDepositReceived(lead, user) {
     log.info(`Deposit received for lead ${lead.id}: ${tasks.length} tasks created`);
 }
 
+async function onCollaborationLead(lead, user) {
+    const contact = [lead.phone, lead.instagram ? `@${lead.instagram}` : null].filter(Boolean).join(' / ');
+    await getKleshnya().createTask({
+        title: `Співпраця: ${lead.client_name || contact || `лід #${lead.id}`}`,
+        description: [
+            `Оцінити запит на співпрацю з ліда #${lead.id}.`,
+            lead.client_name ? `Контакт: ${lead.client_name}` : null,
+            contact ? `Канал: ${contact}` : null,
+            lead.notes ? `Нотатки: ${String(lead.notes).slice(0, 600)}` : null
+        ].filter(Boolean).join('\n'),
+        category: 'operational',
+        date: todayKyivDateString(),
+        priority: 'normal',
+        created_by: user?.username || user?.id || 'lead_collaboration',
+        created_by_user_id: user?.id || null,
+        source_type: 'lead',
+        source_id: String(lead.id),
+        source_entity_type: 'lead',
+        source_entity_id: String(lead.id),
+        businessContext: normalizeBusinessContext(lead.business_context || lead.businessContext),
+        duplicateMode: 'skip'
+    });
+}
+
 // Log pipeline stage change to lead_interactions
 async function logStageChange(queryable, { leadId, oldStage, newStage, oldStatus, newStatus, userId }) {
     await queryable.query(`
@@ -2945,13 +3334,19 @@ async function logStageChange(queryable, { leadId, oldStage, newStage, oldStatus
 async function addToMailingIfNeeded(lead) {
     if (!lead.phone && !lead.client_name) return;
     const businessContext = normalizeBusinessContext(lead.business_context || lead.businessContext);
+    const noteByType = {
+        informational: 'Інформаційний запит',
+        low_quality: 'Неякісний лід / майбутній контакт',
+        collaboration: 'Співпраця',
+        quality: 'Втрачений клієнт'
+    };
     try {
         await pool.query(`
             INSERT INTO mailing_list (business_context, name, phone, source_channel, lead_id, notes)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (business_context, phone) WHERE phone IS NOT NULL DO NOTHING
         `, [businessContext, lead.client_name, lead.phone, lead.source_channel || 'unknown', lead.id,
-            lead.lead_type === 'informational' ? 'Інформаційний запит' : 'Втрачений клієнт']);
+            noteByType[lead.lead_type || 'quality'] || 'Втрачений клієнт']);
     } catch (e) { /* dedup */ }
 }
 
@@ -2964,6 +3359,7 @@ router.get('/new-count', async (req, res) => {
             `SELECT COUNT(*)::int AS count
              FROM leads
              WHERE COALESCE(pipeline_stage, 'new') = 'new'
+               AND COALESCE(lead_type, 'quality') = 'quality'
                AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
             [businessContext]
         );

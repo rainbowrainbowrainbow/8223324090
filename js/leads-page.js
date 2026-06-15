@@ -19,6 +19,63 @@ const LEAD_TYPE_MAP = {
     informational: { label: 'Інформаційний', emoji: '📩', cls: 'type-info' },
     low_quality:   { label: 'Неякісний', emoji: '⬇️', cls: 'type-low' }
 };
+const ACTIVE_KANBAN_LEAD_TYPES = new Set(['quality']);
+const LEAD_TYPE_WORKFLOW_MESSAGES = {
+    spam: 'Спам закрито і прибрано з активної воронки',
+    collaboration: 'Запит на співпрацю винесено з активної воронки, задача створена й привʼязана до ліда',
+    informational: 'Інформаційний запит додано до розсилки й закрито з активної воронки',
+    low_quality: 'Неякісний лід закрито з активної воронки',
+    quality: 'Лід повернуто до типу “Якісний”'
+};
+const LEAD_TYPE_REASON_OPTIONS = {
+    spam: ['Дубль', 'Бот/реклама', 'Некоректний контакт', 'Не наш запит', 'Інше'],
+    low_quality: ['Немає бюджету', 'Не підходить дата', 'Не наш формат', 'Не відповідає', 'Дубль', 'Інше'],
+    informational: ['Попросив ціни', 'Попросив програму', 'На майбутнє', 'Без дати', 'Інше']
+};
+const LEAD_TYPE_REASON_TITLES = {
+    spam: 'Причина: Спам',
+    low_quality: 'Причина: Неякісний',
+    informational: 'Причина: Інформаційний'
+};
+const DEFAULT_LEAD_QUEUE = 'active';
+const LEAD_QUEUE_FILTERS = {
+    active: {
+        label: 'Активні',
+        leadType: 'quality',
+        emptyTitle: 'Черга “Активні” порожня',
+        emptyMessage: 'У цій черзі мають бути якісні ліди, з якими менеджер працює у продажах.'
+    },
+    collaboration: {
+        label: 'Співпраця',
+        leadType: 'collaboration',
+        emptyTitle: 'Черга “Співпраця” порожня',
+        emptyMessage: 'Тут будуть звернення партнерів, підрядників або запити на спільні активності.'
+    },
+    informational: {
+        label: 'Інформаційні',
+        leadType: 'informational',
+        emptyTitle: 'Черга “Інформаційні” порожня',
+        emptyMessage: 'Тут будуть контакти, які просили ціни, програму або інформацію на майбутнє.'
+    },
+    screened: {
+        label: 'Відсіяні',
+        leadType: 'low_quality',
+        emptyTitle: 'Черга “Відсіяні” порожня',
+        emptyMessage: 'Тут будуть неякісні ліди: без бюджету, не наш формат, не відповідають або не підходить дата.'
+    },
+    spam: {
+        label: 'Спам',
+        leadType: 'spam',
+        emptyTitle: 'Черга “Спам” порожня',
+        emptyMessage: 'Тут будуть дублікати, бот-реклама, некоректні контакти та нецільові запити.'
+    },
+    all: {
+        label: 'Усі',
+        leadType: '',
+        emptyTitle: 'Лідів ще немає',
+        emptyMessage: 'Ця черга показує всі типи лідів разом.'
+    }
+};
 
 const QUALITY_CATEGORIES = {
     birthday:   'День народження',
@@ -127,6 +184,7 @@ const LEAD_VIEW_MODES = new Set(['table', 'kanban', 'mailing']);
 let currentView = 'table'; // table | kanban | mailing
 let currentFilter = '';
 let currentTypeFilter = '';
+let currentLeadQueue = DEFAULT_LEAD_QUEUE;
 let currentDateFilter = '';
 let currentPipelineStage = '';
 let currentBusinessContext = 'event_genix';
@@ -156,6 +214,7 @@ let kanbanLeadTypeMenuEventsBound = false;
 let kanbanLeadTypeTriggerOpenedAt = 0;
 let kanbanLeadTypeTriggerOpenedLeadId = 0;
 let activeKanbanLeadTypePopover = null;
+let leadTypeReasonRequest = null;
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
         title: lead => `Передзвонити: ${lead.clientName || lead.client_name || 'клієнт Майстерні'}`,
@@ -374,6 +433,7 @@ function syncLeadReadOnlyUi() {
         '.kanban-card-actions button',
         '[data-lead-type-select]',
         '.btn-add-mailing',
+        '#lostReasonModal .btn-save',
         '#addMailingModal .btn-save'
     ].join(',')).forEach(el => {
         const keepClickableForGuard = el.matches?.('[data-lead-type-select]');
@@ -502,6 +562,7 @@ async function loadLeads() {
     const tbody = document.getElementById('leadsTableBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
     syncLeadPresentationUi();
+    currentTypeFilter = leadTypeForCurrentQueue();
     try {
         const params = new URLSearchParams();
         if (currentFilter) params.set('status', currentFilter);
@@ -527,6 +588,43 @@ async function loadLeads() {
         const tbody = document.getElementById('leadsTableBody');
         if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Помилка завантаження</td></tr>';
     }
+}
+
+function leadQueueMeta(queue = currentLeadQueue) {
+    return LEAD_QUEUE_FILTERS[queue] || LEAD_QUEUE_FILTERS[DEFAULT_LEAD_QUEUE];
+}
+
+function leadTypeForQueue(queue = currentLeadQueue) {
+    return leadQueueMeta(queue).leadType || '';
+}
+
+function leadTypeForCurrentQueue() {
+    return leadTypeForQueue(currentLeadQueue);
+}
+
+function leadQueueFromLeadType(type) {
+    const normalized = LEAD_TYPE_MAP[type] ? type : '';
+    return Object.entries(LEAD_QUEUE_FILTERS).find(([, meta]) => meta.leadType === normalized)?.[0] || 'all';
+}
+
+function normalizeLeadQueue(value) {
+    return LEAD_QUEUE_FILTERS[value] ? value : DEFAULT_LEAD_QUEUE;
+}
+
+function syncLeadQueueUi() {
+    document.querySelectorAll('[data-lead-queue]').forEach(btn => {
+        const active = btn.dataset.leadQueue === currentLeadQueue;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function setLeadQueue(queue, { replace = true } = {}) {
+    currentLeadQueue = normalizeLeadQueue(queue);
+    currentTypeFilter = leadTypeForCurrentQueue();
+    syncLeadQueueUi();
+    syncLeadUrlState({ replace });
+    loadLeads();
 }
 
 async function fetchAllLeadPages(baseParams) {
@@ -569,18 +667,26 @@ function renderStats() {
         <div class="leads-stat type-collab" onclick="filterByType('collaboration')"><div class="stat-val">${typeCounts.collaboration}</div><div class="stat-lbl">Співпраця</div></div>
         <div class="leads-stat type-info" onclick="filterByType('informational')"><div class="stat-val">${typeCounts.informational}</div><div class="stat-lbl">Інформаційні</div></div>
         <div class="leads-stat type-low" onclick="filterByType('low_quality')"><div class="stat-val">${typeCounts.low_quality}</div><div class="stat-lbl">Неякісні</div></div>
-        <div class="leads-stat total"><div class="stat-val">${total}</div><div class="stat-lbl">Всього</div></div>
+        <div class="leads-stat total" onclick="setLeadQueue('all')"><div class="stat-val">${total}</div><div class="stat-lbl">Всього</div></div>
     `;
 }
 
 function filterByType(type) {
-    currentTypeFilter = currentTypeFilter === type ? '' : type;
-    loadLeads();
+    setLeadQueue(leadQueueFromLeadType(type));
 }
 
 function leadPotentialValue(lead) {
     const value = Number(lead?.potential_value ?? lead?.potentialValue ?? lead?.budget_approx ?? 0);
     return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function isActiveKanbanLead(lead) {
+    const type = lead?.lead_type || 'quality';
+    return ACTIVE_KANBAN_LEAD_TYPES.has(type);
+}
+
+function isSalesMetricLead(lead) {
+    return (lead?.lead_type || 'quality') === 'quality';
 }
 
 function getIdleColor(lead) {
@@ -670,10 +776,19 @@ function applyLeadQueryParams() {
     const requestedStage = params.get('pipeline_stage') || params.get('stage') || '';
     currentPipelineStage = PIPELINE_STAGES.some(stage => stage.key === requestedStage) ? requestedStage : '';
     currentFilter = params.get('status') || currentFilter;
-    currentTypeFilter = params.get('lead_type') || currentTypeFilter;
+    const requestedQueue = params.get('lead_queue') || params.get('queue');
+    if (LEAD_QUEUE_FILTERS[requestedQueue]) {
+        currentLeadQueue = requestedQueue;
+    } else if (params.has('lead_type')) {
+        currentLeadQueue = leadQueueFromLeadType(params.get('lead_type'));
+    } else {
+        currentLeadQueue = DEFAULT_LEAD_QUEUE;
+    }
+    currentTypeFilter = leadTypeForCurrentQueue();
     currentDateFilter = params.get('event_date') || currentDateFilter;
     const search = document.getElementById('leadsSearch');
     if (search && params.get('search')) search.value = params.get('search');
+    syncLeadQueueUi();
 
     document.querySelectorAll('.view-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === currentView);
@@ -703,7 +818,13 @@ function syncLeadUrlState({ replace = true } = {}) {
         url.searchParams.delete('view');
     }
     setOrDelete('status', currentFilter);
-    setOrDelete('lead_type', currentTypeFilter);
+    if (currentLeadQueue !== DEFAULT_LEAD_QUEUE) {
+        url.searchParams.set('lead_queue', currentLeadQueue);
+    } else {
+        url.searchParams.delete('lead_queue');
+    }
+    url.searchParams.delete('queue');
+    url.searchParams.delete('lead_type');
     setOrDelete('event_date', currentDateFilter);
     setOrDelete('pipeline_stage', currentPipelineStage);
     url.searchParams.delete('stage');
@@ -724,9 +845,9 @@ function getLeadFilterSummary() {
     const search = document.getElementById('leadsSearch')?.value?.trim();
     const maysternyaMode = isMaysternyaLeadContext();
     return [
+        currentLeadQueue !== DEFAULT_LEAD_QUEUE ? { label: maysternyaMode ? 'Черга заявок' : 'Черга лідів', value: leadQueueMeta().label } : null,
         currentPipelineStage ? { label: 'Етап воронки', value: leadPipelineStageLabel(currentPipelineStage) } : null,
         currentFilter ? { label: 'Статус', value: STATUS_MAP[currentFilter]?.label || currentFilter } : null,
-        currentTypeFilter ? { label: maysternyaMode ? 'Запит' : 'Тип', value: LEAD_TYPE_MAP[currentTypeFilter]?.label || currentTypeFilter } : null,
         currentDateFilter ? { label: maysternyaMode ? 'Дата консультації' : 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
         search ? { label: 'Пошук', value: search } : null
     ].filter(Boolean);
@@ -738,18 +859,20 @@ function renderLeadExplainability() {
     const html = Explainability.renderFilterSummary(filters, {
         label: 'Фільтри лідів',
         clearAction: filters.length ? 'leads' : '',
-        clearLabel: 'Показати всі ліди'
+        clearLabel: 'Скинути фільтри'
     });
     Explainability.setRegion('leadsExplainability', html);
 }
 
 function resetLeadFilters() {
     currentFilter = '';
-    currentTypeFilter = '';
+    currentLeadQueue = DEFAULT_LEAD_QUEUE;
+    currentTypeFilter = leadTypeForCurrentQueue();
     currentDateFilter = '';
     currentPipelineStage = '';
     const search = document.getElementById('leadsSearch');
     if (search) search.value = '';
+    syncLeadQueueUi();
     document.querySelectorAll('#filterBtns .filter-btn').forEach(btn => btn.classList.toggle('active', !btn.dataset.status));
     document.querySelectorAll('#dateBtns .filter-btn').forEach(btn => btn.classList.remove('active'));
     syncLeadUrlState();
@@ -758,25 +881,25 @@ function resetLeadFilters() {
 
 function leadEmptyHtml() {
     const filters = getLeadFilterSummary();
+    const queue = leadQueueMeta();
+    const hasExtraFilters = filters.some(filter => !String(filter.label || '').startsWith('Черга'));
     const maysternyaMode = isMaysternyaLeadContext();
     if (window.Explainability) {
         return Explainability.renderEmptyState({
             icon: '🔎',
-            title: filters.length
-                ? (maysternyaMode ? 'Заявок за цими фільтрами немає' : 'Лідів за цими фільтрами немає')
-                : (maysternyaMode ? 'Заявок ще немає' : 'Лідів ще немає'),
-            message: filters.length
-                ? 'Поточний статус, тип, дата або пошук приховали всі записи. Скиньте фільтри, щоб повернути повний список.'
-                : (maysternyaMode
-                    ? 'Коли сайт або менеджер додасть заявку Майстерні, вона буде у цьому списку.'
-                    : 'Коли зʼявляться заявки або менеджер додасть лід вручну, вони будуть у цьому списку.'),
+            title: hasExtraFilters
+                ? `У черзі “${queue.label}” немає лідів за цими фільтрами`
+                : queue.emptyTitle,
+            message: hasExtraFilters
+                ? `Черга “${queue.label}” відкрита, але поточний статус, етап, дата або пошук приховали всі записи.`
+                : queue.emptyMessage,
             clearAction: filters.length ? 'leads' : '',
-            clearLabel: maysternyaMode ? 'Показати всі заявки' : 'Показати всі ліди'
+            clearLabel: maysternyaMode ? 'Скинути фільтри заявок' : 'Скинути фільтри лідів'
         });
     }
-    return filters.length
-        ? (maysternyaMode ? 'Немає заявок за поточними фільтрами' : 'Немає лідів за поточними фільтрами')
-        : (maysternyaMode ? 'Немає заявок' : 'Немає лідів');
+    return hasExtraFilters
+        ? `У черзі “${queue.label}” немає лідів за цими фільтрами`
+        : queue.emptyTitle;
 }
 
 function renderTable() {
@@ -1580,21 +1703,40 @@ function renderKanban() {
         kanbanWrap.innerHTML = leadEmptyHtml();
         return;
     }
+    const kanbanLeads = leadsData;
+    if (kanbanLeads.length === 0) {
+        hideFunnelBar();
+        kanbanWrap.innerHTML = `<div class="kanban-empty">${leadEmptyHtml()}</div>`;
+        return;
+    }
 
-    // Group leads by pipeline_stage
     const grouped = {};
+    const salesGrouped = {};
     for (const s of PIPELINE_STAGES) grouped[s.key] = [];
-    for (const l of leadsData) {
+    for (const s of PIPELINE_STAGES) salesGrouped[s.key] = [];
+    let salesLeadCount = 0;
+    for (const l of kanbanLeads) {
         const stage = l.pipeline_stage || 'new';
         if (!grouped[stage]) grouped[stage] = [];
         grouped[stage].push(l);
+        if (isSalesMetricLead(l)) {
+            if (!salesGrouped[stage]) salesGrouped[stage] = [];
+            salesGrouped[stage].push(l);
+            salesLeadCount++;
+        }
     }
 
     const { funnelEl, slotEl } = ensureKanbanSummarySlot(kanbanWrap);
     if (funnelEl && slotEl) {
-        funnelEl.innerHTML = renderFunnelBar(grouped);
-        funnelEl.style.display = '';
-        slotEl.style.display = '';
+        if (salesLeadCount > 0) {
+            funnelEl.innerHTML = renderFunnelBar(salesGrouped);
+            funnelEl.style.display = '';
+            slotEl.style.display = '';
+        } else {
+            funnelEl.innerHTML = '';
+            funnelEl.style.display = 'none';
+            slotEl.style.display = 'none';
+        }
     }
 
     kanbanWrap.innerHTML = PIPELINE_STAGES.map(stage => {
@@ -1862,25 +2004,131 @@ function showTypeMenu(leadId, event) {
     }, 50);
 }
 
-async function persistLeadType(leadId, type, { reload = true } = {}) {
+function leadTypeNeedsReason(type) {
+    return Object.prototype.hasOwnProperty.call(LEAD_TYPE_REASON_OPTIONS, type);
+}
+
+function buildLostReasonText(reason, notes) {
+    const cleanReason = String(reason || '').trim();
+    const cleanNotes = String(notes || '').trim();
+    return cleanNotes ? `${cleanReason}: ${cleanNotes}` : cleanReason;
+}
+
+function resetLeadTypeReasonRequest(value = null) {
+    const request = leadTypeReasonRequest;
+    leadTypeReasonRequest = null;
+    if (request?.resolve) request.resolve(value);
+}
+
+function populateLostReasonOptions(options = LOSS_REASONS) {
+    const select = document.getElementById('lostReasonSelect');
+    if (!select) return;
+    select.innerHTML = [
+        '<option value="">— оберіть причину —</option>',
+        ...options.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`)
+    ].join('');
+}
+
+function updateLostReasonDetailsVisibility() {
+    const overlay = document.getElementById('lostReasonModal');
+    const group = document.getElementById('lostReasonNotesGroup');
+    const notes = document.getElementById('lostReasonNotes');
+    const select = document.getElementById('lostReasonSelect');
+    if (!overlay || !group) return;
+
+    const detailsMode = overlay.dataset.detailsMode || 'always';
+    const shouldShow = detailsMode === 'always' || select?.value === 'Інше';
+    group.hidden = !shouldShow;
+    if (!shouldShow && notes) notes.value = '';
+}
+
+function openLostReasonSurface({
+    leadId,
+    stage = '',
+    leadType = '',
+    reasonMode = 'stage',
+    title = 'Причина втрати',
+    options = LOSS_REASONS,
+    detailsMode = 'always'
+} = {}) {
+    const overlay = document.getElementById('lostReasonModal');
+    if (!overlay) return false;
+    overlay.dataset.leadId = leadId;
+    overlay.dataset.stage = stage;
+    overlay.dataset.leadType = leadType;
+    overlay.dataset.reasonMode = reasonMode;
+    overlay.dataset.detailsMode = detailsMode;
+
+    const titleEl = document.getElementById('lostReasonTitle');
+    if (titleEl) titleEl.textContent = title;
+    populateLostReasonOptions(options);
+    const select = document.getElementById('lostReasonSelect');
+    const notes = document.getElementById('lostReasonNotes');
+    if (select) select.value = '';
+    if (notes) notes.value = '';
+    updateLostReasonDetailsVisibility();
+    overlay.classList.add('active');
+    rememberLeadSecondarySurface('lostReasonModal');
+    setTimeout(() => select?.focus(), 0);
+    return true;
+}
+
+function requestLeadTypeReason(leadId, type) {
+    if (!leadTypeNeedsReason(type)) return Promise.resolve(undefined);
+    if (!guardLeadWrite('змінювати тип ліда')) return Promise.resolve(null);
+    resetLeadTypeReasonRequest(null);
+
+    return new Promise(resolve => {
+        leadTypeReasonRequest = { resolve, leadId: Number(leadId), leadType: type };
+        const opened = openLostReasonSurface({
+            leadId,
+            leadType: type,
+            reasonMode: 'lead_type',
+            title: LEAD_TYPE_REASON_TITLES[type] || 'Причина зміни типу',
+            options: LEAD_TYPE_REASON_OPTIONS[type],
+            detailsMode: 'other'
+        });
+        if (!opened) resetLeadTypeReasonRequest(null);
+    });
+}
+
+async function leadTypePatchOptions(leadId, type) {
+    if (type === 'collaboration') {
+        const collaborationTaskPayload = await requestCollaborationLeadTaskPayload(leadId);
+        if (!collaborationTaskPayload) return null;
+        return { collaborationTaskPayload };
+    }
+    if (!leadTypeNeedsReason(type)) return {};
+    const lostReason = await requestLeadTypeReason(leadId, type);
+    if (!lostReason) return null;
+    return { lostReason };
+}
+
+async function persistLeadType(leadId, type, { reload = true, lostReason, collaborationTaskPayload = null } = {}) {
     if (!guardLeadWrite('змінювати тип ліда')) return false;
     const normalizedType = LEAD_TYPE_MAP[type] ? type : 'quality';
-    const body = { lead_type: normalizedType };
-    // Collaboration: auto-create task
     if (normalizedType === 'collaboration') {
-        body.notes = (leadsData.find(l => l.id === leadId)?.notes || '') + '\n[Співпраця] Потрібна задача для відділу';
+        if (!collaborationTaskPayload) {
+            throw new Error('Заповніть задачу для співпраці перед зміною типу ліда');
+        }
+        const data = await createCollaborationLeadTask(leadId, collaborationTaskPayload);
+        if (typeof showNotification === 'function') {
+            showNotification(LEAD_TYPE_WORKFLOW_MESSAGES[normalizedType] || 'Співпрацю оформлено', 'success');
+        }
+        if (reload) await loadLeads();
+        return data?.success !== false;
     }
+
+    const body = { lead_type: normalizedType };
+    if (lostReason !== undefined) body.lost_reason = lostReason;
     const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
     if (!res) return false;
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) {
         throw new Error(data.error || 'Не вдалося змінити тип ліда');
     }
-    if (typeof showNotification === 'function') showNotification(`Тип змінено: ${LEAD_TYPE_MAP[normalizedType]?.label}`, 'success');
-
-    // If informational, suggest mailing
-    if (normalizedType === 'informational') {
-        if (typeof showNotification === 'function') showNotification('📩 Автоматично додано до розсилки', 'info');
+    if (typeof showNotification === 'function') {
+        showNotification(LEAD_TYPE_WORKFLOW_MESSAGES[normalizedType] || `Тип змінено: ${LEAD_TYPE_MAP[normalizedType]?.label}`, 'success');
     }
     if (reload) await loadLeads();
     return true;
@@ -1891,14 +2139,21 @@ async function setLeadType(leadId, type, event) {
     if (!guardLeadWrite('змінювати тип ліда')) return;
     document.querySelectorAll('.type-menu-popup').forEach(el => el.remove());
 
+    const lead = leadsData.find(l => Number(l.id) === Number(leadId));
+    const previousType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';
+    const nextType = LEAD_TYPE_MAP[type] ? type : previousType;
+    if (nextType === previousType) return;
+
     // If quality type from the full menu, show category picker.
-    if (type === 'quality') {
+    if (nextType === 'quality') {
         showQualityCategoryModal(leadId);
         return;
     }
 
     try {
-        await persistLeadType(leadId, type);
+        const patchOptions = await leadTypePatchOptions(leadId, nextType);
+        if (!patchOptions) return;
+        await persistLeadType(leadId, nextType, patchOptions);
     } catch (e) {
         console.error('Set lead type error', e);
         if (typeof showNotification === 'function') showNotification(e.message || 'Не вдалося змінити тип ліда', 'error');
@@ -2116,12 +2371,18 @@ async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
     if (!guardLeadWrite('змінювати тип ліда')) {
         return;
     }
+    if (nextType === 'quality') {
+        showQualityCategoryModal(leadId);
+        return;
+    }
+    const patchOptions = await leadTypePatchOptions(leadId, nextType);
+    if (!patchOptions) return;
     if (select) {
         select.disabled = true;
         select.classList.add('is-saving');
     }
     try {
-        const saved = await persistLeadType(leadId, nextType, { reload: false });
+        const saved = await persistLeadType(leadId, nextType, { reload: false, ...patchOptions });
         if (!saved) {
             return;
         }
@@ -2207,8 +2468,12 @@ async function closeLeadSecondaryModal(modalId, force = false) {
     return true;
 }
 
-function closeLostReasonModal(force = false) {
-    return closeLeadSecondaryModal('lostReasonModal', force);
+async function closeLostReasonModal(force = false) {
+    const overlay = document.getElementById('lostReasonModal');
+    const wasLeadTypeReason = overlay?.dataset.reasonMode === 'lead_type';
+    const closed = await closeLeadSecondaryModal('lostReasonModal', force);
+    if (closed && wasLeadTypeReason) resetLeadTypeReasonRequest(null);
+    return closed;
 }
 
 function closeAddMailingModal(force = false) {
@@ -2290,12 +2555,18 @@ async function setQualityCategory(category) {
     const overlay = document.getElementById('qualityCategoryModal');
     if (!overlay) return;
     const leadId = parseInt(overlay.dataset.leadId);
+    const lead = leadsData.find(l => Number(l.id) === Number(leadId));
+    const body = { lead_type: 'quality', quality_category: category };
+    if (lead && !isActiveKanbanLead(lead)) {
+        body.pipeline_stage = 'new';
+        body.lost_reason = null;
+    }
     closeQualityCategoryModal();
 
     try {
         await apiFetch(`/api/leads/${leadId}`, {
             method: 'PATCH',
-            body: JSON.stringify({ lead_type: 'quality', quality_category: category })
+            body: JSON.stringify(body)
         });
         if (typeof showNotification === 'function') showNotification(`Якісний лід: ${QUALITY_CATEGORIES[category] || category}`, 'success');
         await loadLeads();
@@ -2409,14 +2680,15 @@ async function saveCustomerCard() {
 // ==========================================
 function showLostReasonModal(leadId, stage) {
     if (!guardLeadWrite('закривати ліди')) return;
-    const overlay = document.getElementById('lostReasonModal');
-    if (!overlay) return;
-    overlay.dataset.leadId = leadId;
-    overlay.dataset.stage = stage;
-    document.getElementById('lostReasonSelect').value = '';
-    document.getElementById('lostReasonNotes').value = '';
-    overlay.classList.add('active');
-    rememberLeadSecondarySurface('lostReasonModal');
+    resetLeadTypeReasonRequest(null);
+    openLostReasonSurface({
+        leadId,
+        stage,
+        reasonMode: 'stage',
+        title: 'Причина втрати',
+        options: LOSS_REASONS,
+        detailsMode: 'always'
+    });
 }
 
 async function saveLostReason() {
@@ -2425,9 +2697,24 @@ async function saveLostReason() {
     const leadId = parseInt(overlay.dataset.leadId);
     const reason = document.getElementById('lostReasonSelect')?.value;
     const notes = document.getElementById('lostReasonNotes')?.value;
+    const lostReason = buildLostReasonText(reason, notes);
+    if (!lostReason) {
+        if (typeof showNotification === 'function') showNotification('Оберіть причину', 'warning');
+        document.getElementById('lostReasonSelect')?.focus();
+        return;
+    }
+
+    if (overlay.dataset.reasonMode === 'lead_type') {
+        const request = leadTypeReasonRequest;
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+        await closeLeadSecondaryModal('lostReasonModal', true);
+        leadTypeReasonRequest = null;
+        if (request?.resolve) request.resolve(lostReason);
+        return;
+    }
 
     await updateLeadStage(leadId, 'lost', {
-        lost_reason: reason + (notes ? ': ' + notes : ''),
+        lost_reason: lostReason,
         lead_type: 'low_quality'
     });
     if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
@@ -2572,13 +2859,18 @@ function setupEvents() {
         });
     });
 
+    document.querySelectorAll('[data-lead-queue]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setLeadQueue(btn.dataset.leadQueue || DEFAULT_LEAD_QUEUE);
+        });
+    });
+
     // Filter buttons
     document.querySelectorAll('#filterBtns .filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#filterBtns .filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentFilter = btn.dataset.status;
-            currentTypeFilter = '';
             currentPipelineStage = '';
             syncLeadUrlState();
             loadLeads();
@@ -2630,6 +2922,7 @@ function setupEvents() {
     if (addBtn) addBtn.addEventListener('click', openAddModal);
     bindLeadModalButton('leadModalCancel', closeLeadModal);
     bindLeadModalButton('leadModalSave', saveLead);
+    document.getElementById('lostReasonSelect')?.addEventListener('change', updateLostReasonDetailsVisibility);
 
     // Close modals on overlay click
     document.querySelectorAll('.lead-modal-overlay').forEach(overlay => {
@@ -2796,6 +3089,26 @@ async function saveLead() {
         const typeEl = document.getElementById('leadLeadType');
         if (stageEl) body.pipeline_stage = stageEl.value;
         if (typeEl) body.lead_type = typeEl.value;
+        const previousLead = leadsData.find(l => Number(l.id) === Number(editId));
+        const previousType = LEAD_TYPE_MAP[previousLead?.lead_type] ? previousLead.lead_type : 'quality';
+        if (body.lead_type && body.lead_type !== previousType && (leadTypeNeedsReason(body.lead_type) || body.lead_type === 'collaboration')) {
+            let patchOptions;
+            try {
+                patchOptions = await leadTypePatchOptions(editId, body.lead_type);
+            } catch (err) {
+                console.error('Prepare lead type workflow error', err);
+                if (typeof showNotification === 'function') showNotification(err.message || 'Не вдалося підготувати зміну типу ліда', 'error');
+                return;
+            }
+            if (!patchOptions) return;
+            if (patchOptions.lostReason !== undefined) body.lost_reason = patchOptions.lostReason;
+            if (patchOptions.collaborationTaskPayload) {
+                const committed = await persistLeadType(editId, body.lead_type, { reload: false, ...patchOptions });
+                if (!committed) return;
+                delete body.lead_type;
+                delete body.pipeline_stage;
+            }
+        }
     }
 
     const saveBtn = document.getElementById('leadModalSave');
@@ -3042,6 +3355,135 @@ function localDateTimeInput(date) {
 
 function localDateInput(date = new Date()) {
     return localDateTimeInput(date).slice(0, 10);
+}
+
+async function loadLeadTaskOwners() {
+    const ownersRes = await apiFetch('/api/tasks/owners');
+    if (!ownersRes) return [];
+    const ownersData = await ownersRes.json().catch(() => ({}));
+    return Array.isArray(ownersData.users) ? ownersData.users : [];
+}
+
+function taskOwnerOptionLabel(owner = {}) {
+    return `${owner.label || owner.name || owner.username || ('User #' + owner.id)}${owner.role ? ' (' + owner.role + ')' : ''}`;
+}
+
+function leadPrimaryName(lead = {}, leadId = '') {
+    return lead.clientName || lead.client_name || lead.name || (leadId ? `лід #${leadId}` : 'лід');
+}
+
+function defaultCollaborationTaskTitle(leadId, lead = {}) {
+    return `Опрацювати співпрацю: ${leadPrimaryName(lead, leadId)}`;
+}
+
+function defaultCollaborationTaskDescription(leadId, lead = {}, comment = '') {
+    const contact = [
+        lead.phone,
+        lead.instagram ? `@${lead.instagram}` : null
+    ].filter(Boolean).join(' / ');
+    return [
+        `Запит на співпрацю з ліда #${leadId}.`,
+        leadPrimaryName(lead, leadId) ? `Контакт: ${leadPrimaryName(lead, leadId)}` : null,
+        contact ? `Канал: ${contact}` : null,
+        lead.notes ? `Нотатки ліда: ${String(lead.notes).slice(0, 600)}` : null,
+        comment ? `Коментар менеджера: ${String(comment).trim()}` : null
+    ].filter(Boolean).join('\n');
+}
+
+async function requestCollaborationTaskValues(leadId, lead = {}) {
+    if (typeof formModal !== 'function') {
+        throw new Error('Форма задач недоступна. Оновіть сторінку і повторіть дію.');
+    }
+
+    let taskOwners = [];
+    try {
+        taskOwners = await loadLeadTaskOwners();
+    } catch (err) {
+        console.error('Load collaboration task owners error', err);
+        throw new Error('Не вдалося завантажити відповідальних для задачі');
+    }
+    if (!taskOwners.length) {
+        throw new Error('Немає доступних відповідальних для задачі');
+    }
+
+    const defaultDeadline = new Date();
+    defaultDeadline.setDate(defaultDeadline.getDate() + 1);
+    defaultDeadline.setHours(12, 0, 0, 0);
+
+    return formModal('Задача для співпраці', [
+        { key: 'title', label: 'Назва задачі', defaultValue: defaultCollaborationTaskTitle(leadId, lead), required: true },
+        {
+            key: 'ownerUserId',
+            label: 'Відповідальний',
+            type: 'select',
+            required: true,
+            options: [
+                { value: '', label: 'Оберіть відповідального' },
+                ...taskOwners.map(owner => ({
+                    value: String(owner.id),
+                    label: taskOwnerOptionLabel(owner)
+                }))
+            ]
+        },
+        { key: 'deadline', label: 'Дедлайн', type: 'datetime-local', defaultValue: localDateTimeInput(defaultDeadline), required: true },
+        {
+            key: 'priority',
+            label: 'Пріоритет',
+            type: 'select',
+            defaultValue: 'normal',
+            options: [
+                { value: 'high', label: 'Високий' },
+                { value: 'normal', label: 'Звичайний' },
+                { value: 'low', label: 'Низький' }
+            ]
+        },
+        { key: 'comment', label: 'Коментар', type: 'textarea', placeholder: 'Що саме треба перевірити або кому написати...' }
+    ], { okText: 'Створити задачу', type: 'success', icon: '🤝' });
+}
+
+async function requestCollaborationLeadTaskPayload(leadId) {
+    if (!guardLeadWrite('створювати задачу для співпраці')) return null;
+    const workspaceLead = Number(currentWorkspaceData?.lead?.id) === Number(leadId) ? currentWorkspaceData.lead : null;
+    const lead = leadsData.find(l => Number(l.id) === Number(leadId)) || workspaceLead || {};
+    const values = await requestCollaborationTaskValues(leadId, lead);
+    if (!values) return null;
+
+    const title = String(values.title || '').trim();
+    const ownerUserId = String(values.ownerUserId || '').trim();
+    const deadline = values.deadline || '';
+    if (!title) throw new Error('Назва задачі обовʼязкова');
+    if (!ownerUserId) throw new Error('Оберіть відповідального для задачі');
+    if (!deadline) throw new Error('Дедлайн задачі обовʼязковий');
+
+    const body = {
+        title,
+        description: defaultCollaborationTaskDescription(leadId, lead, values.comment || ''),
+        date: String(deadline).slice(0, 10),
+        deadline,
+        priority: values.priority || 'normal',
+        category: 'operational',
+        task_type: 'human',
+        source_type: 'lead',
+        source_id: String(leadId),
+        sourceEntityType: 'lead',
+        sourceEntityId: String(leadId),
+        ownerUserId,
+        businessContext: leadContextFromRecord(lead)
+    };
+
+    return body;
+}
+
+async function createCollaborationLeadTask(leadId, taskPayload) {
+    const res = await apiFetch(`/api/leads/${leadId}/collaboration-task`, { method: 'POST', body: JSON.stringify(taskPayload || {}) });
+    if (!res) throw new Error('Не вдалося оформити співпрацю');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+        const message = data.message || data.error || (res.status === 409 ? 'Така активна задача вже існує' : 'Не вдалося оформити співпрацю');
+        throw new Error(message);
+    }
+    if (!data.task?.id) throw new Error('Задачу створено без id. Перевірте задачник перед зміною типу ліда.');
+    return data;
 }
 
 async function createLeadWorkspaceCallbackTask(leadId) {
@@ -3458,6 +3900,7 @@ window.openLeadCustomerCard = openLeadCustomerCard;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
 window.closeLeadCustomerLinkModal = closeLeadCustomerLinkModal;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;
+window.setLeadQueue = setLeadQueue;
 window.showKanbanLeadTypeMenu = showKanbanLeadTypeMenu;
 window.updateLeadTypeFromKanbanSelect = updateLeadTypeFromKanbanSelect;
 window.closeQualityCategoryModal = closeQualityCategoryModal;

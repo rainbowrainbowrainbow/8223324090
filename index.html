@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.75.58">
-    <link rel="stylesheet" href="css/auth.css?v=0.75.58">
-    <link rel="stylesheet" href="css/layout.css?v=0.75.58">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.58">
-    <link rel="stylesheet" href="css/timeline.css?v=0.75.58">
-    <link rel="stylesheet" href="css/panel.css?v=0.75.58">
-    <link rel="stylesheet" href="css/modals.css?v=0.75.58">
-    <link rel="stylesheet" href="css/controls.css?v=0.75.58">
-    <link rel="stylesheet" href="css/features.css?v=0.75.58">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.58">
-    <link rel="stylesheet" href="css/responsive.css?v=0.75.58">
-    <link rel="stylesheet" href="css/pages.css?v=0.75.58">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.58">
+    <link rel="stylesheet" href="css/base.css?v=0.75.63">
+    <link rel="stylesheet" href="css/auth.css?v=0.75.63">
+    <link rel="stylesheet" href="css/layout.css?v=0.75.63">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.75.63">
+    <link rel="stylesheet" href="css/timeline.css?v=0.75.63">
+    <link rel="stylesheet" href="css/panel.css?v=0.75.63">
+    <link rel="stylesheet" href="css/modals.css?v=0.75.63">
+    <link rel="stylesheet" href="css/controls.css?v=0.75.63">
+    <link rel="stylesheet" href="css/features.css?v=0.75.63">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.75.63">
+    <link rel="stylesheet" href="css/responsive.css?v=0.75.63">
+    <link rel="stylesheet" href="css/pages.css?v=0.75.63">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.75.63">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.75.58">✨ 0.75.58</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.75.63">✨ 0.75.63</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.75.58 — Maysternya Booking Lead Handoff</p>
+                <p class="tagline">AI First CRM v0.75.63 — Sales Lead Metrics Cleanup</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.58</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.75.63</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1735,6 +1735,66 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.75.63 — Sales Lead Metrics Cleanup</h4>
+                    <ul>
+                        <li><b>Продажні метрики рахують тільки <code>lead_type=quality</code></b> — спам, інформаційні, неякісні та співпраця більше не псують conversion, accepted/closed/lost і funnel totals.</li>
+                        <li><b>Класифікації лишились видимими</b> — API повертає окремі <code>classificationStats</code> і <code>operationalQueueStats</code> для non-sales типів.</li>
+                        <li><b>Старі поля відповіді не прибрано</b> — <code>stats</code>, <code>stageStats</code>, <code>pipeline</code> і <code>total</code> лишились, а повний зріз доступний як <code>allStats</code>, <code>allStageStats</code>, <code>allPipeline</code>, <code>allTotal</code>.</li>
+                        <li><b>Dashboard очищено від non-sales лідів</b> — “нові/холодні ліди”, work queue funnel, callback due і event soon тепер беруть тільки якісні продажні ліди.</li>
+                        <li><b>Kanban funnel bar став sales-only</b> — у черзі <code>Усі</code> картки всіх типів видимі, але конверсійна смуга рахує тільки якісні ліди.</li>
+                        <li><b>Scheduler hot leads стабілізовано</b> — автоматичні hot-lead задачі спираються на <code>pipeline_stage=new</code> і <code>lead_type=quality</code>.</li>
+                        <li><b>DB/env config не змінювались</b> — без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.75.62 — Collaboration Task Handoff</h4>
+                    <ul>
+                        <li><b>Вибір <code>Співпраця</code> відкриває форму задачі</b> — менеджер задає назву, відповідального, дедлайн, пріоритет і коментар перед зміною типу ліда.</li>
+                        <li><b>Задача створюється явно через <code>POST /api/tasks</code></b> — payload містить <code>source_type=lead</code>, <code>source_id</code> і бізнес-контекст ліда.</li>
+                        <li><b>Тип ліда змінюється тільки після успішної задачі</b> — якщо створення задачі впало або API повернув duplicate conflict, менеджер бачить помилку, а <code>lead_type=collaboration</code> не зберігається.</li>
+                        <li><b>Backend auto-create залишено як fallback</b> — старий hook запускається тільки якщо PATCH не містить <code>collaboration_task_created=true</code>.</li>
+                        <li><b>Дублі не створюються</b> — frontend task route використовує існуючий duplicate reject, а backend fallback лишив <code>duplicateMode=skip</code>.</li>
+                        <li><b>DB/env config не змінювались</b> — без міграцій, ролей, task taxonomy, secrets, Railway variables, CI/CD або нових залежностей.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.75.61 — Lead Queue Segments</h4>
+                    <ul>
+                        <li><b>У Sales Funnel додано робочі черги лідів</b> — менеджер перемикається між <code>Активні</code>, <code>Співпраця</code>, <code>Інформаційні</code>, <code>Відсіяні</code>, <code>Спам</code> і <code>Усі</code>.</li>
+                        <li><b>За замовчуванням відкриваються <code>Активні</code></b> — сторінка без query показує якісні ліди через існуючий API-фільтр <code>lead_type=quality</code>.</li>
+                        <li><b>Кожна черга мапиться на існуючий <code>lead_type</code></b> — співпраця, інформаційні, відсіяні та спам працюють без нової backend-схеми.</li>
+                        <li><b>Стан черги живе в URL</b> — додано <code>lead_queue=collaboration|informational|screened|spam|all</code>, а старий <code>lead_type</code> лишився сумісним alias.</li>
+                        <li><b>Table і Kanban працюють однаково</b> — обидва режими відкривають той самий queue-зріз, а <code>Усі</code> в Kanban показує всі типи.</li>
+                        <li><b>Порожні стани пояснюють конкретну чергу</b> — видно, чи порожні активні ліди, співпраця, інформаційні, відсіяні або спам.</li>
+                        <li><b>DB/API/env config не змінювались</b> — без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.75.60 — Lead Type Reason UX</h4>
+                    <ul>
+                        <li><b>Для закривальних типів ліда додано явний вибір причини</b> — при виборі <code>Спам</code>, <code>Неякісний</code> або <code>Інформаційний</code> менеджер бачить компактну modal-форму перед збереженням.</li>
+                        <li><b>Причини розділено за типами</b> — спам має <code>Дубль</code>, <code>Бот/реклама</code>, <code>Некоректний контакт</code>, <code>Не наш запит</code>; неякісні та інформаційні запити мають власні списки причин.</li>
+                        <li><b>“Інше” відкриває поле деталей</b> — типові причини зберігаються одним кліком, а нестандартний кейс можна уточнити текстом.</li>
+                        <li><b>PATCH передає конкретний <code>lost_reason</code></b> — workflow routing лишився тим самим, але причина з UI не затирається серверним дефолтом.</li>
+                        <li><b>Повернення в <code>Якісний</code> лишилось через quality modal</b> — Kanban відкриває існуючий вибір категорії якісного ліда замість тихого PATCH.</li>
+                        <li><b>Regression guard оновлено</b> — route-smoke перевіряє explicit <code>lost_reason</code>, UI smoke фіксує reason modal і відсутність native prompt.</li>
+                        <li><b>DB/env config не змінювались</b> — без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей; використано існуюче поле <code>lost_reason</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.75.59 — Lead Type Workflow Routing</h4>
+                    <ul>
+                        <li><b>Тип ліда тепер запускає workflow, а не лишається просто міткою</b> — <code>spam</code>, <code>informational</code>, <code>low_quality</code> і <code>collaboration</code> отримали серверні правила маршрутизації.</li>
+                        <li><b>Спам прибирається з активної воронки</b> — вибір <code>Спам</code> переводить лід у <code>lost</code> з причиною <code>Спам</code> і не додає контакт у розсилку.</li>
+                        <li><b>Інформаційні та неякісні звернення закриваються операційно</b> — вони виходять із активного Kanban, а інформаційні контакти далі потрапляють у mailing list через існуючий hook.</li>
+                        <li><b>Співпраця отримує реальну задачу</b> — backend створює прив'язану до ліда задачу через <code>getKleshnya().createTask</code> із <code>source_type=lead</code> та dedupe <code>duplicateMode=skip</code>.</li>
+                        <li><b>Kanban за замовчуванням показує активні продажі</b> — без фільтра типу в колонках лишаються якісні ліди, а спам, співпраця, інформаційні й неякісні записи доступні через лічильники типів.</li>
+                        <li><b>Помилково відсіяний лід можна повернути</b> — повторний вибір <code>Якісний</code> для неактивного типу повертає його в активну воронку з <code>pipeline_stage=new</code>.</li>
+                        <li><b>Regression guard оновлено</b> — route-smoke перевіряє whitelist <code>lead_type</code> і spam-routing, UI smoke фіксує активний Kanban-фільтр та workflow markers.</li>
+                        <li><b>DB/env config не змінювались</b> — без міграцій, нових secrets, Railway variables або залежностей; використано існуючі поля <code>lead_type</code>, <code>pipeline_stage</code>, <code>lost_reason</code> і задачі.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.75.58 — Maysternya Booking Lead Handoff</h4>
                     <ul>
@@ -13063,30 +13123,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.75.58"></script>
-    <script src="js/timeline-visibility.js?v=0.75.58"></script>
-    <script src="js/kitchen-menu-images.js?v=0.75.58"></script>
-    <script src="js/config.js?v=0.75.58"></script>
-    <script src="js/api.js?v=0.75.58"></script>
-    <script src="js/ui.js?v=0.75.58"></script>
-    <script src="js/auth.js?v=0.75.58"></script>
-    <script src="js/timeline-interaction-model.js?v=0.75.58"></script>
-    <script src="js/timeline.js?v=0.75.58"></script>
-    <script src="js/booking.js?v=0.75.58"></script>
-    <script src="js/settings.js?v=0.75.58"></script>
-    <script src="js/booking-form.js?v=0.75.58"></script>
-    <script src="js/booking-linked.js?v=0.75.58"></script>
-    <script src="js/settings-dashboard.js?v=0.75.58"></script>
-    <script src="js/settings-history.js?v=0.75.58"></script>
-    <script src="js/settings-afisha.js?v=0.75.58"></script>
-    <script src="js/settings-certificates.js?v=0.75.58"></script>
-    <script src="js/offline.js?v=0.75.58"></script>
-    <script src="js/crm-feature-registry.js?v=0.75.58"></script>
-    <script src="js/search.js?v=0.75.58"></script>
-    <script src="js/ws.js?v=0.75.58"></script>
-    <script src="js/app.js?v=0.75.58"></script>
-    <script src="js/kleshnya-widget.js?v=0.75.58"></script>
-    <script src="js/components/sidebar.js?v=0.75.58"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.58"></script>
+    <script src="js/timeline-context.js?v=0.75.63"></script>
+    <script src="js/timeline-visibility.js?v=0.75.63"></script>
+    <script src="js/kitchen-menu-images.js?v=0.75.63"></script>
+    <script src="js/config.js?v=0.75.63"></script>
+    <script src="js/api.js?v=0.75.63"></script>
+    <script src="js/ui.js?v=0.75.63"></script>
+    <script src="js/auth.js?v=0.75.63"></script>
+    <script src="js/timeline-interaction-model.js?v=0.75.63"></script>
+    <script src="js/timeline.js?v=0.75.63"></script>
+    <script src="js/booking.js?v=0.75.63"></script>
+    <script src="js/settings.js?v=0.75.63"></script>
+    <script src="js/booking-form.js?v=0.75.63"></script>
+    <script src="js/booking-linked.js?v=0.75.63"></script>
+    <script src="js/settings-dashboard.js?v=0.75.63"></script>
+    <script src="js/settings-history.js?v=0.75.63"></script>
+    <script src="js/settings-afisha.js?v=0.75.63"></script>
+    <script src="js/settings-certificates.js?v=0.75.63"></script>
+    <script src="js/offline.js?v=0.75.63"></script>
+    <script src="js/crm-feature-registry.js?v=0.75.63"></script>
+    <script src="js/search.js?v=0.75.63"></script>
+    <script src="js/ws.js?v=0.75.63"></script>
+    <script src="js/app.js?v=0.75.63"></script>
+    <script src="js/kleshnya-widget.js?v=0.75.63"></script>
+    <script src="js/components/sidebar.js?v=0.75.63"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.75.63"></script>
 </body>
 </html>

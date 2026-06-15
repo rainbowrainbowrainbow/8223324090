@@ -1588,9 +1588,13 @@
             showNotification('Браузер заблокував popup. Дозвольте відкриття вікон.', 'error');
             return;
         }
+        popup.opener = null;
         popup.document.write(`<html><body style="font-family:system-ui;padding:24px">${loadingTitle || 'Завантаження...'}</body></html>`);
         const response = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return;
+        if (handleAuthError(response)) {
+            popup.close();
+            return;
+        }
         if (!response.ok) throw new Error('Export failed');
         const html = await response.text();
         popup.document.open();
@@ -1610,24 +1614,35 @@
 
     async function exportDiplomasPdf() {
         if (!diplomaQuoteId) return;
+        const touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('PDF дипломів')
+            : null;
         try {
             const response = await fetch(`${API_BASE}/graduation/quotes/${diplomaQuoteId}/diplomas/export/pdf`, { headers: getAuthHeaders(false) });
-            if (handleAuthError(response)) return;
+            if (handleAuthError(response)) {
+                if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+                return;
+            }
             if (!response.ok) throw new Error('Export failed');
             const blob = await response.blob();
             const filename = (response.headers.get('content-disposition') || '').match(/filename="?([^";]+)"?/i)?.[1]
                 || `graduation_diplomas_${diplomaQuoteId}.pdf`;
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            showNotification('PDF з усіма дипломами збережено одним файлом', 'success');
+            if (typeof finishBlobDownload === 'function') {
+                finishBlobDownload(blob, filename, { touchWindow, successMessage: 'PDF з усіма дипломами збережено одним файлом' });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                showNotification('PDF з усіма дипломами збережено одним файлом', 'success');
+            }
             renderCurrentTab();
         } catch (err) {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
             showNotification('Помилка PDF export', 'error');
         }
     }
@@ -1644,20 +1659,32 @@
     async function exportDiplomaRoster(kind) {
         if (!diplomaQuoteId) return;
         const ext = kind === 'xlsx' ? 'xlsx' : 'csv';
+        const filename = `graduation_children_${diplomaQuoteId}.${ext}`;
+        const touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow(`Список дітей ${ext.toUpperCase()}`)
+            : null;
         try {
             const response = await fetch(`${API_BASE}/graduation/quotes/${diplomaQuoteId}/diplomas/export/${ext}`, { headers: getAuthHeaders(false) });
-            if (handleAuthError(response)) return;
+            if (handleAuthError(response)) {
+                if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+                return;
+            }
             if (!response.ok) throw new Error('Export failed');
             const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `graduation_children_${diplomaQuoteId}.${ext}`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            if (typeof finishBlobDownload === 'function') {
+                finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Список дітей підготовлено' });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
         } catch (err) {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
             showNotification('Помилка експорту списку', 'error');
         }
     }

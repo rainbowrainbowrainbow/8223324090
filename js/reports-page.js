@@ -1624,7 +1624,12 @@ const ReportsPage = (() => {
         if (!_reportTableState) return;
         const payload = buildReportTablePayload();
         const token = localStorage.getItem('pzp_token');
+        const filename = `${slugifyKey(_reportTableState.title, 'report')}.${format}`;
+        let touchWindow = null;
         try {
+            touchWindow = typeof openTouchDownloadWindow === 'function'
+                ? openTouchDownloadWindow(`${format.toUpperCase()} звіт`)
+                : null;
             const res = await fetch(`/api/reports/table/export-${format}`, {
                 method: 'POST',
                 headers: {
@@ -1638,16 +1643,21 @@ const ReportsPage = (() => {
                 throw new Error(err.error || 'Export failed');
             }
             const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${slugifyKey(_reportTableState.title, 'report')}.${format}`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
+            if (typeof finishBlobDownload === 'function') {
+                finishBlobDownload(blob, filename, { touchWindow, successMessage: `${format.toUpperCase()} експортовано` });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            }
             setTemplateStatus(`${format.toUpperCase()} експортовано`);
         } catch (err) {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
             showNotification(`Помилка ${format.toUpperCase()} експорту: ${err.message}`, 'error');
         }
     }

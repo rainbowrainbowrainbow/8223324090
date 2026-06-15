@@ -653,14 +653,21 @@ function renderProductSalesReport(data) {
 }
 
 async function downloadProductSalesExport(format) {
+    let touchWindow = null;
     setProductSalesLoading(true);
     try {
+        touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('Експорт продажів')
+            : null;
         const params = getProductSalesQuery({ includeProgram: true });
         params.set('format', format);
         const response = await fetch(`/api/analytics/product-sales/export?${params.toString()}`, {
             headers: getAuthHeaders(false)
         });
-        if (handleAuthError(response)) return;
+        if (handleAuthError(response)) {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+            return;
+        }
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             throw new Error(body.error || 'Не вдалося експортувати продажі');
@@ -669,15 +676,20 @@ async function downloadProductSalesExport(format) {
         const disposition = response.headers.get('Content-Disposition') || '';
         const match = /filename="([^"]+)"/.exec(disposition);
         const filename = match ? match[1] : `product_sales_${document.getElementById('productSalesMonth')?.value || getProductSalesMonthValue()}.${format}`;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Експорт продажів підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
     } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
         console.error('[ProductSales] export failed', err);
         showNotification(err.message || 'Помилка експорту продажів', 'error');
     } finally {

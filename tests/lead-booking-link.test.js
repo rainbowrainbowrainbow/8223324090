@@ -137,6 +137,8 @@ describe('lead booking link repair', () => {
         const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
         assert.ok(insert);
         assert.doesNotMatch(insert.text, /updated_at/i);
+        assert.match(insert.text, /raw_payload, lead_type, status/i);
+        assert.match(insert.text, /\$13::jsonb,'quality',\$14/i);
         assert.equal(insert.params[0], 'maysternya_doli');
         assert.equal(insert.params[5], 'booking');
         assert.equal(insert.params[6], 'booking');
@@ -210,6 +212,7 @@ describe('lead booking link repair', () => {
         assert.doesNotMatch(insert.text, /updated_at/i);
         assert.match(insert.text, /telegram_id/i);
         assert.match(insert.text, /raw_payload/i);
+        assert.match(insert.text, /raw_payload, lead_type, status/i);
         assert.equal(insert.params[0], 'maysternya_doli');
         assert.equal(insert.params[3], '123456789');
         assert.equal(insert.params[5], 'maysternya_bot');
@@ -264,6 +267,7 @@ describe('lead booking link repair', () => {
         const leadUpdate = queries.find(q => /UPDATE leads SET booking_id = COALESCE\(booking_id, \$1\)/i.test(q.text));
         assert.ok(leadUpdate);
         assert.doesNotMatch(leadUpdate.text, /updated_at/i);
+        assert.match(leadUpdate.text, /lead_type = COALESCE\(NULLIF\(lead_type, ''\), 'quality'\)/i);
         assert.ok(queries.some(q => /booking_id IS NULL/i.test(q.text)));
         assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
     });

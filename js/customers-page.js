@@ -1860,19 +1860,30 @@ window.sendBulk = async function() {
 
 function exportVcf() {
     const token = localStorage.getItem('pzp_token');
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('vCard клієнтів')
+        : null;
     fetch(customerApiUrl('/api/customers/export-vcf'), {
         headers: { 'Authorization': `Bearer ${token}` }
     }).then(res => res.blob()).then(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `customers_${new Date().toISOString().slice(0, 10)}.vcf`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        showNotification('vCard завантажено');
-    }).catch(() => showNotification('Помилка експорту vCard', 'error'));
+        const filename = `customers_${new Date().toISOString().slice(0, 10)}.vcf`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'vCard підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showNotification('vCard завантажено');
+        }
+    }).catch(() => {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Помилка експорту vCard', 'error');
+    });
 }
 
 async function importVcf(file) {
@@ -1940,20 +1951,31 @@ async function refreshData() {
 
 function downloadCSV() {
     const token = localStorage.getItem('pzp_token');
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('CSV клієнтів')
+        : null;
     // Use a hidden link to trigger download with auth
     fetch(customerApiUrl('/api/customers/export'), {
         headers: { 'Authorization': `Bearer ${token}` }
     }).then(res => res.blob()).then(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        showNotification('CSV завантажено');
-    }).catch(() => showNotification('Помилка експорту', 'error'));
+        const filename = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'CSV підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showNotification('CSV завантажено');
+        }
+    }).catch(() => {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Помилка експорту', 'error');
+    });
 }
 
 // ==========================================

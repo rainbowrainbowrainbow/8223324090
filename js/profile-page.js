@@ -2195,14 +2195,6 @@ function renderProfileSettingsTab() {
                                 <button type="button" class="profile-settings-primary" onclick="saveProfileAvatarCrop()">Застосувати</button>
                             </div>
                         </div>
-                        <details class="profile-avatar-url-details">
-                            <summary>Вставити посилання на фото</summary>
-                            <div class="profile-avatar-url-row">
-                                <input id="profileAvatarUrl" type="url" placeholder="https://.../avatar.jpg" value="${escapeHtml(avatar.url)}" oninput="previewProfileAvatarUrl()">
-                                <button type="button" onclick="saveProfileAvatar('image')">Зберегти URL</button>
-                            </div>
-                        </details>
-                        <p class="profile-avatar-note">Найзручніше — обрати фото з пристрою, перевірити preview і натиснути «Зберегти фото». Sidebar оновиться одразу після збереження.</p>
                     </div>
                 </div>
             </section>
@@ -2511,7 +2503,7 @@ function paintProfileAvatarPreview(mode = 'initials') {
     const preview = document.getElementById('profileAvatarPreview');
     if (!preview) return;
     const color = document.getElementById('profileAvatarColor')?.value || '#f59e0b';
-    const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
+    const url = String(profileAvatarPhotoUrl(profileData) || '').trim();
     const crop = currentProfileAvatarCropFromControls();
     preview.innerHTML = '';
     if (mode === 'image' && url) {
@@ -2541,7 +2533,7 @@ function resetProfileAvatarCrop() {
 }
 
 function saveProfileAvatarCrop() {
-    const url = String(document.getElementById('profileAvatarUrl')?.value || profileAvatarPhotoUrl(profileData) || '').trim();
+    const url = String(profileAvatarPhotoUrl(profileData) || '').trim();
     if (!url) {
         if (typeof showNotification === 'function') showNotification('Спочатку збережіть або виберіть фото профілю', 'warning');
         return;
@@ -2573,11 +2565,6 @@ function selectProfileAvatarColor(color) {
     paintProfileAvatarPreview('initials');
 }
 
-function previewProfileAvatarUrl() {
-    const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
-    paintProfileAvatarPreview(url ? 'image' : 'initials');
-}
-
 function formatProfileFileSize(bytes) {
     const size = Number(bytes || 0);
     if (!size) return '0 КБ';
@@ -2597,7 +2584,7 @@ function clearProfileAvatarFile(options = {}) {
     if (uploadBtn) uploadBtn.disabled = true;
     if (pick) pick.classList.remove('has-file');
     if (options.restorePreview !== false) {
-        const hasUrl = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
+        const hasUrl = String(profileAvatarPhotoUrl(profileData) || '').trim();
         paintProfileAvatarPreview(hasUrl ? 'image' : 'initials');
     }
 }
@@ -2701,9 +2688,7 @@ async function uploadProfileAvatarFile() {
             if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося завантажити фото', 'error');
             return;
         }
-        const urlInput = document.getElementById('profileAvatarUrl');
         const avatarUrl = result.user?.avatarUrl || result.user?.avatar_url || '';
-        if (urlInput && avatarUrl) urlInput.value = avatarUrl;
         if (avatarUrl) {
             const crop = writeProfileAvatarCrop({ user: result.user }, avatarUrl, currentProfileAvatarCropFromControls());
             result.user.avatarCrop = crop;
@@ -2725,7 +2710,7 @@ async function saveProfileAvatar(type) {
         avatarType: type,
         avatarEmoji: '',
         avatarColor: document.getElementById('profileAvatarColor')?.value || '#f59e0b',
-        avatarUrl: String(document.getElementById('profileAvatarUrl')?.value || '').trim()
+        avatarUrl: type === 'image' ? String(profileAvatarPhotoUrl(profileData) || '').trim() : ''
     };
     const result = await apiPatch('/auth/profile/avatar', payload);
     if (result?.success && result.user && type === 'image') {

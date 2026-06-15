@@ -79,11 +79,19 @@ window.SettingsHistory = {
         }).join('\n');
 
         const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `history_${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const filename = `history_${new Date().toISOString().slice(0, 10)}.csv`;
+        const touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('History CSV')
+            : null;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'CSV підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
     }
 };

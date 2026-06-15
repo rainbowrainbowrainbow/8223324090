@@ -64,6 +64,58 @@
         });
     }
 
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function certificateStatusText(status) {
+        const map = {
+            active: 'Активний',
+            used: 'Використаний',
+            expired: 'Прострочений',
+            revoked: 'Анульований',
+            blocked: 'Заблокований'
+        };
+        return map[status] || status || '—';
+    }
+
+    function staticPreviewBackground(season) {
+        return SEASON_BG[season || 'winter'] || SEASON_BG.winter;
+    }
+
+    function renderStaticPreview(container, cert = {}, options = {}) {
+        const node = typeof container === 'string' ? document.getElementById(container) : container;
+        if (!node) return null;
+        const displayValue = cert.displayValue || cert.display_value || '';
+        const typeText = cert.typeText || cert.type_text || 'на одноразовий вхід';
+        const certCode = cert.certCode || cert.cert_code || '';
+        const validUntil = cert.validUntil || cert.valid_until || '';
+        const background = staticPreviewBackground(cert.season || 'winter');
+        const note = options.reason === 'touch'
+            ? 'iPhone-safe перегляд без важкого canvas.'
+            : 'Canvas-превʼю недоступне, показано безпечну HTML-версію.';
+
+        node.innerHTML = `
+            <article class="cert-preview-static-card" style="--cert-preview-bg: url('${escapeHtml(background)}')">
+                <div class="cert-preview-static-panel">
+                    <span class="cert-preview-static-kicker">Парк Закревського</span>
+                    <h3>Сертифікат</h3>
+                    ${displayValue ? `<strong>${escapeHtml(displayValue)}</strong>` : '<strong>Без отримувача</strong>'}
+                    <p>${escapeHtml(typeText)}</p>
+                    <code>${escapeHtml(certCode)}</code>
+                    <small>Дійсний до ${escapeHtml(formatValidDate(validUntil))} · ${escapeHtml(certificateStatusText(cert.status))}</small>
+                </div>
+                <div class="cert-preview-static-note">${escapeHtml(note)}</div>
+            </article>`;
+        return node.firstElementChild;
+    }
+
     function drawContent(ctx, cert, W, H) {
         const cardX = 32;
         const cardY = 36;
@@ -253,8 +305,7 @@
         if (!node) return null;
         const skipPreview = options.skipPreview === true || (options.skipTouchPreview !== false && isTouchDevice());
         if (skipPreview) {
-            node.innerHTML = '<div class="cert-preview-fallback">Превʼю на цьому пристрої вимкнене, щоб не ламати робочий flow. Сертифікат можна відкрити або завантажити з дій.</div>';
-            return null;
+            return renderStaticPreview(node, cert, { reason: 'touch' });
         }
         node.innerHTML = '<div class="cert-preview-fallback">Готуємо превʼю сертифіката...</div>';
         try {
@@ -265,13 +316,13 @@
             return canvas;
         } catch (error) {
             console.warn('Certificate preview generation failed:', error);
-            node.innerHTML = '<div class="cert-preview-fallback">Превʼю не згенерувалось на цьому пристрої. Дані сертифіката й дії доступні нижче.</div>';
-            return null;
+            return renderStaticPreview(node, cert, { reason: 'error' });
         }
     }
 
     window.CertificatePreview = {
         generateCertificateCanvas,
+        renderStaticPreview,
         renderInto,
         isTouchDevice
     };

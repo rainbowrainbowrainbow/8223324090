@@ -4255,6 +4255,9 @@ async function validateCertificate() {
 // v33.7.0: Open booking chat channel
 async function openBookingChat(bookingId) {
     var token = localStorage.getItem('pzp_token');
+    var asyncWindow = typeof openAsyncNavigationWindow === 'function'
+        ? openAsyncNavigationWindow('Чат бронювання')
+        : null;
     try {
         var r = await fetch('/api/chat/booking-channel', {
             method: 'POST',
@@ -4264,12 +4267,18 @@ async function openBookingChat(bookingId) {
         var data = await r.json();
         if (data.success && data.channel) {
             const chatUrl = '/chat.html?channelId=' + encodeURIComponent(data.channel.id);
-            if (typeof openSafeNewTab === 'function') openSafeNewTab(chatUrl);
+            if (typeof finishAsyncNavigationWindow === 'function') finishAsyncNavigationWindow(asyncWindow, chatUrl);
+            else if (asyncWindow && !asyncWindow.closed) asyncWindow.location.href = chatUrl;
+            else if (typeof openSafeNewTab === 'function') openSafeNewTab(chatUrl);
             else window.open(chatUrl, '_blank', 'noopener,noreferrer');
         } else {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(asyncWindow);
             if (typeof showToast === 'function') showToast('Не вдалось відкрити чат', 'error');
         }
-    } catch (e) { console.error('openBookingChat:', e); }
+    } catch (e) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(asyncWindow);
+        console.error('openBookingChat:', e);
+    }
 }
 
 async function closeBookingPanel(force = false) {

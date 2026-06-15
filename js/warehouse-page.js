@@ -1712,7 +1712,11 @@ async function loadSuggestions() {
 }
 
 async function exportProcXlsx() {
+    let touchWindow = null;
     try {
+        touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('Procurement Excel')
+            : null;
         const dept = document.getElementById('procDeptFilter')?.value || '';
         const status = document.getElementById('procStatusFilter')?.value || '';
         const params = new URLSearchParams();
@@ -1724,14 +1728,20 @@ async function exportProcXlsx() {
         });
         if (!res.ok) throw new Error('Export failed');
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'procurement.xlsx';
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('Excel завантажено');
+        const filename = 'procurement.xlsx';
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Excel завантажено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showNotification('Excel завантажено');
+        }
     } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
         showNotification('Помилка експорту: ' + err.message, 'error');
     }
 }

@@ -487,6 +487,53 @@
         }
     }
 
+    function isCertificateTouchExportDevice() {
+        if (window.CertificatePreview && typeof window.CertificatePreview.isTouchDevice === 'function') {
+            return window.CertificatePreview.isTouchDevice();
+        }
+        const ua = navigator.userAgent || '';
+        return /iPhone|iPad|iPod|Android/i.test(ua);
+    }
+
+    function openCertificateTouchExportWindow() {
+        if (!isCertificateTouchExportDevice()) return null;
+        try {
+            const win = window.open('', '_blank');
+            if (win) {
+                win.document.write('<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Сертифікат</title></head><body style="margin:0;padding:20px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">Готуємо сертифікат...</body></html>');
+                win.document.close();
+            }
+            return win;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function closeCertificateTouchExportWindow(touchWindow) {
+        try {
+            if (touchWindow && !touchWindow.closed) touchWindow.close();
+        } catch (_) {}
+    }
+
+    function finishCertificatePngExport(canvas, cert, touchWindow) {
+        const filename = `${cert.certCode || 'certificate'}.png`;
+        const dataUrl = canvas.toDataURL('image/png');
+        if (touchWindow && !touchWindow.closed) {
+            const title = esc(filename);
+            touchWindow.document.open();
+            touchWindow.document.write(`<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0;padding:16px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}img{display:block;width:100%;height:auto;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.35)}p{font-size:15px;line-height:1.45;color:#cbd5e1}</style></head><body><img src="${dataUrl}" alt="${title}"><p>На iPhone затисніть зображення, щоб зберегти або поділитися ним.</p></body></html>`);
+            touchWindow.document.close();
+            notify('Сертифікат відкрито в окремому вікні для збереження', 'success');
+            return;
+        }
+
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
+        notify('Сертифікат завантажено', 'success');
+    }
+
     function renderDetail(cert) {
         const content = $('certificatePageDetailContent');
         const actions = $('certificatePageDetailActions');
@@ -519,7 +566,8 @@
         renderCertificatePreview('certificatePagePreview', cert);
 
         let html = `<button type="button" class="btn-page-secondary" data-cert-copy="${esc(cert.certCode)}">Копіювати код</button>`;
-        html += `<button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">Скачати PNG</button>`;
+        const pngLabel = isCertificateTouchExportDevice() ? 'Відкрити PNG' : 'Скачати PNG';
+        html += `<button type="button" class="btn-page-secondary" data-cert-download="${esc(cert.id)}">${pngLabel}</button>`;
         if (cert.status === 'active') {
             html += `<button type="button" class="btn-page-primary" data-cert-status="${esc(cert.id)}" data-next-status="used">Використано</button>`;
             html += `<button type="button" class="btn-page-danger" data-cert-status="${esc(cert.id)}" data-next-status="revoked">Анульувати</button>`;
@@ -539,7 +587,9 @@
     }
 
     async function downloadCertificateFromPage(id) {
+        const touchWindow = openCertificateTouchExportWindow();
         if (!window.CertificatePreview || typeof window.CertificatePreview.generateCertificateCanvas !== 'function') {
+            closeCertificateTouchExportWindow(touchWindow);
             notify('Генератор превʼю недоступний', 'error');
             return;
         }
@@ -556,12 +606,9 @@
                 apiBase: API_BASE,
                 getAuthHeaders
             });
-            const link = document.createElement('a');
-            link.download = `${cert.certCode || 'certificate'}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            notify('Сертифікат завантажено', 'success');
+            finishCertificatePngExport(canvas, cert, touchWindow);
         } catch (error) {
+            closeCertificateTouchExportWindow(touchWindow);
             console.error('Certificate download failed:', error);
             notify('Не вдалося згенерувати PNG', 'error');
         }

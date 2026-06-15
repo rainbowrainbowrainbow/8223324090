@@ -400,6 +400,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
            program_id = COALESCE(program_id, $9),
            event_date = COALESCE(event_date, $10::date),
            children_count = COALESCE(children_count, $11),
+           lead_type = COALESCE(NULLIF(lead_type, ''), 'quality'),
            pipeline_stage = CASE
              WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal') THEN $12
              ELSE pipeline_stage
@@ -428,9 +429,9 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
     const inserted = await client.query(
       `INSERT INTO leads
          (business_context, client_name, phone, telegram_id, instagram, source, source_channel,
-          external_id, program_id, event_date, children_count, notes, raw_payload, status,
+          external_id, program_id, event_date, children_count, notes, raw_payload, lead_type, status,
           pipeline_stage, booking_id, booked_at)
-       VALUES ($1,$2,$3,$4::bigint,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,NOW())
+       VALUES ($1,$2,$3,$4::bigint,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,'quality',$14,$15,$16,NOW())
        ON CONFLICT (business_context, source_channel, external_id)
          WHERE external_id IS NOT NULL DO UPDATE SET
            booking_id = COALESCE(leads.booking_id, EXCLUDED.booking_id),
@@ -441,6 +442,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
            program_id = COALESCE(leads.program_id, EXCLUDED.program_id),
            event_date = COALESCE(leads.event_date, EXCLUDED.event_date),
            children_count = COALESCE(leads.children_count, EXCLUDED.children_count),
+           lead_type = COALESCE(NULLIF(leads.lead_type, ''), EXCLUDED.lead_type),
            notes = CASE
              WHEN EXCLUDED.notes IS NULL OR EXCLUDED.notes = '' THEN leads.notes
              WHEN leads.notes IS NULL OR leads.notes = '' THEN EXCLUDED.notes

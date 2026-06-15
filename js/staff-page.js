@@ -1971,13 +1971,20 @@ function handleExcelExport() {
     const to = getScheduleRangeEnd(dates);
     const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.csv`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    showNotification('Графік експортовано');
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('Графік CSV')
+        : null;
+    if (typeof finishBlobDownload === 'function') {
+        finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Графік експортовано' });
+    } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        showNotification('Графік експортовано');
+    }
 }
 
 // ==========================================

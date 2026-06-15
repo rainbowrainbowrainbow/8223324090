@@ -4810,23 +4810,37 @@ async function uploadStaffDocument() {
 async function downloadStaffDocument(documentId, fallbackName = 'staff-document') {
     const staffId = activeEditStaffId();
     if (!staffId || !documentId) return;
-    const resp = typeof apiFetchWithAuthRetry === 'function'
-        ? await apiFetchWithAuthRetry(`/api/hr/staff/${staffId}/documents/${documentId}/download`)
-        : await fetch(`/api/hr/staff/${staffId}/documents/${documentId}/download`);
-    if (!resp?.ok) {
-        const payload = await resp?.json?.().catch(() => ({}));
-        showNotification(payload?.error || 'Не вдалося скачати документ', 'error');
-        return;
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('Документ працівника')
+        : null;
+    try {
+        const resp = typeof apiFetchWithAuthRetry === 'function'
+            ? await apiFetchWithAuthRetry(`/api/hr/staff/${staffId}/documents/${documentId}/download`)
+            : await fetch(`/api/hr/staff/${staffId}/documents/${documentId}/download`);
+        if (!resp?.ok) {
+            const payload = await resp?.json?.().catch(() => ({}));
+            showNotification(payload?.error || 'Не вдалося скачати документ', 'error');
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+            return;
+        }
+        const blob = await resp.blob();
+        const filename = staffDocumentNameById.get(Number(documentId)) || fallbackName || 'staff-document';
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Документ підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+    } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Не вдалося скачати документ', 'error');
     }
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = staffDocumentNameById.get(Number(documentId)) || fallbackName || 'staff-document';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
 }
 
 async function archiveStaffDocument(documentId) {
@@ -6491,21 +6505,35 @@ async function exportCSV() {
     d.setDate(0);
     const to = formatDate(d);
 
-    const token = localStorage.getItem('pzp_token');
-    const resp = await fetch(`/api/hr/report/export?from=${from}&to=${to}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!resp.ok) {
-        showNotification('Помилка експорту: ' + resp.statusText, 'error');
-        return;
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('HR CSV')
+        : null;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const resp = await fetch(`/api/hr/report/export?from=${from}&to=${to}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) {
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+            showNotification('Помилка експорту: ' + resp.statusText, 'error');
+            return;
+        }
+        const blob = await resp.blob();
+        const filename = `hr_report_${from}_${to}.csv`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'HR CSV підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Помилка експорту', 'error');
     }
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `hr_report_${from}_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
 }
 
 // ==========================================
@@ -8087,22 +8115,35 @@ async function downloadResumeFile(applicationId, fileId) {
     const file = (candidate?.resume_files || []).find(item => parseInt(item.id, 10) === parseInt(fileId, 10));
     const filename = file?.original_name || 'resume';
     const token = localStorage.getItem('pzp_token');
-    const response = await fetch(`/api/hr/applications/${applicationId}/resume-files/${fileId}/download`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-    });
-    if (!response.ok) {
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('Файл резюме')
+        : null;
+    try {
+        const response = await fetch(`/api/hr/applications/${applicationId}/resume-files/${fileId}/download`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!response.ok) {
+            showNotification('Не вдалося завантажити файл резюме', 'error');
+            if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+            return;
+        }
+        const blob = await response.blob();
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename || 'resume', { touchWindow, successMessage: 'Файл резюме підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename || 'resume';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+    } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
         showNotification('Не вдалося завантажити файл резюме', 'error');
-        return;
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename || 'resume';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
 }
 
 function nextCandidateStatus(s) {

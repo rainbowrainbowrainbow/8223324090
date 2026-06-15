@@ -344,8 +344,14 @@ async function uploadFiles(files) {
 function downloadDesign(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
+    const href = `/api/designs/${d.id}/download`;
+    if (typeof isTouchDownloadDevice === 'function' && isTouchDownloadDevice()) {
+        if (typeof openSafeNewTab === 'function') openSafeNewTab(href);
+        else window.open(href, '_blank', 'noopener,noreferrer');
+        return;
+    }
     const a = document.createElement('a');
-    a.href = `/api/designs/${d.id}/download`;
+    a.href = href;
     a.download = d.originalName || d.title;
     a.click();
 }
@@ -1574,7 +1580,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.76.2" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.76.3" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1668,7 +1674,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.76.2" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.76.3" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

@@ -1513,7 +1513,11 @@ function switchTab(tabName, options = {}) {
 // ==========================================
 
 async function exportCSV() {
+    let touchWindow = null;
     try {
+        touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('Finance CSV')
+            : null;
         const { from, to } = getFilterDates();
         const token = localStorage.getItem('pzp_token');
         const res = await fetch(`/api/finance/export?from=${from}&to=${to}`, {
@@ -1521,14 +1525,20 @@ async function exportCSV() {
         });
         if (!res.ok) throw new Error('Export failed');
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `finance_${from}_${to}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('CSV завантажено');
+        const filename = `finance_${from}_${to}.csv`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'CSV завантажено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showNotification('CSV завантажено');
+        }
     } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
         showNotification('Помилка експорту', 'error');
     }
 }
@@ -1538,7 +1548,11 @@ async function exportCSV() {
 // ==========================================
 
 async function exportXLSX() {
+    let touchWindow = null;
     try {
+        touchWindow = typeof openTouchDownloadWindow === 'function'
+            ? openTouchDownloadWindow('Finance Excel')
+            : null;
         const { from, to } = getFilterDates();
         const token = localStorage.getItem('pzp_token');
         const res = await fetch(`/api/finance/export-xlsx?from=${from}&to=${to}`, {
@@ -1546,14 +1560,20 @@ async function exportXLSX() {
         });
         if (!res.ok) throw new Error('Export failed');
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `finance_${from}_${to}.xlsx`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('Excel завантажено');
+        const filename = `finance_${from}_${to}.xlsx`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'Excel завантажено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showNotification('Excel завантажено');
+        }
     } catch (err) {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
         showNotification('Помилка експорту', 'error');
     }
 }

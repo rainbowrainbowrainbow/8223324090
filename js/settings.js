@@ -3708,7 +3708,9 @@ async function showCertDetail(id, options = {}) {
 
         // Generate certificate image preview. On iOS Safari this can fail under memory pressure,
         // so the preview is optional and never blocks the details modal.
-        if (preview && !skipPreview) {
+        if (preview && skipPreview) {
+            renderCertificateStaticPreview(preview, cert, { reason: 'touch' });
+        } else if (preview) {
             try {
                 const canvas = await generateCertificateCanvas(cert);
                 preview.innerHTML = '';
@@ -3716,7 +3718,7 @@ async function showCertDetail(id, options = {}) {
                 preview.appendChild(canvas);
             } catch (previewErr) {
                 console.warn('Certificate preview generation failed:', previewErr);
-                preview.innerHTML = '<div class="cert-preview-fallback">Превʼю не згенерувалось на цьому пристрої. Сам сертифікат виданий, дії нижче доступні.</div>';
+                renderCertificateStaticPreview(preview, cert, { reason: 'error' });
             }
         }
 
@@ -3843,6 +3845,65 @@ function isCertificateTouchDevice() {
         ? window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 430px)').matches
         : false;
     return isMobileUa || isCoarseNarrow;
+}
+
+function certificateStaticEscape(value) {
+    if (typeof escapeHtml === 'function') return escapeHtml(String(value ?? ''));
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    }[ch]));
+}
+
+function certificateStaticDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('uk-UA');
+}
+
+function certificateStaticStatusLabel(status) {
+    return ({
+        active: 'Активний',
+        used: 'Використаний',
+        revoked: 'Анульований',
+        blocked: 'Заблокований',
+        expired: 'Прострочений'
+    })[status] || status || '—';
+}
+
+function renderCertificateStaticPreview(preview, cert, options = {}) {
+    if (!preview || !cert) return;
+    const season = cert.season || getCertCurrentSeason();
+    const bg = CERT_SEASON_BG[season] || CERT_SEASON_BG.winter;
+    const displayValue = typeof certificateDisplayValueLabel === 'function'
+        ? certificateDisplayValueLabel(cert)
+        : (cert.displayValue || cert.display_value || cert.recipientName || cert.certCode || '');
+    const note = options.reason === 'error'
+        ? 'Canvas preview не відкрився на цьому пристрої, але дані сертифіката доступні.'
+        : 'Статичний preview для iPhone: дані видно без важкої canvas-генерації.';
+    preview.innerHTML = `
+        <div class="cert-preview-static-card">
+            <div class="cert-preview-static-panel">
+                <div class="cert-preview-static-kicker">Сертифікат / абонемент</div>
+                <div class="cert-preview-static-name">${certificateStaticEscape(displayValue || '—')}</div>
+                <div class="cert-preview-static-type">${certificateStaticEscape(cert.typeText || cert.type_text || '')}</div>
+                <div class="cert-preview-static-meta">
+                    <span>${certificateStaticEscape(cert.certCode || cert.cert_code || '')}</span>
+                    <span>до ${certificateStaticEscape(certificateStaticDate(cert.validUntil || cert.valid_until))}</span>
+                    <span>${certificateStaticEscape(certificateStaticStatusLabel(cert.status))}</span>
+                </div>
+                <p class="cert-preview-static-note">${certificateStaticEscape(note)}</p>
+            </div>
+        </div>
+    `;
+    const card = preview.querySelector('.cert-preview-static-card');
+    if (card) {
+        card.style.backgroundImage = `linear-gradient(135deg, rgba(15,23,42,.76), rgba(20,184,166,.24)), url("${bg}")`;
+    }
 }
 
 function getCertCanvasDimensions() {
@@ -4141,10 +4202,10 @@ async function downloadCertificateImage(certId) {
     let mobilePreviewWindow = null;
     if (isCertificateTouchDevice()) {
         try {
-            mobilePreviewWindow = window.open('', '_blank');
-            if (mobilePreviewWindow) {
-                mobilePreviewWindow.document.write('<!doctype html><html lang="uk"><head><title>Сертифікат</title></head><body style="font-family:system-ui;padding:20px">Готуємо сертифікат...</body></html>');
-            }
+            mobilePreviewWindow = typeof openTouchDownloadWindow === 'function'
+                ? openTouchDownloadWindow('Сертифікат')
+                : window.open('', '_blank');
+            if (mobilePreviewWindow && !mobilePreviewWindow.closed) mobilePreviewWindow.opener = null;
         } catch (_) {
             mobilePreviewWindow = null;
         }

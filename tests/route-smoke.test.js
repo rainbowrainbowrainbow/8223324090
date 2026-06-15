@@ -2675,6 +2675,16 @@ describe('route-level API safety smoke', () => {
         assert.equal(listQuery.params.at(-1), 500);
     });
 
+    it('treats empty lead_type as quality in the lead list filter', async () => {
+        queries.length = 0;
+        const res = await request('GET', '/api/leads?lead_type=quality&limit=500&offset=0', undefined, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const listQuery = queries.find(q => /FROM leads l/i.test(q.text) && /ORDER BY l\.created_at DESC/i.test(q.text));
+        assert.ok(listQuery);
+        assert.match(listQuery.text, /COALESCE\(NULLIF\(l\.lead_type, ''\), 'quality'\) = \$\d+/i);
+    });
+
     it('composes the lead manager workspace from the canonical pipeline stage', async () => {
         const res = await request('GET', '/api/leads/501/workspace', undefined, withAuth({}, 'manager'));
         assert.equal(res.status, 200, JSON.stringify(res.data));

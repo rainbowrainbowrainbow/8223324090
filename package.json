@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.2",
+  "version": "0.76.3",
   "eventGenix": {
-    "releaseLabel": "Profile Avatar Sync"
+    "releaseLabel": "iPhone Safari UX Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1097,12 +1097,96 @@ function openSafeNewTab(url) {
     return win;
 }
 
+function isTouchDownloadDevice() {
+    const ua = navigator.userAgent || '';
+    const mobileUa = /iPhone|iPad|iPod|Android/i.test(ua);
+    const coarsePointer = window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false;
+    return mobileUa || coarsePointer;
+}
+
+function openTouchDownloadWindow(title = 'Завантаження') {
+    if (!isTouchDownloadDevice()) return null;
+    try {
+        const win = window.open('', '_blank');
+        if (!win) return null;
+        win.opener = null;
+        const safeTitle = window.escapeHtml ? window.escapeHtml(title) : String(title).replace(/[<>&"]/g, '');
+        win.document.write(`<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>body{margin:0;padding:20px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}p{font-size:15px;line-height:1.45;color:#cbd5e1}</style></head><body><p>Готуємо файл...</p></body></html>`);
+        win.document.close();
+        return win;
+    } catch (_) {
+        return null;
+    }
+}
+
+function closeTouchDownloadWindow(touchWindow) {
+    try {
+        if (touchWindow && !touchWindow.closed) touchWindow.close();
+    } catch (_) {}
+}
+
+function finishBlobDownload(blob, filename, options = {}) {
+    if (!blob) return null;
+    const name = filename || 'download';
+    const url = URL.createObjectURL(blob);
+    const touchWindow = options.touchWindow || null;
+    const successMessage = options.successMessage || 'Файл підготовлено';
+    const safeName = window.escapeHtml ? window.escapeHtml(name) : String(name).replace(/[<>&"]/g, '');
+    const mime = String(blob.type || '').toLowerCase();
+    const isImage = mime.startsWith('image/');
+    const isPdf = mime.includes('pdf') || /\.pdf$/i.test(name);
+
+    if (touchWindow && !touchWindow.closed) {
+        const preview = isImage
+            ? `<img src="${url}" alt="${safeName}" style="display:block;width:100%;height:auto;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.35)">`
+            : isPdf
+                ? `<iframe src="${url}" title="${safeName}" style="display:block;width:100%;height:min(78dvh,760px);border:0;border-radius:14px;background:#fff"></iframe>`
+                : `<p>Файл готовий. Якщо Safari не почне завантаження автоматично, натисніть кнопку нижче.</p>`;
+        touchWindow.document.open();
+        touchWindow.document.write(`<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeName}</title><style>body{margin:0;padding:16px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.eg-download-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin:14px 0 10px;padding:10px 16px;border-radius:12px;background:#10b981;color:#02140e;text-decoration:none;font-weight:900}p{font-size:15px;line-height:1.45;color:#cbd5e1}</style></head><body>${preview}<a class="eg-download-action" href="${url}" download="${safeName}">Відкрити / зберегти файл</a><p>На iPhone відкрийте файл або скористайтесь Share/Save у браузері.</p></body></html>`);
+        touchWindow.document.close();
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+        if (typeof showNotification === 'function') showNotification(successMessage, 'success');
+        return url;
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (typeof showNotification === 'function') showNotification(successMessage, 'success');
+    return url;
+}
+
+function openAsyncNavigationWindow(title = 'Відкриття') {
+    if (!isTouchDownloadDevice()) return null;
+    return openTouchDownloadWindow(title);
+}
+
+function finishAsyncNavigationWindow(asyncWindow, url) {
+    if (!url) return null;
+    if (asyncWindow && !asyncWindow.closed) {
+        asyncWindow.location.href = String(url);
+        return asyncWindow;
+    }
+    return openSafeNewTab(url);
+}
+
 function openStaffProfile(username) {
     if (!username) return;
     openSafeNewTab('/profile?user=' + encodeURIComponent(username));
 }
 
 window.openSafeNewTab = openSafeNewTab;
+window.isTouchDownloadDevice = isTouchDownloadDevice;
+window.openTouchDownloadWindow = openTouchDownloadWindow;
+window.closeTouchDownloadWindow = closeTouchDownloadWindow;
+window.finishBlobDownload = finishBlobDownload;
+window.openAsyncNavigationWindow = openAsyncNavigationWindow;
+window.finishAsyncNavigationWindow = finishAsyncNavigationWindow;
 
 // ==========================================
 // ДОПОМІЖНІ УТИЛІТИ

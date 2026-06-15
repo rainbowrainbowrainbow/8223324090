@@ -1933,6 +1933,69 @@ body.dark-mode .batch-qty-option:has(input:focus-visible) {
     line-height: 1.45;
 }
 
+.cert-preview-static-card {
+    width: min(100%, 760px);
+    min-height: 320px;
+    border-radius: 18px;
+    background-position: center;
+    background-size: cover;
+    box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28);
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    overflow: hidden;
+}
+
+.cert-preview-static-panel {
+    width: min(100%, 380px);
+    padding: 28px;
+    background: rgba(15, 23, 42, 0.74);
+    color: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    backdrop-filter: blur(8px);
+}
+
+.cert-preview-static-kicker {
+    color: #5eead4;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.cert-preview-static-name {
+    font-size: clamp(24px, 4vw, 38px);
+    line-height: 1.05;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.cert-preview-static-type,
+.cert-preview-static-note {
+    color: #cbd5e1;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.cert-preview-static-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.cert-preview-static-meta span {
+    border: 1px solid rgba(94, 234, 212, 0.26);
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: rgba(15, 23, 42, 0.38);
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 800;
+}
+
 .cert-image-preview canvas {
     display: block;
     width: min(100%, 960px);

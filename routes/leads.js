@@ -589,7 +589,7 @@ function buildLeadListFilters(query, businessScope) {
         const normalizedLeadType = normalizeLeadType(lead_type);
         if (normalizedLeadType.error) return { error: normalizedLeadType.error };
         params.push(normalizedLeadType.value);
-        conditions.push(`l.lead_type = $${params.length}`);
+        conditions.push(`COALESCE(NULLIF(l.lead_type, ''), '${SALES_LEAD_TYPE}') = $${params.length}`);
     }
     if (search) {
         const pattern = `%${search}%`;

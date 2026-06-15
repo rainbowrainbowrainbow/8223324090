@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.3 - iPhone Safari UX Hardening
+
+### iPhone / Certificates / Downloads / Leads / Release / (Клешня, 16.06.2026) [codex]
+- **Сертифікати стали безпечнішими для iPhone/Safari** - standalone і legacy certificate flows отримали статичний preview fallback та окреме mobile-вікно для PNG, щоб canvas/download не ламав відкриття сертифіката.
+- **Додано shared iPhone-safe download contract** - `openTouchDownloadWindow`, `finishBlobDownload` і async-navigation helpers відкривають мобільне вікно до `await fetch`, а потім підставляють готовий файл або URL.
+- **Експорти переведено на safe helper** - finance, customers, afisha, staff schedule, warehouse procurement, reports, graduation, HR documents/resume/report, product sales і settings history більше не покладаються тільки на прихований `a.click()` після async-запиту.
+- **Чат бронювання на iPhone відкривається стабільніше** - mobile tab pre-open відбувається до створення booking chat channel, тому Safari не блокує перехід після відповіді API.
+- **Дизайн-файли на touch-девайсах відкриваються як реальний tab** - direct download у designs більше не залежить від прихованого anchor click.
+- **Avatar settings очищено від зайвого ручного URL** - у профілі прибрано вставку фото за посиланням і зайвий пояснювальний текст; лишився нормальний upload з пристрою.
+- **Lead/booking handoff не губить якісний тип** - нові ліди з booking link створюються з `lead_type='quality'`, а пустий `lead_type` у списку лідів трактується як якісний для фільтрів.
+- **Regression guards додано** - UI smoke перевіряє iPhone certificate fallback, shared download helpers, safe blob exports, touch download у designs і mobile pre-open для booking chat; route/unit тести прикривають lead type defaults.
+- **DB/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, нових залежностей або production config змін.
+
+---
+
 ## v0.76.2 - Profile Avatar Sync
 
 ### Profile / Avatar / Account UX / Release / (Клешня, 15.06.2026) [codex]

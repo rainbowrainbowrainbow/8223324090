@@ -46,6 +46,7 @@ const {
 const { normalizeCustomerSource, getCustomerSourceLabel } = require('../services/customerSource');
 const {
     createMaysternyaBotBooking,
+    createMaysternyaAvailabilityResponse,
     isMaysternyaBookingDryRun
 } = require('../services/maysternyaBookingWebhook');
 
@@ -961,6 +962,37 @@ async function handleMaysternyaBookingWebhook(req, res) {
     }
 }
 
+async function handleMaysternyaAvailabilityWebhook(req, res) {
+    try {
+        const token = bearerTokenFromHeader(req.headers['authorization']);
+        if (!timingSafeTextEqual(token, UNIVERSAL_WEBHOOK_TOKEN)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const result = await createMaysternyaAvailabilityResponse(req.body || {});
+        if (result.error) {
+            const error = result.error;
+            return res.status(error.statusCode || 400).json({
+                success: false,
+                ok: false,
+                error: error.message || 'Maysternya availability webhook failed',
+                code: error.code || 'maysternya_availability_error',
+                missingFields: error.missingFields || undefined,
+                conflictBookingId: error.conflictBookingId || undefined
+            });
+        }
+        return res.json(result.response);
+    } catch (err) {
+        log.error('Maysternya availability webhook error', err);
+        return res.status(err.statusCode || 500).json({
+            success: false,
+            ok: false,
+            error: err.publicMessage || err.message || 'Internal error',
+            code: err.code || 'internal_error'
+        });
+    }
+}
+
 function normalizeCelebrants(value, legacy = {}) {
     const items = [];
     const rawItems = parseJsonArray(value);
@@ -1517,6 +1549,9 @@ router.post('/webhook/universal', handleUniversalWebhook);
 // Public provider-secret guarded webhook for Maysternya Doli bot timeline bookings.
 router.post('/webhook/maysternya-booking', handleMaysternyaBookingWebhook);
 
+// Public provider-secret guarded availability check for Maysternya Doli bot booking slots.
+router.post('/webhook/maysternya-availability', handleMaysternyaAvailabilityWebhook);
+
 // GET /api/leads/webhook/status — public read-only webhook configuration status.
 router.get('/webhook/status', (req, res) => {
     res.json({
@@ -1537,6 +1572,12 @@ router.get('/webhook/status', (req, res) => {
                 endpoint: '/api/leads/webhook/maysternya-booking',
                 businessContext: 'maysternya_doli',
                 dryRun: 'Add ?dryRun=true or header X-CRM-Dry-Run: true to validate without creating a booking.',
+            },
+            maysternyaAvailability: {
+                configured: !!UNIVERSAL_WEBHOOK_TOKEN,
+                endpoint: '/api/leads/webhook/maysternya-availability',
+                businessContext: 'maysternya_doli',
+                payload: 'date_from, date_to, duration, resource_id/resource_name, timezone, business_context',
             }
         }
     });

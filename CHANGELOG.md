@@ -4,6 +4,19 @@
 
 ---
 
+## v0.75.57 - Maysternya Booking Availability
+
+### Leads / Maysternya / Booking webhook / Availability / Reliability / Release / (Клешня, 14.06.2026) [codex]
+- **Real POST `/api/leads/webhook/maysternya-booking` стабілізовано** - після успішного запису допоміжний websocket broadcast більше не може повернути боту 500 і спровокувати retry.
+- **Booking webhook повертає ресурс у відповіді** - `resource_id=md-consult-room` резолвиться як `resourceName=Олександр` і дублюється у booking/timeline metadata.
+- **Додано availability endpoint для бота** - `POST /api/leads/webhook/maysternya-availability` приймає `date_from`, `date_to`, `duration`, `resource_id`/`resource_name`, `timezone` і `business_context`.
+- **Availability повертає слоти з `available=true/false`** - відповідь містить плоский список `slots` і групування `days`, а зайняті слоти повертають `conflictBookingId`.
+- **409 conflict contract закріплено** - create webhook і availability використовують ті самі server-side conflict checks для timeline line/room.
+- **Regression guard додано** - route-smoke перевіряє real create, dry-run, idempotency, 409, availability, public boundary і token guard.
+- **DB/env config не змінювались** - без міграцій, нових secrets, Railway variables або залежностей; використано існуючий `UNIVERSAL_WEBHOOK_TOKEN`.
+
+---
+
 ## v0.75.56 - Booking Drawer Edge Close
 
 ### Timeline / Booking drawer / UX / Close control / Release / (Клешня, 14.06.2026) [codex]

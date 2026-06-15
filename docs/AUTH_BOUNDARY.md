@@ -50,6 +50,7 @@ focused tests.
 | `POST /leads/landing` | leads | Public landing lead capture endpoint; protected by landing lead limiter. |
 | `POST /leads/webhook/universal` | leads | External lead capture webhook is guarded by `UNIVERSAL_WEBHOOK_TOKEN` instead of user JWT. |
 | `POST /leads/webhook/maysternya-booking` | leads | Maysternya bot booking webhook is public for JWT boundary only; the route validates Bearer `UNIVERSAL_WEBHOOK_TOKEN` before creating CRM bookings. |
+| `POST /leads/webhook/maysternya-availability` | leads | Maysternya bot availability webhook is public for JWT boundary only; the route validates Bearer `UNIVERSAL_WEBHOOK_TOKEN` before exposing scoped booking slots. |
 | `GET /leads/webhook/status` | leads | Read-only webhook readiness endpoint exposes configured flags and dry-run instructions without secrets for external delivery smoke checks. |
 | `POST /landing/demo-request` | landing | Public landing demo request endpoint; protected by landing lead limiter. |
 

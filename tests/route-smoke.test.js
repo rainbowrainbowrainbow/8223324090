@@ -382,14 +382,14 @@ function createFakePool() {
                             business_context: 'maysternya_doli',
                             resource_id: 'md-consult-room',
                             type: 'specialist',
-                            name: 'Онлайн консультація',
-                            short_name: 'Онлайн',
-                            color: '#14b8a6',
+                            name: 'Олександр',
+                            short_name: 'Олександр',
+                            color: '#0EA586',
                             capacity: 1,
-                            equipment: [],
+                            equipment: ['online'],
                             is_active: true,
                             sort_order: 10,
-                            metadata: {},
+                            metadata: { source: 'maysternya_default', online: true },
                             created_at: '2099-01-01T00:00:00.000Z',
                             updated_at: '2099-01-01T00:00:00.000Z'
                         }],
@@ -399,21 +399,21 @@ function createFakePool() {
                 return { rows: [], rowCount: 0 };
             }
             if (/SELECT \* FROM timeline_resources WHERE business_context = \$1 AND \(LOWER\(BTRIM\(name\)\)/i.test(text)) {
-                if (params[0] === 'maysternya_doli' && String(params[1] || '').toLowerCase() === 'онлайн консультація') {
+                if (params[0] === 'maysternya_doli' && ['олександр', 'онлайн консультація'].includes(String(params[1] || '').toLowerCase())) {
                     return {
                         rows: [{
                             id: 1001,
                             business_context: 'maysternya_doli',
                             resource_id: 'md-consult-room',
                             type: 'specialist',
-                            name: 'Онлайн консультація',
-                            short_name: 'Онлайн',
-                            color: '#14b8a6',
+                            name: 'Олександр',
+                            short_name: 'Олександр',
+                            color: '#0EA586',
                             capacity: 1,
-                            equipment: [],
+                            equipment: ['online'],
                             is_active: true,
                             sort_order: 10,
-                            metadata: {},
+                            metadata: { source: 'maysternya_default', online: true },
                             created_at: '2099-01-01T00:00:00.000Z',
                             updated_at: '2099-01-01T00:00:00.000Z'
                         }],
@@ -1819,6 +1819,8 @@ describe('route-level API safety smoke', () => {
         assert.match(res.data.webhooks.universal.dryRun, /dryRun=true/);
         assert.equal(res.data.webhooks.maysternyaBooking.endpoint, '/api/leads/webhook/maysternya-booking');
         assert.equal(res.data.webhooks.maysternyaBooking.businessContext, 'maysternya_doli');
+        assert.equal(res.data.webhooks.maysternyaAvailability.endpoint, '/api/leads/webhook/maysternya-availability');
+        assert.equal(res.data.webhooks.maysternyaAvailability.businessContext, 'maysternya_doli');
         assert.equal(queries.length, 0);
     });
 
@@ -1854,10 +1856,13 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.success, true);
         assert.equal(res.data.created, true);
         assert.equal(res.data.businessContext, 'maysternya_doli');
+        assert.equal(res.data.resourceId, 'md-consult-room');
+        assert.equal(res.data.resourceName, 'Олександр');
         assert.equal(res.data.booking.businessContext, 'maysternya_doli');
         assert.equal(res.data.booking.status, 'confirmed');
         assert.equal(res.data.booking.createdBy, 'maysternya_bot');
         assert.equal(res.data.booking.lineId, 'md-consult-room');
+        assert.equal(res.data.booking.lineName, 'Олександр');
 
         const insert = queries.find(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text));
         assert.ok(insert);
@@ -1868,6 +1873,7 @@ describe('route-level API safety smoke', () => {
         const extraData = JSON.parse(insert.params[28]);
         assert.equal(extraData.source, 'maysternya_bot');
         assert.equal(extraData.externalId, 'md-booking-1');
+        assert.equal(extraData.timelineIdentity.resourceName, 'Олександр');
 
         assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone/i.test(q.text)));
         const leadInsert = queries.find(q => /INSERT INTO leads/i.test(q.text) && /booking_id/i.test(q.text) && /raw_payload/i.test(q.text));
@@ -1914,7 +1920,7 @@ describe('route-level API safety smoke', () => {
             date: '2099-06-15',
             time: '10:00',
             duration: 45,
-            resource_name: 'Онлайн консультація',
+            resource_name: 'Олександр',
             service: { name: 'Таро консультація', code: 'TARO', price: 1200 },
             customer: { name: 'Dry Run' }
         }, {
@@ -1926,6 +1932,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.dryRun, true);
         assert.equal(res.data.created, false);
         assert.equal(res.data.preview.resourceId, 'md-consult-room');
+        assert.equal(res.data.preview.resourceName, 'Олександр');
         assert.equal(res.data.preview.programName, 'Таро консультація');
         assert.equal(res.data.preview.programCode, 'TARO');
         assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
@@ -2048,6 +2055,50 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.success, false);
         assert.equal(res.data.code, 'booking_time_conflict');
         assert.equal(res.data.conflictBookingId, 'BK-2099-0001');
+    });
+
+    it('returns Maysternya availability slots with conflict booking ids', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-availability', {
+            date_from: '2099-06-14',
+            date_to: '2099-06-14',
+            duration: 60,
+            resource_id: 'md-consult-room',
+            timezone: 'Europe/Kyiv',
+            business_context: 'maysternya_doli'
+        }, {
+            Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.businessContext, 'maysternya_doli');
+        assert.equal(res.data.resourceId, 'md-consult-room');
+        assert.equal(res.data.resourceName, 'Олександр');
+        assert.equal(res.data.duration, 60);
+        assert.ok(Array.isArray(res.data.slots));
+        assert.ok(res.data.slots.length > 0);
+
+        const occupied = res.data.slots.find(slot => slot.date === '2099-06-14' && slot.time === '14:00');
+        assert.ok(occupied, '14:00 slot should be present');
+        assert.equal(occupied.available, false);
+        assert.equal(occupied.conflictBookingId, 'BK-2099-0001');
+
+        const free = res.data.slots.find(slot => slot.date === '2099-06-14' && slot.time === '15:00');
+        assert.ok(free, '15:00 slot should be present');
+        assert.equal(free.available, true);
+        assert.equal(free.conflictBookingId, null);
+        assert.equal(res.data.days[0].date, '2099-06-14');
+    });
+
+    it('rejects Maysternya availability webhook without provider token', async () => {
+        const res = await request('POST', '/api/leads/webhook/maysternya-availability', {
+            date_from: '2099-06-14',
+            date_to: '2099-06-14',
+            duration: 60,
+            resource_id: 'md-consult-room'
+        });
+
+        assert.equal(res.status, 401);
     });
 
     it('accepts Maysternya Doli bot leads through the token-guarded universal webhook', async () => {

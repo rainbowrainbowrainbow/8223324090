@@ -5,6 +5,8 @@ const { pool, generateBookingNumber } = require('../db');
 const {
   validateDate,
   validateTime,
+  timeToMinutes,
+  minutesToTime,
   mapBookingRow,
   normalizeBookingStatus,
   lockBookingConflictResources,
@@ -27,6 +29,10 @@ const { createLogger } = require('../utils/logger');
 
 const MAYSTERNYA_CONTEXT = 'maysternya_doli';
 const MAYSTERNYA_BOT_SOURCE = 'maysternya_bot';
+const MAYSTERNYA_DEFAULT_WORKDAY_START = '10:00';
+const MAYSTERNYA_DEFAULT_WORKDAY_END = '20:00';
+const MAYSTERNYA_DEFAULT_SLOT_STEP_MINUTES = 15;
+const MAYSTERNYA_MAX_AVAILABILITY_DAYS = 45;
 const log = createLogger('MaysternyaBookingWebhook');
 
 function cleanText(value, maxLength = 500) {
@@ -55,6 +61,14 @@ function firstCleanMax(maxLength, ...values) {
 function cleanDateOnly(value) {
   const text = cleanText(value, 10);
   return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+function cleanDateInput(...values) {
+  for (const value of values) {
+    const text = cleanDateOnly(value);
+    if (text) return text;
+  }
+  return null;
 }
 
 function cleanPhoneLike(value, maxLength = 50) {
@@ -116,6 +130,12 @@ function parsePositiveNumber(value, fallback = null) {
 function parsePositiveInteger(value, fallback = null) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseStrictPositiveInteger(value, fallback = null) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function truthyWebhookValue(value) {
@@ -413,6 +433,137 @@ function maysternyaBookingValidationError(booking) {
   return null;
 }
 
+function normalizeMaysternyaBusinessContext(value) {
+  const context = cleanText(value, 64) || MAYSTERNYA_CONTEXT;
+  return context === MAYSTERNYA_CONTEXT ? MAYSTERNYA_CONTEXT : null;
+}
+
+function normalizeMaysternyaAvailabilityPayload(body = {}) {
+  const payload = parseJsonObject(body.payload || body.data || body.request);
+  const resource = parseJsonObject(body.resource || payload.resource);
+  const businessContext = normalizeMaysternyaBusinessContext(
+    body.business_context
+    || body.businessContext
+    || payload.business_context
+    || payload.businessContext
+  );
+
+  return {
+    businessContext,
+    dateFrom: cleanDateInput(
+      body.date_from,
+      body.dateFrom,
+      payload.date_from,
+      payload.dateFrom,
+      body.date,
+      payload.date
+    ),
+    dateTo: cleanDateInput(
+      body.date_to,
+      body.dateTo,
+      payload.date_to,
+      payload.dateTo,
+      body.date,
+      payload.date
+    ),
+    duration: parseStrictPositiveInteger(firstClean(body.duration, payload.duration), null),
+    resourceId: firstCleanMax(100,
+      body.resource_id,
+      body.resourceId,
+      body.lineId,
+      body.line_id,
+      payload.resource_id,
+      payload.resourceId,
+      payload.lineId,
+      payload.line_id,
+      resource.id,
+      resource.resource_id,
+      resource.resourceId
+    ),
+    resourceName: firstCleanMax(120,
+      body.resource_name,
+      body.resourceName,
+      body.lineName,
+      body.line_name,
+      payload.resource_name,
+      payload.resourceName,
+      payload.lineName,
+      payload.line_name,
+      resource.name,
+      resource.resource_name,
+      resource.resourceName
+    ),
+    timezone: firstCleanMax(80, body.timezone, payload.timezone) || 'Europe/Kyiv',
+    stepMinutes: parseStrictPositiveInteger(
+      firstClean(body.step_minutes, body.stepMinutes, body.slot_step, body.slotStep, payload.step_minutes, payload.stepMinutes),
+      MAYSTERNYA_DEFAULT_SLOT_STEP_MINUTES
+    )
+  };
+}
+
+function dateToUtcDay(value) {
+  if (!validateDate(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatUtcDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function dateRangeInclusive(dateFrom, dateTo) {
+  const start = dateToUtcDay(dateFrom);
+  const end = dateToUtcDay(dateTo);
+  if (!start || !end || start > end) return null;
+  const dates = [];
+  for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    dates.push(formatUtcDate(cursor));
+    if (dates.length > MAYSTERNYA_MAX_AVAILABILITY_DAYS) return null;
+  }
+  return dates;
+}
+
+function maysternyaAvailabilityValidationError(payload) {
+  const missingFields = [];
+  if (!payload.businessContext) {
+    return {
+      statusCode: 400,
+      code: 'unsupported_business_context',
+      message: 'Maysternya availability supports only maysternya_doli business_context',
+      missingFields: ['business_context']
+    };
+  }
+  if (!payload.dateFrom) missingFields.push('date_from');
+  if (!payload.dateTo) missingFields.push('date_to');
+  if (!payload.duration) missingFields.push('duration');
+  if (!payload.resourceId && !payload.resourceName) missingFields.push('resource_id');
+  if (missingFields.length) {
+    return { statusCode: 400, code: 'missing_fields', message: 'Missing required availability fields', missingFields };
+  }
+  if (!validateDate(payload.dateFrom)) {
+    return { statusCode: 400, code: 'invalid_date_from', message: 'Invalid date_from', missingFields: ['date_from'] };
+  }
+  if (!validateDate(payload.dateTo)) {
+    return { statusCode: 400, code: 'invalid_date_to', message: 'Invalid date_to', missingFields: ['date_to'] };
+  }
+  const dates = dateRangeInclusive(payload.dateFrom, payload.dateTo);
+  if (!dates) {
+    return {
+      statusCode: 400,
+      code: 'invalid_date_range',
+      message: `date range must be ordered and no longer than ${MAYSTERNYA_MAX_AVAILABILITY_DAYS} days`,
+      missingFields: ['date_from', 'date_to']
+    };
+  }
+  if (!Number.isInteger(payload.duration) || payload.duration <= 0 || payload.duration > 1440) {
+    return { statusCode: 400, code: 'invalid_duration', message: 'Invalid duration', missingFields: ['duration'] };
+  }
+  if (!Number.isInteger(payload.stepMinutes) || payload.stepMinutes <= 0 || payload.stepMinutes > 240) {
+    return { statusCode: 400, code: 'invalid_step', message: 'Invalid slot step', missingFields: ['step_minutes'] };
+  }
+  return null;
+}
+
 async function resolveMaysternyaResource(client, booking) {
   const settings = await getTimelineDisplaySettings(client, MAYSTERNYA_CONTEXT);
   const resourceType = resourceTypeForDisplayMode(settings.mode, settings) || 'specialist';
@@ -497,7 +648,8 @@ function buildBookingExtraData(booking, resource) {
 }
 
 function bookingResponse(row, resource, { created = true, dryRun = false } = {}) {
-  const mapped = row ? mapBookingRow(row) : null;
+  const normalizedRow = normalizeBookingRow(row);
+  const mapped = normalizedRow ? mapBookingRow(normalizedRow) : null;
   if (mapped && resource) {
     mapped.lineName = resource.name;
     mapped.resourceId = resource.resourceId;
@@ -509,12 +661,24 @@ function bookingResponse(row, resource, { created = true, dryRun = false } = {})
     businessContext: MAYSTERNYA_CONTEXT,
     created,
     dryRun,
+    resourceId: resource?.resourceId || mapped?.resourceId || mapped?.lineId || null,
+    resourceName: resource?.name || mapped?.lineName || mapped?.room || null,
     bookingId: mapped?.id || row?.id || null,
     booking: mapped
   };
 }
 
-async function validateMaysternyaBookingAvailability(client, booking, resource) {
+function normalizeBookingRow(row) {
+  if (!row || typeof row !== 'object') return row || null;
+  if (typeof row.extra_data !== 'string') return row;
+  try {
+    return { ...row, extra_data: JSON.parse(row.extra_data) };
+  } catch {
+    return { ...row, extra_data: null };
+  }
+}
+
+async function validateMaysternyaBookingAvailability(client, booking, resource, options = {}) {
   const candidate = {
     businessContext: MAYSTERNYA_CONTEXT,
     date: booking.date,
@@ -523,7 +687,9 @@ async function validateMaysternyaBookingAvailability(client, booking, resource) 
     time: booking.time,
     duration: booking.duration
   };
-  await lockBookingConflictResources(client, [candidate], MAYSTERNYA_CONTEXT);
+  if (options.lock !== false) {
+    await lockBookingConflictResources(client, [candidate], MAYSTERNYA_CONTEXT);
+  }
   const lineConflict = await checkServerConflicts(
     client,
     candidate.date,
@@ -576,6 +742,97 @@ async function validateMaysternyaBookingAvailability(client, booking, resource) 
     };
   }
   return null;
+}
+
+function availabilitySlotFromError({ date, time, resource }, error) {
+  return {
+    date,
+    time,
+    available: false,
+    resourceId: resource.resourceId,
+    resourceName: resource.name,
+    reason: error?.code || 'unavailable',
+    conflictBookingId: error?.conflictBookingId || null
+  };
+}
+
+async function createMaysternyaAvailabilityResponse(body = {}) {
+  const payload = normalizeMaysternyaAvailabilityPayload(body);
+  const validation = maysternyaAvailabilityValidationError(payload);
+  if (validation) return { error: validation };
+
+  const dates = dateRangeInclusive(payload.dateFrom, payload.dateTo);
+  const client = await pool.connect();
+  try {
+    const { resource } = await resolveMaysternyaResource(client, {
+      resourceId: payload.resourceId,
+      resourceName: payload.resourceName
+    });
+    if (!resource) {
+      return {
+        error: {
+          statusCode: 400,
+          code: 'booking_line_not_visible',
+          message: 'Timeline resource is not visible for Maysternya Doli'
+        }
+      };
+    }
+
+    const workdayStart = timeToMinutes(MAYSTERNYA_DEFAULT_WORKDAY_START);
+    const workdayEnd = timeToMinutes(MAYSTERNYA_DEFAULT_WORKDAY_END);
+    const latestStart = workdayEnd - payload.duration;
+    const slots = [];
+    const days = [];
+
+    for (const date of dates) {
+      const daySlots = [];
+      for (let minutes = workdayStart; minutes <= latestStart; minutes += payload.stepMinutes) {
+        const time = minutesToTime(minutes);
+        const booking = {
+          date,
+          time,
+          duration: payload.duration,
+          resourceId: resource.resourceId,
+          resourceName: resource.name,
+          room: resource.name
+        };
+        const availabilityError = await validateMaysternyaBookingAvailability(client, booking, resource, { lock: false });
+        const slot = availabilityError
+          ? availabilitySlotFromError({ date, time, resource }, availabilityError)
+          : {
+              date,
+              time,
+              available: true,
+              resourceId: resource.resourceId,
+              resourceName: resource.name,
+              reason: null,
+              conflictBookingId: null
+            };
+        slots.push(slot);
+        daySlots.push(slot);
+      }
+      days.push({ date, slots: daySlots });
+    }
+
+    return {
+      response: {
+        success: true,
+        ok: true,
+        businessContext: MAYSTERNYA_CONTEXT,
+        dateFrom: payload.dateFrom,
+        dateTo: payload.dateTo,
+        duration: payload.duration,
+        timezone: payload.timezone,
+        stepMinutes: payload.stepMinutes,
+        resourceId: resource.resourceId,
+        resourceName: resource.name,
+        slots,
+        days
+      }
+    };
+  } finally {
+    client.release();
+  }
 }
 
 async function publishBookingCreatedInTransaction(client, payload, idempotencyKey) {
@@ -816,7 +1073,11 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
     }
 
     const response = bookingResponse(row, resource, { created: true, dryRun: false });
-    broadcast('booking:created', response.booking, null, booking.date);
+    try {
+      broadcast('booking:created', response.booking, null, booking.date);
+    } catch (err) {
+      log.warn(`Maysternya booking broadcast failed (non-critical): ${err.message}`);
+    }
     return { response };
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch {}
@@ -830,6 +1091,8 @@ module.exports = {
   MAYSTERNYA_BOT_SOURCE,
   MAYSTERNYA_CONTEXT,
   createMaysternyaBotBooking,
+  createMaysternyaAvailabilityResponse,
   isMaysternyaBookingDryRun,
-  normalizeMaysternyaBookingPayload
+  normalizeMaysternyaBookingPayload,
+  normalizeMaysternyaAvailabilityPayload
 };

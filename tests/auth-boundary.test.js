@@ -55,6 +55,7 @@ describe('API auth boundary middleware', () => {
         app.post('/api/leads/landing', (req, res) => res.json({ ok: true, public: true }));
         app.post('/api/leads/webhook/universal', (req, res) => res.json({ ok: true, public: true, webhook: true }));
         app.post('/api/leads/webhook/maysternya-booking', (req, res) => res.json({ ok: true, public: true, webhook: 'maysternya-booking' }));
+        app.post('/api/leads/webhook/maysternya-availability', (req, res) => res.json({ ok: true, public: true, webhook: 'maysternya-availability' }));
         app.get('/api/leads/webhook/status', (req, res) => res.json({ ok: true, public: true, readiness: true }));
         app.post('/api/omni/webhook/telegram', (req, res) => res.json({ ok: true, public: true, provider: 'telegram' }));
         app.get('/api/bookings', (req, res) => res.json({ ok: true, protected: true }));
@@ -77,6 +78,7 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/landing' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/webhook/universal' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/webhook/maysternya-booking' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/webhook/maysternya-availability' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/leads/webhook/status' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/telegram' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
@@ -128,6 +130,17 @@ describe('API auth boundary middleware', () => {
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.webhook, 'maysternya-booking');
+    });
+
+    it('allows Maysternya availability webhook through the public boundary', async () => {
+        const res = await request(baseUrl, 'POST', '/api/leads/webhook/maysternya-availability', {
+            date_from: '2099-06-14',
+            date_to: '2099-06-14',
+            duration: 60,
+            resource_id: 'md-consult-room'
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.webhook, 'maysternya-availability');
     });
 
     it('allows Omni Telegram inbox webhook updates without user JWT', async () => {

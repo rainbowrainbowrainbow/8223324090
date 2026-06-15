@@ -187,6 +187,12 @@ const PUBLIC_API_ROUTES = [
         reason: 'Maysternya Doli bot booking webhook is guarded by UNIVERSAL_WEBHOOK_TOKEN and creates scoped timeline bookings without user JWT.'
     },
     {
+        method: 'POST',
+        path: '/leads/webhook/maysternya-availability',
+        owner: 'leads',
+        reason: 'Maysternya Doli bot availability webhook is guarded by UNIVERSAL_WEBHOOK_TOKEN and exposes scoped booking slots without user JWT.'
+    },
+    {
         method: 'GET',
         path: '/leads/webhook/status',
         owner: 'leads',

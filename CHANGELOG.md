@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.64 - Lead Quality Return Navigation
+
+### Leads / Sales funnel / Lead type workflow / Release / (Клешня, 15.06.2026) [codex]
+- **Повернення ліда в `Якісний` лишає менеджера у Sales Funnel** - після вибору quality category модалка більше не відкриває `/customers?open=...` автоматично.
+- **Customer card відкривається тільки явним flow** - для звичайної зміни `lead_type` збережено контекст `/sales-funnel`, а explicit conversion/customer-card дії не змінювались.
+- **Workspace оновлюється без зайвої навігації** - якщо картка ліда відкрита у funnel workspace, вона перечитується після збереження категорії.
+- **Cache-busting оновлено до `0.75.64`** - asset `?v=` і service worker cache name піднято, щоб production браузери забрали новий `js/leads-page.js`.
+- **Regression guard додано** - UI smoke фіксує, що quality return не має безумовного `openLeadCustomerCard()` після `loadLeads()`.
+- **DB/env config не змінювались** - без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей.
+
+---
+
 ## v0.75.63 - Sales Lead Metrics Cleanup
 
 ### Leads / Sales funnel / Analytics / Dashboard / Work queue / Release / (Клешня, 15.06.2026) [codex]

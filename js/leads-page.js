@@ -2399,16 +2399,20 @@ async function updateLeadTypeFromKanbanSelect(leadId, type, event) {
     }
 }
 
-function showQualityCategoryModal(leadId) {
+function showQualityCategoryModal(leadId, options = {}) {
     if (!guardLeadWrite('змінювати тип ліда')) return;
     const overlay = document.getElementById('qualityCategoryModal');
     if (!overlay) return;
     overlay.dataset.leadId = leadId;
+    overlay.dataset.openCustomerCard = options.openCustomerCard ? 'true' : 'false';
     overlay.classList.add('active');
 }
 
 function closeQualityCategoryModal() {
-    document.getElementById('qualityCategoryModal')?.classList.remove('active');
+    const overlay = document.getElementById('qualityCategoryModal');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    delete overlay.dataset.openCustomerCard;
 }
 
 function getLeadSecondaryState(modalId) {
@@ -2555,6 +2559,7 @@ async function setQualityCategory(category) {
     const overlay = document.getElementById('qualityCategoryModal');
     if (!overlay) return;
     const leadId = parseInt(overlay.dataset.leadId);
+    const openCustomerCardAfterSave = overlay.dataset.openCustomerCard === 'true';
     const lead = leadsData.find(l => Number(l.id) === Number(leadId));
     const body = { lead_type: 'quality', quality_category: category };
     if (lead && !isActiveKanbanLead(lead)) {
@@ -2570,7 +2575,8 @@ async function setQualityCategory(category) {
         });
         if (typeof showNotification === 'function') showNotification(`Якісний лід: ${QUALITY_CATEGORIES[category] || category}`, 'success');
         await loadLeads();
-        await openLeadCustomerCard(leadId);
+        if (openCustomerCardAfterSave) await openLeadCustomerCard(leadId);
+        else if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
     } catch (e) {
         console.error('Set quality category error', e);
     }

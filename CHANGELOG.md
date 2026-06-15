@@ -1,6 +1,23 @@
-# CHANGELOG — Event Genix CRM
+﻿# CHANGELOG — Event Genix CRM
 
 > Журнал змін. Останні версії зверху, детально. Старі — коротко внизу.
+
+---
+
+## v0.76.0 - Timeline View Settings Split
+
+### Timeline / Settings / Park Views / Release / (Клешня, 15.06.2026) [codex]
+- **Парк Закревського отримав окремі налаштування для двох виглядів таймлайну** - у settings center тепер є окремі цілі `Парк Закревського · Свята` і `Парк Закревського · Кімнати`.
+- **Gear-кнопка передає активний `timelineView`** - якщо менеджер відкрив налаштування з вигляду кімнат, сторінка `/timeline-settings` відкриває саме `timelineView=rooms`; для свят - `timelineView=animators`.
+- **Visibility settings ізольовано без нової схеми БД** - існуючий `/api/settings/timeline-visibility` зберігає view-specific JSON у тому ж settings payload, не додаючи таблиць або міграцій.
+- **Старий формат лишився сумісним** - top-level `blocks/overrides` працюють як `animators`, а `views.rooms` не перетирає налаштування свят.
+- **Runtime таймлайну перезавантажує visibility при перемиканні вигляду** - перехід між `Кімнати` і `Свята` застосовує окремий server/local cache.
+- **Бейджі `Видимо` / `Приховано` у списку блоків стали діями** - клік одразу перемикає видимість блоку, вибирає цей блок у деталях і позначає зміни як незбережені.
+- **Кнопка закриття панелі бронювання стала компактною** - floating edge close тепер показує тільки `×`, має суцільний фон і не займає широкий стовпчик біля drawer-а.
+- **У Sales Funnel прибрано дубль черг лідів** - лишився один ряд фільтрів із лічильниками `Активні / Співпраця / Інформаційні / Відсіяні / Спам / Усі` та info-кнопкою поруч.
+- **Перевірено реалізацію параметрів** - `visible`, `order`, `density`, `emphasis` застосовуються у runtime; `customLabel` і `adminNote` лишаються службовими/адмінськими полями без зміни бойових текстів.
+- **Regression guard додано** - тести перевіряють ізоляцію `animators/rooms`, `timelineView` query contract і UI settings center.
+- **DB/env/Railway/CI/CD не змінювались** - без міграцій, secrets, нових залежностей або production config змін.
 
 ---
 
@@ -357,8 +374,6 @@
 - **Регресійний guard оновлено** - UI smoke тепер перевіряє, що toolbar має зони `date/status/view/tools/actions`, `action-buttons` мають вищий `z-index`, а dropdown `Дії` лишається поверх тільки коли реально відкритий.
 - **Релізні маркери піднято до `0.75.40`** - package, package-lock, cache-bust теги, Service Worker, login badge, tagline, changelog і `/api/version` синхронізовані під `Timeline Toolbar Visibility`.
 - **Бізнес-логіку бронювань не змінено** - API бронювань, ролі, permission-hidden controls, DB schema, міграції, env і deploy config лишилися поза змінами.
-
----
 
 ## v0.75.39 - Timeline Visual Settings
 
@@ -10723,4 +10738,3 @@
 ---
 
 *Формат: останні версії детально, старі — коротко.*
-

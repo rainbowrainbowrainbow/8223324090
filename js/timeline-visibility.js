@@ -137,6 +137,7 @@
         accessTimer: null,
         serverSettings: new Map(),
         serverLoadPromise: null,
+        serverLoadKey: null,
         serverSaveTimer: null,
         saveStatus: 'idle',
         saveMessage: 'Зміни зберігаються автоматично для цього timeline.'
@@ -155,18 +156,46 @@
         return ctx.key || ctx.apiValue || 'event_genix';
     }
 
+    function currentTimelineViewKey() {
+        const apiView = window.TimelineView?.current?.();
+        if (apiView === 'rooms') return 'rooms';
+        if (document.body?.classList?.contains('timeline-view-rooms')) return 'rooms';
+        return 'animators';
+    }
+
+    function visibilityScopeKey() {
+        const context = currentContextKey();
+        return context === 'event_genix'
+            ? `${context}:${currentTimelineViewKey()}`
+            : context;
+    }
+
     function currentTimelineId() {
-        return `timeline:${currentContextKey()}`;
+        const context = currentContextKey();
+        return context === 'event_genix'
+            ? `timeline:${context}:${currentTimelineViewKey()}`
+            : `timeline:${context}`;
+    }
+
+    function baseStorageKey() {
+        return contextApi()?.storageKey?.(STORAGE_NAME) || `${currentContext().storagePrefix || 'pzp'}_${STORAGE_NAME}`;
     }
 
     function storageKey() {
-        return contextApi()?.storageKey?.(STORAGE_NAME) || `${currentContext().storagePrefix || 'pzp'}_${STORAGE_NAME}`;
+        const base = baseStorageKey();
+        return currentContextKey() === 'event_genix'
+            ? `${base}_${currentTimelineViewKey()}`
+            : base;
     }
 
     function apiUrl(path) {
         const base = window.API_BASE || '/api';
         const url = `${base}${path}`;
-        return contextApi()?.appendApiContext?.(url) || url;
+        const withContext = contextApi()?.appendApiContext?.(url) || url;
+        if (currentContextKey() !== 'event_genix') return withContext;
+        if (/[?&](timelineView|timeline_view|view)=/.test(withContext)) return withContext;
+        const joiner = withContext.includes('?') ? '&' : '?';
+        return `${withContext}${joiner}timelineView=${encodeURIComponent(currentTimelineViewKey())}`;
     }
 
     function authHeaders(withContentType = false) {
@@ -289,21 +318,27 @@
     }
 
     function loadSettings() {
-        const contextKey = currentContextKey();
+        const contextKey = visibilityScopeKey();
         if (state.serverSettings.has(contextKey)) return normalizeSettings(state.serverSettings.get(contextKey));
-        return normalizeSettings(safeParseJson(localStorage.getItem(storageKey())));
+        const scoped = localStorage.getItem(storageKey());
+        if (scoped) return normalizeSettings(safeParseJson(scoped));
+        if (currentContextKey() === 'event_genix' && currentTimelineViewKey() === 'animators') {
+            return normalizeSettings(safeParseJson(localStorage.getItem(baseStorageKey())));
+        }
+        return normalizeSettings(null);
     }
 
     function saveSettings(settings) {
         const payload = compactSettingsForSave(settings);
         localStorage.setItem(storageKey(), JSON.stringify(payload));
-        state.serverSettings.set(currentContextKey(), payload);
+        state.serverSettings.set(visibilityScopeKey(), payload);
         scheduleServerSave(payload);
     }
 
     async function loadServerSettings() {
-        const contextKey = currentContextKey();
-        if (state.serverLoadPromise) return state.serverLoadPromise;
+        const contextKey = visibilityScopeKey();
+        if (state.serverLoadPromise && state.serverLoadKey === contextKey) return state.serverLoadPromise;
+        state.serverLoadKey = contextKey;
         state.serverLoadPromise = fetch(apiUrl('/settings/timeline-visibility'), {
             headers: authHeaders(false)
         })
@@ -324,6 +359,7 @@
             })
             .finally(() => {
                 state.serverLoadPromise = null;
+                state.serverLoadKey = null;
             });
         return state.serverLoadPromise;
     }
@@ -365,7 +401,7 @@
                 const data = await response.json();
                 mergeServerRegistry(data.registry);
                 const normalized = normalizeSettings(data);
-                state.serverSettings.set(currentContextKey(), normalized);
+                state.serverSettings.set(visibilityScopeKey(), normalized);
                 localStorage.setItem(storageKey(), JSON.stringify(normalized));
                 setSaveStatus('saved', `Збережено ${new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`);
             } catch (error) {
@@ -450,7 +486,7 @@
             updatedAt: new Date().toISOString()
         };
         localStorage.removeItem(storageKey());
-        state.serverSettings.set(currentContextKey(), payload);
+        state.serverSettings.set(visibilityScopeKey(), payload);
         scheduleServerSave(payload);
         applyVisibility();
         renderPanelList();
@@ -656,8 +692,11 @@
 
     function settingsCenterUrl() {
         const url = new URL('/timeline-settings', window.location.origin);
+        const returnUrl = new URL(window.location.href);
+        if (currentContextKey() === 'event_genix') returnUrl.searchParams.set('timelineView', currentTimelineViewKey());
         url.searchParams.set('context', currentContextKey());
-        url.searchParams.set('return', `${window.location.pathname}${window.location.search}${window.location.hash}`);
+        if (currentContextKey() === 'event_genix') url.searchParams.set('timelineView', currentTimelineViewKey());
+        url.searchParams.set('return', `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`);
         if (state.selectedBlockId) url.searchParams.set('block', state.selectedBlockId);
         return `${url.pathname}${url.search}`;
     }
@@ -969,6 +1008,14 @@
         refreshAccess();
         window.addEventListener('app:user-changed', refreshAccess);
         window.addEventListener('timeline:visibility-refresh', applyVisibility);
+        window.addEventListener('timeline:view-changed', () => {
+            loadServerSettings().then(() => {
+                applyVisibility();
+                renderPanelList();
+                renderBlockEditor();
+                renderBlockDetails();
+            });
+        });
         state.accessTimer = window.setInterval(() => {
             refreshAccess();
             if (window.AppState?.currentUser) {

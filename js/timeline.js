@@ -100,6 +100,9 @@ async function setTimelineView(view, options = {}) {
         }
         await renderTimeline();
     }
+    window.dispatchEvent(new CustomEvent('timeline:view-changed', {
+        detail: { view: next, previousView: current }
+    }));
     return next;
 }
 

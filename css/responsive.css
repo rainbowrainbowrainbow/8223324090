@@ -950,10 +950,6 @@
         transform: translateY(-1px);
     }
 
-    .booking-panel-edge-close-label {
-        display: none;
-    }
-
     .booking-form {
         padding: 12px var(--booking-panel-pad-x) var(--booking-footer-space);
     }

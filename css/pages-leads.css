@@ -22,12 +22,19 @@ body[data-page-group="mgmt"] .kanban-cards {
     margin-bottom: 12px;
 }
 
+.lead-queue-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+}
+
 .lead-queue-summary {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    padding: 6px;
+    gap: 8px;
+    padding: 7px;
     width: fit-content;
     max-width: 100%;
     border: 1px solid rgba(148,163,184,0.2);
@@ -38,11 +45,11 @@ body[data-page-group="mgmt"] .kanban-cards {
 .lead-queue-summary-chip {
     appearance: none;
     -webkit-appearance: none;
-    min-height: 34px;
+    min-height: 38px;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 10px;
+    gap: 10px;
+    padding: 8px 13px;
     border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
@@ -72,12 +79,12 @@ body[data-page-group="mgmt"] .kanban-cards {
 }
 
 .lead-queue-summary-count {
-    min-width: 22px;
-    height: 22px;
+    min-width: 26px;
+    height: 24px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 6px;
+    padding: 0 7px;
     border-radius: 999px;
     background: rgba(15,23,42,0.08);
     color: #0F172A;
@@ -100,60 +107,6 @@ body[data-page-group="mgmt"] .kanban-cards {
     font: 800 12px/1.35 var(--font-main);
 }
 
-.lead-queue-controls {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin: 0 0 12px;
-    max-width: 100%;
-}
-
-.lead-queue-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0 0 12px;
-    padding: 6px;
-    width: fit-content;
-    max-width: 100%;
-    border: 1px solid rgba(148,163,184,0.22);
-    border-radius: 8px;
-    background: rgba(248,250,252,0.82);
-}
-
-.lead-queue-controls .lead-queue-tabs {
-    margin-bottom: 0;
-}
-
-.lead-queue-tab {
-    appearance: none;
-    -webkit-appearance: none;
-    min-height: 36px;
-    padding: 8px 12px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    background: transparent;
-    color: #334155;
-    font: 900 13px/1.15 var(--font-main);
-    letter-spacing: 0;
-    cursor: pointer;
-    transition: background .14s ease, color .14s ease, border-color .14s ease;
-}
-
-.lead-queue-tab:hover,
-.lead-queue-tab:focus-visible {
-    outline: none;
-    border-color: rgba(16,185,129,0.42);
-    background: rgba(16,185,129,0.08);
-    color: #047857;
-}
-
-.lead-queue-tab.active {
-    border-color: rgba(16,185,129,0.72);
-    background: #10B981;
-    color: #fff;
-}
-
 .lead-workflow-info-btn {
     appearance: none;
     -webkit-appearance: none;
@@ -163,7 +116,7 @@ body[data-page-group="mgmt"] .kanban-cards {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-top: 5px;
+    margin-top: 0;
     border: 1px solid rgba(59,130,246,0.34);
     border-radius: 999px;
     background: rgba(59,130,246,0.08);
@@ -336,28 +289,6 @@ body[data-page-group="mgmt"] .kanban-cards {
     color: #047857 !important;
 }
 
-body.dark-mode .lead-queue-tabs {
-    border-color: rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.04);
-}
-
-body.dark-mode .lead-queue-tab {
-    color: #CBD5E1;
-}
-
-body.dark-mode .lead-queue-tab:hover,
-body.dark-mode .lead-queue-tab:focus-visible {
-    border-color: rgba(52,211,153,0.46);
-    background: rgba(16,185,129,0.12);
-    color: #6EE7B7;
-}
-
-body.dark-mode .lead-queue-tab.active {
-    border-color: rgba(52,211,153,0.84);
-    background: #059669;
-    color: #fff;
-}
-
 body.dark-mode .lead-queue-summary {
     border-color: rgba(255,255,255,0.1);
     background: rgba(255,255,255,0.04);
@@ -465,7 +396,7 @@ body.dark-mode .lead-workflow-info-summary {
 }
 
 @media (max-width: 720px) {
-    .lead-queue-controls {
+    .lead-queue-summary-row {
         align-items: stretch;
     }
 
@@ -479,17 +410,8 @@ body.dark-mode .lead-workflow-info-summary {
         min-width: 128px;
     }
 
-    .lead-queue-tabs {
-        width: 100%;
-    }
-
-    .lead-queue-tab {
-        flex: 1 1 calc(33.333% - 6px);
-        min-width: 92px;
-    }
-
     .lead-workflow-info-btn {
-        margin-top: 6px;
+        margin-top: 0;
     }
 
     .lead-workflow-info-head {
@@ -506,7 +428,7 @@ body.dark-mode .lead-workflow-info-summary {
 }
 
 @media (max-width: 520px) {
-    .lead-queue-controls {
+    .lead-queue-summary-row {
         flex-direction: column;
     }
 

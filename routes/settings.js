@@ -29,7 +29,8 @@ const {
     timelineResourceAvailability
 } = require('../services/timelineResources');
 const {
-    sanitizeTimelineVisibilityPayload,
+    mergeTimelineVisibilityPayload,
+    normalizeTimelineVisibilityView,
     timelineVisibilityResponse
 } = require('../services/timelineVisibilitySettings');
 const { buildBusinessOperatingProfile } = require('../services/businessProfile');
@@ -386,9 +387,22 @@ function sanitizeTimelineDisplayPayload(body, context) {
     return normalizeTimelineDisplaySettings(body || {}, context);
 }
 
+function timelineVisibilityViewFromRequest(req) {
+    return normalizeTimelineVisibilityView(
+        req?.body?.timelineView
+        || req?.body?.timeline_view
+        || req?.body?.view
+        || req?.query?.timelineView
+        || req?.query?.timeline_view
+        || req?.query?.view,
+        null
+    );
+}
+
 router.get('/settings/timeline-visibility', async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
+        const view = timelineVisibilityViewFromRequest(req);
         if (!requireTimelineContext(req, res, context)) return;
         const key = timelineVisibilitySettingsKey(context);
         const cached = settingsCache.get(key);
@@ -399,7 +413,7 @@ router.get('/settings/timeline-visibility', async (req, res) => {
 
         let parsed = null;
         try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-        res.json(timelineVisibilityResponse(parsed || {}, context));
+        res.json(timelineVisibilityResponse(parsed || {}, context, { view }));
     } catch (err) {
         log.error('GET /settings/timeline-visibility error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -409,14 +423,20 @@ router.get('/settings/timeline-visibility', async (req, res) => {
 router.put('/settings/timeline-visibility', async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
+        const view = timelineVisibilityViewFromRequest(req);
         if (!requireTimelineAction(req, res, context, 'settings')) return;
         const key = timelineVisibilitySettingsKey(context);
-        const payload = {
-            ...sanitizeTimelineVisibilityPayload(req.body || {}, context),
-            context,
+        const cached = settingsCache.get(key);
+        const raw = cached !== null
+            ? cached
+            : (await pool.query('SELECT value FROM settings WHERE key = $1', [key])).rows[0]?.value;
+        let parsed = null;
+        try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
+        const payload = mergeTimelineVisibilityPayload(parsed || {}, req.body || {}, context, {
+            view,
             updatedAt: new Date().toISOString(),
             updatedBy: req.user?.username || req.user?.id || null
-        };
+        });
         const value = JSON.stringify(payload);
         await pool.query(
             `INSERT INTO settings (key, value)
@@ -430,6 +450,7 @@ router.put('/settings/timeline-visibility', async (req, res) => {
             target: key,
             details: {
                 context,
+                view: view || 'animators',
                 timelineId: payload.timelineId,
                 blocks: Object.keys(payload.blocks || {}),
                 legacyOverrideKeys: Object.keys(payload.overrides || {})
@@ -437,7 +458,7 @@ router.put('/settings/timeline-visibility', async (req, res) => {
             ip: req.ip,
             requestId: req.headers['x-request-id']
         });
-        res.json(timelineVisibilityResponse(payload, context));
+        res.json(timelineVisibilityResponse(payload, context, { view }));
     } catch (err) {
         log.error('PUT /settings/timeline-visibility error', err);
         res.status(500).json({ error: 'Internal server error' });

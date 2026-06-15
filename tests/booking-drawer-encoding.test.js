@@ -61,6 +61,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     ].forEach(id => assert.match(html, new RegExp(`id="${id}"`), `${id} exists in booking drawer`));
     assert.match(html, /id="bookingMenuCatalogPanel" class="booking-menu-catalog-panel booking-menu-catalog-overlay hidden" hidden aria-hidden="true" role="dialog" aria-modal="true"/);
     assert.match(bookingPanelHtml, /id="bookingPanelEdgeClose" class="booking-panel-edge-close" type="button" title="[^"]+" aria-label="[^"]+" data-booking-panel-close/);
+    assert.doesNotMatch(bookingPanelHtml, /booking-panel-edge-close-label/);
     assert.match(bookingPanelHtml, /id="closePanel" class="btn-close booking-panel-close" type="button" title="Закрити панель бронювання" aria-label="Закрити панель бронювання"/);
     assert.doesNotMatch(bookingPanelHtml, /bookingMenuCatalogPanel/);
     assert.match(html, new RegExp(`js/kitchen-menu-images\\.js\\?v=${escapedAssetVersion}`));
@@ -158,7 +159,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(panelCss, /\.booking-sticky-footer\s*\{[\s\S]*calc\(var\(--booking-panel-pad-x\) \* -1\)/);
     assert.match(panelCss, /\.panel-header\s*\{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0;/);
     assert.match(panelCss, /\.booking-panel-close\s*\{[\s\S]*min-width:\s*44px;[\s\S]*border-radius:\s*999px;/);
-    assert.match(panelCss, /\.booking-panel-edge-close\s*\{[\s\S]*position:\s*fixed;[\s\S]*right:\s*calc\(min\(var\(--booking-panel-width\),\s*100vw\) - 1px\);[\s\S]*transform:\s*translateY\(0\);/);
+    assert.match(panelCss, /\.booking-panel-edge-close\s*\{[\s\S]*position:\s*fixed;[\s\S]*right:\s*calc\(min\(var\(--booking-panel-width\),\s*100vw\) \+ 10px\);[\s\S]*width:\s*38px;[\s\S]*background:\s*#0f766e;[\s\S]*transform:\s*translateY\(0\);/);
     assert.match(responsiveCss, /\.booking-panel-close-label\s*\{\s*display:\s*none;\s*\}/);
     assert.match(responsiveCss, /\.booking-panel-edge-close\s*\{[\s\S]*right:\s*12px;[\s\S]*border-radius:\s*999px;[\s\S]*transform:\s*none;/);
 

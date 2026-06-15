@@ -331,7 +331,6 @@
     gap: 12px;
     align-items: center;
     text-align: left;
-    cursor: pointer;
 }
 
 .timeline-settings-block-row:first-of-type {
@@ -345,6 +344,17 @@
 
 .timeline-settings-block-row.is-hidden {
     opacity: 0.68;
+}
+
+.timeline-settings-block-main {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
 }
 
 .timeline-settings-block-row strong {
@@ -362,12 +372,37 @@
 }
 
 .timeline-settings-badge {
+    border: 0;
     border-radius: 999px;
     padding: 4px 8px;
     background: rgba(148, 163, 184, 0.12);
     color: var(--text-secondary, #cbd5e1);
     font-size: 11px;
     font-weight: 900;
+    font-family: inherit;
+    line-height: 1.2;
+}
+
+.timeline-settings-visibility-toggle {
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.timeline-settings-visibility-toggle:hover {
+    background: rgba(45, 212, 191, 0.18);
+    color: #ccfbf1;
+    transform: translateY(-1px);
+}
+
+.timeline-settings-visibility-toggle.timeline-settings-badge--hidden:hover {
+    background: rgba(248, 113, 113, 0.22);
+    color: #fee2e2;
+}
+
+.timeline-settings-block-main:focus-visible,
+.timeline-settings-visibility-toggle:focus-visible {
+    outline: 2px solid rgba(45, 212, 191, 0.78);
+    outline-offset: 3px;
 }
 
 .timeline-settings-badge--accent {

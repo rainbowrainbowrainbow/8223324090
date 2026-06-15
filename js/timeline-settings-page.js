@@ -6,6 +6,15 @@
         { key: 'dar', label: 'Dar', route: '/?businessContext=dar', productName: 'Dar' },
         { key: 'maysternya_doli', label: 'Таймлайн МД', route: '/maysternya-doli', productName: 'Таймлайн МД' }
     ];
+    FALLBACK_CONTEXTS.splice(0, 1,
+        { id: 'event_genix:animators', key: 'event_genix', view: 'animators', label: '\u041f\u0430\u0440\u043a \u0417\u0430\u043a\u0440\u0435\u0432\u0441\u044c\u043a\u043e\u0433\u043e \u00b7 \u0421\u0432\u044f\u0442\u0430', route: '/?timelineView=animators', productName: '\u0422\u0430\u0439\u043c\u043b\u0430\u0439\u043d \u041f\u0410\u0420\u041a' },
+        { id: 'event_genix:rooms', key: 'event_genix', view: 'rooms', label: '\u041f\u0430\u0440\u043a \u0417\u0430\u043a\u0440\u0435\u0432\u0441\u044c\u043a\u043e\u0433\u043e \u00b7 \u041a\u0456\u043c\u043d\u0430\u0442\u0438', route: '/?timelineView=rooms', productName: '\u0422\u0430\u0439\u043c\u043b\u0430\u0439\u043d \u041f\u0410\u0420\u041a' }
+    );
+
+    const TIMELINE_VIEW_LABELS = {
+        animators: '\u0421\u0432\u044f\u0442\u0430',
+        rooms: '\u041a\u0456\u043c\u043d\u0430\u0442\u0438'
+    };
 
     const DENSITY_LABELS = {
         default: 'Стандарт',
@@ -103,6 +112,7 @@
     const state = {
         contexts: [],
         activeContext: 'event_genix',
+        activeView: 'animators',
         returnPath: '/',
         activeTab: 'blocks',
         selectedBlockId: '',
@@ -158,7 +168,11 @@
     function apiPath(endpoint) {
         const base = window.API_BASE || '/api';
         const joiner = endpoint.includes('?') ? '&' : '?';
-        return `${base}${endpoint}${joiner}businessContext=${encodeURIComponent(state.activeContext)}`;
+        let url = `${base}${endpoint}${joiner}businessContext=${encodeURIComponent(state.activeContext)}`;
+        if (state.activeContext === 'event_genix') {
+            url += `&timelineView=${encodeURIComponent(state.activeView)}`;
+        }
+        return url;
     }
 
     async function request(method, endpoint, body) {
@@ -202,8 +216,26 @@
             || fallbackContext(normalized);
     }
 
-    function fallbackContext(key) {
-        return FALLBACK_CONTEXTS.find(item => item.key === key) || {
+    function normalizeTimelineView(value, fallback = 'animators') {
+        return String(value || '').trim().toLowerCase() === 'rooms' ? 'rooms' : fallback;
+    }
+
+    function contextOptionId(item) {
+        const key = item?.key || 'event_genix';
+        return key === 'event_genix'
+            ? `${key}:${normalizeTimelineView(item?.view)}`
+            : key;
+    }
+
+    function activeContextOptionId() {
+        return contextOptionId({ key: state.activeContext, view: state.activeView });
+    }
+
+    function fallbackContext(key, view = null) {
+        const optionId = contextOptionId({ key, view });
+        return FALLBACK_CONTEXTS.find(item => contextOptionId(item) === optionId)
+            || FALLBACK_CONTEXTS.find(item => item.key === key)
+            || {
             key,
             label: key,
             route: key === 'event_genix' ? '/' : `/?businessContext=${encodeURIComponent(key)}`,
@@ -213,7 +245,7 @@
 
     function buildContextList() {
         const byKey = new Map();
-        FALLBACK_CONTEXTS.forEach(item => byKey.set(item.key, item));
+        FALLBACK_CONTEXTS.forEach(item => byKey.set(contextOptionId(item), item));
         const timelineState = timelineContextApi()?.state?.();
         const crmState = window.CrmBusinessContext?.state?.();
         const dynamic = [
@@ -223,12 +255,14 @@
         dynamic.forEach(item => {
             const key = item.key || item.id || item.businessContext || item.context;
             if (!key) return;
-            byKey.set(key, {
+            if (key === 'event_genix') return;
+            const context = {
                 key,
                 label: item.label || item.name || item.productName || key,
                 route: item.timelineRoute || item.route || fallbackContext(key).route,
                 productName: item.productName || item.label || item.name || key
-            });
+            };
+            byKey.set(contextOptionId(context), context);
         });
         return Array.from(byKey.values());
     }
@@ -247,6 +281,17 @@
             || 'event_genix';
     }
 
+    function parseInitialView(context = 'event_genix') {
+        if (context !== 'event_genix') return 'animators';
+        const params = queryParams();
+        return normalizeTimelineView(
+            params.get('timelineView')
+            || params.get('timeline_view')
+            || params.get('view')
+            || 'animators'
+        );
+    }
+
     function sanitizeReturnPath(value) {
         const raw = String(value || '').trim();
         if (!raw || raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('//')) return '/';
@@ -256,6 +301,12 @@
     function setUrlState() {
         const url = new URL(window.location.href);
         url.searchParams.set('context', state.activeContext);
+        if (state.activeContext === 'event_genix') url.searchParams.set('timelineView', state.activeView);
+        else {
+            url.searchParams.delete('timelineView');
+            url.searchParams.delete('timeline_view');
+            url.searchParams.delete('view');
+        }
         url.searchParams.set('return', state.returnPath);
         if (state.selectedBlockId) url.searchParams.set('block', state.selectedBlockId);
         else url.searchParams.delete('block');
@@ -263,7 +314,8 @@
     }
 
     function currentContextMeta() {
-        return state.contexts.find(item => item.key === state.activeContext) || fallbackContext(state.activeContext);
+        return state.contexts.find(item => contextOptionId(item) === activeContextOptionId())
+            || fallbackContext(state.activeContext, state.activeView);
     }
 
     function returnPathForContext() {
@@ -323,7 +375,10 @@
         });
         return {
             version: 2,
-            timelineId: `timeline:${state.activeContext}`,
+            timelineId: state.activeContext === 'event_genix'
+                ? `timeline:${state.activeContext}:${state.activeView}`
+                : `timeline:${state.activeContext}`,
+            timelineView: state.activeContext === 'event_genix' ? state.activeView : undefined,
             blocks,
             overrides
         };
@@ -404,16 +459,23 @@
     function renderContexts() {
         const list = $('timelineSettingsContextList');
         if (!list) return;
-        list.innerHTML = state.contexts.map(ctx => `
-            <button type="button" class="timeline-settings-context-btn${ctx.key === state.activeContext ? ' active' : ''}" data-timeline-settings-context="${escapeHtml(ctx.key)}">
-                <strong>${escapeHtml(ctx.label || ctx.productName || ctx.key)}</strong>
-                <span>${escapeHtml(ctx.key)} · ${escapeHtml(ctx.route || '/')}</span>
-            </button>
-        `).join('');
-        const timelineId = $('timelineSettingsTimelineId');
-        if (timelineId) timelineId.textContent = `timeline:${state.activeContext}`;
-        const back = $('timelineSettingsBackLink');
-        if (back) back.href = returnPathForContext();
+        list.innerHTML = state.contexts.map(ctx => {
+            const isPark = ctx.key === 'event_genix';
+            const view = normalizeTimelineView(ctx.view || 'animators');
+            const viewLabel = isPark ? ` \u00b7 ${escapeHtml(TIMELINE_VIEW_LABELS[view] || view)}` : '';
+            return `
+                <button type="button" class="timeline-settings-context-btn${contextOptionId(ctx) === activeContextOptionId() ? ' active' : ''}" data-timeline-settings-context="${escapeHtml(ctx.key)}" data-timeline-settings-view="${escapeHtml(isPark ? view : '')}">
+                    <strong>${escapeHtml(ctx.label || ctx.productName || ctx.key)}</strong>
+                    <span>${escapeHtml(ctx.key)}${viewLabel} \u00b7 ${escapeHtml(ctx.route || '/')}</span>
+                </button>
+            `;
+        }).join('');
+        const activeTimelineId = $('timelineSettingsTimelineId');
+        if (activeTimelineId) activeTimelineId.textContent = state.activeContext === 'event_genix'
+            ? `timeline:${state.activeContext}:${state.activeView}`
+            : `timeline:${state.activeContext}`;
+        const backLink = $('timelineSettingsBackLink');
+        if (backLink) backLink.href = returnPathForContext();
     }
 
     function blockMatchesFilters(item) {
@@ -448,18 +510,18 @@
                     const hidden = settings.visible === false;
                     const selected = item.id === state.selectedBlockId;
                     const badges = [
-                        hidden ? '<span class="timeline-settings-badge timeline-settings-badge--hidden">Приховано</span>' : '<span class="timeline-settings-badge">Видимо</span>',
+                        `<button type="button" class="timeline-settings-badge timeline-settings-visibility-toggle${hidden ? ' timeline-settings-badge--hidden' : ''}" data-timeline-settings-visibility-toggle="${escapeHtml(item.id)}" aria-pressed="${hidden ? 'false' : 'true'}" title="${hidden ? 'Показати блок' : 'Приховати блок'}">${hidden ? 'Приховано' : 'Видимо'}</button>`,
                         settings.emphasis === 'accent' ? '<span class="timeline-settings-badge timeline-settings-badge--accent">Акцент</span>' : '',
                         settings.adminNote ? '<span class="timeline-settings-badge">Нотатка</span>' : ''
                     ].filter(Boolean).join('');
                     return `
-                        <button type="button" class="timeline-settings-block-row${selected ? ' active' : ''}${hidden ? ' is-hidden' : ''}" data-timeline-settings-block="${escapeHtml(item.id)}">
-                            <span>
+                        <div class="timeline-settings-block-row${selected ? ' active' : ''}${hidden ? ' is-hidden' : ''}">
+                            <button type="button" class="timeline-settings-block-main" data-timeline-settings-block="${escapeHtml(item.id)}">
                                 <strong>${escapeHtml(labelForBlock(item))}</strong>
                                 <small>${escapeHtml(item.id)} · order ${escapeHtml(settings.order)}</small>
-                            </span>
+                            </button>
                             <span class="timeline-settings-block-badges">${badges}</span>
-                        </button>
+                        </div>
                     `;
                 }).join('')}
             </section>
@@ -762,7 +824,10 @@
         try {
             const visibility = await request('PUT', '/settings/timeline-visibility', {
                 version: 2,
-                timelineId: `timeline:${state.activeContext}`,
+                timelineId: state.activeContext === 'event_genix'
+                    ? `timeline:${state.activeContext}:${state.activeView}`
+                    : `timeline:${state.activeContext}`,
+                timelineView: state.activeContext === 'event_genix' ? state.activeView : undefined,
                 blocks: {},
                 overrides: {}
             });
@@ -825,8 +890,9 @@
         }
     }
 
-    async function switchContext(nextContext) {
-        if (!nextContext || nextContext === state.activeContext) return;
+    async function switchContext(nextContext, nextView = null) {
+        const normalizedView = nextContext === 'event_genix' ? normalizeTimelineView(nextView || 'animators') : 'animators';
+        if (!nextContext || (nextContext === state.activeContext && normalizedView === state.activeView)) return;
         if ((state.visibilityDirty || state.displayDirty) && typeof window.confirmModal === 'function') {
             const ok = await window.confirmModal('Є незбережені зміни. Перемкнути timeline context без збереження?', {
                 type: 'warning',
@@ -836,6 +902,7 @@
             if (!ok) return;
         }
         state.activeContext = nextContext;
+        state.activeView = normalizedView;
         const meta = currentContextMeta();
         state.returnPath = meta.route || '/';
         state.selectedBlockId = '';
@@ -849,7 +916,7 @@
             const contextBtn = event.target.closest('[data-timeline-settings-context]');
             if (contextBtn) {
                 event.preventDefault();
-                switchContext(contextBtn.dataset.timelineSettingsContext);
+                switchContext(contextBtn.dataset.timelineSettingsContext, contextBtn.dataset.timelineSettingsView);
                 return;
             }
             const tabBtn = event.target.closest('[data-timeline-settings-tab]');
@@ -865,6 +932,18 @@
                 state.filters[key] = !state.filters[key];
                 filterBtn.classList.toggle('active', state.filters[key]);
                 renderBlocks();
+                return;
+            }
+            const visibilityBtn = event.target.closest('[data-timeline-settings-visibility-toggle]');
+            if (visibilityBtn) {
+                event.preventDefault();
+                const id = visibilityBtn.dataset.timelineSettingsVisibilityToggle;
+                const block = state.registry.find(item => item.id === id);
+                if (!block) return;
+                state.selectedBlockId = id;
+                setUrlState();
+                const current = normalizeBlockSettings(id);
+                updateBlock(id, { visible: current.visible === false });
                 return;
             }
             const blockBtn = event.target.closest('[data-timeline-settings-block]');
@@ -944,10 +1023,11 @@
         const params = queryParams();
         state.returnPath = sanitizeReturnPath(params.get('return') || '/');
         state.activeContext = parseInitialContext();
+        state.activeView = parseInitialView(state.activeContext);
         await hydrateBusinessProfile();
         state.contexts = buildContextList();
-        if (!state.contexts.some(item => item.key === state.activeContext)) {
-            state.contexts.push(fallbackContext(state.activeContext));
+        if (!state.contexts.some(item => contextOptionId(item) === activeContextOptionId())) {
+            state.contexts.push(fallbackContext(state.activeContext, state.activeView));
         }
         if (!state.returnPath || state.returnPath === '/') {
             state.returnPath = currentContextMeta().route || '/';

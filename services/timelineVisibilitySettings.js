@@ -12,6 +12,13 @@ const TIMELINE_VISUAL_VARIABLES = Object.freeze([
 ]);
 const TIMELINE_VISUAL_DENSITIES = new Set(['default', 'compact', 'comfortable']);
 const TIMELINE_VISUAL_EMPHASIS = new Set(['normal', 'muted', 'accent']);
+const TIMELINE_VISIBILITY_VIEWS = new Set(['animators', 'rooms']);
+
+function normalizeTimelineVisibilityView(value, fallback = null) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (TIMELINE_VISIBILITY_VIEWS.has(raw)) return raw;
+  return fallback;
+}
 
 function visualBlock(id, area, title, options = {}) {
   return Object.freeze({
@@ -145,6 +152,34 @@ function deriveOverridesFromBlocks(blocks = {}) {
   return overrides;
 }
 
+function sanitizeTimelineVisibilityState(rawState = {}) {
+  const source = rawState && typeof rawState === 'object' && !Array.isArray(rawState) ? rawState : {};
+  const blocks = sanitizeTimelineVisibilityBlocks(source.blocks || {});
+  const legacyOverrides = sanitizeTimelineVisibilityOverrides(source.overrides || {});
+  for (const [id, hidden] of Object.entries(legacyOverrides)) {
+    if (!Object.prototype.hasOwnProperty.call(blocks, id)) blocks[id] = { visible: !hidden };
+  }
+  return {
+    blocks,
+    overrides: {
+      ...legacyOverrides,
+      ...deriveOverridesFromBlocks(blocks),
+    },
+    updatedAt: source.updatedAt || null,
+    updatedBy: source.updatedBy || null,
+  };
+}
+
+function sanitizeTimelineVisibilityViews(rawViews = {}) {
+  const source = rawViews && typeof rawViews === 'object' && !Array.isArray(rawViews) ? rawViews : {};
+  const views = {};
+  for (const view of TIMELINE_VISIBILITY_VIEWS) {
+    if (!Object.prototype.hasOwnProperty.call(source, view)) continue;
+    views[view] = sanitizeTimelineVisibilityState(source[view]);
+  }
+  return views;
+}
+
 function sanitizeTimelineVisibilityPayload(body = {}, context) {
   const blocks = sanitizeTimelineVisibilityBlocks(body.blocks || {});
   const overrides = {
@@ -159,31 +194,70 @@ function sanitizeTimelineVisibilityPayload(body = {}, context) {
   };
 }
 
-function timelineVisibilityResponse(value = {}, context) {
-  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const blocks = sanitizeTimelineVisibilityBlocks(raw.blocks || {});
-  const legacyOverrides = sanitizeTimelineVisibilityOverrides(raw.overrides || {});
-  for (const [id, hidden] of Object.entries(legacyOverrides)) {
-    if (!Object.prototype.hasOwnProperty.call(blocks, id)) blocks[id] = { visible: !hidden };
+function mergeTimelineVisibilityPayload(existing = {}, body = {}, context, options = {}) {
+  const now = options.updatedAt || new Date().toISOString();
+  const updatedBy = options.updatedBy || null;
+  const view = normalizeTimelineVisibilityView(options.view || body.view || body.timelineView || body.timeline_view, null);
+  const incoming = sanitizeTimelineVisibilityPayload(body, context);
+  const base = sanitizeTimelineVisibilityState(existing || {});
+  const views = sanitizeTimelineVisibilityViews(existing?.views || {});
+  const next = {
+    version: 2,
+    timelineId: timelineVisibilityId(context),
+    context: normalizeTimelineContext(context),
+    blocks: incoming.blocks,
+    overrides: incoming.overrides,
+    views,
+    updatedAt: now,
+    updatedBy,
+  };
+
+  if (!view || view === 'animators') {
+    next.views.animators = {
+      blocks: incoming.blocks,
+      overrides: incoming.overrides,
+      updatedAt: now,
+      updatedBy,
+    };
+    return next;
   }
+
+  next.blocks = base.blocks;
+  next.overrides = base.overrides;
+  next.views[view] = {
+    blocks: incoming.blocks,
+    overrides: incoming.overrides,
+    updatedAt: now,
+    updatedBy,
+  };
+  return next;
+}
+
+function timelineVisibilityResponse(value = {}, context, options = {}) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const view = normalizeTimelineVisibilityView(options.view || raw.view || raw.timelineView || raw.timeline_view, 'animators');
+  const base = sanitizeTimelineVisibilityState(raw);
+  const views = sanitizeTimelineVisibilityViews(raw.views || {});
+  const active = views[view] || base;
   return {
     context: normalizeTimelineContext(context),
     timelineId: timelineVisibilityId(context),
+    view,
     version: 2,
     registry: TIMELINE_VISUAL_BLOCKS,
-    blocks,
-    overrides: {
-      ...legacyOverrides,
-      ...deriveOverridesFromBlocks(blocks),
-    },
-    updatedAt: raw.updatedAt || null,
-    updatedBy: raw.updatedBy || null,
+    blocks: active.blocks,
+    overrides: active.overrides,
+    views,
+    updatedAt: active.updatedAt || raw.updatedAt || null,
+    updatedBy: active.updatedBy || raw.updatedBy || null,
   };
 }
 
 module.exports = {
   TIMELINE_VISUAL_BLOCKS,
   TIMELINE_VISUAL_VARIABLES,
+  mergeTimelineVisibilityPayload,
+  normalizeTimelineVisibilityView,
   sanitizeTimelineVisibilityPayload,
   timelineVisibilityId,
   timelineVisibilityResponse,

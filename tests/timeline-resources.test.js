@@ -24,6 +24,8 @@ const {
 } = require('../services/timelineResources');
 const {
     TIMELINE_VISUAL_BLOCKS,
+    mergeTimelineVisibilityPayload,
+    normalizeTimelineVisibilityView,
     sanitizeTimelineVisibilityPayload,
     timelineVisibilityResponse
 } = require('../services/timelineVisibilitySettings');
@@ -503,6 +505,47 @@ test('timeline visual settings v2 keeps stable block ids, metadata, and legacy o
     assert.equal(sanitized.overrides.timelineGrid, true);
     assert.equal(sanitized.overrides.bookingClose, true);
     assert.equal(sanitized.overrides.unknownBlock, undefined);
+});
+
+test('timeline visual settings keep park animator and room views isolated', () => {
+    assert.equal(normalizeTimelineVisibilityView('rooms'), 'rooms');
+    assert.equal(normalizeTimelineVisibilityView('bad', 'animators'), 'animators');
+
+    const animatorPayload = mergeTimelineVisibilityPayload({}, {
+        timelineView: 'animators',
+        blocks: {
+            dateControls: { visible: false, order: 10 }
+        }
+    }, 'event_genix', {
+        view: 'animators',
+        updatedAt: '2026-06-15T10:00:00.000Z',
+        updatedBy: 'creator'
+    });
+
+    const roomsPayload = mergeTimelineVisibilityPayload(animatorPayload, {
+        timelineView: 'rooms',
+        blocks: {
+            dateControls: { visible: true, order: 90 },
+            roomLoadPanel: { visible: false, density: 'compact' }
+        }
+    }, 'event_genix', {
+        view: 'rooms',
+        updatedAt: '2026-06-15T10:05:00.000Z',
+        updatedBy: 'creator'
+    });
+
+    const animators = timelineVisibilityResponse(roomsPayload, 'event_genix', { view: 'animators' });
+    const rooms = timelineVisibilityResponse(roomsPayload, 'event_genix', { view: 'rooms' });
+
+    assert.equal(animators.view, 'animators');
+    assert.equal(rooms.view, 'rooms');
+    assert.equal(animators.blocks.dateControls.visible, false);
+    assert.equal(animators.blocks.dateControls.order, 10);
+    assert.equal(rooms.blocks.dateControls.visible, true);
+    assert.equal(rooms.blocks.dateControls.order, 90);
+    assert.equal(rooms.blocks.roomLoadPanel.visible, false);
+    assert.equal(rooms.views.animators.blocks.dateControls.visible, false);
+    assert.equal(rooms.views.rooms.blocks.roomLoadPanel.density, 'compact');
 });
 
 test('business operating profile owns shell start page and module visibility', () => {

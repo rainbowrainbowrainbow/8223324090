@@ -639,6 +639,11 @@ function syncLeadQueueUi() {
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    document.querySelectorAll('[data-lead-queue-summary-item]').forEach(btn => {
+        const active = btn.dataset.leadQueueSummaryItem === currentLeadQueue;
+        btn.classList.toggle('is-active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
 }
 
 function setLeadQueue(queue, { replace = true } = {}) {
@@ -727,11 +732,15 @@ function renderStats() {
     }).join('');
 
     container.innerHTML = `
-        <div class="lead-queue-summary" role="group" aria-label="Кількість лідів у чергах">
-            ${items}
+        <div class="lead-queue-summary-row">
+            <div class="lead-queue-summary" role="group" aria-label="Черги лідів з кількістю записів">
+                ${items}
+            </div>
+            <button type="button" class="lead-workflow-info-btn" id="leadWorkflowInfoBtn" aria-label="Пояснення типів ліда й етапів канбану" aria-haspopup="dialog" aria-controls="leadWorkflowInfoModal" title="Пояснення типів ліда й етапів канбану">i</button>
         </div>
         ${leadQueueSummaryHintHtml()}
     `;
+    bindLeadWorkflowInfoButton();
 }
 
 function filterByType(type) {
@@ -2490,6 +2499,13 @@ function closeLeadWorkflowInfoModal() {
     overlay.classList.remove('active');
 }
 
+function bindLeadWorkflowInfoButton() {
+    const button = document.getElementById('leadWorkflowInfoBtn');
+    if (!button || button.dataset.bound === 'true') return;
+    button.dataset.bound = 'true';
+    button.addEventListener('click', openLeadWorkflowInfoModal);
+}
+
 function getLeadSecondaryState(modalId) {
     const fields = LEAD_SECONDARY_MODAL_FIELDS[modalId] || [];
     return fields.map(id => {
@@ -3001,7 +3017,7 @@ function setupEvents() {
     // Add lead button
     const addBtn = document.getElementById('addLeadBtn');
     if (addBtn) addBtn.addEventListener('click', openAddModal);
-    document.getElementById('leadWorkflowInfoBtn')?.addEventListener('click', openLeadWorkflowInfoModal);
+    bindLeadWorkflowInfoButton();
     bindLeadModalButton('leadModalCancel', closeLeadModal);
     bindLeadModalButton('leadModalSave', saveLead);
     document.getElementById('lostReasonSelect')?.addEventListener('change', updateLostReasonDetailsVisibility);

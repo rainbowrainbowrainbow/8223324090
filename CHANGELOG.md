@@ -4,6 +4,34 @@
 
 ---
 
+## v0.75.66 - Status On
+
+### Leads / Sales funnel / Queue UX / Release / (Клешня, 15.06.2026) [codex]
+- **У Sales Funnel додано компактний summary по чергах** - менеджер одразу бачить `Активні`, `Співпраця`, `Інформаційні`, `Відсіяні`, `Спам` і `Усі`, навіть коли відкрита тільки одна черга.
+- **Додано маленьку довідку по workflow лідів** - поруч із чергами з'явилась info-кнопка з поясненням типів ліда, причин відсіву, задачі для співпраці та технічних `pipeline_stage/status` етапів.
+- **Sidebar блок `Продуктивність` перейменовано в `Особисте`** - логіка, збережені налаштування і storage keys не змінювались, оновлено тільки видимий текст.
+- **Counts беруться з існуючих lead stats API** - frontend читає `/api/leads/stats` і використовує `classificationStats`, `operationalQueueStats` та `allTotal`, без нової схеми БД.
+- **Черга `Активні` отримала явне пояснення** - UI показує, що тут відображаються тільки якісні продажні ліди, а інші звернення доступні в окремих чергах.
+- **Фільтрацію не змінено** - `lead_queue`, `lead_type`, Table/Kanban, status/date/search/pipeline filters працюють за попередніми правилами.
+- **Cache-busting оновлено до `0.75.66`** - asset `?v=` і service worker cache name піднято для production deploy.
+- **Regression guard додано** - UI smoke перевіряє API-backed queue summary і active-queue hint.
+- **DB/env config не змінювались** - без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей.
+
+---
+
+## v0.75.65 - Lead Queue Summary
+
+### Leads / Sales funnel / Queue UX / Release / (Клешня, 15.06.2026) [codex]
+- **У Sales Funnel додано компактний summary по чергах** - менеджер одразу бачить `Активні`, `Співпраця`, `Інформаційні`, `Відсіяні`, `Спам` і `Усі`, навіть коли відкрита тільки одна черга.
+- **Додано маленьку довідку по workflow лідів** - поруч із чергами з'явилась info-кнопка з поясненням типів ліда, причин відсіву, задачі для співпраці та технічних `pipeline_stage/status` етапів.
+- **Counts беруться з існуючих lead stats API** - frontend читає `/api/leads/stats` і використовує `classificationStats`, `operationalQueueStats` та `allTotal`, без нової схеми БД.
+- **Черга `Активні` отримала явне пояснення** - UI показує, що тут відображаються тільки якісні продажні ліди, а інші звернення доступні в окремих чергах.
+- **Фільтрацію не змінено** - `lead_queue`, `lead_type`, Table/Kanban, status/date/search/pipeline filters працюють за попередніми правилами.
+- **Regression guard додано** - UI smoke перевіряє API-backed queue summary, active-queue hint і workflow info modal.
+- **DB/env config не змінювались** - без міграцій, ролей, secrets, Railway variables, CI/CD або нових залежностей.
+
+---
+
 ## v0.75.64 - Lead Quality Return Navigation
 
 ### Leads / Sales funnel / Lead type workflow / Release / (Клешня, 15.06.2026) [codex]

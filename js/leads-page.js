@@ -38,6 +38,7 @@ const LEAD_TYPE_REASON_TITLES = {
     informational: 'Причина: Інформаційний'
 };
 const DEFAULT_LEAD_QUEUE = 'active';
+const LEAD_QUEUE_SUMMARY_ORDER = ['active', 'collaboration', 'informational', 'screened', 'spam', 'all'];
 const LEAD_QUEUE_FILTERS = {
     active: {
         label: 'Активні',
@@ -189,6 +190,7 @@ let currentDateFilter = '';
 let currentPipelineStage = '';
 let currentBusinessContext = 'event_genix';
 let leadsData = [];
+let leadStatsData = null;
 let pipelineData = {};
 let usersData = [];
 let modalInitialState = '';
@@ -572,7 +574,11 @@ async function loadLeads() {
         if (currentView === 'kanban') params.set('order', 'kanban');
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
-        leadsData = await fetchAllLeadPages(params);
+        const [_, leads] = await Promise.all([
+            loadLeadQueueStats(),
+            fetchAllLeadPages(params)
+        ]);
+        leadsData = leads;
 
         renderStats();
         if (currentView === 'kanban') {
@@ -587,6 +593,22 @@ async function loadLeads() {
         console.error('Load leads error', err);
         const tbody = document.getElementById('leadsTableBody');
         if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Помилка завантаження</td></tr>';
+    }
+}
+
+async function loadLeadQueueStats() {
+    try {
+        const res = await apiFetch('/api/leads/stats');
+        if (!res) return null;
+        if (!res.ok) throw new Error(`Lead stats failed: ${res.status}`);
+        const data = await res.json();
+        leadStatsData = data || null;
+        return leadStatsData;
+    } catch (err) {
+        if (err?.message === 'Unauthorized') throw err;
+        console.warn('Failed to load lead queue stats', err);
+        leadStatsData = null;
+        return null;
     }
 }
 
@@ -649,25 +671,66 @@ async function fetchAllLeadPages(baseParams) {
     return all;
 }
 
+function normalizeLeadCount(value) {
+    const count = Number(value);
+    return Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0;
+}
+
+function leadQueueCountsFromStats(stats = leadStatsData) {
+    const classification = stats?.classificationStats || stats?.typeStats || {};
+    const operational = stats?.operationalQueueStats || {};
+    const active = normalizeLeadCount(classification.quality ?? stats?.salesTotal ?? stats?.total);
+    const collaboration = normalizeLeadCount(operational.collaboration ?? classification.collaboration);
+    const informational = normalizeLeadCount(operational.informational ?? classification.informational);
+    const screened = normalizeLeadCount(operational.low_quality ?? classification.low_quality);
+    const spam = normalizeLeadCount(operational.spam ?? classification.spam);
+    const all = normalizeLeadCount(stats?.allTotal ?? (active + collaboration + informational + screened + spam));
+    return { active, collaboration, informational, screened, spam, all };
+}
+
+function leadQueueCountsFromCurrentLeads() {
+    const counts = { active: 0, collaboration: 0, informational: 0, screened: 0, spam: 0, all: leadsData.length };
+    for (const lead of leadsData) {
+        const type = lead.lead_type || 'quality';
+        if (type === 'quality') counts.active += 1;
+        else if (type === 'collaboration') counts.collaboration += 1;
+        else if (type === 'informational') counts.informational += 1;
+        else if (type === 'low_quality') counts.screened += 1;
+        else if (type === 'spam') counts.spam += 1;
+    }
+    return counts;
+}
+
+function leadQueueCount(queue, counts) {
+    return normalizeLeadCount(counts?.[queue]);
+}
+
+function leadQueueSummaryHintHtml() {
+    if (currentLeadQueue !== DEFAULT_LEAD_QUEUE) return '';
+    return '<div class="lead-active-queue-hint" role="note">Показані тільки якісні продажні ліди. Інші звернення доступні в чергах вище.</div>';
+}
+
 function renderStats() {
     const container = document.getElementById('leadsStats');
     if (!container) return;
+    container.classList.add('leads-stats--queue-summary');
 
-    // Count by type
-    const typeCounts = { quality: 0, spam: 0, collaboration: 0, informational: 0, low_quality: 0 };
-    for (const l of leadsData) {
-        const t = l.lead_type || 'quality';
-        if (typeCounts[t] !== undefined) typeCounts[t]++;
-    }
-    const total = leadsData.length;
+    const counts = leadStatsData ? leadQueueCountsFromStats(leadStatsData) : leadQueueCountsFromCurrentLeads();
+    const items = LEAD_QUEUE_SUMMARY_ORDER.map(queue => {
+        const meta = leadQueueMeta(queue);
+        const active = queue === currentLeadQueue ? ' is-active' : '';
+        const count = leadQueueCount(queue, counts);
+        return `<button type="button" class="lead-queue-summary-chip${active}" data-lead-queue-summary-item="${queue}" onclick="setLeadQueue('${queue}')" aria-pressed="${queue === currentLeadQueue ? 'true' : 'false'}">
+            <span class="lead-queue-summary-label">${escapeHtml(meta.label)}</span>
+            <strong class="lead-queue-summary-count">${count}</strong>
+        </button>`;
+    }).join('');
 
     container.innerHTML = `
-        <div class="leads-stat type-quality" onclick="filterByType('quality')"><div class="stat-val">${typeCounts.quality}</div><div class="stat-lbl">Якісні</div></div>
-        <div class="leads-stat type-spam" onclick="filterByType('spam')"><div class="stat-val">${typeCounts.spam}</div><div class="stat-lbl">Спам</div></div>
-        <div class="leads-stat type-collab" onclick="filterByType('collaboration')"><div class="stat-val">${typeCounts.collaboration}</div><div class="stat-lbl">Співпраця</div></div>
-        <div class="leads-stat type-info" onclick="filterByType('informational')"><div class="stat-val">${typeCounts.informational}</div><div class="stat-lbl">Інформаційні</div></div>
-        <div class="leads-stat type-low" onclick="filterByType('low_quality')"><div class="stat-val">${typeCounts.low_quality}</div><div class="stat-lbl">Неякісні</div></div>
-        <div class="leads-stat total" onclick="setLeadQueue('all')"><div class="stat-val">${total}</div><div class="stat-lbl">Всього</div></div>
+        <div class="lead-queue-summary" role="group" aria-label="Кількість лідів у чергах">
+            ${items}
+        </div>
+        ${leadQueueSummaryHintHtml()}
     `;
 }
 
@@ -2415,6 +2478,18 @@ function closeQualityCategoryModal() {
     delete overlay.dataset.openCustomerCard;
 }
 
+function openLeadWorkflowInfoModal() {
+    const overlay = document.getElementById('leadWorkflowInfoModal');
+    if (!overlay) return;
+    overlay.classList.add('active');
+}
+
+function closeLeadWorkflowInfoModal() {
+    const overlay = document.getElementById('leadWorkflowInfoModal');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+}
+
 function getLeadSecondaryState(modalId) {
     const fields = LEAD_SECONDARY_MODAL_FIELDS[modalId] || [];
     return fields.map(id => {
@@ -2926,6 +3001,7 @@ function setupEvents() {
     // Add lead button
     const addBtn = document.getElementById('addLeadBtn');
     if (addBtn) addBtn.addEventListener('click', openAddModal);
+    document.getElementById('leadWorkflowInfoBtn')?.addEventListener('click', openLeadWorkflowInfoModal);
     bindLeadModalButton('leadModalCancel', closeLeadModal);
     bindLeadModalButton('leadModalSave', saveLead);
     document.getElementById('lostReasonSelect')?.addEventListener('change', updateLostReasonDetailsVisibility);
@@ -2939,6 +3015,7 @@ function setupEvents() {
                 else if (overlay.id === 'qualityCategoryModal') closeQualityCategoryModal();
                 else if (overlay.id === 'lostReasonModal') closeLostReasonModal(false);
                 else if (overlay.id === 'addMailingModal') closeAddMailingModal(false);
+                else if (overlay.id === 'leadWorkflowInfoModal') closeLeadWorkflowInfoModal();
                 else overlay.classList.remove('active');
             }
         });
@@ -2951,6 +3028,7 @@ function setupEvents() {
         const lostReasonModal = document.getElementById('lostReasonModal');
         const addMailingModal = document.getElementById('addMailingModal');
         const qualityCategoryModal = document.getElementById('qualityCategoryModal');
+        const leadWorkflowInfoModal = document.getElementById('leadWorkflowInfoModal');
         if (modal?.classList.contains('active')) {
             e.preventDefault();
             closeLeadModal(false);
@@ -2974,6 +3052,11 @@ function setupEvents() {
         if (qualityCategoryModal?.classList.contains('active')) {
             e.preventDefault();
             closeQualityCategoryModal();
+            return;
+        }
+        if (leadWorkflowInfoModal?.classList.contains('active')) {
+            e.preventDefault();
+            closeLeadWorkflowInfoModal();
         }
     });
 }

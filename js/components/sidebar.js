@@ -1010,14 +1010,14 @@ const Sidebar = (() => {
                     <small>${_escAttr(meta)}</small>
                 </span>
             </label>`;
-        }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних productivity-сторінок.</div>';
+        }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних особистих сторінок.</div>';
         return `<div class="sidebar-extra-editor sidebar-productivity-editor" data-sidebar-productivity-editor>
             <div class="sidebar-extra-editor-title">
-                <span>Сторінки продуктивності</span>
+                <span>Особисті сторінки</span>
                 <small data-sidebar-productivity-count>${selectedCount} вибрано</small>
             </div>
             <div class="sidebar-extra-editor-tools">
-                <input type="search" class="sidebar-extra-search" data-sidebar-productivity-search placeholder="Знайти productivity-сторінку..." aria-label="Знайти сторінку продуктивності">
+                <input type="search" class="sidebar-extra-search" data-sidebar-productivity-search placeholder="Знайти особисту сторінку..." aria-label="Знайти особисту сторінку">
             </div>
             <div class="sidebar-extra-picker" data-sidebar-productivity-picker>
                 ${pickerHtml}
@@ -1042,11 +1042,11 @@ const Sidebar = (() => {
                 <button type="button" class="sidebar-design-extras-head sidebar-productivity-head" data-sidebar-productivity-toggle-section aria-expanded="${listHidden ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span class="sidebar-design-extras-copy">
-                        <span class="sidebar-design-extras-title">Продуктивність</span>
+                        <span class="sidebar-design-extras-title">Особисте</span>
                     </span>
                     <span class="sidebar-design-extras-chevron" aria-hidden="true">${listHidden ? '⌄' : '⌃'}</span>
                 </button>
-                <button type="button" class="sidebar-design-extras-manage" data-sidebar-productivity-toggle-editor aria-expanded="${editorOpen ? 'true' : 'false'}" aria-label="${editorOpen ? 'Завершити налаштування продуктивності' : 'Налаштувати продуктивність'}" title="${editorOpen ? 'Готово' : 'Налаштувати продуктивність'}">
+                <button type="button" class="sidebar-design-extras-manage" data-sidebar-productivity-toggle-editor aria-expanded="${editorOpen ? 'true' : 'false'}" aria-label="${editorOpen ? 'Завершити налаштування особистого блоку' : 'Налаштувати особисте'}" title="${editorOpen ? 'Готово' : 'Налаштувати особисте'}">
                     <span class="sidebar-design-extras-gear" aria-hidden="true">⚙</span>
                     <span class="sidebar-design-extras-manage-text">${editorOpen ? 'Готово' : 'Редагувати'}</span>
                 </button>

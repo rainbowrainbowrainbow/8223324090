@@ -1858,6 +1858,13 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.businessContext, 'maysternya_doli');
         assert.equal(res.data.resourceId, 'md-consult-room');
         assert.equal(res.data.resourceName, 'Олександр');
+        assert.equal(res.data.leadId, 602);
+        assert.equal(res.data.leadCreated, true);
+        assert.equal(res.data.customerLinked, true);
+        assert.equal(res.data.lead.id, 602);
+        assert.equal(res.data.lead.created, true);
+        assert.equal(res.data.lead.attached, true);
+        assert.equal(res.data.lead.customerLinked, true);
         assert.equal(res.data.booking.businessContext, 'maysternya_doli');
         assert.equal(res.data.booking.status, 'confirmed');
         assert.equal(res.data.booking.createdBy, 'maysternya_bot');
@@ -1911,7 +1918,10 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.success, true);
         assert.equal(res.data.created, false);
         assert.equal(res.data.bookingId, 'BK-2099-0001');
+        assert.equal(res.data.leadId, 602);
+        assert.equal(res.data.lead?.attached, true);
         assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO leads/i.test(q.text) && /booking_id/i.test(q.text) && /raw_payload/i.test(q.text)));
     });
 
     it('validates Maysternya bot booking webhook in dry-run mode without writing', async () => {
@@ -1938,7 +1948,7 @@ describe('route-level API safety smoke', () => {
         assert.ok(!queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
     });
 
-    it('keeps Maysternya bot booking creation when lead handoff side effect fails', async () => {
+    it('rejects Maysternya bot booking when required lead handoff fails', async () => {
         const res = await request('POST', '/api/leads/webhook/maysternya-booking', {
             external_id: 'md-booking-lead-side-effect-fail',
             date: '2099-06-16',
@@ -1951,12 +1961,13 @@ describe('route-level API safety smoke', () => {
             Authorization: `Bearer ${TEST_UNIVERSAL_WEBHOOK_TOKEN}`
         });
 
-        assert.equal(res.status, 200, JSON.stringify(res.data));
-        assert.equal(res.data.success, true);
-        assert.equal(res.data.created, true);
+        assert.equal(res.status, 500, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'booking_lead_handoff_failed');
         assert.ok(queries.some(q => /INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(q.text)));
-        assert.ok(queries.some(q => /ROLLBACK TO SAVEPOINT maysternya_booking_optional_step/i.test(q.text)));
-        assert.ok(queries.some(q => /INSERT INTO history \(business_context, action, username, data\)/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+        assert.ok(!queries.some(q => /INSERT INTO history \(business_context, action, username, data\)/i.test(q.text)));
     });
 
     it('truncates Maysternya bot booking payload fields to CRM column limits', async () => {

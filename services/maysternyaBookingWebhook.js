@@ -647,7 +647,7 @@ function buildBookingExtraData(booking, resource) {
   };
 }
 
-function bookingResponse(row, resource, { created = true, dryRun = false } = {}) {
+function bookingResponse(row, resource, { created = true, dryRun = false, leadLink = null } = {}) {
   const normalizedRow = normalizeBookingRow(row);
   const mapped = normalizedRow ? mapBookingRow(normalizedRow) : null;
   if (mapped && resource) {
@@ -664,6 +664,16 @@ function bookingResponse(row, resource, { created = true, dryRun = false } = {})
     resourceId: resource?.resourceId || mapped?.resourceId || mapped?.lineId || null,
     resourceName: resource?.name || mapped?.lineName || mapped?.room || null,
     bookingId: mapped?.id || row?.id || null,
+    leadId: leadLink?.leadId || null,
+    leadCreated: leadLink ? Boolean(leadLink.created) : false,
+    customerLinked: leadLink ? Boolean(leadLink.customerLinked) : false,
+    lead: leadLink ? {
+      id: leadLink.leadId || null,
+      created: Boolean(leadLink.created),
+      attached: Boolean(leadLink.attached),
+      customerId: leadLink.customerId || null,
+      customerLinked: Boolean(leadLink.customerLinked)
+    } : null,
     booking: mapped
   };
 }
@@ -866,6 +876,81 @@ async function runOptionalMaysternyaBookingStep(client, label, step) {
   }
 }
 
+function mapMaysternyaBookingForLead(booking, bookingId, { programId, programName } = {}) {
+  return {
+    id: bookingId,
+    externalId: booking.externalId,
+    status: 'confirmed',
+    date: booking.date,
+    time: booking.time,
+    programId: programId || booking.programId || booking.programCode || null,
+    programName: programName || booking.programName || booking.programCode || booking.programId || null,
+    leadSource: MAYSTERNYA_BOT_SOURCE,
+    sourceChannel: MAYSTERNYA_BOT_SOURCE,
+    requestTopic: booking.requestTopic,
+    sessionType: booking.sessionType,
+    kidsCount: booking.kidsCount,
+    customer: booking.customer,
+    phone: booking.customer.phone,
+    instagram: booking.customer.instagram,
+    telegramId: booking.telegram.id,
+    telegramUsername: booking.telegram.username,
+    whatsapp: booking.customer.whatsapp,
+    email: booking.customer.email,
+    contactChannels: booking.customer.contactChannels,
+    rawPayload: booking.rawPayload,
+    notes: booking.notes
+  };
+}
+
+async function ensureMaysternyaBookingLead(client, { booking, row, customerId, programId = null, programName = null }) {
+  const bookingId = row?.id ? String(row.id) : '';
+  if (!bookingId) {
+    const err = new Error('Maysternya booking lead handoff missing booking id');
+    err.statusCode = 500;
+    err.code = 'booking_lead_missing_booking_id';
+    throw err;
+  }
+
+  let resolvedCustomerId = customerId || row?.customer_id || null;
+  if (!resolvedCustomerId) {
+    resolvedCustomerId = await resolveOrCreateMaysternyaCustomer(client, booking);
+    if (resolvedCustomerId) {
+      await client.query(
+        `UPDATE bookings
+            SET customer_id = COALESCE(customer_id, $1),
+                updated_at = NOW()
+          WHERE id = $2
+            AND COALESCE(business_context, 'event_genix') = $3`,
+        [resolvedCustomerId, bookingId, MAYSTERNYA_CONTEXT]
+      );
+    }
+  }
+
+  let leadLink;
+  try {
+    leadLink = await ensureLeadForBooking(client, {
+      booking: mapMaysternyaBookingForLead(booking, bookingId, { programId, programName }),
+      customerId: resolvedCustomerId,
+      businessContext: MAYSTERNYA_CONTEXT
+    });
+  } catch (err) {
+    err.statusCode = err.statusCode || 500;
+    err.code = err.code || 'booking_lead_handoff_failed';
+    err.publicMessage = 'Maysternya booking lead handoff failed';
+    throw err;
+  }
+
+  if (!leadLink?.attached || !leadLink?.leadId) {
+    const err = new Error(`Maysternya booking lead was not created or attached (${leadLink?.reason || 'unknown'})`);
+    err.statusCode = 500;
+    err.code = 'booking_lead_handoff_failed';
+    throw err;
+  }
+
+  return leadLink;
+}
+
 async function createMaysternyaBotBooking(body = {}, options = {}) {
   const booking = normalizeMaysternyaBookingPayload(body);
   const validation = maysternyaBookingValidationError(booking);
@@ -873,7 +958,24 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
 
   const existing = await findExistingMaysternyaBotBooking(pool, booking.externalId);
   if (existing) {
-    return { response: bookingResponse(existing, null, { created: false, dryRun: false }) };
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const leadLink = await ensureMaysternyaBookingLead(client, {
+        booking,
+        row: existing,
+        customerId: existing.customer_id || null,
+        programId: existing.program_id || booking.programId || booking.programCode || null,
+        programName: existing.program_name || booking.programName || null
+      });
+      await client.query('COMMIT');
+      return { response: bookingResponse(existing, null, { created: false, dryRun: false, leadLink }) };
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch {}
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   const client = await pool.connect();
@@ -997,36 +1099,12 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
       );
     }
 
-    const mappedForLead = {
-      id,
-      externalId: booking.externalId,
-      status: 'confirmed',
-      date: booking.date,
-      time: booking.time,
+    const leadLink = await ensureMaysternyaBookingLead(client, {
+      booking,
+      row,
+      customerId,
       programId,
-      programName,
-      leadSource: MAYSTERNYA_BOT_SOURCE,
-      sourceChannel: MAYSTERNYA_BOT_SOURCE,
-      requestTopic: booking.requestTopic,
-      sessionType: booking.sessionType,
-      kidsCount: booking.kidsCount,
-      customer: booking.customer,
-      phone: booking.customer.phone,
-      instagram: booking.customer.instagram,
-      telegramId: booking.telegram.id,
-      telegramUsername: booking.telegram.username,
-      whatsapp: booking.customer.whatsapp,
-      email: booking.customer.email,
-      contactChannels: booking.customer.contactChannels,
-      rawPayload: booking.rawPayload,
-      notes: booking.notes
-    };
-    await runOptionalMaysternyaBookingStep(client, 'Maysternya booking lead handoff', async () => {
-      await ensureLeadForBooking(client, {
-        booking: mappedForLead,
-        customerId,
-        businessContext: MAYSTERNYA_CONTEXT
-      });
+      programName
     });
 
     await runOptionalMaysternyaBookingStep(client, 'Maysternya booking history', async () => {
@@ -1072,7 +1150,7 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
       throw err;
     }
 
-    const response = bookingResponse(row, resource, { created: true, dryRun: false });
+    const response = bookingResponse(row, resource, { created: true, dryRun: false, leadLink });
     try {
       broadcast('booking:created', response.booking, null, booking.date);
     } catch (err) {

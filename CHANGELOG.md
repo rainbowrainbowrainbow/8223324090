@@ -4,6 +4,18 @@
 
 ---
 
+## v0.75.58 - Maysternya Booking Lead Handoff
+
+### Leads / Maysternya / Booking webhook / Lead handoff / Release / (Клешня, 15.06.2026) [codex]
+- **Booking webhook тепер гарантує lead handoff** - `POST /api/leads/webhook/maysternya-booking` більше не ковтає помилку створення ліда як optional side effect: якщо лід не створився або не прикріпився, webhook повертає зрозумілу помилку `booking_lead_handoff_failed`, а не тихо залишає тільки booking.
+- **Успішний create повертає lead contract** - відповідь booking webhook містить `leadId`, `leadCreated`, `customerLinked` і `lead`, щоб бот і logs одразу бачили, що клієнт записаний у CRM leads.
+- **Idempotent replay доремонтовує відсутній лід** - повторний POST з тим самим `external_id` не дублює booking, але пробує створити/прикріпити lead для вже існуючого booking, якщо попередній запис пройшов без ліда.
+- **Клієнт і booking зв'язуються стабільніше** - якщо у вже існуючого booking немає `customer_id`, webhook може створити/знайти customer за payload і дозв'язати його перед lead handoff.
+- **Regression guard оновлено** - route-smoke перевіряє `leadId/leadCreated/customerLinked`, idempotent lead repair і rollback при штучному падінні lead handoff.
+- **DB/env config не змінювались** - без міграцій, нових secrets, Railway variables або залежностей; використано існуючі таблиці `leads`, `customers` і `bookings`.
+
+---
+
 ## v0.75.57 - Maysternya Booking Availability
 
 ### Leads / Maysternya / Booking webhook / Availability / Reliability / Release / (Клешня, 14.06.2026) [codex]

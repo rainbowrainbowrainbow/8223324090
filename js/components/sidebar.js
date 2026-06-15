@@ -3168,6 +3168,53 @@ const Sidebar = (() => {
         };
     }
 
+    function _sidebarAvatarCropHash(value) {
+        const text = String(value || '');
+        let hash = 0;
+        for (let index = 0; index < text.length; index += 1) {
+            hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+        }
+        return Math.abs(hash).toString(36) || '0';
+    }
+
+    function _normalizeSidebarAvatarCrop(input = {}) {
+        const clamp = (value, min, max, fallback) => {
+            const number = Number(value);
+            if (!Number.isFinite(number)) return fallback;
+            return Math.max(min, Math.min(max, number));
+        };
+        return {
+            x: Math.round(clamp(input.x ?? input.positionX, 0, 100, 50)),
+            y: Math.round(clamp(input.y ?? input.positionY, 0, 100, 50)),
+            zoom: Number(clamp(input.zoom ?? input.scale, 1, 2, 1).toFixed(2))
+        };
+    }
+
+    function _sidebarAvatarCropStorageKey(user, photo) {
+        const owner = user?.id || user?.username || user?.name || 'current';
+        return `pzp_profile_avatar_crop:${owner}:${_sidebarAvatarCropHash(photo)}`;
+    }
+
+    function _readSidebarAvatarCrop(user, photo) {
+        const direct = user?.avatarCrop || user?.avatar_crop;
+        const directUrl = user?.avatarCropUrl || user?.avatar_crop_url || '';
+        if (direct && typeof direct === 'object' && (!directUrl || directUrl === photo)) {
+            return _normalizeSidebarAvatarCrop(direct);
+        }
+        try {
+            const raw = localStorage.getItem(_sidebarAvatarCropStorageKey(user, photo));
+            if (raw) return _normalizeSidebarAvatarCrop(JSON.parse(raw));
+        } catch {}
+        return _normalizeSidebarAvatarCrop();
+    }
+
+    function _applySidebarAvatarCrop(img, user, photo) {
+        const crop = _readSidebarAvatarCrop(user, photo);
+        img.style.objectPosition = `${crop.x}% ${crop.y}%`;
+        img.style.transform = `scale(${crop.zoom})`;
+        img.style.transformOrigin = `${crop.x}% ${crop.y}%`;
+    }
+
     function _paintUserAvatar(el, user) {
         if (!el || !user) return;
         const photo = user.avatar_url || user.avatarUrl || user.photo_url || user.photoUrl || user.image_url || user.imageUrl;
@@ -3180,6 +3227,7 @@ const Sidebar = (() => {
             img.alt = '';
             img.loading = 'lazy';
             img.decoding = 'async';
+            _applySidebarAvatarCrop(img, user, photo);
             img.addEventListener('error', () => {
                 el.classList.remove('has-photo');
                 el.textContent = fallback.label;

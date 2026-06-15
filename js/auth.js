@@ -2829,10 +2829,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 user = AppState.currentUser;
                 hasVerifiedUser = true;
                 // Sync to localStorage so other mechanisms can find it
-                const saved = localStorage.getItem('pzp_current_user');
-                if (!saved) {
-                    localStorage.setItem('pzp_current_user', JSON.stringify(user));
-                }
+                const saved = JSON.parse(localStorage.getItem('pzp_current_user') || '{}');
+                user = { ...saved, ...user };
+                AppState.currentUser = user;
+                localStorage.setItem('pzp_current_user', JSON.stringify(user));
             }
 
             // Priority 2: localStorage (set by login() in auth.js)

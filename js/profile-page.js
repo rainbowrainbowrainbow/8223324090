@@ -783,6 +783,39 @@ function renderProfilePrimaryTab(tab, label, options = {}) {
     return `<button class="${classes}" data-profile-tab="${tab}" onclick="switchTab('${tab}')"${attrs}>${escapeHtml(label)}${options.suffix || ''}</button>`;
 }
 
+function renderProfileSoonMenu(tabs = []) {
+    const visibleTabs = tabs.filter(tab => !(tab.ownOnly && !isOwnProfile));
+    if (!visibleTabs.length) return '';
+    const activeSoon = visibleTabs.some(tab => tab.id === activeTab);
+    const items = visibleTabs.map(tab => {
+        const active = tab.id === activeTab;
+        const copy = PROFILE_SOON_TAB_COPY[tab.id] || {};
+        return `
+            <button type="button"
+                class="profile-soon-menu-item ${active ? 'active' : ''}"
+                data-profile-tab="${escapeHtml(tab.id)}"
+                onclick="switchProfileSoonTab('${escapeHtml(tab.id)}')"
+                role="menuitem">
+                <span>${escapeHtml(tab.label)}</span>
+                <small>${escapeHtml(copy.kicker || 'Coming soon')}</small>
+            </button>`;
+    }).join('');
+    return `
+        <div class="profile-soon-menu" data-profile-soon-menu>
+            <button type="button"
+                class="profile-primary-tab profile-soon-menu-trigger ${activeSoon ? 'active' : ''}"
+                data-profile-soon-trigger="true"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                onclick="toggleProfileSoonMenu(event)">
+                Скоро <span>${visibleTabs.length}</span>
+            </button>
+            <div class="profile-soon-menu-panel" data-profile-soon-panel-menu role="menu" hidden>
+                ${items}
+            </div>
+        </div>`;
+}
+
 function profileWorkTabMetric(tabId) {
     tabId = normalizeProfileTaskTab(tabId);
     const active = profileActiveProfessionEntry();
@@ -860,14 +893,109 @@ const FURNITURE_EMOJIS = { furn_desk: '🖥️', furn_plant: '🪴', furn_trophy
 const MOOD_EMOJIS = { happy: '😊', working: '💼', tired: '😴', excited: '🤩', chill: '😎' };
 const QUEST_ICONS = { complete_tasks: '✅', create_booking: '📋', play_minigame: '🎮', visit_room: '🏠', send_message: '💬', early_login: '🌅', mark_shift: '⏰', meta_quest: '⭐' };
 const PROFILE_AVATAR_COLORS = ['#f59e0b', '#10b981', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#64748b'];
+const PROFILE_AVATAR_CROP_DEFAULT = Object.freeze({ x: 50, y: 50, zoom: 1 });
+
+function clampProfileNumber(value, min, max, fallback) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, number));
+}
+
+function normalizeProfileAvatarCrop(input = {}) {
+    return {
+        x: Math.round(clampProfileNumber(input.x ?? input.positionX, 0, 100, PROFILE_AVATAR_CROP_DEFAULT.x)),
+        y: Math.round(clampProfileNumber(input.y ?? input.positionY, 0, 100, PROFILE_AVATAR_CROP_DEFAULT.y)),
+        zoom: Number(clampProfileNumber(input.zoom ?? input.scale, 1, 2, PROFILE_AVATAR_CROP_DEFAULT.zoom).toFixed(2))
+    };
+}
+
+function profileAvatarPhotoUrl(data = profileData) {
+    const user = profileUser(data);
+    return user.avatarUrl || user.avatar_url || data?.avatarUrl || data?.avatar_url || '';
+}
+
+function profileAvatarCropHash(value) {
+    const text = String(value || '');
+    let hash = 0;
+    for (let index = 0; index < text.length; index += 1) {
+        hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+    }
+    return Math.abs(hash).toString(36) || '0';
+}
+
+function profileAvatarCropStorageKey(data = profileData, urlOverride = '') {
+    const user = data?.user || data || {};
+    const owner = user.id || user.username || user.name || currentUserId || 'current';
+    const url = urlOverride || profileAvatarPhotoUrl(data);
+    return `pzp_profile_avatar_crop:${owner}:${profileAvatarCropHash(url)}`;
+}
+
+function readProfileAvatarCrop(data = profileData, urlOverride = '') {
+    const user = data?.user || data || {};
+    const direct = user.avatarCrop || user.avatar_crop || data?.avatarCrop || data?.avatar_crop;
+    const url = urlOverride || profileAvatarPhotoUrl(data);
+    const directUrl = user.avatarCropUrl || user.avatar_crop_url || data?.avatarCropUrl || data?.avatar_crop_url || '';
+    if (direct && typeof direct === 'object' && (!directUrl || directUrl === url)) return normalizeProfileAvatarCrop(direct);
+    try {
+        const raw = localStorage.getItem(profileAvatarCropStorageKey(data, url));
+        if (raw) return normalizeProfileAvatarCrop(JSON.parse(raw));
+    } catch {}
+    return { ...PROFILE_AVATAR_CROP_DEFAULT };
+}
+
+function writeProfileAvatarCrop(data = profileData, urlOverride = '', crop = PROFILE_AVATAR_CROP_DEFAULT) {
+    const normalized = normalizeProfileAvatarCrop(crop);
+    try {
+        localStorage.setItem(profileAvatarCropStorageKey(data, urlOverride), JSON.stringify(normalized));
+    } catch {}
+    return normalized;
+}
+
+function profileAvatarCropStyle(crop = PROFILE_AVATAR_CROP_DEFAULT) {
+    const normalized = normalizeProfileAvatarCrop(crop);
+    return `object-position:${normalized.x}% ${normalized.y}%;transform:scale(${normalized.zoom});transform-origin:${normalized.x}% ${normalized.y}%;`;
+}
+
+function applyProfileAvatarCropToImage(img, crop = null) {
+    if (!img) return;
+    const normalized = normalizeProfileAvatarCrop(crop || readProfileAvatarCrop());
+    img.style.objectPosition = `${normalized.x}% ${normalized.y}%`;
+    img.style.transform = `scale(${normalized.zoom})`;
+    img.style.transformOrigin = `${normalized.x}% ${normalized.y}%`;
+}
+
+function currentProfileAvatarCropFromControls() {
+    return normalizeProfileAvatarCrop({
+        x: document.getElementById('profileAvatarPositionX')?.value,
+        y: document.getElementById('profileAvatarPositionY')?.value,
+        zoom: document.getElementById('profileAvatarZoom')?.value
+    });
+}
+
+function syncProfileAvatarCropControls(crop = PROFILE_AVATAR_CROP_DEFAULT) {
+    const normalized = normalizeProfileAvatarCrop(crop);
+    const fields = {
+        profileAvatarPositionX: normalized.x,
+        profileAvatarPositionY: normalized.y,
+        profileAvatarZoom: normalized.zoom
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+        const input = document.getElementById(id);
+        if (input) input.value = String(value);
+    });
+    const valueEl = document.getElementById('profileAvatarCropValue');
+    if (valueEl) valueEl.textContent = `${normalized.x}/${normalized.y} · ${normalized.zoom.toFixed(2)}x`;
+}
 
 function profileAvatarData(data = profileData) {
     const user = profileUser(data);
+    const url = profileAvatarPhotoUrl(data);
     return {
-        url: user.avatarUrl || user.avatar_url || data?.avatarUrl || data?.avatar_url || '',
+        url,
         emoji: user.avatarEmoji || user.avatar_emoji || data?.avatarEmoji || data?.avatar_emoji || '',
         color: user.avatarColor || user.avatar_color || data?.avatarColor || data?.avatar_color || '#f59e0b',
-        initial: profileInitial(data)
+        initial: profileInitial(data),
+        crop: readProfileAvatarCrop(data, url)
     };
 }
 
@@ -875,7 +1003,7 @@ function renderProfileAvatarVisual(className = 'profile-work-avatar', data = pro
     const avatar = profileAvatarData(data);
     const style = avatar.color ? ` style="background:${escapeHtml(avatar.color)}"` : '';
     if (avatar.url) {
-        return `<div class="${className}"${attrs}><img src="${escapeHtml(avatar.url)}" alt=""></div>`;
+        return `<div class="${className}"${attrs}><img src="${escapeHtml(avatar.url)}" alt="" style="${profileAvatarCropStyle(avatar.crop)}"></div>`;
     }
     return `<div class="${className}"${style}${attrs}>${escapeHtml(avatar.initial)}</div>`;
 }
@@ -1311,10 +1439,14 @@ function renderProfileWorkHubTabs(entries = profileProfessionEntries()) {
 }
 
 function renderProfileSecondaryTabs() {
-    const body = profileSecondaryTabOrder()
-        .map(tab => renderProfilePrimaryTab(tab.id, tab.label, { ownOnly: tab.ownOnly }))
-        .filter(Boolean)
-        .join('');
+    const visibleTabs = profileSecondaryTabOrder()
+        .filter(tab => !(tab.ownOnly && !isOwnProfile));
+    const unlockedTabs = visibleTabs.filter(tab => !profileTabLock(tab.id));
+    const lockedTabs = visibleTabs.filter(tab => profileTabLock(tab.id));
+    const body = [
+        unlockedTabs.map(tab => renderProfilePrimaryTab(tab.id, tab.label, { ownOnly: tab.ownOnly })).join(''),
+        renderProfileSoonMenu(lockedTabs)
+    ].filter(Boolean).join('');
     if (!body) return '';
     return `
         <nav class="profile-secondary-work-menu" data-profile-tab-rail="true" aria-label="Додаткові розділи профілю">
@@ -1329,6 +1461,35 @@ function renderProfileSecondaryTabs() {
                 ${body}
             </div>
         </nav>`;
+}
+
+function closeProfileSoonMenu() {
+    document.querySelectorAll('[data-profile-soon-menu]').forEach(menu => {
+        menu.classList.remove('is-open');
+        const panel = menu.querySelector('[data-profile-soon-panel-menu]');
+        const trigger = menu.querySelector('[data-profile-soon-trigger]');
+        if (panel) panel.hidden = true;
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function toggleProfileSoonMenu(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const trigger = event?.currentTarget;
+    const menu = trigger?.closest?.('[data-profile-soon-menu]');
+    if (!menu) return;
+    const willOpen = !menu.classList.contains('is-open');
+    closeProfileSoonMenu();
+    menu.classList.toggle('is-open', willOpen);
+    const panel = menu.querySelector('[data-profile-soon-panel-menu]');
+    if (panel) panel.hidden = !willOpen;
+    trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+
+async function switchProfileSoonTab(tab) {
+    closeProfileSoonMenu();
+    await switchTab(tab);
 }
 
 // ==========================================
@@ -1447,6 +1608,16 @@ async function switchTab(tab, options = {}) {
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
         if (isActive) btn.setAttribute('aria-current', 'page');
         else btn.removeAttribute('aria-current');
+    });
+    const activeSoon = profileSecondaryTabOrder().some(item => item.id === tab && profileTabLock(item.id));
+    document.querySelectorAll('[data-profile-soon-trigger]').forEach(btn => {
+        btn.classList.toggle('active', activeSoon);
+        btn.setAttribute('aria-selected', activeSoon ? 'true' : 'false');
+        if (activeSoon) btn.setAttribute('aria-current', 'page');
+        else btn.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.profile-soon-menu-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.profileTab === tab);
     });
 }
 
@@ -1958,6 +2129,7 @@ function renderProfileProfessionsTab() {
 function renderProfileSettingsTab() {
     const avatar = profileAvatarData(profileData);
     const currentColor = avatar.color || '#f59e0b';
+    const crop = normalizeProfileAvatarCrop(avatar.crop);
     return `
         <div class="profile-settings-shell">
             <section class="profile-work-panel profile-settings-panel">
@@ -1971,7 +2143,7 @@ function renderProfileSettingsTab() {
                 <div class="profile-avatar-editor">
                     <div>
                         <div id="profileAvatarPreview" class="profile-avatar-preview" style="background:${escapeHtml(currentColor)}">
-                            ${avatar.url ? `<img src="${escapeHtml(avatar.url)}" alt="">` : escapeHtml(avatar.initial)}
+                            ${avatar.url ? `<img src="${escapeHtml(avatar.url)}" alt="" style="${profileAvatarCropStyle(crop)}">` : escapeHtml(avatar.initial)}
                         </div>
                         <div class="profile-avatar-preview-hint">Так аватарка буде виглядати в меню та профілі</div>
                     </div>
@@ -1999,6 +2171,28 @@ function renderProfileSettingsTab() {
                                     <button type="button" id="profileAvatarUploadBtn" class="profile-settings-primary" onclick="uploadProfileAvatarFile()" disabled>Зберегти фото</button>
                                     <button type="button" onclick="clearProfileAvatarFile()">Скинути вибір</button>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="profile-avatar-crop-card">
+                            <label>Підгонка фото</label>
+                            <div class="profile-avatar-crop-grid">
+                                <label class="profile-avatar-crop-control" for="profileAvatarZoom">
+                                    <span>Масштаб</span>
+                                    <input id="profileAvatarZoom" type="range" min="1" max="2" step="0.05" value="${crop.zoom}" oninput="updateProfileAvatarCropFromControls()">
+                                </label>
+                                <label class="profile-avatar-crop-control" for="profileAvatarPositionX">
+                                    <span>Горизонталь</span>
+                                    <input id="profileAvatarPositionX" type="range" min="0" max="100" step="1" value="${crop.x}" oninput="updateProfileAvatarCropFromControls()">
+                                </label>
+                                <label class="profile-avatar-crop-control" for="profileAvatarPositionY">
+                                    <span>Вертикаль</span>
+                                    <input id="profileAvatarPositionY" type="range" min="0" max="100" step="1" value="${crop.y}" oninput="updateProfileAvatarCropFromControls()">
+                                </label>
+                            </div>
+                            <div class="profile-avatar-crop-actions">
+                                <span id="profileAvatarCropValue">${crop.x}/${crop.y} · ${crop.zoom.toFixed(2)}x</span>
+                                <button type="button" onclick="resetProfileAvatarCrop()">По центру</button>
+                                <button type="button" class="profile-settings-primary" onclick="saveProfileAvatarCrop()">Застосувати</button>
                             </div>
                         </div>
                         <details class="profile-avatar-url-details">
@@ -2318,17 +2512,56 @@ function paintProfileAvatarPreview(mode = 'initials') {
     if (!preview) return;
     const color = document.getElementById('profileAvatarColor')?.value || '#f59e0b';
     const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
+    const crop = currentProfileAvatarCropFromControls();
     preview.innerHTML = '';
     if (mode === 'image' && url) {
         const img = document.createElement('img');
         img.src = url;
         img.alt = '';
+        applyProfileAvatarCropToImage(img, crop);
         preview.style.background = 'transparent';
         preview.appendChild(img);
         return;
     }
     preview.style.background = color;
     preview.textContent = profileAvatarData().initial;
+}
+
+function updateProfileAvatarCropFromControls() {
+    const crop = currentProfileAvatarCropFromControls();
+    syncProfileAvatarCropControls(crop);
+    document.querySelectorAll('.profile-avatar-preview img, .profile-work-avatar img').forEach(img => {
+        applyProfileAvatarCropToImage(img, crop);
+    });
+}
+
+function resetProfileAvatarCrop() {
+    syncProfileAvatarCropControls(PROFILE_AVATAR_CROP_DEFAULT);
+    updateProfileAvatarCropFromControls();
+}
+
+function saveProfileAvatarCrop() {
+    const url = String(document.getElementById('profileAvatarUrl')?.value || profileAvatarPhotoUrl(profileData) || '').trim();
+    if (!url) {
+        if (typeof showNotification === 'function') showNotification('Спочатку збережіть або виберіть фото профілю', 'warning');
+        return;
+    }
+    const crop = writeProfileAvatarCrop(profileData, url, currentProfileAvatarCropFromControls());
+    if (profileData?.user) {
+        profileData.user.avatarCrop = crop;
+        profileData.user.avatarCropUrl = url;
+    }
+    if (typeof AppState !== 'undefined' && AppState.currentUser) {
+        AppState.currentUser.avatarCrop = crop;
+        AppState.currentUser.avatarCropUrl = url;
+    }
+    try {
+        const saved = JSON.parse(localStorage.getItem('pzp_current_user') || '{}');
+        localStorage.setItem('pzp_current_user', JSON.stringify({ ...saved, avatarCrop: crop, avatarCropUrl: url }));
+    } catch {}
+    updateProfileAvatarCropFromControls();
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    if (typeof showNotification === 'function') showNotification('Кадрування аватарки застосовано', 'success');
 }
 
 function selectProfileAvatarColor(color) {
@@ -2406,6 +2639,7 @@ function handleProfileAvatarFileChange(input) {
         const img = document.createElement('img');
         img.src = reader.result;
         img.alt = '';
+        applyProfileAvatarCropToImage(img, currentProfileAvatarCropFromControls());
         preview.style.background = 'transparent';
         preview.appendChild(img);
     };
@@ -2416,6 +2650,11 @@ function applyProfileAvatarResult(result, message = 'Аватарку оновл
     if (!result?.success || !result.user) {
         if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося зберегти аватарку', 'error');
         return false;
+    }
+    const avatarUrl = result.user.avatarUrl || result.user.avatar_url || '';
+    if (avatarUrl) {
+        result.user.avatarCrop = readProfileAvatarCrop({ user: result.user }, avatarUrl);
+        result.user.avatarCropUrl = avatarUrl;
     }
     profileData.user = { ...(profileData.user || {}), ...result.user };
     try {
@@ -2463,7 +2702,13 @@ async function uploadProfileAvatarFile() {
             return;
         }
         const urlInput = document.getElementById('profileAvatarUrl');
-        if (urlInput && result.user?.avatarUrl) urlInput.value = result.user.avatarUrl;
+        const avatarUrl = result.user?.avatarUrl || result.user?.avatar_url || '';
+        if (urlInput && avatarUrl) urlInput.value = avatarUrl;
+        if (avatarUrl) {
+            const crop = writeProfileAvatarCrop({ user: result.user }, avatarUrl, currentProfileAvatarCropFromControls());
+            result.user.avatarCrop = crop;
+            result.user.avatarCropUrl = avatarUrl;
+        }
         applyProfileAvatarResult(result, 'Фото профілю оновлено');
     } catch (err) {
         if (typeof showNotification === 'function') showNotification(err.message || 'Не вдалося завантажити фото', 'error');
@@ -2483,6 +2728,12 @@ async function saveProfileAvatar(type) {
         avatarUrl: String(document.getElementById('profileAvatarUrl')?.value || '').trim()
     };
     const result = await apiPatch('/auth/profile/avatar', payload);
+    if (result?.success && result.user && type === 'image') {
+        const avatarUrl = result.user.avatarUrl || result.user.avatar_url || payload.avatarUrl;
+        const crop = writeProfileAvatarCrop({ user: result.user }, avatarUrl, currentProfileAvatarCropFromControls());
+        result.user.avatarCrop = crop;
+        result.user.avatarCropUrl = avatarUrl;
+    }
     applyProfileAvatarResult(result);
 }
 
@@ -6992,6 +7243,15 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
             });
         }, 300);
     });
+    if (!window.__profileSoonMenuBound) {
+        window.__profileSoonMenuBound = true;
+        window.addEventListener('click', event => {
+            if (!event.target?.closest?.('[data-profile-soon-menu]')) closeProfileSoonMenu();
+        });
+        window.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeProfileSoonMenu();
+        });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initProfilePage);

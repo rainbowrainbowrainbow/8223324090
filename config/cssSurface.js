@@ -503,6 +503,13 @@ const CSS_SURFACE = [
         reason: 'Sales funnel kanban stage hint controls and tooltip styles imported by pages.css.'
     },
     {
+        file: 'css/pages-profile.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Profile avatar crop controls and compact soon-tab menu styles imported by pages.css.'
+    },
+    {
         file: 'css/pages-products.css',
         owner: 'products',
         category: 'page-scoped',

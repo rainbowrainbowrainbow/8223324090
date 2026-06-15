@@ -2344,6 +2344,19 @@ function rememberApiAuthSession(data = {}) {
     if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
 }
 
+function mergeApiCurrentUser(user = null) {
+    if (!user) return user;
+    try {
+        const saved = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || '{}');
+        const next = { ...saved, ...user };
+        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(next));
+        return next;
+    } catch {
+        localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+        return user;
+    }
+}
+
 async function apiRefreshAuthToken() {
     const refreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
     if (!refreshToken) return null;
@@ -2383,7 +2396,7 @@ async function apiVerifyToken() {
         }
         if (!response.ok) return null;
         const data = await response.json();
-        return data.user;
+        return mergeApiCurrentUser(data.user);
     } catch {
         return null;
     }

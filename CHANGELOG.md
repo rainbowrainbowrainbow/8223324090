@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.2 - Profile Avatar Sync
+
+### Profile / Avatar / Account UX / Release / (Клешня, 15.06.2026) [codex]
+- **Аватарка тепер має підгонку кадру** - у профілі додано керування масштабом, горизонталлю та вертикаллю, щоб фото можна було вирівняти під квадратний preview.
+- **Preview і sidebar використовують один crop contract** - велика аватарка в налаштуваннях, avatar у профілі та мініатюра в sidebar показують однаковий фрагмент фото.
+- **Після refresh user object не лишається старим** - verified session merge-иться назад у `pzp_current_user`, тому `avatarUrl` і локальний crop state не губляться при оновленні сторінки.
+- **Вкладки `Скоро` зібрано в одну кнопку** - замість кількох окремих disabled/soon кнопок профіль показує компактне меню `Скоро` з переліком майбутніх розділів.
+- **CSS винесено в `css/pages-profile.css`** - нові стилі не роздувають inline CSS профілю і проходять CSS/theme governance.
+- **Regression guard додано** - UI smoke перевіряє crop sync між profile/sidebar/verify і один компактний soon-menu.
+- **DB/env/auth/Railway config не змінювались** - без міграцій, ролей, secrets, production config або нових залежностей.
+
+---
+
 ## v0.76.1 - Maysternya Booking Webhook Fix
 
 ### Maysternya / Booking webhook / Production fix / Release / (Клешня, 15.06.2026) [codex]

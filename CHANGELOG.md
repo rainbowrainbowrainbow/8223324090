@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.4 - Maysternya Lead Visibility Fix
+
+### Leads / Maysternya / Booking handoff / Release / (Клешня, 16.06.2026) [codex]
+- **Ліди Майстерні з booking handoff знову видимі у quality-черзі** - backend filter `/api/leads?lead_type=quality&businessContext=maysternya_doli` трактує `lead_type IS NULL` і порожній рядок як `quality`.
+- **Нові booking-linked leads створюються з явним `lead_type='quality'`** - `ensureLeadForBooking` більше не залишає тип ліда порожнім при створенні з бронювання.
+- **Reuse/idempotent path repair-ить старі порожні типи** - existing lead, знайдений через booking/customer/external id, отримує `quality`, якщо `lead_type` був `NULL` або `''`.
+- **ON CONFLICT також не лишає порожній тип** - повторний webhook з тим самим `external_id` не створює дубль і не повертає лід у невидимий стан.
+- **Regression guards додано раніше і збережено** - route smoke перевіряє quality filter з порожнім `lead_type`, unit-тести перевіряють insert/reuse repair у `leadBookingLink`.
+- **Release marker оновлено** - cache tags, service worker і `/api/version` підняті до `0.76.4`, щоб production deploy гарантовано забрав fix.
+- **DB/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, нових залежностей або production config змін.
+
+---
+
 ## v0.76.3 - iPhone Safari UX Hardening
 
 ### iPhone / Certificates / Downloads / Leads / Release / (Клешня, 16.06.2026) [codex]

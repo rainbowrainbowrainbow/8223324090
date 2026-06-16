@@ -157,6 +157,7 @@
                 <div class="summary-total-card">
                     <div><span>Програма / база</span><strong>${escapeHtml(formatMoney(totals.programBasePrice, currency))}</strong></div>
                     <div><span>Меню / сервісні позиції</span><strong>${escapeHtml(formatMoney(totals.menuSubtotal, currency))}</strong></div>
+                    <div><span>Активності</span><strong>${escapeHtml(formatMoney(totals.activitySubtotal, currency))}</strong></div>
                     <div><span>Сума замовлення</span><strong>${escapeHtml(formatMoney(totals.orderTotal, currency))}</strong></div>
                     <div><span>Сума бронювання</span><strong>${escapeHtml(formatMoney(totals.bookingPrice, currency))}</strong></div>
                 </div>
@@ -306,6 +307,7 @@
         const params = qs();
         const id = params.get('id');
         const businessContext = params.get('businessContext') || 'event_genix';
+        const groupId = params.get('groupId') || '';
         const returnUrl = params.get('return') || '/';
         const back = el('bookingSummaryBack');
         if (back) back.href = returnUrl || '/';
@@ -321,7 +323,9 @@
             return;
         }
 
-        const url = `${API_BASE}/bookings/${encodeURIComponent(id)}/banquet-summary?businessContext=${encodeURIComponent(businessContext)}`;
+        const requestParams = new URLSearchParams({ businessContext });
+        if (groupId) requestParams.set('groupId', groupId);
+        const url = `${API_BASE}/bookings/${encodeURIComponent(id)}/banquet-summary?${requestParams.toString()}`;
         const response = await fetch(url, {
             headers: { Authorization: `Bearer ${token}` }
         });

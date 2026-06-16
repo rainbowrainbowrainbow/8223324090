@@ -1462,6 +1462,106 @@ async function apiCreateBookingFull(main, linked, options = {}) {
     }
 }
 
+async function apiGetBanquetByBooking(bookingId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getBanquetByBooking error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiCreateBanquetGroup(primaryBookingId, options = {}) {
+    try {
+        const payload = timelineApiPayload({
+            primaryBookingId,
+            groupName: options.groupName || null,
+            source: options.source || 'manual',
+            meta: options.meta || {}
+        });
+        const response = await fetch(`${API_BASE}${timelineApiUrl('/banquets')}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(payload)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', code: body.code || null, status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createBanquetGroup error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activity-booking`)}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({
+                sourceBookingId: payload.sourceBookingId,
+                booking: payload.booking || payload.activityBooking || null,
+                linkedBookings: Array.isArray(payload.linkedBookings) ? payload.linkedBookings : []
+            }))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                error: body.error || 'API error',
+                code: body.code || null,
+                conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
+                status: response.status
+            };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createBanquetActivityBooking error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiAttachBanquetGroupBooking(groupId, bookingId, options = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/bookings`)}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({
+                bookingId,
+                role: options.role || 'manual',
+                label: options.label || null,
+                sortOrder: options.sortOrder || null
+            }))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                error: body.error || 'API error',
+                code: body.code || null,
+                status: response.status
+            };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API attachBanquetGroupBooking error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiDeleteBooking(id) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {

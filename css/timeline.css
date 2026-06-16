@@ -661,6 +661,263 @@ body.dark-mode .booking-banquet-unlink-btn {
     border-color: rgba(245, 158, 11, 0.3);
 }
 
+.booking-banquet-full-detail {
+    display: grid;
+    gap: 12px;
+    margin: 14px 0;
+    padding: 14px;
+    border: 1px solid rgba(20, 184, 166, 0.26);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(15, 23, 42, 0.03));
+}
+
+.booking-banquet-full-header,
+.booking-banquet-member-main,
+.booking-banquet-candidate {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.booking-banquet-full-title {
+    font-size: 15px;
+    font-weight: 950;
+    color: var(--gray-900);
+}
+
+.booking-banquet-full-source,
+.booking-banquet-member-meta,
+.booking-banquet-candidate small,
+.booking-banquet-candidate-hint {
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.booking-banquet-group-pill,
+.booking-banquet-role,
+.booking-banquet-status,
+.booking-banquet-price,
+.booking-banquet-candidate-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.booking-banquet-group-pill,
+.booking-banquet-role {
+    color: #0F766E;
+    background: rgba(20, 184, 166, 0.16);
+    border: 1px solid rgba(20, 184, 166, 0.24);
+}
+
+.booking-banquet-group-pill--muted,
+.booking-banquet-status {
+    color: #475569;
+    background: rgba(148, 163, 184, 0.15);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.booking-banquet-price {
+    color: #92400E;
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
+.booking-banquet-warnings {
+    display: grid;
+    gap: 6px;
+}
+
+.booking-banquet-warning {
+    padding: 8px 10px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.09);
+    color: #92400E;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-banquet-section,
+.booking-banquet-candidates {
+    display: grid;
+    gap: 8px;
+}
+
+.booking-banquet-section-title,
+.booking-banquet-subtitle {
+    color: #0F766E;
+    font-size: 12px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.booking-banquet-member,
+.booking-banquet-candidate,
+.booking-banquet-action-row {
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.58);
+}
+
+.booking-banquet-member {
+    display: grid;
+    gap: 8px;
+}
+
+.booking-banquet-member-title,
+.booking-banquet-candidate strong {
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 950;
+}
+
+.booking-banquet-member-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.booking-banquet-empty {
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-banquet-children {
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.04);
+}
+
+.booking-banquet-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-banquet-child small {
+    color: var(--gray-500);
+    font-weight: 800;
+}
+
+.booking-banquet-action-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.booking-banquet-action-row span {
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.booking-banquet-candidate-main {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+
+.booking-banquet-candidate-role {
+    min-height: 36px;
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.03);
+    color: var(--gray-700);
+    font-weight: 850;
+}
+
+.booking-banquet-candidate-badge--match {
+    justify-self: start;
+    color: #047857;
+    background: rgba(16, 185, 129, 0.14);
+}
+
+.booking-banquet-candidate-badge--manual {
+    justify-self: start;
+    color: #B45309;
+    background: rgba(245, 158, 11, 0.14);
+}
+
+html[data-theme="dark"] .booking-banquet-full-detail,
+body.dark-mode .booking-banquet-full-detail {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(15, 23, 42, 0.42));
+    border-color: rgba(45, 212, 191, 0.24);
+}
+
+html[data-theme="dark"] .booking-banquet-full-title,
+html[data-theme="dark"] .booking-banquet-member-title,
+html[data-theme="dark"] .booking-banquet-candidate strong,
+body.dark-mode .booking-banquet-full-title,
+body.dark-mode .booking-banquet-member-title,
+body.dark-mode .booking-banquet-candidate strong {
+    color: rgba(248, 250, 252, 0.94);
+}
+
+html[data-theme="dark"] .booking-banquet-member,
+html[data-theme="dark"] .booking-banquet-candidate,
+html[data-theme="dark"] .booking-banquet-action-row,
+body.dark-mode .booking-banquet-member,
+body.dark-mode .booking-banquet-candidate,
+body.dark-mode .booking-banquet-action-row {
+    background: rgba(15, 23, 42, 0.62);
+    border-color: rgba(148, 163, 184, 0.24);
+}
+
+html[data-theme="dark"] .booking-banquet-empty,
+html[data-theme="dark"] .booking-banquet-children,
+body.dark-mode .booking-banquet-empty,
+body.dark-mode .booking-banquet-children {
+    background: rgba(15, 23, 42, 0.7);
+}
+
+html[data-theme="dark"] .booking-banquet-candidate-role,
+body.dark-mode .booking-banquet-candidate-role {
+    background: rgba(15, 23, 42, 0.78);
+    color: rgba(226, 232, 240, 0.92);
+    border-color: rgba(148, 163, 184, 0.28);
+}
+
+@media (max-width: 640px) {
+    .booking-banquet-full-header,
+    .booking-banquet-member-main,
+    .booking-banquet-candidate,
+    .booking-banquet-action-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .booking-banquet-member-badges {
+        justify-content: flex-start;
+    }
+
+    .booking-banquet-candidate-role,
+    .booking-banquet-candidate .btn-secondary {
+        width: 100%;
+    }
+}
+
 .booking-block .title {
     white-space: nowrap;
     overflow: hidden;

@@ -1,0 +1,246 @@
+'use strict';
+
+const router = require('express').Router();
+const { authenticateToken } = require('../middleware/auth');
+const { validateId } = require('../services/booking');
+const {
+    timelineContextFromRequest,
+    requireTimelineContext,
+    requireTimelineAction
+} = require('../services/timelineContext');
+const {
+    bookingAccessDeniedPayload,
+    canViewBooking
+} = require('../services/bookingVisibility');
+const {
+    BanquetGroupError,
+    attachBookingToBanquetGroup,
+    createActivityBookingInBanquetGroup,
+    createBanquetGroup,
+    detachBookingFromBanquetGroup,
+    loadBanquetGroupByBookingId,
+    loadBanquetGroupById
+} = require('../services/banquetGroups');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('Banquets');
+
+router.use(authenticateToken);
+
+function sanitizeSnapshotForUser(snapshot, user) {
+    if (!snapshot) return null;
+    const visibleMembers = (snapshot.members || []).filter(member => canViewBooking(user, member.booking));
+    const visibleBookingIds = new Set(visibleMembers.map(member => String(member.bookingId)));
+    const hiddenCount = (snapshot.members || []).length - visibleMembers.length;
+
+    const technicalChildrenByParentId = {};
+    for (const member of visibleMembers) {
+        const visibleChildren = (member.technicalChildren || []).filter(child => canViewBooking(user, child));
+        if (visibleChildren.length) technicalChildrenByParentId[String(member.bookingId)] = visibleChildren;
+    }
+
+    const bookingFromMember = predicate => visibleMembers.filter(predicate).map(member => member.booking);
+    const primaryMember = visibleMembers.find(member => member.isPrimary) || null;
+    const group = snapshot.group
+        ? {
+            ...snapshot.group,
+            primaryBookingId: snapshot.group.primaryBookingId && visibleBookingIds.has(String(snapshot.group.primaryBookingId))
+                ? snapshot.group.primaryBookingId
+                : null
+        }
+        : null;
+    const warnings = [...(snapshot.warnings || [])];
+    if (hiddenCount > 0) {
+        warnings.push({
+            code: 'hidden_members_omitted',
+            message: `${hiddenCount} banquet booking member(s) were omitted by booking visibility rules.`
+        });
+    }
+
+    return {
+        ...snapshot,
+        group,
+        memberships: (snapshot.memberships || []).filter(item => visibleBookingIds.has(String(item.bookingId))),
+        members: visibleMembers.map(member => ({
+            ...member,
+            technicalChildren: technicalChildrenByParentId[String(member.bookingId)] || []
+        })),
+        bookings: {
+            primary: primaryMember?.booking || null,
+            kitchen: bookingFromMember(member => member.role === 'kitchen' || member.isKitchenCandidate),
+            activities: bookingFromMember(member => member.role === 'activity'),
+            services: bookingFromMember(member => member.role === 'service'),
+            manual: bookingFromMember(member => member.role === 'manual'),
+            technicalChildrenByParentId
+        },
+        warnings
+    };
+}
+
+function anchorVisible(snapshot, user) {
+    if (!snapshot?.anchorBookingId) return true;
+    const anchorId = String(snapshot.anchorBookingId);
+    return (snapshot.members || []).some(member => {
+        if (String(member.bookingId) === anchorId && canViewBooking(user, member.booking)) return true;
+        return (member.technicalChildren || []).some(child => String(child.id) === anchorId && canViewBooking(user, child));
+    });
+}
+
+function sendReadResult(req, res, snapshot) {
+    if (!snapshot) return res.status(404).json({ success: false, error: 'Banquet group not found' });
+    if (!anchorVisible(snapshot, req.user)) {
+        return res.status(404).json(bookingAccessDeniedPayload());
+    }
+    const visible = sanitizeSnapshotForUser(snapshot, req.user);
+    if (!visible?.members?.length) {
+        return res.status(404).json(bookingAccessDeniedPayload());
+    }
+    return res.json(visible);
+}
+
+function sendWriteError(res, err) {
+    if (err instanceof BanquetGroupError) {
+        return res.status(err.status || 400).json({
+            success: false,
+            error: err.message,
+            code: err.code,
+            conflictBookingId: err.details?.conflictBookingId || undefined,
+            details: err.details || undefined
+        });
+    }
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+}
+
+router.post('/', async (req, res) => {
+    try {
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const primaryBookingId = req.body?.primaryBookingId || req.body?.primary_booking_id;
+        if (!validateId(primaryBookingId)) {
+            return res.status(400).json({ success: false, error: 'Invalid primary booking ID' });
+        }
+        const result = await createBanquetGroup({
+            primaryBookingId,
+            businessContext,
+            user: req.user,
+            groupName: req.body?.groupName || req.body?.group_name,
+            source: req.body?.source || 'manual',
+            meta: req.body?.meta
+        });
+        return res.status(201).json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('POST /banquets error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.post('/:groupId/activity-booking', async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        if (!validateId(groupId)) {
+            return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'create')) return;
+        const sourceBookingId = req.body?.sourceBookingId || req.body?.source_booking_id;
+        if (!validateId(sourceBookingId)) {
+            return res.status(400).json({ success: false, error: 'Invalid source booking ID' });
+        }
+        const activityBooking = req.body?.booking || req.body?.activityBooking || req.body?.activity_booking;
+        const linkedBookings = Array.isArray(req.body?.linkedBookings)
+            ? req.body.linkedBookings
+            : (Array.isArray(req.body?.linked) ? req.body.linked : []);
+        const result = await createActivityBookingInBanquetGroup({
+            groupId,
+            sourceBookingId,
+            activityBooking,
+            linkedBookings,
+            businessContext,
+            user: req.user
+        });
+        return res.status(201).json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('POST /banquets/:groupId/activity-booking error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.post('/:groupId/bookings', async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const bookingId = req.body?.bookingId || req.body?.booking_id;
+        if (!validateId(groupId) || !validateId(bookingId)) {
+            return res.status(400).json({ success: false, error: 'Invalid booking or group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const result = await attachBookingToBanquetGroup({
+            groupId,
+            bookingId,
+            role: req.body?.role,
+            businessContext,
+            user: req.user,
+            label: req.body?.label,
+            sortOrder: req.body?.sortOrder || req.body?.sort_order
+        });
+        return res.json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('POST /banquets/:groupId/bookings error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.delete('/:groupId/bookings/:bookingId', async (req, res) => {
+    try {
+        const { groupId, bookingId } = req.params;
+        if (!validateId(groupId) || !validateId(bookingId)) {
+            return res.status(400).json({ success: false, error: 'Invalid booking or group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+        const result = await detachBookingFromBanquetGroup({
+            groupId,
+            bookingId,
+            businessContext,
+            user: req.user
+        });
+        return res.json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('DELETE /banquets/:groupId/bookings/:bookingId error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.get('/by-booking/:bookingId', async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        if (!validateId(bookingId)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        const snapshot = await loadBanquetGroupByBookingId({ bookingId, businessContext });
+        return sendReadResult(req, res, snapshot);
+    } catch (err) {
+        log.error('GET /banquets/by-booking/:bookingId error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.get('/:groupId', async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        if (!validateId(groupId)) return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        const snapshot = await loadBanquetGroupById({ groupId, businessContext });
+        return sendReadResult(req, res, snapshot);
+    } catch (err) {
+        log.error('GET /banquets/:groupId error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+module.exports = router;

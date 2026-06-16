@@ -27,11 +27,12 @@ check:migrations`.
 
 `initDatabase()` currently creates these compatibility tables:
 
-`afisha`, `afisha_templates`, `automation_rules`, `booking_counter`,
-`bookings`, `budget_plans`, `certificate_counter`, `certificates`,
-`contractor_notifications`, `contractors`, `customers`, `design_collections`,
-`design_tags`, `designs`, `finance_categories`, `finance_transactions`,
-`history`, `kleshnya_chat`, `kleshnya_messages`, `lines_by_date`,
+`afisha`, `afisha_templates`, `automation_rules`, `banquet_group_bookings`,
+`banquet_groups`, `booking_counter`, `bookings`, `budget_plans`,
+`certificate_counter`, `certificates`, `contractor_notifications`,
+`contractors`, `customers`, `design_collections`, `design_tags`, `designs`,
+`finance_categories`, `finance_transactions`, `history`, `kleshnya_chat`,
+`kleshnya_messages`, `lines_by_date`,
 `pending_animators`, `point_transactions`, `procurement_items`,
 `procurement_lists`, `products`, `schema_migrations`, `scheduled_deletions`,
 `settings`, `staff`, `staff_schedule`, `task_logs`, `task_templates`, `tasks`,
@@ -65,9 +66,14 @@ check:migrations`.
 
 ## Startup Indexes And Triggers
 
-The guard tracks 84 startup indexes in `config/dbStartupSurface.js`. The current
+The guard tracks 88 startup indexes in `config/dbStartupSurface.js`. The current
 startup trigger/function pair is `update_updated_at_column` and
 `trg_bookings_updated_at`.
+
+Banquet group compatibility keeps `idx_banquet_groups_business_date`,
+`idx_banquet_groups_primary_booking`, `idx_banquet_group_bookings_group` and
+`idx_banquet_group_bookings_booking` while older production databases catch up
+to migration `265_banquet_groups.sql`.
 
 Task lifecycle compatibility also keeps `idx_tasks_completed_at`,
 `idx_tasks_duplicate_of_task_id`, `idx_tasks_business_status_date`,

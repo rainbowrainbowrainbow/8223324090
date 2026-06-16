@@ -203,6 +203,14 @@ checkPage('index.html', (doc, html) => {
     check('Booking multi-activity frontend keeps separate activity payloads', bookingCode.includes('selectedActivityProgramIds') && bookingCode.includes('function bookingMultiActivityEnabled') && bookingCode.includes('function buildMultiActivityBookings') && bookingCode.includes('apiCreateBookingFull(booking, linked, { banquetActivities })') && bookingCode.includes('additionalMultiHostActivity') && bookingCode.includes('multiActivity'));
     check('Booking reset clears multi-activity state', bookingFormCode.includes('setSelectedActivityPrograms([], { renderSummary: false, renderPackage: false, markDirty: false })') && bookingFormCode.includes("classList.remove('selected', 'is-primary-activity')"));
     check('Booking API submits banquetActivities through full create', apiCode.includes('options.banquetActivities') && apiCode.includes('payload.banquetActivities'));
+    check('Room booking animation bridge creates banquet group activity atomically',
+        bookingCode.includes('findOrCreateBanquetGroupForSourceBooking')
+        && bookingCode.includes('BookingDrawerState.roomBookingAnimationBridge')
+        && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeContext.groupId')
+        && apiCode.includes('function apiGetBanquetByBooking')
+        && apiCode.includes('function apiCreateBanquetGroup')
+        && apiCode.includes('function apiCreateBanquetActivityBooking')
+        && apiCode.includes('/activity-booking'));
     check('Products API requests effective prices by timeline date', apiCode.includes("params.set('priceDate'") && productPricingCode.includes('function buildProductPriceJoin') && productPricingCode.includes('effective_from <= ${queryDate}') && productPricingCode.includes('nextPriceFrom'));
     check('Booking full route persists activity bookings as banquet-linked root blocks', bookingsRouteCode.includes('const banquetActivities = Array.isArray(req.body?.banquetActivities)') && bookingsRouteCode.includes('const activityRows = []') && bookingsRouteCode.includes('upsertBanquetLink(client, businessContext, main.id, activity.id') && bookingsRouteCode.includes('activityBookings: responseActivityBookings') && bookingsRouteCode.includes('banquetLinks: mapBookingVisualLinkRowsForResponse(banquetLinkRows, main.id)') && bookingsRouteCode.includes('sharedRoomLinks: mapBookingVisualLinkRowsForResponse(') && bookingsRouteCode.includes('Finance auto-record (create/full activity)'));
     check('Booking save pins effective product prices server-side', bookingsRouteCode.includes('applyEffectiveBookingPrice') && bookingsRouteCode.includes('refreshMultiActivityPriceTotals') && productPricingCode.includes('extra.priceSnapshot') && productPricingCode.includes('priceDate'));
@@ -494,6 +502,9 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('size: A4'));
     check('Booking summary page consumes the banquet summary API and prints client-side only',
         pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
+        && pageCode.includes("const groupId = params.get('groupId') || '';")
+        && pageCode.includes("requestParams.set('groupId', groupId)")
+        && pageCode.includes('totals.activitySubtotal')
         && pageCode.includes('window.print()')
         && pageCode.includes('bookingSummaryWarnings')
         && pageCode.includes('navigator.clipboard')
@@ -875,6 +886,16 @@ check('Timeline visual settings center has operator documentation and safe-chang
 check('Timeline display modes are real presentation settings', htmlContains('index.html', 'settingsTimelineDisplayMode') && htmlContains('index.html', 'settingsTimelineKitchenMode') && htmlContains('index.html', 'settingsTimelineRoomFirstEnabled') && htmlContains('index.html', 'settingsTimelineDefaultView') && htmlContains('js/timeline-context.js', 'const DISPLAY_MODES = {') && htmlContains('js/timeline-context.js', "education: {") && htmlContains('js/timeline-context.js', "parkKitchenEnabled") && htmlContains('js/timeline-context.js', "defaultTimelineView") && settingsCode.includes('/settings/timeline-display') && settingsCode.includes('roomTimelineEnabled') && settingsCode.includes('defaultTimelineView') && !settingsCode.includes("|| 'rooms'") && !settingsCode.includes("? 'rooms' : 'animators'") && appCode.includes('saveTimelineDisplaySettingsFromSettings') && appCode.includes('settingsTimelineDefaultView') && timelineConfigCode.includes('TIMELINE_DISPLAY_MODE') && timelineConfigCode.includes('EDUCATION_TIMELINE_PROGRAMS') && timelineCode.includes("presentation?.mode === 'education'") && timelineCode.includes('resourceType: \'cabinet\'') && htmlContains('css/panel.css', 'body.timeline-mode-park.timeline-park-without-kitchen #banquetFields'));
 check('Timeline room load panel is a visible toolbar popover and remains closable', featuresCss.includes('Timeline page room load is a toolbar popover') && featuresCss.includes('--room-load-anchor-top') && featuresCss.includes('body.timeline-dashboard-page .room-load-panel.visible') && featuresCss.includes('.room-load-close-label') && featuresCss.includes('html[data-theme="dark"] .room-load-panel') && timelineCode.includes('const positionRoomLoadPanel') && timelineCode.includes("panel.style.setProperty('--room-load-anchor-right'") && timelineCode.includes('closeRoomLoadPanel') && timelineCode.includes("event.key === 'Escape'") && timelineCode.includes("btn.setAttribute('aria-expanded', 'false')"));
 check('Timeline booking links use durable API-backed connector model', htmlContains('db/migrations/216_booking_banquet_links.sql', 'CREATE TABLE IF NOT EXISTS booking_banquet_links') && htmlContains('routes/bookings.js', "router.post('/:id/banquet-links'") && htmlContains('routes/bookings.js', "router.delete('/:id/banquet-links/:targetId'") && htmlContains('routes/bookings.js', "shared_room_activity") && htmlContains('services/booking.js', 'bookingLinks: Array.isArray(row.booking_links)') && timelineCode.includes('booking-banquet-link-handle') && timelineCode.includes('renderBanquetLinksOverlay') && timelineCode.includes('getBookingVisualLinks') && timelineCode.includes('apiCreateBookingBanquetLink') && timelineCode.includes('removeBookingBanquetLink'));
+check('Banquet groups schema stays isolated from bookings and legacy visual links',
+    htmlContains('db/migrations/265_banquet_groups.sql', 'CREATE TABLE IF NOT EXISTS banquet_groups')
+    && htmlContains('db/migrations/265_banquet_groups.sql', 'CREATE TABLE IF NOT EXISTS banquet_group_bookings')
+    && htmlContains('db/migrations/265_banquet_groups.sql', "CHECK (role IN ('primary', 'kitchen', 'activity', 'service', 'manual'))")
+    && htmlContains('db/migrations/265_banquet_groups.sql', 'UNIQUE (booking_id)')
+    && htmlContains('db/migrations/265_banquet_groups.sql', 'idx_banquet_groups_business_date')
+    && htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_groups')
+    && htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_group_bookings')
+    && !htmlContains('db/migrations/265_banquet_groups.sql', 'ALTER TABLE bookings ADD COLUMN')
+    && !htmlContains('db/index.js', 'banquet_group_id'));
 check('Timeline booking API failures render an explicit error state instead of an empty day', apiCode.includes('throwOnError') && timelineCode.includes('function renderTimelineDataError') && timelineCode.includes('Не вдалося завантажити бронювання') && !timelineCode.includes("getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; })"));
 check('Timeline booking connector visual layer is non-blocking and dark-themeable', timelineConstructorCss.includes('.timeline-banquet-link-layer') && timelineConstructorCss.includes('pointer-events: none') && timelineConstructorCss.includes('.timeline-banquet-link-path') && timelineConstructorCss.includes('.timeline-booking-link-path--room') && timelineConstructorCss.includes('.timeline-booking-link-path--adjacent') && timelineConstructorCss.includes('.booking-banquet-link-handle') && timelineConstructorCss.includes('body.banquet-linking-active') && timelineConstructorCss.includes('html[data-theme="dark"] .booking-banquet-links-detail'));
 check('Timeline toolbar controls share one CRM glass language without a duplicate business selector', darkModeCss.includes('v0.63.14: Timeline toolbar uses one CRM glass control language') && darkModeCss.includes('v0.63.54: timeline utility buttons align with the main control system') && darkModeCss.includes('.timeline-dashboard-page .control-panel') && darkModeCss.includes('.timeline-dashboard-page :where(.status-filter-btn, .period-btn, .zoom-btn)') && darkModeCss.includes('.timeline-dashboard-page :where(.btn-nav, .btn-today, .toggle-mini, .btn-room-load, .btn-new-booking, .btn-export, .btn-product-sales, .btn-menu-toggle, .btn-undo)') && !timelineVisibilityCode.includes('timelineBusinessSelect') && darkModeCss.includes('.timeline-dashboard-page .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle[aria-expanded="true"]') && darkModeCss.includes('.timeline-dashboard-page .v32-controls .admin-dropdown[data-menu-scope="timeline-actions"]') && darkModeCss.includes('margin-left: auto') && darkModeCss.includes('.timeline-dashboard-page .action-buttons:not(:has(> :not(.hidden):not([hidden])))') && darkModeCss.includes(':not(.timeline-hidden-by-config):not(.timeline-permission-hidden)') && responsiveCss.includes('overflow: visible !important;'));
@@ -1449,6 +1470,19 @@ check('Booking detail modal links to banquet summary preview with return URL',
     && bookingCode.includes('returnPath')
     && bookingCode.includes('booking-summary-action')
     && bookingCode.includes('Сформувати вижимку'));
+check('Booking detail modal renders full banquet group details with controlled manual attach',
+    bookingCode.includes('function renderFullBanquetDetail')
+    && bookingCode.includes('apiGetBanquetByBooking(booking.id)')
+    && bookingCode.includes('banquetSnapshotPrimaryBooking')
+    && bookingCode.includes('function createBanquetGroupFromBookingDetails')
+    && bookingCode.includes('function attachBookingToBanquetGroupFromDetails')
+    && bookingCode.includes('apiAttachBanquetGroupBooking')
+    && bookingCode.includes('bookingDetailIsRoot(target)')
+    && bookingCode.includes('Технічні linked_to children')
+    && bookingCode.includes('Кандидати підібрані тільки за тим самим бізнес-контекстом і датою')
+    && timelineConstructorCss.includes('.booking-banquet-full-detail')
+    && timelineConstructorCss.includes('.booking-banquet-candidate-role')
+    && timelineConstructorCss.includes('.booking-banquet-warning'));
 check('Timeline booking links only an existing customer card',
     htmlContains('index.html', 'Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.')
     && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')

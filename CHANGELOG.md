@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.7 - Banquet Groups
+
+### Bookings / Banquet groups / Details / Summary / Release / (Клешня, 16.06.2026) [codex]
+- **Додано окремий шар банкетних груп** - нові таблиці `banquet_groups` і `banquet_group_bookings` об’єднують kitchen, primary, activity, service і manual booking-и без переписування старих `bookings`.
+- **Збережено legacy compatibility** - `booking_banquet_links` не видаляються і лишаються visual/fallback-шаром для старих банкетних зв’язків.
+- **Додано backend API для банкетів** - `/api/banquets` читає групу по booking, створює group, контрольовано attach/detach-ить root booking-и й захищає від дублювання membership.
+- **Кнопка “Додати активну програму” стала group-aware** - активність із кімнатної/кухонної броні створюється атомарно разом із membership у banquet group.
+- **Деталі бронювання показують повний банкет** - у картці видно primary, kitchen, activities, service/manual booking-и, технічні `linked_to` children і warnings.
+- **Банкетна вижимка стала group-aware** - `GET /api/bookings/:id/banquet-summary` підтягує меню з kitchen booking, активності з root activity booking-ів і не дублює другого аніматора як платну позицію.
+- **Старі бронювання не ламаються** - якщо group ще немає, UI і summary fallback-яться на `booking_banquet_links` або поточне бронювання.
+- **Regression guards додано** - route/unit/UI/migration/static checks прикривають group read/write, duplicate protection, legacy fallback, summary totals і details UI.
+- **Backfill не запускався в релізі** - legacy links можна переносити окремою погодженою transaction-операцією після dry-run audit.
+- **Env/auth/Railway config не змінювались** - без secrets, ролей, production config або нових залежностей.
+
+---
+
 ## v0.76.6 - Banquet Summary
 
 ### Bookings / Banquet summary / Print UI / Release / (Клешня, 16.06.2026) [codex]

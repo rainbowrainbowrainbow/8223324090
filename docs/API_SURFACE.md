@@ -30,6 +30,7 @@ focused route tests in the same pack.
 | `/api/auth` | `routes/auth.js` | auth |
 | `/api/backup` | `routes/backup.js` | backup |
 | `/api/board` | `routes/board.js` | board |
+| `/api/banquets` | `routes/banquets.js` | banquet groups |
 | `/api/bookings` | `routes/bookings.js` | bookings |
 | `/api/booking-templates` | `routes/booking-templates.js` | booking-templates |
 | `/api/business-cards` | `routes/business-cards.js` | business-cards |

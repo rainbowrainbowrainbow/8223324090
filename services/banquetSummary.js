@@ -73,11 +73,25 @@ function bookingIdOf(booking = {}) {
     return cleanText(valueOf(booking, 'id', 'bookingId', 'booking_id'), 100);
 }
 
+function bookingLinkedToOf(booking = {}) {
+    return cleanText(valueOf(booking, 'linkedTo', 'linked_to'), 100);
+}
+
+function isRootBooking(booking = {}) {
+    return !bookingLinkedToOf(booking);
+}
+
 function bookingTitle(booking = {}) {
     return cleanText(
         valueOf(booking, 'programName', 'program_name', 'label', 'groupName', 'group_name'),
         200
     );
+}
+
+function sameBooking(a = {}, b = {}) {
+    const aId = bookingIdOf(a);
+    const bId = bookingIdOf(b);
+    return Boolean(aId && bId && aId === bId);
 }
 
 function businessContextLabel(context) {
@@ -154,8 +168,10 @@ function buildProgramRow(mainBooking = {}, programBasePrice) {
     };
 }
 
-function buildLinkedActivityRows(linkedBookings = []) {
+function buildLinkedActivityRows(linkedBookings = [], options = {}) {
+    const source = options.source || 'linked_booking';
     return (Array.isArray(linkedBookings) ? linkedBookings : [])
+        .filter(isRootBooking)
         .map((booking, index) => {
             const title = bookingTitle(booking);
             const subtotal = money(valueOf(booking, 'price'));
@@ -163,7 +179,7 @@ function buildLinkedActivityRows(linkedBookings = []) {
             return {
                 id: `activity:${bookingIdOf(booking) || index + 1}`,
                 type: 'activity',
-                source: 'linked_booking',
+                source,
                 bookingId: bookingIdOf(booking),
                 title: title || `Додаткова активність ${index + 1}`,
                 quantity: 1,
@@ -173,6 +189,8 @@ function buildLinkedActivityRows(linkedBookings = []) {
                 meta: {
                     relationType: cleanText(booking._banquetLink?.relation_type || booking._banquetLink?.relationType, 80) || 'banquet_activity',
                     relationLabel: cleanText(booking._banquetLink?.label, 200),
+                    banquetGroupId: cleanText(booking._banquetGroupId, 100),
+                    banquetRole: cleanText(booking._banquetRole, 80),
                     room: cleanText(valueOf(booking, 'room'), 120),
                     time: cleanText(valueOf(booking, 'time'), 20),
                     duration: nullableNumber(valueOf(booking, 'duration'))
@@ -230,6 +248,70 @@ function sumKnown(rows = []) {
     const values = rows.map(row => money(row.subtotal)).filter(value => value !== null);
     if (!values.length) return null;
     return money(values.reduce((sum, value) => sum + value, 0));
+}
+
+function addMoney(...values) {
+    const known = values.map(money).filter(value => value !== null);
+    if (!known.length) return null;
+    return money(known.reduce((sum, value) => sum + value, 0));
+}
+
+function firstNonNull(...values) {
+    for (const value of values) {
+        if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return null;
+}
+
+function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, fallbackLinkedBookings = []) {
+    if (!resolvedGroup || typeof resolvedGroup !== 'object') {
+        return {
+            source: 'current_booking',
+            group: null,
+            groupId: null,
+            warnings: [],
+            primaryBooking: fallbackMainBooking,
+            kitchenBooking: fallbackMainBooking,
+            activityBookings: (Array.isArray(fallbackLinkedBookings) ? fallbackLinkedBookings : []).filter(isRootBooking),
+            serviceBookings: [],
+            manualBookings: []
+        };
+    }
+
+    const members = Array.isArray(resolvedGroup.members) ? resolvedGroup.members : [];
+    const primaryMember = members.find(member => member.isPrimary)
+        || members.find(member => bookingIdOf(member.booking) === bookingIdOf(resolvedGroup.bookings?.primary))
+        || null;
+    const kitchenMember = members.find(member => member.role === 'kitchen' || member.isKitchenCandidate)
+        || null;
+    const primaryBooking = primaryMember?.booking || resolvedGroup.bookings?.primary || fallbackMainBooking;
+    const kitchenBooking = kitchenMember?.booking
+        || (Array.isArray(resolvedGroup.bookings?.kitchen) ? resolvedGroup.bookings.kitchen[0] : null)
+        || primaryBooking;
+    const activityBookings = members
+        .filter(member => member.role === 'activity')
+        .map(member => member.booking)
+        .filter(isRootBooking);
+    const serviceBookings = members
+        .filter(member => member.role === 'service')
+        .map(member => member.booking)
+        .filter(isRootBooking);
+    const manualBookings = members
+        .filter(member => member.role === 'manual')
+        .map(member => member.booking)
+        .filter(isRootBooking);
+
+    return {
+        source: resolvedGroup.source || (resolvedGroup.groupId ? 'banquet_group' : 'legacy_booking_banquet_links'),
+        group: resolvedGroup.group || null,
+        groupId: resolvedGroup.groupId || resolvedGroup.group?.id || null,
+        warnings: Array.isArray(resolvedGroup.warnings) ? resolvedGroup.warnings : [],
+        primaryBooking,
+        kitchenBooking,
+        activityBookings,
+        serviceBookings,
+        manualBookings
+    };
 }
 
 function depositCandidate(source, value) {
@@ -320,20 +402,34 @@ function termsOf(mainBooking = {}, warnings) {
     };
 }
 
-function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null } = {}) {
+function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null } = {}) {
     if (!mainBooking || typeof mainBooking !== 'object') {
         throw new Error('mainBooking is required');
     }
 
     const warnings = [];
+    const groupState = normalizeResolvedGroup(resolvedGroup, mainBooking, linkedBookings);
+    for (const warning of groupState.warnings) {
+        if (!warning?.code && !warning?.message) continue;
+        warnings.push({
+            code: cleanText(warning.code, 120) || 'banquet_group_warning',
+            message: cleanText(warning.message, 1000) || cleanText(warning.code, 120) || 'Banquet group warning'
+        });
+    }
+    const primaryBooking = groupState.primaryBooking || mainBooking;
+    const kitchenBooking = groupState.kitchenBooking || primaryBooking;
     const context = normalizeBusinessContext(
         businessContext
-        || valueOf(mainBooking, 'businessContext', 'business_context')
+        || valueOf(primaryBooking, 'businessContext', 'business_context')
+        || valueOf(kitchenBooking, 'businessContext', 'business_context')
         || DEFAULT_BUSINESS_CONTEXT
     );
-    const bookingPackage = bookingPackageOf(mainBooking) || {};
+    const primaryPackage = bookingPackageOf(primaryBooking) || {};
+    const kitchenPackage = bookingPackageOf(kitchenBooking) || {};
+    const samePrimaryAndKitchen = sameBooking(primaryBooking, kitchenBooking);
+    const bookingPackage = kitchenPackage || {};
     const menuPositions = normalizeMenuPositions(bookingPackage.menuPositions || bookingPackage.menu_positions || []);
-    const menuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(mainBooking);
+    const menuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
             code: 'legacy_banquet_menu_used',
@@ -341,21 +437,23 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         });
     }
 
-    const bookingPrice = money(valueOf(mainBooking, 'price'));
+    const bookingPrice = money(valueOf(primaryBooking, 'price'));
     const menuSubtotal = money(valueOf(bookingPackage, 'positionsSubtotal', 'positions_subtotal')) ?? sumKnown(menuRows);
-    const explicitProgramBasePrice = money(valueOf(bookingPackage, 'programBasePrice', 'program_base_price'));
-    const inferredProgramBasePrice = bookingPrice !== null && menuSubtotal !== null
+    const explicitProgramBasePrice = money(valueOf(primaryPackage, 'programBasePrice', 'program_base_price'));
+    const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null && menuSubtotal !== null
         ? money(Math.max(0, bookingPrice - menuSubtotal))
         : bookingPrice;
     const programBasePrice = explicitProgramBasePrice ?? inferredProgramBasePrice;
-    const programRow = buildProgramRow(mainBooking, programBasePrice);
-    const activityRows = buildLinkedActivityRows(linkedBookings);
+    const programRow = buildProgramRow(primaryBooking, programBasePrice);
+    const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
+    const activitySubtotal = sumKnown(activityRows);
     const orderRows = [programRow, ...activityRows, ...menuRows].filter(Boolean);
     const rowsTotal = sumKnown(orderRows);
-    const packageTotal = money(valueOf(bookingPackage, 'finalTotal', 'final_total'));
-    const orderTotal = rowsTotal ?? packageTotal ?? bookingPrice;
-    const deposit = explicitDepositOf(mainBooking);
-    const paidAmount = money(valueOf(mainBooking, 'paidAmount', 'paid_amount'));
+    const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
+    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal);
+    const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
+    const deposit = explicitDepositOf(primaryBooking);
+    const paidAmount = money(valueOf(primaryBooking, 'paidAmount', 'paid_amount'));
     if (deposit.amount === null) {
         warnings.push({
             code: 'deposit_not_specified',
@@ -379,8 +477,15 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     return {
         success: true,
         schemaVersion: BANQUET_SUMMARY_SCHEMA_VERSION,
-        bookingId: bookingIdOf(mainBooking),
+        bookingId: bookingIdOf(primaryBooking),
         businessContext: context,
+        group: groupState.group ? {
+            id: groupState.group.id || groupState.groupId || null,
+            source: groupState.source,
+            primaryBookingId: groupState.group.primaryBookingId || groupState.group.primary_booking_id || bookingIdOf(primaryBooking),
+            status: groupState.group.status || null,
+            groupName: groupState.group.groupName || groupState.group.group_name || null
+        } : null,
         document: {
             type: 'banquet_summary',
             title: 'Вижимка банкету',
@@ -389,27 +494,32 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         },
         venue: venueForContext(context, warnings),
         event: {
-            date: cleanText(valueOf(mainBooking, 'date'), 40),
-            time: cleanText(valueOf(mainBooking, 'time'), 20),
-            room: cleanText(valueOf(mainBooking, 'room'), 120),
-            programName: cleanText(valueOf(mainBooking, 'programName', 'program_name'), 200),
-            groupName: cleanText(valueOf(mainBooking, 'groupName', 'group_name'), 200),
-            createdAt: cleanText(valueOf(mainBooking, 'createdAt', 'created_at'), 80),
-            manager: cleanText(valueOf(mainBooking, 'createdBy', 'created_by'), 160),
-            status: cleanText(valueOf(mainBooking, 'status'), 40)
+            date: cleanText(valueOf(primaryBooking, 'date'), 40),
+            time: cleanText(valueOf(primaryBooking, 'time'), 20),
+            room: cleanText(valueOf(primaryBooking, 'room'), 120),
+            programName: cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200),
+            groupName: cleanText(
+                valueOf(groupState.group || {}, 'groupName', 'group_name')
+                || valueOf(primaryBooking, 'groupName', 'group_name'),
+                200
+            ),
+            createdAt: cleanText(valueOf(primaryBooking, 'createdAt', 'created_at'), 80),
+            manager: cleanText(valueOf(primaryBooking, 'createdBy', 'created_by'), 160),
+            status: cleanText(valueOf(primaryBooking, 'status'), 40)
         },
         customer: normalizeCustomer(customer || {}),
-        celebrant: normalizeCelebrant(mainBooking, customer || {}),
+        celebrant: normalizeCelebrant(primaryBooking, customer || {}),
         counts: {
-            children: nullableNumber(valueOf(mainBooking, 'kidsCount', 'kids_count')),
-            adults: nullableNumber(valueOf(mainBooking, 'banquetAdults', 'banquet_adults')),
-            guests: nullableNumber(valueOf(mainBooking, 'banquetGuests', 'banquet_guests')),
-            tables: nullableNumber(valueOf(mainBooking, 'banquetTables', 'banquet_tables'))
+            children: nullableNumber(firstNonNull(valueOf(primaryBooking, 'kidsCount', 'kids_count'), valueOf(kitchenBooking, 'kidsCount', 'kids_count'))),
+            adults: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetAdults', 'banquet_adults'), valueOf(primaryBooking, 'banquetAdults', 'banquet_adults'))),
+            guests: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetGuests', 'banquet_guests'), valueOf(primaryBooking, 'banquetGuests', 'banquet_guests'))),
+            tables: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetTables', 'banquet_tables'), valueOf(primaryBooking, 'banquetTables', 'banquet_tables')))
         },
         orderRows,
         totals: {
             programBasePrice,
             menuSubtotal,
+            activitySubtotal,
             orderTotal,
             bookingPrice,
             currency: CURRENCY
@@ -421,7 +531,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             note: deposit.note,
             source: deposit.source
         },
-        terms: termsOf(mainBooking, warnings),
+        terms: termsOf(primaryBooking, warnings),
         warnings
     };
 }

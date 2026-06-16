@@ -18,6 +18,7 @@ let queries;
 let notifiedLeads;
 let missingSchemaMigrations;
 let missingSchemaColumns;
+let routeSmokeAutoBanquetSummaryGroup = false;
 
 const originalEnv = {
     JWT_SECRET: process.env.JWT_SECRET,
@@ -108,6 +109,7 @@ function clearModules() {
         '../services/linkPreview',
         '../routes/settings',
         '../routes/bookings',
+        '../routes/banquets',
         '../routes/landing',
         '../routes/leads',
         '../routes/packages',
@@ -126,6 +128,7 @@ function clearModules() {
         '../routes/telegram',
         '../services/maysternyaBookingWebhook',
         '../services/banquetSummary',
+        '../services/banquetGroups',
         '../services/booking',
         '../services/timelineResources',
         '../services/leadBookingLink',
@@ -292,6 +295,18 @@ function createFakePool() {
         onboardingProgress: new Map(),
         tasks: [],
         bookings: [],
+        banquetGroups: new Map(),
+        banquetMemberships: [],
+        banquetLinks: [{
+            id: 31,
+            business_context: 'event_genix',
+            booking_a_id: 'BK-SUMMARY',
+            booking_b_id: 'BK-ACTIVITY',
+            relation_type: 'banquet_activity',
+            label: 'extra activity',
+            created_by: 'route-smoke',
+            created_at: '2099-06-01T11:00:00.000Z'
+        }],
         customers: [],
         historyRows: [],
         outboxEvents: [],
@@ -299,6 +314,8 @@ function createFakePool() {
         nextOnboardingProgressId: 1001,
         nextTaskId: 880,
         nextBookingSeq: 1,
+        nextBanquetMembershipId: 1,
+        nextBanquetLinkId: 32,
         nextCustomerId: 970,
         documentAlertsByStaff: new Map([
             [42, [{
@@ -314,6 +331,174 @@ function createFakePool() {
         nextOffboardingEventId: 900
     };
     const activeTaskStatuses = new Set(['done', 'completed', 'archived', 'cancelled']);
+    const routeSmokeBookingRows = () => [
+        {
+            id: 'BK-SUMMARY',
+            business_context: 'event_genix',
+            date: '2099-06-20',
+            time: '14:00',
+            line_id: 'room-marvel',
+            program_id: 'birthday_90',
+            program_code: 'BD90',
+            label: 'Birthday',
+            program_name: 'Birthday package',
+            category: 'birthday',
+            duration: 90,
+            price: 3700,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Marvel',
+            notes: 'No mushrooms',
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: 8,
+            group_name: 'Mia birthday',
+            customer_id: 701,
+            payment_method: 'cash',
+            payment_status: null,
+            paid_amount: null,
+            banquet_guests: 12,
+            banquet_adults: 4,
+            banquet_tables: 2,
+            banquet_menu: 'Legacy should be ignored',
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 2500,
+                    positionsSubtotal: 1200,
+                    finalTotal: 3700,
+                    menuPositions: [
+                        { productId: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600 },
+                        { productId: 'juice', title: 'Juice', quantity: 3, unitPrice: 200, subtotal: 600 }
+                    ]
+                }
+            },
+            created_at: '2099-06-01T10:00:00.000Z',
+            updated_at: '2099-06-01T10:00:00.000Z'
+        },
+        {
+            id: 'BK-ACTIVITY',
+            business_context: 'event_genix',
+            date: '2099-06-20',
+            time: '15:30',
+            line_id: 'animator-1',
+            program_name: 'Face painting',
+            label: 'Face painting',
+            category: 'activity',
+            duration: 30,
+            price: 700,
+            room: 'Marvel',
+            notes: 'After cake',
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            extra_data: {},
+            created_at: '2099-06-01T10:30:00.000Z',
+            updated_at: '2099-06-01T10:30:00.000Z'
+        },
+        {
+            id: 'BK-ACTIVITY-CHILD',
+            business_context: 'event_genix',
+            date: '2099-06-20',
+            time: '15:30',
+            line_id: 'animator-2',
+            program_name: 'Face painting second host',
+            label: 'Second host',
+            category: 'activity',
+            duration: 30,
+            price: 0,
+            room: 'Marvel',
+            notes: 'Second animator',
+            created_by: 'route-smoke',
+            linked_to: 'BK-ACTIVITY',
+            status: 'confirmed',
+            extra_data: {},
+            created_at: '2099-06-01T10:35:00.000Z',
+            updated_at: '2099-06-01T10:35:00.000Z'
+        },
+        {
+            id: 'BK-GROUP-PRIMARY',
+            business_context: 'event_genix',
+            date: '2099-06-21',
+            time: '12:00',
+            line_id: 'room-marvel',
+            label: 'Controlled banquet',
+            program_name: 'Birthday room',
+            category: 'birthday',
+            duration: 90,
+            price: 2500,
+            room: 'Marvel',
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            customer_id: 702,
+            group_name: 'Controlled banquet',
+            extra_data: {},
+            created_at: '2099-06-01T12:00:00.000Z',
+            updated_at: '2099-06-01T12:00:00.000Z'
+        },
+        {
+            id: 'BK-GROUP-TARGET',
+            business_context: 'event_genix',
+            date: '2099-06-21',
+            time: '13:30',
+            line_id: 'animator-3',
+            label: 'Controlled activity',
+            program_name: 'Animator activity',
+            category: 'activity',
+            duration: 45,
+            price: 900,
+            room: 'Marvel',
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            extra_data: {},
+            created_at: '2099-06-01T12:10:00.000Z',
+            updated_at: '2099-06-01T12:10:00.000Z'
+        },
+        {
+            id: 'BK-GROUP-CHILD',
+            business_context: 'event_genix',
+            date: '2099-06-21',
+            time: '13:30',
+            line_id: 'animator-4',
+            label: 'Controlled child',
+            program_name: 'Second animator',
+            category: 'activity',
+            duration: 45,
+            price: 0,
+            room: 'Marvel',
+            created_by: 'route-smoke',
+            linked_to: 'BK-GROUP-TARGET',
+            status: 'confirmed',
+            extra_data: {},
+            created_at: '2099-06-01T12:15:00.000Z',
+            updated_at: '2099-06-01T12:15:00.000Z'
+        },
+        {
+            id: 'BK-GROUP-OTHER-PRIMARY',
+            business_context: 'event_genix',
+            date: '2099-06-21',
+            time: '15:00',
+            line_id: 'room-ninja',
+            label: 'Second controlled banquet',
+            program_name: 'Second room',
+            category: 'birthday',
+            duration: 90,
+            price: 2400,
+            room: 'Ninja',
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            customer_id: 703,
+            group_name: 'Second controlled banquet',
+            extra_data: {},
+            created_at: '2099-06-01T12:20:00.000Z',
+            updated_at: '2099-06-01T12:20:00.000Z'
+        }
+    ];
+    const routeSmokeBookingById = id => routeSmokeBookingRows().find(row => row.id === id) || null;
     const ownerRows = () => Array.from(hrState.users.values())
         .filter(user => user.is_active !== false)
         .map(({ id, username, name, role }) => ({ id, username, name, role }));
@@ -364,56 +549,172 @@ function createFakePool() {
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
             }
-            if (/SELECT b\.\* FROM bookings b WHERE b\.id = \$1 AND CASE/i.test(text) && /LIMIT 1/i.test(text)) {
-                if (params[0] !== 'BK-SUMMARY') return { rows: [], rowCount: 0 };
+            if (/SELECT bgb\.\*, bg\.primary_booking_id/i.test(text) && /FROM banquet_group_bookings bgb JOIN banquet_groups bg/i.test(text)) {
+                const membership = hrState.banquetMemberships.find(item => item.booking_id === params[0]);
+                if (!membership) return { rows: [], rowCount: 0 };
+                const group = hrState.banquetGroups.get(membership.group_id);
+                return {
+                    rows: group ? [{
+                        ...membership,
+                        primary_booking_id: group.primary_booking_id,
+                        group_status: group.status
+                    }] : [],
+                    rowCount: group ? 1 : 0
+                };
+            }
+            if (/SELECT bg\.\* FROM banquet_group_bookings bgb JOIN banquet_groups bg/i.test(text)) {
+                if (routeSmokeAutoBanquetSummaryGroup && ['BK-SUMMARY', 'BK-ACTIVITY'].includes(String(params[0]))) {
+                    return {
+                        rows: [{
+                            id: 'BQ-SMOKE',
+                            business_context: params[1] || 'event_genix',
+                            primary_booking_id: 'BK-SUMMARY',
+                            customer_id: 701,
+                            date: '2099-06-20',
+                            room: 'Marvel',
+                            group_name: 'Mia birthday',
+                            status: 'active',
+                            source: 'route_smoke',
+                            meta: {},
+                            created_by_user_id: 1,
+                            created_by: 'route-smoke',
+                            updated_by: null,
+                            created_at: '2099-06-01T10:00:00.000Z',
+                            updated_at: '2099-06-01T10:00:00.000Z'
+                        }],
+                        rowCount: 1
+                    };
+                }
+                const membership = hrState.banquetMemberships.find(item => item.booking_id === params[0]);
+                if (!membership) return { rows: [], rowCount: 0 };
+                const group = hrState.banquetGroups.get(membership.group_id);
+                return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
+            }
+            if (/FROM banquet_groups bg WHERE bg\.id = \$1/i.test(text)) {
+                const dynamicGroup = hrState.banquetGroups.get(params[0]);
+                if (dynamicGroup) return { rows: [{ ...dynamicGroup }], rowCount: 1 };
+                if (params[0] !== 'BQ-SMOKE') return { rows: [], rowCount: 0 };
                 return {
                     rows: [{
-                        id: 'BK-SUMMARY',
+                        id: 'BQ-SMOKE',
                         business_context: params[1] || 'event_genix',
-                        date: '2099-06-20',
-                        time: '14:00',
-                        line_id: 'room-marvel',
-                        program_id: 'birthday_90',
-                        program_code: 'BD90',
-                        label: 'Birthday',
-                        program_name: 'Birthday package',
-                        category: 'birthday',
-                        duration: 90,
-                        price: 3700,
-                        hosts: 1,
-                        second_animator: null,
-                        costume: null,
-                        room: 'Marvel',
-                        notes: 'No mushrooms',
-                        created_by: 'route-smoke',
-                        linked_to: null,
-                        status: 'confirmed',
-                        kids_count: 8,
-                        group_name: 'Mia birthday',
+                        primary_booking_id: 'BK-SUMMARY',
                         customer_id: 701,
-                        payment_method: 'cash',
-                        payment_status: null,
-                        paid_amount: null,
-                        banquet_guests: 12,
-                        banquet_adults: 4,
-                        banquet_tables: 2,
-                        banquet_menu: 'Legacy should be ignored',
-                        extra_data: {
-                            bookingPackage: {
-                                programBasePrice: 2500,
-                                positionsSubtotal: 1200,
-                                finalTotal: 3700,
-                                menuPositions: [
-                                    { productId: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600 },
-                                    { productId: 'juice', title: 'Juice', quantity: 3, unitPrice: 200, subtotal: 600 }
-                                ]
-                            }
-                        },
+                        date: '2099-06-20',
+                        room: 'Marvel',
+                        group_name: 'Mia birthday',
+                        status: 'active',
+                        source: 'route_smoke',
+                        meta: {},
+                        created_by_user_id: 1,
+                        created_by: 'route-smoke',
+                        updated_by: null,
                         created_at: '2099-06-01T10:00:00.000Z',
                         updated_at: '2099-06-01T10:00:00.000Z'
                     }],
                     rowCount: 1
                 };
+            }
+            if (/FROM banquet_group_bookings bgb WHERE bgb\.group_id = \$1 AND bgb\.booking_id = \$2/i.test(text)) {
+                const row = hrState.banquetMemberships.find(item => item.group_id === params[0] && item.booking_id === params[1]);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/FROM banquet_group_bookings bgb WHERE bgb\.group_id = \$1/i.test(text)) {
+                if (params[0] !== 'BQ-SMOKE') {
+                    const rows = hrState.banquetMemberships.filter(item => item.group_id === params[0]);
+                    return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+                }
+                return {
+                    rows: [
+                        {
+                            id: 1,
+                            group_id: 'BQ-SMOKE',
+                            business_context: params[1] || 'event_genix',
+                            booking_id: 'BK-SUMMARY',
+                            role: 'primary',
+                            sort_order: 10,
+                            created_by_user_id: 1,
+                            created_by: 'route-smoke',
+                            created_at: '2099-06-01T10:00:00.000Z',
+                            updated_at: '2099-06-01T10:00:00.000Z'
+                        },
+                        {
+                            id: 2,
+                            group_id: 'BQ-SMOKE',
+                            business_context: params[1] || 'event_genix',
+                            booking_id: 'BK-ACTIVITY',
+                            role: 'activity',
+                            sort_order: 20,
+                            created_by_user_id: 1,
+                            created_by: 'route-smoke',
+                            created_at: '2099-06-01T10:00:00.000Z',
+                            updated_at: '2099-06-01T10:00:00.000Z'
+                        }
+                    ],
+                    rowCount: 2
+                };
+            }
+            if (/INSERT INTO banquet_groups/i.test(text)) {
+                const row = {
+                    id: params[0],
+                    business_context: params[1] || 'event_genix',
+                    primary_booking_id: params[2],
+                    customer_id: params[3],
+                    date: params[4],
+                    room: params[5],
+                    group_name: params[6],
+                    status: 'active',
+                    source: params[7] || 'manual',
+                    meta: typeof params[8] === 'string' ? JSON.parse(params[8] || '{}') : (params[8] || {}),
+                    created_by_user_id: params[9],
+                    created_by: params[10],
+                    updated_by: params[10],
+                    created_at: '2099-06-01T13:00:00.000Z',
+                    updated_at: '2099-06-01T13:00:00.000Z'
+                };
+                hrState.banquetGroups.set(row.id, row);
+                return { rows: [{ ...row }], rowCount: 1 };
+            }
+            if (/INSERT INTO banquet_group_bookings/i.test(text)) {
+                const primaryInsert = /VALUES\s*\(\$1,\s*\$2,\s*\$3,\s*'primary'/i.test(text);
+                const activityInsert = /VALUES\s*\(\$1,\s*\$2,\s*\$3,\s*'activity'/i.test(text);
+                const literalRoleInsert = primaryInsert || activityInsert;
+                const row = {
+                    id: hrState.nextBanquetMembershipId++,
+                    group_id: params[0],
+                    business_context: params[1] || 'event_genix',
+                    booking_id: params[2],
+                    role: primaryInsert ? 'primary' : (activityInsert ? 'activity' : (params[3] || 'manual')),
+                    sort_order: primaryInsert ? 10 : (activityInsert ? 100 : (params[4] ?? 100)),
+                    created_by_user_id: literalRoleInsert ? params[3] : params[5],
+                    created_by: literalRoleInsert ? params[4] : params[6],
+                    created_at: '2099-06-01T13:01:00.000Z',
+                    updated_at: '2099-06-01T13:01:00.000Z'
+                };
+                if (hrState.banquetMemberships.some(item => item.booking_id === row.booking_id)) {
+                    const err = new Error('duplicate banquet membership');
+                    err.code = '23505';
+                    throw err;
+                }
+                hrState.banquetMemberships.push(row);
+                return { rows: [{ ...row }], rowCount: 1 };
+            }
+            if (/DELETE FROM banquet_group_bookings/i.test(text)) {
+                const row = hrState.banquetMemberships.find(item => item.group_id === params[0] && item.booking_id === params[1]);
+                hrState.banquetMemberships = hrState.banquetMemberships.filter(item => item !== row);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/UPDATE banquet_groups SET updated_at = NOW\(\), updated_by = \$3 WHERE id = \$1/i.test(text)) {
+                const row = hrState.banquetGroups.get(params[0]);
+                if (row) {
+                    row.updated_at = '2099-06-01T13:03:00.000Z';
+                    row.updated_by = params[2] || row.updated_by;
+                }
+                return { rows: [], rowCount: row || params[0] === 'BQ-SMOKE' ? 1 : 0 };
+            }
+            if (/SELECT b\.\* FROM bookings b WHERE b\.id = \$1 AND CASE/i.test(text)) {
+                const row = routeSmokeBookingById(params[0]);
+                return { rows: row ? [{ ...row, business_context: params[1] || row.business_context }] : [], rowCount: row ? 1 : 0 };
             }
             if (/SELECT id, business_context, name, phone, instagram, child_name, child_birthday, source, notes,/i.test(text) && /FROM customers WHERE id = \$1/i.test(text)) {
                 if (Number(params[0]) !== 701) return { rows: [], rowCount: 0 };
@@ -432,42 +733,69 @@ function createFakePool() {
                     rowCount: 1
                 };
             }
+            if (/INSERT INTO booking_banquet_links/i.test(text)) {
+                const [businessContext, bookingA, bookingB, relationType, label, createdByUserId, createdBy] = params;
+                let link = hrState.banquetLinks.find(item =>
+                    item.business_context === businessContext
+                    && item.booking_a_id === bookingA
+                    && item.booking_b_id === bookingB
+                    && item.relation_type === relationType
+                );
+                if (!link) {
+                    link = {
+                        id: hrState.nextBanquetLinkId++,
+                        business_context: businessContext,
+                        booking_a_id: bookingA,
+                        booking_b_id: bookingB,
+                        relation_type: relationType,
+                        label,
+                        created_by_user_id: createdByUserId,
+                        created_by: createdBy,
+                        created_at: '2099-06-01T13:02:00.000Z'
+                    };
+                    hrState.banquetLinks.push(link);
+                } else if (label) {
+                    link.label = label;
+                }
+                return { rows: [{ ...link }], rowCount: 1 };
+            }
+            if (/DELETE FROM booking_banquet_links/i.test(text)) {
+                const [businessContext, bookingA, bookingB, relationType] = params;
+                const row = hrState.banquetLinks.find(link =>
+                    link.business_context === businessContext
+                    && link.relation_type === relationType
+                    && (
+                        (link.booking_a_id === bookingA && link.booking_b_id === bookingB)
+                        || (link.booking_a_id === bookingB && link.booking_b_id === bookingA)
+                    )
+                );
+                hrState.banquetLinks = hrState.banquetLinks.filter(link => link !== row);
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
             if (/FROM booking_banquet_links WHERE business_context = \$1 AND relation_type = \$2/i.test(text)) {
-                if (params[2] !== 'BK-SUMMARY') return { rows: [], rowCount: 0 };
+                if (params.length > 2 && params[2] !== 'BK-SUMMARY') return { rows: [], rowCount: 0 };
+                const rows = hrState.banquetLinks.filter(link =>
+                    link.business_context === params[0]
+                    && link.relation_type === params[1]
+                    && (params.length <= 2 || link.booking_a_id === params[2] || link.booking_b_id === params[2])
+                );
                 return {
-                    rows: [{
-                        id: 31,
-                        booking_a_id: 'BK-SUMMARY',
-                        booking_b_id: 'BK-ACTIVITY',
-                        relation_type: 'banquet_activity',
-                        label: 'extra activity',
-                        created_at: '2099-06-01T11:00:00.000Z',
-                        created_by: 'route-smoke'
-                    }],
-                    rowCount: 1
+                    rows: rows.map(link => ({ ...link })),
+                    rowCount: rows.length
                 };
             }
             if (/SELECT b\.\* FROM bookings b WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(String) : [];
-                const rows = ids.includes('BK-ACTIVITY') ? [{
-                    id: 'BK-ACTIVITY',
-                    business_context: params[1] || 'event_genix',
-                    date: '2099-06-20',
-                    time: '15:30',
-                    line_id: 'animator-1',
-                    program_name: 'Face painting',
-                    label: 'Face painting',
-                    category: 'activity',
-                    duration: 30,
-                    price: 700,
-                    room: 'Marvel',
-                    notes: 'After cake',
-                    created_by: 'route-smoke',
-                    status: 'confirmed',
-                    extra_data: {},
-                    created_at: '2099-06-01T10:30:00.000Z',
-                    updated_at: '2099-06-01T10:30:00.000Z'
-                }] : [];
+                const rows = routeSmokeBookingRows()
+                    .filter(row => ids.includes(row.id))
+                    .map(row => ({ ...row, business_context: params[1] || row.business_context }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/NULLIF\(COALESCE\(b\.linked_to, ''\), ''\) = ANY\(\$1::text\[\]\)/i.test(text)) {
+                const rootIds = new Set(Array.isArray(params[0]) ? params[0].map(String) : []);
+                const rows = routeSmokeBookingRows()
+                    .filter(row => row.linked_to && rootIds.has(String(row.linked_to)))
+                    .map(row => ({ ...row, business_context: params[1] || row.business_context }));
                 return { rows, rowCount: rows.length };
             }
             if (/SELECT \* FROM bookings WHERE COALESCE\(business_context, 'event_genix'\) = \$1 AND COALESCE\(extra_data->>'externalId'/i.test(text)) {
@@ -578,7 +906,40 @@ function createFakePool() {
                 return { rows: [{ id: row.id }], rowCount: 1 };
             }
             if (/INSERT INTO bookings\s+\(id, business_context, date, time, line_id/i.test(text)) {
-                const row = {
+                const linkedChildInsert = /\$11,\s*0,\s*\$12/i.test(text) && params.length === 28;
+                const row = linkedChildInsert ? {
+                    id: params[0],
+                    business_context: params[1],
+                    date: params[2],
+                    time: params[3],
+                    line_id: params[4],
+                    program_id: params[5],
+                    program_code: params[6],
+                    label: params[7],
+                    program_name: params[8],
+                    category: params[9],
+                    duration: params[10],
+                    price: 0,
+                    hosts: params[11],
+                    second_animator: params[12],
+                    pinata_filler: params[13],
+                    pinata_mode: params[14],
+                    pinata_number: params[15],
+                    pinata_filler_number: params[16],
+                    client_pinata_service_price: params[17],
+                    client_pinata_service_note: params[18],
+                    costume: params[19],
+                    room: params[20],
+                    notes: params[21],
+                    created_by: params[22],
+                    linked_to: params[23],
+                    status: params[24],
+                    kids_count: params[25],
+                    group_name: params[26],
+                    extra_data: JSON.parse(params[27] || '{}'),
+                    created_at: '2099-01-01T00:00:00.000Z',
+                    updated_at: '2099-01-01T00:00:00.000Z'
+                } : {
                     id: params[0],
                     business_context: params[1],
                     date: params[2],
@@ -1875,6 +2236,7 @@ describe('route-level API safety smoke', () => {
         app.use(express.json());
         app.use('/api', apiAuthBoundary(authenticateToken));
         app.use('/api/bookings', require('../routes/bookings'));
+        app.use('/api/banquets', require('../routes/banquets'));
         app.use('/api/landing', require('../routes/landing'));
         app.use('/api/leads', require('../routes/leads'));
         app.use('/api/packages', require('../routes/packages'));
@@ -1954,6 +2316,209 @@ describe('route-level API safety smoke', () => {
             && !/^UPDATE users SET last_seen_at = NOW\(\) WHERE id = \$1$/i.test(q.text)
         );
         assert.deepEqual(dataWriteQueries.map(q => q.text), []);
+    });
+
+    it('returns banquet summary from banquet group when groupId is supplied', async () => {
+        const res = await request(
+            'GET',
+            '/api/bookings/BK-SUMMARY/banquet-summary?businessContext=event_genix&groupId=BQ-SMOKE',
+            undefined,
+            withAuth()
+        );
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.bookingId, 'BK-SUMMARY');
+        assert.equal(res.data.group.id, 'BQ-SMOKE');
+        assert.equal(res.data.orderRows.some(row => row.type === 'activity' && row.bookingId === 'BK-ACTIVITY'), true);
+        assert.equal(res.data.orderRows.some(row => row.bookingId === 'BK-ACTIVITY-CHILD'), false);
+        assert.equal(res.data.totals.activitySubtotal, 700);
+        assert.equal(res.data.totals.orderTotal, 4400);
+        assert.ok(queries.some(q => /FROM banquet_groups bg WHERE bg\.id = \$1/i.test(q.text)));
+        const dataWriteQueries = queries.filter(q =>
+            /\bINSERT\s+INTO\b|\bUPDATE\b|\bDELETE\b/i.test(q.text)
+            && !/^UPDATE employee_profiles SET last_activity_at = NOW\(\) WHERE user_id = \$1$/i.test(q.text)
+            && !/^UPDATE users SET last_seen_at = NOW\(\) WHERE id = \$1$/i.test(q.text)
+        );
+        assert.deepEqual(dataWriteQueries.map(q => q.text), []);
+    });
+
+    it('auto-resolves banquet summary from an existing group by booking id', async () => {
+        routeSmokeAutoBanquetSummaryGroup = true;
+        try {
+            queries.length = 0;
+            const res = await request(
+                'GET',
+                '/api/bookings/BK-ACTIVITY/banquet-summary?businessContext=event_genix',
+                undefined,
+                withAuth()
+            );
+
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.bookingId, 'BK-SUMMARY');
+            assert.equal(res.data.group.id, 'BQ-SMOKE');
+            assert.equal(res.data.orderRows.some(row => row.type === 'activity' && row.bookingId === 'BK-ACTIVITY'), true);
+            assert.equal(res.data.orderRows.some(row => row.bookingId === 'BK-ACTIVITY-CHILD'), false);
+            assert.equal(res.data.totals.menuSubtotal, 1200);
+            assert.equal(res.data.totals.activitySubtotal, 700);
+            assert.equal(res.data.totals.orderTotal, 4400);
+            assert.ok(queries.some(q => /FROM banquet_group_bookings bgb JOIN banquet_groups bg/i.test(q.text)));
+            assert.equal(queries.some(q => /FROM booking_banquet_links/i.test(q.text)), false);
+        } finally {
+            routeSmokeAutoBanquetSummaryGroup = false;
+        }
+    });
+
+    it('requires auth for banquet group read endpoint', async () => {
+        const res = await request('GET', '/api/banquets/by-booking/BK-SUMMARY?businessContext=event_genix');
+
+        assert.equal(res.status, 401);
+    });
+
+    it('reads banquet group memberships without treating linked children as paid activities', async () => {
+        const res = await request(
+            'GET',
+            '/api/banquets/BQ-SMOKE?businessContext=event_genix',
+            undefined,
+            withAuth()
+        );
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.source, 'banquet_group');
+        assert.equal(res.data.legacyFallback, false);
+        assert.equal(res.data.groupId, 'BQ-SMOKE');
+        assert.equal(res.data.group.primaryBookingId, 'BK-SUMMARY');
+        assert.equal(res.data.bookings.primary.id, 'BK-SUMMARY');
+        assert.equal(res.data.bookings.kitchen.some(booking => booking.id === 'BK-SUMMARY'), true);
+        assert.equal(res.data.bookings.activities.some(booking => booking.id === 'BK-ACTIVITY'), true);
+        assert.equal(res.data.bookings.activities.some(booking => booking.id === 'BK-ACTIVITY-CHILD'), false);
+        assert.equal(res.data.bookings.technicalChildrenByParentId['BK-ACTIVITY'][0].id, 'BK-ACTIVITY-CHILD');
+        assert.equal(res.data.members.some(member => member.bookingId === 'BK-ACTIVITY-CHILD'), false);
+
+        const dataWriteQueries = queries.filter(q =>
+            /\bINSERT\s+INTO\b|\bUPDATE\b|\bDELETE\b/i.test(q.text)
+            && !/^UPDATE employee_profiles SET last_activity_at = NOW\(\) WHERE user_id = \$1$/i.test(q.text)
+            && !/^UPDATE users SET last_seen_at = NOW\(\) WHERE id = \$1$/i.test(q.text)
+        );
+        assert.deepEqual(dataWriteQueries.map(q => q.text), []);
+    });
+
+    it('falls back to legacy banquet links when a booking has no banquet group', async () => {
+        const res = await request(
+            'GET',
+            '/api/banquets/by-booking/BK-SUMMARY?businessContext=event_genix',
+            undefined,
+            withAuth()
+        );
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.source, 'legacy_booking_banquet_links');
+        assert.equal(res.data.legacyFallback, true);
+        assert.equal(res.data.group, null);
+        assert.equal(res.data.anchorBookingId, 'BK-SUMMARY');
+        assert.equal(res.data.bookings.primary.id, 'BK-SUMMARY');
+        assert.equal(res.data.bookings.kitchen.some(booking => booking.id === 'BK-SUMMARY'), true);
+        assert.equal(res.data.bookings.activities.some(booking => booking.id === 'BK-ACTIVITY'), true);
+        assert.equal(res.data.bookings.activities.some(booking => booking.id === 'BK-ACTIVITY-CHILD'), false);
+        assert.equal(res.data.bookings.technicalChildrenByParentId['BK-ACTIVITY'][0].id, 'BK-ACTIVITY-CHILD');
+        assert.equal(res.data.legacyLinks.length, 1);
+        assert.ok(res.data.warnings.some(warning => warning.code === 'legacy_banquet_links_fallback'));
+        assert.ok(queries.some(q => /FROM booking_banquet_links/i.test(q.text)));
+    });
+
+    it('controls banquet group creation, root attach, duplicate protection, and detach', async () => {
+        const created = await request(
+            'POST',
+            '/api/banquets?businessContext=event_genix',
+            { primaryBookingId: 'BK-GROUP-PRIMARY', groupName: 'Controlled banquet' },
+            withAuth()
+        );
+
+        assert.equal(created.status, 201, JSON.stringify(created.data));
+        assert.equal(created.data.success, true);
+        assert.match(created.data.group.id, /^BQ-/);
+        assert.equal(created.data.group.primaryBookingId, 'BK-GROUP-PRIMARY');
+        assert.equal(created.data.membership.role, 'primary');
+        const groupId = created.data.group.id;
+
+        const attached = await request(
+            'POST',
+            `/api/banquets/${encodeURIComponent(groupId)}/bookings?businessContext=event_genix`,
+            { bookingId: 'BK-GROUP-TARGET', role: 'activity', label: 'Controlled banquet activity' },
+            withAuth()
+        );
+
+        assert.equal(attached.status, 200, JSON.stringify(attached.data));
+        assert.equal(attached.data.success, true);
+        assert.equal(attached.data.membership.bookingId, 'BK-GROUP-TARGET');
+        assert.equal(attached.data.membership.role, 'activity');
+        assert.equal(attached.data.compatibilityLink.relationType, 'banquet_activity');
+
+        const duplicateSameGroup = await request(
+            'POST',
+            `/api/banquets/${encodeURIComponent(groupId)}/bookings?businessContext=event_genix`,
+            { bookingId: 'BK-GROUP-TARGET', role: 'activity' },
+            withAuth()
+        );
+        assert.equal(duplicateSameGroup.status, 409, JSON.stringify(duplicateSameGroup.data));
+        assert.equal(duplicateSameGroup.data.code, 'BOOKING_ALREADY_IN_GROUP');
+
+        const secondCreated = await request(
+            'POST',
+            '/api/banquets?businessContext=event_genix',
+            { primaryBookingId: 'BK-GROUP-OTHER-PRIMARY', groupName: 'Second controlled banquet' },
+            withAuth()
+        );
+        assert.equal(secondCreated.status, 201, JSON.stringify(secondCreated.data));
+        const duplicateOtherGroup = await request(
+            'POST',
+            `/api/banquets/${encodeURIComponent(secondCreated.data.group.id)}/bookings?businessContext=event_genix`,
+            { bookingId: 'BK-GROUP-TARGET', role: 'activity' },
+            withAuth()
+        );
+        assert.equal(duplicateOtherGroup.status, 409, JSON.stringify(duplicateOtherGroup.data));
+        assert.equal(duplicateOtherGroup.data.code, 'BOOKING_IN_OTHER_GROUP');
+
+        const linkedChild = await request(
+            'POST',
+            `/api/banquets/${encodeURIComponent(groupId)}/bookings?businessContext=event_genix`,
+            { bookingId: 'BK-GROUP-CHILD', role: 'activity' },
+            withAuth()
+        );
+        assert.equal(linkedChild.status, 400, JSON.stringify(linkedChild.data));
+        assert.equal(linkedChild.data.code, 'BOOKING_MUST_BE_ROOT');
+
+        const detached = await request(
+            'DELETE',
+            `/api/banquets/${encodeURIComponent(groupId)}/bookings/BK-GROUP-TARGET?businessContext=event_genix`,
+            undefined,
+            withAuth()
+        );
+        assert.equal(detached.status, 200, JSON.stringify(detached.data));
+        assert.equal(detached.data.success, true);
+        assert.equal(detached.data.removed, true);
+        assert.equal(detached.data.compatibilityLinkRemoved, true);
+
+        const primaryDetach = await request(
+            'DELETE',
+            `/api/banquets/${encodeURIComponent(groupId)}/bookings/BK-GROUP-PRIMARY?businessContext=event_genix`,
+            undefined,
+            withAuth()
+        );
+        assert.equal(primaryDetach.status, 400, JSON.stringify(primaryDetach.data));
+        assert.equal(primaryDetach.data.code, 'CANNOT_DETACH_PRIMARY');
+
+        const historyActions = queries
+            .filter(q => /^INSERT INTO history/i.test(q.text))
+            .map(q => q.params[1]);
+        assert.ok(historyActions.includes('banquet_group_created'));
+        assert.ok(historyActions.includes('banquet_group_booking_attached'));
+        assert.ok(historyActions.includes('banquet_group_booking_detached'));
+        assert.ok(queries.some(q => /INSERT INTO booking_banquet_links/i.test(q.text)));
+        assert.ok(queries.some(q => /DELETE FROM booking_banquet_links/i.test(q.text)));
     });
 
     it('keeps version, light health, readiness, and deep health public through the actual settings router', async () => {
@@ -2357,6 +2922,72 @@ describe('route-level API safety smoke', () => {
         });
 
         assert.equal(res.status, 401);
+    });
+
+    it('creates room-bridge activity booking inside an existing banquet group atomically', async () => {
+        const res = await request(
+            'POST',
+            '/api/banquets/BQ-SMOKE/activity-booking?businessContext=event_genix',
+            {
+                sourceBookingId: 'BK-SUMMARY',
+                booking: {
+                    date: '2099-06-20',
+                    time: '16:15',
+                    lineId: 'animator-3',
+                    programId: 'quest_30',
+                    programCode: 'Q30',
+                    label: 'Quest(30)',
+                    programName: 'Quest',
+                    category: 'quest',
+                    duration: 30,
+                    price: 900,
+                    hosts: 1,
+                    room: 'Marvel',
+                    status: 'confirmed',
+                    kidsCount: 8,
+                    groupName: 'Mia birthday',
+                    extraData: { bookingPackage: { finalTotal: 900, menuPositions: [] } }
+                },
+                linkedBookings: [{
+                    date: '2099-06-20',
+                    time: '16:15',
+                    lineId: 'animator-4',
+                    programId: 'quest_30',
+                    programCode: 'Q30',
+                    label: 'Quest second host',
+                    programName: 'Quest',
+                    category: 'quest',
+                    duration: 30,
+                    price: 0,
+                    hosts: 1,
+                    secondAnimator: 'Animator 4',
+                    room: 'Marvel',
+                    status: 'confirmed',
+                    groupName: 'Mia birthday'
+                }]
+            },
+            withAuth()
+        );
+
+        assert.equal(res.status, 201, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.serverVerified, true);
+        assert.equal(res.data.booking.programId, 'quest_30');
+        assert.equal(res.data.membership.role, 'activity');
+        assert.equal(res.data.membership.bookingId, res.data.booking.id);
+        assert.equal(res.data.linkedBookings.length, 1);
+        assert.equal(res.data.linkedBookings[0].linkedTo, res.data.booking.id);
+        assert.equal(res.data.compatibilityLink.relationType, 'banquet_activity');
+
+        const membershipInsert = queries.find(q => /INSERT INTO banquet_group_bookings/i.test(q.text) && q.params[0] === 'BQ-SMOKE');
+        assert.ok(membershipInsert);
+        assert.equal(membershipInsert.params[2], res.data.booking.id);
+        assert.notEqual(membershipInsert.params[2], res.data.linkedBookings[0].id);
+        assert.ok(queries.some(q => /INSERT INTO booking_banquet_links/i.test(q.text)));
+        const historyActions = queries
+            .filter(q => /^INSERT INTO history/i.test(q.text))
+            .map(q => q.params[1]);
+        assert.ok(historyActions.includes('banquet_group_activity_booking_created'));
     });
 
     it('accepts Maysternya Doli bot leads through the token-guarded universal webhook', async () => {

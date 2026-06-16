@@ -93,6 +93,96 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
 });
 
+test('banquet summary resolves group primary, kitchen menu, and root activity rows without linked children', () => {
+    const primary = {
+        id: 'BK-GROUP-PRIMARY',
+        business_context: 'event_genix',
+        date: '2099-07-01',
+        time: '13:00',
+        room: 'Marvel',
+        program_name: 'Birthday room',
+        price: 2500,
+        kids_count: 9,
+        group_name: 'Group birthday',
+        extra_data: {
+            banquetDeposit: { amount: 500 }
+        }
+    };
+    const kitchen = {
+        id: 'BK-GROUP-KITCHEN',
+        business_context: 'event_genix',
+        date: '2099-07-01',
+        time: '13:00',
+        room: 'Kitchen',
+        label: 'Kitchen order',
+        price: 1200,
+        banquet_adults: 5,
+        banquet_guests: 14,
+        banquet_tables: 3,
+        extra_data: {
+            bookingPackage: {
+                positionsSubtotal: 1200,
+                menuPositions: [
+                    { productId: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600 },
+                    { productId: 'juice', title: 'Juice', quantity: 3, unitPrice: 200, subtotal: 600 }
+                ]
+            }
+        }
+    };
+    const activity = {
+        id: 'BK-GROUP-ACTIVITY',
+        business_context: 'event_genix',
+        date: '2099-07-01',
+        time: '14:30',
+        room: 'Marvel',
+        program_name: 'Face painting',
+        price: 700
+    };
+    const linkedChild = {
+        id: 'BK-GROUP-ACTIVITY-CHILD',
+        business_context: 'event_genix',
+        linked_to: 'BK-GROUP-ACTIVITY',
+        program_name: 'Second host',
+        price: 0
+    };
+
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: activity,
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-GROUP',
+            group: {
+                id: 'BQ-GROUP',
+                primaryBookingId: primary.id,
+                groupName: 'Group birthday',
+                status: 'active'
+            },
+            members: [
+                { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary, technicalChildren: [] },
+                { bookingId: kitchen.id, role: 'kitchen', isKitchenCandidate: true, booking: kitchen, technicalChildren: [] },
+                { bookingId: activity.id, role: 'activity', booking: activity, technicalChildren: [linkedChild] }
+            ],
+            warnings: [{ code: 'group_notice', message: 'Group warning' }]
+        }
+    });
+
+    assert.equal(summary.bookingId, primary.id);
+    assert.equal(summary.group.id, 'BQ-GROUP');
+    assert.equal(summary.counts.children, 9);
+    assert.equal(summary.counts.adults, 5);
+    assert.equal(summary.counts.guests, 14);
+    assert.equal(summary.counts.tables, 3);
+    assert.equal(summary.orderRows.some(row => row.type === 'menu' && row.title === 'Pizza'), true);
+    assert.equal(summary.orderRows.some(row => row.type === 'activity' && row.bookingId === activity.id), true);
+    assert.equal(summary.orderRows.some(row => row.bookingId === linkedChild.id), false);
+    assert.equal(summary.totals.programBasePrice, 2500);
+    assert.equal(summary.totals.menuSubtotal, 1200);
+    assert.equal(summary.totals.activitySubtotal, 700);
+    assert.equal(summary.totals.orderTotal, 4400);
+    assert.ok(summary.warnings.some(warning => warning.code === 'group_notice'));
+});
+
 test('banquet summary uses legacy banquetMenu only when structured menu positions are missing', () => {
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',

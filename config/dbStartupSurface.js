@@ -8,6 +8,8 @@ const STARTUP_SCHEMA_TABLES = [
     'afisha',
     'afisha_templates',
     'automation_rules',
+    'banquet_group_bookings',
+    'banquet_groups',
     'booking_counter',
     'bookings',
     'budget_plans',
@@ -103,6 +105,10 @@ const STARTUP_SCHEMA_COLUMNS = [
 
 const STARTUP_SCHEMA_INDEXES = [
     'idx_afisha_date',
+    'idx_banquet_group_bookings_booking',
+    'idx_banquet_group_bookings_group',
+    'idx_banquet_groups_business_date',
+    'idx_banquet_groups_primary_booking',
     'idx_bookings_customer_id',
     'idx_bookings_date',
     'idx_bookings_date_status',

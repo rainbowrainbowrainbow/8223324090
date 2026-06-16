@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Genix | Вижимка банкету</title>
+    <meta name="description" content="Preview і друк банкетної вижимки Event Genix">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.76.6">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.6">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.6">
+    <link rel="stylesheet" href="css/booking-summary.css?v=0.76.6">
+</head>
+<body class="booking-summary-page">
+    <header class="booking-summary-toolbar" aria-label="Дії з вижимкою">
+        <div>
+            <p class="booking-summary-kicker">Event Genix</p>
+            <h1>Вижимка банкету</h1>
+        </div>
+        <div class="booking-summary-actions">
+            <a id="bookingSummaryBack" class="booking-summary-btn booking-summary-btn-secondary" href="/">Повернутись</a>
+            <button id="bookingSummaryCopy" type="button" class="booking-summary-btn booking-summary-btn-secondary">Скопіювати текст</button>
+            <button id="bookingSummaryPrint" type="button" class="booking-summary-btn booking-summary-btn-primary">Друк / PDF</button>
+        </div>
+    </header>
+
+    <main class="booking-summary-shell" id="bookingSummaryRoot">
+        <section id="bookingSummaryState" class="booking-summary-state" role="status">
+            Завантаження вижимки...
+        </section>
+        <section id="bookingSummaryWarnings" class="booking-summary-warnings" hidden></section>
+        <article id="bookingSummaryDocument" class="booking-summary-document" aria-label="Документ вижимки банкету" hidden></article>
+    </main>
+
+    <script src="js/auth.js?v=0.76.6" defer></script>
+    <script src="js/booking-summary-page.js?v=0.76.6" defer></script>
+</body>
+</html>

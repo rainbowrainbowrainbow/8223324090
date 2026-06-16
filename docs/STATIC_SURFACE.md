@@ -22,6 +22,7 @@ and focused tests in the same pack.
 | --- | --- | --- | --- | --- |
 | `analytics.html` | `/analytics` | analytics | canonical-page | Operational analytics dashboard. |
 | `afisha.html` | `/afisha` | afisha | canonical-page | Standalone product page for Afisha events, import/export, recurring templates, and task generation. |
+| `booking-summary.html` | `/booking-summary.html` | bookings | canonical-page | Printable banquet summary preview for booking details. |
 | `art-director.html` | `/art` | art-director | canonical-page | Legacy `/art-director` and `/art-director.html` redirect to `/art`. |
 | `center.html` | `/center` | center | canonical-page | Entertainment center operations page. |
 | `chat.html` | `/chat` | chat | canonical-page | `/kleshnya` redirects to this messenger surface. |

@@ -909,6 +909,7 @@ async function initDatabase() {
 
         // v16.0: Add payment_method to bookings
         await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
+        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS banquet_adults INTEGER`);
 
         // v16.0: Add value_uah to certificates
         await safeQuery(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS value_uah INTEGER DEFAULT 0`);

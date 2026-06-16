@@ -125,6 +125,13 @@ const CSS_SURFACE = [
         reason: 'Global variables, reset, typography, and shared primitives.'
     },
     {
+        file: 'css/booking-summary.css',
+        owner: 'bookings',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Printable banquet summary preview and browser print/PDF styles.'
+    },
+    {
         file: 'css/catalog.css',
         owner: 'catalogs',
         category: 'feature-shared',

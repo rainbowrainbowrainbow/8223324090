@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.6 - Banquet Summary
+
+### Bookings / Banquet summary / Print UI / Release / (Клешня, 16.06.2026) [codex]
+- **Додано окрему банкетну вижимку бронювання** - у деталях бронювання з’явилась кнопка `Сформувати вижимку`, яка відкриває printable preview на `/booking-summary.html`.
+- **Backend summary contract винесено в окремий builder** - `GET /api/bookings/:id/banquet-summary` збирає основне бронювання, клієнта, linked banquet activities, structured `menuPositions` і legacy `banquet_menu` fallback.
+- **Додано структурне поле кількості дорослих** - nullable `bookings.banquet_adults` і API-поле `banquetAdults` працюють без backfill та не ламають старі бронювання.
+- **Вижимка ближче до KeyCRM** - документ показує шапку закладу, дату/час, замовника, іменинника, кімнату, менеджера, телефон, дітей, дорослих, рядки замовлення, суми, завдаток і умови.
+- **Завдаток став безпечним** - `paid_amount` більше не підставляється як завдаток без явного marker-а; якщо достовірного deposit немає, preview показує warning `Завдаток не вказано`.
+- **Додано print/copy UI** - сторінка має повернення до таймлайну, копіювання тексту і друк/PDF через `window.print()`, без server-side PDF.
+- **Static surface зареєстровано явно** - `booking-summary.html` додано в static manifest/docs і route reference, щоб release guard бачив нову сторінку.
+- **Regression guards додано** - unit/route/UI/migration/static checks прикривають summary contract, дорослих, linked activities, warnings, route auth і print page.
+- **Env/auth/Railway config не змінювались** - без secrets, ролей, production config або нових залежностей.
+
+---
+
 ## v0.76.5 - Maysternya Bot Lead Handoff
 
 ### Leads / Maysternya / Telegram bot / Booking handoff / Release / (Клешня, 16.06.2026) [codex]

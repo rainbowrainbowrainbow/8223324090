@@ -279,6 +279,7 @@ function mapBookingRow(row) {
         confirmationNote: row.confirmation_note || row.confirmationNote || null,
         confirmationSource: row.confirmation_source || row.confirmationSource || null,
         banquetGuests: row.banquet_guests || null,
+        banquetAdults: row.banquet_adults || null,
         banquetTables: row.banquet_tables || null,
         banquetMenu: row.banquet_menu || null,
         certificateId: row.certificate_id || null,

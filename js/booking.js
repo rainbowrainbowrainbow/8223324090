@@ -3041,7 +3041,7 @@ function resetBookingPackageWorkspace() {
     BookingPackageState.catalogFilter = 'all';
     BookingPackageState.catalogEditing = null;
     BookingPackageState.catalogInsight = null;
-    ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetTables'].forEach(id => {
+    ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -3201,6 +3201,8 @@ function hydrateBookingPackageWorkspace(booking) {
     }
     const guests = document.getElementById('banquetGuests');
     if (guests) guests.value = booking?.banquetGuests || '';
+    const adults = document.getElementById('banquetAdults');
+    if (adults) adults.value = booking?.banquetAdults || '';
     const tables = document.getElementById('banquetTables');
     if (tables) tables.value = booking?.banquetTables || '';
     renderBookingPackageSummary();
@@ -3440,7 +3442,7 @@ function initBookingPackageWorkspace() {
         }
         document.getElementById('freeRoomsPanel')?.classList.add('hidden');
     });
-    ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu', 'banquetGuests',
+    ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
      'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
      'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
@@ -5364,6 +5366,7 @@ function buildBookingObject(formData, program) {
     }
 
     obj.banquetGuests = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetGuests')?.value) || null) : null;
+    obj.banquetAdults = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetAdults')?.value) || null) : null;
     obj.banquetTables = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetTables')?.value) || null) : null;
     obj.banquetMenu = formData.kitchenEnabled
         ? (document.getElementById('banquetMenu')?.value?.trim()
@@ -5447,6 +5450,7 @@ function buildBookingObject(formData, program) {
         obj.costume = null;
         obj.secondAnimator = null;
         obj.banquetGuests = null;
+        obj.banquetAdults = null;
         obj.banquetTables = null;
         obj.banquetMenu = null;
         obj.menuPositions = [];
@@ -5577,6 +5581,7 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
         paymentMethod: baseBooking.paymentMethod || null,
         customerId: baseBooking.customerId || null,
         banquetGuests: null,
+        banquetAdults: null,
         banquetTables: null,
         banquetMenu: null
     };
@@ -5705,6 +5710,7 @@ function buildMaysternyaClosedSlotBooking() {
         skipNotification: true,
         paymentMethod: null,
         banquetGuests: null,
+        banquetAdults: null,
         banquetTables: null,
         banquetMenu: null
     };
@@ -6743,6 +6749,20 @@ function renderEducationLessonDetail(booking) {
         </div>`;
 }
 
+function bookingSummaryPreviewUrl(booking = {}) {
+    const context = booking.businessContext
+        || booking.business_context
+        || window.TimelineBusinessContext?.current?.()?.apiValue
+        || 'event_genix';
+    const returnPath = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+    const params = new URLSearchParams({
+        id: String(booking.id || ''),
+        businessContext: context,
+        return: returnPath
+    });
+    return `/booking-summary.html?${params.toString()}`;
+}
+
 async function showBookingDetails(bookingId) {
     const bookings = await getBookingsForDate(AppState.selectedDate);
     const booking = bookings.find(b => b.id === bookingId);
@@ -6849,6 +6869,7 @@ async function showBookingDetails(bookingId) {
         <div class="booking-actions modal-footer-sticky">
             ${animatorViewActionHtml}
             ${addAnimationActionHtml}
+            <a href="${escapeHtml(bookingSummaryPreviewUrl(booking))}" class="btn-secondary btn-sm booking-summary-action">Сформувати вижимку</a>
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
             <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
@@ -6914,6 +6935,7 @@ async function showBookingDetails(bookingId) {
         ${renderBookingWorkspaceDetail(booking)}
         ${renderBookingPackageDetail(booking)}
         ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
+        ${booking.banquetAdults ? `<div class="booking-detail-row"><span class="label">Дорослих:</span><span class="value">${escapeHtml(String(booking.banquetAdults))}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Статус:</span>
             <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>

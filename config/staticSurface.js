@@ -16,6 +16,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Standalone product page for Afisha events, import/export, recurring templates, and task generation.'
     },
     {
+        file: 'booking-summary.html',
+        canonicalPath: '/booking-summary.html',
+        owner: 'bookings',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Printable banquet summary preview for booking details.'
+    },
+    {
         file: 'art-director.html',
         canonicalPath: '/art',
         owner: 'art-director',

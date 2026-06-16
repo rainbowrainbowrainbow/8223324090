@@ -55,6 +55,7 @@ function createBookingMenuCatalogHarness() {
                 <input id="bookingMenuPositionsJson">
                 <textarea id="banquetMenu"></textarea>
                 <input id="banquetGuests">
+                <input id="banquetAdults">
                 <input id="banquetTables">
                 <button id="bookingMenuAddBtn"></button>
                 <select id="selectedProgram"></select>
@@ -766,9 +767,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /const roomError = requireBookingRoom\(b\)/);
     assert.match(route, /const mainRoomError = requireBookingRoom\(main\)/);
     assert.match(route, /banquet_guests/);
+    assert.match(route, /banquet_adults/);
     assert.match(route, /banquet_tables/);
     assert.match(route, /banquet_menu/);
-    assert.match(route, /banquet_guests,\s*banquet_tables,\s*banquet_menu/);
+    assert.match(route, /banquet_guests,\s*banquet_adults,\s*banquet_tables,\s*banquet_menu/);
     assert.match(route, /bookingPackageAudit/);
     assert.match(route, /function attachLinkedBookingTimelineIdentity/);
     assert.match(route, /attachLinkedBookingTimelineIdentity\(lb, businessContext/);

@@ -25,6 +25,7 @@ const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
+const { buildBanquetSummary } = require('../services/banquetSummary');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
@@ -1481,6 +1482,88 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
     }
 });
 
+router.get('/:id/banquet-summary', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!validateId(id)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+
+        const mainResult = await pool.query(
+            `SELECT b.*
+               FROM bookings b
+              WHERE b.id = $1
+                AND ${bookingContextSql('b', '$2')}
+              LIMIT 1`,
+            [id, businessContext]
+        );
+        const mainBooking = mainResult.rows[0] || null;
+        if (!mainBooking) return res.status(404).json({ success: false, error: 'Booking not found' });
+        if (!canViewBooking(req.user, mainBooking)) return sendBookingDenied(req, res, mainBooking);
+
+        let customer = null;
+        if (mainBooking.customer_id) {
+            const customerResult = await pool.query(
+                `SELECT id, business_context, name, phone, instagram, child_name, child_birthday, source, notes,
+                        created_at, updated_at
+                   FROM customers
+                  WHERE id = $1
+                    AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+                  LIMIT 1`,
+                [mainBooking.customer_id, businessContext]
+            );
+            customer = customerResult.rows[0] || null;
+        }
+
+        const linksResult = await pool.query(
+            `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
+               FROM booking_banquet_links
+              WHERE business_context = $1
+                AND relation_type = $2
+                AND ($3 = booking_a_id OR $3 = booking_b_id)
+              ORDER BY created_at ASC, id ASC`,
+            [businessContext, BANQUET_LINK_RELATION_TYPE, id]
+        );
+        const linkedIds = linksResult.rows
+            .map(link => String(link.booking_a_id) === String(id) ? link.booking_b_id : link.booking_a_id)
+            .filter(Boolean);
+        const linkByTarget = new Map(linksResult.rows.map(link => {
+            const targetId = String(link.booking_a_id) === String(id) ? link.booking_b_id : link.booking_a_id;
+            return [String(targetId), link];
+        }));
+        let linkedBookings = [];
+        if (linkedIds.length) {
+            const linkedResult = await pool.query(
+                `SELECT b.*
+                   FROM bookings b
+                  WHERE b.id = ANY($1::text[])
+                    AND ${bookingContextSql('b', '$2')}
+                    AND ${bookingActiveStatusSql('b')}
+                  ORDER BY b.date ASC, b.time ASC, b.id ASC`,
+                [linkedIds, businessContext]
+            );
+            linkedBookings = linkedResult.rows
+                .filter(row => canViewBooking(req.user, row))
+                .map(row => ({
+                    ...row,
+                    _banquetLink: linkByTarget.get(String(row.id)) || null
+                }));
+        }
+
+        const summary = buildBanquetSummary({
+            mainBooking,
+            customer,
+            linkedBookings,
+            businessContext,
+            generatedBy: req.user
+        });
+        res.json(summary);
+    } catch (err) {
+        log.error('GET /bookings/:id/banquet-summary error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // Get bookings for a date
 router.get('/:date', async (req, res) => {
     try {
@@ -1500,7 +1583,7 @@ router.get('/:date', async (req, res) => {
                     room, notes, created_by, created_at, linked_to, status, kids_count,
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source,
-                    banquet_guests, banquet_tables, banquet_menu
+                    banquet_guests, banquet_adults, banquet_tables, banquet_menu
              FROM bookings b
              WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND ${bookingActiveStatusSql('b')}
                ${visibility}
@@ -1845,10 +1928,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_tables, banquet_menu)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
              RETURNING *`,
-            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null]
         );
 
         const linkedInsertedRows = [];
@@ -2318,10 +2401,10 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
             }
 
             const insertResult = await client.query(
-                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
                  RETURNING *`,
-                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetTables || null, candidate.banquetMenu || null]
+                [candidate.id, businessContext, candidate.date, candidate.time, candidate.lineId, candidate.programId, candidate.programCode, candidate.label, candidate.programName, candidate.category, candidate.duration, candidate.price, candidate.hosts, candidate.secondAnimator, candidate.pinataFiller, candidate.pinataMode, candidate.pinataNumber, candidate.pinataFillerNumber, candidate.clientPinataServicePrice, candidate.clientPinataServiceNote, candidate.costume || null, candidate.room, candidate.notes, candidate.createdBy || req.user?.username, null, candidate.status, candidate.kidsCount || null, candidate.groupName || null, candidate.extraData ? JSON.stringify(candidate.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(candidate.skipNotification) : true, customerId, candidate.paymentMethod || null, candidate.banquetGuests || null, candidate.banquetAdults || null, candidate.banquetTables || null, candidate.banquetMenu || null]
             );
             if (insertResult.rows[0]) insertedRows.push(insertResult.rows[0]);
         }
@@ -2669,10 +2752,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
              RETURNING *`,
-            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetTables || null, main.banquetMenu || null]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetAdults || null, main.banquetTables || null, main.banquetMenu || null]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger
@@ -2754,10 +2837,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
             activity.id = await generateBookingNumber(client);
             const activityInsert = await client.query(
-                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_tables, banquet_menu)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
                  RETURNING *`,
-                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, activity.kidsCount || null, activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, activity.banquetGuests || null, activity.banquetTables || null, activity.banquetMenu || null]
+                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, activity.kidsCount || null, activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, activity.banquetGuests || null, activity.banquetAdults || null, activity.banquetTables || null, activity.banquetMenu || null]
             );
             if (activityInsert.rows[0]) {
                 activityRows.push(activityInsert.rows[0]);
@@ -3447,6 +3530,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     if (b.clientPinataServicePrice === undefined) b.clientPinataServicePrice = old.client_pinata_service_price;
     if (b.clientPinataServiceNote === undefined) b.clientPinataServiceNote = old.client_pinata_service_note;
     if (b.banquetGuests === undefined) b.banquetGuests = old.banquet_guests;
+    if (b.banquetAdults === undefined) b.banquetAdults = old.banquet_adults;
     if (b.banquetTables === undefined) b.banquetTables = old.banquet_tables;
     if (b.banquetMenu === undefined) b.banquetMenu = old.banquet_menu;
 
@@ -3659,9 +3743,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
                  payment_method=$26, pinata_mode=$27, client_pinata_service_price=$28,
                  client_pinata_service_note=$29, pinata_number=$30, pinata_filler_number=$31,
-                 banquet_guests=$32, banquet_tables=$33, banquet_menu=$34
+                 banquet_guests=$32, banquet_adults=$33, banquet_tables=$34, banquet_menu=$35
                  WHERE id=$23
-                   AND ${bookingContextSql('', '$35')}
+                   AND ${bookingContextSql('', '$36')}
                    AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
@@ -3670,7 +3754,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
                  id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
                  b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
-                 b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
+                 b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -3681,15 +3765,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                  linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
                  payment_method=$25, pinata_mode=$26, client_pinata_service_price=$27,
                  client_pinata_service_note=$28, pinata_number=$29, pinata_filler_number=$30,
-                 banquet_guests=$31, banquet_tables=$32, banquet_menu=$33
-                 WHERE id=$23 AND ${bookingContextSql('', '$34')}
+                 banquet_guests=$31, banquet_adults=$32, banquet_tables=$33, banquet_menu=$34
+                 WHERE id=$23 AND ${bookingContextSql('', '$35')}
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
                  b.paymentMethod || null, b.pinataMode, b.clientPinataServicePrice, b.clientPinataServiceNote,
-                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
+                 b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
             );
         }
 

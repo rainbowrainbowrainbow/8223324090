@@ -52,6 +52,7 @@ const STARTUP_SCHEMA_COLUMNS = [
     'afisha.original_time',
     'afisha.template_id',
     'afisha.type',
+    'bookings.banquet_adults',
     'bookings.costume',
     'bookings.customer_id',
     'bookings.extra_data',

@@ -632,6 +632,7 @@ const PAGE_ACCESS = {
     '/training':  _TRAINING_ACCESS,
     '/settings':  ['creator', 'director'],
     '/timeline-settings': ['creator', 'director'],
+    '/booking-summary': _ALL_STAFF,
     '/demo':      _MANAGER_UP,
     '/programs':  _PROGRAMS_ACCESS,
     '/hr':        _HR_PAGE_ACCESS,

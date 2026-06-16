@@ -51,6 +51,7 @@ function mapBookingRow(row = {}) {
 }
 
 function bookingRowFromInsert(params) {
+    const banquetStart = params.length >= 37 ? 33 : (params.length >= 36 ? 32 : -1);
     return {
         id: params[0],
         business_context: params[1],
@@ -77,6 +78,10 @@ function bookingRowFromInsert(params) {
         skip_notification: params[29],
         customer_id: params[30],
         payment_method: params[31],
+        banquet_guests: banquetStart >= 0 ? params[banquetStart] : null,
+        banquet_adults: banquetStart >= 0 ? params[banquetStart + 1] : null,
+        banquet_tables: banquetStart >= 0 ? params[banquetStart + 2] : null,
+        banquet_menu: banquetStart >= 0 ? params[banquetStart + 3] : null,
         created_at: '2099-01-01T00:00:00.000Z',
         updated_at: '2099-01-01T00:00:00.000Z'
     };
@@ -217,8 +222,10 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
         }
         if (/^UPDATE bookings SET date=\$1, time=\$2, line_id=\$3/i.test(sql) && /RETURNING \*/i.test(sql)) {
+            const optimistic = sql.includes("date_trunc('milliseconds'");
+            const tailOffset = optimistic ? 1 : 0;
             const id = params[22];
-            const businessContext = params[33];
+            const businessContext = params[params.length - 1];
             const row = state.rows.find(item =>
                 item.id === id &&
                 normalizeContext(item.business_context) === normalizeContext(businessContext)
@@ -247,16 +254,17 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
                 kids_count: params[19],
                 group_name: params[20],
                 extra_data: params[21],
-                customer_id: params[23],
-                payment_method: params[24],
-                pinata_mode: params[25],
-                client_pinata_service_price: params[26],
-                client_pinata_service_note: params[27],
-                pinata_number: params[28],
-                pinata_filler_number: params[29],
-                banquet_guests: params[30],
-                banquet_tables: params[31],
-                banquet_menu: params[32],
+                customer_id: params[23 + tailOffset],
+                payment_method: params[24 + tailOffset],
+                pinata_mode: params[25 + tailOffset],
+                client_pinata_service_price: params[26 + tailOffset],
+                client_pinata_service_note: params[27 + tailOffset],
+                pinata_number: params[28 + tailOffset],
+                pinata_filler_number: params[29 + tailOffset],
+                banquet_guests: params[30 + tailOffset],
+                banquet_adults: params[31 + tailOffset],
+                banquet_tables: params[32 + tailOffset],
+                banquet_menu: params[33 + tailOffset],
                 updated_at: '2099-01-02T00:00:00.000Z'
             });
             return { rows: [{ ...row }], rowCount: 1 };
@@ -678,6 +686,7 @@ test('PUT /api/bookings creates missing linked row when edit adds second animato
             customer_id: null,
             payment_method: null,
             banquet_guests: null,
+            banquet_adults: null,
             banquet_tables: null,
             banquet_menu: null,
             created_at: '2099-01-01T00:00:00.000Z',

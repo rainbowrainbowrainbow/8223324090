@@ -478,6 +478,28 @@ checkPage('timeline-settings.html', (doc, html) => {
     check('Timeline settings loads context and page controllers', getHtmlScripts(html).includes('js/timeline-context.js') && getHtmlScripts(html).includes('js/timeline-settings-page.js'));
 });
 
+checkPage('booking-summary.html', (doc, html) => {
+    const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
+    const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
+    check('Booking summary page exposes preview shell and actions',
+        !!doc.getElementById('bookingSummaryBack')
+        && !!doc.getElementById('bookingSummaryCopy')
+        && !!doc.getElementById('bookingSummaryPrint')
+        && !!doc.getElementById('bookingSummaryWarnings')
+        && !!doc.getElementById('bookingSummaryDocument'));
+    check('Booking summary page loads standalone controller and print CSS',
+        getHtmlScripts(html).includes('js/booking-summary-page.js')
+        && html.includes('css/booking-summary.css')
+        && pageCss.includes('@media print')
+        && pageCss.includes('size: A4'));
+    check('Booking summary page consumes the banquet summary API and prints client-side only',
+        pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
+        && pageCode.includes('window.print()')
+        && pageCode.includes('bookingSummaryWarnings')
+        && pageCode.includes('navigator.clipboard')
+        && !pageCode.includes('pdf'));
+});
+
 checkPage('sound.html', (doc, html) => {
     const soundCode = fs.readFileSync(path.join(ROOT, 'js', 'sound-page.js'), 'utf8');
     const soundCss = fs.readFileSync(path.join(ROOT, 'css', 'sound.css'), 'utf8');
@@ -642,7 +664,7 @@ const criticalJS = [
     'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js', 'js/timeline-settings-page.js',
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
-    'js/booking.js', 'js/timeline-interaction-model.js', 'js/timeline.js', 'js/settings.js',
+    'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
 
@@ -1391,9 +1413,13 @@ check('Booking panel header shows client, child, and guests live context',
     htmlContains('index.html', 'selectedCustomerDisplay')
     && htmlContains('index.html', 'selectedChildDisplay')
     && htmlContains('index.html', 'selectedGuestsDisplay')
+    && htmlContains('index.html', 'id="banquetAdults"')
+    && htmlContains('index.html', 'Кількість дорослих')
     && bookingCode.includes('function updateBookingContextHeaderSummary')
     && bookingCode.includes('function bookingContextGuestsText')
     && bookingCode.includes("document.getElementById('banquetGuests')?.value?.trim()")
+    && bookingCode.includes("document.getElementById('banquetAdults')")
+    && bookingCode.includes('banquetAdults')
     && bookingCode.includes("document.getElementById('kidsCountInput')?.value?.trim()")
     && bookingCode.includes("document.getElementById('bookingLeadChildrenInfo')?.value?.trim()")
     && bookingCode.includes('updateBookingContextHeaderSummary();')
@@ -1416,6 +1442,13 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('grid-column: 1 / -1')
     && panelCss.includes('.booking-detail-package-row > div')
     && panelCss.includes('overflow-wrap: anywhere'));
+check('Booking detail modal links to banquet summary preview with return URL',
+    bookingCode.includes('function bookingSummaryPreviewUrl')
+    && bookingCode.includes('/booking-summary.html?')
+    && bookingCode.includes('businessContext')
+    && bookingCode.includes('returnPath')
+    && bookingCode.includes('booking-summary-action')
+    && bookingCode.includes('Сформувати вижимку'));
 check('Timeline booking links only an existing customer card',
     htmlContains('index.html', 'Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.')
     && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')

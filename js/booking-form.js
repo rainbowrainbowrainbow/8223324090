@@ -19,7 +19,7 @@ window.BookingForm = {
             'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
             'clientPinataServicePrice', 'clientPinataServiceNote', 'bookingMenuProductSelect',
             'bookingMenuQuantity', 'bookingMenuUnitPrice', 'bookingMenuNote', 'banquetMenu',
-            'banquetGuests', 'banquetTables', 'bookingLeadSource', 'bookingLeadStatus',
+            'banquetGuests', 'banquetAdults', 'banquetTables', 'bookingLeadSource', 'bookingLeadStatus',
             'bookingLeadInterestDate', 'bookingLeadBudget', 'bookingLeadChildrenInfo', 'bookingLeadNotes',
             'maysternyaSlotCloseDuration'];
         fields.forEach(id => {

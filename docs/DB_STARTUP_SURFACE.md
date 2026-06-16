@@ -47,8 +47,8 @@ check:migrations`.
 
 `afisha.description`, `afisha.line_id`, `afisha.original_time`,
 `afisha.template_id`, `afisha.type`, `bookings.costume`,
-`bookings.customer_id`, `bookings.extra_data`, `bookings.group_name`,
-`bookings.kids_count`, `bookings.payment_method`, `bookings.skip_notification`,
+`bookings.banquet_adults`, `bookings.customer_id`, `bookings.extra_data`,
+`bookings.group_name`, `bookings.kids_count`, `bookings.payment_method`, `bookings.skip_notification`,
 `bookings.status`, `bookings.telegram_message_id`, `bookings.updated_at`,
 `certificates.customer_id`, `certificates.season`, `certificates.value_uah`,
 `customer_cards.business_context`, `customers.business_context`,

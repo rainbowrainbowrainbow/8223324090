@@ -35,6 +35,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/assistant-rail-timeline.css` | shared-crm-assistant | `shared` | active | Timeline-specific assistant parity and dark composer contrast styles imported by `assistant-rail.css`. |
 | `css/assistant-rail-topbar.css` | shared-crm-assistant | `shared-large` | active-large | Assistant top menu docking, readable animated output, full rethink, and mini-window styles imported by `assistant-rail.css`. |
 | `css/base.css` | shared-ui | `shared` | active | Global variables, reset, typography, and shared primitives. |
+| `css/booking-summary.css` | bookings | `page-scoped` | active | Printable banquet summary preview and browser print/PDF styles. |
 | `css/catalog.css` | catalogs | `feature-shared` | active | Catalog viewer and print/public catalog styles used by designs and catalog routes. |
 | `css/chat.css` | chat | `page-scoped` | active | Aggregate entrypoint for Team messenger styles. |
 | `css/chat-core.css` | chat | `page-scoped-large` | active-large | Core Team messenger layout, sidebar, messages, panels, modals, and input styles imported by `chat.css`. |

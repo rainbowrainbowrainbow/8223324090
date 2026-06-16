@@ -107,6 +107,7 @@ function clearModules() {
         '../services/guardian',
         '../services/linkPreview',
         '../routes/settings',
+        '../routes/bookings',
         '../routes/landing',
         '../routes/leads',
         '../routes/packages',
@@ -124,6 +125,7 @@ function clearModules() {
         '../routes/report-bot',
         '../routes/telegram',
         '../services/maysternyaBookingWebhook',
+        '../services/banquetSummary',
         '../services/booking',
         '../services/timelineResources',
         '../services/leadBookingLink',
@@ -361,6 +363,112 @@ function createFakePool() {
             }
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
+            }
+            if (/SELECT b\.\* FROM bookings b WHERE b\.id = \$1 AND CASE/i.test(text) && /LIMIT 1/i.test(text)) {
+                if (params[0] !== 'BK-SUMMARY') return { rows: [], rowCount: 0 };
+                return {
+                    rows: [{
+                        id: 'BK-SUMMARY',
+                        business_context: params[1] || 'event_genix',
+                        date: '2099-06-20',
+                        time: '14:00',
+                        line_id: 'room-marvel',
+                        program_id: 'birthday_90',
+                        program_code: 'BD90',
+                        label: 'Birthday',
+                        program_name: 'Birthday package',
+                        category: 'birthday',
+                        duration: 90,
+                        price: 3700,
+                        hosts: 1,
+                        second_animator: null,
+                        costume: null,
+                        room: 'Marvel',
+                        notes: 'No mushrooms',
+                        created_by: 'route-smoke',
+                        linked_to: null,
+                        status: 'confirmed',
+                        kids_count: 8,
+                        group_name: 'Mia birthday',
+                        customer_id: 701,
+                        payment_method: 'cash',
+                        payment_status: null,
+                        paid_amount: null,
+                        banquet_guests: 12,
+                        banquet_adults: 4,
+                        banquet_tables: 2,
+                        banquet_menu: 'Legacy should be ignored',
+                        extra_data: {
+                            bookingPackage: {
+                                programBasePrice: 2500,
+                                positionsSubtotal: 1200,
+                                finalTotal: 3700,
+                                menuPositions: [
+                                    { productId: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600 },
+                                    { productId: 'juice', title: 'Juice', quantity: 3, unitPrice: 200, subtotal: 600 }
+                                ]
+                            }
+                        },
+                        created_at: '2099-06-01T10:00:00.000Z',
+                        updated_at: '2099-06-01T10:00:00.000Z'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/SELECT id, business_context, name, phone, instagram, child_name, child_birthday, source, notes,/i.test(text) && /FROM customers WHERE id = \$1/i.test(text)) {
+                if (Number(params[0]) !== 701) return { rows: [], rowCount: 0 };
+                return {
+                    rows: [{
+                        id: 701,
+                        business_context: params[1] || 'event_genix',
+                        name: 'Route Smoke Customer',
+                        phone: '+380000000001',
+                        instagram: 'route_customer',
+                        child_name: 'Mia',
+                        child_birthday: '2020-06-01',
+                        source: 'site',
+                        notes: 'Customer note'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/FROM booking_banquet_links WHERE business_context = \$1 AND relation_type = \$2/i.test(text)) {
+                if (params[2] !== 'BK-SUMMARY') return { rows: [], rowCount: 0 };
+                return {
+                    rows: [{
+                        id: 31,
+                        booking_a_id: 'BK-SUMMARY',
+                        booking_b_id: 'BK-ACTIVITY',
+                        relation_type: 'banquet_activity',
+                        label: 'extra activity',
+                        created_at: '2099-06-01T11:00:00.000Z',
+                        created_by: 'route-smoke'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/SELECT b\.\* FROM bookings b WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(text)) {
+                const ids = Array.isArray(params[0]) ? params[0].map(String) : [];
+                const rows = ids.includes('BK-ACTIVITY') ? [{
+                    id: 'BK-ACTIVITY',
+                    business_context: params[1] || 'event_genix',
+                    date: '2099-06-20',
+                    time: '15:30',
+                    line_id: 'animator-1',
+                    program_name: 'Face painting',
+                    label: 'Face painting',
+                    category: 'activity',
+                    duration: 30,
+                    price: 700,
+                    room: 'Marvel',
+                    notes: 'After cake',
+                    created_by: 'route-smoke',
+                    status: 'confirmed',
+                    extra_data: {},
+                    created_at: '2099-06-01T10:30:00.000Z',
+                    updated_at: '2099-06-01T10:30:00.000Z'
+                }] : [];
+                return { rows, rowCount: rows.length };
             }
             if (/SELECT \* FROM bookings WHERE COALESCE\(business_context, 'event_genix'\) = \$1 AND COALESCE\(extra_data->>'externalId'/i.test(text)) {
                 const row = hrState.bookings.find(booking =>
@@ -1766,6 +1874,7 @@ describe('route-level API safety smoke', () => {
         const app = express();
         app.use(express.json());
         app.use('/api', apiAuthBoundary(authenticateToken));
+        app.use('/api/bookings', require('../routes/bookings'));
         app.use('/api/landing', require('../routes/landing'));
         app.use('/api/leads', require('../routes/leads'));
         app.use('/api/packages', require('../routes/packages'));
@@ -1809,6 +1918,42 @@ describe('route-level API safety smoke', () => {
             else process.env[key] = value;
         }
         clearModules();
+    });
+
+    it('requires auth for banquet summary endpoint', async () => {
+        const res = await request('GET', '/api/bookings/BK-SUMMARY/banquet-summary?businessContext=event_genix');
+
+        assert.equal(res.status, 401);
+    });
+
+    it('returns structured banquet summary rows with adults, linked activities, and deposit warning', async () => {
+        const res = await request(
+            'GET',
+            '/api/bookings/BK-SUMMARY/banquet-summary?businessContext=event_genix',
+            undefined,
+            withAuth()
+        );
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.schemaVersion, 1);
+        assert.equal(res.data.bookingId, 'BK-SUMMARY');
+        assert.equal(res.data.businessContext, 'event_genix');
+        assert.equal(res.data.counts.adults, 4);
+        assert.equal(res.data.customer.name, 'Route Smoke Customer');
+        assert.equal(res.data.celebrant.name, 'Mia');
+        assert.equal(res.data.orderRows.some(row => row.type === 'activity' && row.bookingId === 'BK-ACTIVITY'), true);
+        assert.equal(res.data.orderRows.filter(row => row.type === 'menu').length, 2);
+        assert.equal(res.data.totals.currency, 'UAH');
+        assert.equal(res.data.deposit.amount, null);
+        assert.ok(res.data.warnings.some(warning => warning.code === 'deposit_not_specified'));
+        assert.ok(queries.some(q => /FROM booking_banquet_links/i.test(q.text)));
+        const writeQueries = queries.filter(q => /\bINSERT\s+INTO\b|\bUPDATE\b|\bDELETE\b/i.test(q.text));
+        const dataWriteQueries = writeQueries.filter(q =>
+            !/^UPDATE employee_profiles SET last_activity_at = NOW\(\) WHERE user_id = \$1$/i.test(q.text)
+            && !/^UPDATE users SET last_seen_at = NOW\(\) WHERE id = \$1$/i.test(q.text)
+        );
+        assert.deepEqual(dataWriteQueries.map(q => q.text), []);
     });
 
     it('keeps version, light health, readiness, and deep health public through the actual settings router', async () => {

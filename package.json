@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.5",
+  "version": "0.76.6",
   "eventGenix": {
-    "releaseLabel": "Maysternya Bot Lead Handoff"
+    "releaseLabel": "Banquet Summary"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1602,6 +1602,12 @@ function bookingVisualLinkTitle(link, source, target, targetId) {
     return `${relationLabel}: ${source.label || source.programCode || source.id} ↔ ${target?.label || target?.programCode || targetId}`;
 }
 
+function shouldRenderBookingVisualLink(link) {
+    const relationType = normalizeBookingVisualRelationType(link?.relationType || link?.relation_type);
+    if (relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView()) return false;
+    return true;
+}
+
 function renderBanquetLinksOverlay() {
     const layer = ensureBanquetLinkLayer();
     if (!layer) return;
@@ -1617,6 +1623,7 @@ function renderBanquetLinksOverlay() {
         const fromBlock = blockById.get(String(booking.id));
         if (!fromBlock) return;
         getBookingVisualLinks(booking).forEach(link => {
+            if (!shouldRenderBookingVisualLink(link)) return;
             const targetId = String(link.targetId || '');
             if (!targetId) return;
             const targetBlock = blockById.get(targetId);

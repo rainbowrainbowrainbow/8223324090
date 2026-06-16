@@ -2990,6 +2990,46 @@ describe('route-level API safety smoke', () => {
         assert.ok(historyActions.includes('banquet_group_activity_booking_created'));
     });
 
+    it('rejects banquet group payloads on legacy full booking create route', async () => {
+        const res = await request(
+            'POST',
+            '/api/bookings/full?businessContext=event_genix',
+            {
+                main: {
+                    date: '2099-06-20',
+                    time: '16:15',
+                    lineId: 'animator-3',
+                    programId: 'quest_30',
+                    programCode: 'Q30',
+                    label: 'Quest(30)',
+                    programName: 'Quest',
+                    category: 'quest',
+                    duration: 30,
+                    price: 900,
+                    hosts: 1,
+                    room: 'Marvel',
+                    status: 'confirmed',
+                    extraData: {
+                        banquetGroup: {
+                            groupId: 'BQ-SMOKE',
+                            sourceBookingId: 'BK-SUMMARY',
+                            role: 'activity',
+                            source: 'room_booking_animation_bridge'
+                        }
+                    }
+                },
+                linked: [],
+                banquetActivities: []
+            },
+            withAuth()
+        );
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(queries.some(q => /INSERT INTO bookings/i.test(q.text)), false);
+        assert.equal(queries.some(q => /INSERT INTO booking_banquet_links/i.test(q.text)), false);
+    });
+
     it('accepts Maysternya Doli bot leads through the token-guarded universal webhook', async () => {
         const res = await request('POST', '/api/leads/webhook/universal?source=maysternya_bot', {
             external_id: '123456789',

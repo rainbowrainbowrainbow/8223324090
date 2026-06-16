@@ -732,6 +732,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities \}\)/);
     assert.match(bookingJs, /multiActivity/);
     assert.match(bookingJs, /additionalMultiHostActivity/);
+    assert.match(bookingJs, /function canAddAnimationFromRoomBooking/);
+    assert.match(bookingJs, /String\(booking\.lineId \|\| ''\) === ROOM_FIRST_BANQUET_SERVICE_LINE_ID/);
+    assert.match(bookingJs, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\)/);
+    assert.doesNotMatch(bookingJs, /function canAddAnimationFromRoomBooking[\s\S]*!booking\.programId[\s\S]*function banquetGroupIdFromSnapshot/);
     assert.match(bookingJs, /bookingActivityNextPriceLabel/);
     assert.match(bookingJs, /bookingCustomerDuplicateHint/);
     assert.match(bookingJs, /rememberSelectedCustomerSnapshot/);
@@ -786,6 +790,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /booking_commit_not_verified/);
     assert.match(route, /function assertDurableCreatedBookings/);
     assert.match(route, /const banquetActivities = Array\.isArray\(req\.body\?\.banquetActivities\)/);
+    assert.match(route, /function hasBanquetGroupPayload/);
+    assert.match(route, /BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT/);
+    assert.match(route, /\/api\/banquets\/:groupId\/activity-booking/);
     assert.match(route, /const activityRows = \[\]/);
     assert.match(route, /upsertBanquetLink\(client, businessContext, main\.id, activity\.id/);
     assert.match(route, /activityRows\.map\(row => row\.id\)/);

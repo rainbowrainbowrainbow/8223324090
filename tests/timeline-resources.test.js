@@ -192,7 +192,12 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(linesRoute, /ROOM_TIMELINE_TAKEAWAY_LINE/);
     assert.match(linesRoute, /withTakeawayRoomLine\(resources\.map\(resourceToLine\), businessContext\)/);
     assert.match(linesRoute, /id: 'room-takeaway'/);
+    assert.match(linesRoute, /BANQUET_SERVICE_LINE_ID/);
+    assert.match(linesRoute, /row\.line_id \|\| ''\)\.trim\(\) !== BANQUET_SERVICE_LINE_ID/);
     assert.match(bookingsRoute, /projectBookingsForTimelineView/);
+    assert.match(bookingsRoute, /function isBanquetServiceRootBooking/);
+    assert.match(bookingsRoute, /BANQUET_SERVICE_LINE_ID/);
+    assert.match(bookingsRoute, /return bookings\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
     assert.match(bookingsRoute, /isRoomConflictBlockingRoom/);
@@ -200,6 +205,11 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(api, /function timelineApiUrlWithView/);
     assert.match(api, /timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
     assert.match(timeline, /TIMELINE_VIEW_ROOMS = 'rooms'/);
+    assert.match(timeline, /function shouldRenderBookingVisualLink/);
+    assert.match(timeline, /relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView\(\)/);
+    assert.match(timeline, /if \(!shouldRenderBookingVisualLink\(link\)\) return/);
+    assert.match(timeline, /const targetBlock = blockById\.get\(targetId\)/);
+    assert.match(timeline, /if \(!targetBlock\) return/);
     assert.match(timeline, /function defaultTimelineViewMode\(\)/);
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
     assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);

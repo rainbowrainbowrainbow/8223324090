@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.8 - Banquet Timeline Stability
+
+### Timeline / Banquet groups / Visual links / Release / (Клешня, 16.06.2026) [codex]
+- **Стабілізовано вигляд “Свята”** - animator timeline більше не показує root kitchen/service броні з `line_id='banquet-service'`, щоб кухонні блоки не дублювалися серед активних програм.
+- **Прибрано зайві visual links у “Свята”** - `shared_room_activity` overlay не малюється в animator view і не валить timeline, якщо target booking прихований фільтром.
+- **Room/kitchen view лишився окремим джерелом кухні** - кімнатна/кухонна проєкція не змінює продажні та кухонні броні, а лише прибирає зайве з animator сітки.
+- **“Додати активну програму” закріплено за banquet groups** - kitchen/service броня на `banquet-service` валідна навіть із custom label/programName, але linked child не стає окремим member.
+- **Legacy-only activity create заблоковано для group payload** - `/api/bookings/full` повертає `BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT`, якщо payload уже містить banquet group metadata.
+- **Збережено duplicate protection** - second animator `linked_to` children не додаються як окремі `banquet_group_bookings`, а activity створюється через атомарний `/api/banquets/:groupId/activity-booking`.
+- **Production data-fix виконано окремо** - тестові броні `BK-2026-0473..0477` зібрано у дві banquet groups, а неправильний activity↔activity legacy link `BK-2026-0476 ↔ BK-2026-0477` прибрано.
+- **Regression guards оновлено** - route/unit/UI checks прикривають animator filtering, visual link guards, group-only bridge flow і заборону legacy-only результату.
+- **Env/auth/Railway config не змінювались** - без secrets, ролей, production config або нових залежностей.
+
+---
+
 ## v0.76.7 - Banquet Groups
 
 ### Bookings / Banquet groups / Details / Summary / Release / (Клешня, 16.06.2026) [codex]

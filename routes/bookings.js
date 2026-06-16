@@ -480,6 +480,39 @@ function bookingExtraDataSqlValue(booking = {}) {
     return null;
 }
 
+function parsePayloadExtraData(payload = {}) {
+    const extra = payload.extraData ?? payload.extra_data;
+    if (!extra) return null;
+    if (typeof extra === 'object' && !Array.isArray(extra)) return extra;
+    if (typeof extra === 'string' && extra.trim()) {
+        try {
+            const parsed = JSON.parse(extra);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function hasBanquetGroupPayload(payload = {}) {
+    const extra = parsePayloadExtraData(payload);
+    const group = extra?.banquetGroup || extra?.banquet_group || payload.banquetGroup || payload.banquet_group;
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return false;
+    return Boolean(
+        group.groupId
+        || group.group_id
+        || group.sourceBookingId
+        || group.source_booking_id
+        || group.role
+        || group.source === 'room_booking_animation_bridge'
+    );
+}
+
+function hasAnyBanquetGroupPayload(...payloadGroups) {
+    return payloadGroups.flat().filter(Boolean).some(hasBanquetGroupPayload);
+}
+
 function bookingSecondAnimatorName(booking = {}) {
     return String(booking.secondAnimator ?? booking.second_animator ?? '').trim();
 }
@@ -1037,8 +1070,15 @@ function projectBookingForTimelineView(booking = {}, timelineView = 'animators')
     };
 }
 
+function isBanquetServiceRootBooking(booking = {}) {
+    return String(booking.lineId || booking.line_id || '').trim() === BANQUET_SERVICE_LINE_ID
+        && !String(booking.linkedTo || booking.linked_to || '').trim();
+}
+
 function projectBookingsForTimelineView(bookings = [], timelineView = 'animators') {
-    if (timelineView !== 'rooms') return bookings;
+    if (timelineView !== 'rooms') {
+        return bookings.filter(booking => !isBanquetServiceRootBooking(booking));
+    }
     return bookings
         .filter(booking => !String(booking.linkedTo || '').trim() && isRealRoom(booking.room))
         .map(booking => projectBookingForTimelineView(booking, timelineView));
@@ -2565,6 +2605,13 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (!requireTimelineAction(req, res, businessContext, 'create')) return;
         if (!main || !main.date || !main.time || !main.lineId) {
             return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
+        }
+        if (hasAnyBanquetGroupPayload(main, linked, banquetActivities)) {
+            return res.status(409).json({
+                success: false,
+                code: 'BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT',
+                error: 'Banquet group activity bookings must be created through /api/banquets/:groupId/activity-booking'
+            });
         }
         main.businessContext = businessContext;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }

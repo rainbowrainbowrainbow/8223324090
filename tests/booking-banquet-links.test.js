@@ -322,6 +322,40 @@ test('GET bookings treats legacy park context aliases as Event Genix timeline bo
     });
 });
 
+test('POST full rejects banquet group payloads before legacy-only link creation', async () => {
+    await withApp([], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/full`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                main: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'line-1',
+                    room: 'Room A',
+                    duration: 30,
+                    status: 'confirmed',
+                    extraData: {
+                        banquetGroup: {
+                            groupId: 'BQ-2099-0001',
+                            sourceBookingId: 'BK-2099-0001',
+                            role: 'activity',
+                            source: 'room_booking_animation_bridge'
+                        }
+                    }
+                },
+                linked: [],
+                banquetActivities: []
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT');
+        assert.equal(state.links.length, 0);
+        assert.equal(state.queries.some(query => /INSERT INTO booking_banquet_links/i.test(query.sql)), false);
+    });
+});
+
 test('POST banquet link creates a durable same-day relation', async () => {
     await withApp([
         bookingRow({ id: 'BK-2099-0001', time: '12:00' }),

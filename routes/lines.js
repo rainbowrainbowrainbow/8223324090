@@ -3,7 +3,12 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { validateDate, syncScheduledAnimatorLines, ALL_ROOMS } = require('../services/booking');
+const {
+    validateDate,
+    syncScheduledAnimatorLines,
+    ALL_ROOMS,
+    BANQUET_SERVICE_LINE_ID
+} = require('../services/booking');
 const { broadcast } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
@@ -167,20 +172,22 @@ router.get('/:date', async (req, res) => {
                 l.id`,
             [date, businessContext]
         );
-        const lines = result.rows.map(row => ({
-            id: row.line_id,
-            resourceId: row.line_id,
-            resourceType: 'animator',
-            businessContext,
-            name: row.name,
-            color: row.color,
-            fromSheet: row.from_sheet,
-            staffId: row.staff_id || null,
-            shiftStart: row.shift_start || null,
-            shiftEnd: row.shift_end || null,
-            shiftStatus: row.shift_status || null,
-            source: row.staff_id ? 'staff_schedule' : (row.from_sheet ? 'sheet' : 'manual')
-        }));
+        const lines = result.rows
+            .filter(row => String(row.line_id || '').trim() !== BANQUET_SERVICE_LINE_ID)
+            .map(row => ({
+                id: row.line_id,
+                resourceId: row.line_id,
+                resourceType: 'animator',
+                businessContext,
+                name: row.name,
+                color: row.color,
+                fromSheet: row.from_sheet,
+                staffId: row.staff_id || null,
+                shiftStart: row.shift_start || null,
+                shiftEnd: row.shift_end || null,
+                shiftStatus: row.shift_status || null,
+                source: row.staff_id ? 'staff_schedule' : (row.from_sheet ? 'sheet' : 'manual')
+            }));
         res.set('X-Timeline-Lines-Source', sync.source);
         res.json(lines.length ? lines : (businessContext === DEFAULT_TIMELINE_CONTEXT ? [] : MAYSTERNYA_DEFAULT_LINES.map(line => ({
             ...line,

@@ -149,6 +149,12 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/timeline-context.js', 'roomTimelineEnabled')
         && apiCode.includes('function timelineApiUrlWithView')
         && apiCode.includes('timelineView=${encodeURIComponent(String(view))}')
+        && htmlContains('routes/lines.js', 'BANQUET_SERVICE_LINE_ID')
+        && htmlContains('routes/lines.js', "row.line_id || '').trim() !== BANQUET_SERVICE_LINE_ID")
+        && bookingsRouteCode.includes('function isBanquetServiceRootBooking')
+        && bookingsRouteCode.includes('return bookings.filter(booking => !isBanquetServiceRootBooking(booking))')
+        && htmlContains('js/timeline.js', 'function shouldRenderBookingVisualLink')
+        && htmlContains('js/timeline.js', 'relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView()')
         && bookingCode.includes("ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
         && bookingCode.includes('function populatePrimaryAnimatorSelect')
         && bookingCode.includes('openAnimationBookingInAnimatorView')
@@ -207,10 +213,13 @@ checkPage('index.html', (doc, html) => {
         bookingCode.includes('findOrCreateBanquetGroupForSourceBooking')
         && bookingCode.includes('BookingDrawerState.roomBookingAnimationBridge')
         && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeContext.groupId')
+        && bookingCode.includes("!String(booking.linkedTo || '').trim()")
+        && !/function canAddAnimationFromRoomBooking[\s\S]*!booking\.programId[\s\S]*function banquetGroupIdFromSnapshot/.test(bookingCode)
         && apiCode.includes('function apiGetBanquetByBooking')
         && apiCode.includes('function apiCreateBanquetGroup')
         && apiCode.includes('function apiCreateBanquetActivityBooking')
-        && apiCode.includes('/activity-booking'));
+        && apiCode.includes('/activity-booking')
+        && bookingsRouteCode.includes('BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT'));
     check('Products API requests effective prices by timeline date', apiCode.includes("params.set('priceDate'") && productPricingCode.includes('function buildProductPriceJoin') && productPricingCode.includes('effective_from <= ${queryDate}') && productPricingCode.includes('nextPriceFrom'));
     check('Booking full route persists activity bookings as banquet-linked root blocks', bookingsRouteCode.includes('const banquetActivities = Array.isArray(req.body?.banquetActivities)') && bookingsRouteCode.includes('const activityRows = []') && bookingsRouteCode.includes('upsertBanquetLink(client, businessContext, main.id, activity.id') && bookingsRouteCode.includes('activityBookings: responseActivityBookings') && bookingsRouteCode.includes('banquetLinks: mapBookingVisualLinkRowsForResponse(banquetLinkRows, main.id)') && bookingsRouteCode.includes('sharedRoomLinks: mapBookingVisualLinkRowsForResponse(') && bookingsRouteCode.includes('Finance auto-record (create/full activity)'));
     check('Booking save pins effective product prices server-side', bookingsRouteCode.includes('applyEffectiveBookingPrice') && bookingsRouteCode.includes('refreshMultiActivityPriceTotals') && productPricingCode.includes('extra.priceSnapshot') && productPricingCode.includes('priceDate'));

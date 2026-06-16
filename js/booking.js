@@ -6602,7 +6602,7 @@ function shouldEditBookingInAnimatorView(booking = {}) {
 function canAddAnimationFromRoomBooking(booking = {}) {
     return isRoomFirstTimelineView()
         && String(booking.lineId || '') === ROOM_FIRST_BANQUET_SERVICE_LINE_ID
-        && !booking.programId
+        && !String(booking.linkedTo || '').trim()
         && Boolean(booking.room);
 }
 

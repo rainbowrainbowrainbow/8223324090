@@ -958,41 +958,25 @@ function timelineBanquetSummaryHref(summary = {}) {
     return `/booking-summary.html?${params.toString()}`;
 }
 
-function ensureTimelineBanquetPopover() {
-    let popover = document.getElementById('timelineBanquetPopover');
-    if (!popover) {
-        popover = document.createElement('div');
-        popover.id = 'timelineBanquetPopover';
-        popover.className = 'timeline-banquet-popover hidden';
-        popover.setAttribute('role', 'dialog');
-        popover.setAttribute('aria-live', 'polite');
-        document.body.appendChild(popover);
+function ensureTimelineBanquetInspector() {
+    let inspector = document.getElementById('timelineBanquetInspector');
+    if (!inspector) {
+        inspector = document.createElement('aside');
+        inspector.id = 'timelineBanquetInspector';
+        inspector.className = 'timeline-banquet-inspector hidden';
+        inspector.setAttribute('role', 'dialog');
+        inspector.setAttribute('aria-live', 'polite');
+        inspector.setAttribute('aria-label', 'Банкетний інспектор');
+        inspector.tabIndex = -1;
+        document.body.appendChild(inspector);
     }
-    return popover;
+    return inspector;
 }
 
-function positionTimelineBanquetPopover(popover, trigger) {
-    const rect = trigger?.getBoundingClientRect?.();
-    if (!rect) return;
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 360;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 640;
-    const width = Math.min(340, Math.max(260, viewportWidth - 24));
-    popover.style.width = `${width}px`;
-    const height = popover.offsetHeight || 360;
-    const scrollX = window.scrollX || window.pageXOffset || 0;
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-    const left = Math.max(12, Math.min(viewportWidth - width - 12, rect.left + scrollX));
-    const below = rect.bottom + scrollY + 8;
-    const above = rect.top + scrollY - height - 8;
-    const bottomLimit = scrollY + viewportHeight - 12;
-    const top = below + height <= bottomLimit ? below : Math.max(scrollY + 12, above);
-    popover.style.left = `${left}px`;
-    popover.style.top = `${top}px`;
-}
-
-function hideTimelineBanquetPopover() {
-    const popover = document.getElementById('timelineBanquetPopover');
-    if (popover) popover.classList.add('hidden');
+function hideTimelineBanquetInspector() {
+    const inspector = document.getElementById('timelineBanquetInspector');
+    if (inspector) inspector.classList.add('hidden');
+    document.body.classList.remove('timeline-banquet-inspector-open');
 }
 
 function timelineBanquetDateTimeText(summary = {}) {
@@ -1030,7 +1014,7 @@ function timelineBanquetMarkerLabel(marker = {}) {
     return [marker.label || 'Сервіс', marker.time || ''].filter(Boolean).join(' ');
 }
 
-function timelineBanquetSummaryForPopover(summary = {}, servingInfo = {}, carrierBooking = null) {
+function timelineBanquetSummaryForInspector(summary = {}, servingInfo = {}, carrierBooking = null) {
     const missingCount = Number(servingInfo.missingCount || 0);
     return {
         ...summary,
@@ -1047,7 +1031,7 @@ function timelineBanquetMenuPreviewHtml(summary = {}) {
     const allItems = Array.isArray(summary.menuPreviewItems) ? summary.menuPreviewItems : [];
     const items = allItems.slice(0, 5);
     if (!items.length) {
-        return '<div class="timeline-banquet-popover-empty">Меню не додано</div>';
+        return '<div class="timeline-banquet-inspector-empty">Меню не додано</div>';
     }
     const hiddenCount = Math.max(0, allItems.length - items.length);
     const rows = items.map(item => {
@@ -1065,14 +1049,14 @@ function timelineBanquetMenuPreviewHtml(summary = {}) {
     const more = hiddenCount
         ? `<li><span>Ще позицій: ${escapeHtml(String(hiddenCount))}</span></li>`
         : '';
-    return `<ul class="timeline-banquet-popover-list timeline-banquet-popover-menu">${rows}${more}</ul>`;
+    return `<ul class="timeline-banquet-inspector-list timeline-banquet-inspector-menu">${rows}${more}</ul>`;
 }
 
 function timelineBanquetActivityPreviewHtml(summary = {}) {
     const allItems = Array.isArray(summary.activityPreviewItems) ? summary.activityPreviewItems : [];
     const items = allItems.slice(0, 4);
     if (!items.length) {
-        return '<div class="timeline-banquet-popover-empty">Активності не додано</div>';
+        return '<div class="timeline-banquet-inspector-empty">Активності не додано</div>';
     }
     const hiddenCount = Math.max(0, allItems.length - items.length);
     const rows = items.map(item => {
@@ -1087,15 +1071,15 @@ function timelineBanquetActivityPreviewHtml(summary = {}) {
     const more = hiddenCount
         ? `<li><span>Ще активностей: ${escapeHtml(String(hiddenCount))}</span></li>`
         : '';
-    return `<ul class="timeline-banquet-popover-list timeline-banquet-popover-activities">${rows}${more}</ul>`;
+    return `<ul class="timeline-banquet-inspector-list timeline-banquet-inspector-activities">${rows}${more}</ul>`;
 }
 
-function showTimelineBanquetPopover(event, summary, trigger) {
+function showTimelineBanquetInspector(event, summary, trigger) {
     if (!summary) return;
     if (typeof hideTooltip === 'function') hideTooltip();
-    const popover = ensureTimelineBanquetPopover();
+    const inspector = ensureTimelineBanquetInspector();
     const warnings = (summary.warnings || []).length
-        ? `<div class="timeline-banquet-popover-warnings">${summary.warnings.slice(0, 3).map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+        ? `<div class="timeline-banquet-inspector-warnings">${summary.warnings.slice(0, 4).map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
         : '';
     const servingText = (summary.servingMarkers || [])
         .slice(0, 4)
@@ -1104,49 +1088,64 @@ function showTimelineBanquetPopover(event, summary, trigger) {
         .join(' · ');
     const menuLabel = `${summary.menuCount || 0} ${timelineBanquetPlural(summary.menuCount, 'позиція', 'позиції', 'позицій')}`;
     const activityLabel = `${summary.activityCount || 0} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`;
-    popover.innerHTML = `
-        <div class="timeline-banquet-popover-title">Банкетний preview</div>
-        <div class="timeline-banquet-popover-grid">
-            <span>Клієнт</span><strong>${escapeHtml(summary.customerName || 'Не вказано')}</strong>
-            <span>Кімната</span><strong>${escapeHtml(summary.room || 'Не вказано')}</strong>
-            <span>Дата/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>
-            <span>Діти</span><strong>${escapeHtml(String(summary.kidsCount || '—'))}</strong>
-            <span>Дорослі</span><strong>${escapeHtml(String(summary.banquetAdults || '—'))}</strong>
-            <span>Меню</span><strong>${escapeHtml(menuLabel)}</strong>
-            <span>Видача</span><strong>${escapeHtml(servingText || '—')}</strong>
-            <span>Активності</span><strong>${escapeHtml(activityLabel)}</strong>
+    inspector.innerHTML = `
+        <div class="timeline-banquet-inspector-head">
+            <div>
+                <div class="timeline-banquet-inspector-kicker">Банкет</div>
+                <div class="timeline-banquet-inspector-title">${escapeHtml(summary.room || 'Кімната')}</div>
+            </div>
+            <button type="button" class="timeline-banquet-inspector-close" data-banquet-inspector-close aria-label="Закрити">×</button>
         </div>
-        <div class="timeline-banquet-popover-section">
-            <div class="timeline-banquet-popover-subtitle">Меню</div>
-            ${timelineBanquetMenuPreviewHtml(summary)}
+        <div class="timeline-banquet-inspector-body">
+            <div class="timeline-banquet-inspector-grid">
+                <span>Клієнт</span><strong>${escapeHtml(summary.customerName || 'Не вказано')}</strong>
+                <span>Кімната</span><strong>${escapeHtml(summary.room || 'Не вказано')}</strong>
+                <span>Дата/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>
+                <span>Діти</span><strong>${escapeHtml(String(summary.kidsCount || '—'))}</strong>
+                <span>Дорослі</span><strong>${escapeHtml(String(summary.banquetAdults || '—'))}</strong>
+                <span>Меню</span><strong>${escapeHtml(menuLabel)}</strong>
+                <span>Видача</span><strong>${escapeHtml(servingText || '—')}</strong>
+                <span>Активності</span><strong>${escapeHtml(activityLabel)}</strong>
+            </div>
+            ${warnings}
+            <div class="timeline-banquet-inspector-section">
+                <div class="timeline-banquet-inspector-subtitle">Меню</div>
+                ${timelineBanquetMenuPreviewHtml(summary)}
+            </div>
+            <div class="timeline-banquet-inspector-section">
+                <div class="timeline-banquet-inspector-subtitle">Активності</div>
+                ${timelineBanquetActivityPreviewHtml(summary)}
+            </div>
         </div>
-        <div class="timeline-banquet-popover-section">
-            <div class="timeline-banquet-popover-subtitle">Активності</div>
-            ${timelineBanquetActivityPreviewHtml(summary)}
-        </div>
-        ${warnings}
-        <div class="timeline-banquet-popover-actions">
-            <button type="button" class="timeline-banquet-popover-btn" data-banquet-popover-details>Деталі</button>
-            <a class="timeline-banquet-popover-btn timeline-banquet-popover-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Вижимка</a>
+        <div class="timeline-banquet-inspector-actions">
+            <button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-details>Деталі</button>
+            <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Вижимка</a>
         </div>
     `;
-    const detailsBtn = popover.querySelector('[data-banquet-popover-details]');
+    inspector.querySelector('[data-banquet-inspector-close]')?.addEventListener('click', clickEvent => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        hideTimelineBanquetInspector();
+    });
+    const detailsBtn = inspector.querySelector('[data-banquet-inspector-details]');
     detailsBtn?.addEventListener('click', clickEvent => {
         clickEvent.preventDefault();
         clickEvent.stopPropagation();
-        hideTimelineBanquetPopover();
+        hideTimelineBanquetInspector();
         if (typeof showBookingDetails === 'function') showBookingDetails(summary.carrierBooking?.id || summary.primaryBooking?.id);
     });
-    popover.querySelectorAll('a, button').forEach(el => {
+    inspector.querySelectorAll('a, button').forEach(el => {
         el.addEventListener('click', clickEvent => clickEvent.stopPropagation());
     });
-    popover.classList.remove('hidden');
-    positionTimelineBanquetPopover(popover, trigger || event?.currentTarget || event?.target);
+    inspector.classList.remove('hidden');
+    inspector.dataset.banquetGroupId = String(summary.groupId || '');
+    document.body.classList.add('timeline-banquet-inspector-open');
+    inspector.focus?.({ preventScroll: true });
 }
 
-function showTimelineBanquetServicePopover(event, marker, summary, trigger) {
+function showTimelineBanquetServiceInspector(event, marker, summary, trigger) {
     if (!marker || !summary) return;
-    showTimelineBanquetPopover(event, {
+    showTimelineBanquetInspector(event, {
         ...summary,
         servingMarkers: summary.servingMarkers?.length ? summary.servingMarkers : [marker]
     }, trigger);
@@ -1156,10 +1155,76 @@ function timelineBanquetRoomKey(value) {
     return normalizedTimelineMatchKey(value);
 }
 
+function timelineBanquetRoomCardSignals(summary = {}) {
+    const signals = [];
+    const hasMissingTime = (summary.warnings || []).some(item => String(item || '').toLowerCase().includes('час'))
+        || (summary.menuPreviewItems || []).some(item => !item.servingTime);
+    const cakeMarker = (summary.servingMarkers || []).find(marker => marker.type === 'cake' || String(marker.label || '').toLowerCase().includes('торт'));
+
+    if (hasMissingTime) signals.push({ key: 'warning', icon: '⚠', label: 'Без часу' });
+    if (summary.hasMenu || Number(summary.menuCount || 0) > 0) {
+        const count = Number(summary.menuCount || 0);
+        signals.push({ key: 'menu', icon: '🍽', label: 'Кухня', detail: count ? `${count} поз.` : 'Меню' });
+    }
+    if (cakeMarker) signals.push({ key: 'cake', icon: '🎂', label: timelineBanquetMarkerLabel(cakeMarker) });
+    if (Number(summary.activityCount || 0) > 0) {
+        signals.push({
+            key: 'activity',
+            icon: '🎭',
+            label: `${summary.activityCount} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`
+        });
+    }
+    return signals.slice(0, 4);
+}
+
+function renderTimelineBanquetRoomCard(header, summary = {}) {
+    if (!header || !summary) return;
+    const signals = timelineBanquetRoomCardSignals(summary);
+    if (!signals.length) return;
+    let card = header.querySelector('[data-banquet-room-card]');
+    if (!card) {
+        card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'timeline-banquet-room-card';
+        card.dataset.banquetRoomCard = '1';
+        header.appendChild(card);
+    }
+    const label = signals.map(signal => signal.detail ? `${signal.label} ${signal.detail}` : signal.label).join(' · ');
+    const tone = signals.some(signal => signal.key === 'warning') ? 'warning' : signals[0].key;
+    card.className = `timeline-banquet-room-card timeline-banquet-room-card--${tone}`;
+    card.setAttribute('aria-label', `Банкет: ${label}`);
+    card.title = label;
+    card.innerHTML = `
+        <span class="timeline-banquet-room-card-icons" aria-hidden="true">
+            ${signals.slice(0, 3).map(signal => `<span>${escapeHtml(signal.icon)}</span>`).join('')}
+        </span>
+        <span class="timeline-banquet-room-card-glance">
+            ${signals.slice(0, 3).map(signal => `
+                <span class="timeline-banquet-room-card-line timeline-banquet-room-card-line--${escapeHtml(signal.key)}">
+                    <span class="timeline-banquet-room-card-icon" aria-hidden="true">${escapeHtml(signal.icon)}</span>
+                    <span class="timeline-banquet-room-card-text">${escapeHtml(signal.label)}</span>
+                    ${signal.detail ? `<span class="timeline-banquet-room-card-detail">${escapeHtml(signal.detail)}</span>` : ''}
+                </span>
+            `).join('')}
+        </span>
+    `;
+    card.onpointerdown = event => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
+    card.onclick = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        showTimelineBanquetInspector(event, summary, card);
+    };
+}
+
 function clearTimelineBanquetRoomPreviews() {
     TIMELINE_BANQUET_ROOM_PREVIEWS.clear();
+    hideTimelineBanquetInspector();
     document.querySelectorAll('.line-header.has-timeline-banquet-room-preview').forEach(header => {
-        header.classList.remove('has-timeline-banquet-room-preview');
+        header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
+        header.querySelector('[data-banquet-room-card]')?.remove();
         delete header.dataset.timelineBanquetRoomPreview;
     });
 }
@@ -1185,6 +1250,7 @@ function registerTimelineBanquetRoomPreview(summary = {}) {
         if (!headerKeys.includes(key)) return;
         header.dataset.timelineBanquetRoomPreview = key;
         header.classList.add('has-timeline-banquet-room-preview');
+        renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));
     });
 }
 
@@ -1208,11 +1274,9 @@ function showTimelineBanquetRoomPreview(event, header) {
     if (!isRoomTimelineView()) return false;
     const summary = timelineBanquetRoomHeaderSummary(header);
     if (!summary) return false;
-    if (event?.type === 'click') {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    showTimelineBanquetPopover(event, summary, header);
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    showTimelineBanquetInspector(event, summary, header);
     return true;
 }
 
@@ -1220,8 +1284,15 @@ function bindTimelineBanquetRoomHeader(header, line = {}) {
     if (!header || header.dataset.timelineBanquetHeaderBound === '1') return;
     header.dataset.timelineBanquetHeaderBound = '1';
     header.dataset.timelineRoomName = String(line?.name || '').trim();
-    header.addEventListener('mouseenter', event => showTimelineBanquetRoomPreview(event, header));
-    header.addEventListener('focus', event => showTimelineBanquetRoomPreview(event, header));
+}
+
+function setTimelineBanquetRoomPreviewHighlight(summary = {}, active = false) {
+    if (!isRoomTimelineView() || !summary) return;
+    const key = timelineBanquetRoomKey(summary.room);
+    if (!key) return;
+    document.querySelectorAll('.line-header[data-timeline-banquet-room-preview]').forEach(header => {
+        header.classList.toggle('is-timeline-banquet-room-preview-highlighted', active && header.dataset.timelineBanquetRoomPreview === key);
+    });
 }
 
 function clearTimelineBanquetPreviewVisuals(block, options = {}) {
@@ -1286,10 +1357,12 @@ function bindTimelineBanquetChipEvents(button, summary) {
     button.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
-        showTimelineBanquetPopover(event, summary, button);
+        showTimelineBanquetInspector(event, summary, button);
     });
-    button.addEventListener('mouseenter', event => showTimelineBanquetPopover(event, summary, button));
-    button.addEventListener('focus', event => showTimelineBanquetPopover(event, summary, button));
+    button.addEventListener('mouseenter', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
+    button.addEventListener('mouseleave', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
+    button.addEventListener('focus', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
+    button.addEventListener('blur', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
 }
 
 function renderTimelineBanquetPreviewIndicator(block, summary, servingInfo) {
@@ -1367,10 +1440,12 @@ function renderTimelineBanquetServiceMarkers(block, summary, servingInfo) {
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            showTimelineBanquetServicePopover(event, marker, summary, button);
+            showTimelineBanquetServiceInspector(event, marker, summary, button);
         });
-        button.addEventListener('mouseenter', event => showTimelineBanquetServicePopover(event, marker, summary, button));
-        button.addEventListener('focus', event => showTimelineBanquetServicePopover(event, marker, summary, button));
+        button.addEventListener('mouseenter', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
+        button.addEventListener('mouseleave', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
+        button.addEventListener('focus', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
+        button.addEventListener('blur', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
     });
 }
 
@@ -1379,7 +1454,7 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     if (!carrier?.block || !carrier.summary) return;
     const { block, summary } = carrier;
     const servingInfo = timelineBanquetServingInfo(summary);
-    const summaryForPopover = timelineBanquetSummaryForPopover(summary, servingInfo, carrier.booking);
+    const summaryForInspector = timelineBanquetSummaryForInspector(summary, servingInfo, carrier.booking);
     const groupId = summary.groupId || `booking-${summary.carrierBooking?.id || summary.primaryBooking?.id || ''}`;
     document.querySelectorAll('.booking-block[data-banquet-group-id]').forEach(existing => {
         if (existing.dataset.banquetGroupId === groupId) {
@@ -1388,17 +1463,17 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     });
     const targets = resolveTimelineBanquetPreviewTargets(snapshot, summary, carrier);
     targets.forEach(target => {
-        const targetSummary = timelineBanquetSummaryForPopover(summary, servingInfo, target.booking || carrier.booking);
+        const targetSummary = timelineBanquetSummaryForInspector(summary, servingInfo, target.booking || carrier.booking);
         target.block.dataset.banquetGroupId = groupId;
         target.block._timelineBanquetSummary = targetSummary;
         target.block.classList.add('has-timeline-banquet-preview-trigger');
     });
     block.dataset.banquetGroupId = groupId;
-    block._timelineBanquetSummary = summaryForPopover;
+    block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
-    renderTimelineBanquetPreviewIndicator(block, summaryForPopover, servingInfo);
-    renderTimelineBanquetServiceMarkers(block, summaryForPopover, servingInfo);
-    registerTimelineBanquetRoomPreview(summaryForPopover);
+    renderTimelineBanquetPreviewIndicator(block, summaryForInspector, servingInfo);
+    renderTimelineBanquetServiceMarkers(block, summaryForInspector, servingInfo);
+    registerTimelineBanquetRoomPreview(summaryForInspector);
 }
 
 function applyTimelineBanquetBadges(snapshot = {}) {
@@ -1430,19 +1505,12 @@ function showTimelineBanquetPreviewFromBlock(event, block) {
     if (event?.target?.closest?.('[data-banquet-link-handle], [data-banquet-preview-trigger], [data-banquet-service-marker], .graduation-segment, .graduation-segment-actions')) return false;
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    showTimelineBanquetPopover(event, block._timelineBanquetSummary, block);
+    showTimelineBanquetInspector(event, block._timelineBanquetSummary, block);
     return true;
 }
 
-document.addEventListener('click', event => {
-    const popover = document.getElementById('timelineBanquetPopover');
-    if (!popover || popover.classList.contains('hidden')) return;
-    if (popover.contains(event.target) || event.target.closest('[data-banquet-preview-trigger], [data-banquet-service-marker]')) return;
-    hideTimelineBanquetPopover();
-});
-
 document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') hideTimelineBanquetPopover();
+    if (event.key === 'Escape') hideTimelineBanquetInspector();
 });
 
 function timelineLineResourceIdentity(line = {}, index = 0) {
@@ -2375,7 +2443,8 @@ function createBookingBlock(booking, startHour, anchor) {
         if (e.target.closest('[data-banquet-link-handle]')) return;
         if (e.target.closest('[data-banquet-preview-trigger], [data-banquet-service-marker]')) return;
         if (block._timelineBanquetSummary) {
-            showTimelineBanquetPopover(e, block._timelineBanquetSummary, block);
+            block.classList.add('is-timeline-banquet-preview-hovered');
+            setTimelineBanquetRoomPreviewHighlight(block._timelineBanquetSummary, true);
             return;
         }
         showTooltip(e, renderBooking);
@@ -2386,7 +2455,11 @@ function createBookingBlock(booking, startHour, anchor) {
         if (block._timelineBanquetSummary) return;
         moveTooltip(e);
     });
-    block.addEventListener('mouseleave', hideTooltip);
+    block.addEventListener('mouseleave', () => {
+        block.classList.remove('is-timeline-banquet-preview-hovered');
+        setTimelineBanquetRoomPreviewHighlight(block._timelineBanquetSummary, false);
+        hideTooltip();
+    });
     // v3.9: Touch events for mobile tooltip
     block.addEventListener('touchstart', (e) => {
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;

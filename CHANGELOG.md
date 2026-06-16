@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.11 - Banquet Preview Inspector UX
+
+### Timeline / Banquet preview inspector / Room UX / Release / (Клешня, 17.06.2026) [codex]
+- **Hover більше не відкриває великий banquet popover** - room/booking hover не перекриває timeline і не створює нестабільний tooltip поверх сітки.
+- **Додано compact banquet mini-card біля кімнати** - room header отримує маленьку картку з `Кухня`, `Торт`, `Активності` і `Без часу`; на hover вона розкривається коротким glance без росту row.
+- **Click відкриває persistent inspector** - mini-card, booking chip, service marker або сам booking block відкривають стабільну праву панель з клієнтом, кімнатою, часом, гостями, меню, видачами, warnings і активностями.
+- **Inspector став інтерактивним** - його можна скролити, натискати `Деталі` і `Вижимка`, закривати через `×` або `Esc`; він не зникає від руху мишки.
+- **Booking hover лишився легким сигналом** - hover по banquet block тільки підсвічує пов’язану room mini-card і сам block, без великого preview.
+- **Animator view лишився чистим** - kitchen mini-cards, chips і service markers залишаються під room timeline guard; activity blocks у “Свята” лишаються звичайними бронями.
+- **Snapshot/cache safety збережено** - preview далі будується з cached banquet group snapshot, без API-запиту на кожен hover; якщо snapshot не завантажився, timeline рендериться звичайно.
+- **Regression guards оновлено** - static/UI і timeline resources checks вимагають room-card, persistent inspector, readable labels і забороняють повернення hover-popover та `М/А/Б/В`.
+- **Релізні маркери піднято до `0.76.11`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config або нових залежностей.
+
+---
+
 ## v0.76.10 - Banquet Kitchen Preview
 
 ### Timeline / Banquet kitchen preview / Room UX / Release / (Клешня, 17.06.2026) [codex]

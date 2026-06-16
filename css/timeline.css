@@ -267,6 +267,8 @@
     border-left: 4px solid var(--primary);
     transition: all var(--speed-fast) var(--ease-smooth);
     border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+    position: relative;
+    overflow: visible;
 }
 
 .timeline-line:nth-child(even) .line-header {
@@ -432,13 +434,112 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     padding-bottom: 46px;
 }
 
+.booking-block.is-timeline-banquet-preview-hovered {
+    box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.56), 0 8px 20px rgba(2, 6, 23, 0.24);
+}
+
 .line-header.has-timeline-banquet-room-preview {
     box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.18);
 }
 
-.line-header.has-timeline-banquet-room-preview .line-name::after {
-    content: ' 🍽';
-    font-size: 11px;
+.line-header.is-timeline-banquet-room-preview-highlighted {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.2) 0%, rgba(59, 130, 246, 0.08) 100%);
+    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.4);
+}
+
+.timeline-banquet-room-card {
+    position: absolute;
+    top: 8px;
+    left: calc(100% - 24px);
+    z-index: 35;
+    display: grid;
+    align-content: center;
+    width: 30px;
+    min-height: 42px;
+    padding: 5px 6px;
+    border: 1px solid rgba(20, 184, 166, 0.46);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.92);
+    color: #F8FAFC;
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.24);
+    cursor: pointer;
+    overflow: hidden;
+    transform: translateX(0);
+    transition: width var(--speed-fast) var(--ease-smooth), transform var(--speed-fast) var(--ease-smooth), border-color var(--speed-fast), background var(--speed-fast), box-shadow var(--speed-fast);
+}
+
+.timeline-banquet-room-card:hover,
+.timeline-banquet-room-card:focus-visible,
+.line-header:hover .timeline-banquet-room-card,
+.line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
+    width: 190px;
+    transform: translateX(6px);
+    border-color: rgba(94, 234, 212, 0.74);
+    background: rgba(15, 23, 42, 0.98);
+    box-shadow: 0 12px 26px rgba(2, 6, 23, 0.34);
+    outline: none;
+}
+
+.timeline-banquet-room-card--warning {
+    border-color: rgba(245, 158, 11, 0.64);
+}
+
+.timeline-banquet-room-card-icons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.timeline-banquet-room-card:hover .timeline-banquet-room-card-icons,
+.timeline-banquet-room-card:focus-visible .timeline-banquet-room-card-icons,
+.line-header:hover .timeline-banquet-room-card-icons,
+.line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card-icons {
+    display: none;
+}
+
+.timeline-banquet-room-card-glance {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.timeline-banquet-room-card:hover .timeline-banquet-room-card-glance,
+.timeline-banquet-room-card:focus-visible .timeline-banquet-room-card-glance,
+.line-header:hover .timeline-banquet-room-card-glance,
+.line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card-glance {
+    opacity: 1;
+}
+
+.timeline-banquet-room-card-line {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+
+.timeline-banquet-room-card-icon {
+    flex: 0 0 auto;
+}
+
+.timeline-banquet-room-card-text,
+.timeline-banquet-room-card-detail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline-banquet-room-card-detail {
+    color: #BAE6FD;
+    font-size: 9px;
 }
 
 .timeline-banquet-preview {
@@ -610,80 +711,136 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     line-height: 1;
 }
 
-.timeline-banquet-popover {
-    position: absolute;
-    z-index: var(--z-tooltip);
-    width: 340px;
-    max-width: calc(100vw - 24px);
-    padding: 12px;
-    border: 1px solid rgba(20, 184, 166, 0.32);
+.timeline-banquet-inspector {
+    position: fixed;
+    top: 78px;
+    right: 16px;
+    bottom: 16px;
+    z-index: var(--z-modal, 1000);
+    display: flex;
+    flex-direction: column;
+    width: min(392px, calc(100vw - 32px));
+    max-height: calc(100vh - 94px);
+    border: 1px solid rgba(20, 184, 166, 0.38);
     border-radius: 12px;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
     color: #F8FAFC;
-    box-shadow: 0 18px 42px rgba(2, 6, 23, 0.42);
+    box-shadow: 0 24px 56px rgba(2, 6, 23, 0.48);
+    overflow: hidden;
 }
 
-.timeline-banquet-popover.hidden {
+.timeline-banquet-inspector.hidden {
     display: none;
 }
 
-.timeline-banquet-popover-title {
-    margin-bottom: 8px;
+.timeline-banquet-inspector-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.timeline-banquet-inspector-kicker {
     color: #5EEAD4;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 900;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
-.timeline-banquet-popover-grid {
+.timeline-banquet-inspector-title {
+    max-width: 280px;
+    margin-top: 3px;
+    color: #F8FAFC;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-banquet-inspector-close {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #E2E8F0;
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.timeline-banquet-inspector-close:hover,
+.timeline-banquet-inspector-close:focus-visible {
+    border-color: rgba(94, 234, 212, 0.62);
+    background: rgba(30, 41, 59, 0.96);
+    outline: none;
+}
+
+.timeline-banquet-inspector-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 12px 14px;
+    overflow-y: auto;
+}
+
+.timeline-banquet-inspector-grid {
     display: grid;
-    grid-template-columns: 86px minmax(0, 1fr);
-    gap: 5px 9px;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 6px 10px;
     font-size: 12px;
     line-height: 1.25;
 }
 
-.timeline-banquet-popover-grid span {
+.timeline-banquet-inspector-grid span {
     color: #94A3B8;
     font-weight: 800;
 }
 
-.timeline-banquet-popover-grid strong {
+.timeline-banquet-inspector-grid strong {
     min-width: 0;
     color: #F8FAFC;
     font-weight: 900;
     overflow-wrap: anywhere;
 }
 
-.timeline-banquet-popover-warnings {
+.timeline-banquet-inspector-warnings {
     display: grid;
-    gap: 4px;
-    margin-top: 10px;
+    gap: 5px;
+    margin-top: 12px;
 }
 
-.timeline-banquet-popover-warnings span {
-    padding: 6px 8px;
+.timeline-banquet-inspector-warnings span {
+    padding: 7px 9px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
     border-radius: 8px;
-    background: rgba(245, 158, 11, 0.16);
+    background: rgba(245, 158, 11, 0.14);
     color: #FDE68A;
     font-size: 11px;
     font-weight: 800;
 }
 
-.timeline-banquet-popover-section {
-    margin-top: 10px;
+.timeline-banquet-inspector-section {
+    margin-top: 14px;
 }
 
-.timeline-banquet-popover-subtitle {
-    margin-bottom: 6px;
+.timeline-banquet-inspector-subtitle {
+    margin-bottom: 7px;
     color: #E2E8F0;
     font-size: 12px;
     font-weight: 900;
 }
 
-.timeline-banquet-popover-list {
+.timeline-banquet-inspector-list {
     display: grid;
-    gap: 6px;
+    gap: 7px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -692,22 +849,29 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     line-height: 1.25;
 }
 
-.timeline-banquet-popover-list li {
+.timeline-banquet-inspector-list li {
     display: grid;
     gap: 2px;
-    padding: 6px 8px;
+    padding: 8px 9px;
+    border: 1px solid rgba(148, 163, 184, 0.1);
     border-radius: 8px;
-    background: rgba(15, 23, 42, 0.62);
+    background: rgba(15, 23, 42, 0.56);
 }
 
-.timeline-banquet-popover-list small {
+.timeline-banquet-inspector-list span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline-banquet-inspector-list small {
     color: #CBD5E1;
     font-size: 10px;
     font-weight: 700;
 }
 
-.timeline-banquet-popover-empty {
-    padding: 6px 8px;
+.timeline-banquet-inspector-empty {
+    padding: 8px 9px;
     border-radius: 8px;
     background: rgba(15, 23, 42, 0.42);
     color: #CBD5E1;
@@ -715,16 +879,19 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     font-weight: 800;
 }
 
-.timeline-banquet-popover-actions {
+.timeline-banquet-inspector-actions {
     display: flex;
+    flex: 0 0 auto;
     gap: 8px;
-    margin-top: 12px;
+    padding: 12px 14px 14px;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.86);
 }
 
-.timeline-banquet-popover-btn {
+.timeline-banquet-inspector-btn {
     flex: 1;
-    min-height: 32px;
-    padding: 7px 10px;
+    min-height: 34px;
+    padding: 8px 10px;
     border: 1px solid rgba(148, 163, 184, 0.32);
     border-radius: 8px;
     background: rgba(15, 23, 42, 0.72);
@@ -736,17 +903,43 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     text-decoration: none;
 }
 
-.timeline-banquet-popover-btn:hover,
-.timeline-banquet-popover-btn:focus-visible {
+.timeline-banquet-inspector-btn:hover,
+.timeline-banquet-inspector-btn:focus-visible {
     border-color: rgba(20, 184, 166, 0.62);
     background: rgba(30, 41, 59, 0.92);
     outline: none;
 }
 
-.timeline-banquet-popover-btn--primary {
+.timeline-banquet-inspector-btn--primary {
     border-color: rgba(20, 184, 166, 0.55);
     background: rgba(20, 184, 166, 0.28);
     color: #CCFBF1;
+}
+
+@media (max-width: 720px) {
+    .timeline-banquet-inspector {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: auto;
+        max-height: 82vh;
+        border-right: none;
+        border-bottom: none;
+        border-left: none;
+        border-radius: 14px 14px 0 0;
+    }
+
+    .timeline-banquet-inspector-title {
+        max-width: calc(100vw - 96px);
+    }
+
+    .timeline-banquet-room-card:hover,
+    .timeline-banquet-room-card:focus-visible,
+    .line-header:hover .timeline-banquet-room-card,
+    .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
+        width: 160px;
+    }
 }
 
 .timeline-banquet-link-layer {
@@ -2019,6 +2212,26 @@ body.dragging-active {
     font-size: 9px;
     line-height: 1.05;
     margin-top: 1px;
+}
+
+.timeline-container.compact .timeline-banquet-room-card {
+    top: 5px;
+    left: calc(100% - 22px);
+    width: 24px;
+    min-height: 32px;
+    padding: 4px 5px;
+}
+
+.timeline-container.compact .timeline-banquet-room-card:hover,
+.timeline-container.compact .timeline-banquet-room-card:focus-visible,
+.timeline-container.compact .line-header:hover .timeline-banquet-room-card,
+.timeline-container.compact .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
+    width: 150px;
+}
+
+.timeline-container.compact .timeline-banquet-room-card-line {
+    gap: 4px;
+    font-size: 9px;
 }
 
 .timeline-container.compact .booking-block {

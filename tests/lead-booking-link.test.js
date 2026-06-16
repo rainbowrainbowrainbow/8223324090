@@ -2,6 +2,14 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { parseLeadId, attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 
+function isCustomerLeadUpdate(text) {
+    return /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text);
+}
+
+function isCustomerLinkUpsert(text) {
+    return /INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, updated_at\)/i.test(text);
+}
+
 describe('lead booking link repair', () => {
     it('parses only positive lead ids', () => {
         assert.equal(parseLeadId('501'), 501);
@@ -19,7 +27,10 @@ describe('lead booking link repair', () => {
                 if (/UPDATE leads SET booking_id = \$1/i.test(text)) {
                     return { rows: [{ id: params[1], booking_id: params[0], pipeline_stage: params[3], status: params[4] }], rowCount: 1 };
                 }
-                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                if (isCustomerLeadUpdate(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                if (isCustomerLinkUpsert(text)) {
                     return { rows: [], rowCount: 1 };
                 }
                 throw new Error(`Unexpected query: ${text}`);
@@ -48,9 +59,15 @@ describe('lead booking link repair', () => {
         const leadUpdate = queries.find(q => /UPDATE leads SET booking_id = \$1/i.test(q.text));
         assert.doesNotMatch(leadUpdate.text, /updated_at/i);
         assert.ok(queries.some(q =>
-            /UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(q.text)
+            isCustomerLeadUpdate(q.text)
             && q.params[0] === 501
             && q.params[2] === 'event_genix'
+        ));
+        assert.ok(queries.some(q =>
+            isCustomerLinkUpsert(q.text)
+            && q.params[0] === 'event_genix'
+            && q.params[1] === 501
+            && q.params[2] === 701
         ));
     });
 
@@ -86,7 +103,7 @@ describe('lead booking link repair', () => {
             bookingStatus: 'preliminary'
         });
 
-        assert.equal(queries.length, 2);
+        assert.equal(queries.length, 3);
         assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
         assert.equal(queries[0].params[3], 'waiting');
         assert.equal(queries[0].params[4], 'booked');
@@ -104,7 +121,10 @@ describe('lead booking link repair', () => {
                 if (/INSERT INTO leads/i.test(text)) {
                     return { rows: [{ id: 77 }], rowCount: 1 };
                 }
-                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                if (isCustomerLeadUpdate(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                if (isCustomerLinkUpsert(text)) {
                     return { rows: [], rowCount: 1 };
                 }
                 throw new Error(`Unexpected query: ${text}`);
@@ -160,7 +180,10 @@ describe('lead booking link repair', () => {
                 if (/INSERT INTO leads/i.test(text)) {
                     return { rows: [{ id: 91 }], rowCount: 1 };
                 }
-                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                if (isCustomerLeadUpdate(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                if (isCustomerLinkUpsert(text)) {
                     return { rows: [], rowCount: 1 };
                 }
                 throw new Error(`Unexpected query: ${text}`);
@@ -218,6 +241,8 @@ describe('lead booking link repair', () => {
         assert.equal(insert.params[5], 'maysternya_bot');
         assert.equal(insert.params[6], 'maysternya_bot');
         assert.equal(insert.params[7], 'telegram-booking-abc');
+        assert.equal(insert.params[13], 'new');
+        assert.equal(insert.params[14], 'new');
         assert.match(insert.params[11], /Telegram: @botclient \/ ID 123456789/);
         assert.match(insert.params[11], /WhatsApp: \+380501112244/);
         assert.match(insert.params[11], /Email: client@example\.com/);
@@ -242,7 +267,10 @@ describe('lead booking link repair', () => {
                 if (/UPDATE leads SET booking_id = COALESCE\(booking_id, \$1\)/i.test(text)) {
                     return { rows: [], rowCount: 1 };
                 }
-                if (/UPDATE customers SET lead_id = COALESCE\(lead_id, \$1\)/i.test(text)) {
+                if (isCustomerLeadUpdate(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                if (isCustomerLinkUpsert(text)) {
                     return { rows: [], rowCount: 1 };
                 }
                 throw new Error(`Unexpected query: ${text}`);
@@ -270,5 +298,58 @@ describe('lead booking link repair', () => {
         assert.match(leadUpdate.text, /lead_type = COALESCE\(NULLIF\(lead_type, ''\), 'quality'\)/i);
         assert.ok(queries.some(q => /booking_id IS NULL/i.test(q.text)));
         assert.ok(queries.every(q => q.params.includes('maysternya_doli')));
+    });
+
+    it('does not reuse terminal leads by contact for Maysternya bot bookings', async () => {
+        const queries = [];
+        const client = {
+            query: async (sql, params = []) => {
+                const text = String(sql).replace(/\s+/g, ' ').trim();
+                queries.push({ text, params });
+                if (/SELECT id FROM leads WHERE/i.test(text)) {
+                    return { rows: [], rowCount: 0 };
+                }
+                if (/INSERT INTO leads/i.test(text)) {
+                    return { rows: [{ id: 92 }], rowCount: 1 };
+                }
+                if (isCustomerLeadUpdate(text) || isCustomerLinkUpsert(text)) {
+                    return { rows: [], rowCount: 1 };
+                }
+                throw new Error(`Unexpected query: ${text}`);
+            }
+        };
+
+        const result = await ensureLeadForBooking(client, {
+            booking: {
+                id: 'BK-2099-0104',
+                externalId: 'telegram-booking-terminal-guard',
+                status: 'confirmed',
+                date: '2099-05-26',
+                time: '12:00',
+                leadSource: 'maysternya_bot',
+                sourceChannel: 'maysternya_bot',
+                customer: {
+                    telegramId: '987654321',
+                    telegramUsername: '@returning_client'
+                }
+            },
+            customerId: 704,
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(result.attached, true);
+        assert.equal(result.created, true);
+        assert.equal(result.leadId, 92);
+
+        const lookup = queries.find(q => /SELECT id FROM leads WHERE/i.test(q.text));
+        assert.ok(lookup);
+        assert.match(lookup.text, /COALESCE\(status, 'new'\) NOT IN \('closed','lost','completed'\)/i);
+        assert.match(lookup.text, /COALESCE\(pipeline_stage, 'new'\) NOT IN \('completed','closed','lost'\)/i);
+        assert.match(lookup.text, /\$8::boolean = false/i);
+        assert.equal(lookup.params[7], true);
+
+        const insert = queries.find(q => /INSERT INTO leads/i.test(q.text));
+        assert.equal(insert.params[13], 'new');
+        assert.equal(insert.params[14], 'new');
     });
 });

@@ -1395,6 +1395,23 @@ function createFakePool() {
                     rowCount: 1
                 };
             }
+            if (/INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, updated_at\)/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 9902,
+                        business_context: params[0],
+                        lead_id: params[1],
+                        customer_id: params[2],
+                        link_type: 'booking_customer',
+                        source: params[3],
+                        metadata: params[4] ? JSON.parse(params[4]) : {},
+                        created_by: null,
+                        created_at: '2099-05-02T10:05:00Z',
+                        updated_at: '2099-05-02T10:05:00Z'
+                    }],
+                    rowCount: 1
+                };
+            }
             if (/SELECT \* FROM packages WHERE is_active = true/i.test(text)) {
                 return {
                     rows: [
@@ -1970,6 +1987,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(leadInsert.params[5], 'maysternya_bot');
         assert.equal(leadInsert.params[6], 'maysternya_bot');
         assert.equal(leadInsert.params[7], 'md-booking-1');
+        assert.equal(leadInsert.params[13], 'new');
+        assert.equal(leadInsert.params[14], 'new');
         const leadRawPayload = JSON.parse(leadInsert.params[12]);
         assert.equal(leadRawPayload.email, 'maria@example.com');
         assert.equal(leadRawPayload.whatsapp, '+380501112244');

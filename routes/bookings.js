@@ -256,11 +256,16 @@ function bookingLeadAutoCreateAllowedForContext(context) {
 
 function hasBookingLeadIdentity(booking, customerId) {
     const customer = booking?.customer || {};
+    const telegram = booking?.telegram || customer.telegram || {};
     return Boolean(
         customerId
         || String(customer.name || '').trim()
         || String(customer.phone || '').trim()
         || String(customer.instagram || '').trim()
+        || String(customer.email || booking?.email || '').trim()
+        || String(customer.whatsapp || customer.whatsapp_phone || booking?.whatsapp || booking?.whatsapp_phone || '').trim()
+        || String(customer.telegramId || customer.telegram_id || booking?.telegramId || booking?.telegram_id || telegram.id || '').trim()
+        || String(customer.telegramUsername || customer.telegram_username || booking?.telegramUsername || booking?.telegram_username || telegram.username || '').trim()
     );
 }
 

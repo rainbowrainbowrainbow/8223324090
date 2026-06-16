@@ -7,6 +7,22 @@ function parseLeadId(value) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+async function upsertLeadCustomerLink(client, { leadId, customerId, businessContext, source = 'booking_handoff' }) {
+  const parsedLeadId = parseLeadId(leadId);
+  const numericCustomerId = Number.parseInt(customerId, 10);
+  if (!parsedLeadId || !Number.isInteger(numericCustomerId) || numericCustomerId <= 0) return false;
+  const result = await client.query(
+    `INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, updated_at)
+     VALUES ($1, $2, $3, 'booking_customer', $4, $5::jsonb, NOW())
+     ON CONFLICT (business_context, lead_id, customer_id, link_type) DO UPDATE SET
+       source = COALESCE(EXCLUDED.source, lead_customer_links.source),
+       metadata = COALESCE(lead_customer_links.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+       updated_at = NOW()`,
+    [businessContext, parsedLeadId, numericCustomerId, source, JSON.stringify({ source: 'leadBookingLink' })]
+  );
+  return result.rowCount > 0;
+}
+
 async function attachLeadBookingLink(client, { leadId, bookingId, customerId, businessContext = DEFAULT_BUSINESS_CONTEXT, bookingStatus = null }) {
   const parsedLeadId = parseLeadId(leadId);
   const resolvedBookingId = bookingId ? String(bookingId) : '';
@@ -52,6 +68,13 @@ async function attachLeadBookingLink(client, { leadId, bookingId, customerId, bu
       [parsedLeadId, numericCustomerId, context]
     );
     customerLinked = customerResult.rowCount > 0;
+    const linkInserted = await upsertLeadCustomerLink(client, {
+      leadId: parsedLeadId,
+      customerId: numericCustomerId,
+      businessContext: context,
+      source: 'booking_attach'
+    });
+    customerLinked = customerLinked || linkInserted;
   }
 
   return {
@@ -132,14 +155,38 @@ function uniqueTextList(values, limit = 12) {
   return items;
 }
 
+const LEAD_STAGE_TO_STATUS = {
+  new: 'new',
+  contacted: 'contact',
+  info_sent: 'contact',
+  deal: 'proposal',
+  deposit_received: 'booked',
+  waiting: 'booked',
+  completed: 'completed',
+  closed: 'completed',
+  lost: 'lost',
+};
+
+const VALID_LEAD_PIPELINE_STAGES = new Set(Object.keys(LEAD_STAGE_TO_STATUS));
+
 function bookingLeadStage(booking) {
+  const explicitStage = cleanText(booking?.leadPipelineStage || booking?.lead_pipeline_stage, 50);
+  if (explicitStage && VALID_LEAD_PIPELINE_STAGES.has(explicitStage)) return explicitStage;
+  const sourceChannel = cleanText(
+    booking?.sourceChannel
+    || booking?.source_channel
+    || booking?.leadSourceChannel
+    || booking?.lead_source_channel,
+    50
+  );
+  if (sourceChannel === 'maysternya_bot') return 'new';
   return String(booking?.status || '').toLowerCase() === 'preliminary'
     ? 'waiting'
     : 'deposit_received';
 }
 
 function bookingLeadStatus(stage) {
-  return stage === 'waiting' || stage === 'deposit_received' ? 'booked' : 'new';
+  return LEAD_STAGE_TO_STATUS[stage] || 'new';
 }
 
 function bookingLeadClientName(booking) {
@@ -320,7 +367,8 @@ async function linkCustomerToLead(client, { leadId, customerId, businessContext 
        AND COALESCE(business_context, $3) = $3`,
     [leadId, numericCustomerId, businessContext]
   );
-  return result.rowCount > 0;
+  const linkInserted = await upsertLeadCustomerLink(client, { leadId, customerId: numericCustomerId, businessContext });
+  return result.rowCount > 0 || linkInserted;
 }
 
 async function ensureLeadForBooking(client, { booking, customerId, businessContext = DEFAULT_BUSINESS_CONTEXT }) {
@@ -334,6 +382,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
   const sourceChannel = bookingLeadSourceChannel(booking, source);
   const externalId = bookingLeadExternalId(booking, bookingId);
   const contactMeta = bookingLeadContactMeta(booking, customer, { phone, instagram });
+  const restrictContactReuse = sourceChannel === 'maysternya_bot';
 
   if (!bookingId || (!clientName && !phone && !instagram && !contactMeta.telegramId && !contactMeta.telegramUsername && !contactMeta.whatsapp && !contactMeta.email && !customerId)) {
     return { attached: false, reason: 'missing_context' };
@@ -359,20 +408,30 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
     `SELECT id
      FROM leads
      WHERE COALESCE(business_context, $1) = $1
-       AND status NOT IN ('closed','lost')
        AND (
             booking_id = $2
             OR (
-              $5::text IS NOT NULL
-              AND external_id = $5
-              AND COALESCE(source_channel, '') = $6
-            )
-            OR ($7::bigint IS NOT NULL AND telegram_id = $7::bigint)
-            OR (
-              booking_id IS NULL
+              COALESCE(status, 'new') NOT IN ('closed','lost','completed')
+              AND COALESCE(pipeline_stage, 'new') NOT IN ('completed','closed','lost')
               AND (
-                ($3::text IS NOT NULL AND phone = $3)
-                OR ($4::text IS NOT NULL AND instagram = $4)
+                (
+                  $5::text IS NOT NULL
+                  AND external_id = $5
+                  AND COALESCE(source_channel, '') = $6
+                )
+                OR (
+                  $8::boolean = false
+                  AND (
+                    ($7::bigint IS NOT NULL AND telegram_id = $7::bigint)
+                    OR (
+                      booking_id IS NULL
+                      AND (
+                        ($3::text IS NOT NULL AND phone = $3)
+                        OR ($4::text IS NOT NULL AND instagram = $4)
+                      )
+                    )
+                  )
+                )
               )
             )
        )
@@ -380,7 +439,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
        CASE WHEN booking_id = $2 THEN 0 ELSE 1 END,
        id DESC
      LIMIT 1`,
-    [context, bookingId, phone, instagram, externalId, sourceChannel, contactMeta.telegramId]
+    [context, bookingId, phone, instagram, externalId, sourceChannel, contactMeta.telegramId, restrictContactReuse]
   );
 
   let leadId = parseLeadId(lookup.rows[0]?.id);
@@ -402,7 +461,7 @@ async function ensureLeadForBooking(client, { booking, customerId, businessConte
            children_count = COALESCE(children_count, $11),
            lead_type = COALESCE(NULLIF(lead_type, ''), 'quality'),
            pipeline_stage = CASE
-             WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal') THEN $12
+             WHEN COALESCE(pipeline_stage, 'new') IN ('new','contacted','info_sent','deal','waiting') THEN $12
              ELSE pipeline_stage
            END,
            status = CASE
@@ -474,4 +533,5 @@ module.exports = {
   parseLeadId,
   attachLeadBookingLink,
   ensureLeadForBooking,
+  upsertLeadCustomerLink,
 };

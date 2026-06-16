@@ -984,8 +984,15 @@ async function createMaysternyaBotBooking(body = {}, options = {}) {
     await lockMaysternyaExternalId(client, booking.externalId);
     const existingAfterLock = await findExistingMaysternyaBotBooking(client, booking.externalId);
     if (existingAfterLock) {
-      await client.query('ROLLBACK');
-      return { response: bookingResponse(existingAfterLock, null, { created: false, dryRun: false }) };
+      const leadLink = await ensureMaysternyaBookingLead(client, {
+        booking,
+        row: existingAfterLock,
+        customerId: existingAfterLock.customer_id || null,
+        programId: existingAfterLock.program_id || booking.programId || booking.programCode || null,
+        programName: existingAfterLock.program_name || booking.programName || null
+      });
+      await client.query('COMMIT');
+      return { response: bookingResponse(existingAfterLock, null, { created: false, dryRun: false, leadLink }) };
     }
     const { resource } = await resolveMaysternyaResource(client, booking);
     if (!resource) {

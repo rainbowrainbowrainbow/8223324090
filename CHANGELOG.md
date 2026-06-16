@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.5 - Maysternya Bot Lead Handoff
+
+### Leads / Maysternya / Telegram bot / Booking handoff / Release / (Клешня, 16.06.2026) [codex]
+- **Maysternya bot leads стартують як нові ліди** - booking handoff з `source_channel=maysternya_bot` тепер створює/веде lead у `pipeline_stage='new'`, `status='new'`, щоб менеджер бачив звернення у колонці “Новий лід”, а не в закритих/броньованих етапах.
+- **Закриті ліди більше не переюзаються для нових bot bookings** - пошук existing lead відсікає `completed/closed/lost` і для `maysternya_bot` не підбирає старі кейси лише по Telegram/телефону.
+- **Telegram/email/WhatsApp вважаються валідною ідентичністю booking lead** - generic booking handoff більше не пропускає lead creation, якщо у payload немає телефону/name, але є Telegram або інші контактні канали.
+- **Idempotent race path теж гарантує lead handoff** - якщо booking з тим самим `external_id` з’явився після lock, webhook повторно виконує `ensureMaysternyaBookingLead` і повертає `leadId`.
+- **Customer link history не губиться** - booking handoff додатково пише durable запис у `lead_customer_links`, не покладаючись тільки на legacy `customers.lead_id`.
+- **Regression guards додано** - unit-тести перевіряють `new/new` для Maysternya bot, заборону reuse terminal lead, link history і старий non-bot booking flow.
+- **Релізні маркери піднято до `0.76.5`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **DB/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, нових залежностей або production config змін.
+
+---
+
 ## v0.76.4 - Maysternya Lead Visibility Fix
 
 ### Leads / Maysternya / Booking handoff / Release / (Клешня, 16.06.2026) [codex]

@@ -1,4 +1,6 @@
-const BOOKING_PACKAGE_SCHEMA_VERSION = 1;
+const BOOKING_PACKAGE_SCHEMA_VERSION = 2;
+const SERVICE_EVENT_TYPES = new Set(['food_service', 'cake', 'drinks', 'room_setup', 'custom']);
+const SERVICE_EVENT_STATUSES = new Set(['planned', 'done', 'skipped']);
 
 function cleanText(value, max = 240) {
     if (value === undefined || value === null) return null;
@@ -22,6 +24,23 @@ function stableLineId(raw, index) {
     return cleanText(raw?.id || raw?.lineId || raw?.uid, 80) || `item-${index + 1}`;
 }
 
+function normalizeServingTime(value) {
+    const text = cleanText(value, 20);
+    if (!text) return null;
+    const match = text.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+    return match ? `${match[1]}:${match[2]}` : null;
+}
+
+function normalizeServingType(value, fallback = 'food_service') {
+    const type = cleanText(value, 40) || fallback;
+    return SERVICE_EVENT_TYPES.has(type) ? type : fallback;
+}
+
+function normalizeServingStatus(value, fallback = 'planned') {
+    const status = cleanText(value, 40) || fallback;
+    return SERVICE_EVENT_STATUSES.has(status) ? status : fallback;
+}
+
 function normalizeMenuPosition(raw, index = 0) {
     if (!raw || typeof raw !== 'object') return null;
     const title = cleanText(raw.title || raw.label || raw.name || raw.productName, 160);
@@ -40,6 +59,10 @@ function normalizeMenuPosition(raw, index = 0) {
         menuSection: cleanText(raw.menuSection || raw.menu_section, 120),
         servingUnit: cleanText(raw.servingUnit || raw.serving_unit || raw.priceUnit, 80),
         kitchenType: cleanText(raw.kitchenType || raw.kitchen_type || raw.itemType, 40) || 'menu',
+        servingTime: normalizeServingTime(raw.servingTime || raw.serving_time),
+        servingNote: cleanText(raw.servingNote || raw.serving_note, 500),
+        servingGroupId: cleanText(raw.servingGroupId || raw.serving_group_id || raw.servingBatchId || raw.serving_batch_id, 80),
+        servingBatchId: cleanText(raw.servingBatchId || raw.serving_batch_id || raw.servingGroupId || raw.serving_group_id, 80),
         weightValue: cleanText(raw.weightValue || raw.weight_value, 80),
         cakeDecoration: cleanText(raw.cakeDecoration || raw.cake_decoration, 240),
         source: cleanText(raw.source, 40) || (raw.productId || raw.product_id ? 'product' : 'custom')
@@ -55,6 +78,38 @@ function normalizeMenuPositions(value) {
 
 function menuPositionsSubtotal(positions) {
     return toMoney((positions || []).reduce((sum, item) => sum + toMoney(item.subtotal), 0));
+}
+
+function normalizeServiceEvent(raw, index = 0) {
+    if (!raw || typeof raw !== 'object') return null;
+    const type = normalizeServingType(raw.type || raw.eventType || raw.event_type, 'custom');
+    const defaultTitle = type === 'cake' ? 'Винос торта' : 'Подія';
+    const title = cleanText(raw.title || raw.label || raw.name, 160) || defaultTitle;
+    const time = normalizeServingTime(raw.time || raw.servingTime || raw.serving_time);
+    const durationMinutes = Number(raw.durationMinutes ?? raw.duration_minutes);
+    const related = Array.isArray(raw.relatedMenuPositionIds || raw.related_menu_position_ids)
+        ? (raw.relatedMenuPositionIds || raw.related_menu_position_ids)
+            .map(item => cleanText(item, 80))
+            .filter(Boolean)
+        : [];
+    return {
+        id: cleanText(raw.id || raw.uid, 80) || `service-event-${index + 1}`,
+        type,
+        title,
+        time,
+        durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0 ? Math.round(durationMinutes) : null,
+        relatedMenuPositionIds: related,
+        note: cleanText(raw.note || raw.notes || raw.comment, 500),
+        status: normalizeServingStatus(raw.status, 'planned'),
+        source: cleanText(raw.source, 40) || 'booking_workspace'
+    };
+}
+
+function normalizeServiceEvents(value) {
+    const source = Array.isArray(value) ? value : [];
+    return source
+        .map((item, index) => normalizeServiceEvent(item, index))
+        .filter(Boolean);
 }
 
 function buildLegacyBanquetMenu(positions, fallback = null) {
@@ -80,19 +135,32 @@ function extractIncomingPositions(booking = {}) {
         || [];
 }
 
+function extractIncomingServiceEvents(booking = {}) {
+    const extra = booking.extraData || booking.extra_data || {};
+    return booking.serviceEvents
+        || booking.service_events
+        || extra.bookingPackage?.serviceEvents
+        || extra.booking_package?.service_events
+        || extra.serviceEvents
+        || [];
+}
+
 function hasBookingPackageInput(booking = {}) {
     const extra = booking.extraData || booking.extra_data || {};
     return Object.prototype.hasOwnProperty.call(booking, 'menuPositions')
         || Object.prototype.hasOwnProperty.call(booking, 'menu_positions')
+        || Object.prototype.hasOwnProperty.call(booking, 'serviceEvents')
+        || Object.prototype.hasOwnProperty.call(booking, 'service_events')
         || Object.prototype.hasOwnProperty.call(booking, 'programBasePrice')
         || Object.prototype.hasOwnProperty.call(booking, 'program_base_price')
-        || Boolean(extra.bookingPackage || extra.booking_package || extra.menuPositions);
+        || Boolean(extra.bookingPackage || extra.booking_package || extra.menuPositions || extra.serviceEvents);
 }
 
 function buildBookingPackage(booking = {}) {
     const extra = booking.extraData || booking.extra_data || {};
     const previousPackage = extra.bookingPackage || extra.booking_package || {};
     const positions = normalizeMenuPositions(extractIncomingPositions(booking));
+    const serviceEvents = normalizeServiceEvents(extractIncomingServiceEvents(booking));
     const positionsSubtotal = menuPositionsSubtotal(positions);
     const fallbackBase = toMoney((booking.price || 0) - positionsSubtotal);
     const programBasePrice = toMoney(
@@ -106,6 +174,7 @@ function buildBookingPackage(booking = {}) {
         positionsSubtotal,
         finalTotal,
         menuPositions: positions,
+        serviceEvents,
         source: 'booking_workspace'
     };
 }
@@ -152,6 +221,8 @@ module.exports = {
     normalizeMenuPosition,
     normalizeMenuPositions,
     menuPositionsSubtotal,
+    normalizeServiceEvent,
+    normalizeServiceEvents,
     buildLegacyBanquetMenu,
     buildBookingPackage,
     applyBookingPackage,

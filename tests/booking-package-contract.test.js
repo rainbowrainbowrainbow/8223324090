@@ -6,7 +6,9 @@ const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 
 const {
+    BOOKING_PACKAGE_SCHEMA_VERSION,
     normalizeMenuPositions,
+    normalizeServiceEvents,
     menuPositionsSubtotal,
     buildLegacyBanquetMenu,
     applyBookingPackage,
@@ -213,8 +215,8 @@ function createBookingMenuCatalogHarness() {
 
 test('booking package normalizes menu positions with price and subtotal', () => {
     const positions = normalizeMenuPositions([
-        { productId: 'menu_pizza', title: 'Піца', quantity: 3, unitPrice: 250 },
-        { product_id: 'menu_juice', label: 'Сік', qty: 2, price: 80, note: 'яблуко' },
+        { productId: 'menu_pizza', title: 'Піца', quantity: 3, unitPrice: 250, servingTime: '16:30', servingNote: 'first wave', servingBatchId: 'wave-1' },
+        { product_id: 'menu_juice', label: 'Сік', qty: 2, price: 80, note: 'яблуко', serving_time: '99:99' },
         { productId: 'cake_custom', title: 'Cake', quantity: 2.5, unitPrice: 120, note: 'no nuts' },
         { title: '' }
     ]);
@@ -226,10 +228,32 @@ test('booking package normalizes menu positions with price and subtotal', () => 
     assert.equal(positions[2].subtotal, 300);
     assert.equal(positions[2].note, 'no nuts');
     assert.equal(positions[1].kitchenType, 'menu');
+    assert.equal(positions[0].servingTime, '16:30');
+    assert.equal(positions[0].servingNote, 'first wave');
+    assert.equal(positions[0].servingGroupId, 'wave-1');
+    assert.equal(positions[0].servingBatchId, 'wave-1');
+    assert.equal(positions[1].servingTime, null);
     assert.equal(menuPositionsSubtotal(positions), 1210);
     assert.match(buildLegacyBanquetMenu(positions), /Піца - 3 x 250 грн/);
     assert.match(buildLegacyBanquetMenu(positions), /Сік - 2 x 80 грн \(яблуко\)/);
     assert.match(buildLegacyBanquetMenu(positions), /Cake - 2,5 x 120 .* \(no nuts\)/);
+});
+
+test('booking package normalizes banquet service events without schema changes', () => {
+    const events = normalizeServiceEvents([
+        { type: 'cake', title: 'Cake service', time: '17:45', note: 'with candles', relatedMenuPositionIds: ['cake_custom'] },
+        { event_type: 'unknown', label: 'Custom reminder', serving_time: '18:10', durationMinutes: 15 },
+        null
+    ]);
+
+    assert.equal(BOOKING_PACKAGE_SCHEMA_VERSION, 2);
+    assert.equal(events.length, 2);
+    assert.equal(events[0].type, 'cake');
+    assert.equal(events[0].time, '17:45');
+    assert.deepEqual(events[0].relatedMenuPositionIds, ['cake_custom']);
+    assert.equal(events[1].type, 'custom');
+    assert.equal(events[1].title, 'Custom reminder');
+    assert.equal(events[1].durationMinutes, 15);
 });
 
 test('booking menu catalog inline edits keep menuPositions, legacy text, and reset state in sync', async () => {
@@ -470,8 +494,9 @@ test('booking package persists final total into booking price and extraData', ()
         price: 2200,
         programBasePrice: 2200,
         menuPositions: [
-            { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 300 }
+            { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 300, servingTime: '15:30' }
         ],
+        serviceEvents: [{ type: 'cake', title: 'Винос торта', time: '16:40' }],
         extraData: { tags: ['birthday'] }
     });
 
@@ -481,6 +506,9 @@ test('booking package persists final total into booking price and extraData', ()
     assert.equal(booking.extraData.bookingPackage.positionsSubtotal, 600);
     assert.equal(booking.extraData.bookingPackage.finalTotal, 2800);
     assert.equal(booking.extraData.bookingPackage.menuPositions[0].productId, 'menu_pizza');
+    assert.equal(booking.extraData.bookingPackage.menuPositions[0].servingTime, '15:30');
+    assert.equal(booking.extraData.bookingPackage.serviceEvents[0].type, 'cake');
+    assert.equal(booking.extraData.bookingPackage.serviceEvents[0].time, '16:40');
     assert.match(booking.banquetMenu, /Піца - 2 x 300 грн/);
 });
 
@@ -707,6 +735,13 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /programBasePrice/);
     assert.match(bookingJs, /positionsSubtotal/);
     assert.match(bookingJs, /finalTotal/);
+    assert.match(bookingJs, /servingTime/);
+    assert.match(bookingJs, /data-menu-serving-time/);
+    assert.match(bookingJs, /data-menu-serving-apply-selected/);
+    assert.match(bookingJs, /data-menu-serving-copy-all/);
+    assert.match(bookingJs, /data-menu-service-event-add/);
+    assert.match(bookingJs, /serviceEvents: formData\.serviceEvents \|\| \[\]/);
+    assert.match(bookingJs, /Не вказано час видачі/);
     assert.match(bookingJs, /getSmartBookingValidationState/);
     assert.match(bookingJs, /formatBookingValidationList/);
     assert.match(bookingJs, /showBookingValidationErrors/);
@@ -858,6 +893,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);
     assert.match(panelCss, /\.booking-menu-catalog-note-editor/);
+    assert.match(panelCss, /\.booking-menu-serving-toolbar/);
+    assert.match(panelCss, /\.booking-menu-serving-picker/);
+    assert.match(panelCss, /\.booking-menu-service-event/);
+    assert.match(panelCss, /\.booking-menu-serving-warning/);
     assert.match(panelCss, /@media \(max-width:\s*900px\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel::after/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '\/images\/kitchen-menu\/fallback-burger-wide\.jpg'/);

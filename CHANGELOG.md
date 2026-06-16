@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.9 - Banquet Timeline Service Events
+
+### Timeline / Banquet service events / Serving time / Summary / Release / (Клешня, 17.06.2026) [codex]
+- **Room timeline більше не показує kitchen/service як великий блок** - root booking-и з `line_id='banquet-service'` прибираються з room projection, але лишаються доступними через details, group і вижимку.
+- **Додано компактні banquet badges на видимих блоках** - room timeline показує `Меню`, `Активності`, `Вижимка` і warning `Без часу N` на видимому carrier booking-у banquet group.
+- **Додано події видачі як timeline markers** - `menuPositions` групуються за `servingTime` у markers `Видача`, `serviceEvents.type='cake'` показується як `Торт`, інші service events як `Сервіс`.
+- **Markers не створюють бронювання і не блокують кімнату** - це frontend-only overlay з cached `/api/banquets/by-booking/:bookingId`, без нових API, schema або conflict records.
+- **Меню отримало часи видачі без нової схеми** - `bookingPackage.menuPositions[]` зберігає `servingTime`, `servingNote`, `servingGroupId/servingBatchId`, а `bookingPackage.serviceEvents[]` тримає торт і кастомні сервісні події.
+- **Details і banquet summary показують service metadata** - у деталях бронювання та printable вижимці видно часи видачі, grouped serving rows, service events і warnings по незаповнених часах.
+- **Production data audit пройдений read-only** - orphan kitchen/activity memberships не знайдено; ручної уваги потребують лише дві тестові groups з меню без serving time.
+- **Regression guards оновлено** - UI/static і timeline resources checks прикривають room projection, cached badges, service markers, serving fields, summary warnings і відсутність backend marker endpoint.
+- **Env/auth/Railway config не змінювались** - без secrets, ролей, production config або нових залежностей.
+
+---
+
 ## v0.76.8 - Banquet Timeline Stability
 
 ### Timeline / Banquet groups / Visual links / Release / (Клешня, 16.06.2026) [codex]

@@ -106,8 +106,33 @@
         `;
     }
 
+    function orderRowComment(row = {}) {
+        const meta = row.meta || {};
+        const parts = [];
+        if (row.type === 'service_event' && meta.time) parts.push(`Час ${meta.time}`);
+        if (row.comment) parts.push(row.comment);
+        return parts.join(' · ') || null;
+    }
+
+    function summaryOrderRows(summary) {
+        return (Array.isArray(summary?.orderRows) ? summary.orderRows : [])
+            .filter(row => row?.type !== 'service_event');
+    }
+
+    function summaryServiceEventRows(summary) {
+        const explicit = Array.isArray(summary?.serviceEvents) ? summary.serviceEvents : [];
+        const fromRows = (Array.isArray(summary?.orderRows) ? summary.orderRows : [])
+            .filter(row => row?.type === 'service_event');
+        return explicit.length ? explicit : fromRows;
+    }
+
+    function summaryServingTime(row = {}) {
+        const meta = row.meta || {};
+        return meta.servingTime || meta.time || null;
+    }
+
     function orderRowsHtml(summary) {
-        const rows = Array.isArray(summary?.orderRows) ? summary.orderRows : [];
+        const rows = summaryOrderRows(summary);
         const currency = summary?.totals?.currency || 'UAH';
         if (!rows.length) {
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
@@ -117,6 +142,7 @@
                 <colgroup>
                     <col style="width:42px">
                     <col>
+                    <col style="width:92px">
                     <col style="width:72px">
                     <col style="width:96px">
                     <col style="width:96px">
@@ -126,6 +152,7 @@
                     <tr>
                         <th class="num">№</th>
                         <th>Назва</th>
+                        <th class="serving">Час видачі</th>
                         <th class="qty">К-сть</th>
                         <th class="money">Ціна</th>
                         <th class="money">Сума</th>
@@ -137,14 +164,35 @@
                         <tr>
                             <td class="num">${index + 1}</td>
                             <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
+                            <td class="serving">${escapeHtml(formatValue(summaryServingTime(row)))}</td>
                             <td class="qty">${escapeHtml(formatValue(row.quantity))}</td>
                             <td class="money">${escapeHtml(formatMoney(row.unitPrice, currency))}</td>
                             <td class="money">${escapeHtml(formatMoney(row.subtotal, currency))}</td>
-                            <td>${escapeHtml(formatValue(row.comment))}</td>
+                            <td>${escapeHtml(formatValue(orderRowComment(row)))}</td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
+        `;
+    }
+
+    function serviceEventsHtml(summary) {
+        const rows = summaryServiceEventRows(summary);
+        if (!rows.length) return '';
+        return `
+            <div class="summary-service-events">
+                ${rows.map(row => {
+                    const meta = row.meta || {};
+                    const note = orderRowComment(row);
+                    return `
+                        <div class="summary-service-event">
+                            <strong>${escapeHtml(row.title || 'Подія')}</strong>
+                            <span>${escapeHtml(formatValue(meta.time || meta.servingTime))}</span>
+                            ${note ? `<small>${escapeHtml(note)}</small>` : ''}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
         `;
     }
 
@@ -236,6 +284,13 @@
                 ${orderRowsHtml(summary)}
             </section>
 
+            ${summaryServiceEventRows(summary).length ? `
+                <section class="summary-section">
+                    <h2>Події видачі</h2>
+                    ${serviceEventsHtml(summary)}
+                </section>
+            ` : ''}
+
             <section class="summary-section">
                 <h2>Суми і завдаток</h2>
                 ${renderTotals(summary)}
@@ -256,7 +311,8 @@
         const totals = summary.totals || {};
         const deposit = summary.deposit || {};
         const currency = totals.currency || 'UAH';
-        const rows = Array.isArray(summary.orderRows) ? summary.orderRows : [];
+        const rows = summaryOrderRows(summary);
+        const serviceEvents = summaryServiceEventRows(summary);
         const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : [];
 
         return [
@@ -275,7 +331,20 @@
             `Дорослих: ${formatValue(counts.adults)}`,
             '',
             'Замовлення:',
-            ...(rows.length ? rows.map((row, index) => `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(row.quantity)} x ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${row.comment ? ` (${row.comment})` : ''}`) : ['Позиції відсутні']),
+            ...(rows.length ? rows.map((row, index) => {
+                const comment = orderRowComment(row);
+                const servingTime = summaryServingTime(row);
+                return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${formatValue(row.quantity)} x ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
+            }) : ['Позиції відсутні']),
+            ...(serviceEvents.length ? [
+                '',
+                'Події видачі:',
+                ...serviceEvents.map((row, index) => {
+                    const meta = row.meta || {};
+                    const note = orderRowComment(row);
+                    return `${index + 1}. ${row.title || 'Подія'} — ${formatValue(meta.time || meta.servingTime)}${note ? ` (${note})` : ''}`;
+                })
+            ] : []),
             '',
             `Сума замовлення: ${formatMoney(totals.orderTotal, currency)}`,
             `Сума бронювання: ${formatMoney(totals.bookingPrice, currency)}`,

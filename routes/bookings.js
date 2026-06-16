@@ -1080,6 +1080,7 @@ function projectBookingsForTimelineView(bookings = [], timelineView = 'animators
         return bookings.filter(booking => !isBanquetServiceRootBooking(booking));
     }
     return bookings
+        .filter(booking => !isBanquetServiceRootBooking(booking))
         .filter(booking => !String(booking.linkedTo || '').trim() && isRealRoom(booking.room))
         .map(booking => projectBookingForTimelineView(booking, timelineView));
 }

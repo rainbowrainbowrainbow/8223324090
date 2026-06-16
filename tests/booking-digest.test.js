@@ -42,8 +42,11 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
                     positionsSubtotal: 1200,
                     finalTotal: 3700,
                     menuPositions: [
-                        { productId: 'pizza', title: 'Піца', quantity: 2, unitPrice: 300, subtotal: 600, note: 'без грибів' },
+                        { productId: 'pizza', title: 'Піца', quantity: 2, unitPrice: 300, subtotal: 600, note: 'без грибів', servingTime: '16:30', servingBatchId: 'serve-1630' },
                         { productId: 'juice', title: 'Сік', quantity: 3, unitPrice: 200, subtotal: 600 }
+                    ],
+                    serviceEvents: [
+                        { type: 'cake', title: 'Винос торта', time: '17:10' }
                     ]
                 },
                 banquetDeposit: {
@@ -76,10 +79,16 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.counts.adults, 4);
     assert.equal(summary.counts.guests, 12);
     assert.equal(summary.counts.tables, 2);
-    assert.equal(summary.orderRows.length, 4);
+    assert.equal(summary.orderRows.length, 5);
     assert.equal(summary.orderRows[0].type, 'program');
     assert.equal(summary.orderRows[1].type, 'activity');
     assert.equal(summary.orderRows[2].type, 'menu');
+    assert.equal(summary.orderRows[2].meta.servingTime, '16:30');
+    assert.equal(summary.orderRows[4].type, 'service_event');
+    assert.equal(summary.orderRows[4].meta.time, '17:10');
+    assert.equal(summary.serviceEvents.length, 1);
+    assert.equal(summary.serviceEvents[0].title, 'Винос торта');
+    assert.equal(summary.serviceEvents[0].meta.time, '17:10');
     assert.equal(summary.totals.programBasePrice, 2500);
     assert.equal(summary.totals.menuSubtotal, 1200);
     assert.equal(summary.totals.orderTotal, 4400);
@@ -91,6 +100,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.deposit.source, 'extra_data.banquetDeposit');
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+    assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
 });
 
 test('banquet summary resolves group primary, kitchen menu, and root activity rows without linked children', () => {

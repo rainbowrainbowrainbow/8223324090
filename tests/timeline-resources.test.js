@@ -199,6 +199,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(bookingsRoute, /BANQUET_SERVICE_LINE_ID/);
     assert.match(bookingsRoute, /return bookings\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
+    assert.match(bookingsRoute, /return bookings\s*\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)\s*\.filter\(booking => !String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)\)/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
     assert.match(bookingsRoute, /isRoomConflictBlockingRoom/);
     assert.match(bookingsRoute, /if \(!isRoomConflictBlockingRoom\(candidate\.room\)\) return null/);
@@ -515,6 +516,24 @@ test('timeline visual settings v2 keeps stable block ids, metadata, and legacy o
     assert.equal(sanitized.overrides.timelineGrid, true);
     assert.equal(sanitized.overrides.bookingClose, true);
     assert.equal(sanitized.overrides.unknownBlock, undefined);
+});
+
+test('room timeline banquet serving markers stay frontend-only and snapshot-backed', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+
+    assert.match(timeline, /function timelineBanquetServingInfo/);
+    assert.match(timeline, /timelineBanquetMenuPositions\(booking\)/);
+    assert.match(timeline, /function timelineBanquetServiceEvents/);
+    assert.match(timeline, /data-banquet-service-marker/);
+    assert.match(timeline, /function showTimelineBanquetServicePopover/);
+    assert.match(timeline, /requestIdleCallback/);
+    assert.match(timeline, /function hydrateTimelineBanquetBadges[\s\S]*isRoomTimelineView\(\)/);
+    assert.match(timeline, /timelineBanquetServingInfo\(summary\)/);
+    assert.doesNotMatch(timeline, /\/banquet-service-markers/);
+    assert.match(css, /\.timeline-banquet-service-markers/);
+    assert.match(css, /\.timeline-banquet-service-marker--cake/);
+    assert.match(css, /\.timeline-banquet-badge--serving-warning/);
 });
 
 test('timeline visual settings keep park animator and room views isolated', () => {

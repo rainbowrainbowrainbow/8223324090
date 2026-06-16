@@ -153,6 +153,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('routes/lines.js', "row.line_id || '').trim() !== BANQUET_SERVICE_LINE_ID")
         && bookingsRouteCode.includes('function isBanquetServiceRootBooking')
         && bookingsRouteCode.includes('return bookings.filter(booking => !isBanquetServiceRootBooking(booking))')
+        && bookingsRouteCode.includes("return bookings\n        .filter(booking => !isBanquetServiceRootBooking(booking))\n        .filter(booking => !String(booking.linkedTo || '').trim() && isRealRoom(booking.room))")
         && htmlContains('js/timeline.js', 'function shouldRenderBookingVisualLink')
         && htmlContains('js/timeline.js', 'relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView()')
         && bookingCode.includes("ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
@@ -894,6 +895,31 @@ check('Timeline gear opens the standalone settings center instead of the overlay
 check('Timeline visual settings center has operator documentation and safe-change guardrails', timelineVisualSettingsDoc.includes('timeline:event_genix') && timelineVisualSettingsDoc.includes('visible') && timelineVisualSettingsDoc.includes('order') && timelineVisualSettingsDoc.includes('density') && timelineVisualSettingsDoc.includes('emphasis') && timelineVisualSettingsDoc.includes('customLabel') && timelineVisualSettingsDoc.includes('adminNote') && timelineVisualSettingsDoc.includes('не змінює бізнес-логіку') && timelineVisualSettingsDoc.includes('UAT') && timelineVisualSettingsDoc.includes('codex/room-timeline-hardening'));
 check('Timeline display modes are real presentation settings', htmlContains('index.html', 'settingsTimelineDisplayMode') && htmlContains('index.html', 'settingsTimelineKitchenMode') && htmlContains('index.html', 'settingsTimelineRoomFirstEnabled') && htmlContains('index.html', 'settingsTimelineDefaultView') && htmlContains('js/timeline-context.js', 'const DISPLAY_MODES = {') && htmlContains('js/timeline-context.js', "education: {") && htmlContains('js/timeline-context.js', "parkKitchenEnabled") && htmlContains('js/timeline-context.js', "defaultTimelineView") && settingsCode.includes('/settings/timeline-display') && settingsCode.includes('roomTimelineEnabled') && settingsCode.includes('defaultTimelineView') && !settingsCode.includes("|| 'rooms'") && !settingsCode.includes("? 'rooms' : 'animators'") && appCode.includes('saveTimelineDisplaySettingsFromSettings') && appCode.includes('settingsTimelineDefaultView') && timelineConfigCode.includes('TIMELINE_DISPLAY_MODE') && timelineConfigCode.includes('EDUCATION_TIMELINE_PROGRAMS') && timelineCode.includes("presentation?.mode === 'education'") && timelineCode.includes('resourceType: \'cabinet\'') && htmlContains('css/panel.css', 'body.timeline-mode-park.timeline-park-without-kitchen #banquetFields'));
 check('Timeline room load panel is a visible toolbar popover and remains closable', featuresCss.includes('Timeline page room load is a toolbar popover') && featuresCss.includes('--room-load-anchor-top') && featuresCss.includes('body.timeline-dashboard-page .room-load-panel.visible') && featuresCss.includes('.room-load-close-label') && featuresCss.includes('html[data-theme="dark"] .room-load-panel') && timelineCode.includes('const positionRoomLoadPanel') && timelineCode.includes("panel.style.setProperty('--room-load-anchor-right'") && timelineCode.includes('closeRoomLoadPanel') && timelineCode.includes("event.key === 'Escape'") && timelineCode.includes("btn.setAttribute('aria-expanded', 'false')"));
+check('Room timeline banquet badges hydrate from cached group snapshots without blocking render',
+    timelineCode.includes('TIMELINE_BANQUET_SNAPSHOT_CACHE')
+    && timelineCode.includes('function loadTimelineBanquetSnapshotForBooking')
+    && timelineCode.includes('apiGetBanquetByBooking(bookingId)')
+    && timelineCode.includes('function applyTimelineBanquetBadges')
+    && timelineCode.includes('function showTimelineBanquetPopover')
+    && timelineCode.includes('requestIdleCallback')
+    && timelineCode.includes('data-banquet-badge')
+    && timelineCode.includes('timelineBanquetSummaryHref')
+    && timelineConstructorCss.includes('.timeline-banquet-badges')
+    && timelineConstructorCss.includes('.timeline-banquet-popover')
+    && timelineConstructorCss.includes('.timeline-banquet-popover-btn--primary'));
+check('Room timeline banquet serving markers are frontend-only snapshot overlays',
+    timelineCode.includes('function timelineBanquetServingInfo')
+    && timelineCode.includes('timelineBanquetMenuPositions(booking)')
+    && timelineCode.includes('function timelineBanquetServiceEvents')
+    && timelineCode.includes('data-banquet-service-marker')
+    && timelineCode.includes('function showTimelineBanquetServicePopover')
+    && timelineCode.includes('timeline-banquet-service-markers')
+    && timelineCode.includes('Не вказано час видачі')
+    && timelineCode.includes('requestIdleCallback')
+    && timelineConstructorCss.includes('.timeline-banquet-service-markers')
+    && timelineConstructorCss.includes('.timeline-banquet-service-marker--cake')
+    && timelineConstructorCss.includes('.timeline-banquet-badge--serving-warning')
+    && !timelineCode.includes('/banquet-service-markers'));
 check('Timeline booking links use durable API-backed connector model', htmlContains('db/migrations/216_booking_banquet_links.sql', 'CREATE TABLE IF NOT EXISTS booking_banquet_links') && htmlContains('routes/bookings.js', "router.post('/:id/banquet-links'") && htmlContains('routes/bookings.js', "router.delete('/:id/banquet-links/:targetId'") && htmlContains('routes/bookings.js', "shared_room_activity") && htmlContains('services/booking.js', 'bookingLinks: Array.isArray(row.booking_links)') && timelineCode.includes('booking-banquet-link-handle') && timelineCode.includes('renderBanquetLinksOverlay') && timelineCode.includes('getBookingVisualLinks') && timelineCode.includes('apiCreateBookingBanquetLink') && timelineCode.includes('removeBookingBanquetLink'));
 check('Banquet groups schema stays isolated from bookings and legacy visual links',
     htmlContains('db/migrations/265_banquet_groups.sql', 'CREATE TABLE IF NOT EXISTS banquet_groups')
@@ -1665,6 +1691,34 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && panelCss.includes('.booking-menu-catalog-item.selected')
     && panelCss.includes('.booking-menu-catalog-inline-input')
     && panelCss.includes('@media (max-width: 900px)'));
+check('Booking kitchen menu supports serving times and banquet service events without schema changes',
+    bookingCode.includes('servingTime')
+    && bookingCode.includes('servingNote')
+    && bookingCode.includes('servingGroupId')
+    && bookingCode.includes('serviceEvents: formData.serviceEvents || []')
+    && bookingCode.includes('data-menu-serving-time')
+    && bookingCode.includes('data-menu-serving-apply-selected')
+    && bookingCode.includes('data-menu-serving-copy-all')
+    && bookingCode.includes('data-menu-service-event-add')
+    && bookingCode.includes('Не вказано час видачі')
+    && bookingCode.includes('function groupedBookingMenuPositions')
+    && bookingCode.includes('booking-detail-package-serving-group')
+    && bookingCode.includes('Час видачі не вказано')
+    && htmlContains('services/bookingPackage.js', 'BOOKING_PACKAGE_SCHEMA_VERSION = 2')
+    && htmlContains('services/bookingPackage.js', 'normalizeServiceEvents')
+    && htmlContains('services/banquetSummary.js', 'serving_time_missing')
+    && htmlContains('services/banquetSummary.js', 'serviceEvents: serviceEventRows')
+    && htmlContains('js/booking-summary-page.js', 'orderRowComment')
+    && htmlContains('js/booking-summary-page.js', 'summaryServiceEventRows')
+    && htmlContains('js/booking-summary-page.js', 'Події видачі')
+    && htmlContains('js/booking-summary-page.js', 'Час видачі')
+    && panelCss.includes('.booking-menu-serving-toolbar')
+    && panelCss.includes('.booking-menu-serving-picker')
+    && panelCss.includes('.booking-menu-service-event')
+    && panelCss.includes('.booking-menu-serving-warning')
+    && panelCss.includes('.booking-detail-package-serving-group')
+    && htmlContains('css/booking-summary.css', '.summary-service-events')
+    && htmlContains('css/booking-summary.css', '.summary-order-table .serving'));
 check('Products menu tab owns menu-card images, AI review entrypoints, and image prompt drafts',
     programsHtml.includes(`js/kitchen-menu-images.js?v=${pkg.version}`)
     && programsHtml.includes(`css/pages-products.css?v=${pkg.version}`)

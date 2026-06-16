@@ -424,6 +424,266 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 .mini-booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 
+.booking-block.has-timeline-banquet-badges {
+    padding-bottom: 24px;
+}
+
+.booking-block.has-timeline-banquet-service-markers {
+    padding-bottom: 46px;
+}
+
+.timeline-banquet-badges {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 4px;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+    z-index: 18;
+    pointer-events: auto;
+}
+
+.timeline-banquet-badge {
+    min-width: 0;
+    height: 18px;
+    padding: 0 7px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #F8FAFC;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-banquet-badge:hover,
+.timeline-banquet-badge:focus-visible {
+    background: rgba(15, 23, 42, 0.92);
+    border-color: rgba(255, 255, 255, 0.52);
+    outline: none;
+}
+
+.timeline-banquet-badge--menu {
+    background: rgba(20, 184, 166, 0.82);
+}
+
+.timeline-banquet-badge--activity {
+    background: rgba(59, 130, 246, 0.78);
+}
+
+.timeline-banquet-badge--summary {
+    background: rgba(245, 158, 11, 0.82);
+}
+
+.timeline-banquet-badge--serving-warning {
+    background: rgba(239, 68, 68, 0.82);
+}
+
+.timeline-banquet-service-markers {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 26px;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+    z-index: 19;
+    pointer-events: auto;
+}
+
+.timeline-banquet-service-marker {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 96px;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid rgba(94, 234, 212, 0.46);
+    border-radius: 999px;
+    background: rgba(8, 47, 73, 0.84);
+    color: #ECFEFF;
+    box-shadow: 0 5px 12px rgba(2, 6, 23, 0.24);
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+.timeline-banquet-service-marker:hover,
+.timeline-banquet-service-marker:focus-visible {
+    border-color: rgba(125, 211, 252, 0.82);
+    background: rgba(12, 74, 110, 0.94);
+    outline: none;
+}
+
+.timeline-banquet-service-marker--cake {
+    border-color: rgba(244, 114, 182, 0.62);
+    background: rgba(131, 24, 67, 0.84);
+}
+
+.timeline-banquet-service-marker--service {
+    border-color: rgba(251, 191, 36, 0.58);
+    background: rgba(120, 53, 15, 0.84);
+}
+
+.timeline-banquet-service-marker-time,
+.timeline-banquet-service-marker-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline-banquet-service-marker-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    color: #FFFFFF;
+    font-size: 8px;
+    line-height: 1;
+}
+
+.timeline-banquet-popover {
+    position: absolute;
+    z-index: var(--z-tooltip);
+    width: 280px;
+    max-width: calc(100vw - 24px);
+    padding: 12px;
+    border: 1px solid rgba(20, 184, 166, 0.32);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+    color: #F8FAFC;
+    box-shadow: 0 18px 42px rgba(2, 6, 23, 0.42);
+}
+
+.timeline-banquet-popover.hidden {
+    display: none;
+}
+
+.timeline-banquet-popover-title {
+    margin-bottom: 8px;
+    color: #5EEAD4;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.timeline-banquet-popover-grid {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 5px 9px;
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.timeline-banquet-popover-grid span {
+    color: #94A3B8;
+    font-weight: 800;
+}
+
+.timeline-banquet-popover-grid strong {
+    min-width: 0;
+    color: #F8FAFC;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.timeline-banquet-popover-warnings {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+}
+
+.timeline-banquet-popover-warnings span {
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.16);
+    color: #FDE68A;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.timeline-banquet-service-popover-subtitle {
+    margin-bottom: 8px;
+    color: #E2E8F0;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.timeline-banquet-service-popover-list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: #F8FAFC;
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.timeline-banquet-service-popover-list li {
+    display: grid;
+    gap: 2px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.62);
+}
+
+.timeline-banquet-service-popover-list small {
+    color: #CBD5E1;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.timeline-banquet-popover-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.timeline-banquet-popover-btn {
+    flex: 1;
+    min-height: 32px;
+    padding: 7px 10px;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #E2E8F0;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 900;
+    text-align: center;
+    text-decoration: none;
+}
+
+.timeline-banquet-popover-btn:hover,
+.timeline-banquet-popover-btn:focus-visible {
+    border-color: rgba(20, 184, 166, 0.62);
+    background: rgba(30, 41, 59, 0.92);
+    outline: none;
+}
+
+.timeline-banquet-popover-btn--primary {
+    border-color: rgba(20, 184, 166, 0.55);
+    background: rgba(20, 184, 166, 0.28);
+    color: #CCFBF1;
+}
+
 .timeline-banquet-link-layer {
     position: absolute;
     inset: 0 auto auto 0;
@@ -1704,6 +1964,14 @@ body.dragging-active {
     border-left-width: 2px;
 }
 
+.timeline-container.compact .booking-block.has-timeline-banquet-badges {
+    padding-bottom: 20px;
+}
+
+.timeline-container.compact .booking-block.has-timeline-banquet-service-markers {
+    padding-bottom: 38px;
+}
+
 .timeline-container.compact .booking-block:hover {
     transform: translateY(-1px);
 }
@@ -1731,6 +1999,21 @@ body.dragging-active {
     top: 2px;
     right: 3px;
     font-size: 8px;
+}
+
+.timeline-container.compact .timeline-banquet-badges {
+    bottom: 3px;
+}
+
+.timeline-container.compact .timeline-banquet-service-markers {
+    bottom: 22px;
+}
+
+.timeline-container.compact .timeline-banquet-badge,
+.timeline-container.compact .timeline-banquet-service-marker {
+    height: 16px;
+    font-size: 8px;
+    line-height: 14px;
 }
 
 .timeline-container.compact .booking-block.graduation-parent {

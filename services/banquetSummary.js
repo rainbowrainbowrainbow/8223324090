@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeMenuPositions, menuPositionsSubtotal } = require('./bookingPackage');
+const { normalizeMenuPositions, normalizeServiceEvents, menuPositionsSubtotal } = require('./bookingPackage');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextCatalog,
@@ -210,15 +210,40 @@ function buildMenuRows(menuPositions = []) {
         quantity: quantity(item.quantity),
         unitPrice: money(item.unitPrice),
         subtotal: money(item.subtotal) ?? money(quantity(item.quantity) * (money(item.unitPrice) || 0)),
-        comment: cleanText(item.note, 500),
+        comment: cleanText(item.servingNote || item.note, 500),
         meta: {
             productId: item.productId || null,
             code: item.code || null,
             menuSection: item.menuSection || null,
             servingUnit: item.servingUnit || null,
+            servingTime: item.servingTime || null,
+            servingNote: item.servingNote || null,
+            servingGroupId: item.servingGroupId || null,
+            servingBatchId: item.servingBatchId || null,
             kitchenType: item.kitchenType || null,
             weightValue: item.weightValue || null,
             cakeDecoration: item.cakeDecoration || null
+        }
+    }));
+}
+
+function buildServiceEventRows(serviceEvents = []) {
+    return normalizeServiceEvents(serviceEvents).map((event, index) => ({
+        id: `service-event:${event.id || index + 1}`,
+        type: 'service_event',
+        source: event.source || 'booking_package',
+        bookingId: null,
+        title: event.title,
+        quantity: 1,
+        unitPrice: null,
+        subtotal: null,
+        comment: cleanText(event.note, 500),
+        meta: {
+            eventType: event.type,
+            time: event.time || null,
+            durationMinutes: event.durationMinutes || null,
+            relatedMenuPositionIds: event.relatedMenuPositionIds || [],
+            status: event.status || 'planned'
         }
     }));
 }
@@ -430,10 +455,18 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const bookingPackage = kitchenPackage || {};
     const menuPositions = normalizeMenuPositions(bookingPackage.menuPositions || bookingPackage.menu_positions || []);
     const menuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
+    const serviceEventRows = buildServiceEventRows(bookingPackage.serviceEvents || bookingPackage.service_events || []);
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
             code: 'legacy_banquet_menu_used',
             message: 'Меню взято з legacy поля banquet_menu, бо structured menuPositions порожні.'
+        });
+    }
+    const missingServingTimeCount = menuPositions.filter(item => !item.servingTime).length;
+    if (missingServingTimeCount > 0) {
+        warnings.push({
+            code: 'serving_time_missing',
+            message: `Не вказано час видачі для ${missingServingTimeCount} позицій меню.`
         });
     }
 
@@ -447,7 +480,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const programRow = buildProgramRow(primaryBooking, programBasePrice);
     const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
     const activitySubtotal = sumKnown(activityRows);
-    const orderRows = [programRow, ...activityRows, ...menuRows].filter(Boolean);
+    const orderRows = [programRow, ...activityRows, ...menuRows, ...serviceEventRows].filter(Boolean);
     const rowsTotal = sumKnown(orderRows);
     const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
     const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal);
@@ -516,6 +549,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             tables: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetTables', 'banquet_tables'), valueOf(primaryBooking, 'banquetTables', 'banquet_tables')))
         },
         orderRows,
+        serviceEvents: serviceEventRows,
         totals: {
             programBasePrice,
             menuSubtotal,

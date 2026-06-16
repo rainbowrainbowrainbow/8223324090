@@ -12,6 +12,10 @@ let _leadConversionAutoOpenAttempted = false;
 const TIMELINE_VIEW_ANIMATORS = 'animators';
 const TIMELINE_VIEW_ROOMS = 'rooms';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
+const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
+    byBooking: new Map(),
+    byGroup: new Map()
+};
 
 function normalizeTimelineViewMode(value) {
     return String(value || '').trim().toLowerCase() === TIMELINE_VIEW_ROOMS
@@ -570,6 +574,551 @@ function timelineBusinessContextValue() {
         || ctx?.key
         || 'event_genix';
 }
+
+function timelineBanquetCacheKey(id) {
+    return `${timelineBusinessContextValue()}::${String(id || '').trim()}`;
+}
+
+function timelineBanquetGroupIdFromSource(source = {}) {
+    const extra = timelineExtraData(source);
+    return String(
+        source?.banquetGroupId
+        || source?.banquet_group_id
+        || extra?.banquetGroup?.groupId
+        || extra?.banquetGroup?.group_id
+        || extra?.banquet_group?.groupId
+        || extra?.banquet_group?.group_id
+        || ''
+    ).trim();
+}
+
+function timelineBanquetSnapshotGroupId(snapshot = {}) {
+    return String(snapshot?.groupId || snapshot?.group?.id || '').trim();
+}
+
+function timelineBanquetBookingPackage(booking = {}) {
+    const extra = timelineExtraData(booking);
+    const bookingPackage = booking?.bookingPackage
+        || booking?.booking_package
+        || extra?.bookingPackage
+        || extra?.booking_package
+        || {};
+    return bookingPackage && typeof bookingPackage === 'object' ? bookingPackage : {};
+}
+
+function timelineBanquetMenuPositions(booking = {}) {
+    const bookingPackage = timelineBanquetBookingPackage(booking);
+    const positions = bookingPackage.menuPositions || bookingPackage.menu_positions || [];
+    return Array.isArray(positions) ? positions : [];
+}
+
+function timelineBanquetMenuCount(booking = {}) {
+    const positions = timelineBanquetMenuPositions(booking);
+    if (positions.length) return positions.length;
+    return String(booking?.banquetMenu || booking?.banquet_menu || '').trim() ? 1 : 0;
+}
+
+function timelineBanquetServiceEvents(booking = {}) {
+    const bookingPackage = timelineBanquetBookingPackage(booking);
+    const events = bookingPackage.serviceEvents
+        || bookingPackage.service_events
+        || booking?.serviceEvents
+        || booking?.service_events
+        || [];
+    return Array.isArray(events) ? events : [];
+}
+
+function normalizeTimelineBanquetServingTime(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '';
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return '';
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function timelineBanquetBookingHasMenu(booking = {}) {
+    return timelineBanquetMenuCount(booking) > 0
+        || booking?.banquetGuests != null
+        || booking?.banquet_guests != null
+        || booking?.banquetAdults != null
+        || booking?.banquet_adults != null
+        || booking?.banquetTables != null
+        || booking?.banquet_tables != null;
+}
+
+function uniqueTimelineBanquetBookings(bookings = []) {
+    const seen = new Set();
+    return (bookings || []).filter(booking => {
+        const id = String(booking?.id || '').trim();
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+    });
+}
+
+function timelineBanquetSnapshotBookings(snapshot = {}) {
+    const grouped = snapshot?.bookings || {};
+    const fromMembers = (snapshot?.members || []).map(member => member?.booking).filter(Boolean);
+    return uniqueTimelineBanquetBookings([
+        grouped.primary,
+        ...(grouped.kitchen || []),
+        ...(grouped.activities || []),
+        ...(grouped.services || []),
+        ...(grouped.manual || []),
+        ...fromMembers
+    ].filter(Boolean));
+}
+
+function firstTimelineBanquetValue(bookings = [], getter) {
+    for (const booking of bookings) {
+        const value = getter(booking);
+        if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+    }
+    return null;
+}
+
+function timelineBanquetSnapshotSummary(snapshot = {}) {
+    if (!snapshot?.success) return null;
+    const allBookings = timelineBanquetSnapshotBookings(snapshot);
+    if (!allBookings.length) return null;
+    const grouped = snapshot.bookings || {};
+    const primaryBooking = grouped.primary || (snapshot.members || []).find(member => member?.isPrimary)?.booking || allBookings[0];
+    const kitchenBookings = uniqueTimelineBanquetBookings([
+        ...(grouped.kitchen || []),
+        ...allBookings.filter(timelineBanquetBookingHasMenu)
+    ]);
+    const activityBookings = uniqueTimelineBanquetBookings([
+        ...(grouped.activities || []),
+        ...(snapshot.members || [])
+            .filter(member => member?.role === 'activity')
+            .map(member => member.booking)
+            .filter(Boolean)
+    ]);
+    const menuCount = kitchenBookings.reduce((sum, booking) => sum + timelineBanquetMenuCount(booking), 0);
+    const sourceForCounts = [primaryBooking, ...kitchenBookings, ...activityBookings, ...allBookings].filter(Boolean);
+    const warnings = (snapshot.warnings || [])
+        .map(warning => warning?.message || warning?.code || String(warning || '').trim())
+        .filter(Boolean);
+    const carrierBooking = null;
+    return {
+        snapshot,
+        groupId: timelineBanquetSnapshotGroupId(snapshot),
+        primaryBooking,
+        carrierBooking,
+        allBookings,
+        kitchenBookings,
+        activityBookings,
+        hasMenu: menuCount > 0,
+        menuCount,
+        activityCount: activityBookings.length,
+        summaryAvailable: true,
+        customerName: firstTimelineBanquetValue(sourceForCounts, booking => booking.customerName || booking.customer_name || booking.groupName || booking.group_name),
+        room: snapshot?.group?.room || firstTimelineBanquetValue(sourceForCounts, booking => booking.room),
+        kidsCount: firstTimelineBanquetValue(sourceForCounts, booking => booking.kidsCount ?? booking.kids_count),
+        banquetAdults: firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetAdults ?? booking.banquet_adults),
+        warnings
+    };
+}
+
+function timelineBanquetServingInfo(summary = {}) {
+    const servingGroups = new Map();
+    const markers = [];
+    let missingCount = 0;
+    const kitchenBookings = Array.isArray(summary.kitchenBookings) ? summary.kitchenBookings : [];
+
+    kitchenBookings.forEach(booking => {
+        timelineBanquetMenuPositions(booking).forEach((item, index) => {
+            const servingTime = normalizeTimelineBanquetServingTime(item?.servingTime || item?.serving_time);
+            const title = String(item?.title || item?.name || item?.productName || item?.product_name || `Позиція ${index + 1}`).trim();
+            if (!servingTime) {
+                missingCount += 1;
+                return;
+            }
+            const group = servingGroups.get(servingTime) || {
+                type: 'food_service',
+                label: 'Видача',
+                title: `Видача ${servingTime}`,
+                time: servingTime,
+                count: 0,
+                items: []
+            };
+            const quantity = Number(item?.quantity || item?.qty || 0);
+            group.count += 1;
+            group.items.push({
+                title,
+                quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+                note: item?.servingNote || item?.serving_note || item?.note || null
+            });
+            servingGroups.set(servingTime, group);
+        });
+
+        timelineBanquetServiceEvents(booking).forEach((item, index) => {
+            const servingTime = normalizeTimelineBanquetServingTime(item?.time || item?.servingTime || item?.serving_time);
+            if (!servingTime) {
+                missingCount += 1;
+                return;
+            }
+            const rawType = String(item?.type || '').trim().toLowerCase();
+            const isCake = rawType === 'cake';
+            const label = isCake ? 'Торт' : 'Сервіс';
+            const title = String(item?.title || (isCake ? 'Винос торта' : `Сервіс ${index + 1}`)).trim();
+            markers.push({
+                type: isCake ? 'cake' : 'service',
+                label,
+                title,
+                time: servingTime,
+                count: 1,
+                items: [{
+                    title,
+                    quantity: null,
+                    note: item?.note || item?.comment || null
+                }]
+            });
+        });
+    });
+
+    servingGroups.forEach(group => markers.push(group));
+    markers.sort((a, b) => {
+        const byTime = String(a.time || '').localeCompare(String(b.time || ''));
+        if (byTime) return byTime;
+        return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+
+    return { markers, missingCount };
+}
+
+function cacheTimelineBanquetSnapshot(snapshot, seedBookingId = null) {
+    if (!snapshot?.success) return null;
+    const groupId = timelineBanquetSnapshotGroupId(snapshot);
+    const record = { snapshot, ts: Date.now() };
+    if (groupId) TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.set(timelineBanquetCacheKey(groupId), record);
+    const bookingIds = new Set();
+    if (seedBookingId) bookingIds.add(String(seedBookingId));
+    timelineBanquetSnapshotBookings(snapshot).forEach(booking => bookingIds.add(String(booking.id)));
+    (snapshot.memberships || []).forEach(member => {
+        if (member?.bookingId) bookingIds.add(String(member.bookingId));
+    });
+    (snapshot.members || []).forEach(member => {
+        if (member?.bookingId) bookingIds.add(String(member.bookingId));
+    });
+    bookingIds.forEach(id => TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(timelineBanquetCacheKey(id), record));
+    return snapshot;
+}
+
+async function loadTimelineBanquetSnapshotForBooking(booking = {}) {
+    const bookingId = String(booking?.id || '').trim();
+    if (!bookingId || typeof apiGetBanquetByBooking !== 'function') return null;
+    const embeddedGroupId = timelineBanquetGroupIdFromSource(booking);
+    if (embeddedGroupId) {
+        const groupRecord = TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.get(timelineBanquetCacheKey(embeddedGroupId));
+        if (groupRecord?.snapshot) return groupRecord.snapshot;
+    }
+    const bookingKey = timelineBanquetCacheKey(bookingId);
+    const cached = TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.get(bookingKey);
+    if (cached?.snapshot) return cached.snapshot;
+    if (cached?.promise) return cached.promise;
+    if (cached?.failed) return null;
+    const promise = apiGetBanquetByBooking(bookingId)
+        .then(result => {
+            if (!result?.success || !Array.isArray(result.members) || !result.members.length) {
+                TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { failed: true, ts: Date.now() });
+                return null;
+            }
+            return cacheTimelineBanquetSnapshot(result, bookingId);
+        })
+        .catch(error => {
+            console.warn('[Timeline] Banquet snapshot unavailable:', error);
+            TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { failed: true, ts: Date.now() });
+            return null;
+        });
+    TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.set(bookingKey, { promise, ts: Date.now() });
+    return promise;
+}
+
+function timelineBanquetVisibleBlockById(bookingId) {
+    const id = String(bookingId || '').trim();
+    if (!id) return null;
+    return Array.from(document.querySelectorAll('.booking-block[data-booking-id]'))
+        .find(block => String(block.dataset.bookingId || '') === id && !block.classList.contains('status-hidden')) || null;
+}
+
+function resolveTimelineBanquetBadgeCarrier(snapshot = {}) {
+    const summary = timelineBanquetSnapshotSummary(snapshot);
+    if (!summary) return null;
+    const cachedBookings = typeof _getTimelineCachedBookings === 'function' ? _getTimelineCachedBookings() : [];
+    const visibleBookingById = new Map((cachedBookings || []).map(booking => [String(booking.id), booking]));
+    const primaryId = String(snapshot?.group?.primaryBookingId || summary.primaryBooking?.id || '').trim();
+    const primaryBlock = timelineBanquetVisibleBlockById(primaryId);
+    if (primaryBlock) {
+        return {
+            block: primaryBlock,
+            booking: visibleBookingById.get(primaryId) || summary.primaryBooking,
+            summary: { ...summary, carrierBooking: visibleBookingById.get(primaryId) || summary.primaryBooking }
+        };
+    }
+    const roleWeight = { activity: 1, primary: 2, kitchen: 3, service: 4, manual: 5 };
+    const groupRoom = String(snapshot?.group?.room || summary.room || '').trim();
+    const groupDate = String(snapshot?.group?.date || summary.primaryBooking?.date || '').trim();
+    const candidates = (snapshot.members || [])
+        .map(member => ({ ...member, booking: visibleBookingById.get(String(member.bookingId)) || member.booking }))
+        .filter(member => member?.booking?.id && !String(member.booking.linkedTo || member.booking.linked_to || '').trim())
+        .filter(member => {
+            const booking = member.booking;
+            const sameRoom = !groupRoom || String(booking.room || '').trim() === groupRoom;
+            const sameDate = !groupDate || String(booking.date || '').trim() === groupDate;
+            return sameRoom && sameDate && timelineBanquetVisibleBlockById(booking.id);
+        })
+        .sort((a, b) => {
+            const byRole = (roleWeight[a.role] || 9) - (roleWeight[b.role] || 9);
+            if (byRole) return byRole;
+            return String(a.booking.time || '').localeCompare(String(b.booking.time || ''));
+        });
+    const member = candidates[0] || null;
+    if (!member) return null;
+    const block = timelineBanquetVisibleBlockById(member.booking.id);
+    if (!block) return null;
+    return {
+        block,
+        booking: member.booking,
+        summary: { ...summary, carrierBooking: member.booking }
+    };
+}
+
+function timelineBanquetSummaryHref(summary = {}) {
+    const booking = summary.carrierBooking || summary.primaryBooking || summary.allBookings?.[0] || {};
+    const context = booking.businessContext
+        || booking.business_context
+        || summary.snapshot?.businessContext
+        || timelineBusinessContextValue();
+    const params = new URLSearchParams({
+        id: String(booking.id || ''),
+        businessContext: context,
+        return: `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
+    });
+    if (summary.groupId) params.set('groupId', summary.groupId);
+    return `/booking-summary.html?${params.toString()}`;
+}
+
+function ensureTimelineBanquetPopover() {
+    let popover = document.getElementById('timelineBanquetPopover');
+    if (!popover) {
+        popover = document.createElement('div');
+        popover.id = 'timelineBanquetPopover';
+        popover.className = 'timeline-banquet-popover hidden';
+        popover.setAttribute('role', 'dialog');
+        popover.setAttribute('aria-live', 'polite');
+        document.body.appendChild(popover);
+    }
+    return popover;
+}
+
+function positionTimelineBanquetPopover(popover, trigger) {
+    const rect = trigger?.getBoundingClientRect?.();
+    if (!rect) return;
+    const width = 280;
+    const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left + window.scrollX));
+    const top = rect.bottom + window.scrollY + 8;
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+}
+
+function hideTimelineBanquetPopover() {
+    const popover = document.getElementById('timelineBanquetPopover');
+    if (popover) popover.classList.add('hidden');
+}
+
+function showTimelineBanquetPopover(event, summary, trigger) {
+    if (!summary) return;
+    if (typeof hideTooltip === 'function') hideTooltip();
+    const popover = ensureTimelineBanquetPopover();
+    const warnings = summary.warnings.length
+        ? `<div class="timeline-banquet-popover-warnings">${summary.warnings.slice(0, 2).map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+        : '';
+    popover.innerHTML = `
+        <div class="timeline-banquet-popover-title">Банкет</div>
+        <div class="timeline-banquet-popover-grid">
+            <span>Клієнт</span><strong>${escapeHtml(summary.customerName || 'Не вказано')}</strong>
+            <span>Кімната</span><strong>${escapeHtml(summary.room || 'Не вказано')}</strong>
+            <span>Діти</span><strong>${escapeHtml(String(summary.kidsCount || '—'))}</strong>
+            <span>Дорослі</span><strong>${escapeHtml(String(summary.banquetAdults || '—'))}</strong>
+            <span>Меню</span><strong>${summary.hasMenu ? 'Є' : 'Немає'} · ${escapeHtml(String(summary.menuCount))}</strong>
+            <span>Активності</span><strong>${escapeHtml(String(summary.activityCount))}</strong>
+        </div>
+        ${warnings}
+        <div class="timeline-banquet-popover-actions">
+            <button type="button" class="timeline-banquet-popover-btn" data-banquet-popover-details>Деталі</button>
+            <a class="timeline-banquet-popover-btn timeline-banquet-popover-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Вижимка</a>
+        </div>
+    `;
+    const detailsBtn = popover.querySelector('[data-banquet-popover-details]');
+    detailsBtn?.addEventListener('click', clickEvent => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        hideTimelineBanquetPopover();
+        if (typeof showBookingDetails === 'function') showBookingDetails(summary.carrierBooking?.id || summary.primaryBooking?.id);
+    });
+    popover.querySelectorAll('a, button').forEach(el => {
+        el.addEventListener('click', clickEvent => clickEvent.stopPropagation());
+    });
+    positionTimelineBanquetPopover(popover, trigger || event?.currentTarget || event?.target);
+    popover.classList.remove('hidden');
+}
+
+function showTimelineBanquetServicePopover(event, marker, summary, trigger) {
+    if (!marker || !summary) return;
+    if (typeof hideTooltip === 'function') hideTooltip();
+    const popover = ensureTimelineBanquetPopover();
+    const rows = (marker.items || []).slice(0, 6).map(item => {
+        const qty = item.quantity ? ` × ${escapeHtml(String(item.quantity))}` : '';
+        const note = item.note ? `<small>${escapeHtml(item.note)}</small>` : '';
+        return `<li><span>${escapeHtml(item.title || marker.title || marker.label)}</span>${qty}${note}</li>`;
+    }).join('');
+    const hiddenCount = Math.max(0, (marker.items || []).length - 6);
+    popover.innerHTML = `
+        <div class="timeline-banquet-popover-title">${escapeHtml(marker.label || 'Сервіс')} · ${escapeHtml(marker.time || '')}</div>
+        <div class="timeline-banquet-service-popover-subtitle">${escapeHtml(marker.title || marker.label || 'Подія видачі')}</div>
+        <ul class="timeline-banquet-service-popover-list">
+            ${rows || `<li><span>${escapeHtml(marker.title || marker.label || 'Подія')}</span></li>`}
+            ${hiddenCount ? `<li><span>Ще позицій: ${escapeHtml(String(hiddenCount))}</span></li>` : ''}
+        </ul>
+        <div class="timeline-banquet-popover-actions">
+            <button type="button" class="timeline-banquet-popover-btn" data-banquet-popover-details>Деталі</button>
+            <a class="timeline-banquet-popover-btn timeline-banquet-popover-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Вижимка</a>
+        </div>
+    `;
+    const detailsBtn = popover.querySelector('[data-banquet-popover-details]');
+    detailsBtn?.addEventListener('click', clickEvent => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+        hideTimelineBanquetPopover();
+        if (typeof showBookingDetails === 'function') showBookingDetails(summary.carrierBooking?.id || summary.primaryBooking?.id);
+    });
+    popover.querySelectorAll('a, button').forEach(el => {
+        el.addEventListener('click', clickEvent => clickEvent.stopPropagation());
+    });
+    positionTimelineBanquetPopover(popover, trigger || event?.currentTarget || event?.target);
+    popover.classList.remove('hidden');
+}
+
+function applyTimelineBanquetBadges(snapshot = {}) {
+    const carrier = resolveTimelineBanquetBadgeCarrier(snapshot);
+    if (!carrier?.block || !carrier.summary) return;
+    const { block, summary } = carrier;
+    const servingInfo = timelineBanquetServingInfo(summary);
+    const summaryForPopover = {
+        ...summary,
+        warnings: [
+            ...(summary.warnings || []),
+            servingInfo.missingCount > 0 ? `Не вказано час видачі: ${servingInfo.missingCount}` : null
+        ].filter(Boolean)
+    };
+    const groupId = summary.groupId || `booking-${summary.carrierBooking?.id || summary.primaryBooking?.id || ''}`;
+    document.querySelectorAll('.booking-block[data-banquet-group-id]').forEach(existing => {
+        if (existing !== block && existing.dataset.banquetGroupId === groupId) {
+            existing.querySelector('[data-timeline-banquet-badges]')?.remove();
+            existing.querySelector('[data-timeline-banquet-service-markers]')?.remove();
+            existing.classList.remove('has-timeline-banquet-badges');
+            existing.classList.remove('has-timeline-banquet-service-markers');
+            delete existing.dataset.banquetGroupId;
+        }
+    });
+    const badges = [];
+    if (summary.hasMenu) badges.push({ key: 'menu', label: 'Меню' });
+    if (summary.activityCount > 0) badges.push({ key: 'activity', label: 'Активності' });
+    if (servingInfo.missingCount > 0) badges.push({ key: 'serving-warning', label: `Без часу ${servingInfo.missingCount}` });
+    if (summary.summaryAvailable) badges.push({ key: 'summary', label: 'Вижимка' });
+    if (!badges.length) return;
+    block.dataset.banquetGroupId = groupId;
+    block.classList.add('has-timeline-banquet-badges');
+    block.classList.toggle('has-timeline-banquet-service-markers', servingInfo.markers.length > 0);
+    let container = block.querySelector('[data-timeline-banquet-badges]');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'timeline-banquet-badges';
+        container.dataset.timelineBanquetBadges = '1';
+        block.appendChild(container);
+    }
+    container.innerHTML = badges.map(badge => `
+        <button type="button" class="timeline-banquet-badge timeline-banquet-badge--${badge.key}" data-banquet-badge="${badge.key}">
+            ${escapeHtml(badge.label)}
+        </button>
+    `).join('');
+    container.querySelectorAll('[data-banquet-badge]').forEach(button => {
+        button.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            showTimelineBanquetPopover(event, summaryForPopover, button);
+        });
+        button.addEventListener('mouseenter', event => showTimelineBanquetPopover(event, summaryForPopover, button));
+        button.addEventListener('focus', event => showTimelineBanquetPopover(event, summaryForPopover, button));
+    });
+
+    let markerContainer = block.querySelector('[data-timeline-banquet-service-markers]');
+    if (!servingInfo.markers.length) {
+        markerContainer?.remove();
+        return;
+    }
+    if (!markerContainer) {
+        markerContainer = document.createElement('div');
+        markerContainer.className = 'timeline-banquet-service-markers';
+        markerContainer.dataset.timelineBanquetServiceMarkers = '1';
+        block.appendChild(markerContainer);
+    }
+    markerContainer.innerHTML = servingInfo.markers.slice(0, 4).map((marker, index) => `
+        <button type="button" class="timeline-banquet-service-marker timeline-banquet-service-marker--${escapeHtml(marker.type || 'service')}" data-banquet-service-marker="${index}" aria-label="${escapeHtml(`${marker.label} ${marker.time}`)}">
+            <span class="timeline-banquet-service-marker-time">${escapeHtml(marker.time)}</span>
+            <span class="timeline-banquet-service-marker-title">${escapeHtml(marker.label)}</span>
+            <span class="timeline-banquet-service-marker-count">${escapeHtml(String(marker.count || 1))}</span>
+        </button>
+    `).join('');
+    markerContainer.querySelectorAll('[data-banquet-service-marker]').forEach(button => {
+        const marker = servingInfo.markers[Number(button.dataset.banquetServiceMarker)] || null;
+        button.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            showTimelineBanquetServicePopover(event, marker, summaryForPopover, button);
+        });
+        button.addEventListener('mouseenter', event => showTimelineBanquetServicePopover(event, marker, summaryForPopover, button));
+        button.addEventListener('focus', event => showTimelineBanquetServicePopover(event, marker, summaryForPopover, button));
+    });
+}
+
+function hydrateTimelineBanquetBadges(block, booking = {}) {
+    if (!isRoomTimelineView() || !block || !booking?.id || booking.linkedTo || booking.linked_to || block.classList.contains('status-hidden')) return;
+    if (!String(booking.room || '').trim()) return;
+    const run = () => {
+        loadTimelineBanquetSnapshotForBooking(booking).then(snapshot => {
+            if (!snapshot || !block.isConnected) return;
+            applyTimelineBanquetBadges(snapshot);
+        });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 1200 });
+    } else {
+        setTimeout(run, 0);
+    }
+}
+
+document.addEventListener('click', event => {
+    const popover = document.getElementById('timelineBanquetPopover');
+    if (!popover || popover.classList.contains('hidden')) return;
+    if (popover.contains(event.target) || event.target.closest('[data-banquet-badge], [data-banquet-service-marker]')) return;
+    hideTimelineBanquetPopover();
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') hideTimelineBanquetPopover();
+});
 
 function timelineLineResourceIdentity(line = {}, index = 0) {
     const embedded = timelineEmbeddedIdentity(line);
@@ -1459,6 +2008,7 @@ function createBookingBlock(booking, startHour, anchor) {
 
     block._bookingId = booking.id;
     block.setAttribute('data-booking-id', booking.id);
+    hydrateTimelineBanquetBadges(block, renderBooking);
     if (isLinked) {
         block.addEventListener('click', (e) => {
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
@@ -1489,10 +2039,12 @@ function createBookingBlock(booking, startHour, anchor) {
         // Feature #14: Suppress tooltip during drag
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
         if (e.target.closest('[data-banquet-link-handle]')) return;
+        if (e.target.closest('[data-banquet-badge]')) return;
         showTooltip(e, renderBooking);
     });
     block.addEventListener('mousemove', (e) => {
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
+        if (e.target.closest('[data-banquet-badge]')) return;
         moveTooltip(e);
     });
     block.addEventListener('mouseleave', hideTooltip);
@@ -1500,6 +2052,7 @@ function createBookingBlock(booking, startHour, anchor) {
     block.addEventListener('touchstart', (e) => {
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
         if (e.target.closest('[data-banquet-link-handle]')) return;
+        if (e.target.closest('[data-banquet-badge]')) return;
         showTooltip(e.touches[0], renderBooking);
     }, { passive: true });
     block.addEventListener('touchend', hideTooltip, { passive: true });

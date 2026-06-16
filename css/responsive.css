@@ -1001,9 +1001,17 @@
     .booking-lead-grid,
     .booking-menu-grid,
     .booking-menu-banquet-meta,
+    .booking-menu-serving-toolbar,
     .booking-menu-position-row,
+    .booking-menu-service-event,
     .booking-detail-package-row {
         grid-template-columns: 1fr;
+    }
+
+    .booking-menu-serving-picker,
+    .booking-menu-service-event-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
     }
 
     .booking-client-actions,

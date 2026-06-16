@@ -246,6 +246,7 @@ body.booking-summary-page {
 
 .summary-order-table .num,
 .summary-order-table .qty,
+.summary-order-table .serving,
 .summary-order-table .money {
     text-align: right;
     white-space: nowrap;
@@ -261,6 +262,39 @@ body.booking-summary-page {
     color: var(--summary-muted);
     font-weight: 700;
     text-align: center;
+}
+
+.summary-service-events {
+    display: grid;
+    gap: 8px;
+}
+
+.summary-service-event {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    gap: 8px 12px;
+    align-items: start;
+    padding: 9px 10px;
+    border: 1px solid var(--summary-border);
+    background: var(--summary-panel);
+    color: var(--summary-ink);
+    font-size: 12px;
+}
+
+.summary-service-event strong {
+    font-weight: 900;
+}
+
+.summary-service-event span {
+    text-align: right;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.summary-service-event small {
+    grid-column: 1 / -1;
+    color: var(--summary-muted);
+    line-height: 1.35;
 }
 
 .summary-totals-grid {

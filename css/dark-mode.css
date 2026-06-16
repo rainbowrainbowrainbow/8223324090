@@ -1994,6 +1994,8 @@ body.dark-mode .booking-workspace-heading,
 body.dark-mode .booking-menu-workspace,
 body.dark-mode .booking-package-summary,
 body.dark-mode .booking-menu-position-row,
+body.dark-mode .booking-menu-serving-toolbar,
+body.dark-mode .booking-menu-service-event,
 body.dark-mode .booking-detail-package,
 body.dark-mode .booking-detail-package-header,
 body.dark-mode .pinata-mode-section,
@@ -2008,7 +2010,10 @@ body.dark-mode .booking-event-toggle-label strong,
 body.dark-mode .maysternya-quick-booking-tools strong,
 body.dark-mode .booking-disclosure-section summary,
 body.dark-mode .booking-menu-position-title,
+body.dark-mode .booking-menu-service-event strong,
 body.dark-mode .booking-detail-package-header,
+body.dark-mode .booking-detail-package-subtitle,
+body.dark-mode .booking-detail-package-serving-title,
 body.dark-mode .pinata-mode-section label,
 body.dark-mode .pinata-filler-section label,
 body.dark-mode .pinata-shared-section label,
@@ -2048,6 +2053,19 @@ body.dark-mode .booking-menu-legacy textarea {
     background: #111827;
     color: #e2e8f0;
     border-color: rgba(255,255,255,0.12);
+}
+body.dark-mode .booking-menu-serving-bulk input,
+body.dark-mode .booking-menu-serving-picker input[type="time"],
+body.dark-mode .booking-menu-service-event-time,
+body.dark-mode .booking-menu-service-event-type,
+body.dark-mode .booking-menu-service-event-actions input {
+    background: #111827;
+    color: #e2e8f0;
+    border-color: rgba(255,255,255,0.12);
+}
+body.dark-mode .booking-menu-serving-warning {
+    background: rgba(245,158,11,0.16);
+    color: var(--warning);
 }
 body.dark-mode .customer-search-results {
     background: #1a1a2e;

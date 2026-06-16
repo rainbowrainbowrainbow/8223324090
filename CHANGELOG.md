@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.10 - Banquet Kitchen Preview
+
+### Timeline / Banquet kitchen preview / Room UX / Release / (Клешня, 17.06.2026) [codex]
+- **Прибрано незрозумілі banquet badges з booking block-ів** - room timeline більше не показує набір дрібних літерних/скорочених індикаторів для меню, активностей, вижимки й warnings.
+- **Додано один читабельний kitchen preview chip** - видимий banquet carrier block показує компактні `🍽 Меню`, `🎭 Активності` або warning `Без часу`, а на вузьких блоках chip схлопується до іконки.
+- **Popover став основним місцем для кухні** - hover/click по chip або самому booking block відкриває preview з клієнтом, кімнатою, датою/часом, дітьми, дорослими, кількістю меню, першими позиціями, часами видачі, warnings і активностями.
+- **Назва кімнати теж відкриває banquet preview** - якщо для кімнати на поточний день уже є завантажений banquet group snapshot, hover/click по room header показує той самий preview; без snapshot timeline лишається звичайним.
+- **Serving markers лишились тільки читабельними** - `Видача 14:30`, `Торт 15:00`, `Сервіс 15:15` показуються лише на достатньо широких room blocks, а в compact mode залишаються в popover.
+- **Animator view не засмічується кухнею** - kitchen chips, menu/service markers і room preview triggers залишаються під `isRoomTimelineView()` guard; activity blocks у “Свята” лишаються звичайними бронями.
+- **Snapshot failure не ламає timeline** - якщо banquet snapshot не завантажився, блоки рендеряться як звичайні booking blocks без blank timeline або додаткових API storm.
+- **Regression guards оновлено** - UI/static і timeline resources checks забороняють повернення `data-banquet-badge`/старих badge classes, вимагають readable labels `Меню`, `Активності`, `Без часу`, `Видача`, `Торт` і кнопки `Деталі`/`Вижимка`.
+- **Релізні маркери піднято до `0.76.10`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config або нових залежностей.
+
+---
+
 ## v0.76.9 - Banquet Timeline Service Events
 
 ### Timeline / Banquet service events / Serving time / Summary / Release / (Клешня, 17.06.2026) [codex]

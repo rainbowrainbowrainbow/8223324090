@@ -424,7 +424,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 .mini-booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 
-.booking-block.has-timeline-banquet-badges {
+.booking-block.has-timeline-banquet-preview {
     padding-bottom: 24px;
 }
 
@@ -432,59 +432,111 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     padding-bottom: 46px;
 }
 
-.timeline-banquet-badges {
+.line-header.has-timeline-banquet-room-preview {
+    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.18);
+}
+
+.line-header.has-timeline-banquet-room-preview .line-name::after {
+    content: ' 🍽';
+    font-size: 11px;
+}
+
+.timeline-banquet-preview {
     position: absolute;
     left: 6px;
     right: 6px;
     bottom: 4px;
     display: flex;
-    flex-wrap: nowrap;
-    gap: 4px;
     align-items: center;
     min-width: 0;
     z-index: 18;
     pointer-events: auto;
 }
 
-.timeline-banquet-badge {
+.timeline-banquet-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     min-width: 0;
-    height: 18px;
-    padding: 0 7px;
-    border: 1px solid rgba(255, 255, 255, 0.28);
+    max-width: 100%;
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.34);
     border-radius: 999px;
-    background: rgba(15, 23, 42, 0.72);
+    background: rgba(15, 23, 42, 0.78);
     color: #F8FAFC;
     box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
     cursor: pointer;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 900;
-    line-height: 16px;
+    line-height: 18px;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.timeline-banquet-badge:hover,
-.timeline-banquet-badge:focus-visible {
+.timeline-banquet-chip:hover,
+.timeline-banquet-chip:focus-visible {
     background: rgba(15, 23, 42, 0.92);
     border-color: rgba(255, 255, 255, 0.52);
     outline: none;
 }
 
-.timeline-banquet-badge--menu {
+.timeline-banquet-chip--menu {
     background: rgba(20, 184, 166, 0.82);
 }
 
-.timeline-banquet-badge--activity {
+.timeline-banquet-chip--activity {
     background: rgba(59, 130, 246, 0.78);
 }
 
-.timeline-banquet-badge--summary {
-    background: rgba(245, 158, 11, 0.82);
+.timeline-banquet-chip--warning {
+    background: rgba(239, 68, 68, 0.86);
 }
 
-.timeline-banquet-badge--serving-warning {
-    background: rgba(239, 68, 68, 0.82);
+.timeline-banquet-chip-part {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+}
+
+.timeline-banquet-chip-icon {
+    flex: 0 0 auto;
+}
+
+.timeline-banquet-chip-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline-banquet-chip-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+    font-size: 8px;
+    line-height: 1;
+}
+
+.timeline-banquet-chip-separator {
+    color: rgba(255, 255, 255, 0.64);
+}
+
+.timeline-banquet-chip--icon-only {
+    width: 24px;
+    justify-content: center;
+    padding: 0;
+}
+
+.timeline-banquet-chip--icon-only .timeline-banquet-chip-text,
+.timeline-banquet-chip--icon-only .timeline-banquet-chip-count,
+.timeline-banquet-chip--icon-only .timeline-banquet-chip-separator,
+.timeline-banquet-chip--icon-only .timeline-banquet-chip-part:not(:first-of-type) {
+    display: none;
 }
 
 .timeline-banquet-service-markers {
@@ -497,6 +549,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     gap: 4px;
     align-items: center;
     min-width: 0;
+    overflow: hidden;
     z-index: 19;
     pointer-events: auto;
 }
@@ -506,18 +559,18 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     align-items: center;
     gap: 4px;
     min-width: 0;
-    max-width: 96px;
-    height: 18px;
-    padding: 0 6px;
+    max-width: 136px;
+    height: 20px;
+    padding: 0 7px;
     border: 1px solid rgba(94, 234, 212, 0.46);
     border-radius: 999px;
     background: rgba(8, 47, 73, 0.84);
     color: #ECFEFF;
     box-shadow: 0 5px 12px rgba(2, 6, 23, 0.24);
     cursor: pointer;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 900;
-    line-height: 16px;
+    line-height: 18px;
     white-space: nowrap;
 }
 
@@ -538,7 +591,6 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     background: rgba(120, 53, 15, 0.84);
 }
 
-.timeline-banquet-service-marker-time,
 .timeline-banquet-service-marker-title {
     min-width: 0;
     overflow: hidden;
@@ -561,7 +613,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .timeline-banquet-popover {
     position: absolute;
     z-index: var(--z-tooltip);
-    width: 280px;
+    width: 340px;
     max-width: calc(100vw - 24px);
     padding: 12px;
     border: 1px solid rgba(20, 184, 166, 0.32);
@@ -585,7 +637,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 
 .timeline-banquet-popover-grid {
     display: grid;
-    grid-template-columns: 96px 1fr;
+    grid-template-columns: 86px minmax(0, 1fr);
     gap: 5px 9px;
     font-size: 12px;
     line-height: 1.25;
@@ -618,14 +670,18 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     font-weight: 800;
 }
 
-.timeline-banquet-service-popover-subtitle {
-    margin-bottom: 8px;
+.timeline-banquet-popover-section {
+    margin-top: 10px;
+}
+
+.timeline-banquet-popover-subtitle {
+    margin-bottom: 6px;
     color: #E2E8F0;
     font-size: 12px;
     font-weight: 900;
 }
 
-.timeline-banquet-service-popover-list {
+.timeline-banquet-popover-list {
     display: grid;
     gap: 6px;
     margin: 0;
@@ -636,7 +692,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     line-height: 1.25;
 }
 
-.timeline-banquet-service-popover-list li {
+.timeline-banquet-popover-list li {
     display: grid;
     gap: 2px;
     padding: 6px 8px;
@@ -644,10 +700,19 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     background: rgba(15, 23, 42, 0.62);
 }
 
-.timeline-banquet-service-popover-list small {
+.timeline-banquet-popover-list small {
     color: #CBD5E1;
     font-size: 10px;
     font-weight: 700;
+}
+
+.timeline-banquet-popover-empty {
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.42);
+    color: #CBD5E1;
+    font-size: 11px;
+    font-weight: 800;
 }
 
 .timeline-banquet-popover-actions {
@@ -1964,7 +2029,7 @@ body.dragging-active {
     border-left-width: 2px;
 }
 
-.timeline-container.compact .booking-block.has-timeline-banquet-badges {
+.timeline-container.compact .booking-block.has-timeline-banquet-preview {
     padding-bottom: 20px;
 }
 
@@ -2001,7 +2066,7 @@ body.dragging-active {
     font-size: 8px;
 }
 
-.timeline-container.compact .timeline-banquet-badges {
+.timeline-container.compact .timeline-banquet-preview {
     bottom: 3px;
 }
 
@@ -2009,11 +2074,24 @@ body.dragging-active {
     bottom: 22px;
 }
 
-.timeline-container.compact .timeline-banquet-badge,
+.timeline-container.compact .timeline-banquet-chip,
 .timeline-container.compact .timeline-banquet-service-marker {
     height: 16px;
     font-size: 8px;
     line-height: 14px;
+}
+
+.timeline-container.compact .timeline-banquet-chip {
+    width: 20px;
+    justify-content: center;
+    padding: 0;
+}
+
+.timeline-container.compact .timeline-banquet-chip-text,
+.timeline-container.compact .timeline-banquet-chip-count,
+.timeline-container.compact .timeline-banquet-chip-separator,
+.timeline-container.compact .timeline-banquet-chip-part:not(:first-of-type) {
+    display: none;
 }
 
 .timeline-container.compact .booking-block.graduation-parent {

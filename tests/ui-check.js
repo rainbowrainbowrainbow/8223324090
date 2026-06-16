@@ -152,7 +152,8 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('routes/lines.js', 'BANQUET_SERVICE_LINE_ID')
         && htmlContains('routes/lines.js', "row.line_id || '').trim() !== BANQUET_SERVICE_LINE_ID")
         && bookingsRouteCode.includes('function isBanquetServiceRootBooking')
-        && bookingsRouteCode.includes('return bookings.filter(booking => !isBanquetServiceRootBooking(booking))')
+        && bookingsRouteCode.includes('function isBanquetServiceTimelineBooking')
+        && bookingsRouteCode.includes('return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking))')
         && bookingsRouteCode.includes("return bookings\n        .filter(booking => !isBanquetServiceRootBooking(booking))\n        .filter(booking => !String(booking.linkedTo || '').trim() && isRealRoom(booking.room))")
         && htmlContains('js/timeline.js', 'function shouldRenderBookingVisualLink')
         && htmlContains('js/timeline.js', 'relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView()')
@@ -160,6 +161,15 @@ checkPage('index.html', (doc, html) => {
         && bookingCode.includes('function populatePrimaryAnimatorSelect')
         && bookingCode.includes('openAnimationBookingInAnimatorView')
         && bookingCode.includes('openRoomBookingAnimationBridge'));
+    check('Animator timeline filters banquet service pseudo-lines and kitchen blocks',
+        htmlContains('js/timeline.js', "TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
+        && htmlContains('js/timeline.js', 'function isParkAnimatorTimelineView')
+        && htmlContains('js/timeline.js', 'function isTimelineBanquetServicePseudoLine')
+        && htmlContains('js/timeline.js', 'function isTimelineBanquetServiceBooking')
+        && htmlContains('js/timeline.js', '.filter(line => !isTimelineBanquetServicePseudoLine(line))')
+        && htmlContains('js/timeline.js', '.filter(booking => !isTimelineBanquetServiceBooking(booking))')
+        && htmlContains('routes/bookings.js', 'function isBanquetServiceTimelineBooking')
+        && htmlContains('routes/bookings.js', 'return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking))'));
     check('Timeline product sales modal exists', !!doc.getElementById('productSalesModal'));
     check('Timeline room load panel has explicit close affordance', doc.getElementById('roomLoadPanel')?.getAttribute('role') === 'dialog' && doc.getElementById('roomLoadPanel')?.getAttribute('aria-hidden') === 'true' && doc.getElementById('roomLoadClose')?.textContent.includes('Закрити'));
     check('Timeline room load uses real occupied minutes instead of whole-day busy flag',

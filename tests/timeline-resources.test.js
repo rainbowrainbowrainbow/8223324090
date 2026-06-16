@@ -195,9 +195,11 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(linesRoute, /BANQUET_SERVICE_LINE_ID/);
     assert.match(linesRoute, /row\.line_id \|\| ''\)\.trim\(\) !== BANQUET_SERVICE_LINE_ID/);
     assert.match(bookingsRoute, /projectBookingsForTimelineView/);
+    assert.match(bookingsRoute, /function bookingMatchesBanquetServiceLine/);
+    assert.match(bookingsRoute, /function isBanquetServiceTimelineBooking/);
     assert.match(bookingsRoute, /function isBanquetServiceRootBooking/);
     assert.match(bookingsRoute, /BANQUET_SERVICE_LINE_ID/);
-    assert.match(bookingsRoute, /return bookings\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)/);
+    assert.match(bookingsRoute, /return bookings\.filter\(booking => !isBanquetServiceTimelineBooking\(booking\)\)/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
     assert.match(bookingsRoute, /return bookings\s*\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)\s*\.filter\(booking => !String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)\)/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
@@ -215,6 +217,12 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
     assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);
     assert.match(timeline, /function roomLoadBookingMinutes/);
+    assert.match(timeline, /TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
+    assert.match(timeline, /function isParkAnimatorTimelineView/);
+    assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
+    assert.match(timeline, /function isTimelineBanquetServiceBooking/);
+    assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\)\)/);
+    assert.match(timeline, /\.filter\(booking => !isTimelineBanquetServiceBooking\(booking\)\)/);
     assert.match(ui, /function getTimelineExportLineBookings/);
     assert.match(ui, /timelineBookingsForLine\(bookings,\s*line\)/);
     assert.match(ui, /normalizeTimelineExportBookings/);

@@ -11,6 +11,8 @@ let _renderGen = 0;
 let _leadConversionAutoOpenAttempted = false;
 const TIMELINE_VIEW_ANIMATORS = 'animators';
 const TIMELINE_VIEW_ROOMS = 'rooms';
+const TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service';
+const TIMELINE_BANQUET_SERVICE_LINE_LABEL = 'Банкет / кімната';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
 const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
     byBooking: new Map(),
@@ -559,6 +561,59 @@ function timelineEmbeddedIdentity(source = {}) {
         || extra.timelineIdentity
         || extra.timeline_identity
         || {};
+}
+
+function isParkAnimatorTimelineView() {
+    const presentation = window.TimelineBusinessContext?.presentation?.();
+    return !isRoomTimelineView() && presentation?.mode === 'park';
+}
+
+function timelineBanquetServiceLineMatches(value) {
+    return String(value || '').trim() === TIMELINE_BANQUET_SERVICE_LINE_ID;
+}
+
+function isTimelineBanquetServicePseudoLine(line = {}) {
+    if (!isParkAnimatorTimelineView()) return false;
+    const identity = timelineEmbeddedIdentity(line);
+    const metadata = line?.metadata || line?.extraData || line?.extra_data || {};
+    const visibleName = String(line?.name || line?.shortName || line?.short_name || '').trim();
+    return [
+        line?.id,
+        line?.lineId,
+        line?.line_id,
+        line?.resourceId,
+        line?.resource_id,
+        identity.resourceId,
+        identity.resource_id,
+        identity.lineId,
+        identity.line_id,
+        metadata.lineId,
+        metadata.line_id,
+        metadata.resourceId,
+        metadata.resource_id,
+        metadata.legacyLineId,
+        metadata.legacy_line_id
+    ].some(timelineBanquetServiceLineMatches) || visibleName === TIMELINE_BANQUET_SERVICE_LINE_LABEL;
+}
+
+function isTimelineBanquetServiceBooking(booking = {}) {
+    if (!isParkAnimatorTimelineView()) return false;
+    const identity = timelineEmbeddedIdentity(booking);
+    const projection = booking?.timelineProjection || booking?.timeline_projection || {};
+    return [
+        booking?.lineId,
+        booking?.line_id,
+        booking?.resourceId,
+        booking?.resource_id,
+        identity.resourceId,
+        identity.resource_id,
+        identity.lineId,
+        identity.line_id,
+        projection?.sourceLineId,
+        projection?.source_line_id,
+        projection?.resourceId,
+        projection?.resource_id
+    ].some(timelineBanquetServiceLineMatches);
 }
 
 function timelineDefaultResourceType() {
@@ -1681,7 +1736,7 @@ function normalizeTimelineLinesForContext(lines = []) {
             return { ...identity, name: `${presentation.emptyLineName || 'Спеціаліст'} ${index + 1}` };
         }
         return identity;
-    });
+    }).filter(line => !isTimelineBanquetServicePseudoLine(line));
 }
 
 function normalizeTimelineBookingsForContext(bookings = []) {
@@ -1697,7 +1752,7 @@ function normalizeTimelineBookingsForContext(bookings = []) {
                 resourceId: identity.resourceId || booking?.lineId || booking?.line_id || null
             }
         };
-    });
+    }).filter(booking => !isTimelineBanquetServiceBooking(booking));
 }
 
 async function handleTimelineBusinessContextChanged(event) {

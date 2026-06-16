@@ -1070,14 +1070,32 @@ function projectBookingForTimelineView(booking = {}, timelineView = 'animators')
     };
 }
 
+function bookingMatchesBanquetServiceLine(value) {
+    return String(value || '').trim() === BANQUET_SERVICE_LINE_ID;
+}
+
+function isBanquetServiceTimelineBooking(booking = {}) {
+    const identity = booking.timelineIdentity || booking.timeline_identity || {};
+    return [
+        booking.lineId,
+        booking.line_id,
+        booking.resourceId,
+        booking.resource_id,
+        identity.resourceId,
+        identity.resource_id,
+        identity.lineId,
+        identity.line_id
+    ].some(bookingMatchesBanquetServiceLine);
+}
+
 function isBanquetServiceRootBooking(booking = {}) {
-    return String(booking.lineId || booking.line_id || '').trim() === BANQUET_SERVICE_LINE_ID
+    return isBanquetServiceTimelineBooking(booking)
         && !String(booking.linkedTo || booking.linked_to || '').trim();
 }
 
 function projectBookingsForTimelineView(bookings = [], timelineView = 'animators') {
     if (timelineView !== 'rooms') {
-        return bookings.filter(booking => !isBanquetServiceRootBooking(booking));
+        return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking));
     }
     return bookings
         .filter(booking => !isBanquetServiceRootBooking(booking))

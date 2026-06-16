@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.12 - Animator Banquet Line Cleanup
+
+### Timeline / Animator view / Banquet service guard / Release / (Клешня, 17.06.2026) [codex]
+- **У “Свята” прибрано fake animator row `Банкет / кімната`** - pseudo-line `banquet-service` більше не рендериться як аніматор навіть якщо прийшла зі старих production даних.
+- **Kitchen/service booking-и більше не потрапляють у animator timeline** - блоки на `line_id='banquet-service'`, включно з `Кухня: ...`, відсікаються до render і не падають у fallback line.
+- **Activity bookings лишились на реальних аніматорах** - фільтр вузько б’є тільки по banquet service line, без зачіпання linked activity booking-ів на людях.
+- **Додано подвійний guard** - API projection ховає `banquet-service` для animator view, а frontend додатково фільтрує pseudo-line і service bookings, якщо вони прилетіли з кешу або легасі-джерела.
+- **Room timeline не регресить** - banquet preview inspector, room mini-card і room-first guards лишаються без змін; fix обмежений animator view.
+- **Regression guards оновлено** - UI/static і timeline resources checks тепер вимагають animator-side фільтрацію pseudo-line та service booking-ів.
+- **Релізні маркери піднято до `0.76.12`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config або записів у production data.
+
+---
+
 ## v0.76.11 - Banquet Preview Inspector UX
 
 ### Timeline / Banquet preview inspector / Room UX / Release / (Клешня, 17.06.2026) [codex]

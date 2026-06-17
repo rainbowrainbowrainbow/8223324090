@@ -1552,6 +1552,8 @@ const BOOKING_SERVICE_EVENT_TYPES = {
     room_setup: 'Підготувати кімнату'
 };
 
+const BOOKING_SERVICE_EVENT_CREATE_TYPES = ['food_service', 'drinks', 'room_setup', 'custom'];
+
 function normalizeBookingServiceEvent(raw, index = 0) {
     if (!raw || typeof raw !== 'object') return null;
     const rawType = raw.type || raw.eventType || raw.event_type;
@@ -3106,18 +3108,35 @@ function renderBookingMenuPositions(options = {}) {
         const missingServingTimes = bookingMenuMissingServingTimeCount(positions);
         list.innerHTML = `
             <div class="booking-menu-serving-toolbar">
-                <label class="booking-menu-serving-bulk">
-                    <span>Час видачі</span>
-                    <input type="time" id="bookingMenuBulkServingTime" value="${escapeHtml(firstServingTime)}">
-                </label>
-                <button type="button" class="booking-menu-serving-action" data-menu-serving-apply-selected>Поставити час для вибраних</button>
-                <button type="button" class="booking-menu-serving-action" data-menu-serving-copy-all>Скопіювати час на всі</button>
-                <select id="bookingServiceEventType" class="booking-menu-service-event-type" aria-label="Тип події">
-                    <option value="cake">Винос торта</option>
-                    <option value="custom">Інше</option>
-                </select>
-                <input type="time" id="bookingServiceEventTime" class="booking-menu-service-event-time" value="${escapeHtml(defaultServingTime || '')}" aria-label="Час події">
-                <button type="button" class="booking-menu-serving-action" data-menu-service-event-add>+ Подія</button>
+                <div class="booking-menu-serving-block booking-menu-serving-block--bulk">
+                    <div class="booking-menu-serving-block-head">
+                        <span>Час видачі позицій</span>
+                    </div>
+                    <label class="booking-menu-serving-bulk">
+                        <span>Базовий час</span>
+                        <input type="time" id="bookingMenuBulkServingTime" value="${escapeHtml(firstServingTime)}">
+                    </label>
+                    <div class="booking-menu-serving-actions">
+                        <button type="button" class="booking-menu-serving-action booking-menu-serving-action--primary" data-menu-serving-apply-selected>Для вибраних</button>
+                        <button type="button" class="booking-menu-serving-action" data-menu-serving-copy-all>На всі позиції</button>
+                    </div>
+                </div>
+                <div class="booking-menu-serving-block booking-menu-serving-block--event">
+                    <div class="booking-menu-serving-block-head">
+                        <span>Окрема подія</span>
+                    </div>
+                    <label class="booking-menu-service-event-field">
+                        <span>Тип</span>
+                        <select id="bookingServiceEventType" class="booking-menu-service-event-type" aria-label="Тип події">
+                            ${BOOKING_SERVICE_EVENT_CREATE_TYPES.map(type => `<option value="${escapeHtml(type)}">${escapeHtml(BOOKING_SERVICE_EVENT_TYPES[type])}</option>`).join('')}
+                        </select>
+                    </label>
+                    <label class="booking-menu-service-event-field">
+                        <span>Час</span>
+                        <input type="time" id="bookingServiceEventTime" class="booking-menu-service-event-time" value="${escapeHtml(defaultServingTime || '')}" aria-label="Час події">
+                    </label>
+                    <button type="button" class="booking-menu-serving-action" data-menu-service-event-add>Додати подію</button>
+                </div>
             </div>
             ${missingServingTimes ? `<div class="booking-menu-serving-warning">Не вказано час видачі для ${escapeHtml(String(missingServingTimes))} позицій. Збереження не блокується.</div>` : ''}
             ${positions.map((item, index) => `
@@ -3128,7 +3147,7 @@ function renderBookingMenuPositions(options = {}) {
                     </div>
                     <label class="booking-menu-serving-picker">
                         <input type="checkbox" data-menu-serving-selected="${index}" aria-label="Вибрати позицію для групового часу">
-                        <span>Час видачі</span>
+                        <span>Видати о</span>
                         <input type="time" value="${escapeHtml(item.servingTime || '')}" data-menu-serving-time="${index}">
                     </label>
                     <div class="booking-menu-position-actions">
@@ -3224,7 +3243,8 @@ function renderBookingMenuPositions(options = {}) {
             markBookingPackageChanged();
         });
         list.querySelector('[data-menu-service-event-add]')?.addEventListener('click', () => {
-            const type = document.getElementById('bookingServiceEventType')?.value || 'custom';
+            const selectedType = document.getElementById('bookingServiceEventType')?.value || 'food_service';
+            const type = BOOKING_SERVICE_EVENT_CREATE_TYPES.includes(selectedType) ? selectedType : 'food_service';
             const time = normalizeBookingServingTime(document.getElementById('bookingServiceEventTime')?.value);
             BookingPackageState.serviceEvents.push(normalizeBookingServiceEvent({
                 id: `service-event-${Date.now()}`,

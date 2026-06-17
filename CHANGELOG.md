@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.39 - Booking Serving Controls Polish
+
+### Booking / Kitchen menu / Serving time controls / UX polish / (Клешня, 18.06.2026) [codex]
+- **Блок часу видачі в `Кухня / меню` перероблено у зрозумілий toolbar** - окремо показано базовий час позицій, дії для вибраних/усіх позицій і компактний блок службової події.
+- **`Винос торта` прибрано зі створення нових окремих подій** - торт лишається звичайною позицією з каталогу зі своїм часом видачі, а legacy `cake` service events продовжують читатися для старих бронювань.
+- **Кнопки приведено до стилю CRM** - замість великих teal-плиток використано компактні secondary/primary controls із нормальними фокус/hover станами та адаптивним переносом у вузькій панелі.
+- **Пояснювальний текст секції уточнено** - оператор бачить, що страви й торти додаються з каталогу, а час задається для кожної позиції.
+- **Regression guards додано** - UI/contract tests перевіряють нові підписи, allowed create event types і відсутність `<option value="cake">Винос торта</option>` у селекті створення.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.39`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.38 - Booking Catalog Paint Layer Fix
 
 ### Booking / Kitchen menu catalog / Chrome paint layer / Hotfix / (Клешня, 18.06.2026) [codex]

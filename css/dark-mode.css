@@ -1998,6 +1998,7 @@ body.dark-mode .booking-menu-workspace,
 body.dark-mode .booking-package-summary,
 body.dark-mode .booking-menu-position-row,
 body.dark-mode .booking-menu-serving-toolbar,
+body.dark-mode .booking-menu-serving-block,
 body.dark-mode .booking-menu-service-event,
 body.dark-mode .booking-detail-package,
 body.dark-mode .booking-detail-package-header,
@@ -2065,6 +2066,23 @@ body.dark-mode .booking-menu-service-event-actions input {
     background: #111827;
     color: #e2e8f0;
     border-color: rgba(255,255,255,0.12);
+}
+body.dark-mode .booking-menu-serving-block-head,
+body.dark-mode .booking-menu-serving-bulk span,
+body.dark-mode .booking-menu-service-event-field span {
+    color: var(--gray-400);
+}
+body.dark-mode .booking-menu-serving-action {
+    background: var(--bg-primary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+body.dark-mode .booking-menu-serving-action--primary,
+body.dark-mode .booking-menu-serving-action:hover,
+body.dark-mode .booking-menu-serving-action:focus-visible {
+    background: var(--primary-700);
+    border-color: var(--primary);
+    color: var(--primary-light);
 }
 body.dark-mode .booking-menu-serving-warning {
     background: rgba(245,158,11,0.16);

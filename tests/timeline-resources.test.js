@@ -598,11 +598,15 @@ test('room-to-animator timeline view switch reconciles vertical shell height', (
     const responsive = read('css/responsive.css');
 
     assert.match(ui, /function syncTimelineViewHeight/);
+    assert.match(ui, /function resetTimelineVerticalScroll/);
+    assert.match(ui, /scroll\.scrollTop = 0/);
+    assert.match(ui, /resetVerticalScroll: detail\.view !== detail\.previousView/);
     assert.match(ui, /function scheduleTimelineViewHeightSync/);
     assert.match(ui, /window\.addEventListener\?\.\('timeline:view-changed'/);
     assert.match(ui, /container\.dataset\.timelineView = view/);
     assert.match(ui, /container\.dataset\.lineCount = String\(lineCount\)/);
     assert.match(ui, /--timeline-content-height/);
+    assert.match(timeline, /resetTimelineVerticalScroll\('view-switch-before-render'\)/);
     assert.match(timeline, /scheduleTimelineViewHeightSync\('render-complete'\)/);
     assert.match(css, /body\.timeline-view-animators \.timeline-container\[data-timeline-height-ready="true"\]/);
     assert.match(css, /max-height: min\(var\(--timeline-content-height\), var\(--timeline-shell-max-height\)\)/);

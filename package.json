@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.19",
+  "version": "0.76.20",
   "eventGenix": {
-    "releaseLabel": "Timeline Sticky Header Polish"
+    "releaseLabel": "Timeline Switch Scroll Reset"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

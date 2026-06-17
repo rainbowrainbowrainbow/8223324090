@@ -2378,7 +2378,30 @@ function timelineDirectLineCount(lines) {
     }
 }
 
-function syncTimelineViewHeight(reason = 'manual') {
+function resetTimelineVerticalScroll(reason = 'manual') {
+    const scroll = document.getElementById('timelineScroll');
+    const container = document.querySelector('.timeline-container');
+    if (!scroll) return false;
+
+    const left = Number(scroll.scrollLeft || 0);
+    scroll.scrollTop = 0;
+    try {
+        scroll.scrollTo({ left, top: 0, behavior: 'auto' });
+    } catch (_) {
+        scroll.scrollTop = 0;
+        scroll.scrollLeft = left;
+    }
+
+    scroll.dataset.timelineVerticalScrollReset = String(reason || 'manual');
+    if (container) {
+        container.dataset.timelineVerticalScrollReset = String(reason || 'manual');
+    }
+    return true;
+}
+
+window.resetTimelineVerticalScroll = resetTimelineVerticalScroll;
+
+function syncTimelineViewHeight(reason = 'manual', options = {}) {
     const container = document.querySelector('.timeline-container');
     const scroll = document.getElementById('timelineScroll');
     const timeScale = document.getElementById('timeScale');
@@ -2391,6 +2414,10 @@ function syncTimelineViewHeight(reason = 'manual') {
     container.dataset.lineCount = String(lineCount);
     scroll.dataset.timelineView = view;
     scroll.dataset.lineCount = String(lineCount);
+    const resetVerticalScroll = Boolean(options?.resetVerticalScroll);
+    if (resetVerticalScroll) {
+        resetTimelineVerticalScroll(`${reason || 'manual'}:before-height`);
+    }
 
     if (typeof AppState !== 'undefined' && AppState.multiDayMode) {
         delete container.dataset.timelineHeightReady;
@@ -2429,7 +2456,9 @@ function syncTimelineViewHeight(reason = 'manual') {
     container.dataset.timelineHeightReason = String(reason || 'manual');
 
     const maxScrollTop = Math.max(0, Number(scroll.scrollHeight || 0) - Number(scroll.clientHeight || 0));
-    if (scroll.scrollTop > maxScrollTop) {
+    if (resetVerticalScroll) {
+        resetTimelineVerticalScroll(`${reason || 'manual'}:after-height`);
+    } else if (scroll.scrollTop > maxScrollTop) {
         scroll.scrollTop = maxScrollTop;
     }
 
@@ -2438,8 +2467,8 @@ function syncTimelineViewHeight(reason = 'manual') {
 
 window.syncTimelineViewHeight = syncTimelineViewHeight;
 
-function scheduleTimelineViewHeightSync(reason = 'manual') {
-    const run = () => syncTimelineViewHeight(reason);
+function scheduleTimelineViewHeightSync(reason = 'manual', options = {}) {
+    const run = () => syncTimelineViewHeight(reason, options);
     if (typeof requestAnimationFrame === 'function') {
         requestAnimationFrame(() => requestAnimationFrame(run));
     } else {
@@ -2448,7 +2477,12 @@ function scheduleTimelineViewHeightSync(reason = 'manual') {
 }
 
 window.scheduleTimelineViewHeightSync = scheduleTimelineViewHeightSync;
-window.addEventListener?.('timeline:view-changed', () => scheduleTimelineViewHeightSync('view-changed'));
+window.addEventListener?.('timeline:view-changed', event => {
+    const detail = event?.detail || {};
+    scheduleTimelineViewHeightSync('view-changed', {
+        resetVerticalScroll: detail.view !== detail.previousView
+    });
+});
 
 function initTimelineResponsiveResize() {
     if (window.__timelineResponsiveResizeBound) return;

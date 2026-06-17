@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.20 - Timeline Switch Scroll Reset
+
+### Timeline / Room-to-animator switch / Vertical scroll reset / Release / (Клешня, 17.06.2026) [codex]
+- **Перемикання `Кімнати` -> `Свята` скидає vertical scroll** - якщо room timeline був проскролений вниз, animator timeline більше не відкривається зі старою нижньою позицією та великою порожньою областю.
+- **Horizontal scroll збережено** - reset зачіпає тільки `scrollTop`, а `scrollLeft` лишається на місці, щоб часовий горизонт не скидався без потреби.
+- **Reset виконується до render і після view-change height sync** - stale room geometry прибирається перед завантаженням нових рядків і повторно після reconciliation.
+- **Height reconciliation лишився view-aware** - `--timeline-content-height` і `data-timeline-view` продовжують стискати animator shell без зміни room scroll behavior.
+- **Regression guards посилено** - `tests/timeline-resources.test.js` і `tests/ui-check.js` тепер перевіряють саме `scrollTop = 0` для view switch.
+- **iPhone/iPad guards не прибрано** - definite-height захист для другої лінії timeline лишився на місці.
+- **Релізні маркери піднято до `0.76.20`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.19 - Timeline Sticky Header Polish
 
 ### Timeline / Sticky time scale / Header seam cleanup / Release / (Клешня, 17.06.2026) [codex]

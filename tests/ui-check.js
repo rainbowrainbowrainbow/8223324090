@@ -1502,6 +1502,10 @@ check('Timeline compact mode fits desktop while phones keep readable horizontal 
 check('Timeline phone layout has tidy toolbar rows and readable day/week scroll grids', responsiveCss.includes('v0.69.20: phone timeline toolbar and readable horizontal grid') && responsiveCss.includes('"prev date next"') && responsiveCss.includes('"today day day"') && responsiveCss.includes('.timeline-container[data-fit-screen="scroll"] .timeline-scroll') && responsiveCss.includes('width: max-content !important') && responsiveCss.includes('body.timeline-dashboard-page .multi-day-container') && responsiveCss.includes('body.timeline-dashboard-page .mini-line-grid') && responsiveCss.includes('--mini-grid-width') && responsiveCss.includes('body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn)'));
 check('Timeline room-to-animator switch reconciles vertical shell height without removing iPhone guards',
     uiCode.includes('function syncTimelineViewHeight')
+    && uiCode.includes('function resetTimelineVerticalScroll')
+    && uiCode.includes('scroll.scrollTop = 0')
+    && timelineCode.includes("resetTimelineVerticalScroll('view-switch-before-render')")
+    && uiCode.includes('resetVerticalScroll: detail.view !== detail.previousView')
     && uiCode.includes('function scheduleTimelineViewHeightSync')
     && uiCode.includes("window.addEventListener?.('timeline:view-changed'")
     && uiCode.includes('container.dataset.timelineView = view')

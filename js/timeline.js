@@ -100,6 +100,9 @@ async function setTimelineView(view, options = {}) {
     try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
     updateTimelineViewControls();
     if (next !== current && options.render !== false) {
+        if (typeof resetTimelineVerticalScroll === 'function') {
+            resetTimelineVerticalScroll('view-switch-before-render');
+        }
         AppState.cachedBookings = {};
         AppState.cachedLines = {};
         AppState.lines = [];

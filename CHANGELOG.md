@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.38 - Booking Catalog Paint Layer Fix
+
+### Booking / Kitchen menu catalog / Chrome paint layer / Hotfix / (Клешня, 18.06.2026) [codex]
+- **Порожню browser/list-зону catalog overlay виправлено на рівні composite paint layer** - `.booking-menu-catalog-browser` отримав `isolation`, `contain: paint` і `translateZ(0)`, тому Chrome більше не малює лише темний фон поверх реального DOM.
+- **Search, tabs, list і прямі діти списку піднято в окремі paint layers** - tabs і menu item cards тепер видно одразу після відкриття з реального room timeline slot flow.
+- **Hover transform карток переведено на `translate3d`** - paint guard не губиться через cascade і не ламає існуючий hover-сигнал.
+- **Regression guards посилено** - contract/UI checks тепер перевіряють саме `contain: paint`, `isolation`, `translateZ(0)` і `translate3d`, а не тільки DOM/z-index.
+- **JS listener і data/render path не переписувались** - діагностика підтвердила `renderBookingMenuCatalog()`, `getBookingMenuProducts()` і `102` позиції у DOM; fix торкається тільки CSS paint/compositing.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.38`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.37 - Booking Catalog Paint Guard
 
 ### Booking / Kitchen menu catalog / Paint stacking / Hotfix / (Клешня, 17.06.2026) [codex]

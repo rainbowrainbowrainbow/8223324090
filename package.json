@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.37",
+  "version": "0.76.38",
   "eventGenix": {
-    "releaseLabel": "Booking Catalog Paint Guard"
+    "releaseLabel": "Booking Catalog Paint Layer Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

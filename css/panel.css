@@ -2094,6 +2094,9 @@ body.booking-menu-catalog-active {
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     border-radius: 14px;
+    isolation: isolate;
+    contain: paint;
+    transform: translateZ(0);
 }
 
 .booking-menu-catalog-cart {
@@ -2330,6 +2333,15 @@ body.booking-menu-catalog-active {
     background: rgba(15, 23, 42, 0.84);
 }
 
+.booking-menu-catalog-search,
+.booking-menu-catalog-tabs,
+.booking-menu-catalog-list {
+    position: relative;
+    z-index: 2;
+    isolation: isolate;
+    transform: translateZ(0);
+}
+
 .booking-menu-catalog-tab {
     flex: 0 0 auto;
     min-height: 30px;
@@ -2369,7 +2381,8 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-list > * {
     position: relative;
-    z-index: 1;
+    z-index: 3;
+    transform: translateZ(0);
 }
 
 .booking-menu-catalog-state {
@@ -2443,7 +2456,7 @@ body.booking-menu-catalog-active {
         linear-gradient(135deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.72)),
         rgba(30, 41, 59, 0.64);
     overflow: hidden;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
     transition:
         transform 150ms ease,
         border-color 150ms ease,
@@ -2454,7 +2467,7 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-item:hover,
 .booking-menu-catalog-item:focus-within {
-    transform: translateY(-2px);
+    transform: translate3d(0, -2px, 0);
     border-color: rgba(148, 163, 184, 0.28);
     box-shadow: 0 14px 30px rgba(2, 6, 23, 0.24);
 }
@@ -2473,7 +2486,7 @@ body.booking-menu-catalog-active {
 
     .booking-menu-catalog-item:hover,
     .booking-menu-catalog-item:focus-within {
-        transform: none;
+        transform: translate3d(0, 0, 0);
     }
 }
 

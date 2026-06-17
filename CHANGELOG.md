@@ -16,6 +16,17 @@
 
 ---
 
+## v0.76.29 - Booking Panel Notes Copy Cleanup
+
+### Booking / Panel copy / Room-first workspace / Release / (Клешня, 17.06.2026) [codex]
+- **Прибрано зайвий helper-copy з панелі бронювання** - блок `Базова заявка` і фраза `Коротка тема і примітки оператора без зайвого шуму.` більше не показуються над примітками.
+- **Форма стала тихішою у режимі кімнат** - оператор одразу бачить примітки, групу/банкет і кухню без зайвого пояснювального тексту.
+- **Regression guard додано** - `tests/ui-check.js` перевіряє, що цей copy не повертається в `index.html`.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.29`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.28 - Booking Menu Catalog Mobile UX
 
 ### Booking / Kitchen menu catalog / Mobile UX / Release / (Клешня, 17.06.2026) [codex]

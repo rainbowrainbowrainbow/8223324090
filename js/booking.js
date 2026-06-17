@@ -2811,24 +2811,27 @@ function setBookingMenuCatalogOpen(open, options = {}) {
 }
 
 function initBookingMenuCatalogOpenControl() {
+    const openCatalog = (event) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        setBookingMenuCatalogOpen(true);
+    };
     const openBtn = document.getElementById('bookingMenuCatalogOpenBtn');
     if (openBtn && openBtn.dataset.menuCatalogOpenBound !== '1') {
         openBtn.dataset.menuCatalogOpenBound = '1';
-        openBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            setBookingMenuCatalogOpen(true);
-        });
+        openBtn.addEventListener('pointerdown', openCatalog);
+        openBtn.addEventListener('click', openCatalog);
     }
     const root = document.documentElement;
     if (!root || root.dataset.menuCatalogOpenDelegatedBound === '1') return;
     root.dataset.menuCatalogOpenDelegatedBound = '1';
-    document.addEventListener('click', (event) => {
+    const handleDelegatedOpen = (event) => {
         const trigger = event.target?.closest?.('#bookingMenuCatalogOpenBtn');
         if (!trigger) return;
-        event.preventDefault();
-        event.stopPropagation();
-        setBookingMenuCatalogOpen(true);
-    }, true);
+        openCatalog(event);
+    };
+    document.addEventListener('pointerdown', handleDelegatedOpen, true);
+    document.addEventListener('click', handleDelegatedOpen, true);
 }
 
 function initBookingMenuCatalogOpenControlWhenReady() {

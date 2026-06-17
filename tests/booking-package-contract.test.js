@@ -216,11 +216,15 @@ function createBookingMenuCatalogHarness() {
     return context;
 }
 
-function clickElement(window, element) {
-    element.dispatchEvent(new window.MouseEvent('click', {
+function dispatchPointerElement(window, element, type = 'click') {
+    element.dispatchEvent(new window.MouseEvent(type, {
         bubbles: true,
         cancelable: true
     }));
+}
+
+function clickElement(window, element) {
+    dispatchPointerElement(window, element, 'click');
 }
 
 test('booking package normalizes menu positions with price and subtotal', () => {
@@ -456,7 +460,7 @@ test('booking menu catalog delegated open control survives a remounted button', 
     panel.classList.add('hidden');
     panel.setAttribute('aria-hidden', 'true');
 
-    clickElement(ctx.window, remountedButton);
+    dispatchPointerElement(ctx.window, remountedButton, 'pointerdown');
 
     assert.equal(panel.hidden, false);
     assert.equal(panel.classList.contains('hidden'), false);

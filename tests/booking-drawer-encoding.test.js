@@ -101,6 +101,7 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /function initBookingMenuCatalogOpenControl/);
     assert.match(bookingJs, /menuCatalogOpenDelegatedBound/);
     assert.match(bookingJs, /closest\?\.\('#bookingMenuCatalogOpenBtn'\)/);
+    assert.match(bookingJs, /addEventListener\('pointerdown'/);
     assert.match(bookingJs, /bookingMenuCatalogSearch'\)\?\.addEventListener\('input'/);
     assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('click'/);
     assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('change'/);
@@ -170,6 +171,8 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /\.booking-menu-add-btn:focus-visible/);
     assert.match(panelCss, /\.booking-menu-catalog-panel/);
     assert.match(panelCss, /\.booking-menu-catalog-overlay/);
+    assert.match(panelCss, /\.booking-menu-catalog-open\s*\{[\s\S]*pointer-events:\s*auto;/);
+    assert.match(panelCss, /\.booking-menu-catalog-entry-summary\s*\{[\s\S]*pointer-events:\s*none;/);
     assert.match(panelCss, /body\.booking-menu-catalog-active/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*position:\s*fixed;/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);

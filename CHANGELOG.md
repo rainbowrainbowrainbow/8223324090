@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.36 - Booking Catalog Pointer Open Hotfix
+
+### Booking / Kitchen menu catalog / Pointer open / Hotfix / (Клешня, 17.06.2026) [codex]
+- **Кнопка `+ Додати з меню` відкриває каталог уже на `pointerdown`** - open-control більше не чекає тільки `click`, який міг не дійти після drag/touch/capture перехоплень.
+- **Delegated fallback розширено** - `document` ловить і `pointerdown`, і `click` для `#bookingMenuCatalogOpenBtn` у capture-фазі.
+- **Hit target кнопки захищено CSS-ом** - сама кнопка має явний stacking context і `pointer-events: auto`, а summary поруч не перехоплює кліки.
+- **Remounted button test тепер перевіряє `pointerdown`** - regression guard ближчий до реального натискання у booking panel.
+- **Catalog add/remove і scroll logic не змінювались** - fix торкається тільки відкриття catalog overlay.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.36`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.35 - Booking Catalog Delegated Open Hotfix
 
 ### Booking / Kitchen menu catalog / Open control / Hotfix / (Клешня, 17.06.2026) [codex]

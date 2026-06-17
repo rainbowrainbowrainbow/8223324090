@@ -1979,6 +1979,7 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
 }
 
 .booking-menu-catalog-entry {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
@@ -1987,6 +1988,8 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
 }
 
 .booking-menu-catalog-open {
+    position: relative;
+    z-index: 2;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1999,6 +2002,7 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     font-size: 14px;
     font-weight: 900;
     cursor: pointer;
+    pointer-events: auto;
 }
 
 .booking-menu-catalog-open:hover {
@@ -2017,6 +2021,7 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
 }
 
 .booking-menu-catalog-entry-summary {
+    pointer-events: none;
     color: rgba(226, 232, 240, 0.76);
     font-size: 13px;
     font-weight: 800;

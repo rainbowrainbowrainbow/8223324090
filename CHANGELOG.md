@@ -4,14 +4,15 @@
 
 ---
 
-## v0.76.29 - Booking Panel Notes Copy Cleanup
+## v0.76.30 - Booking Catalog Scroll Stability
 
-### Booking / Panel copy / Room-first workspace / Release / (Клешня, 17.06.2026) [codex]
-- **Прибрано зайвий helper-copy з панелі бронювання** - блок `Базова заявка` і фраза `Коротка тема і примітки оператора без зайвого шуму.` більше не показуються над примітками.
-- **Форма стала тихішою у режимі кімнат** - оператор одразу бачить примітки, групу/банкет і кухню без зайвого пояснювального тексту.
-- **Regression guard додано** - `tests/ui-check.js` перевіряє, що цей copy не повертається в `index.html`.
+### Booking / Kitchen menu catalog / Scroll stability / Release / (Клешня, 17.06.2026) [codex]
+- **Фільтр `Усе` більше не тримає всі групові заголовки sticky одночасно** - у повному каталозі заголовки секцій прокручуються разом зі списком і не створюють візуальний jump після натискання `+`.
+- **Вузькі категорії збережено без змін** - у фільтрах на кшталт `Холодні закуски`, `Салати`, `Піца` є один груповий заголовок, тому sticky-поведінка лишається.
+- **Ланцюжок додавання позицій не переписувався** - `+` і далі оновлює `menuPositions`, selected state, summary і cart без зміни бізнес-логіки.
+- **Regression coverage додано** - `tests/booking-package-contract.test.js` перевіряє all-view клас, його скидання у вузькому фільтрі та CSS override для all-view заголовків.
 - **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
-- **Релізні маркери піднято до `0.76.29`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Релізні маркери піднято до `0.76.30`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
 
 ---
 

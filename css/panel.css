@@ -2394,6 +2394,11 @@ body.booking-menu-catalog-active {
     text-transform: uppercase;
 }
 
+.booking-menu-catalog-list--all .booking-menu-catalog-group-heading {
+    position: static;
+    top: auto;
+}
+
 .booking-menu-catalog-group-heading::before {
     content: "";
     position: absolute;

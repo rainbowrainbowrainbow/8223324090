@@ -269,6 +269,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Холодні напої/);
     assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Торти/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogTabs').textContent, /Популярне/);
+    assert.equal(doc.getElementById('bookingMenuCatalogList').classList.contains('booking-menu-catalog-list--all'), true);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-group-heading/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-thumb/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="promo"/);
@@ -353,8 +354,9 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuInsightBody').innerHTML, /booking-menu-insight-status success/);
 
     doc.getElementById('bookingMenuCatalogSearch').value = 'juice';
-    ctx.BookingPackageState.catalogFilter = 'food';
+    ctx.BookingPackageState.catalogFilter = 'section:cold-drinks';
     ctx.renderBookingMenuCatalog();
+    assert.equal(doc.getElementById('bookingMenuCatalogList').classList.contains('booking-menu-catalog-list--all'), false);
     ctx.setBookingMenuCatalogEditing('cake_custom', 'quantity', { preferCart: true });
     assert.equal(doc.querySelector('#bookingMenuCatalogList [data-menu-catalog-quantity-input="cake_custom"]'), null);
     const cartQuantityInput = doc.querySelector('#bookingMenuCatalogCart [data-menu-catalog-quantity-input="cake_custom"]');
@@ -927,6 +929,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-insight-card\.is-nudged/);
     assert.match(bookingJs, /function nudgeBookingMenuCatalogInsightCard/);
     assert.match(panelCss, /\.booking-menu-catalog-group-heading\s*\{[\s\S]*isolation:\s*isolate;[\s\S]*margin:\s*0 -10px 2px;[\s\S]*box-shadow:\s*0 14px 28px/);
+    assert.match(panelCss, /\.booking-menu-catalog-list--all \.booking-menu-catalog-group-heading\s*\{[\s\S]*position:\s*static;[\s\S]*top:\s*auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-group-heading::before\s*\{[\s\S]*inset:\s*0 -100vw 0 0;[\s\S]*background:\s*inherit;[\s\S]*box-shadow:\s*inherit;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\.selected/);
     assert.match(panelCss, /\.booking-menu-catalog-inline-input/);

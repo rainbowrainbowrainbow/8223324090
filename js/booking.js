@@ -2821,6 +2821,9 @@ function renderBookingMenuCatalogTabs(products = getBookingMenuProducts()) {
 function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
     const list = document.getElementById('bookingMenuCatalogList');
     if (!list) return;
+    const query = String(document.getElementById('bookingMenuCatalogSearch')?.value || '').trim().toLowerCase();
+    const filter = BookingPackageState.catalogFilter || 'all';
+    list.classList.toggle('booking-menu-catalog-list--all', filter === BOOKING_MENU_CATALOG_ALL_FILTER.key);
     const loadState = bookingMenuCatalogLoadState(products);
     if (loadState === 'loading' || BookingPackageState.catalogProductsLoading) {
         list.innerHTML = '<div class="booking-menu-catalog-state">Завантажую меню...</div>';
@@ -2834,8 +2837,6 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
         list.innerHTML = '<div class="booking-menu-catalog-state">Меню ще не налаштоване.</div>';
         return;
     }
-    const query = String(document.getElementById('bookingMenuCatalogSearch')?.value || '').trim().toLowerCase();
-    const filter = BookingPackageState.catalogFilter || 'all';
     const positions = getBookingMenuPositions();
     const selectedIds = bookingMenuCatalogSelectedIds();
     const filtered = products.filter(product => {

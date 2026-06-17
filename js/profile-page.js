@@ -923,22 +923,78 @@ function profileAvatarCropHash(value) {
     return Math.abs(hash).toString(36) || '0';
 }
 
-function profileAvatarCropStorageKey(data = profileData, urlOverride = '') {
+function profileCurrentUserSnapshot() {
+    const appUser = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
+    let savedUser = {};
+    try {
+        const key = (typeof CONFIG !== 'undefined' && CONFIG.STORAGE?.CURRENT_USER) ? CONFIG.STORAGE.CURRENT_USER : 'pzp_current_user';
+        savedUser = JSON.parse(localStorage.getItem(key) || '{}') || {};
+    } catch {}
+    return { ...savedUser, ...appUser };
+}
+
+function profileAvatarCropUsesSession(data = profileData, sessionUser = profileCurrentUserSnapshot()) {
+    if (!sessionUser?.id && !sessionUser?.username) return false;
+    if (data === profileData && isOwnProfile) return true;
     const user = data?.user || data || {};
-    const owner = user.id || user.username || user.name || currentUserId || 'current';
+    const ids = [user.id, data?.id].map(value => String(value || '').trim()).filter(Boolean);
+    const usernames = [user.username, data?.username].map(value => String(value || '').trim()).filter(Boolean);
+    return (sessionUser.id && ids.includes(String(sessionUser.id))) ||
+        (sessionUser.username && usernames.includes(String(sessionUser.username)));
+}
+
+function profileAvatarCropOwnerCandidates(data = profileData) {
+    const user = data?.user || data || {};
+    const sessionUser = profileCurrentUserSnapshot();
+    const useSession = profileAvatarCropUsesSession(data, sessionUser);
+    const candidates = [
+        user.id,
+        user.username,
+        data?.id,
+        data?.username,
+        useSession ? sessionUser.id : null,
+        useSession ? sessionUser.username : null,
+        useSession ? currentUserId : null,
+        user.name,
+        data?.name,
+        'current'
+    ];
+    const seen = new Set();
+    return candidates
+        .map(value => String(value || '').trim())
+        .filter(value => {
+            if (!value || seen.has(value)) return false;
+            seen.add(value);
+            return true;
+        });
+}
+
+function profileAvatarCropStorageKeys(data = profileData, urlOverride = '') {
     const url = urlOverride || profileAvatarPhotoUrl(data);
-    return `pzp_profile_avatar_crop:${owner}:${profileAvatarCropHash(url)}`;
+    const hash = profileAvatarCropHash(url);
+    const owners = profileAvatarCropOwnerCandidates(data);
+    return owners.map(value => `pzp_profile_avatar_crop:${value}:${hash}`);
+}
+
+function profileAvatarCropStorageKey(data = profileData, urlOverride = '') {
+    return profileAvatarCropStorageKeys(data, urlOverride)[0] || `pzp_profile_avatar_crop:current:${profileAvatarCropHash(urlOverride || profileAvatarPhotoUrl(data))}`;
 }
 
 function readProfileAvatarCrop(data = profileData, urlOverride = '') {
     const user = data?.user || data || {};
-    const direct = user.avatarCrop || user.avatar_crop || data?.avatarCrop || data?.avatar_crop;
     const url = urlOverride || profileAvatarPhotoUrl(data);
-    const directUrl = user.avatarCropUrl || user.avatar_crop_url || data?.avatarCropUrl || data?.avatar_crop_url || '';
-    if (direct && typeof direct === 'object' && (!directUrl || directUrl === url)) return normalizeProfileAvatarCrop(direct);
+    const sessionUser = profileCurrentUserSnapshot();
+    const directSources = profileAvatarCropUsesSession(data, sessionUser) ? [user, data, sessionUser] : [user, data];
+    for (const source of directSources) {
+        const direct = source?.avatarCrop || source?.avatar_crop;
+        const directUrl = source?.avatarCropUrl || source?.avatar_crop_url || '';
+        if (direct && typeof direct === 'object' && (!directUrl || directUrl === url)) return normalizeProfileAvatarCrop(direct);
+    }
     try {
-        const raw = localStorage.getItem(profileAvatarCropStorageKey(data, url));
-        if (raw) return normalizeProfileAvatarCrop(JSON.parse(raw));
+        for (const key of profileAvatarCropStorageKeys(data, url)) {
+            const raw = localStorage.getItem(key);
+            if (raw) return normalizeProfileAvatarCrop(JSON.parse(raw));
+        }
     } catch {}
     return { ...PROFILE_AVATAR_CROP_DEFAULT };
 }
@@ -946,22 +1002,28 @@ function readProfileAvatarCrop(data = profileData, urlOverride = '') {
 function writeProfileAvatarCrop(data = profileData, urlOverride = '', crop = PROFILE_AVATAR_CROP_DEFAULT) {
     const normalized = normalizeProfileAvatarCrop(crop);
     try {
-        localStorage.setItem(profileAvatarCropStorageKey(data, urlOverride), JSON.stringify(normalized));
+        profileAvatarCropStorageKeys(data, urlOverride).forEach(key => {
+            localStorage.setItem(key, JSON.stringify(normalized));
+        });
     } catch {}
     return normalized;
 }
 
 function profileAvatarCropStyle(crop = PROFILE_AVATAR_CROP_DEFAULT) {
     const normalized = normalizeProfileAvatarCrop(crop);
-    return `object-position:${normalized.x}% ${normalized.y}%;transform:scale(${normalized.zoom});transform-origin:${normalized.x}% ${normalized.y}%;`;
+    return `width:100%;height:100%;object-fit:cover;object-position:${normalized.x}% ${normalized.y}%;transform:scale(${normalized.zoom});transform-origin:${normalized.x}% ${normalized.y}%;display:block;`;
 }
 
 function applyProfileAvatarCropToImage(img, crop = null) {
     if (!img) return;
     const normalized = normalizeProfileAvatarCrop(crop || readProfileAvatarCrop());
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
     img.style.objectPosition = `${normalized.x}% ${normalized.y}%`;
     img.style.transform = `scale(${normalized.zoom})`;
     img.style.transformOrigin = `${normalized.x}% ${normalized.y}%`;
+    img.style.display = 'block';
 }
 
 function currentProfileAvatarCropFromControls() {
@@ -1006,6 +1068,33 @@ function renderProfileAvatarVisual(className = 'profile-work-avatar', data = pro
         return `<div class="${className}"${attrs}><img src="${escapeHtml(avatar.url)}" alt="" style="${profileAvatarCropStyle(avatar.crop)}"></div>`;
     }
     return `<div class="${className}"${style}${attrs}>${escapeHtml(avatar.initial)}</div>`;
+}
+
+function syncOwnProfileAvatarSession(data = profileData) {
+    if (!isOwnProfile || !data?.user) return data;
+    const sessionUser = profileCurrentUserSnapshot();
+    const serverUser = data.user || {};
+    const avatarUrl = serverUser.avatarUrl || serverUser.avatar_url || sessionUser.avatarUrl || sessionUser.avatar_url || '';
+    const sessionCrop = sessionUser.avatarCrop || sessionUser.avatar_crop;
+    const sessionCropUrl = sessionUser.avatarCropUrl || sessionUser.avatar_crop_url || '';
+    const {
+        avatarCrop,
+        avatar_crop,
+        avatarCropUrl,
+        avatar_crop_url,
+        ...sessionBase
+    } = sessionUser;
+    const nextUser = {
+        ...sessionBase,
+        ...serverUser,
+        id: serverUser.id || sessionUser.id || currentUserId || null
+    };
+    if (!nextUser.avatarCrop && sessionCrop && typeof sessionCrop === 'object' && (!sessionCropUrl || sessionCropUrl === avatarUrl)) {
+        nextUser.avatarCrop = normalizeProfileAvatarCrop(sessionCrop);
+        nextUser.avatarCropUrl = sessionCropUrl || avatarUrl;
+    }
+    data.user = nextUser;
+    return data;
 }
 
 // ==========================================
@@ -1150,7 +1239,7 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/auth/security') : null
     ]);
 
-    profileData = results[0];
+    profileData = syncOwnProfileAvatarSession(results[0]);
     walletData = results[1];
     myInventory = results[2] || [];
     myAchievements = results[3] || [];

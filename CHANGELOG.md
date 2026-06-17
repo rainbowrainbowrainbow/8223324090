@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.16 - Profile Avatar Crop Consistency
+
+### Profile / Avatar crop sync / Sidebar preview / Release / (Клешня, 17.06.2026) [codex]
+- **Аватар у sidebar і профілі читає один crop** - frontend більше не розходиться між `id`-ключем і `username`-ключем у `localStorage`, тому один і той самий фрагмент фото показується в меню, header профілю і settings preview.
+- **Own profile підхоплює verified session crop** - `/profile` мержить avatar crop із поточної verified session тільки для поточного фото, щоб після refresh не повертатися до default/старого кадру.
+- **Запис crop став сумісним зі старими ключами** - під час збереження кадрування CRM пише fallback keys для `id`, `username` і поточного користувача, не ламаючи вже збережені локальні налаштування.
+- **Inline image contract вирівняно** - profile і sidebar тепер явно задають `width`, `height`, `object-fit`, `object-position`, `transform`, `transform-origin` і `display`, щоб CSS overrides не давали різного crop.
+- **Stale crop для нового фото не переноситься** - session crop застосовується лише коли `avatarCropUrl` збігається з поточним `avatarUrl`.
+- **Regression guards оновлено** - UI smoke перевіряє multi-key crop sync, own-profile session merge і спільний image fit contract між profile та sidebar.
+- **Релізні маркери піднято до `0.76.16`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.15 - Banquet Sheet Print Cleanup
 
 ### Banquet summary / Print layout / Release / (Клешня, 17.06.2026) [codex]

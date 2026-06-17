@@ -3177,6 +3177,23 @@ const Sidebar = (() => {
         return Math.abs(hash).toString(36) || '0';
     }
 
+    function _sidebarAvatarCropOwnerCandidates(user) {
+        const candidates = [
+            user?.id,
+            user?.username,
+            user?.name,
+            'current'
+        ];
+        const seen = new Set();
+        return candidates
+            .map(value => String(value || '').trim())
+            .filter(value => {
+                if (!value || seen.has(value)) return false;
+                seen.add(value);
+                return true;
+            });
+    }
+
     function _normalizeSidebarAvatarCrop(input = {}) {
         const clamp = (value, min, max, fallback) => {
             const number = Number(value);
@@ -3190,9 +3207,13 @@ const Sidebar = (() => {
         };
     }
 
+    function _sidebarAvatarCropStorageKeys(user, photo) {
+        const hash = _sidebarAvatarCropHash(photo);
+        return _sidebarAvatarCropOwnerCandidates(user).map(owner => `pzp_profile_avatar_crop:${owner}:${hash}`);
+    }
+
     function _sidebarAvatarCropStorageKey(user, photo) {
-        const owner = user?.id || user?.username || user?.name || 'current';
-        return `pzp_profile_avatar_crop:${owner}:${_sidebarAvatarCropHash(photo)}`;
+        return _sidebarAvatarCropStorageKeys(user, photo)[0] || `pzp_profile_avatar_crop:current:${_sidebarAvatarCropHash(photo)}`;
     }
 
     function _readSidebarAvatarCrop(user, photo) {
@@ -3202,17 +3223,23 @@ const Sidebar = (() => {
             return _normalizeSidebarAvatarCrop(direct);
         }
         try {
-            const raw = localStorage.getItem(_sidebarAvatarCropStorageKey(user, photo));
-            if (raw) return _normalizeSidebarAvatarCrop(JSON.parse(raw));
+            for (const key of _sidebarAvatarCropStorageKeys(user, photo)) {
+                const raw = localStorage.getItem(key);
+                if (raw) return _normalizeSidebarAvatarCrop(JSON.parse(raw));
+            }
         } catch {}
         return _normalizeSidebarAvatarCrop();
     }
 
     function _applySidebarAvatarCrop(img, user, photo) {
         const crop = _readSidebarAvatarCrop(user, photo);
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
         img.style.objectPosition = `${crop.x}% ${crop.y}%`;
         img.style.transform = `scale(${crop.zoom})`;
         img.style.transformOrigin = `${crop.x}% ${crop.y}%`;
+        img.style.display = 'block';
     }
 
     function _paintUserAvatar(el, user) {

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.15",
+  "version": "0.76.16",
   "eventGenix": {
-    "releaseLabel": "Banquet Sheet Print Cleanup"
+    "releaseLabel": "Profile Avatar Crop Consistency"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

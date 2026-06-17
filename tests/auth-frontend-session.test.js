@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 const API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+const AUTH_CODE = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
@@ -47,6 +48,68 @@ function loadApi(fetchImpl, initialStore = {}) {
     return { context, store };
 }
 
+function loadCheckSessionHarness(overrides = {}) {
+    const start = AUTH_CODE.indexOf('async function checkSession()');
+    const end = AUTH_CODE.indexOf('async function login', start);
+    assert.ok(start >= 0, 'checkSession function missing');
+    assert.ok(end > start, 'login function should follow checkSession');
+
+    const calls = [];
+    const store = new Map([
+        ['pzp_token', 'stored-token'],
+        ['pzp_current_user', JSON.stringify({ username: 'cached.user' })]
+    ]);
+    const classSets = {
+        loginScreen: new Set(['hidden']),
+        mainApp: new Set(['hidden'])
+    };
+    const context = {
+        console: { warn: (...args) => calls.push(['warn', ...args]), error() {}, log() {} },
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } },
+        AppState: { currentUser: null },
+        Sidebar: { initUserCard: () => calls.push(['Sidebar.initUserCard']) },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        document: {
+            getElementById(id) {
+                if (!classSets[id]) return null;
+                return {
+                    classList: {
+                        add: cls => classSets[id].add(cls),
+                        remove: cls => classSets[id].delete(cls),
+                        contains: cls => classSets[id].has(cls)
+                    }
+                };
+            }
+        },
+        window: { WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) } },
+        setTimeout: fn => fn(),
+        hasStoredRefreshSession: () => false,
+        apiVerifyToken: async () => { throw new Error('verify failed'); },
+        hydrateBusinessOperatingProfile: async () => calls.push(['hydrateBusinessOperatingProfile']),
+        hydrateActionPermissions: async () => calls.push(['hydrateActionPermissions']),
+        showMainApp: () => calls.push(['showMainApp']),
+        clearAuthStorage: () => {
+            calls.push(['clearAuthStorage']);
+            store.delete('pzp_token');
+            store.delete('pzp_current_user');
+        },
+        clearPrivateClientCaches: () => calls.push(['clearPrivateClientCaches']),
+        showLoginScreen: () => {
+            calls.push(['showLoginScreen']);
+            classSets.loginScreen.delete('hidden');
+            classSets.mainApp.add('hidden');
+        },
+        ...overrides
+    };
+    vm.createContext(context);
+    vm.runInContext(AUTH_CODE.slice(start, end), context, { filename: 'js/auth.js' });
+    return { context, calls, classSets, store };
+}
+
 test('apiVerifyToken refreshes a stored refresh session when the legacy token is missing', async () => {
     const calls = [];
     const { context, store } = loadApi(async (url, options = {}) => {
@@ -77,6 +140,21 @@ test('apiVerifyToken refreshes a stored refresh session when the legacy token is
     assert.equal(store.get('pzp_access_token'), 'access-new');
     assert.equal(store.get('pzp_refresh_token'), 'refresh-new');
     assert.match(store.get('pzp_current_user'), /new\.operator/);
+});
+
+test('checkSession falls back to login instead of leaving a blank shell when verify throws', async () => {
+    const { context, calls, classSets, store } = loadCheckSessionHarness();
+
+    await context.checkSession();
+
+    assert.equal(classSets.loginScreen.has('hidden'), false);
+    assert.equal(classSets.mainApp.has('hidden'), true);
+    assert.equal(store.has('pzp_token'), false);
+    assert.equal(store.has('pzp_current_user'), false);
+    assert.deepEqual(
+        calls.map(call => call[0]),
+        ['warn', 'clearAuthStorage', 'clearPrivateClientCaches', 'showLoginScreen']
+    );
 });
 
 test('apiFetchWithAuthRetry refreshes before protected task mutations when the legacy token is missing', async () => {

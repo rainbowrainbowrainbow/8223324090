@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.33",
+  "version": "0.76.34",
   "eventGenix": {
-    "releaseLabel": "Booking Catalog Open Control Hotfix"
+    "releaseLabel": "Auth Session Blank Screen Hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

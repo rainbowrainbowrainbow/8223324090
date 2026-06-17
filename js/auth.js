@@ -167,16 +167,20 @@ async function checkSession() {
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
     if ((token || hasStoredRefreshSession()) && savedUser) {
-        // Verify token with server
-        const user = await apiVerifyToken();
-        if (user) {
-            AppState.currentUser = user;
-            await hydrateBusinessOperatingProfile(user);
-            await hydrateActionPermissions(user);
-            window.WorkingRole?.hydrate?.();
-            showMainApp();
-            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
-            return;
+        try {
+            // Verify token with server
+            const user = await apiVerifyToken();
+            if (user) {
+                AppState.currentUser = user;
+                await hydrateBusinessOperatingProfile(user);
+                await hydrateActionPermissions(user);
+                window.WorkingRole?.hydrate?.();
+                showMainApp();
+                if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
+                return;
+            }
+        } catch (err) {
+            console.warn('[auth] Session bootstrap failed; returning to login screen', err);
         }
         // Token expired or invalid
         clearAuthStorage();

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.34 - Auth Session Blank Screen Hotfix
+
+### Auth / Session bootstrap / Blank screen / Hotfix / (Клешня, 17.06.2026) [codex]
+- **Blank screen після відкриття production URL виправлено для stale session state** - `checkSession()` більше не лишає `#loginScreen` і `#mainApp` одночасно hidden, якщо stored token/user є, але session verify падає.
+- **Auth bootstrap отримав fallback на login** - помилка в `apiVerifyToken()` або session hydrate тепер очищає stale auth storage/cache і явно показує login screen.
+- **Успішний authenticated path не змінювався** - валідна сесія як раніше проходить verify, hydrate business profile/action permissions і відкриває main app.
+- **Каталог меню не переписувався повторно** - hotfix не змінює add/remove, scroll або catalog open-control логіку `0.76.33`.
+- **Regression guard додано** - frontend auth test моделює thrown verify при stored session і перевіряє, що login стає видимим замість порожнього темного shell.
+- **Schema/env/auth policy/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.34`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.33 - Booking Catalog Open Control Hotfix
 
 ### Booking / Kitchen menu catalog / Open control / Hotfix / (Клешня, 17.06.2026) [codex]

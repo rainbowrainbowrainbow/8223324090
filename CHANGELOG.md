@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.24 - Timeline Sticky Seam Refit
+
+### Timeline / Sticky header / Seam refit / Release / (Клешня, 17.06.2026) [codex]
+- **Sticky time scale знову перекриває верхній seam без важкої бровки** - верхній shield зменшено і перезібрано так, щоб над шкалою часу не лишався темний зазор після vertical scroll.
+- **Краї sticky layer вирівняно з timeline container** - pseudo-layer отримав симетричніший inline bleed, тому лівий і правий краї краще закривають scroll gutter і не дають грубого темного виступу.
+- **Header став тоншим без втрати clean overlap** - верхній padding time scale зменшено, а radius sticky overlay підлаштовано під timeline shell, щоб прибрати жирну бровку і зберегти акуратний header look.
+- **Compact mode теж піджато під refit** - для compact timeline окремо зменшено shield/padding, щоб seam не повертався на щільному layout.
+- **Scroll reset та mobile guards не чіпались** - fix не змінює `scrollTop = 0` behavior з `v0.76.20` і не прибирає iPhone 11/Safari definite-height guard.
+- **Regression guard оновлено** - `tests/ui-check.js` тепер перевіряє нові seam-refit значення, симетричний bleed і slim sticky shield без повернення до старого oversized mask.
+- **Релізні маркери піднято до `0.76.24`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.23 - Banquet Zero-Activity Surface Retention
 
 ### Banquet / Room timeline / Zero-activity teaser retention / Release / (Клешня, 17.06.2026) [codex]

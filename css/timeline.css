@@ -197,9 +197,9 @@
     --timeline-scale-border: var(--gray-200);
     --timeline-scale-shadow: 0 1px 0 rgba(15, 23, 42, 0.08), 0 4px 10px rgba(15, 23, 42, 0.045);
     --timeline-scale-gutter: var(--timeline-line-header-w, 130px);
-    --timeline-scale-top-shield: 6px;
-    --timeline-scale-inline-bleed: 8px;
-    --timeline-scale-radius: 10px;
+    --timeline-scale-top-shield: 4px;
+    --timeline-scale-inline-bleed: 10px;
+    --timeline-scale-radius: 12px;
     --timeline-sticky-offset: 0px;
 }
 
@@ -212,7 +212,7 @@
     top: var(--timeline-sticky-offset, 0);
     background: var(--timeline-scale-bg, var(--white));
     z-index: 70;
-    padding-top: 4px;
+    padding-top: 2px;
     padding-bottom: 4px;
     isolation: isolate;
 }
@@ -222,11 +222,11 @@
     position: absolute;
     top: calc(-1 * var(--timeline-scale-top-shield, 20px));
     bottom: -1px;
-    left: calc(-1 * var(--timeline-scale-gutter, 130px));
-    right: calc(-1 * var(--timeline-scale-inline-bleed, 8px));
+    left: calc(-1 * (var(--timeline-scale-gutter, 130px) + var(--timeline-scale-inline-bleed, 10px)));
+    right: calc(-1 * var(--timeline-scale-inline-bleed, 10px));
     background: var(--timeline-scale-bg, var(--white));
     border-bottom: 1px solid var(--timeline-scale-border, var(--gray-200));
-    border-radius: var(--timeline-scale-radius, 10px) var(--timeline-scale-radius, 10px) 0 0;
+    border-radius: var(--timeline-scale-radius, 12px) var(--timeline-scale-radius, 12px) 0 0;
     box-shadow: var(--timeline-scale-shadow, 0 1px 0 rgba(15, 23, 42, 0.08));
     pointer-events: none;
     z-index: 0;
@@ -2361,7 +2361,7 @@ body:not(.dark-mode) .time-scale {
     --timeline-scale-shadow: 0 1px 0 rgba(54, 43, 24, 0.08), 0 4px 10px rgba(54, 43, 24, 0.045);
     background: var(--timeline-scale-bg);
     border: 1px solid var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
-    border-radius: var(--timeline-scale-radius, 10px);
+    border-radius: var(--timeline-scale-radius, 12px);
     box-shadow: 0 3px 8px rgba(54, 43, 24, 0.045);
     backdrop-filter: blur(10px);
 }

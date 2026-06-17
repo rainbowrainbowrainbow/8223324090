@@ -1742,6 +1742,18 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.76.36 — Booking Catalog Pointer Open Hotfix</h4>
+                    <ul>
+                        <li><b>Кнопка <code>+ Додати з меню</code> відкриває каталог уже на <code>pointerdown</code></b> — open-control більше не чекає тільки <code>click</code>, який міг не дійти після drag/touch/capture перехоплень.</li>
+                        <li><b>Delegated fallback розширено</b> — <code>document</code> ловить і <code>pointerdown</code>, і <code>click</code> для <code>#bookingMenuCatalogOpenBtn</code> у capture-фазі.</li>
+                        <li><b>Hit target кнопки захищено CSS-ом</b> — сама кнопка має явний stacking context і <code>pointer-events: auto</code>, а summary поруч не перехоплює кліки.</li>
+                        <li><b>Remounted button test тепер перевіряє <code>pointerdown</code></b> — regression guard ближчий до реального натискання у booking panel.</li>
+                        <li><b>Catalog add/remove і scroll logic не змінювались</b> — fix торкається тільки відкриття catalog overlay.</li>
+                        <li><b>Schema/env/auth/Railway config не змінювались</b> — без міграцій, secrets, ролей, production config, нових залежностей або змін production data.</li>
+                        <li><b>Релізні маркери піднято до <code>0.76.36</code></b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.76.35 — Booking Catalog Delegated Open Hotfix</h4>
                     <ul>
                         <li><b>Кнопку <code>+ Додати з меню</code> переведено на delegated capture binding</b> — click тепер ловиться на <code>document</code> для <code>#bookingMenuCatalogOpenBtn</code>, тому каталог відкривається навіть якщо прямий listener на кнопці не спрацював.</li>

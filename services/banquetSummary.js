@@ -515,6 +515,15 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         });
     }
 
+    const explicitChildrenCount = firstNonNull(
+        valueOf(primaryBooking, 'kidsCount', 'kids_count'),
+        valueOf(kitchenBooking, 'kidsCount', 'kids_count')
+    );
+    const legacyChildrenCount = firstNonNull(
+        valueOf(kitchenBooking, 'banquetGuests', 'banquet_guests'),
+        valueOf(primaryBooking, 'banquetGuests', 'banquet_guests')
+    );
+
     return {
         success: true,
         schemaVersion: BANQUET_SUMMARY_SCHEMA_VERSION,
@@ -551,9 +560,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         customer: normalizeCustomer(customer || {}),
         celebrant: normalizeCelebrant(primaryBooking, customer || {}),
         counts: {
-            children: nullableNumber(firstNonNull(valueOf(primaryBooking, 'kidsCount', 'kids_count'), valueOf(kitchenBooking, 'kidsCount', 'kids_count'))),
+            children: nullableNumber(firstNonNull(explicitChildrenCount, legacyChildrenCount)),
             adults: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetAdults', 'banquet_adults'), valueOf(primaryBooking, 'banquetAdults', 'banquet_adults'))),
-            guests: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetGuests', 'banquet_guests'), valueOf(primaryBooking, 'banquetGuests', 'banquet_guests'))),
+            guests: null,
             tables: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetTables', 'banquet_tables'), valueOf(primaryBooking, 'banquetTables', 'banquet_tables')))
         },
         orderRows,

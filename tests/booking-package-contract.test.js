@@ -830,6 +830,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuCatalogCart/);
     assert.match(html, /bookingMenuCatalogCartList/);
     assert.match(html, /bookingMenuInsightPanel/);
+    assert.match(html, /Кількість дітей/);
+    assert.doesNotMatch(bookingPanelHtml, /<label>Гостей<\/label>/);
     assert.match(html, /bookingMenuInsightTitle/);
     assert.match(html, /bookingMenuInsightBody/);
     assert.match(html, /bookingMenuCatalogMobileCartBtn/);
@@ -847,6 +849,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
 
     assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);
+    assert.match(bookingJs, /function bookingKitchenChildrenCountFromBooking/);
+    assert.match(bookingJs, /const kitchenChildrenCount = formData\.kitchenEnabled/);
+    assert.match(bookingJs, /kidsCount:\s*kidsCount \|\| kitchenChildrenCount \|\| null/);
+    assert.match(bookingJs, /obj\.banquetGuests = formData\.kitchenEnabled \? kitchenChildrenCount : null/);
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
     assert.match(bookingJs, /if \(isRoomFirstTimelineView\(\)\) return false;/);
     assert.match(bookingJs, /return true;/);

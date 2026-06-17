@@ -1459,6 +1459,16 @@ function bookingKitchenType(product) {
     return 'menu';
 }
 
+function normalizeBookingCountValue(value) {
+    const count = parseInt(value, 10);
+    return Number.isFinite(count) && count > 0 ? count : null;
+}
+
+function bookingKitchenChildrenCountFromBooking(booking = {}) {
+    const value = booking?.kidsCount ?? booking?.kids_count ?? booking?.banquetGuests ?? booking?.banquet_guests;
+    return value === null || value === undefined ? '' : String(value);
+}
+
 function bookingKitchenTypeLabel(type) {
     return type === 'cake' ? 'Торт' : 'Меню';
 }
@@ -3539,7 +3549,7 @@ function hydrateBookingPackageWorkspace(booking) {
         banquetMenu.dataset.generated = bookingPackage?.menuPositions?.length ? 'true' : 'false';
     }
     const guests = document.getElementById('banquetGuests');
-    if (guests) guests.value = booking?.banquetGuests || '';
+    if (guests) guests.value = bookingKitchenChildrenCountFromBooking(booking);
     const adults = document.getElementById('banquetAdults');
     if (adults) adults.value = booking?.banquetAdults || '';
     const tables = document.getElementById('banquetTables');
@@ -5712,6 +5722,9 @@ function buildBookingObject(formData, program) {
     const kidsCount = (hasEvent && kidsCountInput && (program?.perChild || isEducationTimelineBookingMode()))
         ? (parseInt(kidsCountInput.value, 10) || 0)
         : 0;
+    const kitchenChildrenCount = formData.kitchenEnabled
+        ? normalizeBookingCountValue(document.getElementById('banquetGuests')?.value)
+        : null;
     const servicePrice = Number(formData.clientPinataServicePrice || 0);
     const multiActivityPrograms = Array.isArray(formData.activityPrograms) ? formData.activityPrograms.filter(Boolean) : [];
     const isMultiActivityBooking = multiActivityPrograms.length > 1 && bookingMultiActivityEnabled();
@@ -5763,7 +5776,7 @@ function buildBookingObject(formData, program) {
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: status,
-        kidsCount: kidsCount || null,
+        kidsCount: kidsCount || kitchenChildrenCount || null,
         groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
         programBasePrice: toBookingMoney(baseProgramPrice),
         menuPositions: formData.menuPositions || [],
@@ -5779,9 +5792,9 @@ function buildBookingObject(formData, program) {
         obj.extraData.tags = selectedTags;
     }
 
-    obj.banquetGuests = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetGuests')?.value) || null) : null;
-    obj.banquetAdults = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetAdults')?.value) || null) : null;
-    obj.banquetTables = formData.kitchenEnabled ? (parseInt(document.getElementById('banquetTables')?.value) || null) : null;
+    obj.banquetGuests = formData.kitchenEnabled ? kitchenChildrenCount : null;
+    obj.banquetAdults = formData.kitchenEnabled ? normalizeBookingCountValue(document.getElementById('banquetAdults')?.value) : null;
+    obj.banquetTables = formData.kitchenEnabled ? normalizeBookingCountValue(document.getElementById('banquetTables')?.value) : null;
     obj.banquetMenu = formData.kitchenEnabled
         ? (document.getElementById('banquetMenu')?.value?.trim()
             || bookingMenuPositionsToLegacyText(formData.menuPositions || [])
@@ -7739,6 +7752,7 @@ async function showBookingDetails(bookingId) {
     const bookingDetailTitle = [booking.label || booking.programCode, booking.programName]
         .filter(Boolean)
         .join(': ') || (roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
+    const bookingChildrenCount = bookingKitchenChildrenCountFromBooking(booking);
     const lineDetailHtml = roomFirstServiceBooking ? '' : `
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
             <span class="label">${lineRoleLabel}:</span>
@@ -7788,7 +7802,7 @@ async function showBookingDetails(bookingId) {
         ${renderEducationLessonDetail(booking)}
         ${renderBookingWorkspaceDetail(booking)}
         ${renderBookingPackageDetail(booking)}
-        ${booking.kidsCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(booking.kidsCount))}</span></div>` : ''}
+        ${bookingChildrenCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(bookingChildrenCount))}</span></div>` : ''}
         ${booking.banquetAdults ? `<div class="booking-detail-row"><span class="label">Дорослих:</span><span class="value">${escapeHtml(String(booking.banquetAdults))}</span></div>` : ''}
         <div class="booking-detail-row">
             <span class="label">Статус:</span>

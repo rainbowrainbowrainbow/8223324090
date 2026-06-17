@@ -1598,14 +1598,21 @@ check('Booking room dropdown keeps same-day booked rooms selectable with day boo
     && bookingCode.includes('зайнята зараз')
     && !bookingCode.includes('return !occupiedRooms.has(value) || value === selectedRoom')
     && !bookingCode.includes('Ця кімната вже має бронювання на цей день'));
-check('Booking panel header shows client, child, and guests live context',
+check('Booking panel header shows client and child count live context',
     htmlContains('index.html', 'selectedCustomerDisplay')
     && htmlContains('index.html', 'selectedChildDisplay')
     && htmlContains('index.html', 'selectedGuestsDisplay')
     && htmlContains('index.html', 'id="banquetAdults"')
+    && htmlContains('index.html', 'Кількість дітей')
     && htmlContains('index.html', 'Кількість дорослих')
+    && !htmlContains('index.html', '<label>Гостей</label>')
     && bookingCode.includes('function updateBookingContextHeaderSummary')
     && bookingCode.includes('function bookingContextGuestsText')
+    && bookingCode.includes('function bookingKitchenChildrenCountFromBooking')
+    && bookingCode.includes('const kitchenChildrenCount = formData.kitchenEnabled')
+    && bookingCode.includes('kidsCount: kidsCount || kitchenChildrenCount || null')
+    && bookingCode.includes('obj.banquetGuests = formData.kitchenEnabled ? kitchenChildrenCount : null')
+    && timelineCode.includes('?? firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetGuests ?? booking.banquet_guests)')
     && bookingCode.includes("document.getElementById('banquetGuests')?.value?.trim()")
     && bookingCode.includes("document.getElementById('banquetAdults')")
     && bookingCode.includes('banquetAdults')

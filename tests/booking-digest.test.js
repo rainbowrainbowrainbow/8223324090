@@ -77,7 +77,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.celebrant.name, 'Мія');
     assert.equal(summary.counts.children, 8);
     assert.equal(summary.counts.adults, 4);
-    assert.equal(summary.counts.guests, 12);
+    assert.equal(summary.counts.guests, null);
     assert.equal(summary.counts.tables, 2);
     assert.equal(summary.orderRows.length, 5);
     assert.equal(summary.orderRows[0].type, 'program');
@@ -101,6 +101,36 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
+});
+
+test('banquet summary treats legacy banquet_guests as children fallback without duplicate guests', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: {
+            id: 'BK-LEGACY-CHILDREN',
+            date: '2099-06-21',
+            time: '13:00',
+            room: 'Marvel',
+            program_name: 'Kitchen-only birthday',
+            price: 900,
+            banquet_guests: 7,
+            banquet_adults: 3,
+            banquet_tables: 1,
+            extra_data: {
+                bookingPackage: {
+                    positionsSubtotal: 900,
+                    menuPositions: [
+                        { productId: 'pizza', title: 'Pizza', quantity: 3, unitPrice: 300, subtotal: 900 }
+                    ]
+                }
+            }
+        }
+    });
+
+    assert.equal(summary.counts.children, 7);
+    assert.equal(summary.counts.adults, 3);
+    assert.equal(summary.counts.guests, null);
+    assert.equal(summary.counts.tables, 1);
 });
 
 test('banquet summary resolves group primary, kitchen menu, and root activity rows without linked children', () => {
@@ -181,7 +211,7 @@ test('banquet summary resolves group primary, kitchen menu, and root activity ro
     assert.equal(summary.group.id, 'BQ-GROUP');
     assert.equal(summary.counts.children, 9);
     assert.equal(summary.counts.adults, 5);
-    assert.equal(summary.counts.guests, 14);
+    assert.equal(summary.counts.guests, null);
     assert.equal(summary.counts.tables, 3);
     assert.equal(summary.orderRows.some(row => row.type === 'menu' && row.title === 'Pizza'), true);
     assert.equal(summary.orderRows.some(row => row.type === 'activity' && row.bookingId === activity.id), true);

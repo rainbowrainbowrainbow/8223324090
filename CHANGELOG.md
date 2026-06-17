@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.40 - Booking Children Count Field Fix
+
+### Booking / Room timeline / Kitchen attendee counts / Production fix / (Клешня, 18.06.2026) [codex]
+- **Поле `Гостей` у блоці `Кухня / меню` перейменовано на `Кількість дітей`** - оператор більше не бачить зайву окрему кількість гостей у room/kitchen flow.
+- **Збереження кімнатної кухонної броні тепер кладе це значення у `kidsCount` / `kids_count`** - legacy `banquetGuests` лишається заповненим тільки для сумісності зі старим контрактом.
+- **Редагування старих бронювань отримало fallback** - якщо `kids_count` ще порожній, старе `banquet_guests` показується як кількість дітей, а не як третя сутність.
+- **Timeline, booking detail і banquet summary більше не дублюють дітей як `Гості`** - summary показує `Діти`, `Дорослі`, `Столи`, а `counts.guests` для цього legacy-поля не експонується.
+- **Regression guards додано** - UI/contract/digest/route smoke тести перевіряють новий label, save contract, legacy fallback і відсутність дублювання гостей.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.40`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.39 - Booking Serving Controls Polish
 
 ### Booking / Kitchen menu / Serving time controls / UX polish / (Клешня, 18.06.2026) [codex]

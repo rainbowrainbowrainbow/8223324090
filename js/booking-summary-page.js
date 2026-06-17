@@ -95,7 +95,6 @@
         const parts = [];
         if (counts.children !== undefined && counts.children !== null && counts.children !== '') parts.push(`Діти ${counts.children}`);
         if (counts.adults !== undefined && counts.adults !== null && counts.adults !== '') parts.push(`Дорослі ${counts.adults}`);
-        if (counts.guests !== undefined && counts.guests !== null && counts.guests !== '') parts.push(`Гості ${counts.guests}`);
         if (counts.tables !== undefined && counts.tables !== null && counts.tables !== '') parts.push(`Столи ${counts.tables}`);
         return parts.join(' · ') || null;
     }
@@ -274,7 +273,7 @@
                 ])}
                 ${compactLine([
                     compactFact('Час', event.time),
-                    compactFact('Гості', people),
+                    compactFact('Учасники', people),
                     compactFact('Програма', event.programName)
                 ])}
                 ${compactLine([

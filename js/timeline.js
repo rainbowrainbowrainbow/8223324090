@@ -889,7 +889,8 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         date,
         time,
         duration,
-        kidsCount: firstTimelineBanquetValue(sourceForCounts, booking => booking.kidsCount ?? booking.kids_count),
+        kidsCount: firstTimelineBanquetValue(sourceForCounts, booking => booking.kidsCount ?? booking.kids_count)
+            ?? firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetGuests ?? booking.banquet_guests),
         banquetAdults: firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetAdults ?? booking.banquet_adults),
         warnings
     };

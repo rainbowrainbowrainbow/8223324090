@@ -2358,7 +2358,9 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.schemaVersion, 1);
         assert.equal(res.data.bookingId, 'BK-SUMMARY');
         assert.equal(res.data.businessContext, 'event_genix');
+        assert.equal(res.data.counts.children, 8);
         assert.equal(res.data.counts.adults, 4);
+        assert.equal(res.data.counts.guests, null);
         assert.equal(res.data.customer.name, 'Route Smoke Customer');
         assert.equal(res.data.celebrant.name, 'Mia');
         assert.equal(res.data.orderRows.some(row => row.type === 'activity' && row.bookingId === 'BK-ACTIVITY'), true);

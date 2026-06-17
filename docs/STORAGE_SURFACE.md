@@ -27,7 +27,7 @@ product behavior, add focused route or service tests in the same pack.
 | --- | --- | --- | --- | --- | --- |
 | `/uploads/chat` | `uploads/chat` | chat | `local-postgres-metadata` | `tests/chat-upload-storage.test.js`, `tests/chat-upload-route.test.js` | Chat attachments are stored under `/uploads/chat`; message metadata lives in Postgres. |
 | `/uploads/sounds` | `uploads/sounds` | sound | `local-postgres-metadata` | `tests/audio-storage.test.js` | Manual and generated sound uploads are stored under `/uploads/sounds`; `sounds.storage_*` metadata lives in Postgres. |
-| `/uploads/profile-avatars` | `uploads/profile-avatars` | profile | `local-postgres-metadata` | `tests/profile-avatar-storage.test.js` | User profile photos are stored under `/uploads/profile-avatars`; `user_profiles_ext.avatar_url` lives in Postgres. |
+| `/uploads/profile-avatars` | `uploads/profile-avatars` | profile | `local-postgres-metadata` | `tests/profile-avatar-storage.test.js`, `tests/route-smoke.test.js` | New profile avatar uploads store binary content in Postgres `profile_avatar_blobs`; `/uploads/profile-avatars` stays as the public URL and legacy local fallback. |
 | `/uploads/catalog-images` | `uploads/catalog-images` | catalogs | `local-postgres-metadata` | `tests/image-storage.test.js` | Generated catalog images are stored under `/uploads/catalog-images`; catalog item URLs live in Postgres-backed catalogs. |
 | `/uploads/designs` | `uploads/designs` | designs | `local-postgres-metadata` | `tests/designs.test.js`, `tests/design-storage.test.js` | New design board assets are stored in Postgres `design_file_blobs`; the public path remains for previews and legacy disk fallback. |
 
@@ -50,10 +50,15 @@ binary content to `design_file_blobs`, while old local files remain readable as
 a fallback. Do not delete `uploads/designs` during cleanup until old design rows
 have been migrated or confirmed obsolete.
 
-Chat, sound, profile avatar, and catalog image uploads follow the local upload +
-Postgres metadata pattern. They still should not be treated as durable across
-Railway redeploys unless the runtime has a persistent volume or the next phase
-moves binary content into a Postgres-backed file table.
+Chat, sound, and catalog image uploads still follow the local upload + Postgres
+metadata pattern. They should not be treated as durable across Railway
+redeploys unless the runtime has a persistent volume or the next phase moves
+binary content into a Postgres-backed file table.
+
+Profile avatar uploads are now different: new writes store binary content in
+`profile_avatar_blobs`, and `/uploads/profile-avatars/*` first checks Postgres
+before falling back to local disk for legacy files. Existing old local avatar
+URLs remain compatible, but missing legacy files are not backfilled.
 
 ## What This Gives
 

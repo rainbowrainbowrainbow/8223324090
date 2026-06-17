@@ -42,10 +42,10 @@ const LOCAL_UPLOAD_SURFACE = [
         routeFile: 'routes/auth.js',
         serviceFile: 'services/profileAvatarStorage.js',
         frontendFiles: ['profile.html', 'js/profile-page.js'],
-        tests: ['tests/profile-avatar-storage.test.js'],
+        tests: ['tests/profile-avatar-storage.test.js', 'tests/route-smoke.test.js'],
         remoteBucket: null,
         envBucket: null,
-        reason: 'User profile photos are stored under /uploads/profile-avatars and referenced from user_profiles_ext in Postgres.'
+        reason: 'New profile avatar uploads write binary content to Postgres profile_avatar_blobs while /uploads/profile-avatars remains the public URL and legacy local fallback.'
     },
     {
         urlPrefix: '/uploads/catalog-images',

@@ -987,7 +987,7 @@ router.patch('/profile/avatar', authenticateToken, async (req, res) => {
             [finalEmoji, finalColor, req.user.username]
         );
 
-        const { rows: [user] } = await pool.query(
+        const { rows: [user] } = await client.query(
             `SELECT u.id, u.username, u.name, u.role, u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
@@ -1030,17 +1030,22 @@ router.patch('/profile/cockpit-widgets', authenticateToken, async (req, res) => 
 
 // POST /api/auth/profile/avatar/upload - upload own profile photo from device
 router.post('/profile/avatar/upload', authenticateToken, handleProfileAvatarUpload, async (req, res) => {
+    let client;
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'Оберіть фото профілю' });
         }
 
+        client = await pool.connect();
+        await client.query('BEGIN');
+
         const stored = await uploadProfileAvatarWithFallback(req.file, {
             username: req.user.username,
-            userId: req.user.id
+            userId: req.user.id,
+            query: client
         });
 
-        await pool.query(
+        await client.query(
             `INSERT INTO user_profiles_ext (username, avatar_url, avatar_style)
              VALUES ($1, $2, 'photo')
              ON CONFLICT (username) DO UPDATE
@@ -1049,7 +1054,7 @@ router.post('/profile/avatar/upload', authenticateToken, handleProfileAvatarUplo
                  updated_at = NOW()`,
             [req.user.username, stored.publicUrl]
         );
-        await pool.query(
+        await client.query(
             `UPDATE users
              SET avatar_emoji = NULL,
                  avatar_color = NULL
@@ -1057,13 +1062,15 @@ router.post('/profile/avatar/upload', authenticateToken, handleProfileAvatarUplo
             [req.user.username]
         );
 
-        const { rows: [user] } = await pool.query(
+        const { rows: [user] } = await client.query(
             `SELECT u.id, u.username, u.name, u.role, u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
              WHERE u.username = $1`,
             [req.user.username]
         );
+
+        await client.query('COMMIT');
 
         res.json({
             success: true,
@@ -1076,9 +1083,14 @@ router.post('/profile/avatar/upload', authenticateToken, handleProfileAvatarUplo
             user: { id: user.id, username: user.username, name: user.name, role: user.role, ...userAvatarPayload(user) }
         });
     } catch (err) {
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch {}
+        }
         const status = err.statusCode || 500;
         log.error('Upload profile avatar error', err);
         res.status(status).json({ error: status >= 500 ? 'Internal server error' : err.message });
+    } finally {
+        if (client) client.release();
     }
 });
 

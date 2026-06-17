@@ -879,6 +879,24 @@ async function initDatabase() {
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_banquet_group_bookings_booking ON banquet_group_bookings(booking_id)');
 
         // v12.6: Seed test contractor (Женя / Євгенія)
+        await safeQuery(`
+            CREATE TABLE IF NOT EXISTS profile_avatar_blobs (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                storage_key TEXT NOT NULL UNIQUE,
+                original_name TEXT,
+                content_type TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                data BYTEA NOT NULL,
+                checksum_sha256 TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_profile_avatar_blobs_username ON profile_avatar_blobs(username)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_profile_avatar_blobs_created_at_desc ON profile_avatar_blobs(created_at DESC)');
+
+        // v0.76.13: Compatibility bootstrap for Postgres-backed profile avatar blobs
         const contractorSeedVersion = '008_seed_contractor_zhenya';
         const contractorSeedCheck = await pool.query(
             'SELECT 1 FROM schema_migrations WHERE version = $1', [contractorSeedVersion]

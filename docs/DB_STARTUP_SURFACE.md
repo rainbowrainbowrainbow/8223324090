@@ -33,7 +33,7 @@ check:migrations`.
 `contractors`, `customers`, `design_collections`, `design_tags`, `designs`,
 `finance_categories`, `finance_transactions`, `history`, `kleshnya_chat`,
 `kleshnya_messages`, `lines_by_date`,
-`pending_animators`, `point_transactions`, `procurement_items`,
+`pending_animators`, `point_transactions`, `profile_avatar_blobs`, `procurement_items`,
 `procurement_lists`, `products`, `schema_migrations`, `scheduled_deletions`,
 `settings`, `staff`, `staff_schedule`, `task_logs`, `task_templates`, `tasks`,
 `telegram_known_chats`, `telegram_known_threads`, `user_action_log`,
@@ -66,7 +66,7 @@ check:migrations`.
 
 ## Startup Indexes And Triggers
 
-The guard tracks 88 startup indexes in `config/dbStartupSurface.js`. The current
+The guard tracks 90 startup indexes in `config/dbStartupSurface.js`. The current
 startup trigger/function pair is `update_updated_at_column` and
 `trg_bookings_updated_at`.
 
@@ -90,6 +90,11 @@ migrations.
 Account action override compatibility keeps `idx_users_action_allowlist_gin`
 and `idx_users_action_denylist_gin` while older production databases catch up
 to migration `244_user_action_permission_overrides.sql`.
+
+Profile avatar durability compatibility keeps
+`idx_profile_avatar_blobs_username` and
+`idx_profile_avatar_blobs_created_at_desc` while older production databases
+catch up to migration `266_profile_avatar_postgres_storage.sql`.
 
 Do not add a new startup index as a convenience shortcut. New durable indexes
 belong in SQL migrations.

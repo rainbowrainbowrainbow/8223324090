@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.13 - Durable Profile Avatars
+
+### Profile / Avatar upload durability / Postgres blob fallback / Release / (Клешня, 17.06.2026) [codex]
+- **Фото профілю більше не живе тільки на Railway disk** - нові uploads більше не залежать від ephemeral `uploads/profile-avatars` після hard refresh, restart або redeploy.
+- **Додано durable Postgres blob storage** - нові avatar binary пишуться в таблицю `profile_avatar_blobs`, а `user_profiles_ext.avatar_url` і далі лишається canonical public URL для фронтенду.
+- **Public avatar URL не змінює контракт** - CRM як і раніше використовує `/uploads/profile-avatars/...`, але сервер тепер спочатку читає blob з Postgres і лише потім падає в legacy static fallback.
+- **Legacy avatar_url не ламаться** - старі локальні файли, якщо вони ще існують на диску, лишаються читабельними без backfill або cleanup production data.
+- **Upload route став transactional** - blob insert, `user_profiles_ext.avatar_url` update і очищення emoji/color проходять в одному DB transaction з rollback при помилці.
+- **Sidebar і profile page не вимагали UX rewrite** - фронтенд отримує той самий `avatar_url`/`avatarUrl`, тому crop sync, refresh verify і initials fallback лишилися без зміни контракту.
+- **Додано additive migration `266_profile_avatar_postgres_storage.sql`** - schema/env/auth/roles/Railway config не змінювались; нова таблиця додається без destructive rewrite.
+- **Regression guards оновлено** - unit, route smoke, UI/static, storage surface і DB startup surface тепер вимагають Postgres-backed avatar flow та public fallback reader.
+- **Релізні маркери піднято до `0.76.13`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.12 - Animator Banquet Line Cleanup
 
 ### Timeline / Animator view / Banquet service guard / Release / (Клешня, 17.06.2026) [codex]

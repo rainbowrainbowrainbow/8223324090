@@ -107,6 +107,8 @@ function clearModules() {
         '../services/chat-bot',
         '../services/guardian',
         '../services/linkPreview',
+        '../services/profileAvatarStorage',
+        '../routes/auth',
         '../routes/settings',
         '../routes/bookings',
         '../routes/banquets',
@@ -297,6 +299,8 @@ function createFakePool() {
         bookings: [],
         banquetGroups: new Map(),
         banquetMemberships: [],
+        profileAvatarUrls: new Map(),
+        profileAvatarBlobs: new Map(),
         banquetLinks: [{
             id: 31,
             business_context: 'event_genix',
@@ -548,6 +552,52 @@ function createFakePool() {
             }
             if (/^SELECT 1\b/i.test(text)) {
                 return { rows: [{ ok: 1 }] };
+            }
+            if (/INSERT INTO profile_avatar_blobs/i.test(text)) {
+                const [username, storageKey, originalName, contentType, fileSize, data, checksum] = params;
+                hrState.profileAvatarBlobs.set(storageKey, {
+                    id: hrState.profileAvatarBlobs.size + 1,
+                    username,
+                    storage_key: storageKey,
+                    original_name: originalName,
+                    content_type: contentType,
+                    file_size: fileSize,
+                    data,
+                    checksum_sha256: checksum
+                });
+                return { rows: [], rowCount: 1 };
+            }
+            if (/INSERT INTO user_profiles_ext \(username, avatar_url, avatar_style\)/i.test(text)) {
+                hrState.profileAvatarUrls.set(String(params[0]), params[1]);
+                return { rows: [], rowCount: 1 };
+            }
+            if (/UPDATE users\s+SET avatar_emoji = NULL,\s+avatar_color = NULL\s+WHERE username = \$1/i.test(text)) {
+                const user = Array.from(hrState.users.values()).find(row => row.username === params[0]);
+                if (user) {
+                    user.avatar_emoji = null;
+                    user.avatar_color = null;
+                }
+                return { rows: [], rowCount: user ? 1 : 0 };
+            }
+            if (/SELECT id, username, storage_key, original_name, content_type, file_size, data, checksum_sha256, created_at, updated_at\s+FROM profile_avatar_blobs/i.test(text)) {
+                const row = hrState.profileAvatarBlobs.get(String(params[0]));
+                return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+            }
+            if (/SELECT u\.id, u\.username, u\.name, u\.role, u\.avatar_emoji, u\.avatar_color, upe\.avatar_url\s+FROM users u\s+LEFT JOIN user_profiles_ext upe ON upe\.username = u\.username\s+WHERE u\.username = \$1/i.test(text)) {
+                const user = Array.from(hrState.users.values()).find(row => row.username === params[0]);
+                if (!user) return { rows: [], rowCount: 0 };
+                return {
+                    rows: [{
+                        id: user.id,
+                        username: user.username,
+                        name: user.name,
+                        role: user.role,
+                        avatar_emoji: user.avatar_emoji || null,
+                        avatar_color: user.avatar_color || null,
+                        avatar_url: hrState.profileAvatarUrls.get(user.username) || null
+                    }],
+                    rowCount: 1
+                };
             }
             if (/SELECT bgb\.\*, bg\.primary_booking_id/i.test(text) && /FROM banquet_group_bookings bgb JOIN banquet_groups bg/i.test(text)) {
                 const membership = hrState.banquetMemberships.find(item => item.booking_id === params[0]);
@@ -2230,11 +2280,15 @@ describe('route-level API safety smoke', () => {
         installMock('../services/linkPreview', {});
 
         const { authenticateToken } = require('../middleware/auth');
+        const { buildProfileAvatarBlobFallbackHandler } = require('../services/profileAvatarStorage');
         authToken = tokenFor('creator');
 
         const app = express();
         app.use(express.json());
+        app.get('/uploads/profile-avatars/*', buildProfileAvatarBlobFallbackHandler(fakePool));
+        app.get('/uploads/profile-avatars/*', (req, res) => res.status(404).json({ error: 'avatar-not-found' }));
         app.use('/api', apiAuthBoundary(authenticateToken));
+        app.use('/api/auth', require('../routes/auth'));
         app.use('/api/bookings', require('../routes/bookings'));
         app.use('/api/banquets', require('../routes/banquets'));
         app.use('/api/landing', require('../routes/landing'));
@@ -2548,6 +2602,40 @@ describe('route-level API safety smoke', () => {
         assert.equal(deep.status, 200, JSON.stringify(deep.data));
         assert.equal(deep.data.status, 'ok');
         assert.equal(deep.data.schema.status, 'ok');
+    });
+
+    it('stores uploaded profile avatars in Postgres and returns a durable public avatar URL', async () => {
+        const form = new FormData();
+        form.append('file', new Blob([Buffer.from('profile-avatar-route-smoke')], { type: 'image/png' }), 'profile-avatar.png');
+
+        const uploaded = await requestMultipart('/api/auth/profile/avatar/upload', form, withAuth());
+
+        assert.equal(uploaded.status, 200, JSON.stringify(uploaded.data));
+        assert.equal(uploaded.data.success, true);
+        assert.equal(uploaded.data.storage.provider, 'postgres');
+        assert.equal(uploaded.data.storage.bucket, 'profile_avatar_blobs');
+        assert.match(uploaded.data.storage.key, /^users\/route-smoke\/.+-profile-avatar\.png$/);
+        assert.match(uploaded.data.user.avatar_url, /^\/uploads\/profile-avatars\/users\/route-smoke\/.+-profile-avatar\.png$/);
+        assert.ok(queries.some(q => /BEGIN/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO profile_avatar_blobs/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO user_profiles_ext \(username, avatar_url, avatar_style\)/i.test(q.text)));
+        assert.ok(queries.some(q => /COMMIT/i.test(q.text)));
+    });
+
+    it('serves Postgres-backed profile avatar uploads before falling back to legacy local files', async () => {
+        const form = new FormData();
+        form.append('file', new Blob([Buffer.from('profile-avatar-public-read')], { type: 'image/png' }), 'public-avatar.png');
+
+        const uploaded = await requestMultipart('/api/auth/profile/avatar/upload', form, withAuth());
+        assert.equal(uploaded.status, 200, JSON.stringify(uploaded.data));
+
+        const served = await request('GET', uploaded.data.user.avatar_url);
+        assert.equal(served.status, 200, JSON.stringify(served.data));
+        assert.equal(served.text, 'profile-avatar-public-read');
+
+        const missing = await request('GET', '/uploads/profile-avatars/missing-avatar.png');
+        assert.equal(missing.status, 404);
+        assert.equal(missing.data.error, 'avatar-not-found');
     });
 
     it('reports pending data-only migrations without failing readiness', async () => {

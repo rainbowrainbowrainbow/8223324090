@@ -561,6 +561,17 @@ function parsePayloadExtraData(payload = {}) {
     return null;
 }
 
+function mergeExistingExtraDataForBookingUpdate(payload = {}, oldRow = {}) {
+    if (!payload) return;
+    const previousExtra = getBookingExtraDataObject({ extraData: oldRow.extra_data });
+    const incomingExtra = parsePayloadExtraData(payload) || {};
+    if (!Object.keys(previousExtra).length && !Object.keys(incomingExtra).length) return;
+    payload.extraData = {
+        ...cloneJson(previousExtra),
+        ...cloneJson(incomingExtra)
+    };
+}
+
 function hasBanquetGroupPayload(payload = {}) {
     const extra = parsePayloadExtraData(payload);
     const group = extra?.banquetGroup || extra?.banquet_group || payload.banquetGroup || payload.banquet_group;
@@ -1159,12 +1170,48 @@ function isBanquetServiceRootBooking(booking = {}) {
         && !String(booking.linkedTo || booking.linked_to || '').trim();
 }
 
+function getBookingExtraDataObject(booking = {}) {
+    const extra = booking.extraData ?? booking.extra_data;
+    if (extra && typeof extra === 'object' && !Array.isArray(extra)) return extra;
+    if (typeof extra === 'string' && extra.trim()) {
+        try {
+            const parsed = JSON.parse(extra);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+}
+
+function hasNonEmptyArray(value) {
+    return Array.isArray(value) && value.length > 0;
+}
+
+function isRoomProjectableBanquetServiceRootBooking(booking = {}) {
+    if (!isBanquetServiceRootBooking(booking) || !isRealRoom(booking.room)) return false;
+    const extra = getBookingExtraDataObject(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const bookingPackage = booking.bookingPackage
+        || booking.booking_package
+        || extra.bookingPackage
+        || extra.booking_package
+        || {};
+    return String(booking.category || booking.category_id || '').trim().toLowerCase() === 'banquet'
+        || String(booking.programCode || booking.program_code || '').trim().toUpperCase() === 'KITCHEN'
+        || String(workspace.scenario || '').trim().toLowerCase() === 'kitchen_only'
+        || hasNonEmptyArray(bookingPackage.menuPositions || bookingPackage.menu_positions)
+        || hasNonEmptyArray(bookingPackage.serviceEvents || bookingPackage.service_events)
+        || Boolean(String(booking.banquetMenu || booking.banquet_menu || '').trim())
+        || Boolean(booking.banquetGuests || booking.banquet_guests || booking.banquetAdults || booking.banquet_adults || booking.banquetTables || booking.banquet_tables);
+}
+
 function projectBookingsForTimelineView(bookings = [], timelineView = 'animators') {
     if (timelineView !== 'rooms') {
         return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking));
     }
     return bookings
-        .filter(booking => !isBanquetServiceRootBooking(booking))
+        .filter(booking => !isBanquetServiceRootBooking(booking) || isRoomProjectableBanquetServiceRootBooking(booking))
         .filter(booking => !String(booking.linkedTo || '').trim() && isRealRoom(booking.room))
         .map(booking => projectBookingForTimelineView(booking, timelineView));
 }
@@ -3759,6 +3806,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Бронювання не знайдено' });
         }
+        mergeExistingExtraDataForBookingUpdate(b, oldBooking);
         await lockBookingConflictResources(client, [oldBooking, b], businessContext);
         if (!b.linkedTo) {
             // v19.13: Skip conflict checks if date/time/line/duration unchanged
@@ -3903,6 +3951,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         b.customerId = updateCustomerId;
 
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        const updateExtraDataSql = bookingExtraDataSqlValue(b);
 
         let ensuredSecondAnimatorLineForUpdate = null;
         if (!b.linkedTo && bookingRequiresSecondAnimatorLink(b)) {
@@ -3937,7 +3986,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
+                 b.kidsCount || null, b.groupName || null, updateExtraDataSql,
                  id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null, b.pinataMode,
                  b.clientPinataServicePrice, b.clientPinataServiceNote, b.pinataNumber, b.pinataFillerNumber,
                  b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
@@ -3957,7 +4006,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
+                 b.kidsCount || null, b.groupName || null, updateExtraDataSql, id, updateCustomerId,
                  b.paymentMethod || null, b.pinataMode, b.clientPinataServicePrice, b.clientPinataServiceNote,
                  b.pinataNumber, b.pinataFillerNumber, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null, businessContext]
             );

@@ -27,6 +27,9 @@ function clearModules() {
 }
 
 function mapBookingRow(row = {}) {
+    const extraData = typeof row.extra_data === 'string'
+        ? JSON.parse(row.extra_data || '{}')
+        : (row.extra_data || null);
     return {
         id: row.id,
         businessContext: row.business_context || 'event_genix',
@@ -46,7 +49,12 @@ function mapBookingRow(row = {}) {
         linkedTo: row.linked_to || null,
         hosts: row.hosts,
         secondAnimator: row.second_animator || null,
-        extraData: row.extra_data || null
+        extraData,
+        bookingPackage: extraData?.bookingPackage || null,
+        banquetGuests: row.banquet_guests || null,
+        banquetAdults: row.banquet_adults || null,
+        banquetTables: row.banquet_tables || null,
+        banquetMenu: row.banquet_menu || null
     };
 }
 
@@ -220,6 +228,17 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
                 normalizeContext(item.business_context) === normalizeContext(businessContext)
             );
             return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/SELECT id, business_context, date, time, line_id, program_id, program_code, label, program_name/i.test(sql) && /FROM bookings b WHERE b\.date = \$1/i.test(sql)) {
+            const [date, businessContext] = params;
+            const rows = state.rows
+                .filter(row =>
+                    row.date === date &&
+                    normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+                    String(row.status || 'confirmed').toLowerCase() !== 'cancelled'
+                )
+                .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
         if (/^UPDATE bookings SET date=\$1, time=\$2, line_id=\$3/i.test(sql) && /RETURNING \*/i.test(sql)) {
             const optimistic = sql.includes("date_trunc('milliseconds'");
@@ -651,6 +670,75 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
     });
 });
 
+test('GET /api/bookings room view projects banquet service root with persisted serving time', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const roomName = '\u041f\u043e\u043d\u0456';
+        state.rows.push({
+            id: 'BK-2099-0200',
+            business_context: 'event_genix',
+            date: '2099-02-14',
+            time: '15:00',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen order',
+            category: 'custom',
+            duration: 60,
+            price: 600,
+            hosts: 0,
+            second_animator: null,
+            pinata_filler: null,
+            pinata_mode: 'none',
+            pinata_number: null,
+            pinata_filler_number: null,
+            client_pinata_service_price: null,
+            client_pinata_service_note: null,
+            costume: null,
+            room: roomName,
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: {
+                bookingPackage: {
+                    schemaVersion: 2,
+                    programBasePrice: 0,
+                    positionsSubtotal: 600,
+                    finalTotal: 600,
+                    menuPositions: [
+                        { id: 'item-1', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600, servingTime: '15:30' }
+                    ],
+                    serviceEvents: []
+                },
+                bookingWorkspace: { scenario: 'kitchen_only' }
+            },
+            banquet_guests: 8,
+            banquet_adults: null,
+            banquet_tables: null,
+            banquet_menu: 'Pizza',
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await fetch(`${baseUrl}/api/bookings/2099-02-14?timelineView=rooms`);
+        const data = await res.json().catch(() => []);
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(res.headers.get('x-timeline-view'), 'rooms');
+        assert.equal(data.length, 1);
+        assert.equal(data[0].id, 'BK-2099-0200');
+        assert.equal(data[0].lineId, 'banquet-service');
+        assert.equal(data[0].resourceId, roomName);
+        assert.equal(data[0].resourceType, 'room');
+        assert.equal(data[0].timelineProjection.view, 'rooms');
+        assert.equal(data[0].timelineProjection.sourceLineId, 'banquet-service');
+        assert.equal(data[0].extraData.bookingPackage.menuPositions[0].servingTime, '15:30');
+    });
+});
+
 test('PUT /api/bookings creates missing linked row when edit adds second animator', async () => {
     await withApp({}, async ({ baseUrl, state }) => {
         state.rows.push({
@@ -730,6 +818,164 @@ test('PUT /api/bookings creates missing linked row when edit adds second animato
         assert.ok(linkedRow.extra_data, 'linked row keeps second-line timeline identity');
         const linkedExtra = JSON.parse(linkedRow.extra_data);
         assert.equal(linkedExtra.timelineIdentity.resourceId, 'line-second');
+    });
+});
+
+test('PUT /api/bookings preserves booking package during unrelated edits', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-0300',
+            business_context: 'event_genix',
+            date: '2099-02-15',
+            time: '16:00',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen order',
+            category: 'custom',
+            duration: 60,
+            price: 600,
+            hosts: 0,
+            second_animator: null,
+            pinata_filler: null,
+            pinata_mode: 'none',
+            pinata_number: null,
+            pinata_filler_number: null,
+            client_pinata_service_price: null,
+            client_pinata_service_note: null,
+            costume: null,
+            room: 'Room A',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: {
+                timelineIdentity: {
+                    businessContext: 'event_genix',
+                    resourceId: 'banquet-service',
+                    lineId: 'banquet-service',
+                    resourceType: 'service',
+                    source: 'booking_form'
+                },
+                bookingPackage: {
+                    schemaVersion: 2,
+                    programBasePrice: 0,
+                    positionsSubtotal: 600,
+                    finalTotal: 600,
+                    menuPositions: [
+                        { id: 'item-1', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600, servingTime: '15:30' }
+                    ],
+                    serviceEvents: [{ id: 'service-event-1', type: 'food_service', title: 'Serve food', time: '15:30' }]
+                }
+            },
+            customer_id: null,
+            payment_method: null,
+            banquet_guests: 8,
+            banquet_adults: null,
+            banquet_tables: null,
+            banquet_menu: 'Pizza',
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await updateBooking(baseUrl, 'BK-2099-0300', {
+            businessContext: 'event_genix',
+            label: 'Kitchen updated',
+            notes: 'unrelated edit'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const row = state.rows.find(item => item.id === 'BK-2099-0300');
+        const extra = typeof row.extra_data === 'string' ? JSON.parse(row.extra_data) : row.extra_data;
+        assert.equal(row.label, 'Kitchen updated');
+        assert.equal(row.banquet_menu, 'Pizza');
+        assert.equal(extra.timelineIdentity.resourceId, 'banquet-service');
+        assert.equal(extra.bookingPackage.menuPositions[0].servingTime, '15:30');
+        assert.equal(extra.bookingPackage.serviceEvents[0].time, '15:30');
+    });
+});
+
+test('PUT /api/bookings allows explicit booking package clear without dropping other extra data', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-0301',
+            business_context: 'event_genix',
+            date: '2099-02-15',
+            time: '17:00',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen order',
+            category: 'custom',
+            duration: 60,
+            price: 600,
+            hosts: 0,
+            second_animator: null,
+            pinata_filler: null,
+            pinata_mode: 'none',
+            pinata_number: null,
+            pinata_filler_number: null,
+            client_pinata_service_price: null,
+            client_pinata_service_note: null,
+            costume: null,
+            room: 'Room A',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: {
+                timelineIdentity: {
+                    businessContext: 'event_genix',
+                    resourceId: 'banquet-service',
+                    lineId: 'banquet-service',
+                    resourceType: 'service',
+                    source: 'booking_form'
+                },
+                bookingWorkspace: { scenario: 'kitchen_only' },
+                bookingPackage: {
+                    schemaVersion: 2,
+                    programBasePrice: 0,
+                    positionsSubtotal: 600,
+                    finalTotal: 600,
+                    menuPositions: [
+                        { id: 'item-1', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600, servingTime: '15:30' }
+                    ],
+                    serviceEvents: [{ id: 'service-event-1', type: 'food_service', title: 'Serve food', time: '15:30' }]
+                }
+            },
+            customer_id: null,
+            payment_method: null,
+            banquet_guests: 8,
+            banquet_adults: null,
+            banquet_tables: null,
+            banquet_menu: 'Pizza',
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await updateBooking(baseUrl, 'BK-2099-0301', {
+            businessContext: 'event_genix',
+            extraData: { bookingPackage: null },
+            banquetMenu: null,
+            banquetGuests: null,
+            banquetAdults: null,
+            banquetTables: null
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const row = state.rows.find(item => item.id === 'BK-2099-0301');
+        const extra = typeof row.extra_data === 'string' ? JSON.parse(row.extra_data) : row.extra_data;
+        assert.equal(row.banquet_menu, null);
+        assert.equal(row.banquet_guests, null);
+        assert.equal(extra.timelineIdentity.resourceId, 'banquet-service');
+        assert.equal(extra.bookingWorkspace.scenario, 'kitchen_only');
+        assert.equal(extra.bookingPackage, null);
     });
 });
 

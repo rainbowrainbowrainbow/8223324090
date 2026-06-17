@@ -198,10 +198,11 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(bookingsRoute, /function bookingMatchesBanquetServiceLine/);
     assert.match(bookingsRoute, /function isBanquetServiceTimelineBooking/);
     assert.match(bookingsRoute, /function isBanquetServiceRootBooking/);
+    assert.match(bookingsRoute, /function isRoomProjectableBanquetServiceRootBooking/);
     assert.match(bookingsRoute, /BANQUET_SERVICE_LINE_ID/);
     assert.match(bookingsRoute, /return bookings\.filter\(booking => !isBanquetServiceTimelineBooking\(booking\)\)/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
-    assert.match(bookingsRoute, /return bookings\s*\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)\s*\.filter\(booking => !String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)\)/);
+    assert.match(bookingsRoute, /\.filter\(booking => !isBanquetServiceRootBooking\(booking\) \|\| isRoomProjectableBanquetServiceRootBooking\(booking\)\)/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
     assert.match(bookingsRoute, /isRoomConflictBlockingRoom/);
     assert.match(bookingsRoute, /if \(!isRoomConflictBlockingRoom\(candidate\.room\)\) return null/);

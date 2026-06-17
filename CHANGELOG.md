@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.26 - Banquet Serving Persistence
+
+### Banquet / Room timeline / Serving persistence / Release / (Клешня, 17.06.2026) [codex]
+- **Банкетна їжа та час видачі більше не зникають після F5** - room timeline тепер повертає projectable `banquet-service` root booking на реальну кімнату, тому `extra_data.bookingPackage.menuPositions[].servingTime` доходить у cold GET.
+- **Технічний `banquet-service` не повертається у "Свята"** - non-room timeline views і далі відсікають kitchen/service rows, а room view проєктує тільки banquet/kitchen root з реальною кімнатою.
+- **Unrelated edit більше не стирає `bookingPackage`** - `PUT /api/bookings/:id` merge-ить старий `extra_data` з incoming payload, тому зміна назви, нотаток або статусу не губить меню, `servingTime` і service events.
+- **Explicit clear лишився контрольованим** - `extraData.bookingPackage = null` очищає package, але не викидає інші metadata на кшталт `timelineIdentity` або `bookingWorkspace`.
+- **Regression coverage розширено** - route tests перевіряють cold room GET, unrelated PUT, explicit clear і legacy `banquet_menu`; static guards оновлено під новий room projection contract.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.26`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.25 - Timeline Sticky Edge Refit
 
 ### Timeline / Sticky header / Edge lift / Release / (Клешня, 17.06.2026) [codex]

@@ -426,19 +426,13 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 .mini-booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
 
-.booking-block.has-timeline-banquet-preview {
-    padding-bottom: 24px;
-}
-
-.booking-block.has-timeline-banquet-service-markers {
-    padding-bottom: 46px;
-}
-
 .booking-block.is-timeline-banquet-preview-hovered {
     box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.56), 0 8px 20px rgba(2, 6, 23, 0.24);
 }
 
 .line-header.has-timeline-banquet-room-preview {
+    justify-content: flex-start;
+    gap: 3px;
     box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.18);
 }
 
@@ -448,267 +442,215 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 }
 
 .timeline-banquet-room-card {
-    position: absolute;
-    top: 8px;
-    left: calc(100% - 24px);
+    position: relative;
     z-index: 35;
-    display: grid;
-    align-content: center;
-    width: 30px;
-    min-height: 42px;
+    display: block;
+    width: 100%;
+    min-height: 28px;
+    margin-top: 5px;
     padding: 5px 6px;
-    border: 1px solid rgba(20, 184, 166, 0.46);
+    border: 1px solid rgba(20, 184, 166, 0.28);
     border-radius: 8px;
-    background: rgba(15, 23, 42, 0.92);
-    color: #F8FAFC;
-    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.24);
+    background: rgba(255, 255, 255, 0.78);
+    color: #0F172A;
     cursor: pointer;
-    overflow: hidden;
-    transform: translateX(0);
-    transition: width var(--speed-fast) var(--ease-smooth), transform var(--speed-fast) var(--ease-smooth), border-color var(--speed-fast), background var(--speed-fast), box-shadow var(--speed-fast);
+    overflow: visible;
+    text-align: left;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+    transition: border-color var(--speed-fast), background var(--speed-fast), box-shadow var(--speed-fast);
 }
 
 .timeline-banquet-room-card:hover,
 .timeline-banquet-room-card:focus-visible,
 .line-header:hover .timeline-banquet-room-card,
 .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
-    width: 190px;
-    transform: translateX(6px);
-    border-color: rgba(94, 234, 212, 0.74);
-    background: rgba(15, 23, 42, 0.98);
-    box-shadow: 0 12px 26px rgba(2, 6, 23, 0.34);
+    border-color: rgba(20, 184, 166, 0.56);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
     outline: none;
 }
 
 .timeline-banquet-room-card--warning {
-    border-color: rgba(245, 158, 11, 0.64);
+    border-color: rgba(245, 158, 11, 0.5);
 }
 
-.timeline-banquet-room-card-icons {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    font-size: 12px;
-    line-height: 1;
-}
-
-.timeline-banquet-room-card:hover .timeline-banquet-room-card-icons,
-.timeline-banquet-room-card:focus-visible .timeline-banquet-room-card-icons,
-.line-header:hover .timeline-banquet-room-card-icons,
-.line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card-icons {
-    display: none;
-}
-
-.timeline-banquet-room-card-glance {
+.timeline-banquet-room-card-main {
     display: grid;
     gap: 3px;
     min-width: 0;
+}
+
+.timeline-banquet-room-card-kicker {
+    color: #0F766E;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.timeline-banquet-room-card-signals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    min-width: 0;
+}
+
+.timeline-banquet-room-card-signal {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-width: 0;
+    padding: 2px 5px;
+    border-radius: 999px;
+    background: rgba(15, 118, 110, 0.1);
+    color: #115E59;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-banquet-room-card-signal--warning {
+    background: rgba(245, 158, 11, 0.16);
+    color: #92400E;
+}
+
+.timeline-banquet-room-card-signal--activity {
+    background: rgba(37, 99, 235, 0.1);
+    color: #1D4ED8;
+}
+
+.timeline-banquet-room-card-signal--cake {
+    background: rgba(219, 39, 119, 0.1);
+    color: #BE185D;
+}
+
+.timeline-banquet-room-card-signal--service {
+    background: rgba(14, 116, 144, 0.1);
+    color: #0E7490;
+}
+
+.timeline-banquet-room-card-glance {
+    position: absolute;
+    top: 0;
+    left: calc(100% + 8px);
+    z-index: 80;
+    display: grid;
+    gap: 5px;
+    width: min(238px, calc(100vw - 220px));
+    padding: 8px 9px;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.98);
+    color: #0F172A;
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+    min-width: 0;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
+    transform: translateX(-4px);
+    transition: opacity var(--speed-fast), visibility var(--speed-fast), transform var(--speed-fast) var(--ease-smooth);
 }
 
 .timeline-banquet-room-card:hover .timeline-banquet-room-card-glance,
 .timeline-banquet-room-card:focus-visible .timeline-banquet-room-card-glance,
-.line-header:hover .timeline-banquet-room-card-glance,
 .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card-glance {
     opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
 }
 
 .timeline-banquet-room-card-line {
-    display: flex;
-    align-items: center;
-    gap: 5px;
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 6px;
     min-width: 0;
-    font-size: 10px;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.timeline-banquet-room-card-label {
+    color: #64748B;
+    font-weight: 800;
+}
+
+.timeline-banquet-room-card-text {
+    min-width: 0;
+    color: #0F172A;
     font-weight: 900;
-    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.timeline-banquet-room-card-icon {
-    flex: 0 0 auto;
-}
-
-.timeline-banquet-room-card-text,
-.timeline-banquet-room-card-detail {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.timeline-banquet-room-card-detail {
-    color: #BAE6FD;
-    font-size: 9px;
-}
-
-.timeline-banquet-preview {
-    position: absolute;
-    left: 6px;
-    right: 6px;
-    bottom: 4px;
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    z-index: 18;
-    pointer-events: auto;
-}
-
-.timeline-banquet-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 0;
-    max-width: 100%;
-    height: 20px;
-    padding: 0 8px;
-    border: 1px solid rgba(255, 255, 255, 0.34);
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.78);
+body.dark-mode .timeline-banquet-room-card,
+html[data-theme="dark"] .timeline-banquet-room-card {
+    border-color: rgba(45, 212, 191, 0.32);
+    background: rgba(15, 23, 42, 0.72);
     color: #F8FAFC;
-    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
-    cursor: pointer;
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 18px;
-    overflow: hidden;
-    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(2, 6, 23, 0.28);
 }
 
-.timeline-banquet-chip:hover,
-.timeline-banquet-chip:focus-visible {
-    background: rgba(15, 23, 42, 0.92);
-    border-color: rgba(255, 255, 255, 0.52);
-    outline: none;
+body.dark-mode .timeline-banquet-room-card:hover,
+body.dark-mode .timeline-banquet-room-card:focus-visible,
+body.dark-mode .line-header:hover .timeline-banquet-room-card,
+body.dark-mode .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card,
+html[data-theme="dark"] .timeline-banquet-room-card:hover,
+html[data-theme="dark"] .timeline-banquet-room-card:focus-visible,
+html[data-theme="dark"] .line-header:hover .timeline-banquet-room-card,
+html[data-theme="dark"] .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
+    border-color: rgba(94, 234, 212, 0.62);
+    background: rgba(15, 23, 42, 0.9);
 }
 
-.timeline-banquet-chip--menu {
-    background: rgba(20, 184, 166, 0.82);
+body.dark-mode .timeline-banquet-room-card-kicker,
+html[data-theme="dark"] .timeline-banquet-room-card-kicker {
+    color: #5EEAD4;
 }
 
-.timeline-banquet-chip--activity {
-    background: rgba(59, 130, 246, 0.78);
+body.dark-mode .timeline-banquet-room-card-signal,
+html[data-theme="dark"] .timeline-banquet-room-card-signal {
+    background: rgba(45, 212, 191, 0.14);
+    color: #CCFBF1;
 }
 
-.timeline-banquet-chip--warning {
-    background: rgba(239, 68, 68, 0.86);
+body.dark-mode .timeline-banquet-room-card-signal--warning,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--warning {
+    background: rgba(245, 158, 11, 0.18);
+    color: #FDE68A;
 }
 
-.timeline-banquet-chip-part {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    min-width: 0;
+body.dark-mode .timeline-banquet-room-card-signal--activity,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--activity {
+    background: rgba(96, 165, 250, 0.18);
+    color: #DBEAFE;
 }
 
-.timeline-banquet-chip-icon {
-    flex: 0 0 auto;
+body.dark-mode .timeline-banquet-room-card-signal--cake,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--cake {
+    background: rgba(244, 114, 182, 0.18);
+    color: #FCE7F3;
 }
 
-.timeline-banquet-chip-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+body.dark-mode .timeline-banquet-room-card-glance,
+html[data-theme="dark"] .timeline-banquet-room-card-glance {
+    border-color: rgba(45, 212, 191, 0.28);
+    background: rgba(15, 23, 42, 0.98);
+    color: #F8FAFC;
+    box-shadow: 0 18px 40px rgba(2, 6, 23, 0.42);
 }
 
-.timeline-banquet-chip-count {
-    display: inline-grid;
-    place-items: center;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.2);
-    font-size: 8px;
-    line-height: 1;
+body.dark-mode .timeline-banquet-room-card-label,
+html[data-theme="dark"] .timeline-banquet-room-card-label {
+    color: #94A3B8;
 }
 
-.timeline-banquet-chip-separator {
-    color: rgba(255, 255, 255, 0.64);
-}
-
-.timeline-banquet-chip--icon-only {
-    width: 24px;
-    justify-content: center;
-    padding: 0;
-}
-
-.timeline-banquet-chip--icon-only .timeline-banquet-chip-text,
-.timeline-banquet-chip--icon-only .timeline-banquet-chip-count,
-.timeline-banquet-chip--icon-only .timeline-banquet-chip-separator,
-.timeline-banquet-chip--icon-only .timeline-banquet-chip-part:not(:first-of-type) {
-    display: none;
-}
-
-.timeline-banquet-service-markers {
-    position: absolute;
-    left: 6px;
-    right: 6px;
-    bottom: 26px;
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 4px;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-    z-index: 19;
-    pointer-events: auto;
-}
-
-.timeline-banquet-service-marker {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    max-width: 136px;
-    height: 20px;
-    padding: 0 7px;
-    border: 1px solid rgba(94, 234, 212, 0.46);
-    border-radius: 999px;
-    background: rgba(8, 47, 73, 0.84);
-    color: #ECFEFF;
-    box-shadow: 0 5px 12px rgba(2, 6, 23, 0.24);
-    cursor: pointer;
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 18px;
-    white-space: nowrap;
-}
-
-.timeline-banquet-service-marker:hover,
-.timeline-banquet-service-marker:focus-visible {
-    border-color: rgba(125, 211, 252, 0.82);
-    background: rgba(12, 74, 110, 0.94);
-    outline: none;
-}
-
-.timeline-banquet-service-marker--cake {
-    border-color: rgba(244, 114, 182, 0.62);
-    background: rgba(131, 24, 67, 0.84);
-}
-
-.timeline-banquet-service-marker--service {
-    border-color: rgba(251, 191, 36, 0.58);
-    background: rgba(120, 53, 15, 0.84);
-}
-
-.timeline-banquet-service-marker-title {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.timeline-banquet-service-marker-count {
-    display: inline-grid;
-    place-items: center;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.18);
-    color: #FFFFFF;
-    font-size: 8px;
-    line-height: 1;
+body.dark-mode .timeline-banquet-room-card-text,
+html[data-theme="dark"] .timeline-banquet-room-card-text {
+    color: #F8FAFC;
 }
 
 .timeline-banquet-inspector {
@@ -934,11 +876,10 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
         max-width: calc(100vw - 96px);
     }
 
-    .timeline-banquet-room-card:hover,
-    .timeline-banquet-room-card:focus-visible,
-    .line-header:hover .timeline-banquet-room-card,
-    .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
-        width: 160px;
+    .timeline-banquet-room-card-glance {
+        top: calc(100% + 6px);
+        left: 0;
+        width: min(238px, calc(100vw - 32px));
     }
 }
 
@@ -2215,23 +2156,34 @@ body.dragging-active {
 }
 
 .timeline-container.compact .timeline-banquet-room-card {
-    top: 5px;
-    left: calc(100% - 22px);
-    width: 24px;
-    min-height: 32px;
-    padding: 4px 5px;
+    min-height: 22px;
+    margin-top: 3px;
+    padding: 3px 4px;
+    border-radius: 6px;
 }
 
-.timeline-container.compact .timeline-banquet-room-card:hover,
-.timeline-container.compact .timeline-banquet-room-card:focus-visible,
-.timeline-container.compact .line-header:hover .timeline-banquet-room-card,
-.timeline-container.compact .line-header.is-timeline-banquet-room-preview-highlighted .timeline-banquet-room-card {
-    width: 150px;
+.timeline-container.compact .timeline-banquet-room-card-kicker {
+    display: none;
+}
+
+.timeline-container.compact .timeline-banquet-room-card-signals {
+    flex-wrap: nowrap;
+    gap: 2px;
+}
+
+.timeline-container.compact .timeline-banquet-room-card-signal {
+    max-width: 70px;
+    padding: 1px 4px;
+    font-size: 8px;
 }
 
 .timeline-container.compact .timeline-banquet-room-card-line {
     gap: 4px;
     font-size: 9px;
+}
+
+.timeline-container.compact .timeline-banquet-room-card-glance {
+    width: 218px;
 }
 
 .timeline-container.compact .booking-block {
@@ -2240,14 +2192,6 @@ body.dragging-active {
     padding: 2px 5px;
     border-radius: 5px;
     border-left-width: 2px;
-}
-
-.timeline-container.compact .booking-block.has-timeline-banquet-preview {
-    padding-bottom: 20px;
-}
-
-.timeline-container.compact .booking-block.has-timeline-banquet-service-markers {
-    padding-bottom: 38px;
 }
 
 .timeline-container.compact .booking-block:hover {
@@ -2277,34 +2221,6 @@ body.dragging-active {
     top: 2px;
     right: 3px;
     font-size: 8px;
-}
-
-.timeline-container.compact .timeline-banquet-preview {
-    bottom: 3px;
-}
-
-.timeline-container.compact .timeline-banquet-service-markers {
-    bottom: 22px;
-}
-
-.timeline-container.compact .timeline-banquet-chip,
-.timeline-container.compact .timeline-banquet-service-marker {
-    height: 16px;
-    font-size: 8px;
-    line-height: 14px;
-}
-
-.timeline-container.compact .timeline-banquet-chip {
-    width: 20px;
-    justify-content: center;
-    padding: 0;
-}
-
-.timeline-container.compact .timeline-banquet-chip-text,
-.timeline-container.compact .timeline-banquet-chip-count,
-.timeline-container.compact .timeline-banquet-chip-separator,
-.timeline-container.compact .timeline-banquet-chip-part:not(:first-of-type) {
-    display: none;
 }
 
 .timeline-container.compact .booking-block.graduation-parent {

@@ -1198,14 +1198,6 @@ function showTimelineBanquetInspector(event, summary, trigger) {
     inspector.focus?.({ preventScroll: true });
 }
 
-function showTimelineBanquetServiceInspector(event, marker, summary, trigger) {
-    if (!marker || !summary) return;
-    showTimelineBanquetInspector(event, {
-        ...summary,
-        servingMarkers: summary.servingMarkers?.length ? summary.servingMarkers : [marker]
-    }, trigger);
-}
-
 function timelineBanquetRoomKey(value) {
     return normalizedTimelineMatchKey(value);
 }
@@ -1214,26 +1206,39 @@ function timelineBanquetRoomCardSignals(summary = {}) {
     const signals = [];
     const hasMissingTime = (summary.warnings || []).some(item => String(item || '').toLowerCase().includes('час'))
         || (summary.menuPreviewItems || []).some(item => !item.servingTime);
-    const cakeMarker = (summary.servingMarkers || []).find(marker => marker.type === 'cake' || String(marker.label || '').toLowerCase().includes('торт'));
+    const servingMarkers = Array.isArray(summary.servingMarkers) ? summary.servingMarkers : [];
+    const cakeMarker = servingMarkers.find(marker => marker.time && (marker.type === 'cake' || String(marker.label || '').toLowerCase().includes('торт')));
+    const servingMarker = cakeMarker || servingMarkers.find(marker => marker.time);
+    const menuCount = Number(summary.menuCount || 0);
+    const activityCount = Number(summary.activityCount || 0);
 
-    if (hasMissingTime) signals.push({ key: 'warning', icon: '⚠', label: 'Без часу' });
-    if (summary.hasMenu || Number(summary.menuCount || 0) > 0) {
-        const count = Number(summary.menuCount || 0);
-        signals.push({ key: 'menu', icon: '🍽', label: 'Кухня', detail: count ? `${count} поз.` : 'Меню' });
+    if (hasMissingTime) signals.push({ key: 'warning', label: 'Без часу' });
+    if (summary.hasMenu || menuCount > 0) {
+        signals.push({ key: 'menu', label: menuCount ? `Кухня ${menuCount} поз.` : 'Кухня' });
     }
-    if (cakeMarker) signals.push({ key: 'cake', icon: '🎂', label: timelineBanquetMarkerLabel(cakeMarker) });
-    if (Number(summary.activityCount || 0) > 0) {
+    if (servingMarker) {
+        signals.push({ key: servingMarker.type === 'cake' ? 'cake' : 'service', label: timelineBanquetMarkerLabel(servingMarker) });
+    }
+    if (activityCount > 0) {
         signals.push({
             key: 'activity',
-            icon: '🎭',
-            label: `${summary.activityCount} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`
+            label: `${activityCount} ${timelineBanquetPlural(activityCount, 'активність', 'активності', 'активностей')}`
         });
     }
-    return signals.slice(0, 4);
+    return signals.slice(0, 3);
+}
+
+function timelineBanquetGlanceRows(summary = {}, signalText = '') {
+    return [
+        ['Кімната', summary.room || 'Не вказано'],
+        ['Клієнт', summary.customerName || 'Не вказано'],
+        ['Час', timelineBanquetDateTimeText(summary)],
+        ['Сигнали', signalText || '—']
+    ];
 }
 
 function renderTimelineBanquetRoomCard(header, summary = {}) {
-    if (!header || !summary) return;
+    if (!isRoomTimelineView() || !header || !summary) return;
     const signals = timelineBanquetRoomCardSignals(summary);
     if (!signals.length) return;
     let card = header.querySelector('[data-banquet-room-card]');
@@ -1244,21 +1249,23 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
         card.dataset.banquetRoomCard = '1';
         header.appendChild(card);
     }
-    const label = signals.map(signal => signal.detail ? `${signal.label} ${signal.detail}` : signal.label).join(' · ');
+    const label = signals.map(signal => signal.label).join(' · ');
     const tone = signals.some(signal => signal.key === 'warning') ? 'warning' : signals[0].key;
     card.className = `timeline-banquet-room-card timeline-banquet-room-card--${tone}`;
-    card.setAttribute('aria-label', `Банкет: ${label}`);
-    card.title = label;
+    card.setAttribute('aria-label', `Банкет: ${[summary.room, summary.customerName, timelineBanquetDateTimeText(summary), label].filter(Boolean).join(' · ')}`);
+    card.removeAttribute('title');
     card.innerHTML = `
-        <span class="timeline-banquet-room-card-icons" aria-hidden="true">
-            ${signals.slice(0, 3).map(signal => `<span>${escapeHtml(signal.icon)}</span>`).join('')}
+        <span class="timeline-banquet-room-card-main">
+            <span class="timeline-banquet-room-card-kicker">Банкет</span>
+            <span class="timeline-banquet-room-card-signals">
+                ${signals.map(signal => `<span class="timeline-banquet-room-card-signal timeline-banquet-room-card-signal--${escapeHtml(signal.key)}">${escapeHtml(signal.label)}</span>`).join('')}
+            </span>
         </span>
         <span class="timeline-banquet-room-card-glance">
-            ${signals.slice(0, 3).map(signal => `
-                <span class="timeline-banquet-room-card-line timeline-banquet-room-card-line--${escapeHtml(signal.key)}">
-                    <span class="timeline-banquet-room-card-icon" aria-hidden="true">${escapeHtml(signal.icon)}</span>
-                    <span class="timeline-banquet-room-card-text">${escapeHtml(signal.label)}</span>
-                    ${signal.detail ? `<span class="timeline-banquet-room-card-detail">${escapeHtml(signal.detail)}</span>` : ''}
+            ${timelineBanquetGlanceRows(summary, label).map(([name, value]) => `
+                <span class="timeline-banquet-room-card-line">
+                    <span class="timeline-banquet-room-card-label">${escapeHtml(name)}</span>
+                    <span class="timeline-banquet-room-card-text">${escapeHtml(value)}</span>
                 </span>
             `).join('')}
         </span>
@@ -1309,32 +1316,6 @@ function registerTimelineBanquetRoomPreview(summary = {}) {
     });
 }
 
-function timelineBanquetRoomHeaderSummary(header) {
-    const directKey = header?.dataset?.timelineBanquetRoomPreview;
-    if (directKey && TIMELINE_BANQUET_ROOM_PREVIEWS.has(directKey)) {
-        return TIMELINE_BANQUET_ROOM_PREVIEWS.get(directKey);
-    }
-    const keys = [
-        header?.dataset?.lineId,
-        header?.dataset?.timelineRoomName,
-        header?.querySelector?.('.line-name')?.textContent
-    ].map(timelineBanquetRoomKey);
-    for (const key of keys) {
-        if (key && TIMELINE_BANQUET_ROOM_PREVIEWS.has(key)) return TIMELINE_BANQUET_ROOM_PREVIEWS.get(key);
-    }
-    return null;
-}
-
-function showTimelineBanquetRoomPreview(event, header) {
-    if (!isRoomTimelineView()) return false;
-    const summary = timelineBanquetRoomHeaderSummary(header);
-    if (!summary) return false;
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    showTimelineBanquetInspector(event, summary, header);
-    return true;
-}
-
 function bindTimelineBanquetRoomHeader(header, line = {}) {
     if (!header || header.dataset.timelineBanquetHeaderBound === '1') return;
     header.dataset.timelineBanquetHeaderBound = '1';
@@ -1352,9 +1333,7 @@ function setTimelineBanquetRoomPreviewHighlight(summary = {}, active = false) {
 
 function clearTimelineBanquetPreviewVisuals(block, options = {}) {
     if (!block) return;
-    block.querySelector('[data-timeline-banquet-preview]')?.remove();
-    block.querySelector('[data-timeline-banquet-service-markers]')?.remove();
-    block.classList.remove('has-timeline-banquet-preview', 'has-timeline-banquet-service-markers', 'has-timeline-banquet-preview-trigger');
+    block.classList.remove('has-timeline-banquet-preview-trigger');
     if (options.clearSummary !== false) {
         delete block._timelineBanquetSummary;
         delete block.dataset.banquetGroupId;
@@ -1390,121 +1369,8 @@ function resolveTimelineBanquetPreviewTargets(snapshot = {}, summary = {}, carri
     return targets.sort((a, b) => String(a.booking?.time || '').localeCompare(String(b.booking?.time || '')));
 }
 
-function timelineBanquetIndicatorParts(summary = {}, servingInfo = {}) {
-    const parts = [];
-    if (Number(servingInfo.missingCount || 0) > 0) {
-        parts.push({ key: 'warning', icon: '⚠', label: 'Без часу', count: servingInfo.missingCount });
-    }
-    if (summary.hasMenu) {
-        parts.push({ key: 'menu', icon: '🍽', label: 'Меню', count: summary.menuCount });
-    }
-    if (summary.activityCount > 0) {
-        parts.push({ key: 'activity', icon: '🎭', label: 'Активності', count: summary.activityCount });
-    }
-    return parts;
-}
-
-function bindTimelineBanquetChipEvents(button, summary) {
-    button.addEventListener('pointerdown', event => {
-        event.preventDefault();
-        event.stopPropagation();
-    });
-    button.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        showTimelineBanquetInspector(event, summary, button);
-    });
-    button.addEventListener('mouseenter', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
-    button.addEventListener('mouseleave', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
-    button.addEventListener('focus', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
-    button.addEventListener('blur', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
-}
-
-function renderTimelineBanquetPreviewIndicator(block, summary, servingInfo) {
-    const parts = timelineBanquetIndicatorParts(summary, servingInfo);
-    if (!parts.length) {
-        block.querySelector('[data-timeline-banquet-preview]')?.remove();
-        block.classList.remove('has-timeline-banquet-preview');
-        return;
-    }
-    block.classList.add('has-timeline-banquet-preview');
-    const tone = parts.some(part => part.key === 'warning') ? 'warning' : parts[0].key;
-    let container = block.querySelector('[data-timeline-banquet-preview]');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'timeline-banquet-preview';
-        container.dataset.timelineBanquetPreview = '1';
-        block.appendChild(container);
-    }
-    const readableLabel = parts.map(part => `${part.label}${part.count ? ` ${part.count}` : ''}`).join(' · ');
-    container.innerHTML = `
-        <button type="button" class="timeline-banquet-chip timeline-banquet-chip--${escapeHtml(tone)}" data-banquet-preview-trigger="1" aria-label="${escapeHtml(readableLabel)}" title="${escapeHtml(readableLabel)}">
-            ${parts.map((part, index) => `
-                ${index ? '<span class="timeline-banquet-chip-separator">·</span>' : ''}
-                <span class="timeline-banquet-chip-part timeline-banquet-chip-part--${escapeHtml(part.key)}">
-                    <span class="timeline-banquet-chip-icon" aria-hidden="true">${escapeHtml(part.icon)}</span>
-                    <span class="timeline-banquet-chip-text">${escapeHtml(part.label)}</span>
-                    ${part.count ? `<span class="timeline-banquet-chip-count">${escapeHtml(String(part.count))}</span>` : ''}
-                </span>
-            `).join('')}
-        </button>
-    `;
-    const chip = container.querySelector('[data-banquet-preview-trigger]');
-    const blockWidth = block.getBoundingClientRect?.().width || Number.parseFloat(block.style.width || '0') || 0;
-    chip?.classList.toggle('timeline-banquet-chip--icon-only', blockWidth > 0 && blockWidth < 112);
-    if (chip) bindTimelineBanquetChipEvents(chip, summary);
-}
-
-function shouldRenderTimelineBanquetServiceMarkers(block, markers = []) {
-    if (!markers.length) return false;
-    const blockWidth = block.getBoundingClientRect?.().width || Number.parseFloat(block.style.width || '0') || 0;
-    const compact = Boolean(block.closest('.timeline-container.compact')) || document.body.classList.contains('timeline-compact-mode');
-    return !compact && blockWidth >= 190;
-}
-
-function renderTimelineBanquetServiceMarkers(block, summary, servingInfo) {
-    let markerContainer = block.querySelector('[data-timeline-banquet-service-markers]');
-    const markers = Array.isArray(servingInfo.markers) ? servingInfo.markers : [];
-    if (!shouldRenderTimelineBanquetServiceMarkers(block, markers)) {
-        markerContainer?.remove();
-        block.classList.remove('has-timeline-banquet-service-markers');
-        return;
-    }
-    block.classList.add('has-timeline-banquet-service-markers');
-    if (!markerContainer) {
-        markerContainer = document.createElement('div');
-        markerContainer.className = 'timeline-banquet-service-markers';
-        markerContainer.dataset.timelineBanquetServiceMarkers = '1';
-        block.appendChild(markerContainer);
-    }
-    markerContainer.innerHTML = markers.slice(0, 3).map((marker, index) => {
-        const label = timelineBanquetMarkerLabel(marker);
-        return `
-            <button type="button" class="timeline-banquet-service-marker timeline-banquet-service-marker--${escapeHtml(marker.type || 'service')}" data-banquet-service-marker="${index}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
-                <span class="timeline-banquet-service-marker-title">${escapeHtml(label)}</span>
-                <span class="timeline-banquet-service-marker-count">${escapeHtml(String(marker.count || 1))}</span>
-            </button>
-        `;
-    }).join('');
-    markerContainer.querySelectorAll('[data-banquet-service-marker]').forEach(button => {
-        const marker = markers[Number(button.dataset.banquetServiceMarker)] || null;
-        button.addEventListener('pointerdown', event => {
-            event.preventDefault();
-            event.stopPropagation();
-        });
-        button.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            showTimelineBanquetServiceInspector(event, marker, summary, button);
-        });
-        button.addEventListener('mouseenter', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
-        button.addEventListener('mouseleave', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
-        button.addEventListener('focus', () => setTimelineBanquetRoomPreviewHighlight(summary, true));
-        button.addEventListener('blur', () => setTimelineBanquetRoomPreviewHighlight(summary, false));
-    });
-}
-
 function applyTimelineBanquetPreview(snapshot = {}) {
+    if (!isRoomTimelineView()) return;
     const carrier = resolveTimelineBanquetBadgeCarrier(snapshot);
     if (!carrier?.block || !carrier.summary) return;
     const { block, summary } = carrier;
@@ -1526,8 +1392,6 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     block.dataset.banquetGroupId = groupId;
     block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
-    renderTimelineBanquetPreviewIndicator(block, summaryForInspector, servingInfo);
-    renderTimelineBanquetServiceMarkers(block, summaryForInspector, servingInfo);
     registerTimelineBanquetRoomPreview(summaryForInspector);
 }
 
@@ -1557,7 +1421,7 @@ function hydrateTimelineBanquetBadges(block, booking = {}) {
 
 function showTimelineBanquetPreviewFromBlock(event, block) {
     if (!isRoomTimelineView() || !block?._timelineBanquetSummary) return false;
-    if (event?.target?.closest?.('[data-banquet-link-handle], [data-banquet-preview-trigger], [data-banquet-service-marker], .graduation-segment, .graduation-segment-actions')) return false;
+    if (event?.target?.closest?.('[data-banquet-link-handle], .graduation-segment, .graduation-segment-actions')) return false;
     event?.preventDefault?.();
     event?.stopPropagation?.();
     showTimelineBanquetInspector(event, block._timelineBanquetSummary, block);
@@ -2002,7 +1866,7 @@ async function renderTimeline() {
         const lineHeader = lineEl.querySelector('.line-header');
         bindTimelineBanquetRoomHeader(lineHeader, line);
         lineHeader?.addEventListener('click', event => {
-            if (showTimelineBanquetRoomPreview(event, lineHeader)) return;
+            if (event.target?.closest?.('[data-banquet-room-card]')) return;
             editLineModal(line.id);
         });
         } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }
@@ -2496,7 +2360,6 @@ function createBookingBlock(booking, startHour, anchor) {
         // Feature #14: Suppress tooltip during drag
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
         if (e.target.closest('[data-banquet-link-handle]')) return;
-        if (e.target.closest('[data-banquet-preview-trigger], [data-banquet-service-marker]')) return;
         if (block._timelineBanquetSummary) {
             block.classList.add('is-timeline-banquet-preview-hovered');
             setTimelineBanquetRoomPreviewHighlight(block._timelineBanquetSummary, true);
@@ -2506,7 +2369,6 @@ function createBookingBlock(booking, startHour, anchor) {
     });
     block.addEventListener('mousemove', (e) => {
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
-        if (e.target.closest('[data-banquet-preview-trigger], [data-banquet-service-marker]')) return;
         if (block._timelineBanquetSummary) return;
         moveTooltip(e);
     });
@@ -2519,7 +2381,6 @@ function createBookingBlock(booking, startHour, anchor) {
     block.addEventListener('touchstart', (e) => {
         if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState || _banquetLinkDraft) return;
         if (e.target.closest('[data-banquet-link-handle]')) return;
-        if (e.target.closest('[data-banquet-preview-trigger], [data-banquet-service-marker]')) return;
         if (block._timelineBanquetSummary) return;
         showTooltip(e.touches[0], renderBooking);
     }, { passive: true });

@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.14 - Banquet Preview Teaser UX
+
+### Timeline / Banquet teaser / Room-first UX / Release / (Клешня, 17.06.2026) [codex]
+- **Banquet kitchen teaser переїхав у room header** - замість вузького floating pill біля рядків room timeline показує горизонтальну міні-картку, привʼязану до конкретної кімнати.
+- **У “Свята” teaser не рендериться** - animator view лишає activity bookings як звичайні броні й не показує kitchen/activity/warning preview біля animator rows.
+- **Collapsed state став читабельним** - teaser показує короткі сигнали на кшталт `Без часу`, `Кухня 6 поз.`, `Торт 15:00` або `2 активності`, максимум 2-3 chips без single-letter режиму.
+- **Hover став lightweight glance** - наведення показує тільки компактний preview з кімнатою, клієнтом, часом і summary, без великого scrollable popover поверх timeline.
+- **Click відкриває persistent inspector** - клік по room teaser або banquet booking block відкриває стабільну панель з клієнтом, кімнатою, часом, гостями, меню, serving times, warnings, активностями та кнопками `Деталі`/`Вижимка`.
+- **Native tooltip прибрано з banquet teaser** - room card більше не ставить `title`, а старі booking-level chips/service markers з `title` не рендеряться.
+- **Snapshot/cache flow збережено** - preview і далі будується з cached banquet group snapshot через існуючий frontend flow; якщо snapshot не завантажився, timeline рендериться як звичайно.
+- **Regression guards оновлено** - UI/static і timeline resources checks забороняють старі `data-banquet-preview-trigger`, service markers, stacked icon pill і native tooltip contract.
+- **Релізні маркери піднято до `0.76.14`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.13 - Durable Profile Avatars
 
 ### Profile / Avatar upload durability / Postgres blob fallback / Release / (Клешня, 17.06.2026) [codex]

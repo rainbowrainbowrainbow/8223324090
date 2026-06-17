@@ -526,7 +526,7 @@ test('timeline visual settings v2 keeps stable block ids, metadata, and legacy o
     assert.equal(sanitized.overrides.unknownBlock, undefined);
 });
 
-test('room timeline banquet preview and serving markers stay frontend-only and snapshot-backed', () => {
+test('room timeline banquet preview is room-only, frontend-only, and snapshot-backed', () => {
     const timeline = read('js/timeline.js');
     const css = read('css/timeline.css');
 
@@ -536,22 +536,44 @@ test('room timeline banquet preview and serving markers stay frontend-only and s
     assert.match(timeline, /function applyTimelineBanquetPreview/);
     assert.match(timeline, /function renderTimelineBanquetRoomCard/);
     assert.match(timeline, /function showTimelineBanquetInspector/);
+    assert.match(timeline, /function timelineBanquetRoomCardSignals/);
+    assert.match(timeline, /function timelineBanquetGlanceRows/);
     assert.match(timeline, /data-banquet-room-card/);
-    assert.match(timeline, /data-banquet-preview-trigger/);
-    assert.match(timeline, /data-banquet-service-marker/);
-    assert.match(timeline, /function showTimelineBanquetServiceInspector/);
     assert.match(timeline, /requestIdleCallback/);
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*isRoomTimelineView\(\)/);
+    assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
     assert.match(timeline, /timelineBanquetServingInfo\(summary\)/);
+    assert.match(timeline, /timelineBanquetMarkerLabel\(servingMarker\)/);
+    assert.match(timeline, /card\.removeAttribute\('title'\)/);
     assert.doesNotMatch(timeline, /data-banquet-badge/);
+    assert.doesNotMatch(timeline, /data-banquet-preview-trigger/);
+    assert.doesNotMatch(timeline, /data-banquet-service-marker/);
+    assert.doesNotMatch(timeline, /timeline-banquet-room-card-icons/);
+    assert.doesNotMatch(timeline, /card\.title/);
     assert.doesNotMatch(timeline, /showTimelineBanquetPopover/);
     assert.doesNotMatch(timeline, /\/banquet-service-markers/);
     assert.match(css, /\.timeline-banquet-room-card/);
+    assert.match(css, /\.timeline-banquet-room-card-signal/);
+    assert.match(css, /\.timeline-banquet-room-card-glance/);
     assert.match(css, /\.timeline-banquet-inspector/);
-    assert.match(css, /\.timeline-banquet-chip/);
-    assert.match(css, /\.timeline-banquet-service-markers/);
-    assert.match(css, /\.timeline-banquet-service-marker--cake/);
-    assert.match(css, /\.timeline-banquet-chip--warning/);
+    assert.doesNotMatch(css, /\.timeline-banquet-chip/);
+    assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
+    assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
+});
+
+test('animator timeline keeps banquet teaser surfaces out of park animator view', () => {
+    const timeline = read('js/timeline.js');
+
+    assert.match(timeline, /function isParkAnimatorTimelineView/);
+    assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
+    assert.match(timeline, /function isTimelineBanquetServiceBooking/);
+    assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\)\)/);
+    assert.match(timeline, /\.filter\(booking => !isTimelineBanquetServiceBooking\(booking\)\)/);
+    assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)/);
+    assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
+    assert.doesNotMatch(timeline, /showTimelineBanquetServiceInspector/);
+    assert.doesNotMatch(timeline, /data-banquet-preview-trigger/);
+    assert.doesNotMatch(timeline, /data-banquet-service-marker/);
 });
 
 test('timeline visual settings keep park animator and room views isolated', () => {

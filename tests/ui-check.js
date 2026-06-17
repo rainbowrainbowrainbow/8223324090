@@ -909,9 +909,9 @@ check('Timeline gear opens the standalone settings center instead of the overlay
 check('Timeline visual settings center has operator documentation and safe-change guardrails', timelineVisualSettingsDoc.includes('timeline:event_genix') && timelineVisualSettingsDoc.includes('visible') && timelineVisualSettingsDoc.includes('order') && timelineVisualSettingsDoc.includes('density') && timelineVisualSettingsDoc.includes('emphasis') && timelineVisualSettingsDoc.includes('customLabel') && timelineVisualSettingsDoc.includes('adminNote') && timelineVisualSettingsDoc.includes('не змінює бізнес-логіку') && timelineVisualSettingsDoc.includes('UAT') && timelineVisualSettingsDoc.includes('codex/room-timeline-hardening'));
 check('Timeline display modes are real presentation settings', htmlContains('index.html', 'settingsTimelineDisplayMode') && htmlContains('index.html', 'settingsTimelineKitchenMode') && htmlContains('index.html', 'settingsTimelineRoomFirstEnabled') && htmlContains('index.html', 'settingsTimelineDefaultView') && htmlContains('js/timeline-context.js', 'const DISPLAY_MODES = {') && htmlContains('js/timeline-context.js', "education: {") && htmlContains('js/timeline-context.js', "parkKitchenEnabled") && htmlContains('js/timeline-context.js', "defaultTimelineView") && settingsCode.includes('/settings/timeline-display') && settingsCode.includes('roomTimelineEnabled') && settingsCode.includes('defaultTimelineView') && !settingsCode.includes("|| 'rooms'") && !settingsCode.includes("? 'rooms' : 'animators'") && appCode.includes('saveTimelineDisplaySettingsFromSettings') && appCode.includes('settingsTimelineDefaultView') && timelineConfigCode.includes('TIMELINE_DISPLAY_MODE') && timelineConfigCode.includes('EDUCATION_TIMELINE_PROGRAMS') && timelineCode.includes("presentation?.mode === 'education'") && timelineCode.includes('resourceType: \'cabinet\'') && htmlContains('css/panel.css', 'body.timeline-mode-park.timeline-park-without-kitchen #banquetFields'));
 check('Timeline room load panel is a visible toolbar popover and remains closable', featuresCss.includes('Timeline page room load is a toolbar popover') && featuresCss.includes('--room-load-anchor-top') && featuresCss.includes('body.timeline-dashboard-page .room-load-panel.visible') && featuresCss.includes('.room-load-close-label') && featuresCss.includes('html[data-theme="dark"] .room-load-panel') && timelineCode.includes('const positionRoomLoadPanel') && timelineCode.includes("panel.style.setProperty('--room-load-anchor-right'") && timelineCode.includes('closeRoomLoadPanel') && timelineCode.includes("event.key === 'Escape'") && timelineCode.includes("btn.setAttribute('aria-expanded', 'false')"));
-const timelineBanquetIndicatorBlock = timelineCode.slice(
-    timelineCode.indexOf('function timelineBanquetIndicatorParts'),
-    timelineCode.indexOf('function bindTimelineBanquetChipEvents')
+const timelineBanquetRoomCardBlock = timelineCode.slice(
+    timelineCode.indexOf('function timelineBanquetRoomCardSignals'),
+    timelineCode.indexOf('function clearTimelineBanquetRoomPreviews')
 );
 check('Room timeline banquet preview hydrates from cached group snapshots without blocking render',
     timelineCode.includes('TIMELINE_BANQUET_SNAPSHOT_CACHE')
@@ -923,47 +923,56 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('function hydrateTimelineBanquetPreview')
     && timelineCode.includes('requestIdleCallback')
     && timelineCode.includes('data-banquet-room-card')
-    && timelineCode.includes('data-banquet-preview-trigger')
     && timelineCode.includes('timelineBanquetSummaryHref')
-    && timelineConstructorCss.includes('.timeline-banquet-preview')
-    && timelineConstructorCss.includes('.timeline-banquet-chip')
     && timelineConstructorCss.includes('.timeline-banquet-room-card')
+    && timelineConstructorCss.includes('.timeline-banquet-room-card-signal')
+    && timelineConstructorCss.includes('.timeline-banquet-room-card-glance')
     && timelineConstructorCss.includes('.timeline-banquet-inspector')
     && timelineConstructorCss.includes('.timeline-banquet-inspector-btn--primary')
+    && !timelineCode.includes('data-banquet-preview-trigger')
+    && !timelineCode.includes('data-banquet-service-marker')
+    && !timelineConstructorCss.includes('.timeline-banquet-chip')
+    && !timelineConstructorCss.includes('.timeline-banquet-service-marker')
     && !timelineCode.includes('showTimelineBanquetPopover')
     && !timelineConstructorCss.includes('.timeline-banquet-popover'));
 check('Room timeline banquet preview uses readable labels instead of single-letter badge labels',
-    timelineBanquetIndicatorBlock.includes("label: 'Меню'")
-    && timelineBanquetIndicatorBlock.includes("label: 'Активності'")
-    && timelineBanquetIndicatorBlock.includes("label: 'Без часу'")
-    && timelineCode.includes("label: 'Кухня'")
+    timelineBanquetRoomCardBlock.includes("label: 'Без часу'")
+    && timelineBanquetRoomCardBlock.includes('Кухня ${menuCount} поз.')
+    && timelineBanquetRoomCardBlock.includes('timelineBanquetMarkerLabel(servingMarker)')
+    && timelineBanquetRoomCardBlock.includes('timelineBanquetPlural(activityCount')
+    && timelineBanquetRoomCardBlock.includes("['Кімната'")
+    && timelineBanquetRoomCardBlock.includes("['Клієнт'")
+    && timelineBanquetRoomCardBlock.includes("['Час'")
+    && timelineBanquetRoomCardBlock.includes("['Сигнали'")
     && timelineCode.includes("label: 'Видача'")
     && timelineCode.includes("'Торт'")
     && timelineCode.includes("data-banquet-inspector-details>Деталі")
     && timelineCode.includes('>Вижимка</a>')
     && !timelineCode.includes('data-banquet-badge')
     && !timelineConstructorCss.includes('.timeline-banquet-badge')
-    && !/label:\s*['"`][МАБВ]['"`]/.test(timelineBanquetIndicatorBlock));
+    && !timelineCode.includes('timeline-banquet-room-card-icons')
+    && !timelineCode.includes('card.title')
+    && !/label:\s*['"`][МАБВ]['"`]/.test(timelineBanquetRoomCardBlock));
 check('Room timeline banquet preview is click-inspector driven instead of hover-popover driven',
     timelineCode.includes('function setTimelineBanquetRoomPreviewHighlight')
     && timelineCode.includes("block.classList.add('is-timeline-banquet-preview-hovered')")
-    && timelineCode.includes('showTimelineBanquetInspector(event, summary, button)')
+    && timelineCode.includes('showTimelineBanquetInspector(event, summary, card)')
     && timelineCode.includes('showTimelineBanquetInspector(event, block._timelineBanquetSummary, block)')
+    && timelineCode.includes("event.target?.closest?.('[data-banquet-room-card]')")
     && timelineCode.includes("event.key === 'Escape'")
     && !/addEventListener\('mouseenter'[^\n]+showTimelineBanquetInspector/.test(timelineCode)
     && !/addEventListener\('mouseenter'[^\n]+showTimelineBanquetPopover/.test(timelineCode));
-check('Room timeline banquet serving markers are frontend-only snapshot overlays',
+check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
     timelineCode.includes('function timelineBanquetServingInfo')
     && timelineCode.includes('timelineBanquetMenuPositions(booking)')
     && timelineCode.includes('function timelineBanquetServiceEvents')
-    && timelineCode.includes('data-banquet-service-marker')
-    && timelineCode.includes('function showTimelineBanquetServiceInspector')
-    && timelineCode.includes('timeline-banquet-service-markers')
+    && timelineCode.includes('timelineBanquetMarkerLabel(servingMarker)')
+    && timelineCode.includes('timelineBanquetGlanceRows')
+    && timelineCode.includes('summary.servingMarkers')
     && timelineCode.includes('Не вказано час видачі')
     && timelineCode.includes('requestIdleCallback')
-    && timelineConstructorCss.includes('.timeline-banquet-service-markers')
-    && timelineConstructorCss.includes('.timeline-banquet-service-marker--cake')
-    && timelineConstructorCss.includes('.timeline-banquet-chip--warning')
+    && !timelineCode.includes('data-banquet-service-marker')
+    && !timelineConstructorCss.includes('.timeline-banquet-service-marker')
     && !timelineCode.includes('/banquet-service-markers'));
 check('Timeline booking links use durable API-backed connector model', htmlContains('db/migrations/216_booking_banquet_links.sql', 'CREATE TABLE IF NOT EXISTS booking_banquet_links') && htmlContains('routes/bookings.js', "router.post('/:id/banquet-links'") && htmlContains('routes/bookings.js', "router.delete('/:id/banquet-links/:targetId'") && htmlContains('routes/bookings.js', "shared_room_activity") && htmlContains('services/booking.js', 'bookingLinks: Array.isArray(row.booking_links)') && timelineCode.includes('booking-banquet-link-handle') && timelineCode.includes('renderBanquetLinksOverlay') && timelineCode.includes('getBookingVisualLinks') && timelineCode.includes('apiCreateBookingBanquetLink') && timelineCode.includes('removeBookingBanquetLink'));
 check('Banquet groups schema stays isolated from bookings and legacy visual links',

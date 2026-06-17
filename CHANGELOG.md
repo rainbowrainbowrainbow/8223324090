@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.37 - Booking Catalog Paint Guard
+
+### Booking / Kitchen menu catalog / Paint stacking / Hotfix / (Клешня, 17.06.2026) [codex]
+- **Порожню темну заливку catalog overlay виправлено** - `#bookingMenuCatalogPanel` отримав явні paint layers для header, body і footer, тому Chrome більше не малює тільки фон поверх DOM-контенту.
+- **Картки меню піднято над background layer списку** - прямі діти `#bookingMenuCatalogList` мають стабільний stacking context, тому tabs, групи і menu item cards видно після відкриття з реального room slot flow.
+- **JS listener і data/render path не переписувались** - діагностика підтвердила `renderBookingMenuCatalog()`, `getBookingMenuProducts()` і `102` позиції у DOM; fix торкається тільки CSS paint/stacking.
+- **Regression guards додано** - contract/UI checks тепер перевіряють CSS paint guard для catalog panel, browser/cart і list children.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.37`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.36 - Booking Catalog Pointer Open Hotfix
 
 ### Booking / Kitchen menu catalog / Pointer open / Hotfix / (Клешня, 17.06.2026) [codex]

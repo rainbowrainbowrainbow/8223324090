@@ -1040,10 +1040,13 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*inset:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*z-index:\s*var\(--z-modal,\s*30000\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
+    assert.match(panelCss, /\.booking-menu-catalog-panel > \.booking-menu-catalog-header,\s*\.booking-menu-catalog-panel > \.booking-menu-catalog-body,\s*\.booking-menu-catalog-panel > \.booking-menu-catalog-footer\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*330px\)[\s\S]*overflow:\s*hidden;/);
+    assert.match(panelCss, /\.booking-menu-catalog-browser,\s*\.booking-menu-catalog-cart\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(224px,\s*1fr\)\);[\s\S]*justify-content:\s*start;/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*padding:\s*0 10px calc\(96px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*scroll-padding-top:\s*48px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-list > \*\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*252px;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*overflow:\s*hidden;/);
     assert.match(panelCss, /\.booking-menu-catalog-item:hover,\s*\.booking-menu-catalog-item:focus-within\s*\{[\s\S]*transform:\s*translateY\(-2px\);/);

@@ -2058,6 +2058,13 @@ body.booking-menu-catalog-active {
     display: none;
 }
 
+.booking-menu-catalog-panel > .booking-menu-catalog-header,
+.booking-menu-catalog-panel > .booking-menu-catalog-body,
+.booking-menu-catalog-panel > .booking-menu-catalog-footer {
+    position: relative;
+    z-index: 1;
+}
+
 .booking-menu-catalog-overlay {
     overscroll-behavior: contain;
 }
@@ -2074,6 +2081,8 @@ body.booking-menu-catalog-active {
 
 .booking-menu-catalog-browser,
 .booking-menu-catalog-cart {
+    position: relative;
+    z-index: 1;
     min-height: 0;
     border: 1px solid rgba(148, 163, 184, 0.22);
     background: rgba(15, 23, 42, 0.86);
@@ -2356,6 +2365,11 @@ body.booking-menu-catalog-active {
     scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid rgba(148, 163, 184, 0.16);
     background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(11, 18, 32, 0.96));
+}
+
+.booking-menu-catalog-list > * {
+    position: relative;
+    z-index: 1;
 }
 
 .booking-menu-catalog-state {

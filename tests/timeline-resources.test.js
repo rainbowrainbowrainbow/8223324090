@@ -576,6 +576,18 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(timeline, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*showBookingDetails\(renderBooking\.id\)/);
 });
 
+test('banquet delete flow invalidates snapshot-backed room preview caches', () => {
+    const timeline = read('js/timeline.js');
+    const booking = read('js/booking.js');
+
+    assert.match(timeline, /function invalidateTimelineBanquetSnapshotCache/);
+    assert.match(timeline, /TIMELINE_BANQUET_SNAPSHOT_CACHE\.byBooking\.clear\(\)/);
+    assert.match(timeline, /TIMELINE_BANQUET_SNAPSHOT_CACHE\.byGroup\.clear\(\)/);
+    assert.match(timeline, /window\.invalidateTimelineBanquetSnapshotCache = invalidateTimelineBanquetSnapshotCache/);
+    assert.match(timeline, /async function removeBookingBanquetLink[\s\S]*invalidateTimelineBanquetSnapshotCache\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
+    assert.match(booking, /window\.invalidateTimelineBanquetSnapshotCache\(\{\s*bookingIds: allToDelete\.map\(item => item\?\.id\)\.filter\(Boolean\)\s*\}\)/);
+});
+
 test('animator timeline keeps banquet teaser surfaces out of park animator view', () => {
     const timeline = read('js/timeline.js');
 

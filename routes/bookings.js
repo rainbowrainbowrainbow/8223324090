@@ -100,12 +100,78 @@ function bookingActiveStatusSql(alias = '') {
     return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
 }
 
+function isMissingBanquetSchemaError(err) {
+    return ['42P01', '42703'].includes(String(err?.code || ''))
+        || /banquet_groups|banquet_group_bookings/i.test(String(err?.message || ''));
+}
+
 async function getScopedBookingById(queryable, id, businessContext, { forUpdate = false } = {}) {
     const result = await queryable.query(
         `SELECT * FROM bookings WHERE id = $1 AND ${bookingContextSql('', '$2')}${forUpdate ? ' FOR UPDATE' : ''}`,
         [id, businessContext || DEFAULT_TIMELINE_CONTEXT]
     );
     return result.rows[0] || null;
+}
+
+async function getBanquetMembershipForDelete(queryable, bookingId, businessContext) {
+    try {
+        const result = await queryable.query(
+            `SELECT bgb.group_id, bgb.booking_id, bgb.role, bg.primary_booking_id, bg.status AS group_status
+               FROM banquet_group_bookings bgb
+               JOIN banquet_groups bg ON bg.id = bgb.group_id
+              WHERE bgb.booking_id = $1
+                AND ${bookingContextSql('bgb', '$2')}
+                AND ${bookingContextSql('bg', '$2')}
+              FOR UPDATE OF bgb, bg`,
+            [bookingId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+        );
+        return result.rows[0] || null;
+    } catch (err) {
+        if (isMissingBanquetSchemaError(err)) return null;
+        throw err;
+    }
+}
+
+async function detachBanquetMembershipOnSoftDelete(queryable, bookingId, businessContext, user) {
+    const membership = await getBanquetMembershipForDelete(queryable, bookingId, businessContext);
+    if (!membership) return { detached: false, membership: null };
+    const primaryBookingId = String(membership.primary_booking_id || '').trim();
+    if (!primaryBookingId || String(membership.role || '').toLowerCase() === 'primary' || primaryBookingId === String(bookingId)) {
+        return { detached: false, membership };
+    }
+
+    await queryable.query(
+        `DELETE FROM banquet_group_bookings
+          WHERE group_id = $1
+            AND booking_id = $2
+            AND ${bookingContextSql('', '$3')}`,
+        [membership.group_id, bookingId, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    await queryable.query(
+        `DELETE FROM booking_banquet_links
+          WHERE business_context = $1
+            AND relation_type = $4
+            AND (
+                (booking_a_id = $2 AND booking_b_id = $3)
+                OR (booking_a_id = $3 AND booking_b_id = $2)
+            )`,
+        [businessContext || DEFAULT_TIMELINE_CONTEXT, primaryBookingId, bookingId, 'banquet_activity']
+    );
+    await queryable.query(
+        `UPDATE banquet_groups
+            SET updated_at = NOW(), updated_by = $3
+          WHERE id = $1
+            AND ${bookingContextSql('', '$2')}`,
+        [membership.group_id, businessContext || DEFAULT_TIMELINE_CONTEXT, user?.username || 'system']
+    );
+    await insertScopedHistory(queryable, 'banquet_group_booking_detached', user?.username, {
+        group_id: membership.group_id,
+        primary_booking_id: primaryBookingId,
+        booking_id: bookingId,
+        role: membership.role || null,
+        detached_via: 'booking_soft_delete'
+    }, businessContext || DEFAULT_TIMELINE_CONTEXT);
+    return { detached: true, membership };
 }
 
 function sendBookingDenied(req, res, booking) {
@@ -3192,6 +3258,8 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
                  WHERE (id = $1 OR linked_to = $1) AND ${bookingContextSql('', '$2')}`,
                 [id, businessContext]
             );
+            // Keep banquet group read models in sync for cancelled non-primary members.
+            await detachBanquetMembershipOnSoftDelete(client, id, businessContext, req.user);
         }
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)

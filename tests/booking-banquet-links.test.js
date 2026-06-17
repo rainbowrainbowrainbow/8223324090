@@ -12,6 +12,8 @@ function clearModules() {
         '../db',
         '../middleware/auth',
         '../services/bookingVisibility',
+        '../services/banquetGroups',
+        '../services/banquetSummary',
         '../services/telegram',
         '../services/bookingAutomation',
         '../services/websocket',
@@ -72,10 +74,13 @@ function makeDb(rows, links = [], options = {}) {
     const state = {
         rows: rows.map(row => ({ ...row })),
         links: links.map((link, index) => ({ id: index + 1, relation_type: 'banquet_activity', ...link })),
+        banquetGroups: (Array.isArray(options.banquetGroups) ? options.banquetGroups : []).map(group => ({ ...group })),
+        banquetMemberships: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships : []).map(row => ({ ...row })),
         histories: [],
         tx: [],
         queries: [],
         nextLinkId: links.length + 1,
+        nextBanquetMembershipId: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships.length : 0) + 1,
         released: 0
     };
 
@@ -99,6 +104,30 @@ function makeDb(rows, links = [], options = {}) {
                 )
             };
         }
+        if (/SELECT \* FROM bookings WHERE id = \$1(?: AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)?(?: FOR UPDATE)?$/i.test(sql)) {
+            const businessContext = params.length > 1 ? params[1] : null;
+            const normalizeContext = value => {
+                const raw = String(value || 'event_genix').trim().toLowerCase();
+                return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+            };
+            const row = state.rows.find(item =>
+                item.id === params[0]
+                && (!businessContext || normalizeContext(item.business_context) === normalizeContext(businessContext))
+            );
+            return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+        }
+        if (/SELECT b\.\* FROM bookings b\s+WHERE b\.id = \$1(?:\s+AND (?:COALESCE\(b\.business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)?\s+LIMIT 1$/i.test(sql)) {
+            const businessContext = params.length > 1 ? params[1] : null;
+            const normalizeContext = value => {
+                const raw = String(value || 'event_genix').trim().toLowerCase();
+                return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+            };
+            const row = state.rows.find(item =>
+                item.id === params[0]
+                && (!businessContext || normalizeContext(item.business_context) === normalizeContext(businessContext))
+            );
+            return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+        }
         if (/SELECT \* FROM bookings WHERE id = ANY\(\$1::text\[\]\)(?: AND (?:COALESCE\(business_context, 'event_genix'\)|CASE WHEN LOWER\(COALESCE\(NULLIF\(BTRIM\(business_context\), ''\), 'event_genix'\)\)[\s\S]+?END) = \$2)? FOR UPDATE/i.test(sql)) {
             const ids = new Set(params[0] || []);
             const businessContext = params.length > 1 ? params[1] : null;
@@ -112,6 +141,64 @@ function makeDb(rows, links = [], options = {}) {
                     (!businessContext || normalizeContext(row.business_context) === normalizeContext(businessContext))
                 )
             };
+        }
+        if (/SELECT bg\.\* FROM banquet_group_bookings bgb\s+JOIN banquet_groups bg ON bg\.id = bgb\.group_id/i.test(sql)) {
+            const membership = state.banquetMemberships.find(item => item.booking_id === params[0]);
+            if (!membership) return { rows: [], rowCount: 0 };
+            const group = state.banquetGroups.find(item => item.id === membership.group_id);
+            return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
+        }
+        if (/SELECT bgb\.\*\s+FROM banquet_group_bookings bgb\s+WHERE bgb\.group_id = \$1/i.test(sql)) {
+            const rows = state.banquetMemberships.filter(item => item.group_id === params[0]).map(row => ({ ...row }));
+            return { rows, rowCount: rows.length };
+        }
+        if (/SELECT bgb\.group_id, bgb\.booking_id, bgb\.role, bg\.primary_booking_id, bg\.status AS group_status\s+FROM banquet_group_bookings bgb\s+JOIN banquet_groups bg ON bg\.id = bgb\.group_id/i.test(sql)) {
+            const membership = state.banquetMemberships.find(item => item.booking_id === params[0]);
+            if (!membership) return { rows: [], rowCount: 0 };
+            const group = state.banquetGroups.find(item => item.id === membership.group_id);
+            return {
+                rows: group ? [{
+                    group_id: membership.group_id,
+                    booking_id: membership.booking_id,
+                    role: membership.role,
+                    primary_booking_id: group.primary_booking_id,
+                    group_status: group.status || 'active'
+                }] : [],
+                rowCount: group ? 1 : 0
+            };
+        }
+        if (/SELECT bg\.\*\s+FROM banquet_groups bg\s+WHERE bg\.id = \$1/i.test(sql)) {
+            const group = state.banquetGroups.find(item => item.id === params[0]);
+            return { rows: group ? [{ ...group }] : [], rowCount: group ? 1 : 0 };
+        }
+        if (/SELECT b\.\*\s+FROM bookings b\s+WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const ids = new Set((params[0] || []).map(String));
+            const businessContext = params[1];
+            const normalizeContext = value => {
+                const raw = String(value || 'event_genix').trim().toLowerCase();
+                return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+            };
+            const activeOnly = /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(sql);
+            const rows = state.rows.filter(row =>
+                ids.has(String(row.id))
+                && (!businessContext || normalizeContext(row.business_context) === normalizeContext(businessContext))
+                && (!activeOnly || row.status !== 'cancelled')
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT b\.\*\s+FROM bookings b\s+WHERE NULLIF\(COALESCE\(b\.linked_to, ''\), ''\) = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const parentIds = new Set((params[0] || []).map(String));
+            const businessContext = params[1];
+            const normalizeContext = value => {
+                const raw = String(value || 'event_genix').trim().toLowerCase();
+                return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
+            };
+            const rows = state.rows.filter(row =>
+                row.linked_to
+                && parentIds.has(String(row.linked_to))
+                && (!businessContext || normalizeContext(row.business_context) === normalizeContext(businessContext))
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
         if (/INSERT INTO booking_banquet_links/i.test(sql)) {
             const [businessContext, bookingA, bookingB, relationType, label, createdByUserId, createdBy] = params;
@@ -151,6 +238,18 @@ function makeDb(rows, links = [], options = {}) {
             state.links = state.links.filter(link => link !== deleted);
             return { rows: deleted ? [{ ...deleted }] : [], rowCount: before - state.links.length };
         }
+        if (/DELETE FROM banquet_group_bookings/i.test(sql)) {
+            const before = state.banquetMemberships.length;
+            state.banquetMemberships = state.banquetMemberships.filter(row =>
+                !(row.group_id === params[0] && row.booking_id === params[1])
+            );
+            return { rows: [], rowCount: before - state.banquetMemberships.length };
+        }
+        if (/UPDATE banquet_groups\s+SET updated_at = NOW\(\), updated_by = \$3\s+WHERE id = \$1/i.test(sql)) {
+            const group = state.banquetGroups.find(item => item.id === params[0]);
+            if (group) group.updated_by = params[2];
+            return { rows: [], rowCount: group ? 1 : 0 };
+        }
         if (/FROM booking_banquet_links WHERE business_context = \$1/i.test(sql)) {
             if (options.failLinkRead) {
                 throw new Error('simulated booking_banquet_links schema drift');
@@ -165,6 +264,18 @@ function makeDb(rows, links = [], options = {}) {
                     visible.has(link.booking_b_id)
                 )
             };
+        }
+        if (/UPDATE bookings SET status = 'cancelled', updated_at = NOW\(\)\s+WHERE \(id = \$1 OR linked_to = \$1\)/i.test(sql)) {
+            const bookingId = String(params[0]);
+            let rowCount = 0;
+            state.rows.forEach(row => {
+                if (String(row.id) === bookingId || String(row.linked_to || '') === bookingId) {
+                    row.status = 'cancelled';
+                    row.updated_at = new Date('2099-01-01T00:01:00Z').toISOString();
+                    rowCount += 1;
+                }
+            });
+            return { rows: [], rowCount };
         }
         if (/^INSERT INTO history/i.test(sql)) {
             const scoped = params.length === 4;
@@ -423,5 +534,118 @@ test('DELETE room activity link removes only the shared-room relation pair', asy
         assert.equal(state.links.length, 1);
         assert.equal(state.links[0].relation_type, 'banquet_activity');
         assert.equal(state.histories[0].data.relation_type, 'shared_room_activity');
+    });
+});
+
+test('GET banquet summary excludes cancelled banquet group activities', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', time: '12:00', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet', room: 'Room A', price: 1000 }),
+        bookingRow({ id: 'BK-ACTIVE', time: '13:00', label: 'Foam show', program_name: 'Foam show', category: 'activity', room: 'Room A', price: 700 }),
+        bookingRow({ id: 'BK-CANCELLED', time: '14:00', label: 'Neon show', program_name: 'Neon show', category: 'activity', room: 'Room A', price: 500, status: 'cancelled' })
+    ], [{
+        business_context: 'event_genix',
+        booking_a_id: 'BK-ROOT',
+        booking_b_id: 'BK-ACTIVE',
+        relation_type: 'banquet_activity'
+    }, {
+        business_context: 'event_genix',
+        booking_a_id: 'BK-ROOT',
+        booking_b_id: 'BK-CANCELLED',
+        relation_type: 'banquet_activity'
+    }], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-ROOT/banquet-summary?businessContext=event_genix&groupId=BQ-ROOT`);
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        const activityRows = data.orderRows.filter(row => row.type === 'activity');
+        assert.deepEqual(activityRows.map(row => row.bookingId), ['BK-ACTIVE']);
+        assert.equal(data.totals.activitySubtotal, 700);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: null,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Banquet root',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVE',
+            role: 'activity',
+            sort_order: 20
+        }, {
+            id: 3,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-CANCELLED',
+            role: 'activity',
+            sort_order: 30
+        }]
+    });
+});
+
+test('DELETE booking detaches cancelled banquet activity from group while keeping primary root', async () => {
+    await withApp([
+        bookingRow({ id: 'BK-ROOT', time: '12:00', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet', room: 'Room A', price: 1000 }),
+        bookingRow({ id: 'BK-ACTIVE', time: '13:00', label: 'Foam show', program_name: 'Foam show', category: 'activity', room: 'Room A', price: 700 }),
+        bookingRow({ id: 'BK-ACTIVE-CHILD', time: '13:00', label: 'Foam show second host', program_name: 'Foam show second host', category: 'activity', room: 'Room A', price: 0, linked_to: 'BK-ACTIVE' })
+    ], [{
+        business_context: 'event_genix',
+        booking_a_id: 'BK-ROOT',
+        booking_b_id: 'BK-ACTIVE',
+        relation_type: 'banquet_activity'
+    }], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-ACTIVE?businessContext=event_genix`, { method: 'DELETE' });
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE').status, 'cancelled');
+        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE-CHILD').status, 'cancelled');
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
+        assert.deepEqual(state.banquetMemberships.map(row => row.booking_id), ['BK-ROOT']);
+        assert.equal(state.links.length, 0);
+        assert.equal(state.banquetGroups[0].updated_by, 'banquet-test');
+        assert.ok(state.histories.some(item => item.action === 'banquet_group_booking_detached'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: null,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Banquet root',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVE',
+            role: 'activity',
+            sort_order: 20
+        }]
     });
 });

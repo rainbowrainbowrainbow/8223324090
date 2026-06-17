@@ -45,6 +45,11 @@ function bookingContextSql(alias = '', placeholder = '$1') {
     return `${bookingContextColumnSql(column)} = ${placeholder}`;
 }
 
+function bookingActiveStatusSql(alias = '') {
+    const column = alias ? `${alias}.status` : 'status';
+    return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
+}
+
 function isMissingBanquetSchemaError(err) {
     return ['42P01', '42703'].includes(String(err?.code || ''))
         || /banquet_groups|banquet_group_bookings/i.test(String(err?.message || ''));
@@ -302,9 +307,10 @@ async function getBookingsByIds(db, ids, businessContext) {
     const result = await db.query(
         `SELECT b.*
            FROM bookings b
-          WHERE b.id = ANY($1::text[])
-            AND ${bookingContextSql('b', '$2')}
-          ORDER BY b.date ASC, b.time ASC, b.id ASC`,
+           WHERE b.id = ANY($1::text[])
+             AND ${bookingContextSql('b', '$2')}
+             AND ${bookingActiveStatusSql('b')}
+           ORDER BY b.date ASC, b.time ASC, b.id ASC`,
         [uniqueIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
     );
     return result.rows || [];

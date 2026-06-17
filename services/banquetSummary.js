@@ -81,6 +81,10 @@ function isRootBooking(booking = {}) {
     return !bookingLinkedToOf(booking);
 }
 
+function isActiveBooking(booking = {}) {
+    return String(valueOf(booking, 'status') || 'confirmed').trim().toLowerCase() !== 'cancelled';
+}
+
 function bookingTitle(booking = {}) {
     return cleanText(
         valueOf(booking, 'programName', 'program_name', 'label', 'groupName', 'group_name'),
@@ -172,6 +176,7 @@ function buildLinkedActivityRows(linkedBookings = [], options = {}) {
     const source = options.source || 'linked_booking';
     return (Array.isArray(linkedBookings) ? linkedBookings : [])
         .filter(isRootBooking)
+        .filter(isActiveBooking)
         .map((booking, index) => {
             const title = bookingTitle(booking);
             const subtotal = money(valueOf(booking, 'price'));
@@ -316,15 +321,18 @@ function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, 
     const activityBookings = members
         .filter(member => member.role === 'activity')
         .map(member => member.booking)
-        .filter(isRootBooking);
+        .filter(isRootBooking)
+        .filter(isActiveBooking);
     const serviceBookings = members
         .filter(member => member.role === 'service')
         .map(member => member.booking)
-        .filter(isRootBooking);
+        .filter(isRootBooking)
+        .filter(isActiveBooking);
     const manualBookings = members
         .filter(member => member.role === 'manual')
         .map(member => member.booking)
-        .filter(isRootBooking);
+        .filter(isRootBooking)
+        .filter(isActiveBooking);
 
     return {
         source: resolvedGroup.source || (resolvedGroup.groupId ? 'banquet_group' : 'legacy_booking_banquet_links'),

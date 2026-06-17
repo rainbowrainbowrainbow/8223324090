@@ -8238,6 +8238,11 @@ async function deleteBooking(bookingId) {
             return;
         }
 
+        if (typeof window.invalidateTimelineBanquetSnapshotCache === 'function') {
+            window.invalidateTimelineBanquetSnapshotCache({
+                bookingIds: allToDelete.map(item => item?.id).filter(Boolean)
+            });
+        }
         invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         closeAllModals();
         await renderTimeline();

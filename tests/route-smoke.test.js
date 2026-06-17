@@ -19,6 +19,7 @@ let notifiedLeads;
 let missingSchemaMigrations;
 let missingSchemaColumns;
 let routeSmokeAutoBanquetSummaryGroup = false;
+let routeSmokeCancelledBookingIds = new Set();
 
 const originalEnv = {
     JWT_SECRET: process.env.JWT_SECRET,
@@ -396,7 +397,7 @@ function createFakePool() {
             notes: 'After cake',
             created_by: 'route-smoke',
             linked_to: null,
-            status: 'confirmed',
+            status: routeSmokeCancelledBookingIds.has('BK-ACTIVITY') ? 'cancelled' : 'confirmed',
             extra_data: {},
             created_at: '2099-06-01T10:30:00.000Z',
             updated_at: '2099-06-01T10:30:00.000Z'
@@ -836,8 +837,10 @@ function createFakePool() {
             }
             if (/SELECT b\.\* FROM bookings b WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(String) : [];
+                const activeOnly = /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(text);
                 const rows = routeSmokeBookingRows()
                     .filter(row => ids.includes(row.id))
+                    .filter(row => !activeOnly || String(row.status || '').toLowerCase() !== 'cancelled')
                     .map(row => ({ ...row, business_context: params[1] || row.business_context }));
                 return { rows, rowCount: rows.length };
             }
@@ -2457,6 +2460,44 @@ describe('route-level API safety smoke', () => {
             && !/^UPDATE users SET last_seen_at = NOW\(\) WHERE id = \$1$/i.test(q.text)
         );
         assert.deepEqual(dataWriteQueries.map(q => q.text), []);
+    });
+
+    it('banquet group read excludes cancelled activity members while keeping primary root', async () => {
+        routeSmokeCancelledBookingIds = new Set(['BK-ACTIVITY']);
+        try {
+            const res = await request(
+                'GET',
+                '/api/banquets/BQ-SMOKE?businessContext=event_genix',
+                undefined,
+                withAuth()
+            );
+
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.bookings.primary.id, 'BK-SUMMARY');
+            assert.equal(res.data.bookings.activities.some(booking => booking.id === 'BK-ACTIVITY'), false);
+            assert.equal(res.data.members.some(member => member.bookingId === 'BK-ACTIVITY'), false);
+        } finally {
+            routeSmokeCancelledBookingIds = new Set();
+        }
+    });
+
+    it('banquet by-booking read excludes cancelled activity members while keeping primary root', async () => {
+        routeSmokeCancelledBookingIds = new Set(['BK-ACTIVITY']);
+        try {
+            const res = await request(
+                'GET',
+                '/api/banquets/by-booking/BK-SUMMARY?businessContext=event_genix',
+                undefined,
+                withAuth()
+            );
+
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.bookings.primary.id, 'BK-SUMMARY');
+            assert.equal(res.data.bookings.activities.some(booking => booking.id === 'BK-ACTIVITY'), false);
+            assert.equal(res.data.members.some(member => member.bookingId === 'BK-ACTIVITY'), false);
+        } finally {
+            routeSmokeCancelledBookingIds = new Set();
+        }
     });
 
     it('falls back to legacy banquet links when a booking has no banquet group', async () => {

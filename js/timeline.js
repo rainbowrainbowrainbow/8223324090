@@ -22,6 +22,62 @@ const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
 };
 const TIMELINE_BANQUET_ROOM_PREVIEWS = new Map();
 
+function invalidateTimelineBanquetSnapshotCache(options = {}) {
+    const bookingIds = new Set(
+        [options.bookingId, ...(Array.isArray(options.bookingIds) ? options.bookingIds : [])]
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+    );
+    const groupIds = new Set(
+        [options.groupId, ...(Array.isArray(options.groupIds) ? options.groupIds : [])]
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+    );
+    const clearAll = options.clearAll === true || (!bookingIds.size && !groupIds.size);
+    if (clearAll) {
+        TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.clear();
+        TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.clear();
+        return;
+    }
+
+    const snapshotMatches = snapshot => {
+        if (!snapshot) return false;
+        const snapshotGroupId = timelineBanquetSnapshotGroupId(snapshot);
+        if (snapshotGroupId && groupIds.has(snapshotGroupId)) return true;
+        const snapshotBookingIds = new Set();
+        timelineBanquetSnapshotBookings(snapshot).forEach(booking => {
+            const id = String(booking?.id || '').trim();
+            if (id) snapshotBookingIds.add(id);
+        });
+        (snapshot.memberships || []).forEach(member => {
+            const id = String(member?.bookingId || member?.booking_id || '').trim();
+            if (id) snapshotBookingIds.add(id);
+        });
+        (snapshot.members || []).forEach(member => {
+            const id = String(member?.bookingId || member?.booking?.id || '').trim();
+            if (id) snapshotBookingIds.add(id);
+            (member?.technicalChildren || []).forEach(child => {
+                const childId = String(child?.id || '').trim();
+                if (childId) snapshotBookingIds.add(childId);
+            });
+        });
+        return [...bookingIds].some(id => snapshotBookingIds.has(id));
+    };
+
+    for (const [key, record] of TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.entries()) {
+        if (bookingIds.has(String(key).split('::').pop()) || snapshotMatches(record?.snapshot)) {
+            TIMELINE_BANQUET_SNAPSHOT_CACHE.byBooking.delete(key);
+        }
+    }
+    for (const [key, record] of TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.entries()) {
+        if (groupIds.has(String(key).split('::').pop()) || snapshotMatches(record?.snapshot)) {
+            TIMELINE_BANQUET_SNAPSHOT_CACHE.byGroup.delete(key);
+        }
+    }
+}
+
+window.invalidateTimelineBanquetSnapshotCache = invalidateTimelineBanquetSnapshotCache;
+
 function normalizeTimelineViewMode(value) {
     return String(value || '').trim().toLowerCase() === TIMELINE_VIEW_ROOMS
         ? TIMELINE_VIEW_ROOMS
@@ -2727,6 +2783,7 @@ async function removeBookingBanquetLink(sourceId, targetId, relationType = 'banq
         showNotification(result?.error || 'Не вдалося прибрати банкетний звʼязок', 'error');
         return false;
     }
+    invalidateTimelineBanquetSnapshotCache({ bookingIds: [sourceId, targetId] });
     invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     if (typeof showBookingDetails === 'function') {

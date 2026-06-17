@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.21">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.21">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.21">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.21">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.21">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.21">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.21">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.21">
-    <link rel="stylesheet" href="css/features.css?v=0.76.21">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.21">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.21">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.21">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.21">
+    <link rel="stylesheet" href="css/base.css?v=0.76.22">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.22">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.22">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.22">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.22">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.22">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.22">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.22">
+    <link rel="stylesheet" href="css/features.css?v=0.76.22">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.22">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.22">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.22">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.22">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.21">✨ 0.76.21</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.22">✨ 0.76.22</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.21 — Timeline Sticky Brow Polish</p>
+                <p class="tagline">AI First CRM v0.76.22 — Banquet Activity Delete Consistency Fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.21</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.22</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1738,6 +1738,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.76.22 — Banquet Activity Delete Consistency Fix</h4>
+                    <ul>
+                        <li><b>Cancelled banquet activity більше не лишається в banquet surfaces</b> — room banquet card, compact inspector і full banquet summary більше не тягнуть activity зі статусом <code>cancelled</code>.</li>
+                        <li><b>Soft delete activity тепер detaches її від banquet group</b> — membership і legacy banquet link прибираються разом із soft delete non-primary activity.</li>
+                        <li><b>Primary/root banquet booking не auto-delete-иться</b> — навіть після видалення останньої activity банкет лишається як root booking без stale activity rows.</li>
+                        <li><b>Room timeline cache інвалідовується після delete</b> — preview count і inspector список оновлюються без повторної появи видаленої activity після re-render.</li>
+                        <li><b>Regression guards додано</b> — backend і frontend тести перевіряють status filter, detach policy та cache invalidation.</li>
+                        <li><b>Релізні маркери піднято до <code>0.76.22</code></b> — package, cache tags, Service Worker, login badge, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.76.21 — Timeline Sticky Brow Polish</h4>
                     <ul>
@@ -13440,30 +13451,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.21"></script>
-    <script src="js/timeline-visibility.js?v=0.76.21"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.21"></script>
-    <script src="js/config.js?v=0.76.21"></script>
-    <script src="js/api.js?v=0.76.21"></script>
-    <script src="js/ui.js?v=0.76.21"></script>
-    <script src="js/auth.js?v=0.76.21"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.21"></script>
-    <script src="js/timeline.js?v=0.76.21"></script>
-    <script src="js/booking.js?v=0.76.21"></script>
-    <script src="js/settings.js?v=0.76.21"></script>
-    <script src="js/booking-form.js?v=0.76.21"></script>
-    <script src="js/booking-linked.js?v=0.76.21"></script>
-    <script src="js/settings-dashboard.js?v=0.76.21"></script>
-    <script src="js/settings-history.js?v=0.76.21"></script>
-    <script src="js/settings-afisha.js?v=0.76.21"></script>
-    <script src="js/settings-certificates.js?v=0.76.21"></script>
-    <script src="js/offline.js?v=0.76.21"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.21"></script>
-    <script src="js/search.js?v=0.76.21"></script>
-    <script src="js/ws.js?v=0.76.21"></script>
-    <script src="js/app.js?v=0.76.21"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.21"></script>
-    <script src="js/components/sidebar.js?v=0.76.21"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.21"></script>
+    <script src="js/timeline-context.js?v=0.76.22"></script>
+    <script src="js/timeline-visibility.js?v=0.76.22"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.22"></script>
+    <script src="js/config.js?v=0.76.22"></script>
+    <script src="js/api.js?v=0.76.22"></script>
+    <script src="js/ui.js?v=0.76.22"></script>
+    <script src="js/auth.js?v=0.76.22"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.22"></script>
+    <script src="js/timeline.js?v=0.76.22"></script>
+    <script src="js/booking.js?v=0.76.22"></script>
+    <script src="js/settings.js?v=0.76.22"></script>
+    <script src="js/booking-form.js?v=0.76.22"></script>
+    <script src="js/booking-linked.js?v=0.76.22"></script>
+    <script src="js/settings-dashboard.js?v=0.76.22"></script>
+    <script src="js/settings-history.js?v=0.76.22"></script>
+    <script src="js/settings-afisha.js?v=0.76.22"></script>
+    <script src="js/settings-certificates.js?v=0.76.22"></script>
+    <script src="js/offline.js?v=0.76.22"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.22"></script>
+    <script src="js/search.js?v=0.76.22"></script>
+    <script src="js/ws.js?v=0.76.22"></script>
+    <script src="js/app.js?v=0.76.22"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.22"></script>
+    <script src="js/components/sidebar.js?v=0.76.22"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.22"></script>
 </body>
 </html>

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.22 - Banquet Activity Delete Consistency Fix
+
+### Banquet / Linked activity delete / Snapshot consistency / Release / (Клешня, 17.06.2026) [codex]
+- **Cancelled banquet activity більше не залишається в banquet summary surfaces** - бекендовий read model перестав включати `status='cancelled'` bookings у room banquet card, compact inspector і full banquet summary.
+- **Soft delete тепер явно detaches non-primary activity from banquet group** - при видаленні linked activity CRM чистить membership у `banquet_group_bookings` і legacy сумісний link у `booking_banquet_links`, але не чіпає primary/root banquet booking.
+- **Остання activity більше не повинна прибирати root banquet автоматично** - після delete останньої активності банкет залишається як primary/root booking без stale activity rows.
+- **Frontend snapshot cache інвалідовується після delete** - `TIMELINE_BANQUET_SNAPSHOT_CACHE` очищується для повʼязаних booking ids, тому room preview та inspector не тримають старий count після re-render.
+- **Regression guards додано на backend і frontend** - `tests/booking-banquet-links.test.js`, `tests/route-smoke.test.js` і `tests/timeline-resources.test.js` перевіряють read-side filter, detach policy та cache invalidation.
+- **Релізні маркери піднято до `0.76.22`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.21 - Timeline Sticky Brow Polish
 
 ### Timeline / Sticky time scale / Brow slim polish / Release / (Клешня, 17.06.2026) [codex]

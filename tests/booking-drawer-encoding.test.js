@@ -98,7 +98,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(bookingJs, /bookingKitchenToggle'\)\?\.addEventListener\('change'/);
     assert.doesNotMatch(bookingJs, /bookingLeadDetailsToggle'\)\?\.addEventListener\('change'/);
     assert.match(bookingJs, /bookingMenuAddBtn'\)\?\.addEventListener\('click'/);
-    assert.match(bookingJs, /bookingMenuCatalogOpenBtn'\)\?\.addEventListener\('click'/);
+    assert.match(bookingJs, /function initBookingMenuCatalogOpenControl/);
+    assert.match(bookingJs, /menuCatalogOpenDelegatedBound/);
+    assert.match(bookingJs, /closest\?\.\('#bookingMenuCatalogOpenBtn'\)/);
     assert.match(bookingJs, /bookingMenuCatalogSearch'\)\?\.addEventListener\('input'/);
     assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('click'/);
     assert.match(bookingJs, /bookingMenuCatalogPanel'\)\?\.addEventListener\('change'/);

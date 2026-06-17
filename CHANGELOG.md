@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.35 - Booking Catalog Delegated Open Hotfix
+
+### Booking / Kitchen menu catalog / Open control / Hotfix / (Клешня, 17.06.2026) [codex]
+- **Кнопку `+ Додати з меню` переведено на delegated capture binding** - click тепер ловиться на `document` для `#bookingMenuCatalogOpenBtn`, тому каталог відкривається навіть якщо прямий listener на кнопці не спрацював.
+- **Remounted button path закрито** - якщо booking panel або його controls перемонтували DOM-вузол після init, нова кнопка з тим самим id все одно відкриває каталог.
+- **Bubble-фаза більше не критична** - delegated listener працює у capture-фазі, викликає `setBookingMenuCatalogOpen(true)` і зупиняє сторонні перехоплення цього кліку.
+- **Старий direct binding лишився як локальний fast path** - поточна кнопка також отримує idempotent listener, але не є єдиною точкою відкриття.
+- **Regression guards оновлено** - contract test перевіряє remounted button, а static drawer guard перевіряє helper/delegated binding замість застарілого direct-listener pattern.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.35`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.34 - Auth Session Blank Screen Hotfix
 
 ### Auth / Session bootstrap / Blank screen / Hotfix / (Клешня, 17.06.2026) [codex]

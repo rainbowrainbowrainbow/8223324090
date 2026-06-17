@@ -439,6 +439,31 @@ test('booking menu catalog open button opens and renders the catalog panel', () 
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item/);
 });
 
+test('booking menu catalog delegated open control survives a remounted button', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    const panel = doc.getElementById('bookingMenuCatalogPanel');
+    const originalButton = doc.getElementById('bookingMenuCatalogOpenBtn');
+    const remountedButton = doc.createElement('button');
+    remountedButton.type = 'button';
+    remountedButton.id = 'bookingMenuCatalogOpenBtn';
+    remountedButton.className = 'booking-menu-catalog-open';
+    remountedButton.textContent = '+ Додати з меню';
+
+    ctx.initBookingPackageWorkspace();
+    originalButton.replaceWith(remountedButton);
+    panel.hidden = true;
+    panel.classList.add('hidden');
+    panel.setAttribute('aria-hidden', 'true');
+
+    clickElement(ctx.window, remountedButton);
+
+    assert.equal(panel.hidden, false);
+    assert.equal(panel.classList.contains('hidden'), false);
+    assert.equal(panel.getAttribute('aria-hidden'), 'false');
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item/);
+});
+
 test('booking menu catalog mobile list add does not auto-open cart sheet', () => {
     const ctx = createBookingMenuCatalogHarness();
     const doc = ctx.document;

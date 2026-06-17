@@ -530,15 +530,20 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     const timeline = read('js/timeline.js');
     const css = read('css/timeline.css');
 
+    assert.match(timeline, /TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set\(\['primary', 'root', 'banquet'\]\)/);
+    assert.match(timeline, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set\(\['activity', 'service', 'manual'\]\)/);
     assert.match(timeline, /function timelineBanquetServingInfo/);
     assert.match(timeline, /timelineBanquetMenuPositions\(booking\)/);
     assert.match(timeline, /function timelineBanquetServiceEvents/);
     assert.match(timeline, /function applyTimelineBanquetPreview/);
     assert.match(timeline, /function renderTimelineBanquetRoomCard/);
     assert.match(timeline, /function showTimelineBanquetInspector/);
+    assert.match(timeline, /function timelineBanquetPreviewRolesByBookingId/);
+    assert.match(timeline, /function timelineBanquetBlockCanOpenInspector/);
     assert.match(timeline, /function timelineBanquetRoomCardSignals/);
     assert.match(timeline, /function timelineBanquetGlanceRows/);
     assert.match(timeline, /data-banquet-room-card/);
+    assert.match(timeline, /dataset\.timelineBanquetPreviewRole/);
     assert.match(timeline, /requestIdleCallback/);
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*isRoomTimelineView\(\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
@@ -559,6 +564,16 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
+});
+
+test('room timeline banquet activity blocks keep full booking modal click ownership', () => {
+    const timeline = read('js/timeline.js');
+
+    assert.match(timeline, /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/);
+    assert.match(timeline, /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES\.has\(role\)\) return true/);
+    assert.match(timeline, /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/);
+    assert.match(timeline, /setTimelineBanquetPreviewRole\(target\.block, timelineBanquetPreviewRoleForTarget\(target, previewRolesByBookingId\)\)/);
+    assert.match(timeline, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*showBookingDetails\(renderBooking\.id\)/);
 });
 
 test('animator timeline keeps banquet teaser surfaces out of park animator view', () => {

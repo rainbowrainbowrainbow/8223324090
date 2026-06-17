@@ -14,6 +14,8 @@ const TIMELINE_VIEW_ROOMS = 'rooms';
 const TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service';
 const TIMELINE_BANQUET_SERVICE_LINE_LABEL = 'Банкет / кімната';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
+const TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set(['primary', 'root', 'banquet']);
+const TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual']);
 const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
     byBooking: new Map(),
     byGroup: new Map()
@@ -956,6 +958,83 @@ function timelineBanquetVisibleBlockById(bookingId) {
         .find(block => String(block.dataset.bookingId || '') === id && !block.classList.contains('status-hidden')) || null;
 }
 
+function normalizeTimelineBanquetPreviewRole(value) {
+    const role = String(value || '').trim().toLowerCase();
+    if (
+        TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(role)
+        || TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES.has(role)
+        || role === 'kitchen'
+    ) {
+        return role;
+    }
+    return '';
+}
+
+function assignTimelineBanquetPreviewRole(roles, bookingId, role) {
+    const id = String(bookingId || '').trim();
+    const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
+    if (!id || !normalizedRole) return;
+    const existingRole = roles.get(id);
+    if (existingRole === 'primary' && normalizedRole !== 'primary') return;
+    if (!existingRole || normalizedRole === 'primary') {
+        roles.set(id, normalizedRole);
+    }
+}
+
+function timelineBanquetPreviewRolesByBookingId(snapshot = {}) {
+    const roles = new Map();
+    const assignBooking = (booking, role) => assignTimelineBanquetPreviewRole(roles, booking?.id || booking?.bookingId, role);
+    (snapshot.members || []).forEach(member => {
+        const role = member?.isPrimary ? 'primary' : member?.role;
+        assignTimelineBanquetPreviewRole(roles, member?.bookingId || member?.booking?.id, role);
+    });
+    assignTimelineBanquetPreviewRole(roles, snapshot?.group?.primaryBookingId || snapshot?.group?.primary_booking_id, 'primary');
+    const grouped = snapshot.bookings || {};
+    assignBooking(grouped.primary, 'primary');
+    (grouped.kitchen || []).forEach(booking => assignBooking(booking, 'kitchen'));
+    (grouped.activities || []).forEach(booking => assignBooking(booking, 'activity'));
+    (grouped.services || []).forEach(booking => assignBooking(booking, 'service'));
+    (grouped.manual || []).forEach(booking => assignBooking(booking, 'manual'));
+    return roles;
+}
+
+function timelineBanquetPreviewRoleForTarget(target = {}, rolesByBookingId = new Map()) {
+    const booking = target.booking || {};
+    const id = String(booking.id || target.block?.dataset?.bookingId || '').trim();
+    const snapshotRole = rolesByBookingId.get(id);
+    if (snapshotRole) return snapshotRole;
+    const extra = timelineExtraData(booking);
+    const embeddedRole = normalizeTimelineBanquetPreviewRole(
+        extra?.multiActivity?.role
+        || extra?.multi_activity?.role
+        || extra?.banquetGroup?.role
+        || extra?.banquet_group?.role
+    );
+    if (embeddedRole) return embeddedRole;
+    if (String(booking.category || '').trim().toLowerCase() === 'banquet' || target.block?.classList?.contains('banquet-block')) {
+        return 'banquet';
+    }
+    return '';
+}
+
+function setTimelineBanquetPreviewRole(block, role) {
+    if (!block) return;
+    const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
+    if (normalizedRole) {
+        block.dataset.timelineBanquetPreviewRole = normalizedRole;
+    } else {
+        delete block.dataset.timelineBanquetPreviewRole;
+    }
+}
+
+function timelineBanquetBlockCanOpenInspector(block) {
+    const role = normalizeTimelineBanquetPreviewRole(block?.dataset?.timelineBanquetPreviewRole);
+    if (TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES.has(role)) return false;
+    if (TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(role)) return true;
+    if (role) return block?.classList?.contains('banquet-block') === true;
+    return false;
+}
+
 function resolveTimelineBanquetBadgeCarrier(snapshot = {}) {
     const summary = timelineBanquetSnapshotSummary(snapshot);
     if (!summary) return null;
@@ -1337,6 +1416,7 @@ function clearTimelineBanquetPreviewVisuals(block, options = {}) {
     if (options.clearSummary !== false) {
         delete block._timelineBanquetSummary;
         delete block.dataset.banquetGroupId;
+        delete block.dataset.timelineBanquetPreviewRole;
     }
 }
 
@@ -1377,6 +1457,7 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     const servingInfo = timelineBanquetServingInfo(summary);
     const summaryForInspector = timelineBanquetSummaryForInspector(summary, servingInfo, carrier.booking);
     const groupId = summary.groupId || `booking-${summary.carrierBooking?.id || summary.primaryBooking?.id || ''}`;
+    const previewRolesByBookingId = timelineBanquetPreviewRolesByBookingId(snapshot);
     document.querySelectorAll('.booking-block[data-banquet-group-id]').forEach(existing => {
         if (existing.dataset.banquetGroupId === groupId) {
             clearTimelineBanquetPreviewVisuals(existing);
@@ -1386,10 +1467,12 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     targets.forEach(target => {
         const targetSummary = timelineBanquetSummaryForInspector(summary, servingInfo, target.booking || carrier.booking);
         target.block.dataset.banquetGroupId = groupId;
+        setTimelineBanquetPreviewRole(target.block, timelineBanquetPreviewRoleForTarget(target, previewRolesByBookingId));
         target.block._timelineBanquetSummary = targetSummary;
         target.block.classList.add('has-timeline-banquet-preview-trigger');
     });
     block.dataset.banquetGroupId = groupId;
+    setTimelineBanquetPreviewRole(block, timelineBanquetPreviewRoleForTarget({ block, booking: carrier.booking || summary.carrierBooking || summary.primaryBooking }, previewRolesByBookingId));
     block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
     registerTimelineBanquetRoomPreview(summaryForInspector);
@@ -1421,6 +1504,7 @@ function hydrateTimelineBanquetBadges(block, booking = {}) {
 
 function showTimelineBanquetPreviewFromBlock(event, block) {
     if (!isRoomTimelineView() || !block?._timelineBanquetSummary) return false;
+    if (!timelineBanquetBlockCanOpenInspector(block)) return false;
     if (event?.target?.closest?.('[data-banquet-link-handle], .graduation-segment, .graduation-segment-actions')) return false;
     event?.preventDefault?.();
     event?.stopPropagation?.();

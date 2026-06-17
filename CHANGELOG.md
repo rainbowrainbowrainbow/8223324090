@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.17 - Room Timeline Activity Click Fix
+
+### Timeline / Room view / Banquet activity clicks / Release / (Клешня, 17.06.2026) [codex]
+- **Клік по activity blocks у room timeline повернуто до full booking modal** - блоки на кшталт “Бульбашки”, “Лід”, “Неон” більше не відкривають compact banquet inspector замість деталей бронювання.
+- **Banquet preview став role-aware** - frontend зберігає роль banquet member на DOM-блоці та відкриває compact inspector тільки для room card “Банкет” або основного banquet/root/primary block.
+- **Activity/service/manual roles проходять у `showBookingDetails(...)`** - якщо роль блоку не підтверджує banquet/root, click handler не перехоплює подію і лишає повноцінну модалку з деталями, редагуванням, повторенням, чатом і видаленням.
+- **Hover-підсвітка banquet group збережена** - повʼязані activity blocks і room card можуть і далі підсвічувати групу, але клік більше не підміняє activity modal.
+- **Timeline “Свята” не змінювався** - fix обмежений room timeline banquet preview gate і не змінює animator view booking flow.
+- **Regression guards оновлено** - `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють, що activity roles не можуть відкривати compact banquet inspector.
+- **Релізні маркери піднято до `0.76.17`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.16 - Profile Avatar Crop Consistency
 
 ### Profile / Avatar crop sync / Sidebar preview / Release / (Клешня, 17.06.2026) [codex]

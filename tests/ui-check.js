@@ -154,7 +154,7 @@ checkPage('index.html', (doc, html) => {
         && bookingsRouteCode.includes('function isBanquetServiceRootBooking')
         && bookingsRouteCode.includes('function isBanquetServiceTimelineBooking')
         && bookingsRouteCode.includes('return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking))')
-        && bookingsRouteCode.includes("return bookings\n        .filter(booking => !isBanquetServiceRootBooking(booking))\n        .filter(booking => !String(booking.linkedTo || '').trim() && isRealRoom(booking.room))")
+        && /return bookings\s*\.filter\(booking => !isBanquetServiceRootBooking\(booking\)\)\s*\.filter\(booking => !String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)\)/.test(bookingsRouteCode)
         && htmlContains('js/timeline.js', 'function shouldRenderBookingVisualLink')
         && htmlContains('js/timeline.js', 'relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView()')
         && bookingCode.includes("ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
@@ -972,10 +972,17 @@ check('Room timeline banquet preview is click-inspector driven instead of hover-
     && timelineCode.includes("block.classList.add('is-timeline-banquet-preview-hovered')")
     && timelineCode.includes('showTimelineBanquetInspector(event, summary, card)')
     && timelineCode.includes('showTimelineBanquetInspector(event, block._timelineBanquetSummary, block)')
+    && timelineCode.includes('function timelineBanquetBlockCanOpenInspector')
+    && timelineCode.includes('if (!timelineBanquetBlockCanOpenInspector(block)) return false;')
     && timelineCode.includes("event.target?.closest?.('[data-banquet-room-card]')")
     && timelineCode.includes("event.key === 'Escape'")
     && !/addEventListener\('mouseenter'[^\n]+showTimelineBanquetInspector/.test(timelineCode)
     && !/addEventListener\('mouseenter'[^\n]+showTimelineBanquetPopover/.test(timelineCode));
+check('Room timeline banquet activity blocks open booking modal instead of compact inspector',
+    timelineCode.includes("TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual'])")
+    && /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/.test(timelineCode)
+    && /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/.test(timelineCode)
+    && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*showBookingDetails\(renderBooking\.id\)/.test(timelineCode));
 check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
     timelineCode.includes('function timelineBanquetServingInfo')
     && timelineCode.includes('timelineBanquetMenuPositions(booking)')
@@ -1367,7 +1374,7 @@ check('Customers page no longer exposes duplicate journey funnel UI', !customers
 check('Customers keeps lifecycle segment deep links as list filters only', customersCode.includes('CUSTOMER_LIFECYCLE_SEGMENTS') && customersCode.includes("id: 'prospects'") && customersCode.includes('maxVisits: 0') && customersCode.includes('getCustomerLifecycleSegment') && customersRouteCode.includes('parseCustomerVisitBound') && customersRouteCode.includes('maxVisits !== null') && customersRouteCode.includes('COALESCE(b_agg.booking_count, c.total_bookings, 0)'));
 check('Customers CRUD uses Postgres without legacy remote migration path', !customersRouteCode.includes("require('../db/supabase')") && !customersRouteCode.includes('getSupabase') && !customersRouteCode.includes('migrate-to-supabase'));
 check('Sales funnel accepts canonical and legacy query-driven kanban pipeline drilldown', leadsCode.includes('currentPipelineStage') && leadsCode.includes("params.set('pipeline_stage', currentPipelineStage)") && leadsCode.includes('applyLeadQueryParams') && leadsCode.includes("params.get('view')") && leadsCode.includes("params.get('pipeline_stage') || params.get('stage')"));
-check('Sales funnel view and filters survive refresh through canonical URL state', leadsCode.includes('function syncLeadUrlState') && leadsCode.includes("url.searchParams.set('view', currentView)") && leadsCode.includes("url.searchParams.delete('view')") && leadsCode.includes("setOrDelete('status', currentFilter)") && leadsCode.includes("url.searchParams.set('lead_queue', currentLeadQueue)") && leadsCode.includes("setOrDelete('event_date', currentDateFilter)") && leadsCode.includes("setOrDelete('search', document.getElementById('leadsSearch')?.value?.trim() || '')") && leadsCode.includes("window.history.replaceState(state, '', url)") && leadsCode.includes('syncLeadUrlState();\n            loadLeads();'));
+check('Sales funnel view and filters survive refresh through canonical URL state', leadsCode.includes('function syncLeadUrlState') && leadsCode.includes("url.searchParams.set('view', currentView)") && leadsCode.includes("url.searchParams.delete('view')") && leadsCode.includes("setOrDelete('status', currentFilter)") && leadsCode.includes("url.searchParams.set('lead_queue', currentLeadQueue)") && leadsCode.includes("setOrDelete('event_date', currentDateFilter)") && leadsCode.includes("setOrDelete('search', document.getElementById('leadsSearch')?.value?.trim() || '')") && leadsCode.includes("window.history.replaceState(state, '', url)") && /syncLeadUrlState\([^)]*\);\s*loadLeads\(\);/.test(leadsCode));
 check('Legacy leads route preserves Sales Funnel refresh state', htmlContains('server.js', "const query = req.originalUrl.includes('?')") && htmlContains('server.js', 'res.redirect(302, `/sales-funnel${query}`);') && leadsCode.includes('function normalizeLeadCanonicalRoute') && leadsCode.includes("url.pathname = '/sales-funnel'") && leadsCode.includes('normalizeLeadCanonicalRoute();'));
 check('Customer card exposes communication hub context', customersCode.includes('fetchCustomerCommunicationContext') && customersCode.includes('/communication-context') && customersCode.includes('renderCustomerCommunicationHub') && customersCode.includes('customerCommHub'));
 check('Customer communication hub has exact/suggested/unavailable styling', htmlContains('customers.html', '.customer-hub-pill.exact') && htmlContains('customers.html', '.customer-hub-pill.suggested') && htmlContains('customers.html', '.customer-hub-pill.unavailable'));

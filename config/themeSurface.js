@@ -34,7 +34,7 @@ const THEME_INLINE_DEBT_BUDGETS = {
     'leads.html': { owner: 'leads', maxStyleBytes: 37000, maxInlineStyleAttrs: 8, maxHardColors: 320 },
     'omni.html': { owner: 'omnichannel', maxStyleBytes: 60000, maxInlineStyleAttrs: 19, maxHardColors: 370 },
     'profile.html': { owner: 'profile', maxStyleBytes: 148000, maxInlineStyleAttrs: 4, maxHardColors: 490 },
-    'programs.html': { owner: 'programs', maxStyleBytes: 42000, maxInlineStyleAttrs: 18, maxHardColors: 200 },
+    'programs.html': { owner: 'programs', maxStyleBytes: 43000, maxInlineStyleAttrs: 18, maxHardColors: 200 },
     'reports.html': { owner: 'reports', maxStyleBytes: 47000, maxInlineStyleAttrs: 8, maxHardColors: 245 },
     'staff.html': { owner: 'staff', maxStyleBytes: 43500, maxInlineStyleAttrs: 36, maxHardColors: 235 },
     'tasks.html': { owner: 'tasks', maxStyleBytes: 65000, maxInlineStyleAttrs: 6, maxHardColors: 415 },

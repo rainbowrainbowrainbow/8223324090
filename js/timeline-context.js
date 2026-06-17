@@ -735,9 +735,7 @@
 
     function controlVisibilityForView(view = presentation()) {
         const timelineEnabled = view?.timelineEnabled !== false && view?.mode !== 'disabled';
-        const bookingsEnabled = view?.enabledModules?.bookings !== false;
         return {
-            createBooking: timelineEnabled && bookingsEnabled,
             addLine: canShowAddLineControl(view),
             roomLoad: timelineEnabled && view?.enabledModules?.resources !== false,
             productSales: timelineEnabled && view?.showProductSales === true,
@@ -779,11 +777,6 @@
 
         const salesBtn = document.getElementById('productSalesBtn');
         setTimelineControlHidden(salesBtn, !view.controls.productSales);
-        const createBtn = document.getElementById('newBookingBtn');
-        if (createBtn) {
-            setControlText(createBtn, view.createButtonLabel || view.submitLabel || 'Створити бронювання');
-            setTimelineControlHidden(createBtn, !view.controls.createBooking);
-        }
         const roomBtn = document.getElementById('roomLoadBtn');
         setControlText(roomBtn, view.roomLoadLabel);
         if (roomBtn) {

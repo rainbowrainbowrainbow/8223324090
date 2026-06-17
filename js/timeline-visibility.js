@@ -52,9 +52,6 @@
         visualBlock('compactToggle', 'Верхня панель', 'Компактний режим', '#compactModeToggle', { targetWrapper: true }),
         visualBlock('undo', 'Верхня панель', 'Скасувати дію', '#undoBtn'),
         visualBlock('roomLoad', 'Верхня панель', 'Кімнати / кабінети', '#roomLoadBtn'),
-        visualBlock('createBooking', 'Верхня панель', 'Створити бронювання', '#newBookingBtn', {
-            impact: 'Приховування не забороняє створення через інші входи, але прибирає головну швидку кнопку.'
-        }),
         visualBlock('productSales', 'Верхня панель', 'Продажі', '#productSalesBtn'),
         visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn'),
         visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),

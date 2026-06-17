@@ -201,7 +201,6 @@ test('Maysternya timeline control contract keeps booking actions visible without
         };
     };
     const productSalesBtn = makeElement();
-    const newBookingBtn = makeElement();
     const addLineBtn = makeElement();
     const roomLoadBtn = makeElement();
     const sandbox = {
@@ -228,7 +227,6 @@ test('Maysternya timeline control contract keeps booking actions visible without
             },
             getElementById: id => ({
                 productSalesBtn,
-                newBookingBtn,
                 addLineBtn,
                 roomLoadBtn
             }[id] || null),
@@ -249,14 +247,11 @@ test('Maysternya timeline control contract keeps booking actions visible without
     const view = sandbox.window.TimelineBusinessContext.presentation();
     assert.equal(view.mode, 'simple');
     assert.deepEqual(JSON.parse(JSON.stringify(view.controls)), {
-        createBooking: true,
         addLine: true,
         roomLoad: true,
         productSales: false,
         export: true
     });
-    assert.equal(newBookingBtn.classList.contains('hidden'), false);
-    assert.equal(newBookingBtn.attrs.has('data-timeline-context-hidden'), false);
     assert.equal(addLineBtn.classList.contains('hidden'), false);
     assert.equal(roomLoadBtn.classList.contains('hidden'), false);
     assert.equal(productSalesBtn.classList.contains('hidden'), true);
@@ -307,7 +302,6 @@ test('Dar simple timeline opens from URL before the server business profile hydr
     assert.equal(ctx.path, '/?businessContext=dar');
     assert.equal(view.mode, 'simple');
     assert.equal(view.timelineEnabled, true);
-    assert.equal(view.controls.createBooking, true);
     assert.equal(view.controls.addLine, true);
     assert.equal(sandbox.window.TimelineBusinessContext.appendApiContext('/api/bookings'), '/api/bookings?businessContext=dar');
 });

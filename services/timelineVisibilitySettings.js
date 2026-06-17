@@ -47,7 +47,6 @@ const TIMELINE_VISUAL_BLOCKS = Object.freeze([
   visualBlock('compactToggle', 'Верхня панель', 'Компактний режим'),
   visualBlock('undo', 'Верхня панель', 'Скасувати дію'),
   visualBlock('roomLoad', 'Верхня панель', 'Кімнати / кабінети'),
-  visualBlock('createBooking', 'Верхня панель', 'Створити бронювання'),
   visualBlock('productSales', 'Верхня панель', 'Продажі'),
   visualBlock('export', 'Верхня панель', 'Експорт'),
   visualBlock('actionMenu', 'Верхня панель', 'Меню дій'),

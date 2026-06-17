@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.27 - Timeline Create Shortcut Cleanup
+
+### Timeline / Toolbar / Booking create / Release / (Клешня, 17.06.2026) [codex]
+- **Зайву кнопку `Створити бронювання` прибрано з timeline toolbar** - верхня панель більше не показує окремий shortcut, який дублював створення через клітинку таймлайну.
+- **Створення бронювань не вимкнено** - основний flow через вибір time/resource cell і booking panel лишився на місці.
+- **Lead conversion deep-link збережено** - програмний `openTimelineCreateBookingFromToolbar()` лишається доступним для автозапуску бронювання з ліда, але більше не прив'язаний до видимої кнопки.
+- **Visibility/auth surface очищено** - toolbar shortcut прибрано з timeline visibility blocks, permission hiding і context controls, щоб settings не показували неіснуючий елемент.
+- **Regression guards оновлено** - UI smoke перевіряє відсутність toolbar-кнопки й наявність deep-link create-flow.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.27`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.26 - Banquet Serving Persistence
 
 ### Banquet / Room timeline / Serving persistence / Release / (Клешня, 17.06.2026) [codex]

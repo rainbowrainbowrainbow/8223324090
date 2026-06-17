@@ -541,6 +541,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function timelineBanquetPreviewRolesByBookingId/);
     assert.match(timeline, /function timelineBanquetBlockCanOpenInspector/);
     assert.match(timeline, /function timelineBanquetRoomCardSignals/);
+    assert.match(timeline, /function timelineBanquetSummaryHasPersistentRoot/);
     assert.match(timeline, /function timelineBanquetGlanceRows/);
     assert.match(timeline, /data-banquet-room-card/);
     assert.match(timeline, /dataset\.timelineBanquetPreviewRole/);
@@ -549,6 +550,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
     assert.match(timeline, /timelineBanquetServingInfo\(summary\)/);
     assert.match(timeline, /timelineBanquetMarkerLabel\(servingMarker\)/);
+    assert.match(timeline, /renderTimelineBanquetRoomCard[\s\S]*if \(!signals\.length && timelineBanquetSummaryHasPersistentRoot\(summary\)\)[\s\S]*signals\.push\(\{/);
     assert.match(timeline, /card\.removeAttribute\('title'\)/);
     assert.doesNotMatch(timeline, /data-banquet-badge/);
     assert.doesNotMatch(timeline, /data-banquet-preview-trigger/);
@@ -586,6 +588,15 @@ test('banquet delete flow invalidates snapshot-backed room preview caches', () =
     assert.match(timeline, /window\.invalidateTimelineBanquetSnapshotCache = invalidateTimelineBanquetSnapshotCache/);
     assert.match(timeline, /async function removeBookingBanquetLink[\s\S]*invalidateTimelineBanquetSnapshotCache\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
     assert.match(booking, /window\.invalidateTimelineBanquetSnapshotCache\(\{\s*bookingIds: allToDelete\.map\(item => item\?\.id\)\.filter\(Boolean\)\s*\}\)/);
+});
+
+test('room timeline keeps banquet root teaser visible when activity count reaches zero', () => {
+    const timeline = read('js/timeline.js');
+
+    assert.match(timeline, /function timelineBanquetSummaryHasPersistentRoot[\s\S]*category === 'banquet'/);
+    assert.match(timeline, /function timelineBanquetSummaryHasPersistentRoot[\s\S]*summary\.groupId/);
+    assert.match(timeline, /renderTimelineBanquetRoomCard[\s\S]*key: 'banquet'/);
+    assert.match(timeline, /renderTimelineBanquetRoomCard[\s\S]*label: `\$\{activityCount\} \$\{timelineBanquetPlural\(activityCount, 'активність', 'активності', 'активностей'\)\}`/);
 });
 
 test('animator timeline keeps banquet teaser surfaces out of park animator view', () => {

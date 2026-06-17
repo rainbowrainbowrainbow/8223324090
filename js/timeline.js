@@ -1366,6 +1366,18 @@ function timelineBanquetRoomCardSignals(summary = {}) {
     return signals.slice(0, 3);
 }
 
+function timelineBanquetSummaryHasPersistentRoot(summary = {}) {
+    const primaryBooking = summary.primaryBooking || summary.carrierBooking || null;
+    const category = String(primaryBooking?.category || '').trim().toLowerCase();
+    const source = String(summary?.snapshot?.source || '').trim().toLowerCase();
+    return Boolean(
+        summary.groupId
+        || source === 'group'
+        || category === 'banquet'
+        || ((summary.hasMenu || Number(summary.menuCount || 0) > 0) && primaryBooking?.id)
+    );
+}
+
 function timelineBanquetGlanceRows(summary = {}, signalText = '') {
     return [
         ['Кімната', summary.room || 'Не вказано'],
@@ -1378,6 +1390,13 @@ function timelineBanquetGlanceRows(summary = {}, signalText = '') {
 function renderTimelineBanquetRoomCard(header, summary = {}) {
     if (!isRoomTimelineView() || !header || !summary) return;
     const signals = timelineBanquetRoomCardSignals(summary);
+    if (!signals.length && timelineBanquetSummaryHasPersistentRoot(summary)) {
+        const activityCount = Number(summary.activityCount || 0);
+        signals.push({
+            key: 'banquet',
+            label: `${activityCount} ${timelineBanquetPlural(activityCount, 'активність', 'активності', 'активностей')}`
+        });
+    }
     if (!signals.length) return;
     let card = header.querySelector('[data-banquet-room-card]');
     if (!card) {

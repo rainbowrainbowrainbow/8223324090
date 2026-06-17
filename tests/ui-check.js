@@ -995,6 +995,12 @@ check('Room timeline banquet serving signals stay frontend-only and snapshot-bac
     && !timelineCode.includes('data-banquet-service-marker')
     && !timelineConstructorCss.includes('.timeline-banquet-service-marker')
     && !timelineCode.includes('/banquet-service-markers'));
+check('Room timeline keeps banquet root surface visible even with zero activities',
+    timelineCode.includes('function timelineBanquetSummaryHasPersistentRoot')
+    && timelineCode.includes("category === 'banquet'")
+    && timelineCode.includes('if (!signals.length && timelineBanquetSummaryHasPersistentRoot(summary))')
+    && timelineCode.includes("key: 'banquet'")
+    && timelineCode.includes("timelineBanquetPlural(activityCount, 'активність', 'активності', 'активностей')"));
 check('Timeline booking links use durable API-backed connector model', htmlContains('db/migrations/216_booking_banquet_links.sql', 'CREATE TABLE IF NOT EXISTS booking_banquet_links') && htmlContains('routes/bookings.js', "router.post('/:id/banquet-links'") && htmlContains('routes/bookings.js', "router.delete('/:id/banquet-links/:targetId'") && htmlContains('routes/bookings.js', "shared_room_activity") && htmlContains('services/booking.js', 'bookingLinks: Array.isArray(row.booking_links)') && timelineCode.includes('booking-banquet-link-handle') && timelineCode.includes('renderBanquetLinksOverlay') && timelineCode.includes('getBookingVisualLinks') && timelineCode.includes('apiCreateBookingBanquetLink') && timelineCode.includes('removeBookingBanquetLink'));
 check('Banquet groups schema stays isolated from bookings and legacy visual links',
     htmlContains('db/migrations/265_banquet_groups.sql', 'CREATE TABLE IF NOT EXISTS banquet_groups')

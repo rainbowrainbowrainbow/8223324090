@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.23 - Banquet Zero-Activity Surface Retention
+
+### Banquet / Room timeline / Zero-activity teaser retention / Release / (Клешня, 17.06.2026) [codex]
+- **Room banquet surface більше не зникає при `0 активностей`** - якщо primary/root banquet booking ще активний, teaser/card у room timeline лишається видимим навіть після видалення останньої activity.
+- **Compact banquet inspector лишається доступним для root banquet** - fallback card зберігає правильний banquet click path і не переводить root booking у звичайний activity modal flow.
+- **Fallback render path обмежено тільки на persistent banquet root/group** - noisy room card не зʼявляється для довільних booking surfaces без banquet signal.
+- **Activity modal behavior не зламано** - activity blocks і далі відкривають повну booking modal, а compact inspector лишається banquet-only surface.
+- **Regression guards розширено** - `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють, що room banquet teaser не зникає лише тому, що activity count став `0`.
+- **Релізні маркери піднято до `0.76.23`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.22 - Banquet Activity Delete Consistency Fix
 
 ### Banquet / Linked activity delete / Snapshot consistency / Release / (Клешня, 17.06.2026) [codex]

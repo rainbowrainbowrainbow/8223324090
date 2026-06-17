@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.22",
+  "version": "0.76.23",
   "eventGenix": {
-    "releaseLabel": "Banquet Activity Delete Consistency Fix"
+    "releaseLabel": "Banquet Zero-Activity Surface Retention"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

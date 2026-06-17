@@ -419,6 +419,26 @@ test('booking menu catalog falls back from legacy invalid filter keys to all', (
     );
 });
 
+test('booking menu catalog open button opens and renders the catalog panel', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    const panel = doc.getElementById('bookingMenuCatalogPanel');
+    const openButton = doc.getElementById('bookingMenuCatalogOpenBtn');
+    panel.hidden = true;
+    panel.classList.add('hidden');
+    panel.setAttribute('aria-hidden', 'true');
+
+    ctx.initBookingPackageWorkspace();
+    clickElement(ctx.window, openButton);
+
+    assert.equal(panel.hidden, false);
+    assert.equal(panel.classList.contains('hidden'), false);
+    assert.equal(panel.getAttribute('aria-hidden'), 'false');
+    assert.equal(openButton.getAttribute('aria-expanded'), 'true');
+    assert.ok(doc.querySelector('#bookingMenuCatalogTabs [data-menu-catalog-filter="all"]'));
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item/);
+});
+
 test('booking menu catalog mobile list add does not auto-open cart sheet', () => {
     const ctx = createBookingMenuCatalogHarness();
     const doc = ctx.document;

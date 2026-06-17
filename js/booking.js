@@ -2810,6 +2810,24 @@ function setBookingMenuCatalogOpen(open, options = {}) {
     }
 }
 
+function initBookingMenuCatalogOpenControl() {
+    const openBtn = document.getElementById('bookingMenuCatalogOpenBtn');
+    if (!openBtn || openBtn.dataset.menuCatalogOpenBound === '1') return;
+    openBtn.dataset.menuCatalogOpenBound = '1';
+    openBtn.addEventListener('click', () => setBookingMenuCatalogOpen(true));
+}
+
+function initBookingMenuCatalogOpenControlWhenReady() {
+    if (typeof document === 'undefined') return;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBookingMenuCatalogOpenControl, { once: true });
+        return;
+    }
+    initBookingMenuCatalogOpenControl();
+}
+
+initBookingMenuCatalogOpenControlWhenReady();
+
 function renderBookingMenuCatalogTabs(products = getBookingMenuProducts()) {
     const tabsEl = document.getElementById('bookingMenuCatalogTabs');
     if (!tabsEl) return;
@@ -3623,7 +3641,7 @@ function initBookingPackageWorkspace() {
         el.addEventListener('input', refreshHosts);
     });
     document.getElementById('bookingMenuAddBtn')?.addEventListener('click', addBookingMenuPositionFromForm);
-    document.getElementById('bookingMenuCatalogOpenBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(true));
+    initBookingMenuCatalogOpenControl();
     document.getElementById('bookingMenuCatalogCloseBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
     document.getElementById('bookingMenuCatalogDoneBtn')?.addEventListener('click', () => setBookingMenuCatalogOpen(false));
     document.getElementById('bookingMenuCatalogMobileCartBtn')?.addEventListener('click', () => setBookingMenuCatalogCartOpen(true));

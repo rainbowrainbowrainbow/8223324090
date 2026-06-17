@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.33 - Booking Catalog Open Control Hotfix
+
+### Booking / Kitchen menu catalog / Open control / Hotfix / (Клешня, 17.06.2026) [codex]
+- **Кнопку `+ Додати з меню` стабілізовано** - open-control тепер має окремий ідемпотентний binding для `#bookingMenuCatalogOpenBtn`, тому кнопка не лишається видимою, але інертною.
+- **Додано DOM-ready fallback** - каталог відкривається навіть якщо широкий `initBookingPackageWorkspace()` пропущений або зупинився до прив'язки цієї кнопки.
+- **Повторні init-и безпечні** - `data-menu-catalog-open-bound` guard не дозволяє навісити дубльовані click listeners.
+- **Add/remove логіку каталогу не переписували** - quantity, cart, summary і scroll/rerender behavior лишилися в межах попереднього релізу.
+- **Regression guard додано** - contract test клікає `#bookingMenuCatalogOpenBtn` і перевіряє відкриту панель, `aria-hidden="false"`, відсутність `.hidden`, tabs і catalog content.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.33`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.32 - Booking Catalog Stability Deploy
 
 ### Booking / Kitchen menu catalog / First screen release notes / Deploy / (Клешня, 17.06.2026) [codex]

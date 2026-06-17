@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.21 - Timeline Sticky Brow Polish
+
+### Timeline / Sticky time scale / Brow slim polish / Release / (Клешня, 17.06.2026) [codex]
+- **Sticky time scale brow стала тоншою** - top shield зменшено з padding-based висоти до компактних 6px, щоб верх timeline не виглядав як важка темна плашка.
+- **Кути sticky layer вирівняно** - shield отримав керований `--timeline-scale-radius`, щоб не давати грубий квадратний виступ зліва.
+- **Shadow і separator помʼякшено** - важкий panel shadow замінено делікатним separator-shadow, який відділяє шкалу часу без зайвої товщини.
+- **Compact mode має ще нижчий shield** - compact timeline використовує 4px top shield і менший inline bleed.
+- **Seam mask збережено** - `.time-scale::before` лишився, тому grid/blocks не мають просвічувати над шкалою часу при scroll.
+- **Scroll reset з `0.76.20` не змінювався** - `Кімнати -> scroll down -> Свята` і далі скидає vertical scroll без втрати horizontal scroll.
+- **Regression guard оновлено** - `tests/ui-check.js` перевіряє slim shield, radius, compact override, iPhone guard і збереження scroll reset guard.
+- **Релізні маркери піднято до `0.76.21`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.20 - Timeline Switch Scroll Reset
 
 ### Timeline / Room-to-animator switch / Vertical scroll reset / Release / (Клешня, 17.06.2026) [codex]

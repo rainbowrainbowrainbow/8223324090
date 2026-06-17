@@ -568,7 +568,7 @@ body.dark-mode .timeline-line:nth-child(even) {
 body.dark-mode .time-scale {
     --timeline-scale-bg: var(--white);
     --timeline-scale-border: var(--gray-200);
-    --timeline-scale-shadow: var(--shadow-md);
+    --timeline-scale-shadow: 0 1px 0 var(--gray-200);
     background: var(--timeline-scale-bg);
 }
 
@@ -3869,17 +3869,18 @@ body.dark-mode .guardian-stats-summary {
     padding: 16px;
     --timeline-scale-bg: var(--eg-timeline-bg);
     --timeline-scale-border: var(--eg-border-subtle);
-    --timeline-scale-shadow: var(--eg-shadow-panel);
+    --timeline-scale-shadow: 0 1px 0 var(--eg-border-subtle);
     --timeline-scale-gutter: var(--timeline-line-header-w, 140px);
-    --timeline-scale-top-shield: var(--timeline-scroll-pad, 16px);
-    --timeline-scale-inline-bleed: var(--timeline-scroll-pad, 16px);
+    --timeline-scale-top-shield: 6px;
+    --timeline-scale-inline-bleed: 8px;
+    --timeline-scale-radius: 12px;
 }
 
 .timeline-dashboard-page .time-scale {
     margin-left: 140px;
     --timeline-scale-bg: var(--eg-timeline-bg);
     --timeline-scale-border: var(--eg-border-subtle);
-    --timeline-scale-shadow: var(--eg-shadow-panel);
+    --timeline-scale-shadow: 0 1px 0 var(--eg-border-subtle);
     background: var(--eg-timeline-bg) !important;
     border-bottom: 1px solid var(--eg-border-subtle);
     padding: 6px 0 8px;
@@ -4222,6 +4223,9 @@ body.timeline-dashboard-page.timeline-compact-mode .timeline-container {
 
 body.timeline-dashboard-page.timeline-compact-mode .timeline-scroll {
     padding: var(--timeline-scroll-pad, 8px) !important;
+    --timeline-scale-top-shield: 4px;
+    --timeline-scale-inline-bleed: 6px;
+    --timeline-scale-radius: 10px;
 }
 
 body.timeline-dashboard-page.timeline-compact-mode .time-scale {

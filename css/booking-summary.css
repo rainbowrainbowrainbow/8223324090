@@ -125,26 +125,28 @@ body.booking-summary-page {
 
 .booking-summary-document {
     width: min(100%, 210mm);
-    min-height: 297mm;
+    min-height: auto;
     margin: 0 auto;
-    padding: 16mm 14mm;
+    padding: 12mm;
     border-radius: 4px;
     background: var(--summary-panel);
     color: var(--summary-ink);
     box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
 }
 
 .summary-doc-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 18px;
-    padding-bottom: 14px;
-    border-bottom: 3px solid var(--summary-ink);
+    gap: 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--summary-ink);
 }
 
 .summary-venue-name {
-    margin: 0 0 6px;
-    font-size: 22px;
+    margin: 0 0 4px;
+    font-size: 18px;
     font-weight: 950;
     color: var(--summary-ink);
 }
@@ -152,9 +154,9 @@ body.booking-summary-page {
 .summary-venue-lines,
 .summary-doc-meta {
     display: grid;
-    gap: 3px;
+    gap: 2px;
     color: var(--summary-muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 650;
 }
 
@@ -164,61 +166,55 @@ body.booking-summary-page {
 }
 
 .summary-title {
-    margin: 22px 0 16px;
-    font-size: 28px;
+    margin: 12px 0 8px;
+    font-size: 22px;
     font-weight: 950;
     text-align: center;
     text-transform: uppercase;
     color: var(--summary-ink);
 }
 
-.summary-section {
-    margin-top: 18px;
-}
-
-.summary-section h2 {
-    margin: 0 0 8px;
-    padding: 7px 10px;
-    border: 1px solid var(--summary-border);
-    background: var(--summary-soft);
-    color: var(--summary-ink);
-    font-size: 14px;
-    font-weight: 950;
-    text-transform: uppercase;
-}
-
-.summary-info-grid {
+.summary-brief {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-top: 1px solid var(--summary-border);
-    border-left: 1px solid var(--summary-border);
-}
-
-.summary-info-item {
-    display: grid;
-    grid-template-columns: 150px minmax(0, 1fr);
-    min-height: 34px;
-    border-right: 1px solid var(--summary-border);
+    gap: 3px;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--summary-border);
+    color: var(--summary-ink);
 }
 
-.summary-info-label,
-.summary-info-value {
-    padding: 8px 9px;
+.summary-brief-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0;
     font-size: 12px;
     line-height: 1.35;
 }
 
-.summary-info-label {
-    background: var(--summary-soft);
-    color: #334155;
-    font-weight: 900;
+.summary-brief-item {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
-.summary-info-value {
-    font-weight: 750;
+.summary-brief-item strong {
+    font-weight: 950;
+}
+
+.summary-section {
+    margin-top: 12px;
+}
+
+.summary-section h2 {
+    margin: 0 0 6px;
+    padding: 0 0 4px;
+    border: 0;
+    border-bottom: 1px solid var(--summary-border);
+    background: transparent;
     color: var(--summary-ink);
-    overflow-wrap: anywhere;
+    font-size: 13px;
+    font-weight: 950;
+    text-transform: uppercase;
 }
 
 .summary-order-table {
@@ -231,10 +227,10 @@ body.booking-summary-page {
 .summary-order-table th,
 .summary-order-table td {
     border: 1px solid var(--summary-border);
-    padding: 8px 7px;
+    padding: 5px 6px;
     color: var(--summary-ink);
-    font-size: 12px;
-    line-height: 1.32;
+    font-size: 11px;
+    line-height: 1.28;
     vertical-align: top;
 }
 
@@ -246,8 +242,7 @@ body.booking-summary-page {
 
 .summary-order-table .num,
 .summary-order-table .qty,
-.summary-order-table .serving,
-.summary-order-table .money {
+.summary-order-table .serving {
     text-align: right;
     white-space: nowrap;
 }
@@ -256,8 +251,17 @@ body.booking-summary-page {
     font-weight: 850;
 }
 
+.summary-order-table thead {
+    display: table-header-group;
+}
+
+.summary-order-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
 .summary-order-empty {
-    padding: 18px;
+    padding: 12px;
     border: 1px solid var(--summary-border);
     color: var(--summary-muted);
     font-weight: 700;
@@ -266,19 +270,21 @@ body.booking-summary-page {
 
 .summary-service-events {
     display: grid;
-    gap: 8px;
+    gap: 5px;
 }
 
 .summary-service-event {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 96px;
-    gap: 8px 12px;
+    gap: 4px 10px;
     align-items: start;
-    padding: 9px 10px;
-    border: 1px solid var(--summary-border);
+    padding: 5px 0;
+    border-bottom: 1px solid var(--summary-border);
     background: var(--summary-panel);
     color: var(--summary-ink);
-    font-size: 12px;
+    font-size: 11px;
+    break-inside: avoid;
+    page-break-inside: avoid;
 }
 
 .summary-service-event strong {
@@ -297,41 +303,30 @@ body.booking-summary-page {
     line-height: 1.35;
 }
 
-.summary-totals-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-}
-
-.summary-total-card,
-.summary-terms {
-    border: 1px solid var(--summary-border);
+.summary-finance-lines,
+.summary-note-block {
+    padding: 0;
     background: #fff;
-}
-
-.summary-total-card div {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--summary-border);
-    font-size: 12px;
-    font-weight: 750;
-}
-
-.summary-total-card div:last-child {
-    border-bottom: 0;
-}
-
-.summary-total-card strong {
-    font-weight: 950;
-}
-
-.summary-terms {
-    padding: 10px 14px;
     color: var(--summary-ink);
     font-size: 12px;
     line-height: 1.48;
+}
+
+.summary-finance-lines {
+    display: grid;
+    gap: 3px;
+}
+
+.summary-finance-lines p {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin: 0;
+}
+
+.summary-finance-lines strong,
+.summary-note-block strong {
+    font-weight: 950;
 }
 
 .summary-terms ul {
@@ -380,9 +375,7 @@ body.booking-summary-page {
         padding: 18px 12px;
     }
 
-    .summary-doc-header,
-    .summary-info-grid,
-    .summary-totals-grid {
+    .summary-doc-header {
         grid-template-columns: 1fr;
     }
 
@@ -390,8 +383,10 @@ body.booking-summary-page {
         text-align: left;
     }
 
-    .summary-info-item {
-        grid-template-columns: 125px minmax(0, 1fr);
+    .summary-brief-line,
+    .summary-finance-lines p {
+        display: grid;
+        gap: 2px;
     }
 }
 
@@ -429,10 +424,25 @@ body.booking-summary-page {
         box-shadow: none;
     }
 
-    .summary-section,
-    .summary-total-card,
-    .summary-terms,
-    .summary-order-table {
+    .summary-doc-header,
+    .summary-brief,
+    .summary-finance-lines,
+    .summary-terms {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .summary-section h2 {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    .summary-order-table thead {
+        display: table-header-group;
+    }
+
+    .summary-order-table tr,
+    .summary-service-event {
         break-inside: avoid;
         page-break-inside: avoid;
     }

@@ -529,6 +529,20 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('bookingSummaryWarnings')
         && pageCode.includes('navigator.clipboard')
         && !pageCode.includes('pdf'));
+    check('Booking summary sheet uses compact text header and keeps table only for ordered rows',
+        pageCode.includes('function compactFact')
+        && pageCode.includes('summary-brief')
+        && pageCode.includes('summary-finance-lines')
+        && pageCode.includes('<table class="summary-order-table">')
+        && !pageCode.includes('summary-info-grid')
+        && !pageCode.includes('summary-total-card')
+        && !pageCode.includes('<td class="money">')
+        && pageCss.includes('.summary-brief-line')
+        && pageCss.includes('.summary-finance-lines p')
+        && pageCss.includes('.summary-order-table thead')
+        && pageCss.includes('break-inside: avoid')
+        && !pageCss.includes('.summary-info-grid')
+        && !pageCss.includes('.summary-total-card'));
 });
 
 checkPage('sound.html', (doc, html) => {
@@ -1765,7 +1779,7 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && htmlContains('js/booking-summary-page.js', 'orderRowComment')
     && htmlContains('js/booking-summary-page.js', 'summaryServiceEventRows')
     && htmlContains('js/booking-summary-page.js', 'Події видачі')
-    && htmlContains('js/booking-summary-page.js', 'Час видачі')
+    && htmlContains('js/booking-summary-page.js', 'Видача')
     && panelCss.includes('.booking-menu-serving-toolbar')
     && panelCss.includes('.booking-menu-serving-picker')
     && panelCss.includes('.booking-menu-service-event')

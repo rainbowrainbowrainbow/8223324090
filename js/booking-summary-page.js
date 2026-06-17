@@ -79,13 +79,25 @@
         return String(value);
     }
 
-    function infoRow(label, value) {
+    function compactFact(label, value) {
+        return `<span class="summary-brief-item"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(formatValue(value))}</span>`;
+    }
+
+    function compactLine(items = []) {
         return `
-            <div class="summary-info-item">
-                <div class="summary-info-label">${escapeHtml(label)}</div>
-                <div class="summary-info-value">${escapeHtml(formatValue(value))}</div>
-            </div>
+            <p class="summary-brief-line">
+                ${items.filter(Boolean).join('')}
+            </p>
         `;
+    }
+
+    function countsText(counts = {}) {
+        const parts = [];
+        if (counts.children !== undefined && counts.children !== null && counts.children !== '') parts.push(`Діти ${counts.children}`);
+        if (counts.adults !== undefined && counts.adults !== null && counts.adults !== '') parts.push(`Дорослі ${counts.adults}`);
+        if (counts.guests !== undefined && counts.guests !== null && counts.guests !== '') parts.push(`Гості ${counts.guests}`);
+        if (counts.tables !== undefined && counts.tables !== null && counts.tables !== '') parts.push(`Столи ${counts.tables}`);
+        return parts.join(' · ') || null;
     }
 
     function renderWarnings(warnings = []) {
@@ -133,7 +145,6 @@
 
     function orderRowsHtml(summary) {
         const rows = summaryOrderRows(summary);
-        const currency = summary?.totals?.currency || 'UAH';
         if (!rows.length) {
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
         }
@@ -142,21 +153,17 @@
                 <colgroup>
                     <col style="width:42px">
                     <col>
-                    <col style="width:92px">
                     <col style="width:72px">
-                    <col style="width:96px">
-                    <col style="width:96px">
-                    <col style="width:150px">
+                    <col style="width:112px">
+                    <col style="width:170px">
                 </colgroup>
                 <thead>
                     <tr>
                         <th class="num">№</th>
                         <th>Назва</th>
-                        <th class="serving">Час видачі</th>
                         <th class="qty">К-сть</th>
-                        <th class="money">Ціна</th>
-                        <th class="money">Сума</th>
-                        <th>Коментар</th>
+                        <th class="serving">Видача</th>
+                        <th>Примітка</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -164,10 +171,8 @@
                         <tr>
                             <td class="num">${index + 1}</td>
                             <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
-                            <td class="serving">${escapeHtml(formatValue(summaryServingTime(row)))}</td>
                             <td class="qty">${escapeHtml(formatValue(row.quantity))}</td>
-                            <td class="money">${escapeHtml(formatMoney(row.unitPrice, currency))}</td>
-                            <td class="money">${escapeHtml(formatMoney(row.subtotal, currency))}</td>
+                            <td class="serving">${escapeHtml(formatValue(summaryServingTime(row)))}</td>
                             <td>${escapeHtml(formatValue(orderRowComment(row)))}</td>
                         </tr>
                     `).join('')}
@@ -201,19 +206,19 @@
         const deposit = summary?.deposit || {};
         const currency = totals.currency || 'UAH';
         return `
-            <div class="summary-totals-grid">
-                <div class="summary-total-card">
-                    <div><span>Програма / база</span><strong>${escapeHtml(formatMoney(totals.programBasePrice, currency))}</strong></div>
-                    <div><span>Меню / сервісні позиції</span><strong>${escapeHtml(formatMoney(totals.menuSubtotal, currency))}</strong></div>
-                    <div><span>Активності</span><strong>${escapeHtml(formatMoney(totals.activitySubtotal, currency))}</strong></div>
-                    <div><span>Сума замовлення</span><strong>${escapeHtml(formatMoney(totals.orderTotal, currency))}</strong></div>
-                    <div><span>Сума бронювання</span><strong>${escapeHtml(formatMoney(totals.bookingPrice, currency))}</strong></div>
-                </div>
-                <div class="summary-total-card">
-                    <div><span>Завдаток</span><strong>${escapeHtml(formatMoney(deposit.amount, currency))}</strong></div>
-                    <div><span>Спосіб внесення</span><strong>${escapeHtml(formatValue(deposit.paymentMethod))}</strong></div>
-                    <div><span>Статус оплати</span><strong>${escapeHtml(formatValue(deposit.paymentStatus))}</strong></div>
-                </div>
+            <div class="summary-finance-lines">
+                <p>
+                    <strong>Сума:</strong> ${escapeHtml(formatMoney(totals.orderTotal, currency))}
+                    <span>Програма: ${escapeHtml(formatMoney(totals.programBasePrice, currency))}</span>
+                    <span>Бронювання: ${escapeHtml(formatMoney(totals.bookingPrice, currency))}</span>
+                    <span>Меню: ${escapeHtml(formatMoney(totals.menuSubtotal, currency))}</span>
+                    <span>Активності: ${escapeHtml(formatMoney(totals.activitySubtotal, currency))}</span>
+                </p>
+                <p>
+                    <strong>Завдаток:</strong> ${escapeHtml(formatMoney(deposit.amount, currency))}
+                    <span>Спосіб: ${escapeHtml(formatValue(deposit.paymentMethod))}</span>
+                    <span>Статус: ${escapeHtml(formatValue(deposit.paymentStatus))}</span>
+                </p>
             </div>
         `;
     }
@@ -222,7 +227,7 @@
         const terms = summary?.terms || {};
         const items = Array.isArray(terms.items) ? terms.items.filter(Boolean) : [];
         return `
-            <div class="summary-terms">
+            <div class="summary-note-block summary-terms">
                 ${items.length
                     ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
                     : '<span class="summary-muted">Умови банкету не заповнені.</span>'}
@@ -238,6 +243,7 @@
         const customer = summary.customer || {};
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
+        const people = countsText(counts);
 
         doc.hidden = false;
         doc.innerHTML = `
@@ -259,24 +265,27 @@
 
             <h1 class="summary-title">${escapeHtml(summary.document?.title || 'Вижимка банкету')}</h1>
 
-            <section class="summary-section">
-                <h2>Основна інформація</h2>
-                <div class="summary-info-grid">
-                    ${infoRow('Дата святкування', formatDate(event.date))}
-                    ${infoRow('Час святкування', event.time)}
-                    ${infoRow('Замовник', customer.name)}
-                    ${infoRow('Телефон', customer.phone)}
-                    ${infoRow('Іменинник', celebrant.name)}
-                    ${infoRow('Дата народження', formatDate(celebrant.birthday))}
-                    ${infoRow('Кімната', event.room)}
-                    ${infoRow('Дата оформлення', formatDateTime(event.createdAt))}
-                    ${infoRow('Менеджер', event.manager)}
-                    ${infoRow('Програма', event.programName)}
-                    ${infoRow('Кількість дітей', counts.children)}
-                    ${infoRow('Кількість дорослих', counts.adults)}
-                    ${infoRow('Кількість гостей', counts.guests)}
-                    ${infoRow('Кількість столів', counts.tables)}
-                </div>
+            <section class="summary-brief" aria-label="Коротка інформація по банкету">
+                ${compactLine([
+                    compactFact('Клієнт', customer.name),
+                    compactFact('Телефон', customer.phone),
+                    compactFact('Кімната', event.room),
+                    compactFact('Дата', formatDate(event.date))
+                ])}
+                ${compactLine([
+                    compactFact('Час', event.time),
+                    compactFact('Гості', people),
+                    compactFact('Програма', event.programName)
+                ])}
+                ${compactLine([
+                    compactFact('Іменинник', celebrant.name),
+                    compactFact('Дата народження', formatDate(celebrant.birthday)),
+                    compactFact('Менеджер', event.manager)
+                ])}
+                ${compactLine([
+                    compactFact('Оформлено', formatDateTime(event.createdAt)),
+                    compactFact('Booking ID', summary.bookingId || '—')
+                ])}
             </section>
 
             <section class="summary-section">

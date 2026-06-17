@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.15 - Banquet Sheet Print Cleanup
+
+### Banquet summary / Print layout / Release / (Клешня, 17.06.2026) [codex]
+- **Banquet sheet preview і print зведено до одного layout contract** - екранний preview і друк використовують той самий порядок блоків: шапка, compact summary, ordered items, події видачі, суми й умови.
+- **Шапка стала компактною текстовою вижимкою** - замість великої grid/table подачі основні поля показуються у 3-4 щільних рядках: клієнт, телефон, кімната, дата, час, гості, програма, іменинник і менеджер.
+- **Таблиця лишилась тільки для замовлених позицій** - з таблиці прибрано службову meta-подачу та фінансові колонки; вона фокусується на назві, кількості, видачі й примітці.
+- **Суми й умови більше не виглядають як великі cards** - фінансовий блок і умови показані короткими текстовими рядками, щоб лист займав менше вертикального місця.
+- **Print CSS посилено** - додано явні `@page`, `@media print`, `table-header-group`, `break-after` і row `break-inside` guards, щоб друк не покладався на browser defaults.
+- **Довгі таблиці переносяться передбачувано** - guard стоїть на рядках, а не на всій секції замовлення, тому список може переходити на наступну сторінку без розриву рядків.
+- **Regression guards оновлено** - UI smoke перевіряє compact text header, відсутність старих boxed selectors і те, що table surface лишається тільки для ordered rows.
+- **Релізні маркери піднято до `0.76.15`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.14 - Banquet Preview Teaser UX
 
 ### Timeline / Banquet teaser / Room-first UX / Release / (Клешня, 17.06.2026) [codex]

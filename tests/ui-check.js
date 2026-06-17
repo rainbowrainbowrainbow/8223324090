@@ -1824,6 +1824,9 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && panelCss.includes('.booking-menu-catalog-item.selected')
     && panelCss.includes('.booking-menu-catalog-inline-input')
     && panelCss.includes('@media (max-width: 900px)'));
+check('Booking panel notes section omits noisy base-request helper copy',
+    !bookingPanelHtml.includes('Базова заявка')
+    && !bookingPanelHtml.includes('Коротка тема і примітки оператора без зайвого шуму.'));
 check('Booking kitchen menu supports serving times and banquet service events without schema changes',
     bookingCode.includes('servingTime')
     && bookingCode.includes('servingNote')

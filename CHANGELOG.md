@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.28 - Booking Menu Catalog Mobile UX
+
+### Booking / Kitchen menu catalog / Mobile UX / Release / (Клешня, 17.06.2026) [codex]
+- **Каталог кухні більше не відкриває mobile cart після кожного `+`** - у фільтрі `Усе` оператор може додавати позиції зі списку без раптового bottom sheet і візуального стрибка overlay.
+- **Підсумки та selected state збережено** - натискання `+` оновлює `menuPositions`, quantity, summary і cart contents без зміни основного browsing flow.
+- **Cart лишився доступним явно** - кнопка `Вибрано` на mobile і дії всередині cart і далі відкривають вибрані позиції; desktop layout не змінює очікувану поведінку поруч із каталогом.
+- **Час видачі підставляється зі слота бронювання** - нові позиції меню одразу отримують default `servingTime` з обраної клітинки, але оператор може змінити або очистити час вручну.
+- **Toolbar часу видачі більше не обрізається справа** - bulk-time input, кнопки `Поставити час для вибраних` / `Скопіювати час на всі`, service event select, time input і `+ Подія` переходять у responsive grid замість жорсткого 6-колонкового рядка.
+- **Рядки позицій меню адаптовані для вузької booking panel** - назва/мета, checkbox часу видачі, time input, edit і remove controls більше не накладаються і не створюють horizontal overflow.
+- **Regression coverage додано** - `tests/booking-package-contract.test.js` перевіряє, що mobile add зі списку не повертає `booking-menu-catalog-cart-open`, а `tests/ui-check.js` guard-ить responsive toolbar і narrow row layout.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.28`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.27 - Timeline Create Shortcut Cleanup
 
 ### Timeline / Toolbar / Booking create / Release / (Клешня, 17.06.2026) [codex]

@@ -55,6 +55,8 @@ function createBookingMenuCatalogHarness() {
                 <input id="bookingMenuUnitPrice">
                 <input id="bookingMenuQuantity" value="1">
                 <input id="bookingMenuPositionsJson">
+                <input id="bookingTime">
+                <div id="bookingMenuPositionsList"></div>
                 <textarea id="banquetMenu"></textarea>
                 <input id="banquetGuests">
                 <input id="banquetAdults">
@@ -390,10 +392,44 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
 });
 
+test('booking menu catalog mobile list add does not auto-open cart sheet', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    const panel = doc.getElementById('bookingMenuCatalogPanel');
+    ctx.__bookingMenuCatalogMobile = true;
+    panel.hidden = false;
+    doc.getElementById('bookingTime').value = '15:30';
+
+    const bookingJs = read('js', 'booking.js');
+    assert.match(bookingJs, /if \(add\) \{\s*upsertBookingMenuCatalogProduct\(add\.dataset\.menuCatalogAdd, 1\);\s*if \(!isBookingMenuCatalogMobileCartLayout\(\) \|\| add\.closest\('#bookingMenuCatalogCart'\)\) \{\s*setBookingMenuCatalogCartOpen\(true\);\s*\}\s*return;\s*\}/);
+
+    ctx.renderBookingMenuCatalog();
+    ctx.setBookingMenuCatalogCartOpen(false);
+
+    const addButton = doc.querySelector('#bookingMenuCatalogList [data-menu-catalog-add="menu_pizza"]');
+    assert.ok(addButton, 'catalog list add button is rendered');
+    ctx.upsertBookingMenuCatalogProduct(addButton.dataset.menuCatalogAdd, 1);
+
+    assert.equal(ctx.getBookingMenuPositions().length, 1);
+    assert.equal(ctx.getBookingMenuPositions()[0].productId, 'menu_pizza');
+    assert.equal(ctx.getBookingMenuPositions()[0].servingTime, '15:30');
+    assert.equal(ctx.getBookingMenuPositions()[0].servingGroupId, 'serve-1530');
+    assert.equal(doc.querySelector('#bookingMenuPositionsList [data-menu-serving-time="0"]').value, '15:30');
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
+    assert.equal(panel.classList.contains('booking-menu-catalog-cart-open'), false);
+    assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'false');
+
+    ctx.setBookingMenuCatalogCartOpen(true);
+    assert.equal(panel.classList.contains('booking-menu-catalog-cart-open'), true);
+    assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'true');
+});
+
 test('booking menu catalog restores saved quantity, manual price, and note when editing existing booking', () => {
     const ctx = createBookingMenuCatalogHarness();
     const doc = ctx.document;
     doc.getElementById('bookingMenuCatalogPanel').hidden = false;
+    doc.getElementById('bookingTime').value = '16:30';
 
     ctx.hydrateBookingPackageWorkspace({
         bookingPackage: {
@@ -417,6 +453,8 @@ test('booking menu catalog restores saved quantity, manual price, and note when 
     assert.equal(restored.productId, 'menu_juice');
     assert.equal(restored.quantity, 2.5);
     assert.equal(restored.unitPrice, 95);
+    assert.equal(restored.servingTime, null);
+    assert.equal(doc.getElementById('bookingMenuBulkServingTime').value, '16:30');
     assert.equal(restored.note, 'подати о 16:30');
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /95/);

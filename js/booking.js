@@ -1532,6 +1532,18 @@ function normalizeBookingServingTime(value) {
     return match ? `${match[1]}:${match[2]}` : null;
 }
 
+function bookingServingGroupId(value) {
+    const time = normalizeBookingServingTime(value);
+    return time ? `serve-${time.replace(':', '')}` : null;
+}
+
+function getBookingDefaultServingTime() {
+    return normalizeBookingServingTime(
+        document.getElementById('bookingTime')?.value
+        || AppState.selectedCell?.dataset?.time
+    );
+}
+
 const BOOKING_SERVICE_EVENT_TYPES = {
     cake: 'Винос торта',
     custom: 'Інше',
@@ -2451,6 +2463,12 @@ function bookingMenuCatalogQuantityLabel(value) {
 function bookingMenuCatalogPositionFromProduct(product = {}, quantity = 1, overrides = {}) {
     const safeQuantity = Math.max(Number(quantity || 1), 0.1);
     const unitPrice = toBookingMoney(overrides.unitPrice ?? product.price ?? 0);
+    const servingTime = Object.prototype.hasOwnProperty.call(overrides, 'servingTime')
+        ? normalizeBookingServingTime(overrides.servingTime)
+        : getBookingDefaultServingTime();
+    const servingGroupId = servingTime
+        ? (overrides.servingGroupId || bookingServingGroupId(servingTime))
+        : null;
     return normalizeBookingMenuPosition({
         id: overrides.id || `menu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         productId: product.id || null,
@@ -2463,10 +2481,10 @@ function bookingMenuCatalogPositionFromProduct(product = {}, quantity = 1, overr
         menuSection: product.menuSection || null,
         servingUnit: product.servingUnit || product.priceUnit || null,
         kitchenType: bookingKitchenType(product),
-        servingTime: overrides.servingTime || null,
+        servingTime,
         servingNote: overrides.servingNote || null,
-        servingGroupId: overrides.servingGroupId || null,
-        servingBatchId: overrides.servingBatchId || overrides.servingGroupId || null,
+        servingGroupId,
+        servingBatchId: servingGroupId ? (overrides.servingBatchId || servingGroupId) : null,
         weightValue: product.weightValue || null,
         cakeDecoration: product.cakeDecoration || null,
         source: 'product'
@@ -3014,7 +3032,8 @@ function renderBookingMenuPositions() {
     if (!positions.length && !serviceEvents.length) {
         list.innerHTML = '<div class="booking-summary-empty">Меню або сервісні позиції ще не додані.</div>';
     } else {
-        const firstServingTime = positions.find(item => item.servingTime)?.servingTime || '';
+        const defaultServingTime = getBookingDefaultServingTime();
+        const firstServingTime = positions.find(item => item.servingTime)?.servingTime || defaultServingTime || '';
         const missingServingTimes = bookingMenuMissingServingTimeCount(positions);
         list.innerHTML = `
             <div class="booking-menu-serving-toolbar">
@@ -3028,7 +3047,7 @@ function renderBookingMenuPositions() {
                     <option value="cake">Винос торта</option>
                     <option value="custom">Інше</option>
                 </select>
-                <input type="time" id="bookingServiceEventTime" class="booking-menu-service-event-time" aria-label="Час події">
+                <input type="time" id="bookingServiceEventTime" class="booking-menu-service-event-time" value="${escapeHtml(defaultServingTime || '')}" aria-label="Час події">
                 <button type="button" class="booking-menu-serving-action" data-menu-service-event-add>+ Подія</button>
             </div>
             ${missingServingTimes ? `<div class="booking-menu-serving-warning">Не вказано час видачі для ${escapeHtml(String(missingServingTimes))} позицій. Збереження не блокується.</div>` : ''}
@@ -3096,7 +3115,7 @@ function renderBookingMenuPositions() {
                 if (!BookingPackageState.menuPositions[index]) return;
                 const value = normalizeBookingServingTime(input.value);
                 BookingPackageState.menuPositions[index].servingTime = value;
-                BookingPackageState.menuPositions[index].servingGroupId = value ? `serve-${value.replace(':', '')}` : null;
+                BookingPackageState.menuPositions[index].servingGroupId = bookingServingGroupId(value);
                 BookingPackageState.menuPositions[index].servingBatchId = BookingPackageState.menuPositions[index].servingGroupId;
                 markBookingPackageChanged();
             });
@@ -3116,7 +3135,7 @@ function renderBookingMenuPositions() {
             }
             selected.forEach(index => {
                 BookingPackageState.menuPositions[index].servingTime = value;
-                BookingPackageState.menuPositions[index].servingGroupId = `serve-${value.replace(':', '')}`;
+                BookingPackageState.menuPositions[index].servingGroupId = bookingServingGroupId(value);
                 BookingPackageState.menuPositions[index].servingBatchId = BookingPackageState.menuPositions[index].servingGroupId;
             });
             markBookingPackageChanged();
@@ -3130,7 +3149,7 @@ function renderBookingMenuPositions() {
             }
             BookingPackageState.menuPositions.forEach(item => {
                 item.servingTime = value;
-                item.servingGroupId = `serve-${value.replace(':', '')}`;
+                item.servingGroupId = bookingServingGroupId(value);
                 item.servingBatchId = item.servingGroupId;
             });
             markBookingPackageChanged();
@@ -3196,6 +3215,15 @@ function addBookingMenuPositionFromForm() {
     }
     const quantity = Math.max(Number(document.getElementById('bookingMenuQuantity')?.value || 1), 0.1);
     const unitPrice = toBookingMoney(document.getElementById('bookingMenuUnitPrice')?.value || product?.price || 0);
+    const existingPosition = BookingPackageState.editIndex !== null
+        ? BookingPackageState.menuPositions[BookingPackageState.editIndex]
+        : null;
+    const servingTime = existingPosition
+        ? (existingPosition.servingTime || null)
+        : getBookingDefaultServingTime();
+    const servingGroupId = servingTime
+        ? (existingPosition?.servingGroupId || bookingServingGroupId(servingTime))
+        : null;
     const position = normalizeBookingMenuPosition({
         id: `menu-${Date.now()}`,
         productId: product?.id || null,
@@ -3208,6 +3236,9 @@ function addBookingMenuPositionFromForm() {
         menuSection: product?.menuSection || null,
         servingUnit: product?.servingUnit || product?.priceUnit || null,
         kitchenType: product ? bookingKitchenType(product) : 'menu',
+        servingTime,
+        servingGroupId,
+        servingBatchId: servingGroupId,
         weightValue: product?.weightValue || null,
         cakeDecoration: product?.cakeDecoration || null,
         source: product ? 'product' : 'custom'
@@ -3658,7 +3689,9 @@ function initBookingPackageWorkspace() {
         }
         if (add) {
             upsertBookingMenuCatalogProduct(add.dataset.menuCatalogAdd, 1);
-            setBookingMenuCatalogCartOpen(true);
+            if (!isBookingMenuCatalogMobileCartLayout() || add.closest('#bookingMenuCatalogCart')) {
+                setBookingMenuCatalogCartOpen(true);
+            }
             return;
         }
         if (dec) upsertBookingMenuCatalogProduct(dec.dataset.menuCatalogDec, -1);

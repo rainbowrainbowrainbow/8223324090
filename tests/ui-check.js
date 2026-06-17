@@ -1852,6 +1852,21 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && panelCss.includes('.booking-detail-package-serving-group')
     && htmlContains('css/booking-summary.css', '.summary-service-events')
     && htmlContains('css/booking-summary.css', '.summary-order-table .serving'));
+check('Booking menu serving toolbar wraps responsively inside narrow booking panels',
+    bookingCode.includes('data-menu-serving-time')
+    && bookingCode.includes('data-menu-serving-apply-selected')
+    && bookingCode.includes('data-menu-serving-copy-all')
+    && bookingCode.includes('data-menu-service-event-add')
+    && panelCss.includes('.booking-menu-serving-toolbar')
+    && panelCss.includes('grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));')
+    && panelCss.includes('container-type: inline-size;')
+    && panelCss.includes('@container (max-width: 520px)')
+    && panelCss.includes('.booking-menu-position-row > div:first-child')
+    && panelCss.includes('grid-column: 1 / -1;')
+    && panelCss.includes('.booking-menu-serving-picker')
+    && panelCss.includes('flex-wrap: wrap;')
+    && panelCss.includes('white-space: normal;')
+    && !panelCss.includes('grid-template-columns: minmax(110px, 0.8fr) repeat(2, minmax(120px, 1fr)) minmax(110px, 0.7fr) minmax(92px, 0.6fr) auto;'));
 check('Products menu tab owns menu-card images, AI review entrypoints, and image prompt drafts',
     programsHtml.includes(`js/kitchen-menu-images.js?v=${pkg.version}`)
     && programsHtml.includes(`css/pages-products.css?v=${pkg.version}`)

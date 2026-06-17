@@ -189,7 +189,8 @@
 
 .timeline-scroll {
     overflow-x: auto;
-    padding: 20px;
+    --timeline-scroll-pad: 20px;
+    padding: var(--timeline-scroll-pad, 20px);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     position: relative;
@@ -200,7 +201,7 @@
     --timeline-scale-top-shield: 4px;
     --timeline-scale-inline-bleed: 10px;
     --timeline-scale-radius: 12px;
-    --timeline-sticky-offset: 0px;
+    --timeline-sticky-offset: calc(-1 * (var(--timeline-scroll-pad, 20px) - var(--timeline-scale-top-shield, 4px)));
 }
 
 /* Time scale */
@@ -212,7 +213,7 @@
     top: var(--timeline-sticky-offset, 0);
     background: var(--timeline-scale-bg, var(--white));
     z-index: 70;
-    padding-top: 2px;
+    padding-top: 1px;
     padding-bottom: 4px;
     isolation: isolate;
 }
@@ -225,9 +226,20 @@
     left: calc(-1 * (var(--timeline-scale-gutter, 130px) + var(--timeline-scale-inline-bleed, 10px)));
     right: calc(-1 * var(--timeline-scale-inline-bleed, 10px));
     background: var(--timeline-scale-bg, var(--white));
-    border-bottom: 1px solid var(--timeline-scale-border, var(--gray-200));
     border-radius: var(--timeline-scale-radius, 12px) var(--timeline-scale-radius, 12px) 0 0;
     box-shadow: var(--timeline-scale-shadow, 0 1px 0 rgba(15, 23, 42, 0.08));
+    pointer-events: none;
+    z-index: 0;
+}
+
+.time-scale::after {
+    content: "";
+    position: absolute;
+    left: calc(-1 * (var(--timeline-scale-gutter, 130px) + var(--timeline-scale-inline-bleed, 10px)));
+    right: calc(-1 * var(--timeline-scale-inline-bleed, 10px));
+    bottom: -1px;
+    height: 1px;
+    background: var(--timeline-scale-border, var(--gray-200));
     pointer-events: none;
     z-index: 0;
 }

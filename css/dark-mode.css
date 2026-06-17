@@ -3866,7 +3866,8 @@ body.dark-mode .guardian-stats-summary {
 
 .timeline-dashboard-page .timeline-scroll {
     background: var(--eg-timeline-bg);
-    padding: 16px;
+    --timeline-scroll-pad: 16px;
+    padding: var(--timeline-scroll-pad, 16px);
     --timeline-scale-bg: var(--eg-timeline-bg);
     --timeline-scale-border: var(--eg-border-subtle);
     --timeline-scale-shadow: 0 1px 0 var(--eg-border-subtle);
@@ -3882,8 +3883,7 @@ body.dark-mode .guardian-stats-summary {
     --timeline-scale-border: var(--eg-border-subtle);
     --timeline-scale-shadow: 0 1px 0 var(--eg-border-subtle);
     background: var(--eg-timeline-bg) !important;
-    border-bottom: 1px solid var(--eg-border-subtle);
-    padding: 3px 0 7px;
+    padding: 2px 0 7px;
 }
 
 .timeline-dashboard-page .time-mark {
@@ -4222,6 +4222,7 @@ body.timeline-dashboard-page.timeline-compact-mode .timeline-container {
 }
 
 body.timeline-dashboard-page.timeline-compact-mode .timeline-scroll {
+    --timeline-scroll-pad: 8px;
     padding: var(--timeline-scroll-pad, 8px) !important;
     --timeline-scale-top-shield: 3px;
     --timeline-scale-inline-bleed: 7px;
@@ -4231,7 +4232,7 @@ body.timeline-dashboard-page.timeline-compact-mode .timeline-scroll {
 body.timeline-dashboard-page.timeline-compact-mode .time-scale {
     margin-left: var(--timeline-line-header-w, 92px) !important;
     margin-bottom: 4px !important;
-    padding: 2px 0 4px !important;
+    padding: 1px 0 4px !important;
 }
 
 body.timeline-dashboard-page.timeline-compact-mode .time-mark {

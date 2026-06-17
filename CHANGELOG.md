@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.25 - Timeline Sticky Edge Refit
+
+### Timeline / Sticky header / Edge lift / Release / (Клешня, 17.06.2026) [codex]
+- **Sticky header більше не зависає нижче верхнього edge контейнера** - `time-scale` тепер прилипає від реального `timeline-scroll` padding, тому верхній gap над шкалою часу не лишається після vertical scroll.
+- **Separator під шкалою часу доходить до країв shell** - нижню лінію винесено в окремий full-width overlay, щоб вона не обрізалась біля лівого radius і не виглядала “обламаною”.
+- **Top seam mask лишився тонким** - gap прибрано без повернення старої важкої бровки: верхній padding ще трохи зменшено, а shield не роздуто назад.
+- **Compact mode теж вирівняно** - compact timeline використовує той самий sticky offset від `--timeline-scroll-pad`, менший top padding і коректний крайовий separator.
+- **Scroll reset та iPhone/iPad guards збережено** - fix не чіпає `scrollTop = 0` логіку з `v0.76.20` і не прибирає Safari definite-height guard.
+- **Regression guard оновлено** - `tests/ui-check.js` тепер перевіряє `--timeline-scroll-pad`, calculated sticky offset і окремий `time-scale::after` separator.
+- **Релізні маркери піднято до `0.76.25`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.24 - Timeline Sticky Seam Refit
 
 ### Timeline / Sticky header / Seam refit / Release / (Клешня, 17.06.2026) [codex]

@@ -193,6 +193,13 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     position: relative;
+    --timeline-scale-bg: var(--white);
+    --timeline-scale-border: var(--gray-200);
+    --timeline-scale-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+    --timeline-scale-gutter: var(--timeline-line-header-w, 130px);
+    --timeline-scale-top-shield: var(--timeline-scroll-pad, 20px);
+    --timeline-scale-inline-bleed: var(--timeline-scroll-pad, 20px);
+    --timeline-sticky-offset: 0px;
 }
 
 /* Time scale */
@@ -201,11 +208,26 @@
     margin-bottom: 12px;
     margin-left: 110px;
     position: sticky;
-    top: 0;
-    background: var(--white);
+    top: var(--timeline-sticky-offset, 0);
+    background: var(--timeline-scale-bg, var(--white));
     z-index: 70;
     padding-top: 4px;
     padding-bottom: 4px;
+    isolation: isolate;
+}
+
+.time-scale::before {
+    content: "";
+    position: absolute;
+    top: calc(-1 * var(--timeline-scale-top-shield, 20px));
+    bottom: -1px;
+    left: calc(-1 * var(--timeline-scale-gutter, 130px));
+    right: calc(-1 * var(--timeline-scale-inline-bleed, 20px));
+    background: var(--timeline-scale-bg, var(--white));
+    border-bottom: 1px solid var(--timeline-scale-border, var(--gray-200));
+    box-shadow: var(--timeline-scale-shadow, 0 10px 22px rgba(15, 23, 42, 0.08));
+    pointer-events: none;
+    z-index: 0;
 }
 
 .time-mark {
@@ -215,6 +237,8 @@
     font-size: 10px;
     font-weight: 600;
     color: var(--gray-400);
+    position: relative;
+    z-index: 1;
 }
 
 .time-mark.hour {
@@ -2330,7 +2354,10 @@ body:not(.dark-mode) .timeline-scroll {
 }
 
 body:not(.dark-mode) .time-scale {
-    background: rgba(255, 253, 248, 0.92);
+    --timeline-scale-bg: rgba(255, 253, 248, 0.96);
+    --timeline-scale-border: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    --timeline-scale-shadow: 0 12px 24px rgba(54, 43, 24, 0.08);
+    background: var(--timeline-scale-bg);
     border: 1px solid var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
     border-radius: 12px;
     box-shadow: 0 8px 18px rgba(54, 43, 24, 0.055);

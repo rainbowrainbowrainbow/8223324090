@@ -566,7 +566,10 @@ body.dark-mode .timeline-line:nth-child(even) {
 
 /* Time scale */
 body.dark-mode .time-scale {
-    background: var(--white);
+    --timeline-scale-bg: var(--white);
+    --timeline-scale-border: var(--gray-200);
+    --timeline-scale-shadow: var(--shadow-md);
+    background: var(--timeline-scale-bg);
 }
 
 /* Legend */
@@ -3864,10 +3867,19 @@ body.dark-mode .guardian-stats-summary {
 .timeline-dashboard-page .timeline-scroll {
     background: var(--eg-timeline-bg);
     padding: 16px;
+    --timeline-scale-bg: var(--eg-timeline-bg);
+    --timeline-scale-border: var(--eg-border-subtle);
+    --timeline-scale-shadow: var(--eg-shadow-panel);
+    --timeline-scale-gutter: var(--timeline-line-header-w, 140px);
+    --timeline-scale-top-shield: var(--timeline-scroll-pad, 16px);
+    --timeline-scale-inline-bleed: var(--timeline-scroll-pad, 16px);
 }
 
 .timeline-dashboard-page .time-scale {
     margin-left: 140px;
+    --timeline-scale-bg: var(--eg-timeline-bg);
+    --timeline-scale-border: var(--eg-border-subtle);
+    --timeline-scale-shadow: var(--eg-shadow-panel);
     background: var(--eg-timeline-bg) !important;
     border-bottom: 1px solid var(--eg-border-subtle);
     padding: 6px 0 8px;

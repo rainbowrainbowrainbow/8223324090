@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.19 - Timeline Sticky Header Polish
+
+### Timeline / Sticky time scale / Header seam cleanup / Release / (Клешня, 17.06.2026) [codex]
+- **Sticky time scale отримав clean top shield** - верх timeline більше не показує обрізані blocks/grid у вузькому проміжку над шкалою часу під час вертикального scroll.
+- **Header layer має явний фон, separator і shadow** - `.time-scale` використовує `--timeline-scale-bg`, `--timeline-scale-border` і `--timeline-scale-shadow`, щоб виглядати як цілісний sticky шар.
+- **Горизонтальний scroll не змінено** - шкала часу лишається у тому самому scrollable flow і продовжує рухатися разом із grid.
+- **Dark/light/compact surfaces синхронізовано** - dashboard timeline отримав однаковий visual contract для основного й compact режимів без редизайну блоків бронювань.
+- **iPhone/iPad guards не прибрано** - definite-height захист для другої лінії timeline лишився на місці.
+- **Regression guard додано** - `tests/ui-check.js` перевіряє sticky seam shield, z-index/background contract і збереження mobile guard.
+- **Релізні маркери піднято до `0.76.19`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.18 - Timeline View Height Fix
 
 ### Timeline / Room-to-animator view switch / Height reconciliation / Release / (Клешня, 17.06.2026) [codex]

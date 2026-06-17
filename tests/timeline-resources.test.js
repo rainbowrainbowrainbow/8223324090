@@ -591,6 +591,26 @@ test('animator timeline keeps banquet teaser surfaces out of park animator view'
     assert.doesNotMatch(timeline, /data-banquet-service-marker/);
 });
 
+test('room-to-animator timeline view switch reconciles vertical shell height', () => {
+    const timeline = read('js/timeline.js');
+    const ui = read('js/ui.js');
+    const css = read('css/timeline.css');
+    const responsive = read('css/responsive.css');
+
+    assert.match(ui, /function syncTimelineViewHeight/);
+    assert.match(ui, /function scheduleTimelineViewHeightSync/);
+    assert.match(ui, /window\.addEventListener\?\.\('timeline:view-changed'/);
+    assert.match(ui, /container\.dataset\.timelineView = view/);
+    assert.match(ui, /container\.dataset\.lineCount = String\(lineCount\)/);
+    assert.match(ui, /--timeline-content-height/);
+    assert.match(timeline, /scheduleTimelineViewHeightSync\('render-complete'\)/);
+    assert.match(css, /body\.timeline-view-animators \.timeline-container\[data-timeline-height-ready="true"\]/);
+    assert.match(css, /max-height: min\(var\(--timeline-content-height\), var\(--timeline-shell-max-height\)\)/);
+    assert.match(responsive, /body\.timeline-dashboard-page\.timeline-view-animators \.timeline-container\[data-timeline-height-ready="true"\]/);
+    assert.match(responsive, /v0\.73\.80: iPhone 11\/Safari needs a definite container height/);
+    assert.match(responsive, /height: clamp\(360px, calc\(var\(--eg-viewport-height, 100dvh\) - 250px\), 58dvh\) !important;/);
+});
+
 test('timeline visual settings keep park animator and room views isolated', () => {
     assert.equal(normalizeTimelineVisibilityView('rooms'), 'rooms');
     assert.equal(normalizeTimelineVisibilityView('bad', 'animators'), 'animators');

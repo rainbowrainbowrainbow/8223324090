@@ -2357,6 +2357,99 @@ function applyTimelineResponsiveDensity() {
     return changed;
 }
 
+function timelineOuterHeight(el) {
+    if (!el || el.hidden || el.classList?.contains('hidden')) return 0;
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(el) : null;
+    if (style && style.display === 'none') return 0;
+    const rectHeight = Number(el.getBoundingClientRect?.().height || 0);
+    const contentHeight = Math.max(rectHeight, Number(el.scrollHeight || 0), Number(el.offsetHeight || 0));
+    if (!contentHeight) return 0;
+    const marginTop = parseFloat(style?.marginTop || '0') || 0;
+    const marginBottom = parseFloat(style?.marginBottom || '0') || 0;
+    return contentHeight + marginTop + marginBottom;
+}
+
+function timelineDirectLineCount(lines) {
+    if (!lines) return 0;
+    try {
+        return lines.querySelectorAll(':scope > .timeline-line').length;
+    } catch (_) {
+        return Array.from(lines.children || []).filter(child => child?.classList?.contains('timeline-line')).length;
+    }
+}
+
+function syncTimelineViewHeight(reason = 'manual') {
+    const container = document.querySelector('.timeline-container');
+    const scroll = document.getElementById('timelineScroll');
+    const timeScale = document.getElementById('timeScale');
+    const lines = document.getElementById('timelineLines');
+    if (!container || !scroll || !lines) return false;
+
+    const view = document.body?.classList?.contains('timeline-view-rooms') ? 'rooms' : 'animators';
+    const lineCount = timelineDirectLineCount(lines);
+    container.dataset.timelineView = view;
+    container.dataset.lineCount = String(lineCount);
+    scroll.dataset.timelineView = view;
+    scroll.dataset.lineCount = String(lineCount);
+
+    if (typeof AppState !== 'undefined' && AppState.multiDayMode) {
+        delete container.dataset.timelineHeightReady;
+        delete container.dataset.timelineHeightReason;
+        container.style.removeProperty('--timeline-content-height');
+        return false;
+    }
+
+    if (view !== 'animators') {
+        delete container.dataset.timelineHeightReady;
+        delete container.dataset.timelineHeightReason;
+        container.style.removeProperty('--timeline-content-height');
+        return false;
+    }
+
+    const scrollStyle = typeof getComputedStyle === 'function' ? getComputedStyle(scroll) : null;
+    const verticalPadding = (parseFloat(scrollStyle?.paddingTop || '0') || 0)
+        + (parseFloat(scrollStyle?.paddingBottom || '0') || 0);
+    const addLineBtn = document.getElementById('addLineBtn');
+    const contentHeight = Math.ceil(
+        verticalPadding
+        + timelineOuterHeight(timeScale)
+        + timelineOuterHeight(lines)
+        + timelineOuterHeight(addLineBtn)
+    );
+
+    if (!contentHeight) {
+        delete container.dataset.timelineHeightReady;
+        delete container.dataset.timelineHeightReason;
+        container.style.removeProperty('--timeline-content-height');
+        return false;
+    }
+
+    container.style.setProperty('--timeline-content-height', `${contentHeight}px`);
+    container.dataset.timelineHeightReady = 'true';
+    container.dataset.timelineHeightReason = String(reason || 'manual');
+
+    const maxScrollTop = Math.max(0, Number(scroll.scrollHeight || 0) - Number(scroll.clientHeight || 0));
+    if (scroll.scrollTop > maxScrollTop) {
+        scroll.scrollTop = maxScrollTop;
+    }
+
+    return true;
+}
+
+window.syncTimelineViewHeight = syncTimelineViewHeight;
+
+function scheduleTimelineViewHeightSync(reason = 'manual') {
+    const run = () => syncTimelineViewHeight(reason);
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(run));
+    } else {
+        setTimeout(run, 0);
+    }
+}
+
+window.scheduleTimelineViewHeightSync = scheduleTimelineViewHeightSync;
+window.addEventListener?.('timeline:view-changed', () => scheduleTimelineViewHeightSync('view-changed'));
+
 function initTimelineResponsiveResize() {
     if (window.__timelineResponsiveResizeBound) return;
     window.__timelineResponsiveResizeBound = true;
@@ -2367,6 +2460,7 @@ function initTimelineResponsiveResize() {
         resizeTimer = setTimeout(() => {
             const changed = applyTimelineResponsiveDensity();
             if (changed && typeof renderTimeline === 'function') renderTimeline();
+            scheduleTimelineViewHeightSync('resize');
             if (typeof renderNowLine === 'function') renderNowLine();
         }, 120);
     };

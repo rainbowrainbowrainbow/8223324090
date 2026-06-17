@@ -4204,7 +4204,8 @@ body.timeline-dashboard-page.timeline-compact-mode .v32-controls .timeline-contr
 
 body.timeline-dashboard-page.timeline-compact-mode .timeline-container {
     border-radius: 14px !important;
-    max-height: clamp(420px, calc(var(--eg-viewport-height, 100vh) - 184px), 78vh);
+    --timeline-shell-max-height: clamp(420px, calc(var(--eg-viewport-height, 100vh) - 184px), 78vh);
+    max-height: var(--timeline-shell-max-height);
 }
 
 body.timeline-dashboard-page.timeline-compact-mode .timeline-scroll {

@@ -2088,8 +2088,9 @@ body.dragging-active {
 
 /* v0.56.5: timeline compact fit-screen density. */
 .timeline-container {
-    max-height: clamp(430px, calc(100vh - 246px), 72vh);
-    max-height: clamp(430px, calc(var(--eg-viewport-height, 100vh) - 246px), 72vh);
+    --timeline-shell-max-height: clamp(430px, calc(100vh - 246px), 72vh);
+    --timeline-shell-max-height: clamp(430px, calc(var(--eg-viewport-height, 100vh) - 246px), 72vh);
+    max-height: var(--timeline-shell-max-height);
     display: flex;
     flex-direction: column;
 }
@@ -2109,8 +2110,9 @@ body.dragging-active {
 }
 
 .timeline-container.compact {
-    max-height: clamp(420px, calc(100vh - 184px), 78vh);
-    max-height: clamp(420px, calc(var(--eg-viewport-height, 100vh) - 184px), 78vh);
+    --timeline-shell-max-height: clamp(420px, calc(100vh - 184px), 78vh);
+    --timeline-shell-max-height: clamp(420px, calc(var(--eg-viewport-height, 100vh) - 184px), 78vh);
+    max-height: var(--timeline-shell-max-height);
 }
 
 .timeline-container.compact .timeline-scroll {
@@ -2275,24 +2277,32 @@ body.dragging-active {
 
 @media (max-height: 760px) and (min-width: 769px) {
     .timeline-container {
-        max-height: calc(100vh - 210px);
-        max-height: calc(var(--eg-viewport-height, 100vh) - 210px);
+        --timeline-shell-max-height: calc(100vh - 210px);
+        --timeline-shell-max-height: calc(var(--eg-viewport-height, 100vh) - 210px);
+        max-height: var(--timeline-shell-max-height);
     }
 
     .timeline-container.compact {
-        max-height: calc(100vh - 158px);
-        max-height: calc(var(--eg-viewport-height, 100vh) - 158px);
+        --timeline-shell-max-height: calc(100vh - 158px);
+        --timeline-shell-max-height: calc(var(--eg-viewport-height, 100vh) - 158px);
+        max-height: var(--timeline-shell-max-height);
     }
 }
 
 @supports (height: 100dvh) {
     .timeline-container {
-        max-height: clamp(430px, calc(var(--eg-viewport-height, 100dvh) - 246px), 72dvh);
+        --timeline-shell-max-height: clamp(430px, calc(var(--eg-viewport-height, 100dvh) - 246px), 72dvh);
+        max-height: var(--timeline-shell-max-height);
     }
 
     .timeline-container.compact {
-        max-height: clamp(400px, calc(var(--eg-viewport-height, 100dvh) - 190px), 76dvh);
+        --timeline-shell-max-height: clamp(400px, calc(var(--eg-viewport-height, 100dvh) - 190px), 76dvh);
+        max-height: var(--timeline-shell-max-height);
     }
+}
+
+body.timeline-view-animators .timeline-container[data-timeline-height-ready="true"] {
+    max-height: min(var(--timeline-content-height), var(--timeline-shell-max-height));
 }
 
 @supports (-webkit-touch-callout: none) {

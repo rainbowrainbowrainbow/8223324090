@@ -1985,6 +1985,10 @@ async function renderTimeline() {
         renderPendingLine();
     }
 
+    if (typeof scheduleTimelineViewHeightSync === 'function') {
+        scheduleTimelineViewHeightSync('render-complete');
+    }
+
     if (typeof normalizeTimelineToolbarTransientState === 'function') {
         normalizeTimelineToolbarTransientState('render-complete');
     }
@@ -4819,6 +4823,9 @@ async function renderMultiDayTimeline() {
 
     linesContainer.innerHTML = multiDayHtml;
     attachMultiDayListeners();
+    if (typeof scheduleTimelineViewHeightSync === 'function') {
+        scheduleTimelineViewHeightSync('multi-day-render');
+    }
 }
 
 // ==========================================

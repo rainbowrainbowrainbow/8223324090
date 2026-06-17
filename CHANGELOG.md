@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.18 - Timeline View Height Fix
+
+### Timeline / Room-to-animator view switch / Height reconciliation / Release / (Клешня, 17.06.2026) [codex]
+- **Animator timeline більше не успадковує висоту room view** - після перемикання з `Кімнати` на `Свята` frontend переміряє фактичну висоту шкали, рядків і кнопки додавання, щоб не лишати внизу велику порожню область.
+- **Room view зберігає поведінку для багатьох кімнат** - банкетні зали й далі можуть займати високий scrollable timeline без стискання під animator mode.
+- **Height sync став view-aware** - timeline shell отримує `data-timeline-view`, `data-line-count` і `--timeline-content-height`, а CSS застосовує content-aware обмеження тільки для animator view.
+- **iPhone/iPad guards не прибрано** - старий definite-height захист для другої лінії на iPhone лишився, а мобільний override зберігає мінімум 360px.
+- **Compact mode синхронізовано** - compact timeline також використовує спільну `--timeline-shell-max-height`, щоб не розходитися з основним режимом.
+- **Regression guards додано** - `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють room-to-animator height reconciliation та збереження iPhone guard.
+- **Релізні маркери піднято до `0.76.18`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+
+---
+
 ## v0.76.17 - Room Timeline Activity Click Fix
 
 ### Timeline / Room view / Banquet activity clicks / Release / (Клешня, 17.06.2026) [codex]

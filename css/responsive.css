@@ -856,7 +856,8 @@
     }
 
     body.timeline-dashboard-page .timeline-container {
-        max-height: clamp(420px, calc(var(--eg-viewport-height, 100dvh) - 224px), 68dvh);
+        --timeline-shell-max-height: clamp(420px, calc(var(--eg-viewport-height, 100dvh) - 224px), 68dvh);
+        max-height: var(--timeline-shell-max-height);
         max-width: 100%;
     }
 
@@ -1262,7 +1263,8 @@
 
 @media (max-width: 480px) {
     body.timeline-dashboard-page .timeline-container {
-        max-height: clamp(390px, calc(var(--eg-viewport-height, 100dvh) - 210px), 66dvh);
+        --timeline-shell-max-height: clamp(390px, calc(var(--eg-viewport-height, 100dvh) - 210px), 66dvh);
+        max-height: var(--timeline-shell-max-height);
     }
 
     .main-content { padding: 8px; }
@@ -1961,6 +1963,7 @@
     body.timeline-dashboard-page .timeline-container {
         width: 100% !important;
         max-width: 100% !important;
+        --timeline-shell-max-height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 250px), 58dvh);
         height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 250px), 58dvh) !important;
         max-height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 250px), 58dvh) !important;
         overflow: hidden !important;
@@ -2099,6 +2102,12 @@
     body.timeline-dashboard-page .mini-booking-block {
         min-height: 28px !important;
         padding: 4px 6px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    body.timeline-dashboard-page.timeline-view-animators .timeline-container[data-timeline-height-ready="true"] {
+        max-height: clamp(360px, var(--timeline-content-height), var(--timeline-shell-max-height)) !important;
     }
 }
 

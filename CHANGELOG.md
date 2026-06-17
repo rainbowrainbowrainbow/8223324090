@@ -4,6 +4,29 @@
 
 ---
 
+## v0.76.42 - Booking Serving Timeline Markers
+
+### Booking / Room timeline / Serving markers / Production fix / (Клешня, 18.06.2026) [codex]
+- **Кілька часів видачі меню тепер видно на room timeline** - усі markers із `extraData.bookingPackage.menuPositions[].servingTime` показуються окремо у room-only banquet card.
+- **`Підготувати кімнату` показується окремим marker/block** - `room_setup` із `extraData.bookingPackage.serviceEvents[].time` рендериться поруч із видачами меню.
+- **Markers лишаються room-only і не засмічують `Свята`** - marker rendering залишається за `isRoomTimelineView()` і не додає kitchen/service pseudo-line markers у park animator view.
+- **Дані беруться з існуючого `bookingPackage` без зміни схеми** - persistence лишається у `menuPositions[].servingTime` і `serviceEvents[].time`, без міграцій і нових backend rows.
+- **Старий service-marker контракт не повертався** - немає `data-banquet-service-marker`, `.timeline-banquet-service-marker`, hover popover або `/banquet-service-markers`.
+- **Regression guards додано** - timeline/static UI тести перевіряють новий `data-banquet-room-marker`, `room_setup`, відсутність `signals.slice(0, 3)` і старого service-marker контракту.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.42`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.41 - Room Timeline Serving Markers Fix
+
+### Booking / Room timeline / Serving markers / Regression prep / (Клешня, 18.06.2026) [codex]
+- **Проміжний release train marker збережено для changelog continuity** - `0.76.41` лишає видимою історію підготовки room timeline serving markers перед фінальним deploy `0.76.42`.
+- **Контракт room-only markers зафіксовано** - історичний запис описує перехід від одного serving signal до окремих marker-ів без зміни schema/env/auth/Railway config.
+- **Видима модалка `Що нового` не пропускає patch-реліз** - source і first-screen changelog тримають безперервний ланцюжок `0.76.42` -> `0.76.41` -> `0.76.40`.
+
+---
+
 ## v0.76.40 - Booking Children Count Field Fix
 
 ### Booking / Room timeline / Kitchen attendee counts / Production fix / (Клешня, 18.06.2026) [codex]

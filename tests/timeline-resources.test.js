@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 const {
     buildModuleMap,
     startPagePathForBusiness
@@ -42,6 +44,79 @@ const ROOT = path.resolve(__dirname, '..');
 
 function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
+}
+
+function createTimelineBanquetMarkerHarness() {
+    const timeline = read('js/timeline.js');
+    const start = timeline.indexOf('function timelineExtraData');
+    const end = timeline.indexOf('function clearTimelineBanquetRoomPreviews');
+    assert.ok(start >= 0 && end > start, 'timeline banquet room preview slice exists');
+
+    const dom = new JSDOM(`
+        <!doctype html>
+        <html>
+            <body>
+                <div class="line-header" data-line-id="room-a">
+                    <span class="line-name">Room A</span>
+                </div>
+            </body>
+        </html>
+    `, { url: 'http://localhost/timeline' });
+
+    const context = {
+        console,
+        document: dom.window.document,
+        window: dom.window,
+        URLSearchParams: dom.window.URLSearchParams,
+        isRoomTimelineView: () => true,
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+    };
+
+    vm.createContext(context);
+    vm.runInContext(timeline.slice(start, end), context, { filename: 'js/timeline.js' });
+    return context;
+}
+
+function renderTimelineBanquetRoomMarkers(bookingPackage) {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const kitchenBooking = {
+        id: 'BK-KITCHEN',
+        date: '2099-06-18',
+        time: '11:00',
+        room: 'Room A',
+        extraData: { bookingPackage }
+    };
+    const summary = {
+        primaryBooking: kitchenBooking,
+        carrierBooking: kitchenBooking,
+        kitchenBookings: [kitchenBooking],
+        allBookings: [kitchenBooking],
+        room: 'Room A',
+        customerName: 'Regression Customer',
+        date: '2099-06-18',
+        time: '11:00',
+        hasMenu: true,
+        menuCount: (bookingPackage.menuPositions || []).length,
+        activityCount: 0,
+        menuPreviewItems: (bookingPackage.menuPositions || []).map(item => ({
+            title: item.title,
+            servingTime: item.servingTime
+        })),
+        warnings: []
+    };
+    const servingInfo = ctx.timelineBanquetServingInfo(summary);
+    const inspectorSummary = ctx.timelineBanquetSummaryForInspector(summary, servingInfo, kitchenBooking);
+    const header = ctx.document.querySelector('.line-header');
+    ctx.renderTimelineBanquetRoomCard(header, inspectorSummary);
+    return Array.from(ctx.document.querySelectorAll('[data-banquet-room-marker]')).map(node => ({
+        type: node.dataset.banquetRoomMarker,
+        text: node.textContent.trim()
+    }));
 }
 
 test('timeline resource migration creates durable multi-cabinet resources', () => {
@@ -542,15 +617,24 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function timelineBanquetPreviewRolesByBookingId/);
     assert.match(timeline, /function timelineBanquetBlockCanOpenInspector/);
     assert.match(timeline, /function timelineBanquetRoomCardSignals/);
+    assert.match(timeline, /function timelineBanquetRoomServingSignals/);
+    assert.match(timeline, /function normalizeTimelineBanquetServiceEventType/);
+    assert.match(timeline, /function timelineBanquetServiceEventLabel/);
     assert.match(timeline, /function timelineBanquetSummaryHasPersistentRoot/);
     assert.match(timeline, /function timelineBanquetGlanceRows/);
     assert.match(timeline, /data-banquet-room-card/);
+    assert.match(timeline, /data-banquet-room-marker/);
     assert.match(timeline, /dataset\.timelineBanquetPreviewRole/);
     assert.match(timeline, /requestIdleCallback/);
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*isRoomTimelineView\(\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
     assert.match(timeline, /timelineBanquetServingInfo\(summary\)/);
-    assert.match(timeline, /timelineBanquetMarkerLabel\(servingMarker\)/);
+    assert.match(timeline, /timelineBanquetRoomServingSignals\(servingMarkers\)/);
+    assert.match(timeline, /signals\.push\(\.\.\.timelineBanquetRoomServingSignals\(servingMarkers\)\)/);
+    assert.match(timeline, /case 'room_setup':\s*return 'Підготувати кімнату'/);
+    assert.match(timeline, /return signals;\s*\}/);
+    assert.doesNotMatch(timeline, /signals\.slice\(0,\s*3\)/);
+    assert.doesNotMatch(timeline, /cakeMarker \|\| servingMarkers\.find/);
     assert.match(timeline, /renderTimelineBanquetRoomCard[\s\S]*if \(!signals\.length && timelineBanquetSummaryHasPersistentRoot\(summary\)\)[\s\S]*signals\.push\(\{/);
     assert.match(timeline, /card\.removeAttribute\('title'\)/);
     assert.doesNotMatch(timeline, /data-banquet-badge/);
@@ -562,11 +646,63 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(timeline, /\/banquet-service-markers/);
     assert.match(css, /\.timeline-banquet-room-card/);
     assert.match(css, /\.timeline-banquet-room-card-signal/);
+    assert.match(css, /\.timeline-banquet-room-marker/);
+    assert.match(css, /\.timeline-banquet-room-card-signal--room-setup/);
     assert.match(css, /\.timeline-banquet-room-card-glance/);
     assert.match(css, /\.timeline-banquet-inspector/);
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
+});
+
+test('room timeline renders multiple menu serving markers from snapshot booking package', () => {
+    const markers = renderTimelineBanquetRoomMarkers({
+        menuPositions: [
+            { id: 'item-a', title: 'Pizza', servingTime: '12:00' },
+            { id: 'item-b', title: 'Juice', servingTime: '12:30' }
+        ],
+        serviceEvents: []
+    });
+
+    assert.deepEqual(markers.map(marker => marker.text), [
+        'Видача 12:00',
+        'Видача 12:30'
+    ]);
+    assert.deepEqual(markers.map(marker => marker.type), ['food_service', 'food_service']);
+});
+
+test('room timeline renders room_setup service event as a room-only marker', () => {
+    const markers = renderTimelineBanquetRoomMarkers({
+        menuPositions: [],
+        serviceEvents: [
+            { id: 'setup-1', type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' }
+        ]
+    });
+
+    assert.deepEqual(markers, [
+        { type: 'room_setup', text: 'Підготувати кімнату 12:00' }
+    ]);
+});
+
+test('room timeline keeps mixed menu and room_setup markers without dropping same-time entries', () => {
+    const markers = renderTimelineBanquetRoomMarkers({
+        menuPositions: [
+            { id: 'item-a', title: 'Pizza', servingTime: '12:00' },
+            { id: 'item-b', title: 'Juice', servingTime: '12:30' }
+        ],
+        serviceEvents: [
+            { id: 'setup-1', type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' }
+        ]
+    });
+
+    assert.equal(markers.length, 3);
+    assert.deepEqual(markers.map(marker => marker.text), [
+        'Видача 12:00',
+        'Підготувати кімнату 12:00',
+        'Видача 12:30'
+    ]);
+    assert.deepEqual(markers.map(marker => marker.type), ['food_service', 'room_setup', 'food_service']);
+    assert.equal(markers.filter(marker => marker.text.endsWith('12:00')).length, 2);
 });
 
 test('room timeline banquet activity blocks keep full booking modal click ownership', () => {

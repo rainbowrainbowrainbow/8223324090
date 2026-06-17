@@ -551,6 +551,10 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     white-space: nowrap;
 }
 
+.timeline-banquet-room-marker {
+    border: 1px solid rgba(14, 116, 144, 0.2);
+}
+
 .timeline-banquet-room-card-signal--warning {
     background: rgba(245, 158, 11, 0.16);
     color: #92400E;
@@ -569,6 +573,26 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .timeline-banquet-room-card-signal--service {
     background: rgba(14, 116, 144, 0.1);
     color: #0E7490;
+}
+
+.timeline-banquet-room-card-signal--food-service {
+    background: rgba(20, 184, 166, 0.12);
+    color: #0F766E;
+}
+
+.timeline-banquet-room-card-signal--drinks {
+    background: rgba(59, 130, 246, 0.12);
+    color: #1D4ED8;
+}
+
+.timeline-banquet-room-card-signal--room-setup {
+    background: rgba(124, 58, 237, 0.12);
+    color: #6D28D9;
+}
+
+.timeline-banquet-room-card-signal--custom {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
 }
 
 .timeline-banquet-room-card-glance {
@@ -655,6 +679,11 @@ html[data-theme="dark"] .timeline-banquet-room-card-signal {
     color: #CCFBF1;
 }
 
+body.dark-mode .timeline-banquet-room-marker,
+html[data-theme="dark"] .timeline-banquet-room-marker {
+    border-color: rgba(148, 163, 184, 0.24);
+}
+
 body.dark-mode .timeline-banquet-room-card-signal--warning,
 html[data-theme="dark"] .timeline-banquet-room-card-signal--warning {
     background: rgba(245, 158, 11, 0.18);
@@ -671,6 +700,30 @@ body.dark-mode .timeline-banquet-room-card-signal--cake,
 html[data-theme="dark"] .timeline-banquet-room-card-signal--cake {
     background: rgba(244, 114, 182, 0.18);
     color: #FCE7F3;
+}
+
+body.dark-mode .timeline-banquet-room-card-signal--food-service,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--food-service {
+    background: rgba(45, 212, 191, 0.18);
+    color: #CCFBF1;
+}
+
+body.dark-mode .timeline-banquet-room-card-signal--drinks,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--drinks {
+    background: rgba(96, 165, 250, 0.18);
+    color: #DBEAFE;
+}
+
+body.dark-mode .timeline-banquet-room-card-signal--room-setup,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--room-setup {
+    background: rgba(167, 139, 250, 0.18);
+    color: #EDE9FE;
+}
+
+body.dark-mode .timeline-banquet-room-card-signal--custom,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--custom {
+    background: rgba(148, 163, 184, 0.16);
+    color: #E2E8F0;
 }
 
 body.dark-mode .timeline-banquet-room-card-glance,

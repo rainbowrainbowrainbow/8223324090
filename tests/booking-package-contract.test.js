@@ -256,18 +256,22 @@ test('booking package normalizes menu positions with price and subtotal', () => 
 test('booking package normalizes banquet service events without schema changes', () => {
     const events = normalizeServiceEvents([
         { type: 'cake', title: 'Cake service', time: '17:45', note: 'with candles', relatedMenuPositionIds: ['cake_custom'] },
+        { type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' },
         { event_type: 'unknown', label: 'Custom reminder', serving_time: '18:10', durationMinutes: 15 },
         null
     ]);
 
     assert.equal(BOOKING_PACKAGE_SCHEMA_VERSION, 2);
-    assert.equal(events.length, 2);
+    assert.equal(events.length, 3);
     assert.equal(events[0].type, 'cake');
     assert.equal(events[0].time, '17:45');
     assert.deepEqual(events[0].relatedMenuPositionIds, ['cake_custom']);
-    assert.equal(events[1].type, 'custom');
-    assert.equal(events[1].title, 'Custom reminder');
-    assert.equal(events[1].durationMinutes, 15);
+    assert.equal(events[1].type, 'room_setup');
+    assert.equal(events[1].title, 'Підготувати кімнату');
+    assert.equal(events[1].time, '12:00');
+    assert.equal(events[2].type, 'custom');
+    assert.equal(events[2].title, 'Custom reminder');
+    assert.equal(events[2].durationMinutes, 15);
 });
 
 test('booking menu catalog inline edits keep menuPositions, legacy text, and reset state in sync', async () => {

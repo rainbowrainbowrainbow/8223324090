@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.40">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.40">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.40">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.40">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.40">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.40">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.40">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.40">
-    <link rel="stylesheet" href="css/features.css?v=0.76.40">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.40">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.40">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.40">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.40">
+    <link rel="stylesheet" href="css/base.css?v=0.76.42">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.42">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.42">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.42">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.42">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.42">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.42">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.42">
+    <link rel="stylesheet" href="css/features.css?v=0.76.42">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.42">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.42">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.42">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.42">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.40">✨ 0.76.40</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.42">✨ 0.76.42</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.40 — Booking Children Count Field Fix</p>
+                <p class="tagline">AI First CRM v0.76.42 — Booking Serving Timeline Markers</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.40</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.42</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1730,6 +1730,27 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.76.42 — Booking Serving Timeline Markers</h4>
+                    <ul>
+                        <li><b>Кілька часів видачі меню тепер видно на room timeline</b> — усі markers із <code>extraData.bookingPackage.menuPositions[].servingTime</code> показуються окремо у room-only banquet card.</li>
+                        <li><b><code>Підготувати кімнату</code> показується окремим marker/block</b> — <code>room_setup</code> із <code>extraData.bookingPackage.serviceEvents[].time</code> рендериться поруч із видачами меню.</li>
+                        <li><b>Markers лишаються room-only і не засмічують <code>Свята</code></b> — marker rendering залишається за <code>isRoomTimelineView()</code> і не додає kitchen/service pseudo-line markers у park animator view.</li>
+                        <li><b>Дані беруться з існуючого <code>bookingPackage</code> без зміни схеми</b> — persistence лишається у <code>menuPositions[].servingTime</code> і <code>serviceEvents[].time</code>, без міграцій і нових backend rows.</li>
+                        <li><b>Старий service-marker контракт не повертався</b> — немає <code>data-banquet-service-marker</code>, <code>.timeline-banquet-service-marker</code>, hover popover або <code>/banquet-service-markers</code>.</li>
+                        <li><b>Regression guards додано</b> — timeline/static UI тести перевіряють новий <code>data-banquet-room-marker</code>, <code>room_setup</code>, відсутність <code>signals.slice(0, 3)</code> і старого service-marker контракту.</li>
+                        <li><b>Schema/env/auth/Railway config не змінювались</b> — без міграцій, secrets, ролей, production config, нових залежностей або змін production data.</li>
+                        <li><b>Релізні маркери піднято до <code>0.76.42</code></b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.76.41 — Room Timeline Serving Markers Fix</h4>
+                    <ul>
+                        <li><b>Проміжний release train marker збережено для changelog continuity</b> — <code>0.76.41</code> лишає видимою історію підготовки room timeline serving markers перед фінальним deploy <code>0.76.42</code>.</li>
+                        <li><b>Контракт room-only markers зафіксовано</b> — історичний запис описує перехід від одного serving signal до окремих marker-ів без зміни schema/env/auth/Railway config.</li>
+                        <li><b>Видима модалка <code>Що нового</code> не пропускає patch-реліз</b> — source і first-screen changelog тримають безперервний ланцюжок <code>0.76.42</code> → <code>0.76.41</code> → <code>0.76.40</code>.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.76.40 — Booking Children Count Field Fix</h4>
                     <ul>
@@ -13656,30 +13677,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.40"></script>
-    <script src="js/timeline-visibility.js?v=0.76.40"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.40"></script>
-    <script src="js/config.js?v=0.76.40"></script>
-    <script src="js/api.js?v=0.76.40"></script>
-    <script src="js/ui.js?v=0.76.40"></script>
-    <script src="js/auth.js?v=0.76.40"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.40"></script>
-    <script src="js/timeline.js?v=0.76.40"></script>
-    <script src="js/booking.js?v=0.76.40"></script>
-    <script src="js/settings.js?v=0.76.40"></script>
-    <script src="js/booking-form.js?v=0.76.40"></script>
-    <script src="js/booking-linked.js?v=0.76.40"></script>
-    <script src="js/settings-dashboard.js?v=0.76.40"></script>
-    <script src="js/settings-history.js?v=0.76.40"></script>
-    <script src="js/settings-afisha.js?v=0.76.40"></script>
-    <script src="js/settings-certificates.js?v=0.76.40"></script>
-    <script src="js/offline.js?v=0.76.40"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.40"></script>
-    <script src="js/search.js?v=0.76.40"></script>
-    <script src="js/ws.js?v=0.76.40"></script>
-    <script src="js/app.js?v=0.76.40"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.40"></script>
-    <script src="js/components/sidebar.js?v=0.76.40"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.40"></script>
+    <script src="js/timeline-context.js?v=0.76.42"></script>
+    <script src="js/timeline-visibility.js?v=0.76.42"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.42"></script>
+    <script src="js/config.js?v=0.76.42"></script>
+    <script src="js/api.js?v=0.76.42"></script>
+    <script src="js/ui.js?v=0.76.42"></script>
+    <script src="js/auth.js?v=0.76.42"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.42"></script>
+    <script src="js/timeline.js?v=0.76.42"></script>
+    <script src="js/booking.js?v=0.76.42"></script>
+    <script src="js/settings.js?v=0.76.42"></script>
+    <script src="js/booking-form.js?v=0.76.42"></script>
+    <script src="js/booking-linked.js?v=0.76.42"></script>
+    <script src="js/settings-dashboard.js?v=0.76.42"></script>
+    <script src="js/settings-history.js?v=0.76.42"></script>
+    <script src="js/settings-afisha.js?v=0.76.42"></script>
+    <script src="js/settings-certificates.js?v=0.76.42"></script>
+    <script src="js/offline.js?v=0.76.42"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.42"></script>
+    <script src="js/search.js?v=0.76.42"></script>
+    <script src="js/ws.js?v=0.76.42"></script>
+    <script src="js/app.js?v=0.76.42"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.42"></script>
+    <script src="js/components/sidebar.js?v=0.76.42"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.42"></script>
 </body>
 </html>

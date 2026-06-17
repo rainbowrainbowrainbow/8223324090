@@ -803,6 +803,29 @@ function normalizeTimelineBanquetServingTime(value) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+function normalizeTimelineBanquetServiceEventType(value) {
+    const type = String(value || '').trim().toLowerCase();
+    if (['food_service', 'cake', 'drinks', 'room_setup', 'custom'].includes(type)) return type;
+    return 'service';
+}
+
+function timelineBanquetServiceEventLabel(type) {
+    switch (normalizeTimelineBanquetServiceEventType(type)) {
+        case 'cake':
+            return 'Торт';
+        case 'drinks':
+            return 'Напої';
+        case 'room_setup':
+            return 'Підготувати кімнату';
+        case 'custom':
+            return 'Подія';
+        case 'food_service':
+            return 'Видача';
+        default:
+            return 'Сервіс';
+    }
+}
+
 function timelineBanquetBookingHasMenu(booking = {}) {
     return timelineBanquetMenuCount(booking) > 0
         || booking?.banquetGuests != null
@@ -934,12 +957,11 @@ function timelineBanquetServingInfo(summary = {}) {
                 missingCount += 1;
                 return;
             }
-            const rawType = String(item?.type || '').trim().toLowerCase();
-            const isCake = rawType === 'cake';
-            const label = isCake ? 'Торт' : 'Сервіс';
-            const title = String(item?.title || (isCake ? 'Винос торта' : `Сервіс ${index + 1}`)).trim();
+            const eventType = normalizeTimelineBanquetServiceEventType(item?.type);
+            const label = timelineBanquetServiceEventLabel(eventType);
+            const title = String(item?.title || label || `Сервіс ${index + 1}`).trim();
             markers.push({
-                type: isCake ? 'cake' : 'service',
+                type: eventType,
                 label,
                 title,
                 time: servingTime,
@@ -1208,6 +1230,25 @@ function timelineBanquetMarkerLabel(marker = {}) {
     return [marker.label || 'Сервіс', marker.time || ''].filter(Boolean).join(' ');
 }
 
+function timelineBanquetRoomSignalKey(value) {
+    return String(value || 'service')
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, '-')
+        .replace(/[^a-z0-9-]/g, '') || 'service';
+}
+
+function timelineBanquetRoomServingSignals(markers = []) {
+    return (Array.isArray(markers) ? markers : [])
+        .filter(marker => marker?.time)
+        .map(marker => ({
+            key: timelineBanquetRoomSignalKey(marker.type || 'service'),
+            label: timelineBanquetMarkerLabel(marker),
+            markerType: normalizeTimelineBanquetServiceEventType(marker.type || 'service'),
+            isServingMarker: true
+        }));
+}
+
 function timelineBanquetSummaryForInspector(summary = {}, servingInfo = {}, carrierBooking = null) {
     const missingCount = Number(servingInfo.missingCount || 0);
     return {
@@ -1346,8 +1387,6 @@ function timelineBanquetRoomCardSignals(summary = {}) {
     const hasMissingTime = (summary.warnings || []).some(item => String(item || '').toLowerCase().includes('час'))
         || (summary.menuPreviewItems || []).some(item => !item.servingTime);
     const servingMarkers = Array.isArray(summary.servingMarkers) ? summary.servingMarkers : [];
-    const cakeMarker = servingMarkers.find(marker => marker.time && (marker.type === 'cake' || String(marker.label || '').toLowerCase().includes('торт')));
-    const servingMarker = cakeMarker || servingMarkers.find(marker => marker.time);
     const menuCount = Number(summary.menuCount || 0);
     const activityCount = Number(summary.activityCount || 0);
 
@@ -1355,16 +1394,14 @@ function timelineBanquetRoomCardSignals(summary = {}) {
     if (summary.hasMenu || menuCount > 0) {
         signals.push({ key: 'menu', label: menuCount ? `Кухня ${menuCount} поз.` : 'Кухня' });
     }
-    if (servingMarker) {
-        signals.push({ key: servingMarker.type === 'cake' ? 'cake' : 'service', label: timelineBanquetMarkerLabel(servingMarker) });
-    }
+    signals.push(...timelineBanquetRoomServingSignals(servingMarkers));
     if (activityCount > 0) {
         signals.push({
             key: 'activity',
             label: `${activityCount} ${timelineBanquetPlural(activityCount, 'активність', 'активності', 'активностей')}`
         });
     }
-    return signals.slice(0, 3);
+    return signals;
 }
 
 function timelineBanquetSummaryHasPersistentRoot(summary = {}) {
@@ -1409,6 +1446,12 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
     }
     const label = signals.map(signal => signal.label).join(' · ');
     const tone = signals.some(signal => signal.key === 'warning') ? 'warning' : signals[0].key;
+    const signalHtml = signals.map(signal => {
+        const key = timelineBanquetRoomSignalKey(signal.key);
+        const markerAttrs = signal.isServingMarker ? ` data-banquet-room-marker="${escapeHtml(signal.markerType || key)}"` : '';
+        const markerClass = signal.isServingMarker ? ' timeline-banquet-room-marker' : '';
+        return `<span class="timeline-banquet-room-card-signal timeline-banquet-room-card-signal--${escapeHtml(key)}${markerClass}"${markerAttrs}>${escapeHtml(signal.label)}</span>`;
+    }).join('');
     card.className = `timeline-banquet-room-card timeline-banquet-room-card--${tone}`;
     card.setAttribute('aria-label', `Банкет: ${[summary.room, summary.customerName, timelineBanquetDateTimeText(summary), label].filter(Boolean).join(' · ')}`);
     card.removeAttribute('title');
@@ -1416,7 +1459,7 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
         <span class="timeline-banquet-room-card-main">
             <span class="timeline-banquet-room-card-kicker">Банкет</span>
             <span class="timeline-banquet-room-card-signals">
-                ${signals.map(signal => `<span class="timeline-banquet-room-card-signal timeline-banquet-room-card-signal--${escapeHtml(signal.key)}">${escapeHtml(signal.label)}</span>`).join('')}
+                ${signalHtml}
             </span>
         </span>
         <span class="timeline-banquet-room-card-glance">

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.40",
+  "version": "0.76.42",
   "eventGenix": {
-    "releaseLabel": "Booking Children Count Field Fix"
+    "releaseLabel": "Booking Serving Timeline Markers"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

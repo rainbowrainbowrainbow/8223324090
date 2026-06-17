@@ -4,6 +4,34 @@
 
 ---
 
+## v0.76.32 - Booking Catalog Stability Deploy
+
+### Booking / Kitchen menu catalog / First screen release notes / Deploy / (Клешня, 17.06.2026) [codex]
+- **Перший екран оновлено до `0.76.32`** - login badge, tagline, кнопка `Що нового`, latest changelog modal entry, cache tags, Service Worker і `/api/version` синхронізовані для deploy.
+- **Каталог кухні стабілізовано у фільтрі `Усе`** - group headings у full catalog більше не працюють як sticky stack, тому після `+` список не дає візуального jump.
+- **`+`, `-` і видалення не запускають повний catalog rerender** - quantity changes оновлюють `menuPositions`, affected list state, cart і summary без перебудови tabs/insight/shell.
+- **Scroll позиція списку зберігається** - `#bookingMenuCatalogList` відновлює `scrollTop` / `scrollLeft` після add/remove/inline quantity у `Усе` і вузьких фільтрах.
+- **Filter assumptions очищено** - актуальні booking filter keys лишаються `all`, `cake` і `section:*`; legacy `food` покритий тільки як задокументований fallback на `all`.
+- **Regression coverage посилено** - contract tests перевіряють mobile add без auto-open cart, browser-like scroll stability, відсутність full rerender після `+` і fallback invalid filter key.
+- **Release churn reduction оцінено без змін flow** - запропоновано окремий `assetVersion` як наступний техборг, але `version-sync.js` і release pipeline не переписувались.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.32`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.31 - Booking Catalog Quantity Rerender Reduction
+
+### Booking / Kitchen menu catalog / Quantity updates / Release / (Клешня, 17.06.2026) [codex]
+- **`+`, `-` і видалення більше не запускають повний `renderBookingMenuCatalog()`** - зміни кількості комітять `menuPositions`, але не перебудовують tabs, insight і весь catalog shell.
+- **Scroll позиція каталогу зберігається після quantity changes** - `#bookingMenuCatalogList` оновлюється з restore `scrollTop` / `scrollLeft`, тому оператор не втрачає місце у фільтрі `Усе` або вузькій категорії.
+- **Cart, selected state і summary оновлюються точково** - після add/remove/inline quantity refresh проходить через catalog list, cart і summary без зайвих layout side effects.
+- **Search, tabs і inline edit flows не переписувались** - фільтри й пошук і далі використовують повний render там, де це потрібно для зміни набору позицій.
+- **Regression coverage посилено** - `tests/booking-package-contract.test.js` перевіряє scroll stability для `all` і `section:cold-drinks` та гарантує, що `+` не викликає full catalog rerender.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.31`** - package, package-lock, cache tags, Service Worker, login badge, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.30 - Booking Catalog Scroll Stability
 
 ### Booking / Kitchen menu catalog / Scroll stability / Release / (Клешня, 17.06.2026) [codex]

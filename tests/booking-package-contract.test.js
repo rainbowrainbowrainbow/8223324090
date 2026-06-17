@@ -68,7 +68,7 @@ function createBookingMenuCatalogHarness() {
     `, { url: 'http://localhost/' });
     const bookingJs = read('js', 'booking.js');
     const start = bookingJs.indexOf('function bookingKitchenType(');
-    const end = bookingJs.indexOf('function renderBookingPackageDetail(');
+    const end = bookingJs.indexOf('const debouncedBookingDuplicateCheck');
     assert.ok(start >= 0 && end > start, 'booking menu catalog function slice exists');
 
     const context = {
@@ -145,6 +145,7 @@ function createBookingMenuCatalogHarness() {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;'),
         updateBookingContextHeaderSummary: () => {},
+        snapshotBookingRoomOptions: () => {},
         syncBookingWorkspaceMode: () => {},
         setBookingKitchenEnabled: () => {},
         getPinataModeValue: () => 'none',
@@ -213,6 +214,13 @@ function createBookingMenuCatalogHarness() {
     vm.createContext(context);
     vm.runInContext(bookingJs.slice(start, end), context, { filename: 'js/booking.js' });
     return context;
+}
+
+function clickElement(window, element) {
+    element.dispatchEvent(new window.MouseEvent('click', {
+        bubbles: true,
+        cancelable: true
+    }));
 }
 
 test('booking package normalizes menu positions with price and subtotal', () => {
@@ -394,6 +402,23 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
 });
 
+test('booking menu catalog falls back from legacy invalid filter keys to all', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('bookingMenuCatalogPanel').hidden = false;
+
+    // Legacy invalid key kept only to verify stale saved UI state falls back safely.
+    ctx.BookingPackageState.catalogFilter = 'food';
+    ctx.renderBookingMenuCatalog();
+
+    assert.equal(ctx.BookingPackageState.catalogFilter, 'all');
+    assert.equal(doc.getElementById('bookingMenuCatalogList').classList.contains('booking-menu-catalog-list--all'), true);
+    assert.equal(
+        doc.querySelector('#bookingMenuCatalogTabs [data-menu-catalog-filter="all"]')?.getAttribute('aria-pressed'),
+        'true'
+    );
+});
+
 test('booking menu catalog mobile list add does not auto-open cart sheet', () => {
     const ctx = createBookingMenuCatalogHarness();
     const doc = ctx.document;
@@ -425,6 +450,72 @@ test('booking menu catalog mobile list add does not auto-open cart sheet', () =>
     ctx.setBookingMenuCatalogCartOpen(true);
     assert.equal(panel.classList.contains('booking-menu-catalog-cart-open'), true);
     assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'true');
+});
+
+test('booking menu catalog add keeps list scroll stable for all and narrow filters', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    const panel = doc.getElementById('bookingMenuCatalogPanel');
+    const list = doc.getElementById('bookingMenuCatalogList');
+    panel.hidden = false;
+    ctx.__bookingMenuCatalogMobile = true;
+    ctx.initBookingPackageWorkspace();
+    const originalRenderBookingMenuCatalog = ctx.renderBookingMenuCatalog;
+    let fullCatalogRenderCount = 0;
+    ctx.renderBookingMenuCatalog = (...args) => {
+        fullCatalogRenderCount += 1;
+        return originalRenderBookingMenuCatalog(...args);
+    };
+
+    const cases = [
+        {
+            filter: 'all',
+            productId: 'menu_pizza',
+            allClass: true,
+            scrollTop: 360
+        },
+        {
+            filter: 'section:cold-drinks',
+            productId: 'menu_juice',
+            allClass: false,
+            scrollTop: 180
+        }
+    ];
+
+    cases.forEach(({ filter, productId, allClass, scrollTop }) => {
+        ctx.BookingPackageState.menuPositions = [];
+        ctx.BookingPackageState.catalogFilter = filter;
+        ctx.BookingPackageState.catalogEditing = null;
+        doc.getElementById('bookingMenuCatalogSearch').value = '';
+        ctx.renderBookingMenuCatalog();
+        fullCatalogRenderCount = 0;
+
+        assert.equal(
+            list.classList.contains('booking-menu-catalog-list--all'),
+            allClass,
+            `${filter} catalog list all-view class`
+        );
+        assert.ok(
+            doc.querySelector(`#bookingMenuCatalogList [data-menu-catalog-add="${productId}"]`),
+            `${filter} add button is rendered`
+        );
+
+        list.scrollTop = scrollTop;
+        const before = list.scrollTop;
+        clickElement(
+            ctx.window,
+            doc.querySelector(`#bookingMenuCatalogList [data-menu-catalog-add="${productId}"]`)
+        );
+        const after = list.scrollTop;
+
+        assert.equal(ctx.getBookingMenuPositions().length, 1, `${filter} add commits one menu position`);
+        assert.equal(ctx.getBookingMenuPositions()[0].productId, productId, `${filter} add keeps selected product`);
+        assert.equal(fullCatalogRenderCount, 0, `${filter} add does not run full catalog rerender`);
+        assert.ok(
+            Math.abs(after - before) <= 1,
+            `${filter} add changed bookingMenuCatalogList.scrollTop from ${before} to ${after}`
+        );
+    });
 });
 
 test('booking menu catalog restores saved quantity, manual price, and note when editing existing booking', () => {

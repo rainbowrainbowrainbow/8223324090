@@ -2491,13 +2491,13 @@ function bookingMenuCatalogPositionFromProduct(product = {}, quantity = 1, overr
     });
 }
 
-function commitBookingMenuCatalogPositions(nextPositions) {
+function commitBookingMenuCatalogPositions(nextPositions, options = {}) {
     BookingPackageState.menuPositions = (Array.isArray(nextPositions) ? nextPositions : [])
         .map((item, index) => normalizeBookingMenuPosition(item, index))
         .filter(Boolean);
     BookingPackageState.editIndex = null;
     BookingPackageState.catalogEditing = null;
-    renderBookingMenuPositions();
+    renderBookingMenuPositions({ renderCatalog: options.renderCatalog !== false });
     syncLegacyBanquetMenuFromPositions(true);
     renderBookingPackageSummary();
     syncBookingWorkspaceMode();
@@ -2517,7 +2517,10 @@ function upsertBookingMenuCatalogProduct(productId, delta) {
         index === firstIndex || String(item.productId || '') !== String(product.id)
     );
     if (nextQty <= 0) {
-        commitBookingMenuCatalogPositions(positions.filter(item => String(item.productId || '') !== String(product.id)));
+        commitBookingMenuCatalogPositions(
+            positions.filter(item => String(item.productId || '') !== String(product.id)),
+            { renderCatalog: false }
+        );
     } else if (firstIndex >= 0) {
         const current = positions[firstIndex];
         const position = bookingMenuCatalogPositionFromProduct(product, nextQty, {
@@ -2530,10 +2533,14 @@ function upsertBookingMenuCatalogProduct(productId, delta) {
             servingBatchId: current.servingBatchId || null
         });
         nextPositions[firstIndex] = position;
-        commitBookingMenuCatalogPositions(nextPositions.filter(Boolean));
+        commitBookingMenuCatalogPositions(nextPositions.filter(Boolean), { renderCatalog: false });
     } else {
-        commitBookingMenuCatalogPositions([...positions, bookingMenuCatalogPositionFromProduct(product, nextQty)].filter(Boolean));
+        commitBookingMenuCatalogPositions(
+            [...positions, bookingMenuCatalogPositionFromProduct(product, nextQty)].filter(Boolean),
+            { renderCatalog: false }
+        );
     }
+    refreshBookingMenuCatalogAfterPositionChange({ preserveScroll: true });
 }
 
 function updateBookingMenuCatalogProduct(productId, updates = {}) {
@@ -2565,7 +2572,8 @@ function updateBookingMenuCatalogProduct(productId, updates = {}) {
     const nextPositions = firstIndex >= 0
         ? positions.map((item, index) => index === firstIndex ? nextPosition : item)
         : [...positions, nextPosition];
-    commitBookingMenuCatalogPositions(nextPositions);
+    commitBookingMenuCatalogPositions(nextPositions, { renderCatalog: false });
+    refreshBookingMenuCatalogAfterPositionChange({ preserveScroll: true });
 }
 
 function setBookingMenuCatalogEditing(productId, field, options = {}) {
@@ -2908,6 +2916,17 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
     list.innerHTML = rows.join('');
 }
 
+function renderBookingMenuCatalogListPreservingScroll(products = getBookingMenuProducts()) {
+    const list = document.getElementById('bookingMenuCatalogList');
+    const scrollTop = list ? list.scrollTop : 0;
+    const scrollLeft = list ? list.scrollLeft : 0;
+    renderBookingMenuCatalogList(products);
+    const refreshedList = document.getElementById('bookingMenuCatalogList');
+    if (!refreshedList) return;
+    refreshedList.scrollTop = scrollTop;
+    refreshedList.scrollLeft = scrollLeft;
+}
+
 function renderBookingMenuCatalogCart() {
     const list = document.getElementById('bookingMenuCatalogCartList');
     if (!list) return;
@@ -2973,6 +2992,19 @@ function renderBookingMenuCatalog() {
     updateBookingMenuCatalogSummary();
 }
 
+function refreshBookingMenuCatalogAfterPositionChange(options = {}) {
+    const panel = document.getElementById('bookingMenuCatalogPanel');
+    if (panel && !panel.hidden) {
+        if (options.preserveScroll === false) {
+            renderBookingMenuCatalogList();
+        } else {
+            renderBookingMenuCatalogListPreservingScroll();
+        }
+    }
+    renderBookingMenuCatalogCart();
+    updateBookingMenuCatalogSummary();
+}
+
 function openBookingMenuCatalogForPosition(item = {}) {
     const search = document.getElementById('bookingMenuCatalogSearch');
     if (search) search.value = '';
@@ -3018,16 +3050,17 @@ function renderBookingServiceEvents(events = getBookingServiceEvents()) {
     `).join('');
 }
 
-function renderBookingMenuPositions() {
+function renderBookingMenuPositions(options = {}) {
     const list = document.getElementById('bookingMenuPositionsList');
     const hidden = document.getElementById('bookingMenuPositionsJson');
     const positions = getBookingMenuPositions();
     const serviceEvents = getBookingServiceEvents();
+    const shouldRenderCatalog = options.renderCatalog !== false;
     BookingPackageState.menuPositions = positions;
     BookingPackageState.serviceEvents = serviceEvents;
     if (hidden) hidden.value = JSON.stringify(positions);
     if (!list) {
-        renderBookingMenuCatalog();
+        if (shouldRenderCatalog) renderBookingMenuCatalog();
         return;
     }
     if (!positions.length && !serviceEvents.length) {
@@ -3192,7 +3225,7 @@ function renderBookingMenuPositions() {
             });
         });
     }
-    renderBookingMenuCatalog();
+    if (shouldRenderCatalog) renderBookingMenuCatalog();
 }
 
 function syncLegacyBanquetMenuFromPositions(force = false) {
@@ -3680,12 +3713,20 @@ function initBookingPackageWorkspace() {
         }
         if (remove) {
             const productId = remove.dataset.menuCatalogRemove;
-            commitBookingMenuCatalogPositions(getBookingMenuPositions().filter(item => String(item.productId || '') !== String(productId || '')));
+            commitBookingMenuCatalogPositions(
+                getBookingMenuPositions().filter(item => String(item.productId || '') !== String(productId || '')),
+                { renderCatalog: false }
+            );
+            refreshBookingMenuCatalogAfterPositionChange({ preserveScroll: true });
             return;
         }
         if (removeIndex) {
             const index = Number(removeIndex.dataset.menuCatalogRemoveIndex);
-            commitBookingMenuCatalogPositions(getBookingMenuPositions().filter((_, itemIndex) => itemIndex !== index));
+            commitBookingMenuCatalogPositions(
+                getBookingMenuPositions().filter((_, itemIndex) => itemIndex !== index),
+                { renderCatalog: false }
+            );
+            refreshBookingMenuCatalogAfterPositionChange({ preserveScroll: true });
             return;
         }
         if (add) {

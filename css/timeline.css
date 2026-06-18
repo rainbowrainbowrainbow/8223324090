@@ -412,6 +412,42 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     border-left: 3px solid rgba(0,0,0,0.12);
 }
 
+.booking-block--tiny,
+.booking-block--short,
+.booking-block--medium,
+.booking-block--wide {
+    min-width: 0;
+}
+
+.booking-block--tiny { --timeline-booking-density: tiny; }
+.booking-block--short { --timeline-booking-density: short; }
+.booking-block--medium { --timeline-booking-density: medium; }
+.booking-block--wide { --timeline-booking-density: wide; }
+
+.booking-block .timeline-compact-booking-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.12;
+}
+
+.booking-block .timeline-compact-booking-label {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.booking-block .timeline-compact-booking-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* v20.11.0: Keyboard focus ring */
 .booking-block:focus-visible {
     outline: 2px solid var(--primary, #D4A843);
@@ -488,6 +524,41 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.custom {
     --timeline-room-card-border: rgba(148, 163, 184, 0.4);
     --timeline-room-card-accent: #38BDF8;
     --timeline-room-card-badge: rgba(56, 189, 248, 0.18);
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.quest {
+    --timeline-room-card-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.68), rgba(15, 23, 42, 0.9));
+    --timeline-room-card-border: rgba(167, 139, 250, 0.48);
+    --timeline-room-card-accent: #A78BFA;
+    --timeline-room-card-badge: rgba(167, 139, 250, 0.22);
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.masterclass {
+    --timeline-room-card-bg: linear-gradient(135deg, rgba(101, 163, 13, 0.66), rgba(15, 23, 42, 0.9));
+    --timeline-room-card-border: rgba(132, 204, 22, 0.48);
+    --timeline-room-card-accent: #84CC16;
+    --timeline-room-card-badge: rgba(132, 204, 22, 0.22);
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.pinata {
+    --timeline-room-card-bg: linear-gradient(135deg, rgba(219, 39, 119, 0.68), rgba(15, 23, 42, 0.9));
+    --timeline-room-card-border: rgba(244, 114, 182, 0.48);
+    --timeline-room-card-accent: #F472B6;
+    --timeline-room-card-badge: rgba(244, 114, 182, 0.22);
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.photo {
+    --timeline-room-card-bg: linear-gradient(135deg, rgba(8, 145, 178, 0.68), rgba(15, 23, 42, 0.9));
+    --timeline-room-card-border: rgba(34, 211, 238, 0.48);
+    --timeline-room-card-accent: #22D3EE;
+    --timeline-room-card-badge: rgba(34, 211, 238, 0.22);
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.custom {
+    --timeline-room-card-bg: linear-gradient(135deg, rgba(71, 85, 105, 0.72), rgba(15, 23, 42, 0.9));
+    --timeline-room-card-border: rgba(148, 163, 184, 0.42);
+    --timeline-room-card-accent: #94A3B8;
+    --timeline-room-card-badge: rgba(148, 163, 184, 0.18);
 }
 
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card:hover,
@@ -570,6 +641,132 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .user-let
 
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-banquet-link-handle {
     display: none;
+}
+
+.booking-block.booking-block--short,
+.booking-block.booking-block--tiny {
+    justify-content: center;
+    gap: 2px;
+    padding: 5px 8px;
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-main,
+.booking-block.booking-block--tiny .timeline-compact-booking-main {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    max-width: calc(100% - 18px);
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-main .booking-block-time,
+.booking-block.booking-block--tiny .timeline-compact-booking-main .booking-block-time {
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 950;
+    line-height: 1.05;
+    text-shadow: 0 1px 2px rgba(2, 6, 23, 0.34);
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-label,
+.booking-block.booking-block--tiny .timeline-compact-booking-label {
+    width: 100%;
+    color: rgba(255, 255, 255, 0.96);
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.08;
+    letter-spacing: 0;
+    text-shadow: 0 1px 2px rgba(2, 6, 23, 0.28);
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-meta {
+    max-width: calc(100% - 18px);
+    margin-top: 1px;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 9px;
+    font-weight: 850;
+    line-height: 1.05;
+    opacity: 1;
+}
+
+.booking-block.booking-block--tiny {
+    padding: 5px 6px;
+}
+
+.booking-block.booking-block--tiny .timeline-compact-booking-main {
+    max-width: calc(100% - 14px);
+}
+
+.booking-block.booking-block--tiny .timeline-compact-booking-label {
+    font-size: 11px;
+}
+
+.booking-block.booking-block--tiny .timeline-compact-booking-meta,
+.booking-block.booking-block--tiny .costume-text,
+.booking-block.booking-block--tiny .note-text,
+.booking-block.booking-block--tiny .duration-badge {
+    display: none;
+}
+
+.booking-block.booking-block--short .user-letter,
+.booking-block.booking-block--tiny .user-letter {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    font-size: 10px;
+    line-height: 17px;
+}
+
+.booking-block.booking-block--tiny .user-letter {
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
+    line-height: 14px;
+}
+
+.booking-block.booking-block--short .booking-block-room {
+    max-width: 58px;
+    margin-left: 0;
+    padding: 1px 5px;
+    font-size: 8px;
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--short,
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny {
+    gap: 2px;
+    padding: 7px 9px;
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--short .timeline-room-activity-main,
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .timeline-room-activity-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding-right: 18px;
+    font-size: 12px;
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--short .timeline-room-activity-title,
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .timeline-room-activity-title {
+    width: 100%;
+    font-size: 12px;
+    line-height: 1.08;
+}
+
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .timeline-room-activity-detail,
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .note-text {
+    display: none;
+}
+
+body.dark-mode .booking-block.booking-block--short .timeline-compact-booking-label,
+body.dark-mode .booking-block.booking-block--tiny .timeline-compact-booking-label,
+html[data-theme="dark"] .booking-block.booking-block--short .timeline-compact-booking-label,
+html[data-theme="dark"] .booking-block.booking-block--tiny .timeline-compact-booking-label {
+    color: rgba(248, 250, 252, 0.98);
 }
 
 .booking-block.slot-closed {

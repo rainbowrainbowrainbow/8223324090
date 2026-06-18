@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.52 - Short Timeline Activity Block Readability
+
+### Frontend timeline / Short activity blocks / Compact labels / Production fix / (Клешня, 18.06.2026) [codex]
+- **Короткі 30-хв activity blocks отримали compact/tiny режими** - timeline тепер класифікує booking blocks за фактичною pixel width і рендерить вузькі блоки окремо від medium/wide blocks.
+- **`Піньята`, `Бульбашкове шоу`, `АН`, `МК`, `Фото` і `Квест` мають читабельні compact labels** - замість випадкового обрізання типу `Бульб(30...` оператор бачить коротку назву на кшталт `Піньята`, `Бульб.`, `АН`, `МК`, `Фото`, `Квест`.
+- **Час у коротких blocks розміщений послідовно** - short/tiny activity cards використовують компактний time-first layout, тому `Свята` і projected activity cards у `Кімнати` читаються однаково.
+- **Повна назва не губиться** - повний текст booking title збережено в `title` / `aria-label`, а деталі й далі доступні через існуючий click/details flow.
+- **`Кімнати`/`Свята` behavior збережено** - room timeline не дублює room name всередині blocks, animator timeline може показувати room badge, а room service markers не змінювались.
+- **Category accents збережено** - `pinata`, `masterclass`, `photo`, `quest`, `show`, `animation` і custom blocks мають окремі кольорові accents у compact режимах.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.52`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.51 - Room Timeline Activity Text Alignment
 
 ### Frontend timeline / Room activity text alignment / Production fix / (Клешня, 18.06.2026) [codex]

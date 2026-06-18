@@ -506,6 +506,51 @@ function timelineDurationWidth(duration, anchor) {
     return timelineMinutesToPixels(duration, anchor) - 4;
 }
 
+function timelineBookingBlockDensity(width) {
+    const safeWidth = Number(width);
+    if (!Number.isFinite(safeWidth) || safeWidth < 90) return 'tiny';
+    if (safeWidth < 140) return 'short';
+    if (safeWidth < 220) return 'medium';
+    return 'wide';
+}
+
+function timelineCompactLabelCandidate(value, maxLength = 10) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const withoutDuration = raw
+        .replace(/\(\s*\d+\s*(?:хв|хв\.|min|m)?\s*\)/gi, '')
+        .replace(/\b\d+\s*(?:хв|хв\.|min|m)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const firstWord = withoutDuration.split(/[\s:·\-–—|/]+/).find(Boolean) || withoutDuration;
+    if (!firstWord) return '';
+    if (firstWord.length <= maxLength) return firstWord;
+    return `${firstWord.slice(0, Math.max(1, maxLength - 1))}.`;
+}
+
+function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail) {
+    const source = renderBooking || booking || {};
+    const category = String(source.category || booking?.category || '').trim().toLowerCase();
+    const code = String(source.programCode || source.program_code || booking?.programCode || booking?.program_code || '').trim();
+    const label = String(source.label || bookingTitle || booking?.label || '').trim();
+    const name = String(source.programName || source.program_name || bookingTitleTail || booking?.programName || booking?.program_name || '').trim();
+    const codeLower = code.toLocaleLowerCase('uk-UA');
+    const labelLower = label.toLocaleLowerCase('uk-UA');
+    const haystack = `${category} ${code} ${label} ${name}`.toLocaleLowerCase('uk-UA');
+
+    if (category === 'pinata' || haystack.includes('пін')) return 'Піньята';
+    if (category === 'animation' || codeLower.startsWith('ан') || labelLower.startsWith('ан') || haystack.includes('анімац')) return 'АН';
+    if (haystack.includes('бульб')) return 'Бульб.';
+    if (category === 'masterclass' || haystack.includes('майстер')) return 'МК';
+    if (category === 'photo' || haystack.includes('фото')) return 'Фото';
+    if (category === 'quest' || haystack.includes('квест')) return 'Квест';
+
+    return timelineCompactLabelCandidate(code)
+        || timelineCompactLabelCandidate(label)
+        || timelineCompactLabelCandidate(name)
+        || 'Подія';
+}
+
 function getTimelineLineGrid(lineId) {
     const id = String(lineId ?? '');
     return Array.from(document.querySelectorAll('.line-grid[data-line-id]'))
@@ -2771,6 +2816,7 @@ function createBookingBlock(booking, startHour, anchor) {
     const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
     const left = timelineMinutesToPixels(startMin, anchor);
     const width = Math.max(18, timelineDurationWidth(effectiveDuration, anchor));
+    const bookingBlockDensity = timelineBookingBlockDensity(width);
 
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
@@ -2785,6 +2831,12 @@ function createBookingBlock(booking, startHour, anchor) {
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
     block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}${isEducationLessonBlock ? ' education-lesson' : ''}`;
+    block.classList.add(`booking-block--${bookingBlockDensity}`);
+    const isCompactActivityBlock = (bookingBlockDensity === 'tiny' || bookingBlockDensity === 'short')
+        && !isMaysternyaSlotClosed
+        && !isEducationLessonBlock
+        && renderBooking.category !== 'banquet'
+        && renderBooking.category !== 'graduation';
     const isRoomTimelineActivityCard = isRoomTimelineView()
         && !isMaysternyaSlotClosed
         && !isEducationLessonBlock
@@ -2856,16 +2908,35 @@ function createBookingBlock(booking, startHour, anchor) {
         ? `<span class="booking-block-room" title="${escapeHtml(bookingRoomName)}">${escapeHtml(bookingRoomName)}</span>`
         : '';
     const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
+    const compactActivityLabel = timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail);
+    const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+    if (fullBookingLabel) {
+        block.setAttribute('aria-label', fullBookingLabel);
+        block.setAttribute('title', fullBookingLabel);
+    }
     const roomActivityDetailParts = [bookingTitleTail, costumeLabel].filter(Boolean);
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
     const roomActivityHtml = `
         <div class="user-letter">${badge}</div>
         <div class="timeline-room-activity-main">
             <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
-            <span class="timeline-room-activity-title">${escapeHtml(bookingTitle || renderBooking.programCode || renderBooking.category || 'Подія')}</span>
-            ${durationBadge}
+            <span class="timeline-room-activity-title">${escapeHtml(isCompactActivityBlock ? compactActivityLabel : (bookingTitle || renderBooking.programCode || renderBooking.category || 'Подія'))}</span>
+            ${isCompactActivityBlock ? '' : durationBadge}
         </div>
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}
+        ${noteText}
+    `;
+    const compactBookingHtml = `
+        <div class="user-letter">${badge}</div>
+        <div class="timeline-compact-booking-main">
+            <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
+            <span class="timeline-compact-booking-label">${escapeHtml(compactActivityLabel)}</span>
+        </div>
+        ${bookingRoomMeta || bookingKidsMeta ? `<div class="subtitle timeline-compact-booking-meta">${bookingRoomMeta}${bookingKidsMeta}</div>` : ''}
+        ${costumeText}
         ${noteText}
     `;
     const defaultBookingHtml = `
@@ -2876,7 +2947,7 @@ function createBookingBlock(booking, startHour, anchor) {
         ${graduationItemsHtml}
         ${noteText}
     `;
-    block.innerHTML = isRoomTimelineActivityCard ? roomActivityHtml : defaultBookingHtml;
+    block.innerHTML = isRoomTimelineActivityCard ? roomActivityHtml : (isCompactActivityBlock ? compactBookingHtml : defaultBookingHtml);
 
     // v5.19: Linked bookings click → navigate to parent booking details
     // v30.3: Store booking ID on block for bulk operations

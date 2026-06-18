@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.50 - Timeline Room Activity Visual Alignment
+
+### Frontend timeline / Room activity visual alignment / Production fix / (Клешня, 18.06.2026) [codex]
+- **У `Кімнати` прибрано зайву пунктирну connector line** - banquet/activity зв'язки більше не малюють технічну dashed-лінію поверх room grid, але самі link data не видаляються.
+- **Activity blocks і service markers у room timeline візуально узгоджені** - activity cards отримали room-view-only styling з темнішою card-поверхнею, акуратним category accent, однаковим radius/shadow/border treatment із service markers.
+- **Room name показується там, де він потрібен оператору** - у `Свята` animator timeline booking block тепер має компактний room meta chip, наприклад `Марвел`.
+- **Room name не дублюється у `Кімнати`** - у room timeline назва кімнати лишається в left row header, а всередині activity block більше не повторюється.
+- **Service markers залишились читабельними** - мінімальні width/height, lane layout, click/focus behavior і isolation між `Кімнати` та `Свята` збережено.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.50`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.49 - Banquet Activity Kitchen Overlap Fix
 
 ### Booking / Banquet activity / Kitchen overlap / Production fix / (Клешня, 18.06.2026) [codex]

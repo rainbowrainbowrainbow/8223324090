@@ -423,6 +423,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     const bookingsRoute = read('routes/bookings.js');
     const api = read('js/api.js');
     const timeline = read('js/timeline.js');
+    const timelineCss = read('css/timeline.css');
     const ui = read('js/ui.js');
     const timelineContext = read('js/timeline-context.js');
     const booking = read('js/booking.js');
@@ -456,9 +457,12 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /TIMELINE_VIEW_ROOMS = 'rooms'/);
     assert.match(timeline, /function shouldRenderBookingVisualLink/);
     assert.match(timeline, /relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView\(\)/);
+    assert.match(timeline, /function clearBanquetLinkLayer\(\)[\s\S]*document\.getElementById\('timelineBanquetLinkLayer'\)[\s\S]*layer\.innerHTML = ''/);
+    assert.match(timeline, /function renderBanquetLinksOverlay\(\) \{\s*if \(isRoomTimelineView\(\)\) \{\s*clearBanquetLinkLayer\(\);\s*return;\s*\}/);
     assert.match(timeline, /if \(!shouldRenderBookingVisualLink\(link\)\) return/);
     assert.match(timeline, /const targetBlock = blockById\.get\(targetId\)/);
     assert.match(timeline, /if \(!targetBlock\) return/);
+    assert.match(timelineCss, /body\.timeline-view-rooms \.timeline-banquet-link-layer\s*\{\s*display: none;\s*\}/);
     assert.match(timeline, /function defaultTimelineViewMode\(\)/);
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
     assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);
@@ -526,6 +530,22 @@ test('room timeline rows cannot be saved through legacy animator lines endpoint'
     assert.match(settings, /async function editLineModal\(lineId\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
     assert.match(settings, /async function handleEditLine\(e\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
     assert.match(settings, /async function deleteLine\(\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
+});
+
+test('animator timeline booking blocks show room meta without room timeline duplication', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+
+    assert.match(timeline, /const bookingRoomName = String\(renderBooking\.room \|\| ''\)\.trim\(\)/);
+    assert.match(timeline, /const shouldShowBookingRoomMeta = Boolean\(bookingRoomName\)[\s\S]*&& isParkAnimatorTimelineView\(\)[\s\S]*&& !isMaysternyaSlotClosed[\s\S]*&& !isEducationLessonBlock[\s\S]*&& renderBooking\.category !== 'graduation'/);
+    assert.match(timeline, /block\.classList\.add\('has-booking-room-meta'\)/);
+    assert.match(timeline, /block\.dataset\.bookingRoom = bookingRoomName/);
+    assert.ok(timeline.includes("(!isRoomTimelineView() && !shouldShowBookingRoomMeta ? bookingRoomName : '')"));
+    assert.match(timeline, /class="booking-block-room" title="\$\{escapeHtml\(bookingRoomName\)\}"/);
+    assert.match(timeline, /<span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>\$\{bookingRoomMeta\}/);
+    assert.match(css, /\.booking-block \.booking-block-room/);
+    assert.match(css, /body\.dark-mode \.booking-block \.booking-block-room/);
+    assert.match(css, /html\[data-theme="dark"\] \.booking-block \.booking-block-room/);
 });
 
 test('polluted room lines are quarantined from park animator timeline reads', () => {
@@ -979,6 +999,22 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.notEqual(markers[0].markerTop, markers[1].markerTop);
     assert.equal(layout.hasGridLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
+});
+
+test('room timeline activity cards share marker visual language without global animator changes', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+
+    assert.match(timeline, /const isRoomTimelineActivityCard = isRoomTimelineView\(\)[\s\S]*&& !isMaysternyaSlotClosed[\s\S]*&& !isEducationLessonBlock[\s\S]*&& renderBooking\.category !== 'banquet'[\s\S]*&& renderBooking\.category !== 'graduation'/);
+    assert.match(timeline, /if \(isRoomTimelineActivityCard\) \{\s*block\.classList\.add\('is-room-timeline-activity-card'\);\s*\}/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*box-shadow:\s*0 10px 24px/);
+    assert.match(css, /body\.timeline-view-rooms \.timeline-room-service-marker\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*box-shadow:\s*0 10px 24px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\s*\{[\s\S]*--timeline-room-card-accent:[\s\S]*border-left:\s*4px solid var\(--timeline-room-card-accent\)/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.animation/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.title\s*\{[\s\S]*font-size:\s*13px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.subtitle\s*\{[\s\S]*font-size:\s*11px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.booking-banquet-link-handle\s*\{[\s\S]*display:\s*none/);
+    assert.doesNotMatch(css, /body\.timeline-view-animators \.booking-block\.is-room-timeline-activity-card/);
 });
 
 test('room timeline de-emphasizes duplicate kitchen booking block when service markers exist', () => {

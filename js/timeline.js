@@ -2785,6 +2785,14 @@ function createBookingBlock(booking, startHour, anchor) {
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
     block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}${isEducationLessonBlock ? ' education-lesson' : ''}`;
+    const isRoomTimelineActivityCard = isRoomTimelineView()
+        && !isMaysternyaSlotClosed
+        && !isEducationLessonBlock
+        && renderBooking.category !== 'banquet'
+        && renderBooking.category !== 'graduation';
+    if (isRoomTimelineActivityCard) {
+        block.classList.add('is-room-timeline-activity-card');
+    }
     block.setAttribute('tabindex', '0');
     block.setAttribute('role', 'button');
     const closedSlotLabel = renderBooking.label || (resourceBlockExtra.resourceName ? 'Ресурс закрито' : 'Слот закрито');
@@ -2815,6 +2823,16 @@ function createBookingBlock(booking, startHour, anchor) {
     }
 
     const maysternyaClient = maysternyaExtra.clientName || maysternyaExtra.topic || renderBooking.groupName || '';
+    const bookingRoomName = String(renderBooking.room || '').trim();
+    const shouldShowBookingRoomMeta = Boolean(bookingRoomName)
+        && isParkAnimatorTimelineView()
+        && !isMaysternyaSlotClosed
+        && !isEducationLessonBlock
+        && renderBooking.category !== 'graduation';
+    if (shouldShowBookingRoomMeta) {
+        block.classList.add('has-booking-room-meta');
+        block.dataset.bookingRoom = bookingRoomName;
+    }
     const lessonTail = [
         educationLessonExtra.teacherName,
         educationLessonExtra.groupName || renderBooking.groupName,
@@ -2826,7 +2844,7 @@ function createBookingBlock(booking, startHour, anchor) {
         : '';
     const bookingTitleTail = isMaysternyaSlotClosed
         ? (resourceBlockExtra.resourceName || 'Зайнято')
-        : (isEducationLessonBlock ? lessonTail : (maysternyaClient || renderBooking.room || renderBooking.programName || ''));
+        : (isEducationLessonBlock ? lessonTail : (maysternyaClient || (!isRoomTimelineView() && !shouldShowBookingRoomMeta ? bookingRoomName : '') || renderBooking.programName || ''));
     const bookingTitle = isMaysternyaSlotClosed
         ? closedSlotLabel
         : (isEducationLessonBlock
@@ -2834,10 +2852,14 @@ function createBookingBlock(booking, startHour, anchor) {
             : (renderBooking.label || renderBooking.programCode));
     const bookingTitleText = bookingTitleTail ? `${bookingTitle}${lessonSeriesBadge}: ${bookingTitleTail}` : `${bookingTitle}${lessonSeriesBadge}`;
     const studentSuffix = renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} учн.)` : '';
+    const bookingRoomMeta = shouldShowBookingRoomMeta
+        ? `<span class="booking-block-room" title="${escapeHtml(bookingRoomName)}">${escapeHtml(bookingRoomName)}</span>`
+        : '';
+    const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(bookingTitleText)}${durationBadge}</div>
-        <div class="subtitle">${escapeHtml(renderBooking.time)}${isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : '')}</div>
+        <div class="subtitle"><span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>${bookingRoomMeta}${bookingKidsMeta}</div>
         ${costumeText}
         ${graduationItemsHtml}
         ${noteText}
@@ -2966,6 +2988,11 @@ function ensureBanquetLinkLayer() {
     return layer;
 }
 
+function clearBanquetLinkLayer() {
+    const layer = document.getElementById('timelineBanquetLinkLayer');
+    if (layer) layer.innerHTML = '';
+}
+
 function bookingBlockAnchorPoint(block, side = 'right') {
     const scroll = document.getElementById('timelineScroll');
     if (!block || !scroll) return null;
@@ -3030,6 +3057,10 @@ function shouldRenderBookingVisualLink(link) {
 }
 
 function renderBanquetLinksOverlay() {
+    if (isRoomTimelineView()) {
+        clearBanquetLinkLayer();
+        return;
+    }
     const layer = ensureBanquetLinkLayer();
     if (!layer) return;
     layer.innerHTML = '';

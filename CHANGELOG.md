@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.57 - Business Switcher Label Fix
+
+### Frontend shell / Sidebar business switcher / Timeline header UX / Production follow-up / (Клешня, 18.06.2026) [codex]
+- **Business switcher у timeline header більше не обрізає назву півсловом** - selector показує чистий короткий label замість зламаного переносу.
+- **Довгі business names показуються як clean short label** - `Парк Закревського` відображається як `Парк`, без другого обрізаного рядка.
+- **Full business name лишається доступною** - повна назва збережена в `title`, `aria-label`, `data-full-label` і option metadata.
+- **Акаунти без business switch не змінювались** - single-business chip лишився доступним і отримав той самий clean label fallback.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.57`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.56 - Timeline Activity Lane Height Cache Fix
 
 ### Frontend timeline / Room operational lanes / CSS hotfix / Production follow-up / (Клешня, 18.06.2026) [codex]

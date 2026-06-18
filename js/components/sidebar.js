@@ -2305,6 +2305,29 @@ const Sidebar = (() => {
         _bindProfileEntry(cardEl);
     }
 
+    function _cleanSidebarBusinessLabel(value) {
+        return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function _firstSidebarBusinessWord(value) {
+        return _cleanSidebarBusinessLabel(value).split(' ')[0] || '';
+    }
+
+    function _sidebarBusinessFullLabel(ctx = {}) {
+        return _cleanSidebarBusinessLabel(ctx.label || ctx.brandName || ctx.name || ctx.shortLabel || ctx.key);
+    }
+
+    function _sidebarBusinessDisplayLabel(ctx = {}, options = {}) {
+        const fullLabel = _sidebarBusinessFullLabel(ctx);
+        const shortLabel = _cleanSidebarBusinessLabel(ctx.switchLabel || ctx.shortLabel);
+        const firstWord = _firstSidebarBusinessWord(fullLabel);
+        const keyLabel = _cleanSidebarBusinessLabel(ctx.key);
+        const maxFullLength = options.compact ? 8 : 12;
+        if (fullLabel && fullLabel.length <= maxFullLength) return fullLabel;
+        if (firstWord && firstWord.length >= 3 && firstWord.length <= 12) return firstWord;
+        return shortLabel || firstWord || fullLabel || keyLabel;
+    }
+
     function _syncSidebarBusinessSwitcher(user = _getCurrentSidebarUser()) {
         const host = document.getElementById('sidebarBusinessContextHost');
         const api = window.CrmBusinessContext;
@@ -2316,6 +2339,7 @@ const Sidebar = (() => {
                 key: ctx.key || ctx.id,
                 label: ctx.label,
                 shortLabel: ctx.shortLabel,
+                switchLabel: ctx.switchLabel,
                 route: ctx.route
             }))
             : api.options(user);
@@ -2340,14 +2364,13 @@ const Sidebar = (() => {
         const currentContext = options.find(ctx => ctx.key === current) || options[0];
         const sidebar = document.getElementById('sidebarNav');
         const compactBusinessLabel = sidebar?.classList.contains('collapsed');
-        const businessLabelFor = (ctx) => compactBusinessLabel
-            ? (ctx.shortLabel || ctx.label || ctx.key)
-            : (ctx.label || ctx.shortLabel || ctx.key);
+        const businessLabelFor = (ctx) => _sidebarBusinessDisplayLabel(ctx, { compact: compactBusinessLabel });
+        const businessFullLabelFor = (ctx) => _sidebarBusinessFullLabel(ctx) || businessLabelFor(ctx);
         host.dataset.activeBusiness = currentContext.key || current;
         if (options.length <= 1) {
             _state.businessSettingsOpen = false;
             host.innerHTML = `
-                <span class="sidebar-business-chip" title="${_escAttr(currentContext.label || currentContext.shortLabel || currentContext.key)}">${_escAttr(businessLabelFor(currentContext))}</span>`;
+                <span class="sidebar-business-chip" title="${_escAttr(businessFullLabelFor(currentContext))}" aria-label="${_escAttr(businessFullLabelFor(currentContext))}">${_escAttr(businessLabelFor(currentContext))}</span>`;
             return;
         }
         const aggregateAllowed = Boolean(
@@ -2397,8 +2420,8 @@ const Sidebar = (() => {
         `;
         host.innerHTML = `
             <span class="sidebar-business-control-row">
-                <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="Поточний бізнес CRM" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
-                    ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''}>${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
+                <select class="sidebar-business-select" id="sidebarBusinessContextSelect" aria-label="${_escAttr(`Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}`)}" title="${_escAttr(businessFullLabelFor(currentContext))}" data-sidebar-business-switcher="true"${_state.businessSwitching ? ' disabled' : ''}>
+                    ${options.map(ctx => `<option value="${_escAttr(ctx.key)}"${ctx.key === current ? ' selected' : ''} title="${_escAttr(businessFullLabelFor(ctx))}" data-full-label="${_escAttr(businessFullLabelFor(ctx))}" data-display-label="${_escAttr(businessLabelFor(ctx))}">${_escAttr(businessLabelFor(ctx))}</option>`).join('')}
                 </select>
                 <button type="button" class="sidebar-business-settings-btn${settingsOpen ? ' active' : ''}" data-sidebar-business-settings-toggle aria-expanded="${settingsOpen ? 'true' : 'false'}" aria-controls="sidebarBusinessSettingsPanel" aria-label="Налаштування бізнес-огляду" title="Налаштування бізнес-огляду"${_state.businessSwitching ? ' disabled' : ''}>
                     <span aria-hidden="true">⚙</span>
@@ -2409,7 +2432,8 @@ const Sidebar = (() => {
             </span>`;
         const select = host.querySelector('#sidebarBusinessContextSelect');
         if (!select) return;
-        select.title = currentContext.label || currentContext.shortLabel || currentContext.key;
+        select.title = businessFullLabelFor(currentContext);
+        select.setAttribute('aria-label', `Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}`);
         const finishSwitch = () => {
             if (window.__crmBusinessNavigationPending) return true;
             const container = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');

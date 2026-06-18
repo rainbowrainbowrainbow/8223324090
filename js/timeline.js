@@ -551,6 +551,26 @@ function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, book
         || 'Подія';
 }
 
+function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium') {
+    const source = renderBooking || booking || {};
+    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const programName = clean(source.programName || source.program_name || booking?.programName || booking?.program_name);
+    const groupName = clean(source.groupName || source.group_name || booking?.groupName || booking?.group_name);
+    const title = clean(bookingTitle || source.label || source.programCode || source.program_code || booking?.label || booking?.programCode || booking?.program_code);
+    const tail = clean(bookingTitleTail);
+    const compact = clean(compactActivityLabel);
+    const code = clean(source.programCode || source.program_code || booking?.programCode || booking?.program_code);
+    const label = clean(source.label || booking?.label);
+    const maxTinyNameLength = 24;
+
+    if (programName && (density !== 'tiny' || programName.length <= maxTinyNameLength)) return programName;
+    if (density !== 'tiny' && programName) return programName;
+    if (title && title.length <= maxTinyNameLength && title !== compact) return title;
+    if (tail && tail !== groupName && tail !== title && tail !== compact && (density !== 'tiny' || tail.length <= maxTinyNameLength)) return tail;
+    if (programName) return compact || timelineCompactLabelCandidate(programName, 10) || programName;
+    return compact || timelineCompactLabelCandidate(code) || timelineCompactLabelCandidate(label) || title || tail;
+}
+
 function getTimelineLineGrid(lineId) {
     const id = String(lineId ?? '');
     return Array.from(document.querySelectorAll('.line-grid[data-line-id]'))
@@ -1690,6 +1710,7 @@ function timelineRoomServiceMarkerOverlaps(left, width, segments = []) {
 const TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN = 168;
 const TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MAX = 220;
 const TIMELINE_ROOM_SERVICE_MARKER_HEIGHT = 48;
+const TIMELINE_ROOM_ACTIVITY_CARD_WIDTH_MIN = 124;
 const TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT = 72;
 const TIMELINE_ROOM_OPERATIONAL_ITEM_GUTTER = 8;
 const TIMELINE_ROOM_OPERATIONAL_LANE_TOP = 10;
@@ -1756,7 +1777,7 @@ function timelineRoomOperationalItemFromElement(el) {
     const isMarker = el.classList?.contains('timeline-room-service-marker');
     const isActivity = el.classList?.contains('is-room-timeline-activity-card');
     if (!isMarker && !isActivity) return null;
-    const minWidth = isMarker ? TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN : 110;
+    const minWidth = isMarker ? TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN : TIMELINE_ROOM_ACTIVITY_CARD_WIDTH_MIN;
     const height = isMarker ? TIMELINE_ROOM_SERVICE_MARKER_HEIGHT : TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT;
     const left = timelineRoomOperationalElementLeft(el);
     const width = Math.max(minWidth, timelineRoomOperationalElementWidth(el, minWidth));
@@ -3051,6 +3072,7 @@ function createBookingBlock(booking, startHour, anchor) {
         : '';
     const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
     const compactActivityLabel = timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail);
+    const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
     const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel]
         .filter(Boolean)
         .join(' ')
@@ -3059,13 +3081,15 @@ function createBookingBlock(booking, startHour, anchor) {
         block.setAttribute('aria-label', fullBookingLabel);
         block.setAttribute('title', fullBookingLabel);
     }
-    const roomActivityDetailParts = [bookingTitleTail, costumeLabel].filter(Boolean);
+    const roomActivityDetailParts = (isCompactActivityBlock && roomActivityDisplayLabel !== compactActivityLabel)
+        ? [costumeLabel].filter(Boolean)
+        : [bookingTitleTail, costumeLabel].filter(Boolean);
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
     const roomActivityHtml = `
         <div class="user-letter">${badge}</div>
         <div class="timeline-room-activity-main">
             <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
-            <span class="timeline-room-activity-title">${escapeHtml(isCompactActivityBlock ? compactActivityLabel : (bookingTitle || renderBooking.programCode || renderBooking.category || 'Подія'))}</span>
+            <span class="timeline-room-activity-title">${escapeHtml(isCompactActivityBlock ? roomActivityDisplayLabel : (bookingTitle || renderBooking.programCode || renderBooking.category || 'Подія'))}</span>
             ${isCompactActivityBlock ? '' : durationBadge}
         </div>
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}

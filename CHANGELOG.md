@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.54 - Timeline Activity Label Polish
+
+### Frontend timeline / Activity labels / Service marker polish / Production follow-up / (Клешня, 18.06.2026) [codex]
+- **Короткі activity names у `Кімнати` стали читабельнішими** - projected 30-хв blocks показують корисну назву, а не випадково обрізаний фрагмент.
+- **`Бульбашкове шоу` більше не губиться в tiny block** - room timeline використовує room-specific label layout із часом першим і повною/майже повною назвою нижче.
+- **Service markers у room timeline стали solid cards** - `Підготовка`, `Видача`, `Напої` та інші markers візуально узгоджені з activity blocks.
+- **Animator timeline отримав кращий spacing для time/room meta** - room badge не прилипає до часу і не ламає short/medium activity blocks.
+- **`Кімнати`/`Свята` isolation збережено** - room markers лишаються тільки в room timeline, а animator timeline далі показує room context там, де це потрібно.
+- **Authenticated production smoke виконано перед релізом** - safe-account перевірка підтвердила production login, room markers у `Кімнати`, нуль room markers у `Свята` і відсутність небажаних browser write-запитів.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.54`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.53 - Room Timeline Collision Layout Fix
 
 ### Frontend timeline / Room activity lanes / Collision layout / Production fix / (Клешня, 18.06.2026) [codex]

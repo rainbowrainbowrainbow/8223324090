@@ -582,6 +582,9 @@ test('animator timeline booking blocks show room meta without room timeline dupl
     assert.match(timeline, /class="booking-block-room" title="\$\{escapeHtml\(bookingRoomName\)\}"/);
     assert.match(timeline, /<div class="subtitle"><span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>\$\{bookingRoomMeta\}\$\{bookingKidsMeta\}<\/div>/);
     assert.match(css, /\.booking-block \.booking-block-room/);
+    assert.match(css, /\.booking-block\.has-booking-room-meta \.subtitle\s*\{[\s\S]*display:\s*flex;[\s\S]*gap:\s*6px;[\s\S]*overflow:\s*hidden/);
+    assert.match(css, /\.booking-block\.has-booking-room-meta \.booking-block-room\s*\{[\s\S]*margin-left:\s*0;[\s\S]*max-width:\s*min\(96px, calc\(100% - 48px\)\)/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-meta\s*\{[\s\S]*display:\s*flex;[\s\S]*gap:\s*4px/);
     assert.match(css, /body\.dark-mode \.booking-block \.booking-block-room/);
     assert.match(css, /html\[data-theme="dark"\] \.booking-block \.booking-block-room/);
 });
@@ -1008,6 +1011,9 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.ok(markerPadding >= 4, 'marker keeps practical internal padding');
     assert.equal(cssDeclaration(markerRule, 'display'), 'flex');
     assert.equal(cssDeclaration(markerRule, 'flex-direction'), 'column');
+    assert.equal(cssDeclaration(markerRule, 'background'), 'var(--timeline-service-card-bg)');
+    assert.match(markerRule, /(?:^|\n)\s*color:\s*#F8FAFC;/);
+    assert.equal(cssDeclaration(markerRule, 'border-left-color'), 'var(--timeline-service-card-accent)');
 
     const { ctx, markers, layout } = renderTimelineBanquetRoomGridMarkers({
         menuPositions: [
@@ -1040,6 +1046,32 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.notEqual(markers[0].markerTop, markers[1].markerTop);
     assert.equal(layout.hasGridLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
+});
+
+test('room timeline service markers use solid category surfaces instead of transparent gradients', () => {
+    const css = read('css/timeline.css');
+    const solidTypes = [
+        ['.timeline-room-service-marker--food-service', '#0F766E'],
+        ['.timeline-room-service-marker--room-setup', '#5B21B6'],
+        ['.timeline-room-service-marker--cake', '#BE185D'],
+        ['.timeline-room-service-marker--drinks', '#1D4ED8'],
+        ['.timeline-room-service-marker--custom', '#334155'],
+        ['.timeline-room-service-marker--service', '#0E7490']
+    ];
+
+    solidTypes.forEach(([selector, color]) => {
+        const rule = cssRule(css, selector);
+        assert.equal(cssDeclaration(rule, '--timeline-service-card-bg'), color);
+        assert.match(cssDeclaration(rule, '--timeline-service-card-bg'), /^#[0-9A-F]{6}$/i);
+        assert.doesNotMatch(rule, /background:\s*linear-gradient/i);
+    });
+
+    const darkTypeRules = [...css.matchAll(/(?:body\.dark-mode|html\[data-theme="dark"\]) \.timeline-room-service-marker--(?:food-service|room-setup|cake|drinks|custom|service)\s*\{([\s\S]*?)\}/g)];
+    assert.ok(darkTypeRules.length >= 6);
+    darkTypeRules.forEach(([, rule]) => {
+        assert.match(cssDeclaration(rule, '--timeline-service-card-bg'), /^#[0-9A-F]{6}$/i);
+        assert.doesNotMatch(rule, /background:\s*linear-gradient/i);
+    });
 });
 
 test('room timeline activity cards share marker visual language without global animator changes', () => {
@@ -1104,10 +1136,12 @@ test('short timeline activity blocks use compact labels while preserving full ti
     assert.match(timeline, /category === 'quest'[\s\S]*return 'Квест'/);
     assert.match(timeline, /const isCompactActivityBlock = \(bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
     assert.match(timeline, /const compactActivityLabel = timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail\);/);
+    assert.match(timeline, /function timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium'\) \{/);
+    assert.match(timeline, /const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity\);/);
     assert.match(timeline, /block\.setAttribute\('title', fullBookingLabel\);/);
     assert.match(timeline, /<span class="timeline-compact-booking-label">\$\{escapeHtml\(compactActivityLabel\)\}<\/span>/);
     assert.match(timeline, /block\.innerHTML = isRoomTimelineActivityCard \? roomActivityHtml : \(isCompactActivityBlock \? compactBookingHtml : defaultBookingHtml\);/);
-    assert.match(timeline, /isCompactActivityBlock \? compactActivityLabel : \(bookingTitle \|\| renderBooking\.programCode \|\| renderBooking\.category/);
+    assert.match(timeline, /isCompactActivityBlock \? roomActivityDisplayLabel : \(bookingTitle \|\| renderBooking\.programCode \|\| renderBooking\.category/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-main\s*\{[\s\S]*display:\s*flex/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-label\s*\{[\s\S]*text-overflow:\s*ellipsis/);
 });
@@ -1121,8 +1155,9 @@ test('short and tiny timeline activity blocks have dedicated compact CSS layout'
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label,\s*\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\s*\{[\s\S]*font-size:\s*12px;[\s\S]*letter-spacing:\s*0/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-meta,[\s\S]*?\.booking-block\.booking-block--tiny \.duration-badge\s*\{[\s\S]*display:\s*none/);
     assert.match(css, /\.booking-block\.booking-block--short \.user-letter,\s*\.booking-block\.booking-block--tiny \.user-letter\s*\{[\s\S]*position:\s*absolute;[\s\S]*width:\s*17px/);
-    assert.match(css, /\.booking-block\.booking-block--short \.booking-block-room\s*\{[\s\S]*max-width:\s*58px/);
-    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--short,[\s\S]*?body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--tiny\s*\{[\s\S]*padding:\s*7px 9px/);
+    assert.match(css, /\.booking-block\.booking-block--short \.booking-block-room\s*\{[\s\S]*max-width:\s*72px;[\s\S]*margin-left:\s*0/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--short,[\s\S]*?body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--tiny\s*\{[\s\S]*min-width:\s*124px;[\s\S]*padding:\s*7px 9px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--short \.timeline-room-activity-title,[\s\S]*?body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--tiny \.timeline-room-activity-title\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.quest\s*\{[\s\S]*--timeline-room-card-accent:\s*#A78BFA/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.masterclass\s*\{[\s\S]*--timeline-room-card-accent:\s*#84CC16/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.pinata\s*\{[\s\S]*--timeline-room-card-accent:\s*#F472B6/);

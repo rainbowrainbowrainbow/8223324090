@@ -241,6 +241,18 @@ body.dark-mode .night-settings-select {
     min-height: var(--timeline-line-min-h, 46px);
 }
 
+body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-service-marker-lanes,
+body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-operational-lanes {
+    min-height: var(--timeline-room-operational-row-height, var(--room-service-marker-row-height, var(--timeline-line-min-h, 64px))) !important;
+}
+
+body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-service-marker-lanes > .line-header,
+body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-service-marker-lanes > .line-grid,
+body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-operational-lanes > .line-header,
+body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-operational-lanes > .line-grid {
+    min-height: var(--timeline-room-operational-row-height, var(--room-service-marker-row-height, var(--timeline-line-min-h, 64px))) !important;
+}
+
 .timeline-container.compact[data-zoom="30"] .booking-block .title,
 .timeline-container.compact[data-zoom="60"] .booking-block .title {
     font-size: 10px;

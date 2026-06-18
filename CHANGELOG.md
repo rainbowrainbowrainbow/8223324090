@@ -4,13 +4,24 @@
 
 ---
 
-## v0.76.55 - Timeline Activity Lane Height Hotfix
+## v0.76.56 - Timeline Activity Lane Height Cache Fix
 
 ### Frontend timeline / Room operational lanes / CSS hotfix / Production follow-up / (Клешня, 18.06.2026) [codex]
 - **Room timeline lanes у compact mode більше не просідають по висоті** - service markers залишаються всередині свого room row, навіть коли lane layout рахує кілька вертикальних рівнів.
-- **`Підготовка`, `Видача` і `Напої` більше не падають у сусідні кімнати** - compact CSS тепер явно поважає `--timeline-room-operational-row-height`.
+- **`Підготовка`, `Видача` і `Напої` більше не падають у сусідні кімнати** - zoom CSS у `controls.css` тепер явно поважає `--timeline-room-operational-row-height`.
 - **Row header і grid ростуть разом** - ліва картка кімнати та права timeline grid отримують однакову operational height.
-- **Cache bust оновлено до нового patch** - CSS asset tag і Service Worker підняті до `0.76.55`, щоб клієнти не тримали старий room timeline layout.
+- **Cache bust оновлено до нового patch** - CSS asset tag і Service Worker підняті до `0.76.56`, щоб клієнти не тримали старий room timeline layout.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.56`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.55 - Timeline Activity Lane Height Hotfix
+
+### Frontend timeline / Room operational lanes / CSS hotfix / Production follow-up / (Клешня, 18.06.2026) [codex]
+- **Room timeline lanes отримали окремий height hotfix** - service markers і activity lanes почали явно прокидати operational row height у room timeline.
+- **`Підготовка`, `Видача` і `Напої` мали залишатися всередині свого room row** - реліз зафіксував основний lane-height сценарій, а `0.76.56` додав окремий cache/zoom override для `controls.css`.
+- **Row header і grid синхронізовано по operational height** - ліва картка кімнати та права timeline grid отримують однакову lane-висоту.
 - **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
 - **Релізні маркери піднято до `0.76.55`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
 

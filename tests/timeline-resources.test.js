@@ -929,6 +929,7 @@ test('timeline visual settings v2 keeps stable block ids, metadata, and legacy o
 test('room timeline banquet preview is room-only, frontend-only, and snapshot-backed', () => {
     const timeline = read('js/timeline.js');
     const css = read('css/timeline.css');
+    const controlsCss = read('css/controls.css');
 
     assert.match(timeline, /TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set\(\['primary', 'root', 'banquet'\]\)/);
     assert.match(timeline, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set\(\['activity', 'service', 'manual'\]\)/);
@@ -990,6 +991,8 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.timeline-line\.has-timeline-room-operational-lanes/);
     assert.match(css, /\.timeline-container\.compact \.timeline-line\.has-timeline-room-operational-lanes/);
     assert.match(css, /\.timeline-container\.compact \.timeline-line\.has-timeline-room-service-marker-lanes > \.line-grid/);
+    assert.match(controlsCss, /\.timeline-container\[data-zoom\] \.timeline-line\.has-timeline-room-operational-lanes/);
+    assert.match(controlsCss, /\.timeline-container\[data-zoom\] \.timeline-line\.has-timeline-room-service-marker-lanes > \.line-grid/);
     assert.match(css, /--timeline-room-operational-row-height/);
     assert.match(css, /--room-service-marker-row-height/);
     assert.match(css, /height:\s*48px/);

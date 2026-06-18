@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.46 - Kitchen Operational Time Validation
+
+### Booking / Room timeline / Kitchen operational times / Production fix / (Клешня, 18.06.2026) [codex]
+- **Room/kitchen броні більше не блокуються помилково через past anchor** - якщо оператор відкрив слот `12:15`, але реальні `menuPositions[].servingTime` і `serviceEvents[].time` ще в майбутньому, створення дозволяється.
+- **Перевірка минулого часу дивиться на operational times** - для kitchen-only / banquet service root booking backend і frontend беруть `extraData.bookingPackage.menuPositions[].servingTime` та `extraData.bookingPackage.serviceEvents[].time`.
+- **Past-time protection для звичайних бронювань збережено** - animation/event booking у минулому за `booking.time` і далі відхиляється.
+- **Минулі часи видачі або сервісної події все ще блокуються** - якщо `servingTime` або `serviceEvents[].time` уже в минулому, CRM повертає конкретне повідомлення на кшталт `Час видачі 12:30 вже в минулому`.
+- **Safe QA пройдено на local PostgreSQL** - past anchor `12:15` + future serving `18:18` + service event `19:15` збережено, readback підтверджено, markers у `Кімнати` показались, а у `Свята` не протекли.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.46`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.45 - Room Timeline Marker UX Polish
 
 ### Booking / Room timeline / Marker UX polish / Production fix / (Клешня, 18.06.2026) [codex]

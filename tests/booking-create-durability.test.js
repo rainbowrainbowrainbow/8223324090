@@ -1,4 +1,5 @@
 const test = require('node:test');
+const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 
@@ -413,6 +414,9 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             state.links.push(row);
             return { rows: [{ ...row }], rowCount: 1 };
         }
+        if (/^INSERT INTO lines_by_date \(business_context, date, line_id, name, color, from_sheet\)/i.test(sql)) {
+            return { rows: [], rowCount: 1 };
+        }
         if (/FROM booking_banquet_links WHERE business_context = \$1/i.test(sql)) {
             const [businessContext, relationTypes, ids] = params;
             const relationSet = new Set(Array.isArray(relationTypes) ? relationTypes : [relationTypes]);
@@ -578,6 +582,50 @@ async function createBooking(baseUrl, overrides = {}) {
     return { status: res.status, data };
 }
 
+async function withMockedKyivNow(iso, fn) {
+    mock.timers.enable({ apis: ['Date'], now: new Date(iso) });
+    try {
+        return await fn();
+    } finally {
+        mock.timers.reset();
+    }
+}
+
+function kitchenOperationalTimePayload(overrides = {}) {
+    return {
+        date: '2026-06-18',
+        time: '12:15',
+        lineId: 'banquet-service',
+        room: 'Room A',
+        programId: null,
+        programCode: 'KITCHEN',
+        label: 'Kitchen',
+        programName: 'Kitchen order',
+        category: 'custom',
+        duration: 60,
+        price: 1340,
+        hosts: 0,
+        banquetGuests: 22,
+        banquetMenu: 'Kitchen order',
+        extraData: {
+            bookingWorkspace: { scenario: 'kitchen_only' },
+            bookingPackage: {
+                schemaVersion: 2,
+                programBasePrice: 0,
+                positionsSubtotal: 1340,
+                finalTotal: 1340,
+                menuPositions: [
+                    { id: 'item-1', title: 'Fruit plate', quantity: 2, unitPrice: 400, subtotal: 800, servingTime: '18:18' }
+                ],
+                serviceEvents: [
+                    { id: 'service-event-1', type: 'drinks', title: 'Напої', time: '19:15' }
+                ]
+            }
+        },
+        ...overrides
+    };
+}
+
 async function createFullBooking(baseUrl, overrides = {}) {
     const main = {
         businessContext: 'event_genix',
@@ -667,6 +715,99 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings allows room kitchen booking when anchor is past but operational times are future', async () => {
+    await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
+        await withApp({}, async ({ baseUrl, state }) => {
+            const res = await createBooking(baseUrl, kitchenOperationalTimePayload());
+
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.success, true);
+            assert.equal(state.rows.length, 1);
+            assert.equal(state.rows[0].time, '12:15');
+            const extra = typeof state.rows[0].extra_data === 'string'
+                ? JSON.parse(state.rows[0].extra_data)
+                : state.rows[0].extra_data;
+            assert.equal(extra.bookingPackage.menuPositions[0].servingTime, '18:18');
+            assert.equal(extra.bookingPackage.serviceEvents[0].time, '19:15');
+        });
+    });
+});
+
+test('POST /api/bookings rejects room kitchen booking when serving time is past', async () => {
+    await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
+        await withApp({}, async ({ baseUrl }) => {
+            const res = await createBooking(baseUrl, kitchenOperationalTimePayload({
+                extraData: {
+                    bookingWorkspace: { scenario: 'kitchen_only' },
+                    bookingPackage: {
+                        schemaVersion: 2,
+                        programBasePrice: 0,
+                        positionsSubtotal: 800,
+                        finalTotal: 800,
+                        menuPositions: [
+                            { id: 'item-1', title: 'Fruit plate', quantity: 2, unitPrice: 400, subtotal: 800, servingTime: '12:30' }
+                        ],
+                        serviceEvents: []
+                    }
+                }
+            }));
+
+            assert.equal(res.status, 400, JSON.stringify(res.data));
+            assert.match(res.data.error, /Час видачі 12:30 вже в минулому/);
+        });
+    });
+});
+
+test('POST /api/bookings falls back to anchor time for room kitchen booking without operational times', async () => {
+    await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
+        await withApp({}, async ({ baseUrl }) => {
+            const res = await createBooking(baseUrl, kitchenOperationalTimePayload({
+                extraData: {
+                    bookingWorkspace: { scenario: 'kitchen_only' },
+                    bookingPackage: {
+                        schemaVersion: 2,
+                        programBasePrice: 0,
+                        positionsSubtotal: 800,
+                        finalTotal: 800,
+                        menuPositions: [
+                            { id: 'item-1', title: 'Fruit plate', quantity: 2, unitPrice: 400, subtotal: 800 }
+                        ],
+                        serviceEvents: []
+                    }
+                }
+            }));
+
+            assert.equal(res.status, 400, JSON.stringify(res.data));
+            assert.match(res.data.error, /Час бронювання 12:15 вже в минулому/);
+        });
+    });
+});
+
+test('POST /api/bookings keeps normal event past-time guard by booking time', async () => {
+    await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
+        await withApp({}, async ({ baseUrl }) => {
+            const res = await createBooking(baseUrl, {
+                date: '2026-06-18',
+                time: '12:15',
+                lineId: 'line-1',
+                room: 'Room A',
+                programId: 'anim-60',
+                programCode: 'AN',
+                label: 'AN(60)',
+                programName: 'Animation',
+                category: 'animation',
+                duration: 60,
+                price: 1500,
+                hosts: 1,
+                extraData: null
+            });
+
+            assert.equal(res.status, 400, JSON.stringify(res.data));
+            assert.match(res.data.error, /Час бронювання 12:15 вже в минулому/);
+        });
     });
 });
 

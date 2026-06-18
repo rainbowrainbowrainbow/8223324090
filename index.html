@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.45">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.45">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.45">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.45">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.45">
-    <link rel="stylesheet" href="css/features.css?v=0.76.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.45">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.45">
+    <link rel="stylesheet" href="css/base.css?v=0.76.46">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.46">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.46">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.46">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.46">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.46">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.46">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.46">
+    <link rel="stylesheet" href="css/features.css?v=0.76.46">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.46">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.46">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.46">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.46">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.45">✨ 0.76.45</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.46">✨ 0.76.46</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.45 — Room Timeline Marker UX Polish</p>
+                <p class="tagline">AI First CRM v0.76.46 — Kitchen Operational Time Validation</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.45</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.46</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1728,14 +1728,27 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.76.46 — Kitchen Operational Time Validation</h4>
+                    <ul>
+                        <li><b>Room/kitchen броні більше не блокуються через past anchor</b> — якщо слот у сітці вже в минулому, але видача кухні або сервісна подія ще в майбутньому, бронювання можна зберегти.</li>
+                        <li><b>Перевірка бере реальний operational time</b> — для kitchen-only / banquet service booking CRM дивиться на <code>menuPositions[].servingTime</code> і <code>serviceEvents[].time</code>, а не тільки на <code>booking.time</code>.</li>
+                        <li><b>Звичайні бронювання у минулому все ще блокуються</b> — animation/event booking за past <code>booking.time</code> не проходить.</li>
+                        <li><b>Минулі видачі та сервісні події відхиляються</b> — оператор бачить конкретне повідомлення, наприклад <code>Час видачі 12:30 вже в минулому</code>.</li>
+                        <li><b>Schema/env/auth/deploy config не змінювались</b> — без міграцій, secrets, ролей, production settings або нових залежностей.</li>
+                        <li><b>Safe QA пройдено локально</b> — past anchor <code>12:15</code> + future serving <code>18:18</code> + service event <code>19:15</code> зберігаються, markers видно у <code>Кімнати</code> і не видно у <code>Свята</code>.</li>
+                        <li><b>Релізні маркери піднято до <code>0.76.46</code></b> — package, package-lock, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> синхронізовані.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.76.45 — Room Timeline Marker UX Polish</h4>
                     <ul>
-                        <li><b>Markers у <code>Кімнати</code> стали читабельними event blocks</b> — замість дрібних pills у <code>.line-grid</code> тепер видно компактні картки з часом, типом події і деталлю.</li>
-                        <li><b>Плашки отримали нормальну ширину і висоту</b> — <code>Видача 12:45</code>, <code>Напої 15:45</code> і <code>Підготувати кімнату</code> більше не обрізаються до випадкових фрагментів.</li>
-                        <li><b>Same-time і close-time події розкладено по lanes</b> — підготовка, видача, напої, торт і custom markers не зливаються та не накладаються один на одного.</li>
-                        <li><b>Дублікат <code>Кухня: ...</code> у grid прибрано з фокуса</b> — коли є service markers, великий kitchen booking block стає тихою occupancy band, а основні події показуються markers.</li>
-                        <li><b><code>Кімнати</code> і <code>Свята</code> лишаються ізольованими</b> — markers створюються тільки в room timeline, очищаються при view switch і не потрапляють у animator timeline.</li>
+                        <li><b>Room service markers стали читабельними event blocks</b> — замість дрібних pills у <code>.line-grid</code> тепер показуються компактні картки з часом, типом події і деталлю.</li>
+                        <li><b>Marker blocks мають практичну ширину і висоту</b> — текст типу <code>Видача 12:45</code>, <code>Напої 15:45</code> і <code>Підготувати кімнату</code> більше не обрізається до випадкових фрагментів.</li>
+                        <li><b>Same-time і close-time events отримали lane layout</b> — <code>room_setup</code>, <code>food_service</code>, <code>drinks</code>, <code>cake</code> і custom markers розкладаються по lanes без dedupe і без візуального накладання.</li>
+                        <li><b>Дублікат <code>Кухня: ...</code> у room grid прибрано з фокуса</b> — коли service markers є, великий kitchen booking block стає тихою occupancy band, а основними подіями в сітці лишаються markers.</li>
+                        <li><b><code>Кімнати</code>/<code>Свята</code> isolation збережено</b> — markers створюються тільки в room timeline, очищаються при view switch і не потрапляють у animator timeline.</li>
                         <li><b>Browser QA пройдено на safe local PostgreSQL</b> — перевірено save/readback/reload/view-switch, marker clicks, empty-cell click isolation і screenshot evidence без зміни production data.</li>
+                        <li><b>Schema/env/auth/Railway config не змінювались</b> — без міграцій, secrets, ролей, production config, нових залежностей або змін production data.</li>
                         <li><b>Релізні маркери піднято до <code>0.76.45</code></b> — package, package-lock, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> синхронізовані.</li>
                     </ul>
                 </div>
@@ -13706,30 +13719,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.45"></script>
-    <script src="js/timeline-visibility.js?v=0.76.45"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.45"></script>
-    <script src="js/config.js?v=0.76.45"></script>
-    <script src="js/api.js?v=0.76.45"></script>
-    <script src="js/ui.js?v=0.76.45"></script>
-    <script src="js/auth.js?v=0.76.45"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.45"></script>
-    <script src="js/timeline.js?v=0.76.45"></script>
-    <script src="js/booking.js?v=0.76.45"></script>
-    <script src="js/settings.js?v=0.76.45"></script>
-    <script src="js/booking-form.js?v=0.76.45"></script>
-    <script src="js/booking-linked.js?v=0.76.45"></script>
-    <script src="js/settings-dashboard.js?v=0.76.45"></script>
-    <script src="js/settings-history.js?v=0.76.45"></script>
-    <script src="js/settings-afisha.js?v=0.76.45"></script>
-    <script src="js/settings-certificates.js?v=0.76.45"></script>
-    <script src="js/offline.js?v=0.76.45"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.45"></script>
-    <script src="js/search.js?v=0.76.45"></script>
-    <script src="js/ws.js?v=0.76.45"></script>
-    <script src="js/app.js?v=0.76.45"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.45"></script>
-    <script src="js/components/sidebar.js?v=0.76.45"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.45"></script>
+    <script src="js/timeline-context.js?v=0.76.46"></script>
+    <script src="js/timeline-visibility.js?v=0.76.46"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.46"></script>
+    <script src="js/config.js?v=0.76.46"></script>
+    <script src="js/api.js?v=0.76.46"></script>
+    <script src="js/ui.js?v=0.76.46"></script>
+    <script src="js/auth.js?v=0.76.46"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.46"></script>
+    <script src="js/timeline.js?v=0.76.46"></script>
+    <script src="js/booking.js?v=0.76.46"></script>
+    <script src="js/settings.js?v=0.76.46"></script>
+    <script src="js/booking-form.js?v=0.76.46"></script>
+    <script src="js/booking-linked.js?v=0.76.46"></script>
+    <script src="js/settings-dashboard.js?v=0.76.46"></script>
+    <script src="js/settings-history.js?v=0.76.46"></script>
+    <script src="js/settings-afisha.js?v=0.76.46"></script>
+    <script src="js/settings-certificates.js?v=0.76.46"></script>
+    <script src="js/offline.js?v=0.76.46"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.46"></script>
+    <script src="js/search.js?v=0.76.46"></script>
+    <script src="js/ws.js?v=0.76.46"></script>
+    <script src="js/app.js?v=0.76.46"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.46"></script>
+    <script src="js/components/sidebar.js?v=0.76.46"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.46"></script>
 </body>
 </html>

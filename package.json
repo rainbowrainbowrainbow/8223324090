@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.45",
+  "version": "0.76.46",
   "eventGenix": {
-    "releaseLabel": "Room Timeline Marker UX Polish"
+    "releaseLabel": "Kitchen Operational Time Validation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

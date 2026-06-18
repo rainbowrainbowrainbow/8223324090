@@ -931,6 +931,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /data-menu-serving-copy-all/);
     assert.match(bookingJs, /data-menu-service-event-add/);
     assert.match(bookingJs, /serviceEvents: formData\.serviceEvents \|\| \[\]/);
+    assert.match(bookingJs, /BOOKING_CREATE_PAST_VALIDATION_TIME_ZONE = 'Europe\/Kyiv'/);
+    assert.match(bookingJs, /function bookingCreateTimeCandidates/);
+    assert.match(bookingJs, /function bookingCreatePastValidationError/);
+    assert.match(bookingJs, /bookingCreateOperationalTimeCandidates/);
+    assert.match(bookingJs, /shouldUseKitchenOperationalCreateTime/);
+    assert.match(bookingJs, /showNotification\(pastValidationError, 'error'\)/);
     assert.match(bookingJs, /Не вказано час видачі/);
     assert.match(bookingJs, /getSmartBookingValidationState/);
     assert.match(bookingJs, /formatBookingValidationList/);

@@ -1188,15 +1188,107 @@ function hasNonEmptyArray(value) {
     return Array.isArray(value) && value.length > 0;
 }
 
-function isRoomProjectableBanquetServiceRootBooking(booking = {}) {
-    if (!isBanquetServiceRootBooking(booking) || !isRealRoom(booking.room)) return false;
+const BOOKING_PAST_VALIDATION_TIME_ZONE = 'Europe/Kyiv';
+
+function bookingKyivClock(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: BOOKING_PAST_VALIDATION_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+    }).formatToParts(now).reduce((acc, part) => {
+        if (part.type !== 'literal') acc[part.type] = part.value;
+        return acc;
+    }, {});
+    const hour = Number(parts.hour || 0);
+    const minute = Number(parts.minute || 0);
+    const second = Number(parts.second || 0);
+    return {
+        date: `${parts.year}-${parts.month}-${parts.day}`,
+        seconds: (hour * 3600) + (minute * 60) + second
+    };
+}
+
+function bookingPackageFromPayload(booking = {}) {
     const extra = getBookingExtraDataObject(booking);
-    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
-    const bookingPackage = booking.bookingPackage
+    return booking.bookingPackage
         || booking.booking_package
         || extra.bookingPackage
         || extra.booking_package
         || {};
+}
+
+function normalizedBookingPastValidationTime(value) {
+    const time = String(value || '').trim();
+    return validateTime(time) ? time : null;
+}
+
+function bookingPackageOperationalTimeCandidates(booking = {}) {
+    const bookingPackage = bookingPackageFromPayload(booking);
+    const positions = bookingPackage.menuPositions || bookingPackage.menu_positions || booking.menuPositions || booking.menu_positions || [];
+    const events = bookingPackage.serviceEvents || bookingPackage.service_events || booking.serviceEvents || booking.service_events || [];
+    const candidates = [];
+
+    if (Array.isArray(positions)) {
+        positions.forEach(item => {
+            const time = normalizedBookingPastValidationTime(item?.servingTime || item?.serving_time);
+            if (time) candidates.push({ time, label: 'Час видачі' });
+        });
+    }
+    if (Array.isArray(events)) {
+        events.forEach(item => {
+            const time = normalizedBookingPastValidationTime(item?.time || item?.servingTime || item?.serving_time);
+            if (time) candidates.push({ time, label: 'Час події' });
+        });
+    }
+    return candidates;
+}
+
+function shouldUseKitchenOperationalPastValidation(booking = {}) {
+    const extra = getBookingExtraDataObject(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const scenario = String(workspace.scenario || booking.scenario || '').trim().toLowerCase();
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    return scenario === 'kitchen_only'
+        || programCode === 'KITCHEN'
+        || isBanquetServiceRootBooking(booking);
+}
+
+function bookingPastValidationTimeCandidates(booking = {}) {
+    const operationalCandidates = shouldUseKitchenOperationalPastValidation(booking)
+        ? bookingPackageOperationalTimeCandidates(booking)
+        : [];
+    if (operationalCandidates.length) return operationalCandidates;
+    const fallbackTime = normalizedBookingPastValidationTime(booking.time);
+    return fallbackTime ? [{ time: fallbackTime, label: 'Час бронювання' }] : [];
+}
+
+function bookingTimeCandidateIsPast(date, time, now = new Date()) {
+    if (!validateDate(date) || !validateTime(time)) return false;
+    const today = bookingKyivClock(now);
+    if (date < today.date) return true;
+    if (date > today.date) return false;
+    return timeToMinutes(time) * 60 < today.seconds;
+}
+
+function bookingPastValidationError(booking = {}, now = new Date()) {
+    const date = String(booking.date || '').trim();
+    const pastCandidate = bookingPastValidationTimeCandidates(booking)
+        .find(candidate => bookingTimeCandidateIsPast(date, candidate.time, now));
+    if (!pastCandidate) return null;
+    const label = pastCandidate.label || 'Час бронювання';
+    return `${label} ${pastCandidate.time} вже в минулому. Оберіть майбутній час.`;
+}
+
+function isRoomProjectableBanquetServiceRootBooking(booking = {}) {
+    if (!isBanquetServiceRootBooking(booking) || !isRealRoom(booking.room)) return false;
+    const extra = getBookingExtraDataObject(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const bookingPackage = bookingPackageFromPayload(booking);
     return String(booking.category || booking.category_id || '').trim().toLowerCase() === 'banquet'
         || String(booking.programCode || booking.program_code || '').trim().toUpperCase() === 'KITCHEN'
         || String(workspace.scenario || '').trim().toLowerCase() === 'kitchen_only'
@@ -1992,11 +2084,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
         }
     }
+    applyBookingPackage(b);
     if (!b.linkedTo) {
-        const bookingDateTime = new Date(`${b.date}T${b.time}:00`);
-        if (bookingDateTime < new Date()) {
-            return res.status(400).json({ success: false, error: 'Неможливо створити бронювання в минулому.' });
-        }
+        const pastValidationError = bookingPastValidationError(b);
+        if (pastValidationError) return res.status(400).json({ success: false, error: pastValidationError });
     }
 
     const client = await pool.connect();
@@ -2008,7 +2099,6 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
-        applyBookingPackage(b);
         await applyEffectiveBookingPrice(client, b, { businessContext });
         normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
@@ -2756,6 +2846,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
         applyBookingPackage(main);
+        const mainPastValidationError = bookingPastValidationError(main);
+        if (mainPastValidationError) return res.status(400).json({ success: false, error: mainPastValidationError });
         normalizeBookingSecondAnimatorFields(main);
         if (applyBookingStatusForCreate(main) === 'invalid') {
             return res.status(400).json({ success: false, error: 'Invalid booking status' });
@@ -2795,6 +2887,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             const activityPinataFields = applyPinataNormalization(activity);
             if (activityPinataFields.error) return res.status(400).json({ success: false, error: activityPinataFields.error });
             applyBookingPackage(activity);
+            const activityPastValidationError = bookingPastValidationError(activity);
+            if (activityPastValidationError) return res.status(400).json({ success: false, error: activityPastValidationError });
             normalizeBookingSecondAnimatorFields(activity);
             if (applyBookingStatusForCreate(activity, main.status) === 'invalid') {
                 return res.status(400).json({ success: false, error: 'Invalid activity booking status' });

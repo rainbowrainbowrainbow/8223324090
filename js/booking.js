@@ -1593,6 +1593,84 @@ function getBookingServiceEvents() {
     return BookingPackageState.serviceEvents.map((item, index) => normalizeBookingServiceEvent(item, index)).filter(Boolean);
 }
 
+const BOOKING_CREATE_PAST_VALIDATION_TIME_ZONE = 'Europe/Kyiv';
+
+function bookingCreateKyivClock(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: BOOKING_CREATE_PAST_VALIDATION_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+    }).formatToParts(now).reduce((acc, part) => {
+        if (part.type !== 'literal') acc[part.type] = part.value;
+        return acc;
+    }, {});
+    const hour = Number(parts.hour || 0);
+    const minute = Number(parts.minute || 0);
+    const second = Number(parts.second || 0);
+    return {
+        date: `${parts.year}-${parts.month}-${parts.day}`,
+        seconds: (hour * 3600) + (minute * 60) + second
+    };
+}
+
+function bookingCreateTimeSeconds(time) {
+    const normalized = normalizeBookingServingTime(time);
+    if (!normalized) return null;
+    const [hour, minute] = normalized.split(':').map(Number);
+    return (hour * 3600) + (minute * 60);
+}
+
+function shouldUseKitchenOperationalCreateTime(formData = {}) {
+    return formData.kitchenEnabled === true
+        || String(formData.scenario || '').trim().toLowerCase() === 'kitchen_only'
+        || String(formData.lineId || '').trim() === ROOM_FIRST_BANQUET_SERVICE_LINE_ID;
+}
+
+function bookingCreateOperationalTimeCandidates(formData = {}) {
+    const candidates = [];
+    if (Array.isArray(formData.menuPositions)) {
+        formData.menuPositions.forEach(item => {
+            const time = normalizeBookingServingTime(item?.servingTime || item?.serving_time);
+            if (time) candidates.push({ time, label: 'Час видачі' });
+        });
+    }
+    if (Array.isArray(formData.serviceEvents)) {
+        formData.serviceEvents.forEach(item => {
+            const time = normalizeBookingServingTime(item?.time || item?.servingTime || item?.serving_time);
+            if (time) candidates.push({ time, label: 'Час події' });
+        });
+    }
+    return candidates;
+}
+
+function bookingCreateTimeCandidates(formData = {}) {
+    const operationalCandidates = shouldUseKitchenOperationalCreateTime(formData)
+        ? bookingCreateOperationalTimeCandidates(formData)
+        : [];
+    if (operationalCandidates.length) return operationalCandidates;
+    const fallbackTime = normalizeBookingServingTime(formData.time);
+    return fallbackTime ? [{ time: fallbackTime, label: 'Час бронювання' }] : [];
+}
+
+function bookingCreatePastValidationError(formData = {}, selectedDate = AppState.selectedDate, now = new Date()) {
+    if (!selectedDate) return null;
+    const date = typeof selectedDate === 'string' ? selectedDate : formatDate(selectedDate);
+    const kyivNow = bookingCreateKyivClock(now);
+    const pastCandidate = bookingCreateTimeCandidates(formData).find(candidate => {
+        if (date < kyivNow.date) return true;
+        if (date > kyivNow.date) return false;
+        const seconds = bookingCreateTimeSeconds(candidate.time);
+        return seconds !== null && seconds < kyivNow.seconds;
+    });
+    if (!pastCandidate) return null;
+    return `${pastCandidate.label} ${pastCandidate.time} вже в минулому. Оберіть майбутній час.`;
+}
+
 function setBookingServiceEvents(events, { render = true } = {}) {
     BookingPackageState.serviceEvents = (Array.isArray(events) ? events : [])
         .map((item, index) => normalizeBookingServiceEvent(item, index))
@@ -6687,9 +6765,9 @@ async function handleBookingSubmit(e) {
 
     // [FIX] Заборона бронювання в минулому
     if (!AppState.editingBookingId) {
-        const bookingDateTime = new Date(`${formatDate(AppState.selectedDate)}T${formData.time}:00`);
-        if (bookingDateTime < new Date()) {
-            showNotification('Неможливо створити бронювання в минулому. Оберіть майбутній час.', 'error');
+        const pastValidationError = bookingCreatePastValidationError(formData, AppState.selectedDate);
+        if (pastValidationError) {
+            showNotification(pastValidationError, 'error');
             unlockSubmitBtn();
             return;
         }
@@ -6782,9 +6860,9 @@ async function handleBookingSubmit(e) {
             showNotification('Бронювання оновлено!', 'success');
         } else {
             if (editingBookingId) {
-                const bookingDateTime = new Date(`${formatDate(AppState.selectedDate)}T${formData.time}:00`);
-                if (bookingDateTime < new Date()) {
-                    showNotification('Неможливо створити нове бронювання в минулому. Оберіть майбутній час.', 'error');
+                const pastValidationError = bookingCreatePastValidationError(formData, AppState.selectedDate);
+                if (pastValidationError) {
+                    showNotification(pastValidationError, 'error');
                     unlockSubmitBtn();
                     return;
                 }

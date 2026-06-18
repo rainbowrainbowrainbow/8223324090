@@ -1690,8 +1690,13 @@ function timelineRoomServiceMarkerOverlaps(left, width, segments = []) {
 const TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN = 168;
 const TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MAX = 220;
 const TIMELINE_ROOM_SERVICE_MARKER_HEIGHT = 48;
+const TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT = 72;
+const TIMELINE_ROOM_OPERATIONAL_ITEM_GUTTER = 8;
+const TIMELINE_ROOM_OPERATIONAL_LANE_TOP = 10;
+const TIMELINE_ROOM_OPERATIONAL_LANE_STEP = Math.max(TIMELINE_ROOM_SERVICE_MARKER_HEIGHT, TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT) + TIMELINE_ROOM_OPERATIONAL_ITEM_GUTTER;
+const TIMELINE_ROOM_OPERATIONAL_ROW_BOTTOM = 10;
 const TIMELINE_ROOM_SERVICE_MARKER_LANE_STEP = 56;
-const TIMELINE_ROOM_SERVICE_MARKER_TOP = 10;
+const TIMELINE_ROOM_SERVICE_MARKER_TOP = TIMELINE_ROOM_OPERATIONAL_LANE_TOP;
 
 function timelineRoomServiceMarkerLane(type, left, width, laneSegments) {
     const preferredLane = timelineRoomServiceMarkerPreferredLane(type);
@@ -1719,40 +1724,174 @@ function timelineRoomServiceMarkerRowHeight(laneCount = 0) {
     return Math.max(72, timelineRoomServiceMarkerTop(lanes - 1) + TIMELINE_ROOM_SERVICE_MARKER_HEIGHT + 10);
 }
 
-function syncTimelineRoomServiceMarkerLayout(lineGrid = null) {
+function timelineRoomOperationalOverlaps(item, segments = []) {
+    const gutter = TIMELINE_ROOM_OPERATIONAL_ITEM_GUTTER;
+    return segments.some(segment => item.left < segment.right + gutter && item.right + gutter > segment.left);
+}
+
+function timelineRoomOperationalPreferredLane(item = {}) {
+    const lane = Number(item.preferredLane);
+    if (Number.isFinite(lane)) return lane;
+    if (item.kind === 'marker') return timelineRoomServiceMarkerPreferredLane(item.type);
+    return 0;
+}
+
+function timelineRoomOperationalElementLeft(el) {
+    const styleLeft = parseFloat(el?.style?.left || '');
+    if (Number.isFinite(styleLeft)) return styleLeft;
+    const rectLeft = el?.getBoundingClientRect?.().left;
+    return Number.isFinite(rectLeft) ? rectLeft : 0;
+}
+
+function timelineRoomOperationalElementWidth(el, fallback = 0) {
+    const styleWidth = parseFloat(el?.style?.width || '');
+    if (Number.isFinite(styleWidth) && styleWidth > 0) return styleWidth;
+    const rectWidth = el?.getBoundingClientRect?.().width;
+    if (Number.isFinite(rectWidth) && rectWidth > 0) return rectWidth;
+    return fallback;
+}
+
+function timelineRoomOperationalItemFromElement(el) {
+    if (!el) return null;
+    const isMarker = el.classList?.contains('timeline-room-service-marker');
+    const isActivity = el.classList?.contains('is-room-timeline-activity-card');
+    if (!isMarker && !isActivity) return null;
+    const minWidth = isMarker ? TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN : 110;
+    const height = isMarker ? TIMELINE_ROOM_SERVICE_MARKER_HEIGHT : TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT;
+    const left = timelineRoomOperationalElementLeft(el);
+    const width = Math.max(minWidth, timelineRoomOperationalElementWidth(el, minWidth));
+    return {
+        el,
+        kind: isMarker ? 'marker' : 'activity',
+        type: isMarker ? (el.dataset.banquetRoomMarker || 'service') : 'activity',
+        left,
+        right: left + width,
+        width,
+        height,
+        preferredLane: isMarker ? timelineRoomServiceMarkerPreferredLane(el.dataset.banquetRoomMarker || 'service') : 0
+    };
+}
+
+function timelineRoomOperationalAssignLane(item, laneSegments) {
+    const preferredLane = Math.max(0, Number(item.preferredLane) || 0);
+    const candidates = [];
+    for (let lane = preferredLane; lane < preferredLane + 16; lane += 1) candidates.push(lane);
+    for (let lane = 0; lane < preferredLane; lane += 1) candidates.push(lane);
+
+    const lane = candidates.find(candidate => !timelineRoomOperationalOverlaps(item, laneSegments.get(candidate) || [])) ?? preferredLane;
+    const segments = laneSegments.get(lane) || [];
+    segments.push({ left: item.left, right: item.right });
+    laneSegments.set(lane, segments);
+    return lane;
+}
+
+function timelineRoomOperationalItemTop(lane = 0, laneStep = TIMELINE_ROOM_OPERATIONAL_LANE_STEP) {
+    return TIMELINE_ROOM_OPERATIONAL_LANE_TOP + Math.max(0, Number(lane) || 0) * laneStep;
+}
+
+function clearTimelineRoomOperationalLayoutState(lineGrid = null) {
+    if (!lineGrid) return;
+    const lineEl = lineGrid.closest?.('.timeline-line');
+    lineGrid.classList.remove('has-timeline-room-service-markers', 'has-timeline-room-operational-lanes');
+    lineGrid.removeAttribute('data-room-marker-lanes');
+    lineGrid.removeAttribute('data-room-operational-lanes');
+    lineGrid.style.removeProperty('--room-marker-lanes');
+    lineGrid.style.removeProperty('--room-service-marker-row-height');
+    lineGrid.style.removeProperty('--timeline-room-lane-count');
+    lineGrid.style.removeProperty('--timeline-room-operational-row-height');
+    lineEl?.classList.remove('has-timeline-room-service-marker-lanes', 'has-timeline-room-operational-lanes');
+    lineEl?.removeAttribute('data-room-marker-lanes');
+    lineEl?.removeAttribute('data-room-operational-lanes');
+    lineEl?.style?.removeProperty('--room-marker-lanes');
+    lineEl?.style?.removeProperty('--room-service-marker-row-height');
+    lineEl?.style?.removeProperty('--timeline-room-lane-count');
+    lineEl?.style?.removeProperty('--timeline-room-operational-row-height');
+    lineEl?.style?.removeProperty('--timeline-line-min-h');
+}
+
+function syncTimelineRoomOperationalLayout(lineGrid = null) {
     if (!lineGrid) return;
     const markers = Array.from(lineGrid.querySelectorAll('.timeline-room-service-marker'));
-    const lineEl = lineGrid.closest?.('.timeline-line');
-    const laneCount = markers.reduce((max, marker) => {
-        const lane = Number(marker.dataset.markerLane);
-        return Number.isFinite(lane) ? Math.max(max, lane + 1) : max;
-    }, 0);
+    const activities = isRoomTimelineView()
+        ? Array.from(lineGrid.querySelectorAll('.booking-block.is-room-timeline-activity-card:not(.status-hidden)'))
+        : [];
+    const items = [...markers, ...activities]
+        .map(timelineRoomOperationalItemFromElement)
+        .filter(Boolean)
+        .sort((a, b) => (
+            a.left - b.left
+            || timelineRoomOperationalPreferredLane(a) - timelineRoomOperationalPreferredLane(b)
+            || (a.kind === 'marker' ? 0 : 1) - (b.kind === 'marker' ? 0 : 1)
+        ));
 
-    if (!laneCount) {
+    if (!items.length) {
+        clearTimelineRoomOperationalLayoutState(lineGrid);
+        return;
+    }
+
+    const laneSegments = new Map();
+    const laneStep = activities.length ? TIMELINE_ROOM_OPERATIONAL_LANE_STEP : TIMELINE_ROOM_SERVICE_MARKER_LANE_STEP;
+    let laneCount = 0;
+    let rowHeight = 72;
+    items.forEach(item => {
+        const lane = timelineRoomOperationalAssignLane(item, laneSegments);
+        const top = timelineRoomOperationalItemTop(lane, laneStep);
+        laneCount = Math.max(laneCount, lane + 1);
+        rowHeight = Math.max(rowHeight, top + item.height + TIMELINE_ROOM_OPERATIONAL_ROW_BOTTOM);
+        item.el.dataset.roomOperationalLane = String(lane);
+        item.el.style.top = `${top}px`;
+        item.el.style.setProperty('--timeline-room-lane', String(lane));
+        item.el.style.setProperty('--timeline-room-lane-top', `${top}px`);
+        if (item.kind === 'marker') {
+            item.el.dataset.markerLane = String(lane);
+            item.el.style.setProperty('--marker-lane', String(lane));
+            item.el.style.setProperty('--marker-top', `${top}px`);
+        } else {
+            item.el.dataset.roomActivityLane = String(lane);
+            item.el.style.height = `${TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT}px`;
+            item.el.style.setProperty('--timeline-room-activity-card-height', `${TIMELINE_ROOM_ACTIVITY_CARD_HEIGHT}px`);
+        }
+    });
+
+    const lineEl = lineGrid.closest?.('.timeline-line');
+    lineGrid.classList.add('has-timeline-room-operational-lanes');
+    lineGrid.dataset.roomOperationalLanes = String(laneCount);
+    lineGrid.style.setProperty('--timeline-room-lane-count', String(laneCount));
+    lineGrid.style.setProperty('--timeline-room-operational-row-height', `${rowHeight}px`);
+    if (markers.length) {
+        lineGrid.classList.add('has-timeline-room-service-markers');
+        lineGrid.dataset.roomMarkerLanes = String(laneCount);
+        lineGrid.style.setProperty('--room-marker-lanes', String(laneCount));
+        lineGrid.style.setProperty('--room-service-marker-row-height', `${rowHeight}px`);
+    } else {
         lineGrid.classList.remove('has-timeline-room-service-markers');
         lineGrid.removeAttribute('data-room-marker-lanes');
         lineGrid.style.removeProperty('--room-marker-lanes');
         lineGrid.style.removeProperty('--room-service-marker-row-height');
-        lineEl?.classList.remove('has-timeline-room-service-marker-lanes');
-        lineEl?.removeAttribute('data-room-marker-lanes');
-        lineEl?.style?.removeProperty('--room-marker-lanes');
-        lineEl?.style?.removeProperty('--room-service-marker-row-height');
-        lineEl?.style?.removeProperty('--timeline-line-min-h');
-        return;
     }
 
-    const rowHeight = timelineRoomServiceMarkerRowHeight(laneCount);
-    lineGrid.classList.add('has-timeline-room-service-markers');
-    lineGrid.dataset.roomMarkerLanes = String(laneCount);
-    lineGrid.style.setProperty('--room-marker-lanes', String(laneCount));
-    lineGrid.style.setProperty('--room-service-marker-row-height', `${rowHeight}px`);
     if (lineEl) {
-        lineEl.classList.add('has-timeline-room-service-marker-lanes');
-        lineEl.dataset.roomMarkerLanes = String(laneCount);
-        lineEl.style.setProperty('--room-marker-lanes', String(laneCount));
-        lineEl.style.setProperty('--room-service-marker-row-height', `${rowHeight}px`);
+        lineEl.classList.add('has-timeline-room-operational-lanes');
+        lineEl.dataset.roomOperationalLanes = String(laneCount);
+        lineEl.style.setProperty('--timeline-room-lane-count', String(laneCount));
+        lineEl.style.setProperty('--timeline-room-operational-row-height', `${rowHeight}px`);
         lineEl.style.setProperty('--timeline-line-min-h', `${rowHeight}px`);
+        if (markers.length) {
+            lineEl.classList.add('has-timeline-room-service-marker-lanes');
+            lineEl.dataset.roomMarkerLanes = String(laneCount);
+            lineEl.style.setProperty('--room-marker-lanes', String(laneCount));
+            lineEl.style.setProperty('--room-service-marker-row-height', `${rowHeight}px`);
+        } else {
+            lineEl.classList.remove('has-timeline-room-service-marker-lanes');
+            lineEl.removeAttribute('data-room-marker-lanes');
+            lineEl.style.removeProperty('--room-marker-lanes');
+            lineEl.style.removeProperty('--room-service-marker-row-height');
+        }
     }
+}
+
+function syncTimelineRoomServiceMarkerLayout(lineGrid = null) {
+    syncTimelineRoomOperationalLayout(lineGrid);
 }
 
 function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
@@ -2431,6 +2570,9 @@ async function renderTimeline() {
         // v0.73.81: iOS/Safari can paint mobile grid cells after the row is attached.
         // Measure booking geometry from the actual line grid so second-line blocks do not drift or disappear.
         lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start, lineGrid)));
+        if (isRoomTimelineView()) {
+            syncTimelineRoomOperationalLayout(lineGrid);
+        }
 
         // v8.6: Render assigned afisha events on this animator's line
         const lineAfisha = assignedAfishaMap[line.id] || [];

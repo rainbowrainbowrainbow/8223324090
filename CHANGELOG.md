@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.53 - Room Timeline Collision Layout Fix
+
+### Frontend timeline / Room activity lanes / Collision layout / Production fix / (Клешня, 18.06.2026) [codex]
+- **Activity blocks у `Кімнати` стали solid/readable** - projected animation/activity cards більше не використовують прозорий gradient вигляд, а читаються як повноцінні timeline events.
+- **Service markers і activity blocks автоматично розносяться по lanes** - room row рахує спільний lane layout для `Підготовка`, `Видача`, `Напої` та projected activity blocks.
+- **`Підготовка` більше не перекриває текст активності** - same-time service marker і `Бульбашкове шоу` розміщуються на різних вертикальних lanes, а row height збільшується автоматично.
+- **Короткі activity labels залишились читабельними** - compact/tiny логіка для `Бульб.`, `Піньята`, `АН`, `МК`, `Фото`, `Квест` збережена.
+- **`Свята` не отримує room service markers** - animator timeline лишається чистим від room-only markers і далі може показувати room context для activity blocks.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.53`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.52 - Short Timeline Activity Block Readability
 
 ### Frontend timeline / Short activity blocks / Compact labels / Production fix / (Клешня, 18.06.2026) [codex]

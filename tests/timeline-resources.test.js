@@ -178,20 +178,44 @@ function createTimelineBanquetMarkerScenario(bookingPackage) {
 function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
     const { ctx, inspectorSummary } = createTimelineBanquetMarkerScenario(bookingPackage);
     ctx.__timelineViewState.room = options.roomView !== false;
-    ctx.renderTimelineRoomServiceMarkers(inspectorSummary, { groupId: 'group-regression' });
     const lineGrid = ctx.document.querySelector('.line-grid');
+    (options.activityBlocks || []).forEach((activity, index) => {
+        const activityMinutes = ctx.timeToMinutes(activity.time || '12:00');
+        const startMinutes = ctx.getTimeRange().start * 60;
+        const left = ctx.timelineMinutesToPixels(activityMinutes - startMinutes);
+        const width = ctx.timelineDurationWidth(activity.duration || 30);
+        const block = ctx.document.createElement('div');
+        block.className = `booking-block ${activity.category || 'animation'} is-room-timeline-activity-card booking-block--${activity.density || 'short'}`;
+        block.dataset.bookingId = activity.id || `activity-${index}`;
+        block.style.left = `${left}px`;
+        block.style.width = `${width}px`;
+        block.innerHTML = `
+            <div class="timeline-room-activity-main">
+                <span class="booking-block-time">${activity.time || '12:00'}</span>
+                <span class="timeline-room-activity-title">${activity.title || 'Activity'}</span>
+            </div>
+        `;
+        lineGrid.appendChild(block);
+    });
+    ctx.renderTimelineRoomServiceMarkers(inspectorSummary, { groupId: 'group-regression' });
     const line = lineGrid?.closest('.timeline-line');
     return {
         ctx,
         inspectorSummary,
         layout: {
             gridLaneCount: lineGrid?.dataset.roomMarkerLanes || '',
+            gridOperationalLaneCount: lineGrid?.dataset.roomOperationalLanes || '',
             gridRowHeight: lineGrid?.style.getPropertyValue('--room-service-marker-row-height') || '',
+            gridOperationalRowHeight: lineGrid?.style.getPropertyValue('--timeline-room-operational-row-height') || '',
             lineLaneCount: line?.dataset.roomMarkerLanes || '',
+            lineOperationalLaneCount: line?.dataset.roomOperationalLanes || '',
             lineRowHeight: line?.style.getPropertyValue('--room-service-marker-row-height') || '',
+            lineOperationalRowHeight: line?.style.getPropertyValue('--timeline-room-operational-row-height') || '',
             lineMinHeight: line?.style.getPropertyValue('--timeline-line-min-h') || '',
             hasGridLaneClass: lineGrid?.classList.contains('has-timeline-room-service-markers') || false,
-            hasLineLaneClass: line?.classList.contains('has-timeline-room-service-marker-lanes') || false
+            hasGridOperationalLaneClass: lineGrid?.classList.contains('has-timeline-room-operational-lanes') || false,
+            hasLineLaneClass: line?.classList.contains('has-timeline-room-service-marker-lanes') || false,
+            hasLineOperationalLaneClass: line?.classList.contains('has-timeline-room-operational-lanes') || false
         },
         markers: Array.from(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker')).map(node => ({
             tagName: node.tagName,
@@ -216,7 +240,21 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
             top: node.style.top,
             width: node.style.width,
             markerTop: node.style.getPropertyValue('--marker-top'),
+            roomOperationalLane: node.dataset.roomOperationalLane,
+            roomLaneTop: node.style.getPropertyValue('--timeline-room-lane-top'),
             ariaHaspopup: node.getAttribute('aria-haspopup')
+        })),
+        activities: Array.from(ctx.document.querySelectorAll('.line-grid .is-room-timeline-activity-card')).map(node => ({
+            className: node.className,
+            text: node.textContent.trim(),
+            left: node.style.left,
+            top: node.style.top,
+            width: node.style.width,
+            height: node.style.height,
+            roomOperationalLane: node.dataset.roomOperationalLane,
+            roomActivityLane: node.dataset.roomActivityLane,
+            roomLaneTop: node.style.getPropertyValue('--timeline-room-lane-top'),
+            roomActivityHeight: node.style.getPropertyValue('--timeline-room-activity-card-height')
         }))
     };
 }
@@ -945,6 +983,9 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band \.title/);
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band \.subtitle/);
     assert.match(css, /\.timeline-line\.has-timeline-room-service-marker-lanes/);
+    assert.match(css, /\.line-grid\.has-timeline-room-operational-lanes/);
+    assert.match(css, /\.timeline-line\.has-timeline-room-operational-lanes/);
+    assert.match(css, /--timeline-room-operational-row-height/);
     assert.match(css, /--room-service-marker-row-height/);
     assert.match(css, /height:\s*48px/);
     assert.match(css, /min-width:\s*168px/);
@@ -1018,6 +1059,22 @@ test('room timeline activity cards share marker visual language without global a
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.timeline-room-activity-detail\s*\{[\s\S]*-webkit-line-clamp:\s*2/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.booking-banquet-link-handle\s*\{[\s\S]*display:\s*none/);
     assert.doesNotMatch(css, /body\.timeline-view-animators \.booking-block\.is-room-timeline-activity-card/);
+});
+
+test('room timeline activity cards use solid category surfaces instead of transparent gradients', () => {
+    const css = read('css/timeline.css');
+    const bgDeclarations = [...css.matchAll(/body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card[^{]*\{[\s\S]*?--timeline-room-card-bg:\s*([^;]+);/g)]
+        .map((match) => match[1].trim());
+
+    assert.ok(bgDeclarations.length >= 7);
+    bgDeclarations.forEach((value) => {
+        assert.doesNotMatch(value, /linear-gradient/i);
+        assert.doesNotMatch(value, /rgba?\(/i);
+        assert.match(value, /^#[0-9A-F]{6}$/i);
+    });
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.animation\s*\{[\s\S]*--timeline-room-card-bg:\s*#1D4ED8;/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.show\s*\{[\s\S]*--timeline-room-card-bg:\s*#C2410C;/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.pinata\s*\{[\s\S]*--timeline-room-card-bg:\s*#BE185D;/);
 });
 
 test('timeline booking blocks expose width-based density display modes', () => {
@@ -1159,10 +1216,14 @@ test('room timeline renders multiple menu serving markers inside the room grid',
     assert.deepEqual(markers.map(marker => marker.lane), ['1', '2']);
     assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '122px']);
     assert.equal(layout.gridLaneCount, '3');
+    assert.equal(layout.gridOperationalLaneCount, '3');
     assert.equal(layout.gridRowHeight, '180px');
+    assert.equal(layout.gridOperationalRowHeight, '180px');
     assert.equal(layout.lineMinHeight, '180px');
     assert.equal(layout.hasGridLaneClass, true);
+    assert.equal(layout.hasGridOperationalLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
+    assert.equal(layout.hasLineOperationalLaneClass, true);
 });
 
 test('room timeline renders room_setup service event as a separate room-grid marker', () => {
@@ -1186,7 +1247,9 @@ test('room timeline renders room_setup service event as a separate room-grid mar
     assert.equal(markers[0].lane, '0');
     assert.equal(markers[0].markerTop, '10px');
     assert.equal(layout.gridLaneCount, '1');
+    assert.equal(layout.gridOperationalLaneCount, '1');
     assert.equal(layout.gridRowHeight, '72px');
+    assert.equal(layout.gridOperationalRowHeight, '72px');
     assert.equal(layout.lineMinHeight, '72px');
 });
 
@@ -1218,7 +1281,9 @@ test('room timeline keeps mixed same-time room-grid markers without dedupe', () 
     assert.deepEqual(markers.map(marker => marker.lane), ['1', '0', '2']);
     assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '10px', '122px']);
     assert.equal(layout.gridLaneCount, '3');
+    assert.equal(layout.gridOperationalLaneCount, '3');
     assert.equal(layout.gridRowHeight, '180px');
+    assert.equal(layout.gridOperationalRowHeight, '180px');
     assert.equal(layout.lineMinHeight, '180px');
 });
 
@@ -1239,10 +1304,45 @@ test('room service marker lanes avoid close-time collisions and reserve row heig
     assert.deepEqual(markers.map(marker => marker.lane), ['1', '0', '2', '3']);
     assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '10px', '122px', '178px']);
     assert.equal(layout.gridLaneCount, '4');
+    assert.equal(layout.gridOperationalLaneCount, '4');
     assert.equal(layout.lineLaneCount, '4');
+    assert.equal(layout.lineOperationalLaneCount, '4');
     assert.equal(layout.gridRowHeight, '236px');
+    assert.equal(layout.gridOperationalRowHeight, '236px');
     assert.equal(layout.lineRowHeight, '236px');
+    assert.equal(layout.lineOperationalRowHeight, '236px');
     assert.equal(layout.lineMinHeight, '236px');
+});
+
+test('room operational lanes separate same-time service marker and activity block', () => {
+    const { markers, activities, layout } = renderTimelineBanquetRoomGridMarkers({
+        menuPositions: [],
+        serviceEvents: [
+            { id: 'setup-1', type: 'room_setup', title: 'Prepare room', time: '12:00' }
+        ]
+    }, {
+        activityBlocks: [
+            { id: 'activity-1', category: 'show', time: '12:00', duration: 30, title: 'Р‘СѓР»СЊР±.' }
+        ]
+    });
+
+    assert.equal(markers.length, 1);
+    assert.equal(activities.length, 1);
+    assert.equal(markers[0].left, activities[0].left);
+    assert.equal(markers[0].lane, '0');
+    assert.equal(activities[0].roomOperationalLane, '1');
+    assert.equal(activities[0].roomActivityLane, '1');
+    assert.notEqual(markers[0].top, activities[0].top);
+    assert.equal(markers[0].markerTop, '10px');
+    assert.equal(activities[0].roomLaneTop, '90px');
+    assert.equal(activities[0].height, '72px');
+    assert.equal(activities[0].roomActivityHeight, '72px');
+    assert.equal(layout.gridOperationalLaneCount, '2');
+    assert.equal(layout.lineOperationalLaneCount, '2');
+    assert.equal(layout.gridOperationalRowHeight, '172px');
+    assert.equal(layout.lineMinHeight, '172px');
+    assert.equal(layout.hasGridOperationalLaneClass, true);
+    assert.equal(layout.hasLineOperationalLaneClass, true);
 });
 
 test('room-grid service markers stay isolated across room and animator timeline views', () => {
@@ -1270,7 +1370,10 @@ test('room-grid service markers stay isolated across room and animator timeline 
     const clearedLine = ctx.document.querySelector('.timeline-line');
     assert.equal(clearedGrid.classList.contains('has-timeline-room-service-markers'), false);
     assert.equal(clearedLine.classList.contains('has-timeline-room-service-marker-lanes'), false);
+    assert.equal(clearedGrid.classList.contains('has-timeline-room-operational-lanes'), false);
+    assert.equal(clearedLine.classList.contains('has-timeline-room-operational-lanes'), false);
     assert.equal(clearedGrid.style.getPropertyValue('--room-service-marker-row-height'), '');
+    assert.equal(clearedGrid.style.getPropertyValue('--timeline-room-operational-row-height'), '');
     assert.equal(clearedLine.style.getPropertyValue('--timeline-line-min-h'), '');
 
     ctx.renderTimelineRoomServiceMarkers(inspectorSummary, { groupId: 'group-regression' });
@@ -1307,12 +1410,18 @@ test('room-grid service marker lifecycle is scoped to room view and view-aware c
     assert.match(rendererBlock, /if \(!isRoomTimelineView\(\) \|\| !summary\) return/);
     assert.match(timeline, /function timelineRoomServiceMarkerPreferredLane/);
     assert.match(timeline, /function timelineRoomServiceMarkerLane/);
+    assert.match(timeline, /function syncTimelineRoomOperationalLayout/);
     assert.match(timeline, /function syncTimelineRoomServiceMarkerLayout/);
+    assert.match(timeline, /\.booking-block\.is-room-timeline-activity-card:not\(\.status-hidden\)/);
+    assert.match(timeline, /dataset\.roomOperationalLane = String\(lane\)/);
+    assert.match(timeline, /style\.setProperty\('--timeline-room-lane-top', `\$\{top\}px`\)/);
     assert.match(rendererBlock, /timelineRoomServiceMarkerLane\(type, left, baseWidth, laneSegments\)/);
     assert.match(rendererBlock, /markerEl\.dataset\.markerLane = String\(laneIndex\)/);
     assert.match(rendererBlock, /syncTimelineRoomServiceMarkerLayout\(lineGrid\)/);
     assert.match(clearBlock, /clearTimelineRoomServiceMarkers\(\)/);
     assert.match(timeline, /has-timeline-room-service-marker-lanes/);
+    assert.match(timeline, /has-timeline-room-operational-lanes/);
+    assert.match(timeline, /--timeline-room-operational-row-height/);
     assert.match(timeline, /--timeline-line-min-h/);
     assert.ok(setViewBlock.includes('clearTimelineBanquetRoomPreviews()'));
     assert.ok(setViewBlock.indexOf('clearTimelineBanquetRoomPreviews()') < setViewBlock.indexOf('await renderTimeline()'));

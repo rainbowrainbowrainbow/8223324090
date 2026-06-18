@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.51 - Room Timeline Activity Text Alignment
+
+### Frontend timeline / Room activity text alignment / Production fix / (Клешня, 18.06.2026) [codex]
+- **Activity blocks у `Кімнати` тепер читаються як service markers** - перший рядок починається з часу, далі йде коротка назва/код активності та duration, а деталізація винесена на другий рядок.
+- **Порядок тексту вирівняно між blocks і markers** - `12:45 Видача` та `13:45 АН(60)` тепер використовують однакову логіку: час першим, тип поруч, деталі нижче.
+- **Довгі назви не ламають перший рядок** - activity detail має окремий рядок із контрольованим дворядковим clamp, щоб назва не обрізалась після кількох символів у головній строкі.
+- **Room timeline не дублює room name** - у `Кімнати` кімната лишається в row header, а `Свята` й далі показує room meta chip.
+- **Service markers і interaction behavior не змінювались** - markers, lanes, click/focus, drag/resize і room/animator isolation збережено.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.51`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.50 - Timeline Room Activity Visual Alignment
 
 ### Frontend timeline / Room activity visual alignment / Production fix / (Клешня, 18.06.2026) [codex]

@@ -542,7 +542,7 @@ test('animator timeline booking blocks show room meta without room timeline dupl
     assert.match(timeline, /block\.dataset\.bookingRoom = bookingRoomName/);
     assert.ok(timeline.includes("(!isRoomTimelineView() && !shouldShowBookingRoomMeta ? bookingRoomName : '')"));
     assert.match(timeline, /class="booking-block-room" title="\$\{escapeHtml\(bookingRoomName\)\}"/);
-    assert.match(timeline, /<span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>\$\{bookingRoomMeta\}/);
+    assert.match(timeline, /<div class="subtitle"><span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>\$\{bookingRoomMeta\}\$\{bookingKidsMeta\}<\/div>/);
     assert.match(css, /\.booking-block \.booking-block-room/);
     assert.match(css, /body\.dark-mode \.booking-block \.booking-block-room/);
     assert.match(css, /html\[data-theme="dark"\] \.booking-block \.booking-block-room/);
@@ -1011,8 +1011,11 @@ test('room timeline activity cards share marker visual language without global a
     assert.match(css, /body\.timeline-view-rooms \.timeline-room-service-marker\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*box-shadow:\s*0 10px 24px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\s*\{[\s\S]*--timeline-room-card-accent:[\s\S]*border-left:\s*4px solid var\(--timeline-room-card-accent\)/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.animation/);
-    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.title\s*\{[\s\S]*font-size:\s*13px/);
-    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.subtitle\s*\{[\s\S]*font-size:\s*11px/);
+    assert.match(timeline, /<div class="timeline-room-activity-main">\s*<span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>\s*<span class="timeline-room-activity-title">/);
+    assert.match(timeline, /class="timeline-room-activity-detail" title="\$\{escapeHtml\(roomActivityDetail\)\}"/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.timeline-room-activity-main\s*\{[\s\S]*font-size:\s*13px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.timeline-room-activity-title\s*\{[\s\S]*text-overflow:\s*ellipsis/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.timeline-room-activity-detail\s*\{[\s\S]*-webkit-line-clamp:\s*2/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.booking-banquet-link-handle\s*\{[\s\S]*display:\s*none/);
     assert.doesNotMatch(css, /body\.timeline-view-animators \.booking-block\.is-room-timeline-activity-card/);
 });

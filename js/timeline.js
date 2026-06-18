@@ -2856,7 +2856,19 @@ function createBookingBlock(booking, startHour, anchor) {
         ? `<span class="booking-block-room" title="${escapeHtml(bookingRoomName)}">${escapeHtml(bookingRoomName)}</span>`
         : '';
     const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
-    block.innerHTML = `
+    const roomActivityDetailParts = [bookingTitleTail, costumeLabel].filter(Boolean);
+    const roomActivityDetail = roomActivityDetailParts.join(' · ');
+    const roomActivityHtml = `
+        <div class="user-letter">${badge}</div>
+        <div class="timeline-room-activity-main">
+            <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
+            <span class="timeline-room-activity-title">${escapeHtml(bookingTitle || renderBooking.programCode || renderBooking.category || 'Подія')}</span>
+            ${durationBadge}
+        </div>
+        ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}
+        ${noteText}
+    `;
+    const defaultBookingHtml = `
         <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(bookingTitleText)}${durationBadge}</div>
         <div class="subtitle"><span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>${bookingRoomMeta}${bookingKidsMeta}</div>
@@ -2864,6 +2876,7 @@ function createBookingBlock(booking, startHour, anchor) {
         ${graduationItemsHtml}
         ${noteText}
     `;
+    block.innerHTML = isRoomTimelineActivityCard ? roomActivityHtml : defaultBookingHtml;
 
     // v5.19: Linked bookings click → navigate to parent booking details
     // v30.3: Store booking ID on block for bulk operations

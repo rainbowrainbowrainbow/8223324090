@@ -7,6 +7,16 @@ const model = require('../js/timeline-interaction-model');
 
 const ROOT = path.join(__dirname, '..');
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'timeline-regression-matrix-test-secret';
+
+function readProjectFile(relativePath) {
+    return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+}
+
+function getTimelineIsolationHooks() {
+    return require('../routes/lines').__timelineIsolationTestHooks;
+}
+
 function booking(overrides = {}) {
     return {
         id: overrides.id || 'BK-1',
@@ -313,10 +323,10 @@ test('timeline resize regression matrix covers free, occupied, and undo paths', 
 });
 
 test('timeline context parity keeps Event Genix and Maysternya Doli on one shared engine', () => {
-    const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
-    const serverCode = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-    const packageJson = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+    const contextCode = readProjectFile('js/timeline-context.js');
+    const serverCode = readProjectFile('server.js');
+    const indexHtml = readProjectFile('index.html');
+    const packageJson = readProjectFile('package.json');
 
     assert.match(contextCode, /event_genix/);
     assert.match(contextCode, /maysternya_doli/);
@@ -331,10 +341,64 @@ test('timeline context parity keeps Event Genix and Maysternya Doli on one share
     assert.doesNotMatch(indexHtml + packageJson, /maysternya-timeline\.js|timeline-maysternya\.js/);
 });
 
+test('timeline view isolation matrix keeps polluted room rows out of animator state', () => {
+    const hooks = getTimelineIsolationHooks();
+    assert.ok(hooks, 'routes/lines.js should expose timeline isolation test hooks');
+
+    const pollutedLegacyRows = [
+        { line_id: '748', name: 'Пасенко Женя', from_sheet: false },
+        { line_id: 'room-takeaway', name: 'На виніс', source: 'rooms_virtual' },
+        { line_id: 'room-marvel', name: 'Марвел', resource_type: 'room' }
+    ];
+    const animatorRows = pollutedLegacyRows.filter(row => {
+        if (String(row.line_id || '').trim() === 'banquet-service') return false;
+        return !hooks.isLegacyRoomTimelineLineRow(row);
+    });
+
+    assert.deepEqual(animatorRows.map(row => row.line_id), ['748']);
+    assert.equal(hooks.isLegacyRoomTimelineLineRow({ line_id: 'room-takeaway', name: 'На виніс' }), true);
+    assert.equal(hooks.isLegacyRoomTimelineLineRow({ line_id: 'room-marvel', name: 'Марвел' }), true);
+    assert.equal(hooks.isLegacyRoomTimelineLineRow({ line_id: '748', name: 'Пасенко Женя' }), false);
+
+    const roomRows = hooks.withTakeawayRoomLine([
+        {
+            id: 'room-marvel',
+            resourceId: 'room-marvel',
+            resourceType: 'room',
+            name: 'Марвел',
+            source: 'timeline_resource'
+        }
+    ], 'event_genix');
+    assert.deepEqual(roomRows.map(line => line.id), ['room-takeaway', 'room-marvel']);
+    assert.equal(hooks.isRoomTimelineLinePayload({ id: 'room-marvel', resourceType: 'room' }), true);
+    assert.equal(hooks.isRoomTimelineLinePayload({ id: '748', resourceType: 'animator', name: 'Пасенко Женя' }), false);
+});
+
+test('timeline view switch isolation keeps room rows out of animator render and cache scope', () => {
+    const timeline = readProjectFile('js/timeline.js');
+    const api = readProjectFile('js/api.js');
+    const linesRoute = readProjectFile('routes/lines.js');
+
+    assert.match(linesRoute, /timelineView === 'rooms' && businessContext === DEFAULT_TIMELINE_CONTEXT[\s\S]*roomTimelineLinesForContext\(businessContext\)/);
+    assert.match(linesRoute, /res\.set\('X-Timeline-View', 'rooms'\)/);
+    assert.match(linesRoute, /businessContext === DEFAULT_TIMELINE_CONTEXT && display\.mode === 'park' && lines\.some\(isRoomTimelineLinePayload\)/);
+    assert.match(linesRoute, /const quarantinedRoomRows = result\.rows\.filter\(isLegacyRoomTimelineLineRow\)/);
+    assert.match(linesRoute, /const lines = filteredRows/);
+
+    assert.match(timeline, /function timelineCacheScopeKey\(\)[\s\S]*const timelineView = timelineCurrentView\(\);[\s\S]*return `\$\{context\}\|\$\{mode\}\|\$\{resourceType\}\|\$\{timelineView\}`/);
+    assert.match(timeline, /if \(next !== current && options\.render !== false\) \{[\s\S]*AppState\.cachedBookings = \{\};[\s\S]*AppState\.cachedLines = \{\};[\s\S]*AppState\.lines = \[\];[\s\S]*AppState\.linesByDate = \{\};/);
+    assert.match(timeline, /function isTimelineRoomOnlyLine/);
+    assert.match(timeline, /function normalizeTimelineLinesForContext[\s\S]*!isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)/);
+    assert.match(timeline, /lineHeader\?\.addEventListener\('click', event => \{[\s\S]*if \(isRoomTimelineView\(\)\) return;[\s\S]*editLineModal\(line\.id\)/);
+
+    assert.match(api, /async function apiSaveLines\(date, lines\) \{[\s\S]*window\.TimelineView\?\.isRooms\?\.\(\)[\s\S]*success: false[\s\S]*room_timeline_legacy_line_save_blocked[\s\S]*timelineApiUrlWithView\(`\/lines\/\$\{date\}`\)/);
+    assert.match(api, /function timelineApiUrlWithView[\s\S]*timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
+});
+
 test('phase 4 matrix is wired into unit and UI proof stack', () => {
-    const packageJson = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
-    const lifecycleTest = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-lifecycle.test.js'), 'utf8');
-    const uatDoc = fs.readFileSync(path.join(ROOT, 'docs', 'TIMELINE_UAT_REGRESSION_MATRIX.md'), 'utf8');
+    const packageJson = readProjectFile('package.json');
+    const lifecycleTest = readProjectFile('tests/timeline-lifecycle.test.js');
+    const uatDoc = readProjectFile('docs/TIMELINE_UAT_REGRESSION_MATRIX.md');
 
     assert.match(packageJson, /tests\/timeline-regression-matrix\.test\.js/);
     assert.match(packageJson, /tests\/timeline-lifecycle\.test\.js/);

@@ -47,6 +47,15 @@ const ROOM_TIMELINE_TAKEAWAY_LINE = Object.freeze({
     metadata: { serviceRoom: true, takeaway: true }
 });
 
+function normalizeRoomLineText(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+const ROOM_TIMELINE_ROOM_NAMES = new Set([
+    ROOM_TIMELINE_TAKEAWAY_LINE.name,
+    ...ALL_ROOMS
+].map(normalizeRoomLineText));
+
 const MAYSTERNYA_DEFAULT_LINES = [
     { id: 'md-consult-room', name: 'Олександр', color: '#0EA586', fromSheet: false, staffId: null, shiftStart: null, shiftEnd: null, shiftStatus: null, source: 'maysternya_default' }
 ];
@@ -67,6 +76,47 @@ function isTakeawayRoomLine(line = {}) {
         const normalized = String(value || '').trim().toLowerCase();
         return normalized === 'room-takeaway' || normalized === 'на виніс';
     });
+}
+
+function lineValueStartsWithRoomId(value) {
+    return String(value || '').trim().toLowerCase().startsWith('room-');
+}
+
+function isRoomTimelineLinePayload(line = {}) {
+    if (!line || typeof line !== 'object') return false;
+    const metadata = line.metadata || line.extraData || line.extra_data || {};
+    const source = String(line.source || line.resourceSource || line.resource_source || metadata.source || '').trim().toLowerCase();
+    const resourceType = String(line.resourceType || line.resource_type || line.type || metadata.resourceType || metadata.resource_type || '').trim().toLowerCase();
+    const identityValues = [
+        line.id,
+        line.lineId,
+        line.line_id,
+        line.resourceId,
+        line.resource_id
+    ];
+    return resourceType === 'room'
+        || identityValues.some(lineValueStartsWithRoomId)
+        || ['rooms_virtual', 'rooms_fallback'].includes(source)
+        || (source === 'timeline_resource' && resourceType === 'room');
+}
+
+function isLegacyRoomTimelineLineRow(row = {}) {
+    if (!row || typeof row !== 'object') return false;
+    const lineId = String(row.line_id || row.lineId || row.id || '').trim();
+    const resourceId = String(row.resource_id || row.resourceId || '').trim();
+    const source = String(row.source || row.resource_source || row.resourceSource || '').trim().toLowerCase();
+    const resourceType = String(row.resource_type || row.resourceType || row.type || '').trim().toLowerCase();
+    const visibleName = normalizeRoomLineText(row.name || row.short_name || row.shortName);
+    const takeawayLineId = lineId.toLowerCase() === 'room-takeaway';
+    const roomLikeLineId = lineValueStartsWithRoomId(lineId);
+    const roomLikeResourceId = lineValueStartsWithRoomId(resourceId);
+    const knownRoomName = ROOM_TIMELINE_ROOM_NAMES.has(visibleName);
+    return takeawayLineId
+        || roomLikeLineId
+        || (roomLikeResourceId && knownRoomName)
+        || resourceType === 'room'
+        || ['rooms_virtual', 'rooms_fallback'].includes(source)
+        || (source === 'timeline_resource' && resourceType === 'room');
 }
 
 function withTakeawayRoomLine(lines = [], businessContext = DEFAULT_TIMELINE_CONTEXT) {
@@ -172,8 +222,19 @@ router.get('/:date', async (req, res) => {
                 l.id`,
             [date, businessContext]
         );
-        const lines = result.rows
-            .filter(row => String(row.line_id || '').trim() !== BANQUET_SERVICE_LINE_ID)
+        const quarantinedRoomRows = result.rows.filter(isLegacyRoomTimelineLineRow);
+        const filteredRows = result.rows.filter(row => {
+            if (String(row.line_id || '').trim() === BANQUET_SERVICE_LINE_ID) return false;
+            return !isLegacyRoomTimelineLineRow(row);
+        });
+        if (quarantinedRoomRows.length > 0) {
+            log.warn('Filtered room timeline rows from animator timeline response', {
+                date,
+                businessContext,
+                count: quarantinedRoomRows.length
+            });
+        }
+        const lines = filteredRows
             .map(row => ({
                 id: row.line_id,
                 resourceId: row.line_id,
@@ -238,6 +299,14 @@ router.post('/:date', async (req, res) => {
             return res.json({ success: true, resources, lines: savedLines });
         }
 
+        if (businessContext === DEFAULT_TIMELINE_CONTEXT && display.mode === 'park' && lines.some(isRoomTimelineLinePayload)) {
+            return res.status(409).json({
+                success: false,
+                error: 'Room timeline rows cannot be saved through legacy animator lines endpoint',
+                code: 'room_timeline_legacy_line_save_blocked'
+            });
+        }
+
         await client.query('BEGIN');
         await client.query(
             `DELETE FROM lines_by_date WHERE date = $1 AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2`,
@@ -267,3 +336,11 @@ router.post('/:date', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.__timelineIsolationTestHooks = Object.freeze({
+    normalizeTimelineView,
+    lineValueStartsWithRoomId,
+    isRoomTimelineLinePayload,
+    isLegacyRoomTimelineLineRow,
+    withTakeawayRoomLine,
+    fallbackRoomLines
+});

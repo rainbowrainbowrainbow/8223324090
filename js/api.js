@@ -1725,7 +1725,14 @@ async function apiGetLines(date, options = {}) {
 
 async function apiSaveLines(date, lines) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, {
+        if (typeof window !== 'undefined' && window.TimelineView?.isRooms?.()) {
+            return {
+                success: false,
+                error: 'Room timeline rows cannot be saved through legacy animator lines endpoint',
+                code: 'room_timeline_legacy_line_save_blocked'
+            };
+        }
+        const response = await fetch(`${API_BASE}${timelineApiUrlWithView(`/lines/${date}`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify((lines || []).map(line => timelineApiPayload(line)))

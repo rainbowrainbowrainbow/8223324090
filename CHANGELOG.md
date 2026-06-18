@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.43 - Timeline View Isolation Fix
+
+### Timeline / Room vs animator isolation / Production fix / (Клешня, 18.06.2026) [codex]
+- **`Свята` більше не підтягує кімнатні рядки** - polluted `room-*` записи з legacy `lines_by_date` фільтруються перед відповіддю animator timeline.
+- **Room timeline rows не можуть записатись як аніматори** - backend і frontend блокують legacy save, якщо payload містить кімнатні rows.
+- **18.06.2026 захищено read-time guard без зміни схеми** - існуючі production rows не переписуються, а room-only записи quarantine-яться при читанні.
+- **`Кімнати` і `Свята` ізольовані по API/render/cache** - URL, render-фільтр, edit flow і cache key більше не змішують timeline views.
+- **Regression guards додано** - тести перевіряють synthetic `748 + room-takeaway + room-marvel`, room save reject, animator read quarantine і view-switch cache isolation.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.43`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.42 - Booking Serving Timeline Markers
 
 ### Booking / Room timeline / Serving markers / Production fix / (Клешня, 18.06.2026) [codex]

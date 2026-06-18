@@ -285,6 +285,13 @@ async function getLinesForDate(date, options = {}) {
 
 async function saveLinesForDate(date, lines) {
     const dateStr = timelineDateKey(date);
+    if (typeof isRoomTimelineView === 'function' && isRoomTimelineView()) {
+        console.warn('[Timeline] Blocked legacy line save from room timeline view', { date: dateStr });
+        if (typeof showNotification === 'function') {
+            showNotification('Кімнатні рядки не можна зберігати як аніматорів. Перемкніться у «Свята» для редагування аніматорів.', 'error');
+        }
+        return false;
+    }
     // v5.2: Оновлювати кеш ТІЛЬКИ після успішного збереження на сервер
     const result = await apiSaveLines(dateStr, lines);
     if (result && result.success === false) {
@@ -627,6 +634,33 @@ function timelineEmbeddedIdentity(source = {}) {
 function isParkAnimatorTimelineView() {
     const presentation = window.TimelineBusinessContext?.presentation?.();
     return !isRoomTimelineView() && presentation?.mode === 'park';
+}
+
+function timelineLineValueStartsWithRoomId(value) {
+    return String(value || '').trim().toLowerCase().startsWith('room-');
+}
+
+function isTimelineRoomOnlyLine(line = {}) {
+    if (!isParkAnimatorTimelineView()) return false;
+    const identity = timelineEmbeddedIdentity(line);
+    const metadata = line?.metadata || line?.extraData || line?.extra_data || {};
+    const source = String(line?.source || line?.resourceSource || line?.resource_source || metadata.source || '').trim().toLowerCase();
+    const resourceType = String(line?.resourceType || line?.resource_type || line?.type || metadata.resourceType || metadata.resource_type || '').trim().toLowerCase();
+    const identityValues = [
+        line?.id,
+        line?.lineId,
+        line?.line_id,
+        line?.resourceId,
+        line?.resource_id,
+        identity.resourceId,
+        identity.resource_id,
+        metadata.resourceId,
+        metadata.resource_id
+    ];
+    return resourceType === 'room'
+        || identityValues.some(timelineLineValueStartsWithRoomId)
+        || ['rooms_virtual', 'rooms_fallback'].includes(source)
+        || (source === 'timeline_resource' && resourceType === 'room');
 }
 
 function timelineBanquetServiceLineMatches(value) {
@@ -1806,7 +1840,7 @@ function normalizeTimelineLinesForContext(lines = []) {
             return { ...identity, name: `${presentation.emptyLineName || 'Спеціаліст'} ${index + 1}` };
         }
         return identity;
-    }).filter(line => !isTimelineBanquetServicePseudoLine(line));
+    }).filter(line => !isTimelineBanquetServicePseudoLine(line) && !isTimelineRoomOnlyLine(line));
 }
 
 function normalizeTimelineBookingsForContext(bookings = []) {
@@ -1890,7 +1924,7 @@ async function renderTimeline() {
         }
 
     const addLineBtn = document.getElementById('addLineBtn');
-    if (addLineBtn) addLineBtn.style.display = isViewer() ? 'none' : '';
+    if (addLineBtn) addLineBtn.style.display = (isViewer() || isRoomTimelineView()) ? 'none' : '';
 
     // Режим декількох днів
     if (AppState.multiDayMode) {
@@ -2073,6 +2107,7 @@ async function renderTimeline() {
         bindTimelineBanquetRoomHeader(lineHeader, line);
         lineHeader?.addEventListener('click', event => {
             if (event.target?.closest?.('[data-banquet-room-card]')) return;
+            if (isRoomTimelineView()) return;
             editLineModal(line.id);
         });
         } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }

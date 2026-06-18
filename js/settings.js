@@ -346,6 +346,16 @@ function getAnimatorTelegramFallbackMessage(result) {
     return 'Telegram зараз недоступний — аніматора додано в CRM вручну.';
 }
 
+function isRoomTimelineLineEditingBlocked() {
+    return typeof isRoomTimelineView === 'function' && isRoomTimelineView();
+}
+
+function notifyRoomTimelineLineEditingBlocked() {
+    if (typeof showNotification === 'function') {
+        showNotification('Кімнатні рядки не редагуються як аніматори. Перемкніться у «Свята» для редагування аніматорів.', 'error');
+    }
+}
+
 async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result) {
     if (result?.reason === 'auth_error') {
         showNotification(getAnimatorTelegramFallbackMessage(result), 'error');
@@ -369,6 +379,10 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
 
 async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
+    if (isRoomTimelineLineEditingBlocked()) {
+        notifyRoomTimelineLineEditingBlocked();
+        return;
+    }
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
         let nameValue = null;
@@ -458,6 +472,10 @@ async function addNewLine() {
 }
 
 async function editLineModal(lineId) {
+    if (isRoomTimelineLineEditingBlocked()) {
+        notifyRoomTimelineLineEditingBlocked();
+        return;
+    }
     const lines = await getLinesForDate(AppState.selectedDate);
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
@@ -576,6 +594,10 @@ async function populateAnimatorsSelect(selectedName = '') {
 
 async function handleEditLine(e) {
     e.preventDefault();
+    if (isRoomTimelineLineEditingBlocked()) {
+        notifyRoomTimelineLineEditingBlocked();
+        return;
+    }
 
     const lineId = document.getElementById('editLineId')?.value;
     const lines = await getLinesForDate(AppState.selectedDate);
@@ -605,6 +627,10 @@ async function handleEditLine(e) {
 }
 
 async function deleteLine() {
+    if (isRoomTimelineLineEditingBlocked()) {
+        notifyRoomTimelineLineEditingBlocked();
+        return;
+    }
     const lineId = document.getElementById('editLineId')?.value;
     const lines = await getLinesForDate(AppState.selectedDate);
 

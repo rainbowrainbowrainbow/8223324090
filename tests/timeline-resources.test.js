@@ -268,7 +268,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(linesRoute, /withTakeawayRoomLine\(resources\.map\(resourceToLine\), businessContext\)/);
     assert.match(linesRoute, /id: 'room-takeaway'/);
     assert.match(linesRoute, /BANQUET_SERVICE_LINE_ID/);
-    assert.match(linesRoute, /row\.line_id \|\| ''\)\.trim\(\) !== BANQUET_SERVICE_LINE_ID/);
+    assert.match(linesRoute, /String\(row\.line_id \|\| ''\)\.trim\(\) === BANQUET_SERVICE_LINE_ID/);
+    assert.match(linesRoute, /!isLegacyRoomTimelineLineRow\(row\)/);
     assert.match(bookingsRoute, /projectBookingsForTimelineView/);
     assert.match(bookingsRoute, /function bookingMatchesBanquetServiceLine/);
     assert.match(bookingsRoute, /function isBanquetServiceTimelineBooking/);
@@ -297,7 +298,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /function isParkAnimatorTimelineView/);
     assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
     assert.match(timeline, /function isTimelineBanquetServiceBooking/);
-    assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\)\)/);
+    assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)\)/);
     assert.match(timeline, /\.filter\(booking => !isTimelineBanquetServiceBooking\(booking\)\)/);
     assert.match(ui, /function getTimelineExportLineBookings/);
     assert.match(ui, /timelineBookingsForLine\(bookings,\s*line\)/);
@@ -327,6 +328,59 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);
     assert.match(migration, /'room-marvel', 'room', 'Марвел'/);
+});
+
+test('room timeline rows cannot be saved through legacy animator lines endpoint', () => {
+    const linesRoute = read('routes/lines.js');
+    const timeline = read('js/timeline.js');
+    const api = read('js/api.js');
+    const settings = read('js/settings.js');
+
+    assert.match(linesRoute, /function isRoomTimelineLinePayload/);
+    assert.match(linesRoute, /function lineValueStartsWithRoomId/);
+    assert.match(linesRoute, /resourceType === 'room'/);
+    assert.match(linesRoute, /rooms_virtual/);
+    assert.match(linesRoute, /rooms_fallback/);
+    assert.match(linesRoute, /source === 'timeline_resource' && resourceType === 'room'/);
+    assert.match(linesRoute, /businessContext === DEFAULT_TIMELINE_CONTEXT && display\.mode === 'park' && lines\.some\(isRoomTimelineLinePayload\)/);
+    assert.match(linesRoute, /res\.status\(409\)\.json/);
+    assert.match(linesRoute, /room_timeline_legacy_line_save_blocked/);
+    assert.match(linesRoute, /Room timeline rows cannot be saved through legacy animator lines endpoint/);
+
+    assert.match(timeline, /Blocked legacy line save from room timeline view/);
+    assert.match(timeline, /isViewer\(\) \|\| isRoomTimelineView\(\)/);
+    assert.match(timeline, /if \(isRoomTimelineView\(\)\) return;[\s\S]*editLineModal\(line\.id\)/);
+    assert.ok(api.includes('window.TimelineView?.isRooms?.()'));
+    assert.ok(api.includes('timelineApiUrlWithView(`/lines/${date}`)'));
+    assert.match(settings, /function isRoomTimelineLineEditingBlocked/);
+    assert.match(settings, /async function addNewLine\(\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
+    assert.match(settings, /async function editLineModal\(lineId\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
+    assert.match(settings, /async function handleEditLine\(e\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
+    assert.match(settings, /async function deleteLine\(\)[\s\S]*isRoomTimelineLineEditingBlocked\(\)/);
+});
+
+test('polluted room lines are quarantined from park animator timeline reads', () => {
+    const linesRoute = read('routes/lines.js');
+    const timeline = read('js/timeline.js');
+
+    assert.match(linesRoute, /const ROOM_TIMELINE_ROOM_NAMES = new Set/);
+    assert.match(linesRoute, /function isLegacyRoomTimelineLineRow/);
+    assert.match(linesRoute, /lineId\.toLowerCase\(\) === 'room-takeaway'/);
+    assert.match(linesRoute, /lineValueStartsWithRoomId\(lineId\)/);
+    assert.match(linesRoute, /ROOM_TIMELINE_ROOM_NAMES\.has\(visibleName\)/);
+    assert.match(linesRoute, /const quarantinedRoomRows = result\.rows\.filter\(isLegacyRoomTimelineLineRow\)/);
+    assert.match(linesRoute, /const filteredRows = result\.rows\.filter/);
+    assert.match(linesRoute, /!isLegacyRoomTimelineLineRow\(row\)/);
+    assert.match(linesRoute, /Filtered room timeline rows from animator timeline response/);
+    assert.match(linesRoute, /count: quarantinedRoomRows\.length/);
+    assert.match(linesRoute, /const lines = filteredRows/);
+
+    assert.match(timeline, /function isTimelineRoomOnlyLine/);
+    assert.match(timeline, /function timelineLineValueStartsWithRoomId/);
+    assert.match(timeline, /resourceType === 'room'/);
+    assert.match(timeline, /rooms_virtual/);
+    assert.match(timeline, /rooms_fallback/);
+    assert.match(timeline, /!isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)/);
 });
 
 test('takeaway room stays visible but does not reserve a physical room slot', async () => {
@@ -741,8 +795,9 @@ test('animator timeline keeps banquet teaser surfaces out of park animator view'
 
     assert.match(timeline, /function isParkAnimatorTimelineView/);
     assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
+    assert.match(timeline, /function isTimelineRoomOnlyLine/);
     assert.match(timeline, /function isTimelineBanquetServiceBooking/);
-    assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\)\)/);
+    assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)\)/);
     assert.match(timeline, /\.filter\(booking => !isTimelineBanquetServiceBooking\(booking\)\)/);
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);

@@ -960,8 +960,13 @@ test('room timeline de-emphasizes duplicate kitchen booking block when service m
     assert.ok(cssNumberValue(bandRule, 'opacity') <= 0.8);
     assert.match(cssDeclaration(bandRule, 'background'), /linear-gradient/);
     assert.ok(bandTextRule, 'occupancy band hides duplicate booking text rule exists');
-    assert.match(bandTextRule[1], /opacity:\s*0/);
+    assert.match(bandTextRule[1], /visibility:\s*hidden/);
+    assert.match(bandTextRule[1], /opacity:\s*0\s*!important/);
     assert.match(bandTextRule[1], /pointer-events:\s*none/);
+    assert.ok(
+        css.indexOf('opacity: 0 !important') < css.indexOf('.booking-block .subtitle'),
+        'occupancy band hidden text remains stronger than later generic booking text opacity'
+    );
     assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), true);
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, '1');

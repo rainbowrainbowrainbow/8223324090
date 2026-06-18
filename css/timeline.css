@@ -493,6 +493,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     opacity: 0.9;
 }
 
+.booking-block.is-timeline-banquet-occupancy-band > *,
 .booking-block.is-timeline-banquet-occupancy-band .user-letter,
 .booking-block.is-timeline-banquet-occupancy-band .title,
 .booking-block.is-timeline-banquet-occupancy-band .subtitle,
@@ -500,7 +501,8 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .booking-block.is-timeline-banquet-occupancy-band .note-text,
 .booking-block.is-timeline-banquet-occupancy-band .duration-badge,
 .booking-block.is-timeline-banquet-occupancy-band .booking-banquet-link-handle {
-    opacity: 0;
+    visibility: hidden;
+    opacity: 0 !important;
     pointer-events: none;
 }
 

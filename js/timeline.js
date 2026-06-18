@@ -155,18 +155,21 @@ async function setTimelineView(view, options = {}) {
     try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
     try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
     updateTimelineViewControls();
-    if (next !== current && options.render !== false) {
-        if (typeof resetTimelineVerticalScroll === 'function') {
-            resetTimelineVerticalScroll('view-switch-before-render');
+    if (next !== current) {
+        clearTimelineBanquetRoomPreviews();
+        if (options.render !== false) {
+            if (typeof resetTimelineVerticalScroll === 'function') {
+                resetTimelineVerticalScroll('view-switch-before-render');
+            }
+            AppState.cachedBookings = {};
+            AppState.cachedLines = {};
+            AppState.lines = [];
+            AppState.linesByDate = {};
+            if (typeof closeBookingPanel === 'function') {
+                await closeBookingPanel(true).catch?.(() => {});
+            }
+            await renderTimeline();
         }
-        AppState.cachedBookings = {};
-        AppState.cachedLines = {};
-        AppState.lines = [];
-        AppState.linesByDate = {};
-        if (typeof closeBookingPanel === 'function') {
-            await closeBookingPanel(true).catch?.(() => {});
-        }
-        await renderTimeline();
     }
     window.dispatchEvent(new CustomEvent('timeline:view-changed', {
         detail: { view: next, previousView: current }
@@ -909,7 +912,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
     const primaryBooking = grouped.primary || (snapshot.members || []).find(member => member?.isPrimary)?.booking || allBookings[0];
     const kitchenBookings = uniqueTimelineBanquetBookings([
         ...(grouped.kitchen || []),
-        ...allBookings.filter(timelineBanquetBookingHasMenu)
+        ...allBookings.filter(booking => timelineBanquetBookingHasMenu(booking) || timelineBanquetServiceEvents(booking).length > 0)
     ]);
     const activityBookings = uniqueTimelineBanquetBookings([
         ...(grouped.activities || []),
@@ -1516,8 +1519,126 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
     };
 }
 
+function timelineRoomServiceMarkerGroupId(summary = {}, fallback = '') {
+    const bookingId = summary.carrierBooking?.id || summary.primaryBooking?.id || summary.allBookings?.[0]?.id || '';
+    return String(
+        fallback
+        || summary.groupId
+        || timelineBanquetSnapshotGroupId(summary.snapshot)
+        || (bookingId ? `booking-${bookingId}` : '')
+    ).trim();
+}
+
+function timelineBanquetRoomGridForSummary(summary = {}) {
+    const key = timelineBanquetRoomKey(summary.room);
+    if (!key) return null;
+    const headers = Array.from(document.querySelectorAll('.line-header[data-line-id]'));
+    for (const header of headers) {
+        const headerKeys = [
+            header.dataset.lineId,
+            header.dataset.timelineRoomName,
+            header.querySelector('.line-name')?.textContent
+        ].map(timelineBanquetRoomKey);
+        if (!headerKeys.includes(key)) continue;
+        return header.parentElement?.querySelector('.line-grid') || getTimelineLineGrid(header.dataset.lineId);
+    }
+    return null;
+}
+
+function clearTimelineRoomServiceMarkers(lineGrid = null, groupId = '') {
+    const targetGroupId = String(groupId || '').trim();
+    const grids = lineGrid ? [lineGrid] : Array.from(document.querySelectorAll('.line-grid'));
+    grids.forEach(grid => {
+        if (!grid) return;
+        grid.querySelectorAll('.timeline-room-service-marker').forEach(marker => {
+            if (!targetGroupId || marker.dataset.banquetRoomMarkerGroup === targetGroupId) marker.remove();
+        });
+        if (!grid.querySelector('.timeline-room-service-marker')) {
+            grid.classList.remove('has-timeline-room-service-markers');
+        }
+    });
+}
+
+function timelineRoomServiceMarkerDetail(marker = {}) {
+    const items = Array.isArray(marker.items) ? marker.items : [];
+    const itemText = items
+        .map(item => [item?.title, item?.quantity ? `x${item.quantity}` : '', item?.note].filter(Boolean).join(' '))
+        .filter(Boolean)
+        .slice(0, 3);
+    return [timelineBanquetMarkerLabel(marker), ...itemText].filter(Boolean).join('\n');
+}
+
+function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
+    if (!isRoomTimelineView() || !summary) return;
+    const groupId = timelineRoomServiceMarkerGroupId(summary, options.groupId);
+    if (groupId) clearTimelineRoomServiceMarkers(null, groupId);
+    const lineGrid = timelineBanquetRoomGridForSummary(summary);
+    if (!lineGrid) return;
+
+    const markers = (Array.isArray(summary.servingMarkers) ? summary.servingMarkers : [])
+        .map(marker => ({ ...marker, time: normalizeTimelineBanquetServingTime(marker?.time) }))
+        .filter(marker => marker.time);
+    if (!markers.length) return;
+
+    const range = getTimeRange(AppState.selectedDate);
+    const startMinutes = range.start * 60;
+    const endMinutes = range.end * 60;
+    const baseWidth = Math.max(40, Math.min(92, timelineDurationWidth(CONFIG.TIMELINE.CELL_MINUTES, lineGrid)));
+    const gridWidth = lineGrid.scrollWidth || lineGrid.getBoundingClientRect?.().width || 0;
+    const stackByTime = new Map();
+    let renderedCount = 0;
+
+    markers.forEach((marker, index) => {
+        const markerMinutes = timeToMinutes(marker.time);
+        if (!Number.isFinite(markerMinutes) || markerMinutes < startMinutes || markerMinutes >= endMinutes) return;
+
+        const stackIndex = stackByTime.get(marker.time) || 0;
+        stackByTime.set(marker.time, stackIndex + 1);
+        const laneIndex = stackIndex % 3;
+        const laneGroup = Math.floor(stackIndex / 3);
+        const leftRaw = timelineMinutesToPixels(markerMinutes - startMinutes, lineGrid) + (laneGroup * 10);
+        const maxLeft = gridWidth > baseWidth ? gridWidth - baseWidth : leftRaw;
+        const left = Math.max(0, Math.min(leftRaw, maxLeft));
+        const type = normalizeTimelineBanquetServiceEventType(marker.type || 'service');
+        const typeKey = timelineBanquetRoomSignalKey(type);
+        const label = timelineBanquetMarkerLabel(marker);
+        const markerEl = document.createElement('button');
+
+        markerEl.type = 'button';
+        markerEl.className = `timeline-room-service-marker timeline-room-service-marker--${typeKey}`;
+        markerEl.dataset.timelineRoomServiceMarker = '1';
+        markerEl.dataset.banquetRoomMarker = type;
+        markerEl.dataset.markerTime = marker.time;
+        markerEl.dataset.markerIndex = String(index);
+        if (groupId) markerEl.dataset.banquetRoomMarkerGroup = groupId;
+        markerEl.style.left = `${left}px`;
+        markerEl.style.top = `${4 + laneIndex * 18}px`;
+        markerEl.style.width = `${baseWidth}px`;
+        markerEl.textContent = label;
+        markerEl.title = timelineRoomServiceMarkerDetail(marker);
+        markerEl.setAttribute('aria-label', [label, summary.room, summary.customerName].filter(Boolean).join(' - '));
+        markerEl.setAttribute('aria-haspopup', 'dialog');
+        markerEl.onpointerdown = event => {
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        markerEl.onclick = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            showTimelineBanquetInspector(event, summary, markerEl);
+        };
+        lineGrid.appendChild(markerEl);
+        renderedCount += 1;
+    });
+
+    if (renderedCount > 0) {
+        lineGrid.classList.add('has-timeline-room-service-markers');
+    }
+}
+
 function clearTimelineBanquetRoomPreviews() {
     TIMELINE_BANQUET_ROOM_PREVIEWS.clear();
+    clearTimelineRoomServiceMarkers();
     hideTimelineBanquetInspector();
     document.querySelectorAll('.line-header.has-timeline-banquet-room-preview').forEach(header => {
         header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
@@ -1632,6 +1753,7 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
     registerTimelineBanquetRoomPreview(summaryForInspector);
+    renderTimelineRoomServiceMarkers(summaryForInspector, { groupId });
 }
 
 function applyTimelineBanquetBadges(snapshot = {}) {
@@ -1922,6 +2044,7 @@ async function renderTimeline() {
         if (typeof normalizeTimelineToolbarTransientState === 'function') {
             normalizeTimelineToolbarTransientState('render-start');
         }
+        clearTimelineBanquetRoomPreviews();
 
     const addLineBtn = document.getElementById('addLineBtn');
     if (addLineBtn) addLineBtn.style.display = (isViewer() || isRoomTimelineView()) ? 'none' : '';

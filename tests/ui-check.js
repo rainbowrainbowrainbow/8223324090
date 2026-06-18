@@ -835,6 +835,7 @@ const apiCode = fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
 const timelineInteractionModelCode = fs.readFileSync(path.join(ROOT, 'js/timeline-interaction-model.js'), 'utf8');
+const timelineResourcesTestCode = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-resources.test.js'), 'utf8');
 const timelineRegressionMatrixTestCode = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-regression-matrix.test.js'), 'utf8');
 const timelineUatRegressionMatrixDoc = fs.readFileSync(path.join(ROOT, 'docs', 'TIMELINE_UAT_REGRESSION_MATRIX.md'), 'utf8');
 const timelineVisualSettingsDoc = fs.readFileSync(path.join(ROOT, 'docs', 'TIMELINE_VISUAL_SETTINGS_CENTER.md'), 'utf8');
@@ -939,6 +940,17 @@ const timelineBanquetRoomCardBlock = timelineCode.slice(
     timelineCode.indexOf('function timelineBanquetRoomCardSignals'),
     timelineCode.indexOf('function clearTimelineBanquetRoomPreviews')
 );
+const timelineRoomServiceMarkerBlock = timelineCode.slice(
+    timelineCode.indexOf('function renderTimelineRoomServiceMarkers'),
+    timelineCode.indexOf('function clearTimelineBanquetRoomPreviews')
+);
+const timelineSetViewBlock = timelineCode.slice(
+    timelineCode.indexOf('async function setTimelineView'),
+    timelineCode.indexOf('window.TimelineView =')
+);
+const timelineRenderStartIndex = timelineCode.indexOf('async function renderTimeline()');
+const timelineRenderClearIndex = timelineCode.indexOf('clearTimelineBanquetRoomPreviews()', timelineRenderStartIndex);
+const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedDate)', timelineRenderStartIndex);
 check('Room timeline banquet preview hydrates from cached group snapshots without blocking render',
     timelineCode.includes('TIMELINE_BANQUET_SNAPSHOT_CACHE')
     && timelineCode.includes('function loadTimelineBanquetSnapshotForBooking')
@@ -970,6 +982,32 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && !timelineConstructorCss.includes('.timeline-banquet-service-marker')
     && !timelineCode.includes('showTimelineBanquetPopover')
     && !timelineConstructorCss.includes('.timeline-banquet-popover'));
+check('Room timeline service markers remain isolated from animator timeline',
+    timelineRoomServiceMarkerBlock.includes('if (!isRoomTimelineView() || !summary) return')
+    && timelineRoomServiceMarkerBlock.includes('timelineBanquetRoomGridForSummary(summary)')
+    && timelineRoomServiceMarkerBlock.includes('lineGrid.appendChild(markerEl)')
+    && timelineRoomServiceMarkerBlock.includes("markerEl.setAttribute('aria-haspopup', 'dialog')")
+    && timelineCode.includes('function clearTimelineRoomServiceMarkers')
+    && timelineCode.includes('function clearTimelineBanquetRoomPreviews()')
+    && timelineCode.includes('clearTimelineRoomServiceMarkers();')
+    && timelineSetViewBlock.includes('clearTimelineBanquetRoomPreviews()')
+    && timelineSetViewBlock.indexOf('clearTimelineBanquetRoomPreviews()') < timelineSetViewBlock.indexOf('await renderTimeline()')
+    && timelineRenderClearIndex > timelineRenderStartIndex
+    && timelineRenderFetchIndex > timelineRenderClearIndex
+    && timelineCode.includes('const timelineView = timelineCurrentView();')
+    && timelineCode.includes('return `${context}|${mode}|${resourceType}|${timelineView}`;')
+    && timelineConstructorCss.includes('.line-grid.has-timeline-room-service-markers')
+    && timelineConstructorCss.includes('.timeline-room-service-marker')
+    && timelineConstructorCss.includes('.timeline-room-service-marker--room-setup')
+    && timelineResourcesTestCode.includes("querySelectorAll('.line-grid .timeline-room-service-marker')")
+    && timelineResourcesTestCode.includes('room timeline renders multiple menu serving markers inside the room grid')
+    && timelineResourcesTestCode.includes('room timeline renders room_setup service event as a separate room-grid marker')
+    && timelineResourcesTestCode.includes('room timeline keeps mixed same-time room-grid markers without dedupe')
+    && timelineResourcesTestCode.includes('assert.notEqual(markers[0].left, markers[1].left)')
+    && timelineResourcesTestCode.includes('parseFloat(markers[2].left) > parseFloat(markers[1].left)')
+    && timelineResourcesTestCode.includes('ctx.__timelineViewState.room = false')
+    && !timelineCode.includes('data-banquet-service-marker')
+    && !timelineConstructorCss.includes('.timeline-banquet-service-marker'));
 check('Room timeline banquet preview uses readable labels instead of single-letter badge labels',
     timelineBanquetRoomCardBlock.includes("label: 'Без часу'")
     && timelineBanquetRoomCardBlock.includes('Кухня ${menuCount} поз.')

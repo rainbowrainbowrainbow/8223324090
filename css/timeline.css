@@ -468,6 +468,87 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.56), 0 8px 20px rgba(2, 6, 23, 0.24);
 }
 
+.line-grid.has-timeline-room-service-markers {
+    overflow: visible;
+}
+
+.timeline-room-service-marker {
+    appearance: none;
+    position: absolute;
+    z-index: 24;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    visibility: visible;
+    height: 16px;
+    min-width: 0;
+    opacity: 1;
+    padding: 0 5px;
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    border-radius: 5px;
+    background: rgba(248, 250, 252, 0.96);
+    color: #0F172A;
+    box-shadow: 0 3px 9px rgba(15, 23, 42, 0.16);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 14px;
+    overflow: hidden;
+    pointer-events: auto;
+    text-overflow: ellipsis;
+    user-select: none;
+    white-space: nowrap;
+    transition: transform var(--speed-fast) var(--ease-smooth), box-shadow var(--speed-fast), border-color var(--speed-fast);
+}
+
+.timeline-room-service-marker:hover,
+.timeline-room-service-marker:focus-visible {
+    z-index: 32;
+    border-color: rgba(20, 184, 166, 0.62);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+    outline: 2px solid rgba(20, 184, 166, 0.24);
+    outline-offset: 1px;
+    transform: translateY(-1px);
+}
+
+.timeline-room-service-marker--food-service {
+    border-color: rgba(20, 184, 166, 0.42);
+    background: rgba(240, 253, 250, 0.96);
+    color: #0F766E;
+}
+
+.timeline-room-service-marker--room-setup {
+    border-color: rgba(124, 58, 237, 0.38);
+    background: rgba(245, 243, 255, 0.96);
+    color: #6D28D9;
+}
+
+.timeline-room-service-marker--cake {
+    border-color: rgba(219, 39, 119, 0.38);
+    background: rgba(253, 242, 248, 0.96);
+    color: #BE185D;
+}
+
+.timeline-room-service-marker--drinks {
+    border-color: rgba(37, 99, 235, 0.36);
+    background: rgba(239, 246, 255, 0.96);
+    color: #1D4ED8;
+}
+
+.timeline-room-service-marker--custom {
+    border-color: rgba(100, 116, 139, 0.36);
+    background: rgba(248, 250, 252, 0.96);
+    color: #475569;
+}
+
+.timeline-room-service-marker--service {
+    border-color: rgba(14, 116, 144, 0.36);
+    background: rgba(236, 254, 255, 0.96);
+    color: #0E7490;
+}
+
 .line-header.has-timeline-banquet-room-preview {
     justify-content: flex-start;
     gap: 3px;
@@ -742,6 +823,64 @@ html[data-theme="dark"] .timeline-banquet-room-card-label {
 body.dark-mode .timeline-banquet-room-card-text,
 html[data-theme="dark"] .timeline-banquet-room-card-text {
     color: #F8FAFC;
+}
+
+body.dark-mode .timeline-room-service-marker,
+html[data-theme="dark"] .timeline-room-service-marker {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(15, 23, 42, 0.94);
+    color: #F8FAFC;
+    box-shadow: 0 5px 14px rgba(2, 6, 23, 0.38);
+}
+
+body.dark-mode .timeline-room-service-marker:hover,
+body.dark-mode .timeline-room-service-marker:focus-visible,
+html[data-theme="dark"] .timeline-room-service-marker:hover,
+html[data-theme="dark"] .timeline-room-service-marker:focus-visible {
+    border-color: rgba(94, 234, 212, 0.68);
+    outline-color: rgba(45, 212, 191, 0.24);
+}
+
+body.dark-mode .timeline-room-service-marker--food-service,
+html[data-theme="dark"] .timeline-room-service-marker--food-service {
+    border-color: rgba(45, 212, 191, 0.4);
+    background: rgba(20, 184, 166, 0.22);
+    color: #CCFBF1;
+}
+
+body.dark-mode .timeline-room-service-marker--room-setup,
+html[data-theme="dark"] .timeline-room-service-marker--room-setup {
+    border-color: rgba(167, 139, 250, 0.42);
+    background: rgba(124, 58, 237, 0.24);
+    color: #EDE9FE;
+}
+
+body.dark-mode .timeline-room-service-marker--cake,
+html[data-theme="dark"] .timeline-room-service-marker--cake {
+    border-color: rgba(244, 114, 182, 0.42);
+    background: rgba(219, 39, 119, 0.22);
+    color: #FCE7F3;
+}
+
+body.dark-mode .timeline-room-service-marker--drinks,
+html[data-theme="dark"] .timeline-room-service-marker--drinks {
+    border-color: rgba(96, 165, 250, 0.42);
+    background: rgba(37, 99, 235, 0.22);
+    color: #DBEAFE;
+}
+
+body.dark-mode .timeline-room-service-marker--custom,
+html[data-theme="dark"] .timeline-room-service-marker--custom {
+    border-color: rgba(148, 163, 184, 0.36);
+    background: rgba(100, 116, 139, 0.22);
+    color: #E2E8F0;
+}
+
+body.dark-mode .timeline-room-service-marker--service,
+html[data-theme="dark"] .timeline-room-service-marker--service {
+    border-color: rgba(34, 211, 238, 0.4);
+    background: rgba(14, 116, 144, 0.22);
+    color: #CFFAFE;
 }
 
 .timeline-banquet-inspector {

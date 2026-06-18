@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.44 - Room Timeline Service Markers
+
+### Booking / Room timeline / Kitchen service markers / Production fix / (Клешня, 18.06.2026) [codex]
+- **Видачі кухні тепер видно прямо у сітці `Кімнати`** - кожен `extraData.bookingPackage.menuPositions[].servingTime` рендериться окремим marker/block у відповідному `.line-grid`, а не тільки compact-сигналом у header.
+- **Однаковий час більше не зливає події** - `food_service` і `room_setup` на `12:00` stack-яться у різних compact lanes, тому `Видача 12:00` і `Підготувати кімнату 12:00` обидва залишаються видимими.
+- **Markers позиціонуються по своєму часу видачі/сервісу** - `12:00` і `12:30` мають різні left positions, не залежать від `booking.time`, і не перекривають main booking block.
+- **`Кімнати` і `Свята` лишаються ізольованими** - `.timeline-room-service-marker` створюється/очищається тільки в room timeline; у `Свята` marker count лишається `0`.
+- **E2E QA пройдено на safe local PostgreSQL** - save/readback/reload/view-switch підтвердили 3 markers у `room-marvel`; production data не змінювались.
+- **Regression guards оновлено** - тести перевіряють `.line-grid .timeline-room-service-marker`, same-time stacking, `room_setup`, view switch cleanup і cache isolation.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.44`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.43 - Timeline View Isolation Fix
 
 ### Timeline / Room vs animator isolation / Production fix / (Клешня, 18.06.2026) [codex]

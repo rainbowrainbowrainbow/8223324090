@@ -464,7 +464,8 @@ async function editLineModal(lineId) {
 
     document.getElementById('editLineId').value = line.id;
     document.getElementById('editLineName').value = line.name;
-    document.getElementById('editLineColor').value = line.color;
+    const colorInput = document.getElementById('editLineColor');
+    if (colorInput) colorInput.value = line.color || '#4CAF50';
 
     await populateAnimatorsSelect(line.name);
 
@@ -594,7 +595,7 @@ async function handleEditLine(e) {
             return;
         }
         lines[index].name = newName;
-        lines[index].color = document.getElementById('editLineColor')?.value;
+        lines[index].color = document.getElementById('editLineColor')?.value || lines[index].color;
         await saveLinesForDate(AppState.selectedDate, lines);
 
         closeAllModals();

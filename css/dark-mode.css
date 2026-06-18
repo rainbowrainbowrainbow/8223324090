@@ -680,7 +680,8 @@ body.dark-mode select option:disabled {
 
 body.dark-mode .form-section select,
 body.dark-mode .form-section input,
-body.dark-mode .form-group input {
+body.dark-mode .form-group input,
+body.dark-mode .form-group select {
     background: var(--gray-100);
     border-color: var(--gray-300);
     color: #E2E8F0;
@@ -688,9 +689,16 @@ body.dark-mode .form-group input {
 
 body.dark-mode .form-section select:focus,
 body.dark-mode .form-section input:focus,
-body.dark-mode .form-group input:focus {
+body.dark-mode .form-group input:focus,
+body.dark-mode .form-group select:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(16,185,129,0.15);
+}
+
+body.dark-mode .form-group select {
+    background-image:
+        linear-gradient(45deg, transparent 50%, #CBD5E1 50%),
+        linear-gradient(135deg, #CBD5E1 50%, transparent 50%);
 }
 
 /* v5.49: Program search in dark */

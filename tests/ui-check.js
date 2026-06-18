@@ -210,6 +210,16 @@ checkPage('index.html', (doc, html) => {
     check('Confirm modals stay singleton and motion-free', modalsCss.includes('v0.59.12: confirm dialogs are singleton') && modalsCss.includes('.confirm-overlay[data-confirm-kind="confirm"]') && modalsCss.includes('transform: none !important'));
     check('Product sales title opts out of sticky modal header block', modalsCss.includes('.product-sales-head h3') && modalsCss.includes('position: static !important') && modalsCss.includes('background: transparent !important'));
     check('Certificate modals use dedicated close buttons for mobile Safari', doc.querySelector('#certificateModal [data-cert-modal-close="certificateModal"]')?.tagName === 'BUTTON' && doc.querySelector('#certDetailModal [data-cert-modal-close="certDetailModal"]')?.tagName === 'BUTTON' && doc.querySelector('#batchCertModal [data-cert-modal-close="batchCertModal"]')?.tagName === 'BUTTON');
+    check('Timeline edit animator modal uses CRM-styled controls without color picker',
+        doc.querySelector('#editLineModal .timeline-line-editor-modal')
+        && doc.querySelector('#editLineModal #editLineNameSelect')
+        && doc.querySelector('#editLineModal #editLineName')
+        && doc.querySelector('#editLineModal #editLineColor[type="hidden"]')
+        && !doc.querySelector('#editLineModal input[type="color"]')
+        && modalsCss.includes('.timeline-line-editor-modal')
+        && modalsCss.includes('.timeline-line-editor-actions')
+        && modalsCss.includes('.form-group select')
+        && modalsCss.includes('appearance: none'));
     check('Legacy certificate batch quantity picker hides radio without display none and keeps focus ring', !!doc.querySelector('input[name="batchQty"]') && !legacyBatchInputRule.includes('display: none') && legacyBatchInputRule.includes('opacity: 0') && legacyBatchInputRule.includes('clip-path: inset(50%)') && featuresCss.includes('.batch-qty-option:has(input:focus-visible)') && featuresCss.includes('.batch-qty-option:has(input:checked)') && featuresCss.includes('body.dark-mode .batch-qty-option:has(input:checked)'));
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     const pinataModeOptions = Array.from(doc.getElementById('pinataMode')?.querySelectorAll('option') || []).map(option => option.value);

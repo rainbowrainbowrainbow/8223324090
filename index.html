@@ -973,26 +973,23 @@
 
     <!-- Модальне вікно редагування лінії -->
     <div id="editLineModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Редагувати аніматора">
-        <div class="modal-content">
+        <div class="modal-content timeline-line-editor-modal">
             <span class="modal-close">&times;</span>
             <h3>Редагувати аніматора</h3>
-            <form id="editLineForm">
+            <form id="editLineForm" class="timeline-line-editor-form">
                 <input type="hidden" id="editLineId">
+                <input type="hidden" id="editLineColor" value="#4CAF50">
                 <div class="form-group">
-                    <label>Аніматор</label>
+                    <label for="editLineNameSelect">Аніматор зі Staff</label>
                     <select id="editLineNameSelect">
                         <option value="">Оберіть аніматора</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Або введіть вручну</label>
+                    <label for="editLineName">Назва в таймлайні</label>
                     <input type="text" id="editLineName" placeholder="Наприклад: Женя">
                 </div>
-                <div class="form-group">
-                    <label>Колір</label>
-                    <input type="color" id="editLineColor" value="#4CAF50">
-                </div>
-                <div class="form-buttons">
+                <div class="form-buttons timeline-line-editor-actions">
                     <button type="submit" class="btn-submit">Зберегти</button>
                     <button type="button" id="deleteLineBtn" class="btn-danger">Видалити</button>
                 </div>

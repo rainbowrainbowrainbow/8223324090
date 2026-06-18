@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.47",
+  "version": "0.76.48",
   "eventGenix": {
-    "releaseLabel": "Room Timeline Marker Visual Cleanup"
+    "releaseLabel": "Selected Activity Dark Mode Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

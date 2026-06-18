@@ -113,6 +113,7 @@ checkPage('index.html', (doc, html) => {
     const modalsCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
     const featuresCss = fs.readFileSync(path.join(ROOT, 'css', 'features.css'), 'utf8');
     const panelCss = fs.readFileSync(path.join(ROOT, 'css', 'panel.css'), 'utf8');
+    const darkModeCss = fs.readFileSync(path.join(ROOT, 'css', 'dark-mode.css'), 'utf8');
     const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
     const bookingCode = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     const bookingFormCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-form.js'), 'utf8');
@@ -246,7 +247,16 @@ checkPage('index.html', (doc, html) => {
     check('Products API requests effective prices by timeline date', apiCode.includes("params.set('priceDate'") && productPricingCode.includes('function buildProductPriceJoin') && productPricingCode.includes('effective_from <= ${queryDate}') && productPricingCode.includes('nextPriceFrom'));
     check('Booking full route persists activity bookings as banquet-linked root blocks', bookingsRouteCode.includes('const banquetActivities = Array.isArray(req.body?.banquetActivities)') && bookingsRouteCode.includes('const activityRows = []') && bookingsRouteCode.includes('upsertBanquetLink(client, businessContext, main.id, activity.id') && bookingsRouteCode.includes('activityBookings: responseActivityBookings') && bookingsRouteCode.includes('banquetLinks: mapBookingVisualLinkRowsForResponse(banquetLinkRows, main.id)') && bookingsRouteCode.includes('sharedRoomLinks: mapBookingVisualLinkRowsForResponse(') && bookingsRouteCode.includes('Finance auto-record (create/full activity)'));
     check('Booking save pins effective product prices server-side', bookingsRouteCode.includes('applyEffectiveBookingPrice') && bookingsRouteCode.includes('refreshMultiActivityPriceTotals') && productPricingCode.includes('extra.priceSnapshot') && productPricingCode.includes('priceDate'));
-    check('Booking multi-activity cards have price and selected-list styling', panelCss.includes('.program-price-badge') && panelCss.includes('.program-next-price-badge') && panelCss.includes('.selected-activity-item') && panelCss.includes('.selected-activity-remove'));
+    check('Booking multi-activity cards have price and selected-list styling',
+        panelCss.includes('.program-price-badge')
+        && panelCss.includes('.program-next-price-badge')
+        && panelCss.includes('.selected-activity-item')
+        && panelCss.includes('.selected-activity-remove')
+        && darkModeCss.includes('body.dark-mode .selected-activity-item')
+        && darkModeCss.includes('html[data-theme="dark"] .selected-activity-item')
+        && darkModeCss.includes('body.dark-mode .selected-activity-main strong')
+        && darkModeCss.includes('body.dark-mode .selected-activity-meta')
+        && darkModeCss.includes('body.dark-mode .selected-activity-remove'));
     const loginDisplayLabel = String(pkg.eventGenix.releaseLabel || '').replace(/^CRM\s+\d+(?:\.\d+)?\s*:\s*/i, '');
     check('login release badge shows package version once', doc.querySelector('.login-release-badge')?.textContent.trim() === `✨ ${pkg.version}`);
     check('login release badge does not duplicate release label', !doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));

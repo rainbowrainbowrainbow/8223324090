@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.48 - Selected Activity Dark Mode Fix
+
+### Booking / Multi-activity drawer / Dark mode / Production fix / (Клешня, 18.06.2026) [codex]
+- **Обрані активності у правій панелі стали читабельними в dark mode** - selected activity card більше не лишається світло-сірою плашкою з майже білим текстом.
+- **Dark-mode override додано для всіх частин selected activity row** - контейнер, номер, назва, subtitle/meta і кнопка видалення отримали темний фон, контрастний текст і контрольований hover/focus.
+- **Світла тема не змінювалась** - base styles у `css/panel.css` лишаються для light mode, а fix живе в `css/dark-mode.css`.
+- **Regression guard оновлено** - `tests/ui-check.js` перевіряє, що dark-mode selected activity styles існують.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.48`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.47 - Room Timeline Marker Visual Cleanup
 
 ### Booking / Room timeline / Marker visual cleanup / Production fix / (Клешня, 18.06.2026) [codex]

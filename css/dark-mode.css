@@ -726,6 +726,48 @@ body.dark-mode .program-icon.selected {
 }
 
 /* v5.37: Category program icons in dark — subtle tints */
+/* v0.76.48: Selected booking activities must stay readable in dark drawer */
+body.dark-mode .selected-activity-item,
+html[data-theme="dark"] .selected-activity-item {
+    border-color: var(--border-color);
+    background: linear-gradient(135deg, var(--surface-elevated), var(--bg-primary));
+    box-shadow: var(--shadow-sm);
+}
+
+body.dark-mode .selected-activity-order,
+html[data-theme="dark"] .selected-activity-order {
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+    color: var(--primary-light);
+}
+
+body.dark-mode .selected-activity-main strong,
+html[data-theme="dark"] .selected-activity-main strong {
+    color: var(--text-primary);
+}
+
+body.dark-mode .selected-activity-main small,
+body.dark-mode .selected-activity-meta,
+html[data-theme="dark"] .selected-activity-main small,
+html[data-theme="dark"] .selected-activity-meta {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .selected-activity-remove,
+html[data-theme="dark"] .selected-activity-remove {
+    border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+    background: color-mix(in srgb, var(--danger) 18%, transparent);
+    color: var(--danger);
+}
+
+body.dark-mode .selected-activity-remove:hover,
+body.dark-mode .selected-activity-remove:focus-visible,
+html[data-theme="dark"] .selected-activity-remove:hover,
+html[data-theme="dark"] .selected-activity-remove:focus-visible {
+    border-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 26%, transparent);
+    color: var(--text-primary);
+}
+
 body.dark-mode .program-icon.quest { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); }
 body.dark-mode .program-icon.quest:hover { background: rgba(139,92,246,0.2); border-color: rgba(139,92,246,0.4); }
 

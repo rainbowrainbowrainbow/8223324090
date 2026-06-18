@@ -2905,6 +2905,18 @@ body.dragging-active {
     min-height: var(--timeline-line-min-h, 36px);
 }
 
+body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-service-marker-lanes,
+body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-operational-lanes {
+    min-height: var(--timeline-room-operational-row-height, var(--room-service-marker-row-height, var(--timeline-line-min-h, 36px))) !important;
+}
+
+body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-service-marker-lanes > .line-header,
+body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-service-marker-lanes > .line-grid,
+body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-operational-lanes > .line-header,
+body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-operational-lanes > .line-grid {
+    min-height: var(--timeline-room-operational-row-height, var(--room-service-marker-row-height, var(--timeline-line-min-h, 36px))) !important;
+}
+
 .timeline-container.compact .line-header {
     padding: 4px 6px;
     border-left-width: 2px;

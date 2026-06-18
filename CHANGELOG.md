@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.55 - Timeline Activity Lane Height Hotfix
+
+### Frontend timeline / Room operational lanes / CSS hotfix / Production follow-up / (Клешня, 18.06.2026) [codex]
+- **Room timeline lanes у compact mode більше не просідають по висоті** - service markers залишаються всередині свого room row, навіть коли lane layout рахує кілька вертикальних рівнів.
+- **`Підготовка`, `Видача` і `Напої` більше не падають у сусідні кімнати** - compact CSS тепер явно поважає `--timeline-room-operational-row-height`.
+- **Row header і grid ростуть разом** - ліва картка кімнати та права timeline grid отримують однакову operational height.
+- **Cache bust оновлено до нового patch** - CSS asset tag і Service Worker підняті до `0.76.55`, щоб клієнти не тримали старий room timeline layout.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.55`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.54 - Timeline Activity Label Polish
 
 ### Frontend timeline / Activity labels / Service marker polish / Production follow-up / (Клешня, 18.06.2026) [codex]

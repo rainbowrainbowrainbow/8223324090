@@ -988,6 +988,8 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.timeline-line\.has-timeline-room-service-marker-lanes/);
     assert.match(css, /\.line-grid\.has-timeline-room-operational-lanes/);
     assert.match(css, /\.timeline-line\.has-timeline-room-operational-lanes/);
+    assert.match(css, /\.timeline-container\.compact \.timeline-line\.has-timeline-room-operational-lanes/);
+    assert.match(css, /\.timeline-container\.compact \.timeline-line\.has-timeline-room-service-marker-lanes > \.line-grid/);
     assert.match(css, /--timeline-room-operational-row-height/);
     assert.match(css, /--room-service-marker-row-height/);
     assert.match(css, /height:\s*48px/);

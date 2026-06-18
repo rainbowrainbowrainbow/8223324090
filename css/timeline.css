@@ -468,46 +468,131 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.56), 0 8px 20px rgba(2, 6, 23, 0.24);
 }
 
+.booking-block.is-timeline-banquet-occupancy-band {
+    top: 7px;
+    bottom: 7px;
+    z-index: 7;
+    justify-content: stretch;
+    padding: 0;
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    border-left: 3px solid rgba(20, 184, 166, 0.32);
+    border-radius: 7px;
+    background: linear-gradient(90deg, rgba(20, 184, 166, 0.16), rgba(20, 184, 166, 0.045));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+    opacity: 0.72;
+}
+
+.booking-block.is-timeline-banquet-occupancy-band:hover,
+.booking-block.is-timeline-banquet-occupancy-band:focus-visible,
+.booking-block.is-timeline-banquet-occupancy-band.is-timeline-banquet-preview-hovered {
+    transform: none;
+    z-index: 18;
+    border-color: rgba(20, 184, 166, 0.42);
+    background: linear-gradient(90deg, rgba(20, 184, 166, 0.22), rgba(20, 184, 166, 0.075));
+    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.22), 0 5px 14px rgba(15, 23, 42, 0.12);
+    opacity: 0.9;
+}
+
+.booking-block.is-timeline-banquet-occupancy-band .user-letter,
+.booking-block.is-timeline-banquet-occupancy-band .title,
+.booking-block.is-timeline-banquet-occupancy-band .subtitle,
+.booking-block.is-timeline-banquet-occupancy-band .costume-text,
+.booking-block.is-timeline-banquet-occupancy-band .note-text,
+.booking-block.is-timeline-banquet-occupancy-band .duration-badge,
+.booking-block.is-timeline-banquet-occupancy-band .booking-banquet-link-handle {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .line-grid.has-timeline-room-service-markers {
     overflow: visible;
+    min-height: var(--room-service-marker-row-height, inherit);
+}
+
+.timeline-line.has-timeline-room-service-marker-lanes {
+    min-height: var(--room-service-marker-row-height, var(--timeline-line-min-h, 64px));
+}
+
+.timeline-line.has-timeline-room-service-marker-lanes > .line-header,
+.timeline-line.has-timeline-room-service-marker-lanes > .line-grid {
+    min-height: inherit;
 }
 
 .timeline-room-service-marker {
     appearance: none;
     position: absolute;
     z-index: 24;
-    display: inline-flex;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     justify-content: center;
     box-sizing: border-box;
     visibility: visible;
-    height: 16px;
-    min-width: 0;
+    height: 38px;
+    min-width: 118px;
+    max-width: 164px;
     opacity: 1;
-    padding: 0 5px;
+    gap: 2px;
+    padding: 5px 8px 6px;
     border: 1px solid rgba(15, 23, 42, 0.16);
-    border-radius: 5px;
+    border-radius: 7px;
     background: rgba(248, 250, 252, 0.96);
     color: #0F172A;
-    box-shadow: 0 3px 9px rgba(15, 23, 42, 0.16);
+    box-shadow: 0 7px 18px rgba(15, 23, 42, 0.18);
     cursor: pointer;
     font-family: inherit;
-    font-size: 9px;
-    font-weight: 900;
-    line-height: 14px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.14;
     overflow: hidden;
     pointer-events: auto;
-    text-overflow: ellipsis;
+    text-align: left;
     user-select: none;
-    white-space: nowrap;
     transition: transform var(--speed-fast) var(--ease-smooth), box-shadow var(--speed-fast), border-color var(--speed-fast);
+}
+
+.timeline-room-service-marker-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 5px;
+}
+
+.timeline-room-service-marker-time {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1.1;
+}
+
+.timeline-room-service-marker-title,
+.timeline-room-service-marker-detail {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-room-service-marker-title {
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.1;
+}
+
+.timeline-room-service-marker-detail {
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.12;
+    opacity: 0.86;
 }
 
 .timeline-room-service-marker:hover,
 .timeline-room-service-marker:focus-visible {
     z-index: 32;
     border-color: rgba(20, 184, 166, 0.62);
-    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
     outline: 2px solid rgba(20, 184, 166, 0.24);
     outline-offset: 1px;
     transform: translateY(-1px);
@@ -831,6 +916,27 @@ html[data-theme="dark"] .timeline-room-service-marker {
     background: rgba(15, 23, 42, 0.94);
     color: #F8FAFC;
     box-shadow: 0 5px 14px rgba(2, 6, 23, 0.38);
+}
+
+body.dark-mode .booking-block.is-timeline-banquet-occupancy-band,
+html[data-theme="dark"] .booking-block.is-timeline-banquet-occupancy-band {
+    border-color: rgba(45, 212, 191, 0.28);
+    border-left-color: rgba(45, 212, 191, 0.42);
+    background: linear-gradient(90deg, rgba(20, 184, 166, 0.2), rgba(15, 23, 42, 0.32));
+    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.08);
+    opacity: 0.68;
+}
+
+body.dark-mode .booking-block.is-timeline-banquet-occupancy-band:hover,
+body.dark-mode .booking-block.is-timeline-banquet-occupancy-band:focus-visible,
+body.dark-mode .booking-block.is-timeline-banquet-occupancy-band.is-timeline-banquet-preview-hovered,
+html[data-theme="dark"] .booking-block.is-timeline-banquet-occupancy-band:hover,
+html[data-theme="dark"] .booking-block.is-timeline-banquet-occupancy-band:focus-visible,
+html[data-theme="dark"] .booking-block.is-timeline-banquet-occupancy-band.is-timeline-banquet-preview-hovered {
+    border-color: rgba(94, 234, 212, 0.5);
+    background: linear-gradient(90deg, rgba(20, 184, 166, 0.28), rgba(15, 23, 42, 0.46));
+    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.18), 0 5px 14px rgba(2, 6, 23, 0.28);
+    opacity: 0.86;
 }
 
 body.dark-mode .timeline-room-service-marker:hover,

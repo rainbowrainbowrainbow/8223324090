@@ -1146,6 +1146,23 @@ function setTimelineBanquetPreviewRole(block, role) {
     }
 }
 
+function timelineBanquetPreviewRoleUsesOccupancyBand(role) {
+    const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
+    return normalizedRole === 'kitchen' || TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole);
+}
+
+function setTimelineBanquetOccupancyBand(block, enabled = false) {
+    if (!block) return;
+    block.classList.toggle('is-timeline-banquet-occupancy-band', Boolean(enabled));
+    if (enabled) {
+        block.dataset.timelineBanquetOccupancyBand = '1';
+        block.setAttribute('aria-description', 'Коротка смуга зайнятості банкету. Деталі відкриваються кліком.');
+    } else {
+        delete block.dataset.timelineBanquetOccupancyBand;
+        block.removeAttribute('aria-description');
+    }
+}
+
 function timelineBanquetBlockCanOpenInspector(block) {
     const role = normalizeTimelineBanquetPreviewRole(block?.dataset?.timelineBanquetPreviewRole);
     if (TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES.has(role)) return false;
@@ -1553,9 +1570,7 @@ function clearTimelineRoomServiceMarkers(lineGrid = null, groupId = '') {
         grid.querySelectorAll('.timeline-room-service-marker').forEach(marker => {
             if (!targetGroupId || marker.dataset.banquetRoomMarkerGroup === targetGroupId) marker.remove();
         });
-        if (!grid.querySelector('.timeline-room-service-marker')) {
-            grid.classList.remove('has-timeline-room-service-markers');
-        }
+        syncTimelineRoomServiceMarkerLayout(grid);
     });
 }
 
@@ -1566,6 +1581,127 @@ function timelineRoomServiceMarkerDetail(marker = {}) {
         .filter(Boolean)
         .slice(0, 3);
     return [timelineBanquetMarkerLabel(marker), ...itemText].filter(Boolean).join('\n');
+}
+
+function timelineRoomServiceMarkerDisplay(marker = {}, type = '') {
+    const normalizedType = normalizeTimelineBanquetServiceEventType(type || marker.type || 'service');
+    const items = Array.isArray(marker.items) ? marker.items : [];
+    const count = Number(marker.count || items.length || 0);
+    const firstItemTitle = String(items[0]?.title || '').trim();
+    const markerTitle = String(marker.title || '').trim();
+    const markerLabel = String(marker.label || '').trim();
+
+    switch (normalizedType) {
+        case 'food_service':
+            return {
+                title: 'Видача',
+                detail: count > 0 ? `Кухня ${count} поз.` : (firstItemTitle || markerTitle || markerLabel)
+            };
+        case 'room_setup':
+            return {
+                title: 'Підготовка',
+                detail: markerTitle || firstItemTitle || markerLabel || 'Підготувати кімнату'
+            };
+        case 'drinks':
+            return {
+                title: 'Напої',
+                detail: markerTitle && markerTitle !== markerLabel ? markerTitle : firstItemTitle
+            };
+        case 'cake':
+            return {
+                title: 'Торт',
+                detail: markerTitle && markerTitle !== markerLabel ? markerTitle : firstItemTitle
+            };
+        case 'custom':
+            return {
+                title: markerLabel || 'Подія',
+                detail: markerTitle && markerTitle !== markerLabel ? markerTitle : firstItemTitle
+            };
+        default:
+            return {
+                title: markerLabel || 'Сервіс',
+                detail: markerTitle && markerTitle !== markerLabel ? markerTitle : firstItemTitle
+            };
+    }
+}
+
+function timelineRoomServiceMarkerPreferredLane(type = '') {
+    switch (normalizeTimelineBanquetServiceEventType(type)) {
+        case 'room_setup':
+            return 0;
+        case 'food_service':
+            return 1;
+        default:
+            return 2;
+    }
+}
+
+function timelineRoomServiceMarkerOverlaps(left, width, segments = []) {
+    const right = left + width;
+    const gutter = 8;
+    return segments.some(segment => left < segment.right + gutter && right + gutter > segment.left);
+}
+
+function timelineRoomServiceMarkerLane(type, left, width, laneSegments) {
+    const preferredLane = timelineRoomServiceMarkerPreferredLane(type);
+    const baseLaneCount = 3;
+    const candidates = [];
+
+    for (let lane = preferredLane; lane < baseLaneCount; lane += 1) candidates.push(lane);
+    for (let lane = 0; lane < preferredLane; lane += 1) candidates.push(lane);
+    for (let lane = baseLaneCount; lane < baseLaneCount + 12; lane += 1) candidates.push(lane);
+
+    const lane = candidates.find(candidate => !timelineRoomServiceMarkerOverlaps(left, width, laneSegments.get(candidate) || [])) ?? preferredLane;
+    const segments = laneSegments.get(lane) || [];
+    segments.push({ left, right: left + width });
+    laneSegments.set(lane, segments);
+    return lane;
+}
+
+function timelineRoomServiceMarkerTop(lane = 0) {
+    return 8 + Math.max(0, Number(lane) || 0) * 42;
+}
+
+function timelineRoomServiceMarkerRowHeight(laneCount = 0) {
+    const lanes = Math.max(0, Number(laneCount) || 0);
+    if (!lanes) return 0;
+    return Math.max(64, timelineRoomServiceMarkerTop(lanes - 1) + 38 + 8);
+}
+
+function syncTimelineRoomServiceMarkerLayout(lineGrid = null) {
+    if (!lineGrid) return;
+    const markers = Array.from(lineGrid.querySelectorAll('.timeline-room-service-marker'));
+    const lineEl = lineGrid.closest?.('.timeline-line');
+    const laneCount = markers.reduce((max, marker) => {
+        const lane = Number(marker.dataset.markerLane);
+        return Number.isFinite(lane) ? Math.max(max, lane + 1) : max;
+    }, 0);
+
+    if (!laneCount) {
+        lineGrid.classList.remove('has-timeline-room-service-markers');
+        lineGrid.removeAttribute('data-room-marker-lanes');
+        lineGrid.style.removeProperty('--room-marker-lanes');
+        lineGrid.style.removeProperty('--room-service-marker-row-height');
+        lineEl?.classList.remove('has-timeline-room-service-marker-lanes');
+        lineEl?.removeAttribute('data-room-marker-lanes');
+        lineEl?.style?.removeProperty('--room-marker-lanes');
+        lineEl?.style?.removeProperty('--room-service-marker-row-height');
+        lineEl?.style?.removeProperty('--timeline-line-min-h');
+        return;
+    }
+
+    const rowHeight = timelineRoomServiceMarkerRowHeight(laneCount);
+    lineGrid.classList.add('has-timeline-room-service-markers');
+    lineGrid.dataset.roomMarkerLanes = String(laneCount);
+    lineGrid.style.setProperty('--room-marker-lanes', String(laneCount));
+    lineGrid.style.setProperty('--room-service-marker-row-height', `${rowHeight}px`);
+    if (lineEl) {
+        lineEl.classList.add('has-timeline-room-service-marker-lanes');
+        lineEl.dataset.roomMarkerLanes = String(laneCount);
+        lineEl.style.setProperty('--room-marker-lanes', String(laneCount));
+        lineEl.style.setProperty('--room-service-marker-row-height', `${rowHeight}px`);
+        lineEl.style.setProperty('--timeline-line-min-h', `${rowHeight}px`);
+    }
 }
 
 function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
@@ -1583,26 +1719,29 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
     const range = getTimeRange(AppState.selectedDate);
     const startMinutes = range.start * 60;
     const endMinutes = range.end * 60;
-    const baseWidth = Math.max(40, Math.min(92, timelineDurationWidth(CONFIG.TIMELINE.CELL_MINUTES, lineGrid)));
+    const baseWidth = Math.max(118, Math.min(164, timelineDurationWidth(CONFIG.TIMELINE.CELL_MINUTES * 3, lineGrid)));
     const gridWidth = lineGrid.scrollWidth || lineGrid.getBoundingClientRect?.().width || 0;
-    const stackByTime = new Map();
+    const laneSegments = new Map();
     let renderedCount = 0;
 
     markers.forEach((marker, index) => {
         const markerMinutes = timeToMinutes(marker.time);
         if (!Number.isFinite(markerMinutes) || markerMinutes < startMinutes || markerMinutes >= endMinutes) return;
 
-        const stackIndex = stackByTime.get(marker.time) || 0;
-        stackByTime.set(marker.time, stackIndex + 1);
-        const laneIndex = stackIndex % 3;
-        const laneGroup = Math.floor(stackIndex / 3);
-        const leftRaw = timelineMinutesToPixels(markerMinutes - startMinutes, lineGrid) + (laneGroup * 10);
+        const leftRaw = timelineMinutesToPixels(markerMinutes - startMinutes, lineGrid);
         const maxLeft = gridWidth > baseWidth ? gridWidth - baseWidth : leftRaw;
         const left = Math.max(0, Math.min(leftRaw, maxLeft));
         const type = normalizeTimelineBanquetServiceEventType(marker.type || 'service');
+        const laneIndex = timelineRoomServiceMarkerLane(type, left, baseWidth, laneSegments);
+        const markerTop = timelineRoomServiceMarkerTop(laneIndex);
         const typeKey = timelineBanquetRoomSignalKey(type);
         const label = timelineBanquetMarkerLabel(marker);
+        const display = timelineRoomServiceMarkerDisplay(marker, type);
         const markerEl = document.createElement('button');
+        const mainLine = document.createElement('span');
+        const timeText = document.createElement('span');
+        const titleText = document.createElement('span');
+        const detailText = document.createElement('span');
 
         markerEl.type = 'button';
         markerEl.className = `timeline-room-service-marker timeline-room-service-marker--${typeKey}`;
@@ -1610,13 +1749,29 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
         markerEl.dataset.banquetRoomMarker = type;
         markerEl.dataset.markerTime = marker.time;
         markerEl.dataset.markerIndex = String(index);
+        markerEl.dataset.markerLane = String(laneIndex);
+        markerEl.dataset.markerTitle = display.title;
+        if (display.detail) markerEl.dataset.markerDetail = display.detail;
         if (groupId) markerEl.dataset.banquetRoomMarkerGroup = groupId;
         markerEl.style.left = `${left}px`;
-        markerEl.style.top = `${4 + laneIndex * 18}px`;
+        markerEl.style.top = `${markerTop}px`;
         markerEl.style.width = `${baseWidth}px`;
-        markerEl.textContent = label;
+        markerEl.style.setProperty('--marker-lane', String(laneIndex));
+        markerEl.style.setProperty('--marker-top', `${markerTop}px`);
+        mainLine.className = 'timeline-room-service-marker-main';
+        timeText.className = 'timeline-room-service-marker-time';
+        timeText.textContent = marker.time;
+        titleText.className = 'timeline-room-service-marker-title';
+        titleText.textContent = display.title;
+        detailText.className = 'timeline-room-service-marker-detail';
+        mainLine.append(timeText, titleText);
+        markerEl.append(mainLine);
+        if (display.detail) {
+            detailText.textContent = display.detail;
+            markerEl.append(detailText);
+        }
         markerEl.title = timelineRoomServiceMarkerDetail(marker);
-        markerEl.setAttribute('aria-label', [label, summary.room, summary.customerName].filter(Boolean).join(' - '));
+        markerEl.setAttribute('aria-label', [`${marker.time} ${display.title}`, display.detail, summary.room, summary.customerName].filter(Boolean).join(' - '));
         markerEl.setAttribute('aria-haspopup', 'dialog');
         markerEl.onpointerdown = event => {
             event.preventDefault();
@@ -1631,15 +1786,16 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
         renderedCount += 1;
     });
 
-    if (renderedCount > 0) {
-        lineGrid.classList.add('has-timeline-room-service-markers');
-    }
+    syncTimelineRoomServiceMarkerLayout(lineGrid);
 }
 
 function clearTimelineBanquetRoomPreviews() {
     TIMELINE_BANQUET_ROOM_PREVIEWS.clear();
     clearTimelineRoomServiceMarkers();
     hideTimelineBanquetInspector();
+    document.querySelectorAll('.booking-block.has-timeline-banquet-preview-trigger, .booking-block.is-timeline-banquet-occupancy-band').forEach(block => {
+        clearTimelineBanquetPreviewVisuals(block);
+    });
     document.querySelectorAll('.line-header.has-timeline-banquet-room-preview').forEach(header => {
         header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
         header.querySelector('[data-banquet-room-card]')?.remove();
@@ -1690,6 +1846,7 @@ function setTimelineBanquetRoomPreviewHighlight(summary = {}, active = false) {
 function clearTimelineBanquetPreviewVisuals(block, options = {}) {
     if (!block) return;
     block.classList.remove('has-timeline-banquet-preview-trigger');
+    setTimelineBanquetOccupancyBand(block, false);
     if (options.clearSummary !== false) {
         delete block._timelineBanquetSummary;
         delete block.dataset.banquetGroupId;
@@ -1733,6 +1890,7 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     const { block, summary } = carrier;
     const servingInfo = timelineBanquetServingInfo(summary);
     const summaryForInspector = timelineBanquetSummaryForInspector(summary, servingInfo, carrier.booking);
+    const hasRoomServiceMarkers = Array.isArray(servingInfo.markers) && servingInfo.markers.length > 0;
     const groupId = summary.groupId || `booking-${summary.carrierBooking?.id || summary.primaryBooking?.id || ''}`;
     const previewRolesByBookingId = timelineBanquetPreviewRolesByBookingId(snapshot);
     document.querySelectorAll('.booking-block[data-banquet-group-id]').forEach(existing => {
@@ -1743,13 +1901,17 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     const targets = resolveTimelineBanquetPreviewTargets(snapshot, summary, carrier);
     targets.forEach(target => {
         const targetSummary = timelineBanquetSummaryForInspector(summary, servingInfo, target.booking || carrier.booking);
+        const targetRole = timelineBanquetPreviewRoleForTarget(target, previewRolesByBookingId);
         target.block.dataset.banquetGroupId = groupId;
-        setTimelineBanquetPreviewRole(target.block, timelineBanquetPreviewRoleForTarget(target, previewRolesByBookingId));
+        setTimelineBanquetPreviewRole(target.block, targetRole);
+        setTimelineBanquetOccupancyBand(target.block, hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesOccupancyBand(targetRole));
         target.block._timelineBanquetSummary = targetSummary;
         target.block.classList.add('has-timeline-banquet-preview-trigger');
     });
+    const carrierRole = timelineBanquetPreviewRoleForTarget({ block, booking: carrier.booking || summary.carrierBooking || summary.primaryBooking }, previewRolesByBookingId);
     block.dataset.banquetGroupId = groupId;
-    setTimelineBanquetPreviewRole(block, timelineBanquetPreviewRoleForTarget({ block, booking: carrier.booking || summary.carrierBooking || summary.primaryBooking }, previewRolesByBookingId));
+    setTimelineBanquetPreviewRole(block, carrierRole);
+    setTimelineBanquetOccupancyBand(block, hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesOccupancyBand(carrierRole));
     block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
     registerTimelineBanquetRoomPreview(summaryForInspector);

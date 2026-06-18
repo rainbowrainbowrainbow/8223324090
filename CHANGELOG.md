@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.45 - Room Timeline Marker UX Polish
+
+### Booking / Room timeline / Marker UX polish / Production fix / (Клешня, 18.06.2026) [codex]
+- **Room service markers стали читабельними event blocks** - замість дрібних pills у `.line-grid` тепер показуються компактні картки з часом, типом події і деталлю.
+- **Marker blocks мають практичну ширину і висоту** - текст типу `Видача 12:45`, `Напої 15:45` і `Підготувати кімнату` більше не обрізається до випадкових фрагментів.
+- **Same-time і close-time events отримали lane layout** - `room_setup`, `food_service`, `drinks`, `cake` і custom markers розкладаються по lanes без dedupe і без візуального накладання.
+- **Дублікат `Кухня: ...` у room grid прибрано з фокуса** - коли service markers є, великий kitchen booking block стає тихою occupancy band, а основними подіями в сітці лишаються markers.
+- **`Кімнати`/`Свята` isolation збережено** - markers створюються тільки в room timeline, очищаються при view switch і не потрапляють у animator timeline.
+- **Browser QA пройдено на safe local PostgreSQL** - перевірено save/readback/reload/view-switch, marker clicks, empty-cell click isolation і screenshot evidence без зміни production data.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.45`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.44 - Room Timeline Service Markers
 
 ### Booking / Room timeline / Kitchen service markers / Production fix / (Клешня, 18.06.2026) [codex]

@@ -469,6 +469,8 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 }
 
 .booking-block.is-timeline-banquet-occupancy-band {
+    display: none !important;
+    visibility: hidden;
     top: 7px;
     bottom: 7px;
     z-index: 7;
@@ -479,7 +481,8 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     border-radius: 7px;
     background: linear-gradient(90deg, rgba(20, 184, 166, 0.16), rgba(20, 184, 166, 0.045));
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
-    opacity: 0.72;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .booking-block.is-timeline-banquet-occupancy-band:hover,
@@ -530,22 +533,23 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     justify-content: center;
     box-sizing: border-box;
     visibility: visible;
-    height: 38px;
-    min-width: 118px;
-    max-width: 164px;
+    height: 48px;
+    min-width: 168px;
+    max-width: 220px;
     opacity: 1;
-    gap: 2px;
-    padding: 5px 8px 6px;
-    border: 1px solid rgba(15, 23, 42, 0.16);
-    border-radius: 7px;
+    gap: 4px;
+    padding: 8px 11px 9px;
+    border: 1px solid rgba(15, 23, 42, 0.2);
+    border-left-width: 4px;
+    border-radius: 8px;
     background: rgba(248, 250, 252, 0.96);
     color: #0F172A;
-    box-shadow: 0 7px 18px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
     cursor: pointer;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
-    line-height: 1.14;
+    line-height: 1.16;
     overflow: hidden;
     pointer-events: auto;
     text-align: left;
@@ -562,7 +566,7 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 
 .timeline-room-service-marker-time {
     flex: 0 0 auto;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 900;
     letter-spacing: 0;
     line-height: 1.1;
@@ -578,13 +582,13 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 }
 
 .timeline-room-service-marker-title {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 900;
     line-height: 1.1;
 }
 
 .timeline-room-service-marker-detail {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
     line-height: 1.12;
     opacity: 0.86;
@@ -594,45 +598,45 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .timeline-room-service-marker:focus-visible {
     z-index: 32;
     border-color: rgba(20, 184, 166, 0.62);
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.28);
     outline: 2px solid rgba(20, 184, 166, 0.24);
     outline-offset: 1px;
     transform: translateY(-1px);
 }
 
 .timeline-room-service-marker--food-service {
-    border-color: rgba(20, 184, 166, 0.42);
-    background: rgba(240, 253, 250, 0.96);
+    border-color: rgba(20, 184, 166, 0.48);
+    background: linear-gradient(135deg, rgba(240, 253, 250, 0.98), rgba(204, 251, 241, 0.92));
     color: #0F766E;
 }
 
 .timeline-room-service-marker--room-setup {
-    border-color: rgba(124, 58, 237, 0.38);
-    background: rgba(245, 243, 255, 0.96);
+    border-color: rgba(124, 58, 237, 0.48);
+    background: linear-gradient(135deg, rgba(245, 243, 255, 0.98), rgba(221, 214, 254, 0.9));
     color: #6D28D9;
 }
 
 .timeline-room-service-marker--cake {
-    border-color: rgba(219, 39, 119, 0.38);
-    background: rgba(253, 242, 248, 0.96);
+    border-color: rgba(219, 39, 119, 0.48);
+    background: linear-gradient(135deg, rgba(253, 242, 248, 0.98), rgba(252, 231, 243, 0.9));
     color: #BE185D;
 }
 
 .timeline-room-service-marker--drinks {
-    border-color: rgba(37, 99, 235, 0.36);
-    background: rgba(239, 246, 255, 0.96);
+    border-color: rgba(37, 99, 235, 0.48);
+    background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(219, 234, 254, 0.9));
     color: #1D4ED8;
 }
 
 .timeline-room-service-marker--custom {
-    border-color: rgba(100, 116, 139, 0.36);
-    background: rgba(248, 250, 252, 0.96);
+    border-color: rgba(100, 116, 139, 0.44);
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(226, 232, 240, 0.9));
     color: #475569;
 }
 
 .timeline-room-service-marker--service {
-    border-color: rgba(14, 116, 144, 0.36);
-    background: rgba(236, 254, 255, 0.96);
+    border-color: rgba(14, 116, 144, 0.46);
+    background: linear-gradient(135deg, rgba(236, 254, 255, 0.98), rgba(207, 250, 254, 0.9));
     color: #0E7490;
 }
 
@@ -952,42 +956,42 @@ html[data-theme="dark"] .timeline-room-service-marker:focus-visible {
 body.dark-mode .timeline-room-service-marker--food-service,
 html[data-theme="dark"] .timeline-room-service-marker--food-service {
     border-color: rgba(45, 212, 191, 0.4);
-    background: rgba(20, 184, 166, 0.22);
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.3), rgba(15, 23, 42, 0.82));
     color: #CCFBF1;
 }
 
 body.dark-mode .timeline-room-service-marker--room-setup,
 html[data-theme="dark"] .timeline-room-service-marker--room-setup {
     border-color: rgba(167, 139, 250, 0.42);
-    background: rgba(124, 58, 237, 0.24);
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.36), rgba(15, 23, 42, 0.82));
     color: #EDE9FE;
 }
 
 body.dark-mode .timeline-room-service-marker--cake,
 html[data-theme="dark"] .timeline-room-service-marker--cake {
     border-color: rgba(244, 114, 182, 0.42);
-    background: rgba(219, 39, 119, 0.22);
+    background: linear-gradient(135deg, rgba(219, 39, 119, 0.34), rgba(15, 23, 42, 0.82));
     color: #FCE7F3;
 }
 
 body.dark-mode .timeline-room-service-marker--drinks,
 html[data-theme="dark"] .timeline-room-service-marker--drinks {
     border-color: rgba(96, 165, 250, 0.42);
-    background: rgba(37, 99, 235, 0.22);
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.34), rgba(15, 23, 42, 0.82));
     color: #DBEAFE;
 }
 
 body.dark-mode .timeline-room-service-marker--custom,
 html[data-theme="dark"] .timeline-room-service-marker--custom {
     border-color: rgba(148, 163, 184, 0.36);
-    background: rgba(100, 116, 139, 0.22);
+    background: linear-gradient(135deg, rgba(100, 116, 139, 0.34), rgba(15, 23, 42, 0.82));
     color: #E2E8F0;
 }
 
 body.dark-mode .timeline-room-service-marker--service,
 html[data-theme="dark"] .timeline-room-service-marker--service {
     border-color: rgba(34, 211, 238, 0.4);
-    background: rgba(14, 116, 144, 0.22);
+    background: linear-gradient(135deg, rgba(14, 116, 144, 0.34), rgba(15, 23, 42, 0.82));
     color: #CFFAFE;
 }
 

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.47 - Room Timeline Marker Visual Cleanup
+
+### Booking / Room timeline / Marker visual cleanup / Production fix / (Клешня, 18.06.2026) [codex]
+- **Великий дублюючий kitchen/banquet anchor block прибрано з room grid** - коли у броні є service markers, стара прямокутна occupancy-плашка більше не займає місце біля anchor time і не перекриває події.
+- **Service markers стали основними подіями у `Кімнати`** - оператор бачить реальні моменти `Підготовка`, `Видача`, `Напої`, `Торт` як окремі timeline event cards у `.line-grid`.
+- **Markers збільшені та зроблені інформативнішими** - картки мають більшу ширину/висоту, сильніший візуальний стиль, читабельний другий рядок і стабільні lanes для близьких часів.
+- **Лівий `БАНКЕТ` summary залишається джерелом загального контексту** - room header card з меню та signals не прибирається, а grid фокусується на time-based service events.
+- **`Кімнати`/`Свята` isolation збережено** - room service markers не створюються у `Свята`, а view switch не залишає stale marker DOM.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.47`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.46 - Kitchen Operational Time Validation
 
 ### Booking / Room timeline / Kitchen operational times / Production fix / (Клешня, 18.06.2026) [codex]

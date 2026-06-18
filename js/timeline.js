@@ -1605,12 +1605,12 @@ function timelineRoomServiceMarkerDisplay(marker = {}, type = '') {
         case 'drinks':
             return {
                 title: 'Напої',
-                detail: markerTitle && markerTitle !== markerLabel ? markerTitle : firstItemTitle
+                detail: markerTitle || firstItemTitle || markerLabel
             };
         case 'cake':
             return {
                 title: 'Торт',
-                detail: markerTitle && markerTitle !== markerLabel ? markerTitle : firstItemTitle
+                detail: markerTitle || firstItemTitle || markerLabel
             };
         case 'custom':
             return {
@@ -1642,6 +1642,12 @@ function timelineRoomServiceMarkerOverlaps(left, width, segments = []) {
     return segments.some(segment => left < segment.right + gutter && right + gutter > segment.left);
 }
 
+const TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN = 168;
+const TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MAX = 220;
+const TIMELINE_ROOM_SERVICE_MARKER_HEIGHT = 48;
+const TIMELINE_ROOM_SERVICE_MARKER_LANE_STEP = 56;
+const TIMELINE_ROOM_SERVICE_MARKER_TOP = 10;
+
 function timelineRoomServiceMarkerLane(type, left, width, laneSegments) {
     const preferredLane = timelineRoomServiceMarkerPreferredLane(type);
     const baseLaneCount = 3;
@@ -1659,13 +1665,13 @@ function timelineRoomServiceMarkerLane(type, left, width, laneSegments) {
 }
 
 function timelineRoomServiceMarkerTop(lane = 0) {
-    return 8 + Math.max(0, Number(lane) || 0) * 42;
+    return TIMELINE_ROOM_SERVICE_MARKER_TOP + Math.max(0, Number(lane) || 0) * TIMELINE_ROOM_SERVICE_MARKER_LANE_STEP;
 }
 
 function timelineRoomServiceMarkerRowHeight(laneCount = 0) {
     const lanes = Math.max(0, Number(laneCount) || 0);
     if (!lanes) return 0;
-    return Math.max(64, timelineRoomServiceMarkerTop(lanes - 1) + 38 + 8);
+    return Math.max(72, timelineRoomServiceMarkerTop(lanes - 1) + TIMELINE_ROOM_SERVICE_MARKER_HEIGHT + 10);
 }
 
 function syncTimelineRoomServiceMarkerLayout(lineGrid = null) {
@@ -1719,7 +1725,10 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
     const range = getTimeRange(AppState.selectedDate);
     const startMinutes = range.start * 60;
     const endMinutes = range.end * 60;
-    const baseWidth = Math.max(118, Math.min(164, timelineDurationWidth(CONFIG.TIMELINE.CELL_MINUTES * 3, lineGrid)));
+    const baseWidth = Math.max(
+        TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MIN,
+        Math.min(TIMELINE_ROOM_SERVICE_MARKER_WIDTH_MAX, timelineDurationWidth(CONFIG.TIMELINE.CELL_MINUTES * 4, lineGrid))
+    );
     const gridWidth = lineGrid.scrollWidth || lineGrid.getBoundingClientRect?.().width || 0;
     const laneSegments = new Map();
     let renderedCount = 0;

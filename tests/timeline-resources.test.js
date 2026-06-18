@@ -886,8 +886,8 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band \.subtitle/);
     assert.match(css, /\.timeline-line\.has-timeline-room-service-marker-lanes/);
     assert.match(css, /--room-service-marker-row-height/);
-    assert.match(css, /height:\s*38px/);
-    assert.match(css, /min-width:\s*118px/);
+    assert.match(css, /height:\s*48px/);
+    assert.match(css, /min-width:\s*168px/);
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
@@ -901,8 +901,8 @@ test('room timeline service markers keep readable event-block dimensions and str
     const markerFontSize = cssPxValue(markerRule, 'font-size');
     const markerPadding = firstCssPxValue(cssDeclaration(markerRule, 'padding'));
 
-    assert.ok(markerHeight >= 28, 'marker height stays readable');
-    assert.ok(markerMinWidth >= 110, 'marker width stays readable');
+    assert.ok(markerHeight >= 44, 'marker height stays readable');
+    assert.ok(markerMinWidth >= 150, 'marker width stays readable');
     assert.ok(markerFontSize >= 10, 'marker text is not reduced into a badge');
     assert.ok(markerPadding >= 4, 'marker keeps practical internal padding');
     assert.equal(cssDeclaration(markerRule, 'display'), 'flex');
@@ -945,7 +945,7 @@ test('room timeline de-emphasizes duplicate kitchen booking block when service m
     const css = read('css/timeline.css');
     const markerRule = cssRule(css, '.timeline-room-service-marker');
     const bandRule = cssRule(css, '.booking-block.is-timeline-banquet-occupancy-band');
-    const bandTextRule = css.match(/\.booking-block\.is-timeline-banquet-occupancy-band \.user-letter,[\s\S]*?\.booking-block\.is-timeline-banquet-occupancy-band \.booking-banquet-link-handle\s*\{([\s\S]*?)\}/);
+    const bandTextRule = css.match(/\.booking-block\.is-timeline-banquet-occupancy-band > \*,[\s\S]*?\.booking-block\.is-timeline-banquet-occupancy-band \.booking-banquet-link-handle\s*\{([\s\S]*?)\}/);
     const { ctx, kitchenBlock, activityBlock } = applyTimelineBanquetPreviewWithVisibleBlocks({
         menuPositions: [
             { id: 'item-a', title: 'Pizza', servingTime: '12:00' }
@@ -957,8 +957,10 @@ test('room timeline de-emphasizes duplicate kitchen booking block when service m
 
     assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker').length, 2);
     assert.ok(cssNumberValue(markerRule, 'z-index') > cssNumberValue(bandRule, 'z-index'));
-    assert.ok(cssNumberValue(bandRule, 'opacity') <= 0.8);
-    assert.match(cssDeclaration(bandRule, 'background'), /linear-gradient/);
+    assert.equal(cssDeclaration(bandRule, 'display'), 'none !important');
+    assert.equal(cssDeclaration(bandRule, 'visibility'), 'hidden');
+    assert.equal(cssNumberValue(bandRule, 'opacity'), 0);
+    assert.equal(cssDeclaration(bandRule, 'pointer-events'), 'none');
     assert.ok(bandTextRule, 'occupancy band hides duplicate booking text rule exists');
     assert.match(bandTextRule[1], /visibility:\s*hidden/);
     assert.match(bandTextRule[1], /opacity:\s*0\s*!important/);
@@ -1018,14 +1020,14 @@ test('room timeline renders multiple menu serving markers inside the room grid',
     assert.deepEqual(markers.map(marker => marker.type), ['food_service', 'food_service']);
     assert.deepEqual(markers.map(marker => marker.time), ['12:00', '12:30']);
     assert.ok(markers.every(marker => marker.parentClass.includes('line-grid')));
-    assert.ok(markers.every(marker => parseFloat(marker.width) >= 118));
+    assert.ok(markers.every(marker => parseFloat(marker.width) >= 168));
     assert.notEqual(markers[0].left, markers[1].left);
     assert.ok(parseFloat(markers[1].left) > parseFloat(markers[0].left));
     assert.deepEqual(markers.map(marker => marker.lane), ['1', '2']);
-    assert.deepEqual(markers.map(marker => marker.markerTop), ['50px', '92px']);
+    assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '122px']);
     assert.equal(layout.gridLaneCount, '3');
-    assert.equal(layout.gridRowHeight, '138px');
-    assert.equal(layout.lineMinHeight, '138px');
+    assert.equal(layout.gridRowHeight, '180px');
+    assert.equal(layout.lineMinHeight, '180px');
     assert.equal(layout.hasGridLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
 });
@@ -1045,14 +1047,14 @@ test('room timeline renders room_setup service event as a separate room-grid mar
     assert.equal(markers[0].time, '12:00');
     assert.ok(markers[0].parentClass.includes('line-grid'));
     assert.equal(markers[0].left, '200px');
-    assert.equal(markers[0].top, '8px');
-    assert.ok(parseFloat(markers[0].width) >= 118);
+    assert.equal(markers[0].top, '10px');
+    assert.ok(parseFloat(markers[0].width) >= 168);
     assert.equal(markers[0].ariaHaspopup, 'dialog');
     assert.equal(markers[0].lane, '0');
-    assert.equal(markers[0].markerTop, '8px');
+    assert.equal(markers[0].markerTop, '10px');
     assert.equal(layout.gridLaneCount, '1');
-    assert.equal(layout.gridRowHeight, '64px');
-    assert.equal(layout.lineMinHeight, '64px');
+    assert.equal(layout.gridRowHeight, '72px');
+    assert.equal(layout.lineMinHeight, '72px');
 });
 
 test('room timeline keeps mixed same-time room-grid markers without dedupe', () => {
@@ -1081,10 +1083,10 @@ test('room timeline keeps mixed same-time room-grid markers without dedupe', () 
     assert.notEqual(markers[1].left, markers[2].left);
     assert.ok(parseFloat(markers[2].left) > parseFloat(markers[1].left));
     assert.deepEqual(markers.map(marker => marker.lane), ['1', '0', '2']);
-    assert.deepEqual(markers.map(marker => marker.markerTop), ['50px', '8px', '92px']);
+    assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '10px', '122px']);
     assert.equal(layout.gridLaneCount, '3');
-    assert.equal(layout.gridRowHeight, '138px');
-    assert.equal(layout.lineMinHeight, '138px');
+    assert.equal(layout.gridRowHeight, '180px');
+    assert.equal(layout.lineMinHeight, '180px');
 });
 
 test('room service marker lanes avoid close-time collisions and reserve row height', () => {
@@ -1102,12 +1104,12 @@ test('room service marker lanes avoid close-time collisions and reserve row heig
     assert.equal(markers.length, 4);
     assert.deepEqual(markers.map(marker => marker.type), ['food_service', 'room_setup', 'food_service', 'drinks']);
     assert.deepEqual(markers.map(marker => marker.lane), ['1', '0', '2', '3']);
-    assert.deepEqual(markers.map(marker => marker.markerTop), ['50px', '8px', '92px', '134px']);
+    assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '10px', '122px', '178px']);
     assert.equal(layout.gridLaneCount, '4');
     assert.equal(layout.lineLaneCount, '4');
-    assert.equal(layout.gridRowHeight, '180px');
-    assert.equal(layout.lineRowHeight, '180px');
-    assert.equal(layout.lineMinHeight, '180px');
+    assert.equal(layout.gridRowHeight, '236px');
+    assert.equal(layout.lineRowHeight, '236px');
+    assert.equal(layout.lineMinHeight, '236px');
 });
 
 test('room-grid service markers stay isolated across room and animator timeline views', () => {

@@ -577,7 +577,7 @@ async function assertActivitySlotAvailable(db, booking, businessContext, { sourc
             details: { conflictBookingId: duplicate.id || null }
         });
     }
-    const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, sourceBookingId, businessContext);
+    const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, { sourceBookingId }, businessContext);
     if (roomConflict) {
         throw new BanquetGroupError('Activity room slot is busy', {
             status: 409,

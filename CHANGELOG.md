@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.49 - Banquet Activity Kitchen Overlap Fix
+
+### Booking / Banquet activity / Kitchen overlap / Production fix / (Клешня, 18.06.2026) [codex]
+- **Анімацію можна ставити одночасно з власною видачею кухні** - activity у тій самій кімнаті й у той самий час більше не блокується власною `banquet-service` / kitchen root бронню.
+- **Room conflict лишився строгим для чужих бронювань** - unrelated booking у тій самій кімнаті й часі далі повертає `409` і не дозволяє double-booking.
+- **Animator line conflicts не послаблювались** - якщо той самий аніматор уже зайнятий на цей час, activity все ще блокується.
+- **Banquet activity flow став явним по source booking** - `checkRoomConflict()` підтримує `excludeIds` / `sourceBookingId`, а `/api/banquets/:groupId/activity-booking` передає source kitchen booking як власний виняток.
+- **Regression guards додано** - тести покривають allowed same-banquet kitchen overlap, unrelated room conflict, busy animator line conflict і service-level `excludeIds`.
+- **Schema/env/auth/Railway config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.49`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.48 - Selected Activity Dark Mode Fix
 
 ### Booking / Multi-activity drawer / Dark mode / Production fix / (Клешня, 18.06.2026) [codex]

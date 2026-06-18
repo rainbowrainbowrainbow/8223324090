@@ -3144,7 +3144,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 return res.status(409).json({ success: false, conflictBookingId: activityDuplicate.id, error: `Активність вже є ${activity.date} о ${activity.time}` });
             }
 
-            const activityRoomConflict = await checkRoomConflict(client, activity.date, activity.room, activity.time, activity.duration || 0, null, businessContext);
+            const activityRoomConflict = await checkRoomConflict(client, activity.date, activity.room, activity.time, activity.duration || 0, {
+                excludeIds: [main.id]
+            }, businessContext);
             if (activityRoomConflict) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({

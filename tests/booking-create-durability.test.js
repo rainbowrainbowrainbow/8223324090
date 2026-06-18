@@ -101,6 +101,66 @@ function normalizeContext(value) {
     return ['park_zakrevsky', 'park', 'pzp'].includes(raw) ? 'event_genix' : raw;
 }
 
+function testTimeToMinutes(value) {
+    const [hours, minutes] = String(value || '00:00').slice(0, 5).split(':').map(Number);
+    return (hours * 60) + minutes;
+}
+
+function testIntervalsOverlap(leftTime, leftDuration, rightTime, rightDuration) {
+    const leftStart = testTimeToMinutes(leftTime);
+    const leftEnd = leftStart + (parseInt(leftDuration, 10) || 0);
+    const rightStart = testTimeToMinutes(rightTime);
+    const rightEnd = rightStart + (parseInt(rightDuration, 10) || 0);
+    return leftStart < rightEnd && leftEnd > rightStart;
+}
+
+function testExcludeIdSet(value) {
+    const raw = [];
+    if (Array.isArray(value)) {
+        raw.push(...value);
+    } else if (value && typeof value === 'object') {
+        if (Array.isArray(value.excludeIds)) raw.push(...value.excludeIds);
+        if (value.excludeId) raw.push(value.excludeId);
+        if (value.sourceBookingId) raw.push(value.sourceBookingId);
+    } else if (value) {
+        raw.push(value);
+    }
+    return new Set(raw.map(item => String(item || '').trim()).filter(Boolean));
+}
+
+function stateBackedRoomConflict(state) {
+    return async (_client, date, room, time, duration, excludeArg = null, businessContext = 'event_genix') => {
+        const excluded = testExcludeIdSet(excludeArg);
+        return state.rows.find(row =>
+            row.date === date &&
+            row.room === room &&
+            normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+            String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
+            !excluded.has(String(row.id)) &&
+            testIntervalsOverlap(time, duration, row.time, row.duration)
+        ) || null;
+    };
+}
+
+function stateBackedLineConflict(state) {
+    return async (_client, date, lineId, time, duration, excludeArg = null, businessContext = 'event_genix') => {
+        const normalizedLine = String(lineId || '').trim().toLowerCase();
+        if (!normalizedLine || normalizedLine === 'banquet-service' || normalizedLine === 'room-takeaway') {
+            return { overlap: false, noPause: false, conflictWith: null };
+        }
+        const excluded = testExcludeIdSet(excludeArg);
+        const conflictWith = state.rows.find(row =>
+            row.date === date &&
+            String(row.line_id || '').trim() === String(lineId || '').trim() &&
+            normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+            String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
+            !excluded.has(String(row.id)) &&
+            testIntervalsOverlap(time, duration, row.time, row.duration)
+        ) || null;
+        return { overlap: Boolean(conflictWith), noPause: false, conflictWith };
+    };
+}
+
 function makeDb({ commitCommand = 'COMMIT' } = {}) {
     const state = {
         rows: [],
@@ -455,6 +515,10 @@ async function listen(app) {
 async function withApp(dbOptions, fn) {
     clearModules();
     const { pool, state } = makeDb(dbOptions);
+    const checkRoomConflict = dbOptions.checkRoomConflict
+        || (dbOptions.stateBackedRoomConflicts ? stateBackedRoomConflict(state) : async () => null);
+    const checkServerConflicts = dbOptions.checkServerConflicts
+        || (dbOptions.stateBackedLineConflicts ? stateBackedLineConflict(state) : async () => ({ overlap: false }));
     installMock('../db', {
         pool,
         generateBookingNumber: async () => `BK-2099-${String(state.nextBookingSeq++).padStart(4, '0')}`
@@ -487,9 +551,9 @@ async function withApp(dbOptions, fn) {
             return Boolean(room && room !== 'інше' && room !== 'other' && room !== 'на виніс' && room !== 'room-takeaway');
         },
         BANQUET_SERVICE_LINE_ID: 'banquet-service',
-        checkServerConflicts: async () => ({ overlap: false }),
+        checkServerConflicts,
         checkServerDuplicate: async () => null,
-        checkRoomConflict: async () => null,
+        checkRoomConflict,
         timeToMinutes: value => {
             const [h, m] = String(value).split(':').map(Number);
             return h * 60 + m;
@@ -1215,6 +1279,216 @@ test('POST /api/bookings/full maps shared-room activity links relative to the ac
         assert.equal(roomLink.bookingId, activityId);
         assert.equal(roomLink.targetId, 'BK-2099-0999');
         assert.notEqual(roomLink.bookingId, res.data.mainBooking.id);
+    });
+});
+
+test('POST /api/bookings/full allows same-banquet activity to overlap its own kitchen room root', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-13',
+                time: '12:45',
+                lineId: 'banquet-service',
+                lineName: 'Banquet service',
+                room: 'Marvel Room',
+                programId: null,
+                programCode: 'KITCHEN',
+                label: 'Kitchen order',
+                programName: 'Kitchen',
+                category: 'kitchen',
+                duration: 120,
+                price: 0,
+                hosts: 0,
+                secondAnimator: null,
+                extraData: {
+                    bookingWorkspace: { scenario: 'kitchen_only' },
+                    bookingPackage: {
+                        menuPositions: [
+                            { id: 'menu-1', title: 'Fruit plate', quantity: 2, servingTime: '12:45' }
+                        ],
+                        serviceEvents: []
+                    }
+                }
+            },
+            linked: [],
+            banquetActivities: [{
+                date: '2099-02-13',
+                time: '12:45',
+                lineId: 'line-main',
+                room: 'Marvel Room',
+                programId: 'quest-60',
+                programCode: 'QS',
+                label: 'Activity(60)',
+                programName: 'Activity',
+                category: 'quest',
+                duration: 60,
+                price: 0,
+                hosts: 1,
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.mainBooking.lineId, 'banquet-service');
+        assert.equal(res.data.activityBookings.length, 1);
+        assert.equal(res.data.activityBookings[0].lineId, 'line-main');
+        assert.equal(res.data.activityBookings[0].room, 'Marvel Room');
+    });
+});
+
+test('POST /api/bookings/full still rejects banquet activity when an unrelated room booking overlaps', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-ROOM',
+            business_context: 'event_genix',
+            date: '2099-02-13',
+            time: '12:45',
+            line_id: 'line-other',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'Other booking',
+            program_name: 'Other booking',
+            category: 'animation',
+            duration: 60,
+            price: 0,
+            hosts: 1,
+            second_animator: null,
+            room: 'Marvel Room',
+            notes: null,
+            created_by: 'other-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: null,
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-13',
+                time: '10:00',
+                lineId: 'banquet-service',
+                lineName: 'Banquet service',
+                room: 'Prep Room',
+                programId: null,
+                programCode: 'KITCHEN',
+                label: 'Kitchen order',
+                programName: 'Kitchen',
+                category: 'kitchen',
+                duration: 30,
+                price: 0,
+                hosts: 0,
+                secondAnimator: null,
+                extraData: {
+                    bookingWorkspace: { scenario: 'kitchen_only' },
+                    bookingPackage: { menuPositions: [], serviceEvents: [] }
+                }
+            },
+            linked: [],
+            banquetActivities: [{
+                date: '2099-02-13',
+                time: '12:45',
+                lineId: 'line-main',
+                room: 'Marvel Room',
+                programId: 'quest-60',
+                programCode: 'QS',
+                label: 'Activity(60)',
+                programName: 'Activity',
+                category: 'quest',
+                duration: 60,
+                price: 0,
+                hosts: 1,
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.conflictBookingId, 'BK-2099-ROOM');
+    });
+});
+
+test('POST /api/bookings/full still rejects banquet activity on a busy animator line', async () => {
+    await withApp({ stateBackedLineConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-LINE',
+            business_context: 'event_genix',
+            date: '2099-02-13',
+            time: '12:45',
+            line_id: 'line-main',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'Existing line booking',
+            program_name: 'Existing line booking',
+            category: 'animation',
+            duration: 60,
+            price: 0,
+            hosts: 1,
+            second_animator: null,
+            room: 'Another Room',
+            notes: null,
+            created_by: 'other-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: null,
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-13',
+                time: '10:00',
+                lineId: 'banquet-service',
+                lineName: 'Banquet service',
+                room: 'Prep Room',
+                programId: null,
+                programCode: 'KITCHEN',
+                label: 'Kitchen order',
+                programName: 'Kitchen',
+                category: 'kitchen',
+                duration: 30,
+                price: 0,
+                hosts: 0,
+                secondAnimator: null,
+                extraData: {
+                    bookingWorkspace: { scenario: 'kitchen_only' },
+                    bookingPackage: { menuPositions: [], serviceEvents: [] }
+                }
+            },
+            linked: [],
+            banquetActivities: [{
+                date: '2099-02-13',
+                time: '12:45',
+                lineId: 'line-main',
+                room: 'Marvel Room',
+                programId: 'quest-60',
+                programCode: 'QS',
+                label: 'Activity(60)',
+                programName: 'Activity',
+                category: 'quest',
+                duration: 60,
+                price: 0,
+                hosts: 1,
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.conflictBookingId, 'BK-2099-LINE');
     });
 });
 

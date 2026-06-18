@@ -591,6 +591,46 @@ test('takeaway room stays visible but does not reserve a physical room slot', as
     assert.equal(lockQueries.length, 0);
 });
 
+test('room conflict checks can exclude same-banquet source ids without hiding unrelated room bookings', async () => {
+    const queries = [];
+    const conflictClient = {
+        query: async (sql, params) => {
+            queries.push({ sql, params });
+            return {
+                rows: [
+                    {
+                        id: 'BK-SOURCE',
+                        time: '12:45',
+                        duration: 120,
+                        label: 'Kitchen source',
+                        program_code: 'KITCHEN'
+                    },
+                    {
+                        id: 'BK-OTHER',
+                        time: '12:45',
+                        duration: 60,
+                        label: 'Other booking',
+                        program_code: 'AN'
+                    }
+                ]
+            };
+        }
+    };
+
+    const conflict = await checkRoomConflict(
+        conflictClient,
+        '2026-06-14',
+        'РњР°СЂРІРµР»',
+        '12:45',
+        60,
+        { excludeIds: ['BK-SOURCE'] }
+    );
+
+    assert.equal(conflict.id, 'BK-OTHER');
+    assert.deepEqual(queries[0].params[3], ['BK-SOURCE']);
+    assert.match(queries[0].sql, /id != ALL\(\$4::text\[\]\)/);
+});
+
 test('free-room path becomes business-aware resource availability for cabinet modes', () => {
     const settings = read('routes/settings.js');
     const booking = read('js/booking.js');

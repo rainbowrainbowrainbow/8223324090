@@ -1024,7 +1024,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /function hasBanquetGroupPayload/);
     assert.match(route, /BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT/);
     assert.match(route, /\/api\/banquets\/:groupId\/activity-booking/);
+    assert.match(read('services/banquetGroups.js'), /checkRoomConflict\(db, booking\.date, booking\.room, booking\.time, booking\.duration \|\| 0, \{ sourceBookingId \}, businessContext\)/);
     assert.match(route, /const activityRows = \[\]/);
+    assert.match(route, /checkRoomConflict\(client, activity\.date, activity\.room, activity\.time, activity\.duration \|\| 0, \{\s*excludeIds: \[main\.id\]\s*\}, businessContext\)/);
     assert.match(route, /upsertBanquetLink\(client, businessContext, main\.id, activity\.id/);
     assert.match(route, /activityRows\.map\(row => row\.id\)/);
     assert.match(route, /const activityBookings = activityRows\.map/);

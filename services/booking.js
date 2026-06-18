@@ -115,18 +115,37 @@ function activeBookingStatusSql(column = 'status') {
 
 // --- Conflict checks ---
 
+function roomConflictExcludeIds(excludeId = null) {
+    const raw = [];
+    if (Array.isArray(excludeId)) {
+        raw.push(...excludeId);
+    } else if (excludeId && typeof excludeId === 'object') {
+        if (Array.isArray(excludeId.excludeIds)) raw.push(...excludeId.excludeIds);
+        if (excludeId.excludeId) raw.push(excludeId.excludeId);
+        if (excludeId.sourceBookingId) raw.push(excludeId.sourceBookingId);
+    } else if (excludeId) {
+        raw.push(excludeId);
+    }
+    return Array.from(new Set(raw.map(value => String(value || '').trim()).filter(Boolean)));
+}
+
 async function checkRoomConflict(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     if (!isRoomConflictBlockingRoom(room)) return null;
     const context = normalizeTimelineContext(businessContext);
-    const params = excludeId ? [date, room, context, excludeId] : [date, room, context];
+    const excludeIds = roomConflictExcludeIds(excludeId);
+    const params = [date, room, context];
+    const excludeSql = excludeIds.length
+        ? ` AND id != ALL($${params.push(excludeIds)}::text[])`
+        : '';
     const result = await client.query(
         `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
-        (excludeId ? ' AND id != $4' : ''),
+        excludeSql,
         params
     );
     const newStart = timeToMinutes(time);
     const newEnd = newStart + duration;
     for (const b of result.rows) {
+        if (excludeIds.includes(String(b.id || '').trim())) continue;
         const bStart = timeToMinutes(b.time);
         const bEnd = bStart + (b.duration || 0);
         if (newStart < bEnd && newEnd > bStart) {

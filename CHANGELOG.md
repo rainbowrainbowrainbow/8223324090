@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.63 - Banquet header schedule summary
+
+### Frontend booking modal / Banquet root header / Schedule summary / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Root/kitchen банкетна модалка більше не показує оманливий технічний час** - у header для основної кухонної броні прибрано chip на кшталт `12:45 - 13:15`, бо це лише технічна тривалість однієї кухонної броні, а не весь банкет.
+- **Header показує заплановані видачі їжі** - для банкетної root/kitchen броні вгорі видно всі serving times з `bookingPackage.menuPositions`, наприклад `Видачі: 12:45 · 18:45`.
+- **Header показує сервісний розклад** - service events з `bookingPackage.serviceEvents` рендеряться окремим компактним рядком, наприклад `Сервіс: 12:00 Підготувати кімнату · 15:45 Напої`.
+- **Звичайні activity bookings не змінювались** - броні на кшталт `АН(60)` і `Бульбашкове шоу` далі показують власний time range у header і відкривають звичайну модалку бронювання.
+- **Регресійні тести закривають старий header behavior** - `tests/booking-package-contract.test.js` перевіряє root/kitchen schedule header, activity fallback і порожній schedule, а `tests/ui-check.js` тримає static guard для умовного рендера.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.63`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.62 - Generated output artifact policy
 
 ### Repo hygiene / Local QA artifacts / Release sync / (Клешня, 19.06.2026) [codex]

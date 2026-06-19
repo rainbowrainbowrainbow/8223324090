@@ -7548,6 +7548,80 @@ function banquetPackageBookingFromMembers(anchorBooking = {}, primaryMembers = [
     return candidates.find(booking => booking && bookingDetailCanOwnBanquetPackage(booking)) || null;
 }
 
+function bookingDetailHeaderPackageBooking(booking = {}, banquetSnapshot = null) {
+    const members = Array.isArray(banquetSnapshot?.members) ? banquetSnapshot.members : [];
+    const primaryMembers = members.filter(member => member.isPrimary);
+    const primaryIds = new Set(primaryMembers.map(member => String(member.bookingId || member.booking?.id || '')).filter(Boolean));
+    const kitchenMembers = members.filter(member => !primaryIds.has(String(member.bookingId || member.booking?.id || ''))
+        && (member.role === 'kitchen' || member.isKitchenCandidate));
+    return banquetPackageBookingFromMembers(booking, primaryMembers, kitchenMembers, members);
+}
+
+function bookingDetailHeaderIsBanquetScheduleMode(booking = {}, banquetSnapshot = null, fullBanquetDetailHtml = '') {
+    if (!String(fullBanquetDetailHtml || '').trim() && !banquetSnapshotHasGroup(banquetSnapshot)) return false;
+    if (!bookingDetailCanOwnBanquetPackage(booking)) return false;
+    const packageBooking = bookingDetailHeaderPackageBooking(booking, banquetSnapshot);
+    if (!packageBooking) return false;
+    const bookingId = bookingDetailId(booking);
+    const packageBookingId = bookingDetailId(packageBooking);
+    return !bookingId || !packageBookingId || bookingId === packageBookingId;
+}
+
+function bookingDetailHeaderScheduleSummary(packageBooking = {}) {
+    const bookingPackage = packageBooking ? getBookingPackageFromBooking(packageBooking) : null;
+    if (!bookingPackage) return '';
+
+    const servingTimes = [...new Set(groupedBookingMenuPositions(bookingPackage.menuPositions || [])
+        .map(group => group.servingTime)
+        .filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    const servingTimeSet = new Set(servingTimes);
+
+    const serviceEvents = (bookingPackage.serviceEvents || [])
+        .filter(event => event && (event.time || event.title || event.type))
+        .filter(event => !(event.type === 'food_service' && event.time && servingTimeSet.has(event.time)))
+        .map(event => {
+            const title = String(event.title || BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Сервіс').trim();
+            return {
+                time: event.time || '',
+                title: title || 'Сервіс'
+            };
+        })
+        .sort((a, b) => `${a.time || '99:99'} ${a.title}`.localeCompare(`${b.time || '99:99'} ${b.title}`));
+    const uniqueServiceEvents = [];
+    const serviceKeys = new Set();
+    serviceEvents.forEach(event => {
+        const key = `${event.time}|${event.title}`;
+        if (serviceKeys.has(key)) return;
+        serviceKeys.add(key);
+        uniqueServiceEvents.push(event);
+    });
+
+    const rows = [];
+    if (servingTimes.length) {
+        rows.push(`
+            <div class="booking-detail-header-schedule-item">
+                <span class="booking-detail-header-schedule-label">Видачі</span>
+                <span class="booking-detail-header-schedule-value">${servingTimes.map(time => escapeHtml(time)).join(' · ')}</span>
+            </div>
+        `);
+    }
+    if (uniqueServiceEvents.length) {
+        rows.push(`
+            <div class="booking-detail-header-schedule-item">
+                <span class="booking-detail-header-schedule-label">Сервіс</span>
+                <span class="booking-detail-header-schedule-value">${uniqueServiceEvents.map(event => `${event.time ? `${escapeHtml(event.time)} ` : ''}${escapeHtml(event.title)}`).join(' · ')}</span>
+            </div>
+        `);
+    }
+    if (!rows.length) return '';
+    return `
+        <div class="booking-detail-header-schedule" aria-label="План банкету">
+            ${rows.join('')}
+        </div>
+    `;
+}
+
 function renderBanquetMenuSection(packageBooking) {
     if (!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) return '';
     return renderBanquetWorkSection(
@@ -8027,6 +8101,13 @@ async function showBookingDetails(bookingId) {
     `;
     const fullBanquetDetailHtml = renderFullBanquetDetail(booking, bookings, banquetSnapshot);
     const hasBanquetOverview = Boolean(fullBanquetDetailHtml.trim());
+    const headerPackageBooking = bookingDetailHeaderPackageBooking(booking, banquetSnapshot);
+    const headerScheduleHtml = bookingDetailHeaderScheduleSummary(headerPackageBooking);
+    const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
+        && bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const headerTimeMetaHtml = useBanquetHeaderSchedule
+        ? ''
+        : `<span class="booking-detail-meta-item">${escapeHtml(bookingDetailTimeRange)}</span>`;
     const customerBlockHtml = booking.customerId
         ? `<div id="bookingCustomerBlock" class="booking-customer-block${hasBanquetOverview ? ' booking-customer-block--priority' : ''}"></div>`
         : '';
@@ -8042,9 +8123,10 @@ async function showBookingDetails(bookingId) {
                     <div class="booking-detail-meta" aria-label="Деталі бронювання">
                         <span class="booking-detail-meta-item">${escapeHtml(booking.room || '-')}</span>
                         <span class="booking-detail-meta-item">${escapeHtml(booking.date || '-')}</span>
-                        <span class="booking-detail-meta-item">${escapeHtml(bookingDetailTimeRange)}</span>
+                        ${headerTimeMetaHtml}
                         <span class="booking-detail-meta-item">#${escapeHtml(bookingDetailIdLabel)}</span>
                     </div>
+                    ${useBanquetHeaderSchedule ? headerScheduleHtml : ''}
                 </div>
             </div>
         </div>

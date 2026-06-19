@@ -260,6 +260,46 @@ function createBanquetModalDetailHarness() {
     return context;
 }
 
+function addMinutesForBookingDetailHeaderTest(time, duration) {
+    const [rawHours, rawMinutes] = String(time || '00:00').split(':');
+    const hours = Number(rawHours);
+    const minutes = Number(rawMinutes);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return '';
+    const totalMinutes = hours * 60 + minutes + (Number(duration) || 0);
+    const dayMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+    return `${String(Math.floor(dayMinutes / 60)).padStart(2, '0')}:${String(dayMinutes % 60).padStart(2, '0')}`;
+}
+
+function renderBookingDetailHeaderForTest(context, booking, banquetSnapshot = null, bookings = []) {
+    const fullBanquetDetailHtml = context.renderFullBanquetDetail(booking, bookings, banquetSnapshot);
+    const headerPackageBooking = context.bookingDetailHeaderPackageBooking(booking, banquetSnapshot);
+    const headerScheduleHtml = context.bookingDetailHeaderScheduleSummary(headerPackageBooking);
+    const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
+        && context.bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const endTime = addMinutesForBookingDetailHeaderTest(booking.time, booking.duration);
+    const bookingDetailTimeRange = `${booking.time} - ${endTime}`;
+    const headerTimeMetaHtml = useBanquetHeaderSchedule
+        ? ''
+        : `<span class="booking-detail-meta-item">${context.escapeHtml(bookingDetailTimeRange)}</span>`;
+
+    return `
+        <div class="booking-detail-header booking-detail-header--compact">
+            <div class="booking-detail-heading">
+                <div class="booking-detail-title-group">
+                    <h3 class="booking-detail-title">${context.escapeHtml(booking.label || 'Бронювання')}</h3>
+                    <div class="booking-detail-meta" aria-label="Деталі бронювання">
+                        <span class="booking-detail-meta-item">${context.escapeHtml(booking.room || '-')}</span>
+                        <span class="booking-detail-meta-item">${context.escapeHtml(booking.date || '-')}</span>
+                        ${headerTimeMetaHtml}
+                        <span class="booking-detail-meta-item">#${context.escapeHtml(booking.id || '----')}</span>
+                    </div>
+                    ${useBanquetHeaderSchedule ? headerScheduleHtml : ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function dispatchPointerElement(window, element, type = 'click') {
     element.dispatchEvent(new window.MouseEvent(type, {
         bubbles: true,
@@ -1497,6 +1537,129 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.equal(text.includes('group-first'), false);
     assert.ok(document.querySelector('details.booking-banquet-technical'), 'technical details stay available but collapsed by default');
     assert.equal(document.querySelector('details.booking-banquet-technical')?.hasAttribute('open'), false);
+});
+
+test('booking modal banquet root header shows planned schedule instead of technical time range', () => {
+    const context = createBanquetModalDetailHarness();
+    const rootBooking = {
+        id: 'BK-2026-0489',
+        businessContext: 'event_genix',
+        date: '2026-06-19',
+        time: '12:45',
+        duration: 30,
+        room: 'Марвел',
+        label: 'Кухня',
+        status: 'confirmed',
+        price: 4780,
+        extraData: {
+            bookingPackage: {
+                finalTotal: 4780,
+                menuPositions: [
+                    {
+                        id: 'menu-1',
+                        title: 'Ковбаски гриль',
+                        kitchenType: 'menu',
+                        quantity: 1,
+                        servingUnit: 'порція',
+                        unitPrice: 350,
+                        subtotal: 350,
+                        servingTime: '12:45'
+                    },
+                    {
+                        id: 'menu-2',
+                        title: 'Мʼясне плато',
+                        kitchenType: 'menu',
+                        quantity: 1,
+                        servingUnit: 'порція',
+                        unitPrice: 440,
+                        subtotal: 440,
+                        servingTime: '18:45'
+                    }
+                ],
+                serviceEvents: [
+                    { id: 'setup-1', type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' },
+                    { id: 'drinks-1', type: 'drinks', title: 'Напої', time: '15:45' }
+                ]
+            }
+        }
+    };
+    const activityBooking = {
+        id: 'BK-2026-0490',
+        businessContext: 'event_genix',
+        date: '2026-06-19',
+        time: '13:45',
+        duration: 60,
+        room: 'Марвел',
+        label: 'АН(60)',
+        programName: 'Анімація 60хв',
+        status: 'confirmed',
+        price: 1500
+    };
+    const snapshot = {
+        source: 'group',
+        groupId: 'BQ-MQKO10RC-536C67A4',
+        group: {
+            id: 'BQ-MQKO10RC-536C67A4',
+            groupName: 'тест група',
+            date: '2026-06-19',
+            room: 'Марвел',
+            status: 'active'
+        },
+        members: [
+            { bookingId: 'BK-2026-0489', role: 'primary', isPrimary: true, isKitchenCandidate: true, booking: rootBooking },
+            { bookingId: 'BK-2026-0490', role: 'activity', booking: activityBooking }
+        ],
+        warnings: []
+    };
+
+    const rootHeader = renderBookingDetailHeaderForTest(context, rootBooking, snapshot, [rootBooking, activityBooking]);
+    const rootDocument = new JSDOM(`<main>${rootHeader}</main>`).window.document;
+    const rootMetaText = rootDocument.querySelector('.booking-detail-meta')?.textContent || '';
+    const rootScheduleText = rootDocument.querySelector('.booking-detail-header-schedule')?.textContent || '';
+    const rootText = rootDocument.body.textContent || '';
+
+    assert.match(rootText, /Марвел/);
+    assert.match(rootText, /2026-06-19/);
+    assert.match(rootText, /#BK-2026-0489/);
+    assert.equal(rootMetaText.includes('12:45 - 13:15'), false);
+    assert.match(rootScheduleText, /Видачі/);
+    assert.match(rootScheduleText, /12:45/);
+    assert.match(rootScheduleText, /18:45/);
+    assert.match(rootScheduleText, /Сервіс/);
+    assert.match(rootScheduleText, /12:00/);
+    assert.match(rootScheduleText, /Підготувати кімнату/);
+    assert.match(rootScheduleText, /15:45/);
+    assert.match(rootScheduleText, /Напої/);
+
+    const activityHeader = renderBookingDetailHeaderForTest(context, activityBooking, snapshot, [rootBooking, activityBooking]);
+    const activityDocument = new JSDOM(`<main>${activityHeader}</main>`).window.document;
+    const activityMetaText = activityDocument.querySelector('.booking-detail-meta')?.textContent || '';
+    assert.match(activityMetaText, /13:45 - 14:45/);
+    assert.equal(activityDocument.querySelector('.booking-detail-header-schedule'), null);
+
+    const emptyPackageRoot = {
+        id: 'BK-EMPTY-SCHEDULE',
+        date: '2026-06-19',
+        time: '10:00',
+        duration: 30,
+        room: 'Марвел',
+        label: 'Кухня',
+        banquetGuests: 11,
+        extraData: {
+            bookingPackage: {
+                menuPositions: [],
+                serviceEvents: []
+            }
+        }
+    };
+    const emptyHeader = renderBookingDetailHeaderForTest(context, emptyPackageRoot, {
+        source: 'group',
+        groupId: 'BQ-EMPTY',
+        members: [{ bookingId: 'BK-EMPTY-SCHEDULE', role: 'primary', isPrimary: true, booking: emptyPackageRoot }]
+    });
+    const emptyDocument = new JSDOM(`<main>${emptyHeader}</main>`).window.document;
+    assert.equal(emptyDocument.querySelector('.booking-detail-header-schedule'), null);
+    assert.match(emptyDocument.querySelector('.booking-detail-meta')?.textContent || '', /10:00 - 10:30/);
 });
 
 test('booking modal banquet overview separates work summary from technical metadata', () => {

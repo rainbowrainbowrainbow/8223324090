@@ -1028,7 +1028,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(controlsCss, /\.timeline-container\[data-zoom\] \.timeline-line\.has-timeline-room-service-marker-lanes > \.line-grid/);
     assert.match(css, /--timeline-room-operational-row-height/);
     assert.match(css, /--room-service-marker-row-height/);
-    assert.match(css, /height:\s*48px/);
+    assert.match(css, /height:\s*54px/);
     assert.match(css, /min-width:\s*168px/);
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
@@ -1043,7 +1043,7 @@ test('room timeline service markers keep readable event-block dimensions and str
     const markerFontSize = cssPxValue(markerRule, 'font-size');
     const markerPadding = firstCssPxValue(cssDeclaration(markerRule, 'padding'));
 
-    assert.ok(markerHeight >= 44, 'marker height stays readable');
+    assert.ok(markerHeight >= 52, 'marker height reserves text descenders');
     assert.ok(markerMinWidth >= 150, 'marker width stays readable');
     assert.ok(markerFontSize >= 10, 'marker text is not reduced into a badge');
     assert.ok(markerPadding >= 4, 'marker keeps practical internal padding');
@@ -1158,9 +1158,9 @@ test('room timeline activity and service marker typography use shared room token
         '--timeline-room-card-time-font-size': '13px',
         '--timeline-room-card-title-font-size': '12px',
         '--timeline-room-card-detail-font-size': '12px',
-        '--timeline-room-card-time-line-height': '1.1',
-        '--timeline-room-card-title-line-height': '1.1',
-        '--timeline-room-card-detail-line-height': '1.12',
+        '--timeline-room-card-time-line-height': '1.2',
+        '--timeline-room-card-title-line-height': '1.2',
+        '--timeline-room-card-detail-line-height': '1.22',
         '--timeline-room-card-title-font-weight': '900',
         '--timeline-room-card-detail-font-weight': '850'
     };
@@ -1199,6 +1199,9 @@ test('room timeline activity and service marker typography use shared room token
         assert.equal(cssDeclaration(rule, 'font-weight'), 'var(--timeline-room-card-detail-font-weight)');
         assert.equal(cssDeclaration(rule, 'line-height'), 'var(--timeline-room-card-detail-line-height)');
     });
+    const roomCardSignalRule = cssRule(css, '.timeline-banquet-room-card-signal');
+    assert.equal(cssDeclaration(roomCardSignalRule, 'line-height'), '1.25');
+    assert.equal(cssDeclaration(roomCardSignalRule, 'padding'), '2px 5px 3px');
     assert.doesNotMatch(css, /body\.timeline-view-animators[\s\S]*--timeline-room-card-(?:time|title|detail)/);
 });
 
@@ -1433,9 +1436,9 @@ test('room timeline renders multiple menu serving markers inside the room grid',
     assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '122px']);
     assert.equal(layout.gridLaneCount, '3');
     assert.equal(layout.gridOperationalLaneCount, '3');
-    assert.equal(layout.gridRowHeight, '180px');
-    assert.equal(layout.gridOperationalRowHeight, '180px');
-    assert.equal(layout.lineMinHeight, '180px');
+    assert.equal(layout.gridRowHeight, '186px');
+    assert.equal(layout.gridOperationalRowHeight, '186px');
+    assert.equal(layout.lineMinHeight, '186px');
     assert.equal(layout.hasGridLaneClass, true);
     assert.equal(layout.hasGridOperationalLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
@@ -1464,9 +1467,9 @@ test('room timeline renders room_setup service event as a separate room-grid mar
     assert.equal(markers[0].markerTop, '10px');
     assert.equal(layout.gridLaneCount, '1');
     assert.equal(layout.gridOperationalLaneCount, '1');
-    assert.equal(layout.gridRowHeight, '72px');
-    assert.equal(layout.gridOperationalRowHeight, '72px');
-    assert.equal(layout.lineMinHeight, '72px');
+    assert.equal(layout.gridRowHeight, '74px');
+    assert.equal(layout.gridOperationalRowHeight, '74px');
+    assert.equal(layout.lineMinHeight, '74px');
 });
 
 test('room timeline keeps mixed same-time room-grid markers without dedupe', () => {
@@ -1498,9 +1501,9 @@ test('room timeline keeps mixed same-time room-grid markers without dedupe', () 
     assert.deepEqual(markers.map(marker => marker.markerTop), ['66px', '10px', '122px']);
     assert.equal(layout.gridLaneCount, '3');
     assert.equal(layout.gridOperationalLaneCount, '3');
-    assert.equal(layout.gridRowHeight, '180px');
-    assert.equal(layout.gridOperationalRowHeight, '180px');
-    assert.equal(layout.lineMinHeight, '180px');
+    assert.equal(layout.gridRowHeight, '186px');
+    assert.equal(layout.gridOperationalRowHeight, '186px');
+    assert.equal(layout.lineMinHeight, '186px');
 });
 
 test('room service marker lanes avoid close-time collisions and reserve row height', () => {
@@ -1523,11 +1526,11 @@ test('room service marker lanes avoid close-time collisions and reserve row heig
     assert.equal(layout.gridOperationalLaneCount, '4');
     assert.equal(layout.lineLaneCount, '4');
     assert.equal(layout.lineOperationalLaneCount, '4');
-    assert.equal(layout.gridRowHeight, '236px');
-    assert.equal(layout.gridOperationalRowHeight, '236px');
-    assert.equal(layout.lineRowHeight, '236px');
-    assert.equal(layout.lineOperationalRowHeight, '236px');
-    assert.equal(layout.lineMinHeight, '236px');
+    assert.equal(layout.gridRowHeight, '242px');
+    assert.equal(layout.gridOperationalRowHeight, '242px');
+    assert.equal(layout.lineRowHeight, '242px');
+    assert.equal(layout.lineOperationalRowHeight, '242px');
+    assert.equal(layout.lineMinHeight, '242px');
 });
 
 test('room operational lanes separate same-time service marker and activity block', () => {

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.67 - Room timeline typography cleanup
+
+### Frontend room timeline / Banquet marker typography / Text descender safety / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Текст у банкетних room markers більше не обрізає нижні хвости букв** - `Підготувати кімнату`, `Кухня 4 поз.`, `Напої` та інші service marker labels отримали більший вертикальний запас.
+- **Shared typography tokens room timeline стали безпечнішими** - line-height для часу, назви й деталей піднято з надто щільних `1.1/1.12` до `1.2/1.22`, щоб жирний Nunito не різав українські glyphs.
+- **Service marker layout синхронізовано з реальною висотою** - `.timeline-room-service-marker` і JS layout constant тепер використовують `54px`, тому lane/row height резервується коректно без накладання.
+- **Ліва банкетна картка теж отримала запас для signal chips** - `.timeline-banquet-room-card-signal` має більший `line-height` і нижній padding, щоб маленькі chips не підрізали текст.
+- **Activity cards і service markers лишаються в одному візуальному стандарті** - зміна scoped через `body.timeline-view-rooms` і не додає overrides у timeline аніматорів.
+- **Регресійні guardrails оновлено під системну метрику** - `tests/timeline-resources.test.js` перевіряє descender-safe висоту, line-height tokens і нові row-height резерви; `tests/ui-check.js` тримає static smoke.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.67`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.66 - Room timeline duplicate block hotfix
 
 ### Frontend room timeline / Banquet duplicate blocks / Root occupancy hotfix / Regression tests / (Клешня, 19.06.2026) [codex]

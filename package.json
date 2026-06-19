@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.66",
+  "version": "0.76.67",
   "eventGenix": {
-    "releaseLabel": "Room timeline duplicate block hotfix"
+    "releaseLabel": "Room timeline typography cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

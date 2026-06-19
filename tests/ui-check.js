@@ -985,6 +985,7 @@ const timelineRenderClearIndex = timelineCode.indexOf('clearTimelineBanquetRoomP
 const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedDate)', timelineRenderStartIndex);
 const timelineBanquetOccupancyBandRule = cssRuleText(timelineConstructorCss, '.booking-block.is-timeline-banquet-occupancy-band');
 const timelineBanquetGridDuplicateRule = cssRuleText(timelineConstructorCss, '.booking-block.is-timeline-banquet-grid-duplicate');
+const timelineBanquetRoomCardSignalRule = cssRuleText(timelineConstructorCss, '.timeline-banquet-room-card-signal');
 const timelineRoomServiceMarkerWithBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker.has-user-letter');
 const timelineRoomServiceMarkerBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker .user-letter');
 const timelineRoomVisualTokensRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms');
@@ -1064,6 +1065,9 @@ check('Room timeline badges and text metrics are token-aligned without animator 
     && /--timeline-room-card-time-font-size:\s*13px\s*;/.test(timelineRoomVisualTokensRule)
     && /--timeline-room-card-title-font-size:\s*12px\s*;/.test(timelineRoomVisualTokensRule)
     && /--timeline-room-card-detail-font-size:\s*12px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-time-line-height:\s*1\.2\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-title-line-height:\s*1\.2\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-detail-line-height:\s*1\.22\s*;/.test(timelineRoomVisualTokensRule)
     && /width:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomActivityBadgeRule)
     && /height:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomActivityBadgeRule)
     && /font-size:\s*var\(--timeline-room-card-badge-font-size\)\s*;/.test(timelineRoomActivityBadgeRule)
@@ -1100,7 +1104,7 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineConstructorCss.includes('.timeline-room-service-marker-main')
     && timelineConstructorCss.includes('.timeline-room-service-marker-detail')
     && timelineConstructorCss.includes('min-width: 168px')
-    && timelineConstructorCss.includes('height: 48px')
+    && timelineConstructorCss.includes('height: 54px')
     && timelineConstructorCss.includes('font-size: 11px')
     && timelineConstructorCss.includes('padding: 8px 11px 9px')
     && timelineConstructorCss.includes('.timeline-room-service-marker--room-setup')
@@ -1117,7 +1121,7 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineCode.includes('markerEl.dataset.markerLane = String(laneIndex)')
     && timelineResourcesTestCode.includes("querySelectorAll('.line-grid .timeline-room-service-marker')")
     && timelineResourcesTestCode.includes('room timeline service markers keep readable event-block dimensions and structured content')
-    && timelineResourcesTestCode.includes('marker height stays readable')
+    && timelineResourcesTestCode.includes('marker height reserves text descenders')
     && timelineResourcesTestCode.includes('room timeline renders multiple menu serving markers inside the room grid')
     && timelineResourcesTestCode.includes('room timeline renders room_setup service event as a separate room-grid marker')
     && timelineResourcesTestCode.includes('room timeline keeps mixed same-time room-grid markers without dedupe')
@@ -1142,6 +1146,8 @@ check('Room timeline banquet preview uses readable labels instead of single-lett
     && timelineCode.includes("'Торт'")
     && timelineCode.includes("data-banquet-inspector-details>Деталі")
     && timelineCode.includes('>Вижимка</a>')
+    && /line-height:\s*1\.25\s*;/.test(timelineBanquetRoomCardSignalRule)
+    && /padding:\s*2px 5px 3px\s*;/.test(timelineBanquetRoomCardSignalRule)
     && !timelineCode.includes('data-banquet-badge')
     && !timelineConstructorCss.includes('.timeline-banquet-badge')
     && !timelineCode.includes('timeline-banquet-room-card-icons')

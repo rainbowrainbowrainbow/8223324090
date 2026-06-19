@@ -491,9 +491,9 @@ body.timeline-view-rooms {
     --timeline-room-card-time-font-size: 13px;
     --timeline-room-card-title-font-size: 12px;
     --timeline-room-card-detail-font-size: 12px;
-    --timeline-room-card-time-line-height: 1.1;
-    --timeline-room-card-title-line-height: 1.1;
-    --timeline-room-card-detail-line-height: 1.12;
+    --timeline-room-card-time-line-height: 1.2;
+    --timeline-room-card-title-line-height: 1.2;
+    --timeline-room-card-detail-line-height: 1.22;
     --timeline-room-card-title-font-weight: 900;
     --timeline-room-card-detail-font-weight: 850;
 }
@@ -934,7 +934,7 @@ html[data-theme="dark"] .booking-block.booking-block--tiny .timeline-compact-boo
     justify-content: center;
     box-sizing: border-box;
     visibility: visible;
-    height: 48px;
+    height: 54px;
     min-width: 168px;
     max-width: 220px;
     opacity: 1;
@@ -1022,7 +1022,7 @@ body.timeline-view-rooms .timeline-room-service-marker-main {
     font-size: var(--timeline-room-card-time-font-size, 12px);
     font-weight: var(--timeline-room-card-title-font-weight, 900);
     letter-spacing: 0;
-    line-height: var(--timeline-room-card-time-line-height, 1.1);
+    line-height: var(--timeline-room-card-time-line-height, 1.2);
 }
 
 .timeline-room-service-marker-title,
@@ -1037,14 +1037,14 @@ body.timeline-view-rooms .timeline-room-service-marker-main {
 .timeline-room-service-marker-title {
     font-size: var(--timeline-room-card-title-font-size, 12px);
     font-weight: var(--timeline-room-card-title-font-weight, 900);
-    line-height: var(--timeline-room-card-title-line-height, 1.1);
+    line-height: var(--timeline-room-card-title-line-height, 1.2);
 }
 
 .timeline-room-service-marker-detail {
     color: var(--timeline-service-card-detail);
     font-size: var(--timeline-room-card-detail-font-size, 11px);
     font-weight: var(--timeline-room-card-detail-font-weight, 800);
-    line-height: var(--timeline-room-card-detail-line-height, 1.12);
+    line-height: var(--timeline-room-card-detail-line-height, 1.22);
     opacity: 1;
 }
 
@@ -1189,13 +1189,13 @@ body.timeline-view-rooms .timeline-room-service-marker-detail {
     align-items: center;
     max-width: 100%;
     min-width: 0;
-    padding: 2px 5px;
+    padding: 2px 5px 3px;
     border-radius: 999px;
     background: rgba(15, 118, 110, 0.1);
     color: #115E59;
     font-size: 9px;
     font-weight: 900;
-    line-height: 1.15;
+    line-height: 1.25;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

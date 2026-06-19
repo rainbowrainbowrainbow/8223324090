@@ -1902,6 +1902,7 @@ const bookingDetailLineRowHasNoCopyAffordance = bookingDetailLineDetailBlock.inc
     && !bookingDetailLineDetailBlock.includes('data-copy=')
     && !bookingDetailLineDetailBlock.includes('detail-copy-btn');
 const bookingDetailStatusBadgeRule = cssRuleText(globalModalsCss, '#bookingModal .booking-detail-row .status-badge');
+const bookingDetailGroupRow = bookingDetailRowBlock(bookingDetailStandardBlock, 'Група');
 const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
 const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
@@ -1999,6 +2000,14 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ціна')
     && bookingDetailRowHasNoCopyAffordance(bookingCode, 'Сценарій')
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Статус')
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Примітки')
+    && Boolean(bookingDetailGroupRow)
+    && bookingDetailGroupRow.includes('<span class="value">${escapeHtml(booking.groupName)}</span>')
+    && !bookingDetailGroupRow.includes('🎪')
+    && bookingDetailStandardBlock.includes('booking-detail-row booking-detail-row--summary')
+    && bookingDetailStandardBlock.includes('detail-copy-summary-btn')
+    && bookingDetailStandardBlock.includes('Скопіювати всю інформацію')
+    && bookingDetailStandardBlock.includes('📋 Скопіювати все')
     && bookingCode.includes('customer-action-btn" title="Скопіювати імʼя"')
     && bookingCode.includes("navigator.clipboard.writeText('${escapeHtml(customer.phone)}')")
     && bookingCode.includes("navigator.clipboard.writeText('@${escapeHtml(igName)}')")

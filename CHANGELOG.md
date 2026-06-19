@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.72 - Banquet details visual cleanup
+
+### Booking details modal / Banquet rows / Copy affordance / UI guardrails / Browser QA / (Клешня, 19.06.2026) [codex]
+- **Рядок `Примітки` у booking/banquet details став звичайним read-only row** - прибрано `booking-detail-row--copyable`, `data-copy` і `detail-copy-btn`, тому hover більше не показує clipboard icon.
+- **Value `Примітки` вирівнюється як інші detail rows** - після видалення copyable reserve текст доходить до того самого правого краю, що `Дата`, `Час`, `Ціна` і `Сценарій`.
+- **Рядок `Група` показує чисту назву без `🎪`** - `тест група` більше не має зайвої декоративної іконки в деталях бронювання/банкету.
+- **Корисні copy actions збережено** - customer name, phone, Instagram і явна дія `Скопіювати все` лишаються доступними.
+- **Banquet details flow не змінювався** - `Редагувати`, `Вижимка`, `Ще`, нижній banquet detail block і timeline click flow лишаються на місці.
+- **UI guardrails оновлено** - `tests/ui-check.js` фіксує notes без copy affordance, group без `🎪`, customer copy actions, summary copy button і compact status badge.
+- **Browser QA пройдено для desktop/mobile/dark** - Playwright before/after підтвердив, що notes більше не copyable, group без emoji, layout desktop вирівняний, mobile читається.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.72`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.71 - Booking summary PDF A4 cleanup
 
 ### Booking summary / A4 preview / Print PDF / Pagination guardrails / Browser QA / (Клешня, 19.06.2026) [codex]

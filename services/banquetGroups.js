@@ -8,6 +8,7 @@ const {
     checkServerDuplicate,
     mapBookingRow,
     normalizeBookingStatus,
+    BANQUET_SERVICE_LINE_ID,
     validateDate,
     validateTime
 } = require('./booking');
@@ -111,15 +112,45 @@ function parseExtraData(row = {}) {
     }
 }
 
-function menuPositionCount(row = {}) {
+function bookingPackageFromRow(row = {}) {
     const extra = parseExtraData(row);
-    const bookingPackage = row.bookingPackage
+    return row.bookingPackage
         || row.booking_package
         || extra.bookingPackage
         || extra.booking_package
         || {};
+}
+
+function hasNonEmptyArray(value) {
+    return Array.isArray(value) && value.length > 0;
+}
+
+function packageArray(bookingPackage, camelKey, snakeKey) {
+    return bookingPackage?.[camelKey] || bookingPackage?.[snakeKey] || [];
+}
+
+function menuPositionCount(row = {}) {
+    const bookingPackage = bookingPackageFromRow(row);
     const positions = bookingPackage.menuPositions || bookingPackage.menu_positions || [];
     return Array.isArray(positions) ? positions.length : 0;
+}
+
+function bookingPackageHasBanquetData(row = {}) {
+    const bookingPackage = bookingPackageFromRow(row);
+    if (!bookingPackage || typeof bookingPackage !== 'object') return false;
+    const positions = packageArray(bookingPackage, 'menuPositions', 'menu_positions');
+    const serviceEvents = packageArray(bookingPackage, 'serviceEvents', 'service_events');
+    if (hasNonEmptyArray(positions) || hasNonEmptyArray(serviceEvents)) return true;
+    return [
+        'programBasePrice',
+        'program_base_price',
+        'positionsSubtotal',
+        'positions_subtotal',
+        'servicesSubtotal',
+        'services_subtotal',
+        'finalTotal',
+        'final_total'
+    ].some(key => bookingPackage[key] != null);
 }
 
 function isKitchenCandidate(row = {}) {
@@ -131,6 +162,53 @@ function isKitchenCandidate(row = {}) {
         || row.banquetAdults != null
         || row.banquet_tables != null
         || row.banquetTables != null;
+}
+
+function isActiveBookingRow(row = {}) {
+    return String(row.status || 'confirmed').trim().toLowerCase() !== 'cancelled';
+}
+
+function isBanquetServiceLine(row = {}) {
+    return cleanId(row.line_id || row.lineId) === BANQUET_SERVICE_LINE_ID;
+}
+
+function normalizedBookingCategory(row = {}) {
+    return String(row.category || row.bookingCategory || '').trim().toLowerCase();
+}
+
+function textMatchesBanquetIdentity(row = {}) {
+    const text = [
+        row.category,
+        row.label,
+        row.program_name,
+        row.programName,
+        row.program_code,
+        row.programCode,
+        row.group_name,
+        row.groupName
+    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean).join(' ');
+    return /\b(banquet|kitchen)\b|банкет|кух/i.test(text);
+}
+
+function isBanquetAnchor(row = {}) {
+    return isRootBooking(row)
+        && isActiveBookingRow(row)
+        && (
+            isBanquetServiceLine(row)
+            || isKitchenCandidate(row)
+            || bookingPackageHasBanquetData(row)
+            || normalizedBookingCategory(row) === 'banquet'
+            || textMatchesBanquetIdentity(row)
+        );
+}
+
+function isBanquetActivityCandidate(row = {}) {
+    if (isBanquetServiceLine(row) || isKitchenCandidate(row)) return false;
+    const category = normalizedBookingCategory(row);
+    if (['activity', 'animation', 'show', 'quest', 'masterclass', 'pinata', 'photo', 'graduation'].includes(category)) {
+        return true;
+    }
+    return Boolean(row.program_id || row.programId || Number(row.price || 0) > 0);
 }
 
 function isRootBooking(row = {}) {
@@ -393,6 +471,350 @@ async function logBanquetHistory(db, businessContext, action, user, data) {
             business_context: businessContext || DEFAULT_TIMELINE_CONTEXT
         }
     });
+}
+
+function banquetAutoGroupSkip(bookingId, businessContext, reason, details = {}) {
+    return {
+        success: true,
+        reconciled: false,
+        skipped: true,
+        reason,
+        bookingId: cleanId(bookingId),
+        businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+        group: null,
+        groupId: null,
+        primaryBookingId: null,
+        candidateBookingIds: [],
+        attachedBookingIds: [],
+        createdGroup: false,
+        ...details
+    };
+}
+
+function autoGroupCustomerId(row = {}) {
+    const value = row.customer_id ?? row.customerId;
+    if (value === undefined || value === null || value === '') return null;
+    return value;
+}
+
+function autoGroupRoom(row = {}) {
+    return normalizeShortText(row.room || row.resourceName || row.displayName, 100);
+}
+
+function autoGroupDate(row = {}) {
+    return String(row.date || '').slice(0, 10);
+}
+
+function hasAutoGroupMatchKey(row = {}) {
+    return Boolean(autoGroupDate(row) && autoGroupRoom(row) && autoGroupCustomerId(row) !== null);
+}
+
+function selectBanquetAutoGroupPrimary(candidates = [], anchorBookingId = null) {
+    const roots = candidates.filter(row => isRootBooking(row) && isActiveBookingRow(row));
+    const byTime = [...roots].sort((a, b) => timeKey(a).localeCompare(timeKey(b)));
+    return byTime.find(isBanquetServiceLine)
+        || byTime.find(isKitchenCandidate)
+        || byTime.find(bookingPackageHasBanquetData)
+        || byTime.find(row => normalizedBookingCategory(row) === 'banquet')
+        || byTime.find(row => cleanId(row.id) === cleanId(anchorBookingId) && isBanquetAnchor(row))
+        || byTime.find(isBanquetAnchor)
+        || byTime[0]
+        || null;
+}
+
+function banquetAutoGroupRoleFor(row = {}, primaryBookingId = null) {
+    if (cleanId(row.id) === cleanId(primaryBookingId)) return 'primary';
+    if (isKitchenCandidate(row) || bookingPackageHasBanquetData(row)) return 'kitchen';
+    if (isBanquetServiceLine(row)) return 'service';
+    if (isBanquetActivityCandidate(row)) return 'activity';
+    return 'manual';
+}
+
+function banquetAutoGroupSortOrderFor(row = {}, role = 'manual') {
+    const base = role === 'primary'
+        ? 10
+        : role === 'kitchen'
+            ? 30
+            : role === 'activity'
+                ? 100
+                : role === 'service'
+                    ? 120
+                    : 140;
+    const [hours, minutes] = String(row.time || '').slice(0, 5).split(':').map(value => Number(value));
+    const timeOffset = Number.isFinite(hours) && Number.isFinite(minutes) ? Math.min(89, Math.floor(((hours * 60) + minutes) / 20)) : 0;
+    return base + timeOffset;
+}
+
+function autoGroupLabel(row = {}) {
+    return normalizeShortText(row.group_name || row.groupName || row.label || row.program_name || row.programName, 200);
+}
+
+async function getBanquetAutoGroupCandidates(db, anchor, businessContext) {
+    if (!hasAutoGroupMatchKey(anchor)) return [];
+    const result = await db.query(
+        `SELECT b.*
+           FROM bookings b
+          WHERE ${bookingContextSql('b', '$1')}
+            AND b.date = $2
+            AND NULLIF(BTRIM(COALESCE(b.room, '')), '') = $3
+            AND b.customer_id = $4
+            AND ${bookingActiveStatusSql('b')}
+            AND NULLIF(COALESCE(b.linked_to, ''), '') IS NULL
+          ORDER BY
+            CASE
+              WHEN b.line_id = $5 THEN 0
+              ELSE 2
+            END ASC,
+            b.time ASC,
+            b.id ASC
+          FOR UPDATE`,
+        [
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            autoGroupDate(anchor),
+            autoGroupRoom(anchor),
+            autoGroupCustomerId(anchor),
+            BANQUET_SERVICE_LINE_ID
+        ]
+    );
+    return result.rows || [];
+}
+
+async function getMembershipRowsForBookings(db, bookingIds, businessContext) {
+    const uniqueIds = [...new Set((bookingIds || []).map(cleanId).filter(Boolean))];
+    if (!uniqueIds.length) return [];
+    const result = await db.query(
+        `SELECT bgb.id, bgb.group_id, bgb.business_context, bgb.booking_id, bgb.role, bgb.sort_order,
+                bgb.created_by_user_id, bgb.created_by, bgb.created_at, bgb.updated_at,
+                bg.primary_booking_id, bg.status AS group_status
+           FROM banquet_group_bookings bgb
+           JOIN banquet_groups bg ON bg.id = bgb.group_id
+          WHERE bgb.booking_id = ANY($1::text[])
+            AND ${bookingContextSql('bgb', '$2')}
+            AND ${bookingContextSql('bg', '$2')}
+          FOR UPDATE OF bgb, bg`,
+        [uniqueIds, businessContext || DEFAULT_TIMELINE_CONTEXT]
+    );
+    return result.rows || [];
+}
+
+async function insertBanquetAutoGroupMembership(db, {
+    groupId,
+    businessContext,
+    bookingId,
+    role,
+    sortOrder,
+    user
+}) {
+    const result = await db.query(
+        `INSERT INTO banquet_group_bookings
+            (group_id, business_context, booking_id, role, sort_order, created_by_user_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT DO NOTHING
+         RETURNING *`,
+        [
+            groupId,
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            bookingId,
+            role,
+            sortOrder,
+            actorUserId(user),
+            actorName(user)
+        ]
+    );
+    return result.rows[0] || null;
+}
+
+async function reconcileBanquetGroupForBooking({
+    db = defaultPool,
+    bookingId,
+    businessContext = DEFAULT_TIMELINE_CONTEXT,
+    user = null,
+    source = 'auto_same_customer_room'
+} = {}) {
+    const cleanBookingId = cleanId(bookingId);
+    const context = businessContext || DEFAULT_TIMELINE_CONTEXT;
+    if (!cleanBookingId) return banquetAutoGroupSkip(null, context, 'missing_booking_id');
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const anchor = await getScopedBookingForUpdate(client, cleanBookingId, context);
+        if (!anchor) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'booking_not_found');
+        }
+        if (!isRootBooking(anchor)) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'linked_child_booking');
+        }
+        if (!isActiveBookingRow(anchor)) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'cancelled_booking');
+        }
+        if (!hasAutoGroupMatchKey(anchor)) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'missing_date_room_or_customer');
+        }
+
+        const candidates = await getBanquetAutoGroupCandidates(client, anchor, context);
+        const candidateBookingIds = candidates.map(row => cleanId(row.id)).filter(Boolean);
+        if (candidates.length < 2) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'not_enough_candidates', { candidateBookingIds });
+        }
+        if (!candidates.some(isBanquetAnchor)) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'missing_banquet_anchor', { candidateBookingIds });
+        }
+
+        const memberships = await getMembershipRowsForBookings(client, candidateBookingIds, context);
+        const groupIds = [...new Set(memberships.map(row => cleanId(row.group_id)).filter(Boolean))];
+        if (groupIds.length > 1) {
+            await client.query('ROLLBACK');
+            return banquetAutoGroupSkip(cleanBookingId, context, 'multiple_existing_groups', {
+                candidateBookingIds,
+                existingGroupIds: groupIds
+            });
+        }
+
+        let group = null;
+        let primary = null;
+        let createdGroup = false;
+        const membershipByBookingId = new Map(memberships.map(row => [cleanId(row.booking_id), row]));
+
+        if (groupIds.length === 1) {
+            group = await getGroupByIdForUpdate(client, groupIds[0], context);
+            if (!group || String(group.status || 'active').toLowerCase() !== 'active') {
+                await client.query('ROLLBACK');
+                return banquetAutoGroupSkip(cleanBookingId, context, 'existing_group_not_active', {
+                    candidateBookingIds,
+                    existingGroupIds: groupIds
+                });
+            }
+            primary = candidates.find(row => cleanId(row.id) === cleanId(group.primary_booking_id)) || null;
+            if (!primary) {
+                await client.query('ROLLBACK');
+                return banquetAutoGroupSkip(cleanBookingId, context, 'existing_primary_outside_candidate_set', {
+                    candidateBookingIds,
+                    groupId: cleanId(group.id),
+                    primaryBookingId: cleanId(group.primary_booking_id)
+                });
+            }
+        } else {
+            primary = selectBanquetAutoGroupPrimary(candidates, cleanBookingId);
+            if (!primary || !isBanquetAnchor(primary)) {
+                await client.query('ROLLBACK');
+                return banquetAutoGroupSkip(cleanBookingId, context, 'primary_anchor_not_found', { candidateBookingIds });
+            }
+            const groupId = generateBanquetGroupId();
+            const groupResult = await client.query(
+                `INSERT INTO banquet_groups
+                    (id, business_context, primary_booking_id, customer_id, date, room, group_name, status, source, meta,
+                     created_by_user_id, created_by, updated_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9::jsonb, $10, $11, $11)
+                 RETURNING *`,
+                [
+                    groupId,
+                    context,
+                    primary.id,
+                    autoGroupCustomerId(primary),
+                    autoGroupDate(primary),
+                    autoGroupRoom(primary),
+                    autoGroupLabel(primary) || autoGroupLabel(anchor),
+                    normalizeShortText(source, 64) || 'auto_same_customer_room',
+                    JSON.stringify({
+                        autoGrouped: true,
+                        rule: 'business_context_date_room_customer_anchor',
+                        anchorBookingId: cleanBookingId,
+                        candidateBookingIds
+                    }),
+                    actorUserId(user),
+                    actorName(user)
+                ]
+            );
+            group = groupResult.rows[0];
+            createdGroup = true;
+        }
+
+        const groupId = cleanId(group.id);
+        const primaryBookingId = cleanId(primary.id || group.primary_booking_id);
+        const attachedBookingIds = [];
+
+        for (const candidate of candidates) {
+            const candidateId = cleanId(candidate.id);
+            if (!candidateId) continue;
+            const existing = membershipByBookingId.get(candidateId);
+            const role = banquetAutoGroupRoleFor(candidate, primaryBookingId);
+            if (!existing) {
+                const membership = await insertBanquetAutoGroupMembership(client, {
+                    groupId,
+                    businessContext: context,
+                    bookingId: candidateId,
+                    role,
+                    sortOrder: banquetAutoGroupSortOrderFor(candidate, role),
+                    user
+                });
+                if (membership) {
+                    membershipByBookingId.set(candidateId, membership);
+                    attachedBookingIds.push(candidateId);
+                }
+            }
+            if (candidateId !== primaryBookingId) {
+                await upsertCompatibilityLink(
+                    client,
+                    context,
+                    primaryBookingId,
+                    candidateId,
+                    autoGroupLabel(group) || autoGroupLabel(candidate) || autoGroupLabel(primary),
+                    user
+                );
+            }
+        }
+
+        if (createdGroup || attachedBookingIds.length) {
+            await client.query(
+                `UPDATE banquet_groups
+                    SET updated_at = NOW(), updated_by = $3
+                  WHERE id = $1
+                    AND ${bookingContextSql('', '$2')}`,
+                [groupId, context, actorName(user)]
+            );
+            await logBanquetHistory(client, context, 'banquet_group_auto_reconciled', user, {
+                group_id: groupId,
+                primary_booking_id: primaryBookingId,
+                anchor_booking_id: cleanBookingId,
+                candidate_booking_ids: candidateBookingIds,
+                attached_booking_ids: attachedBookingIds,
+                created_group: createdGroup,
+                source: normalizeShortText(source, 64) || 'auto_same_customer_room'
+            });
+        }
+
+        await client.query('COMMIT');
+        return {
+            success: true,
+            reconciled: true,
+            skipped: false,
+            reason: null,
+            bookingId: cleanBookingId,
+            businessContext: context,
+            group: mapGroupRow(group),
+            groupId,
+            primaryBookingId,
+            candidateBookingIds,
+            attachedBookingIds,
+            createdGroup
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (isMissingBanquetSchemaError(err)) {
+            return banquetAutoGroupSkip(cleanBookingId, context, 'banquet_group_schema_missing');
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
 }
 
 function assertEditableBooking(user, booking) {
@@ -1333,5 +1755,6 @@ module.exports = {
     detachBookingFromBanquetGroup,
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
+    reconcileBanquetGroupForBooking,
     isKitchenCandidate
 };

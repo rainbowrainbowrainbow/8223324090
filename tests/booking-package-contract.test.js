@@ -1125,6 +1125,29 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     );
 });
 
+test('banquet group repair script is dry-run by default and reuses backend reconciliation', () => {
+    const script = read('scripts', 'reconcile-banquet-groups.js');
+
+    assert.match(script, /const \{ pool \} = require\('\.\.\/db'\)/);
+    assert.match(script, /reconcileBanquetGroupForBooking/);
+    assert.match(script, /flags\.has\('--apply'\)/);
+    assert.match(script, /dry-run only: add --apply/);
+    assert.match(script, /b\.date >= \$1/);
+    assert.match(script, /b\.date <= \$2/);
+    assert.match(script, /b\.customer_id IS NOT NULL/);
+    assert.match(script, /NULLIF\(BTRIM\(COALESCE\(b\.room, ''\)\), ''\) IS NOT NULL/);
+    assert.match(script, /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/);
+    assert.match(script, /bookingPackageHasBanquetData/);
+    assert.match(script, /isBanquetAnchor/);
+    assert.match(script, /hashCustomerId/);
+    assert.match(script, /customer=hash:/);
+    assert.match(script, /multiple_existing_groups/);
+    assert.match(script, /already_grouped/);
+    assert.match(script, /production_repair_script/);
+    assert.doesNotMatch(script, /JOIN customers/i);
+    assert.doesNotMatch(script, /phone|instagram|child_name/i);
+});
+
 test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', () => {
     const manifestCode = read('js', 'kitchen-menu-images.js');
     const context = { window: {}, Object };

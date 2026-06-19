@@ -143,8 +143,10 @@ function createTimelineBanquetMarkerHarness() {
     return context;
 }
 
-function createTimelineBanquetMarkerScenario(bookingPackage) {
+function createTimelineBanquetMarkerScenario(bookingPackage, options = {}) {
     const ctx = createTimelineBanquetMarkerHarness();
+    const hasCreatedByOption = Object.prototype.hasOwnProperty.call(options, 'createdBy');
+    const createdBy = hasCreatedByOption ? options.createdBy : (bookingPackage.createdBy || bookingPackage.created_by || 'Svitlana');
     const kitchenBooking = {
         id: 'BK-KITCHEN',
         date: '2099-06-18',
@@ -152,6 +154,7 @@ function createTimelineBanquetMarkerScenario(bookingPackage) {
         room: 'Room A',
         extraData: { bookingPackage }
     };
+    if (createdBy) kitchenBooking.createdBy = createdBy;
     const summary = {
         primaryBooking: kitchenBooking,
         carrierBooking: kitchenBooking,
@@ -176,7 +179,7 @@ function createTimelineBanquetMarkerScenario(bookingPackage) {
 }
 
 function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
-    const { ctx, inspectorSummary } = createTimelineBanquetMarkerScenario(bookingPackage);
+    const { ctx, inspectorSummary } = createTimelineBanquetMarkerScenario(bookingPackage, options);
     ctx.__timelineViewState.room = options.roomView !== false;
     const lineGrid = ctx.document.querySelector('.line-grid');
     (options.activityBlocks || []).forEach((activity, index) => {
@@ -217,7 +220,9 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
             hasLineLaneClass: line?.classList.contains('has-timeline-room-service-marker-lanes') || false,
             hasLineOperationalLaneClass: line?.classList.contains('has-timeline-room-operational-lanes') || false
         },
-        markers: Array.from(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker')).map(node => ({
+        markers: Array.from(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker')).map(node => {
+            const userLetter = node.querySelector('.user-letter');
+            return {
             tagName: node.tagName,
             className: node.className,
             type: node.dataset.banquetRoomMarker,
@@ -231,6 +236,10 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
             hasTimeElement: Boolean(node.querySelector('.timeline-room-service-marker-time')),
             hasTitleElement: Boolean(node.querySelector('.timeline-room-service-marker-title')),
             hasDetailElement: Boolean(node.querySelector('.timeline-room-service-marker-detail')),
+            hasUserLetter: Boolean(userLetter),
+            hasUserLetterClass: node.classList.contains('has-user-letter'),
+            userLetter: userLetter?.textContent.trim() || '',
+            userLetterTitle: userLetter?.getAttribute('title') || '',
             markerTitle: node.dataset.markerTitle,
             markerDetail: node.dataset.markerDetail || '',
             time: node.dataset.markerTime,
@@ -242,8 +251,11 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
             markerTop: node.style.getPropertyValue('--marker-top'),
             roomOperationalLane: node.dataset.roomOperationalLane,
             roomLaneTop: node.style.getPropertyValue('--timeline-room-lane-top'),
-            ariaHaspopup: node.getAttribute('aria-haspopup')
-        })),
+            ariaHaspopup: node.getAttribute('aria-haspopup'),
+            ariaLabel: node.getAttribute('aria-label') || '',
+            titleAttr: node.getAttribute('title') || ''
+        };
+        }),
         activities: Array.from(ctx.document.querySelectorAll('.line-grid .is-room-timeline-activity-card')).map(node => ({
             className: node.className,
             text: node.textContent.trim(),
@@ -1019,6 +1031,13 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.equal(cssDeclaration(markerRule, 'background'), 'var(--timeline-service-card-bg)');
     assert.match(markerRule, /(?:^|\n)\s*color:\s*#F8FAFC;/);
     assert.equal(cssDeclaration(markerRule, 'border-left-color'), 'var(--timeline-service-card-accent)');
+    const markerWithBadgeRule = cssRule(css, '.timeline-room-service-marker.has-user-letter');
+    const markerBadgeRule = cssRule(css, '.timeline-room-service-marker .user-letter');
+    assert.equal(cssDeclaration(markerWithBadgeRule, 'padding-right'), '34px');
+    assert.equal(cssDeclaration(markerBadgeRule, 'position'), 'absolute');
+    assert.equal(cssDeclaration(markerBadgeRule, 'pointer-events'), 'none');
+    assert.ok(cssPxValue(markerBadgeRule, 'width') >= 16);
+    assert.ok(cssPxValue(markerBadgeRule, 'height') >= 16);
 
     const { ctx, markers, layout } = renderTimelineBanquetRoomGridMarkers({
         menuPositions: [
@@ -1039,6 +1058,12 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.ok(markers.every(marker => marker.hasTimeElement));
     assert.ok(markers.every(marker => marker.hasTitleElement));
     assert.ok(markers.every(marker => marker.hasDetailElement));
+    assert.ok(markers.every(marker => marker.hasUserLetter));
+    assert.ok(markers.every(marker => marker.hasUserLetterClass));
+    assert.deepEqual(markers.map(marker => marker.userLetter), ['S', 'S', 'S']);
+    assert.ok(markers.every(marker => marker.userLetterTitle === 'Svitlana'));
+    assert.ok(markers.every(marker => marker.ariaLabel.includes('Svitlana')));
+    assert.ok(markers.every(marker => marker.titleAttr.includes('Svitlana')));
     assert.ok(markers.every(marker => marker.primary.startsWith(`${marker.time} `)));
     assert.ok(markers.every(marker => marker.markerTitle.length >= 4));
     assert.ok(markers.every(marker => !marker.markerTitle.includes('_')));
@@ -1051,6 +1076,23 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.notEqual(markers[0].markerTop, markers[1].markerTop);
     assert.equal(layout.hasGridLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
+});
+
+test('room timeline service markers omit creator badge when owner is unavailable', () => {
+    const { markers } = renderTimelineBanquetRoomGridMarkers({
+        menuPositions: [
+            { id: 'item-a', title: 'Pizza', servingTime: '12:00' }
+        ],
+        serviceEvents: [
+            { id: 'setup-1', type: 'room_setup', title: 'Prepare room', time: '12:30' }
+        ]
+    }, { createdBy: '' });
+
+    assert.equal(markers.length, 2);
+    assert.ok(markers.every(marker => !marker.hasUserLetter));
+    assert.ok(markers.every(marker => !marker.hasUserLetterClass));
+    assert.ok(markers.every(marker => marker.userLetter === ''));
+    assert.ok(markers.every(marker => marker.userLetterTitle === ''));
 });
 
 test('room timeline service markers use solid category surfaces instead of transparent gradients', () => {
@@ -1187,10 +1229,10 @@ test('room timeline de-emphasizes duplicate kitchen booking block when service m
 
     assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker').length, 2);
     assert.ok(cssNumberValue(markerRule, 'z-index') > cssNumberValue(bandRule, 'z-index'));
-    assert.equal(cssDeclaration(bandRule, 'display'), 'none !important');
-    assert.equal(cssDeclaration(bandRule, 'visibility'), 'hidden');
-    assert.equal(cssNumberValue(bandRule, 'opacity'), 0);
-    assert.equal(cssDeclaration(bandRule, 'pointer-events'), 'none');
+    assert.doesNotMatch(bandRule, /display:\s*none/i);
+    assert.doesNotMatch(bandRule, /visibility:\s*hidden/i);
+    assert.equal(cssNumberValue(bandRule, 'opacity'), 0.72);
+    assert.equal(cssDeclaration(bandRule, 'pointer-events'), 'auto');
     assert.ok(bandTextRule, 'occupancy band hides duplicate booking text rule exists');
     assert.match(bandTextRule[1], /visibility:\s*hidden/);
     assert.match(bandTextRule[1], /opacity:\s*0\s*!important/);
@@ -1201,6 +1243,10 @@ test('room timeline de-emphasizes duplicate kitchen booking block when service m
     );
     assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), true);
+    assert.equal(
+        ctx.document.querySelector('.booking-block.is-timeline-banquet-occupancy-band.has-timeline-banquet-preview-trigger'),
+        kitchenBlock
+    );
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, '1');
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
     assert.ok(kitchenBlock._timelineBanquetSummary);

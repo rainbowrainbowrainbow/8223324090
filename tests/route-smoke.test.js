@@ -423,6 +423,223 @@ function createFakePool() {
             updated_at: '2099-06-01T10:35:00.000Z'
         },
         {
+            id: 'BK-AUTO-KITCHEN',
+            business_context: 'event_genix',
+            date: '2099-06-22',
+            time: '12:00',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: null,
+            label: 'Кухня',
+            program_name: 'Banquet kitchen',
+            category: 'custom',
+            duration: 240,
+            price: 0,
+            hosts: null,
+            second_animator: null,
+            costume: null,
+            room: 'Марвел',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: 'Auto banquet',
+            customer_id: 704,
+            payment_method: null,
+            banquet_guests: null,
+            banquet_adults: null,
+            banquet_tables: null,
+            banquet_menu: null,
+            extra_data: {
+                bookingPackage: {
+                    menuPositions: [
+                        { productId: 'menu_pizza', title: 'Pizza', quantity: 4, unitPrice: 300, subtotal: 1200 }
+                    ],
+                    serviceEvents: [
+                        { type: 'room_setup', time: '12:00' },
+                        { type: 'food_service', time: '12:45', count: 4 }
+                    ]
+                }
+            },
+            created_at: '2099-06-01T11:00:00.000Z',
+            updated_at: '2099-06-01T11:00:00.000Z'
+        },
+        {
+            id: 'BK-AUTO-ACTIVITY',
+            business_context: 'event_genix',
+            date: '2099-06-22',
+            time: '13:45',
+            line_id: 'animator-7',
+            program_id: 'anim_60',
+            program_code: 'AN60',
+            label: 'AN(60)',
+            program_name: 'Animation 60',
+            category: 'animation',
+            duration: 60,
+            price: 900,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Марвел',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: 8,
+            group_name: 'Auto banquet',
+            customer_id: 704,
+            payment_method: null,
+            extra_data: {},
+            created_at: '2099-06-01T11:05:00.000Z',
+            updated_at: '2099-06-01T11:05:00.000Z'
+        },
+        {
+            id: 'BK-AUTO-ACTIVITY-SECOND',
+            business_context: 'event_genix',
+            date: '2099-06-22',
+            time: '14:45',
+            line_id: 'animator-8',
+            program_id: 'bubble_30',
+            program_code: 'BUB30',
+            label: 'Bubble show',
+            program_name: 'Bubble show',
+            category: 'show',
+            duration: 30,
+            price: 800,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Марвел',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: 8,
+            group_name: 'Auto banquet',
+            customer_id: 704,
+            payment_method: null,
+            extra_data: {},
+            created_at: '2099-06-01T11:10:00.000Z',
+            updated_at: '2099-06-01T11:10:00.000Z'
+        },
+        {
+            id: 'BK-AUTO-DIFFERENT-CUSTOMER',
+            business_context: 'event_genix',
+            date: '2099-06-22',
+            time: '15:30',
+            line_id: 'animator-9',
+            program_id: 'anim_30',
+            program_code: 'AN30',
+            label: 'Different customer activity',
+            program_name: 'Different customer activity',
+            category: 'animation',
+            duration: 30,
+            price: 500,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Марвел',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: 5,
+            group_name: 'Different customer',
+            customer_id: 705,
+            payment_method: null,
+            extra_data: {},
+            created_at: '2099-06-01T11:15:00.000Z',
+            updated_at: '2099-06-01T11:15:00.000Z'
+        },
+        {
+            id: 'BK-AUTO-DIFFERENT-ROOM',
+            business_context: 'event_genix',
+            date: '2099-06-22',
+            time: '16:00',
+            line_id: 'animator-10',
+            program_id: 'quest_30',
+            program_code: 'Q30',
+            label: 'Different room activity',
+            program_name: 'Different room activity',
+            category: 'quest',
+            duration: 30,
+            price: 600,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Ніндзя',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: 8,
+            group_name: 'Different room',
+            customer_id: 704,
+            payment_method: null,
+            extra_data: {},
+            created_at: '2099-06-01T11:20:00.000Z',
+            updated_at: '2099-06-01T11:20:00.000Z'
+        },
+        {
+            id: 'BK-AUTO-DIFFERENT-DATE',
+            business_context: 'event_genix',
+            date: '2099-06-23',
+            time: '13:45',
+            line_id: 'animator-11',
+            program_id: 'photo_30',
+            program_code: 'PHOTO30',
+            label: 'Different date activity',
+            program_name: 'Different date activity',
+            category: 'photo',
+            duration: 30,
+            price: 600,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Марвел',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: 8,
+            group_name: 'Different date',
+            customer_id: 704,
+            payment_method: null,
+            extra_data: {},
+            created_at: '2099-06-01T11:25:00.000Z',
+            updated_at: '2099-06-01T11:25:00.000Z'
+        },
+        {
+            id: 'BK-AUTO-CANCELLED',
+            business_context: 'event_genix',
+            date: '2099-06-22',
+            time: '17:00',
+            line_id: 'animator-12',
+            program_id: 'cancelled_30',
+            program_code: 'CANCELLED30',
+            label: 'Cancelled activity',
+            program_name: 'Cancelled activity',
+            category: 'animation',
+            duration: 30,
+            price: 600,
+            hosts: 1,
+            second_animator: null,
+            costume: null,
+            room: 'Марвел',
+            notes: null,
+            created_by: 'route-smoke',
+            linked_to: null,
+            status: 'cancelled',
+            kids_count: 8,
+            group_name: 'Auto banquet',
+            customer_id: 704,
+            payment_method: null,
+            extra_data: {},
+            created_at: '2099-06-01T11:30:00.000Z',
+            updated_at: '2099-06-01T11:30:00.000Z'
+        },
+        {
             id: 'BK-GROUP-PRIMARY',
             business_context: 'event_genix',
             date: '2099-06-21',
@@ -600,6 +817,23 @@ function createFakePool() {
                     rowCount: 1
                 };
             }
+            if (/SELECT bgb\.id, bgb\.group_id, bgb\.business_context, bgb\.booking_id/i.test(text)
+                && /FROM banquet_group_bookings bgb\s+JOIN banquet_groups bg/i.test(text)
+                && /bgb\.booking_id = ANY\(\$1::text\[\]\)/i.test(text)) {
+                const ids = new Set(Array.isArray(params[0]) ? params[0].map(String) : []);
+                const rows = hrState.banquetMemberships
+                    .filter(item => ids.has(String(item.booking_id)))
+                    .map(item => {
+                        const group = hrState.banquetGroups.get(item.group_id);
+                        return group ? {
+                            ...item,
+                            primary_booking_id: group.primary_booking_id,
+                            group_status: group.status
+                        } : null;
+                    })
+                    .filter(Boolean);
+                return { rows, rowCount: rows.length };
+            }
             if (/SELECT bgb\.\*, bg\.primary_booking_id/i.test(text) && /FROM banquet_group_bookings bgb JOIN banquet_groups bg/i.test(text)) {
                 const membership = hrState.banquetMemberships.find(item => item.booking_id === params[0]);
                 if (!membership) return { rows: [], rowCount: 0 };
@@ -755,7 +989,7 @@ function createFakePool() {
                 hrState.banquetMemberships = hrState.banquetMemberships.filter(item => item !== row);
                 return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
             }
-            if (/UPDATE banquet_groups SET updated_at = NOW\(\), updated_by = \$3 WHERE id = \$1/i.test(text)) {
+            if (/UPDATE banquet_groups\s+SET updated_at = NOW\(\), updated_by = \$3\s+WHERE id = \$1/i.test(text)) {
                 const row = hrState.banquetGroups.get(params[0]);
                 if (row) {
                     row.updated_at = '2099-06-01T13:03:00.000Z';
@@ -763,8 +997,33 @@ function createFakePool() {
                 }
                 return { rows: [], rowCount: row || params[0] === 'BQ-SMOKE' ? 1 : 0 };
             }
+            if (/SELECT b\.\*\s+FROM bookings b/i.test(text)
+                && /b\.customer_id = \$4/i.test(text)
+                && /NULLIF\(COALESCE\(b\.linked_to, ''\), ''\) IS NULL/i.test(text)
+                && /FOR UPDATE/i.test(text)) {
+                const context = params[0] || 'event_genix';
+                const date = params[1];
+                const room = String(params[2] || '').trim();
+                const customerId = params[3];
+                const rowsById = new Map();
+                for (const row of [...routeSmokeBookingRows(), ...hrState.bookings]) {
+                    if ((row.business_context || 'event_genix') !== context) continue;
+                    if (row.date !== date) continue;
+                    if (String(row.room || '').trim() !== room) continue;
+                    if (String(row.customer_id ?? '') !== String(customerId)) continue;
+                    if (String(row.status || 'confirmed').toLowerCase() === 'cancelled') continue;
+                    if (String(row.linked_to || '').trim()) continue;
+                    rowsById.set(row.id, { ...row, business_context: context });
+                }
+                const rows = Array.from(rowsById.values()).sort((a, b) => {
+                    const priorityA = a.line_id === params[4] ? 0 : 1;
+                    const priorityB = b.line_id === params[4] ? 0 : 1;
+                    return priorityA - priorityB || String(a.time || '').localeCompare(String(b.time || '')) || String(a.id).localeCompare(String(b.id));
+                });
+                return { rows, rowCount: rows.length };
+            }
             if (/SELECT b\.\* FROM bookings b WHERE b\.id = \$1 AND CASE/i.test(text)) {
-                const row = routeSmokeBookingById(params[0]);
+                const row = routeSmokeBookingById(params[0]) || hrState.bookings.find(booking => booking.id === params[0]);
                 return { rows: row ? [{ ...row, business_context: params[1] || row.business_context }] : [], rowCount: row ? 1 : 0 };
             }
             if (/SELECT id, business_context, name, phone, instagram, child_name, child_birthday, source, notes,/i.test(text) && /FROM customers WHERE id = \$1/i.test(text)) {
@@ -2524,6 +2783,117 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.legacyLinks.length, 1);
         assert.ok(res.data.warnings.some(warning => warning.code === 'legacy_banquet_links_fallback'));
         assert.ok(queries.some(q => /FROM booking_banquet_links/i.test(q.text)));
+    });
+
+    it('reconciles same customer date Марвел room bookings into one durable banquet group and keeps by-booking reads read-only', async () => {
+        const groupedIds = ['BK-AUTO-KITCHEN', 'BK-AUTO-ACTIVITY', 'BK-AUTO-ACTIVITY-SECOND'];
+        const { reconcileBanquetGroupForBooking } = require('../services/banquetGroups');
+        const reconciled = await reconcileBanquetGroupForBooking({
+            bookingId: 'BK-AUTO-KITCHEN',
+            businessContext: 'event_genix',
+            user: { id: 1, username: 'route-smoke', name: 'Route Smoke' },
+            source: 'route_smoke_auto_group'
+        });
+        assert.ok(reconciled.group.id);
+        assert.equal(reconciled.attachedBookingIds.length, 3);
+        const membershipInserts = queries.filter(q => /INSERT INTO banquet_group_bookings/i.test(q.text));
+        assert.equal(membershipInserts.length, 3);
+        assert.equal(new Set(membershipInserts.map(q => q.params[2])).size, 3);
+        assert.ok(queries.some(q => /INSERT INTO banquet_groups/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO booking_banquet_links/i.test(q.text)));
+        assert.ok(queries.some(q => /^INSERT INTO history/i.test(q.text) && q.params[1] === 'banquet_group_auto_reconciled'));
+        queries.length = 0;
+
+        const readBanquet = bookingId => request(
+            'GET',
+            `/api/banquets/by-booking/${bookingId}?businessContext=event_genix`,
+            undefined,
+            withAuth()
+        );
+
+        const kitchen = await readBanquet('BK-AUTO-KITCHEN');
+        assert.equal(kitchen.status, 200, JSON.stringify(kitchen.data));
+        assert.equal(kitchen.data.success, true);
+        assert.equal(kitchen.data.source, 'banquet_group');
+        assert.ok(kitchen.data.groupId);
+        assert.equal(kitchen.data.group.primaryBookingId, 'BK-AUTO-KITCHEN');
+        assert.equal(kitchen.data.bookings.primary.id, 'BK-AUTO-KITCHEN');
+        assert.equal(kitchen.data.bookings.kitchen.some(booking => booking.id === 'BK-AUTO-KITCHEN'), true);
+        assert.equal(kitchen.data.bookings.activities.some(booking => booking.id === 'BK-AUTO-ACTIVITY'), true);
+        assert.equal(kitchen.data.bookings.activities.some(booking => booking.id === 'BK-AUTO-ACTIVITY-SECOND'), true);
+
+        const groupId = kitchen.data.groupId;
+        const activity = await readBanquet('BK-AUTO-ACTIVITY');
+        const secondActivity = await readBanquet('BK-AUTO-ACTIVITY-SECOND');
+        const repeatedKitchen = await readBanquet('BK-AUTO-KITCHEN');
+
+        for (const response of [activity, secondActivity, repeatedKitchen]) {
+            assert.equal(response.status, 200, JSON.stringify(response.data));
+            assert.equal(response.data.groupId, groupId);
+            assert.equal(response.data.group.primaryBookingId, 'BK-AUTO-KITCHEN');
+        }
+
+        const membersById = new Map(kitchen.data.members.map(member => [member.bookingId, member]));
+        const effectiveRoles = groupedIds.map(bookingId => {
+            const member = membersById.get(bookingId);
+            return member?.isKitchenCandidate ? 'kitchen' : member?.role;
+        });
+        assert.deepEqual(effectiveRoles, ['kitchen', 'activity', 'activity']);
+
+        assert.equal(queries.some(q => /INSERT INTO banquet_groups/i.test(q.text)), false);
+        assert.equal(queries.some(q => /INSERT INTO banquet_group_bookings/i.test(q.text)), false);
+        assert.equal(queries.some(q => /INSERT INTO booking_banquet_links/i.test(q.text)), false);
+        assert.equal(queries.some(q => /^INSERT INTO history/i.test(q.text)), false);
+    });
+
+    it('keeps different customer room date and cancelled bookings out of auto banquet grouping', async () => {
+        const { reconcileBanquetGroupForBooking } = require('../services/banquetGroups');
+        await reconcileBanquetGroupForBooking({
+            bookingId: 'BK-AUTO-KITCHEN',
+            businessContext: 'event_genix',
+            user: { id: 1, username: 'route-smoke', name: 'Route Smoke' },
+            source: 'route_smoke_auto_group'
+        });
+        queries.length = 0;
+
+        const seed = await request(
+            'GET',
+            '/api/banquets/by-booking/BK-AUTO-KITCHEN?businessContext=event_genix',
+            undefined,
+            withAuth()
+        );
+        assert.equal(seed.status, 200, JSON.stringify(seed.data));
+        assert.ok(seed.data.groupId);
+
+        const groupedIds = new Set(seed.data.members.map(member => member.bookingId));
+        for (const bookingId of [
+            'BK-AUTO-DIFFERENT-CUSTOMER',
+            'BK-AUTO-DIFFERENT-ROOM',
+            'BK-AUTO-DIFFERENT-DATE',
+            'BK-AUTO-CANCELLED'
+        ]) {
+            assert.equal(groupedIds.has(bookingId), false, `${bookingId} must not be attached to the Марвел banquet group`);
+        }
+
+        const readSingle = async bookingId => {
+            const response = await request(
+                'GET',
+                `/api/banquets/by-booking/${bookingId}?businessContext=event_genix`,
+                undefined,
+                withAuth()
+            );
+            assert.equal(response.status, 200, JSON.stringify(response.data));
+            assert.equal(response.data.source, 'single_booking');
+            assert.equal(response.data.groupId, null);
+            assert.equal(response.data.anchorBookingId, bookingId);
+            assert.equal(response.data.members.length, 1);
+            assert.equal(response.data.members[0].bookingId, bookingId);
+        };
+
+        await readSingle('BK-AUTO-DIFFERENT-CUSTOMER');
+        await readSingle('BK-AUTO-DIFFERENT-ROOM');
+        await readSingle('BK-AUTO-DIFFERENT-DATE');
+        await readSingle('BK-AUTO-CANCELLED');
     });
 
     it('controls banquet group creation, root attach, duplicate protection, and detach', async () => {

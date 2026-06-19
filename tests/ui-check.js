@@ -42,6 +42,12 @@ function cssTextWithImports(filename, seen = new Set()) {
     return [css, ...imports].filter(Boolean).join('\n');
 }
 
+function cssRuleText(css, selector) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\}`));
+    return match ? match[1] : '';
+}
+
 function hrSurfaceText() {
     return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
 }
@@ -963,6 +969,9 @@ const timelineSetViewBlock = timelineCode.slice(
 const timelineRenderStartIndex = timelineCode.indexOf('async function renderTimeline()');
 const timelineRenderClearIndex = timelineCode.indexOf('clearTimelineBanquetRoomPreviews()', timelineRenderStartIndex);
 const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedDate)', timelineRenderStartIndex);
+const timelineBanquetOccupancyBandRule = cssRuleText(timelineConstructorCss, '.booking-block.is-timeline-banquet-occupancy-band');
+const timelineRoomServiceMarkerWithBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker.has-user-letter');
+const timelineRoomServiceMarkerBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker .user-letter');
 check('Room timeline banquet preview hydrates from cached group snapshots without blocking render',
     timelineCode.includes('TIMELINE_BANQUET_SNAPSHOT_CACHE')
     && timelineCode.includes('function loadTimelineBanquetSnapshotForBooking')
@@ -993,14 +1002,29 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineConstructorCss.includes('.timeline-banquet-inspector-btn--primary')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band .title')
-    && timelineConstructorCss.includes('display: none !important')
-    && timelineConstructorCss.includes('pointer-events: none')
+    && /opacity:\s*0\.72\s*;/.test(timelineBanquetOccupancyBandRule)
+    && /pointer-events:\s*auto\s*;/.test(timelineBanquetOccupancyBandRule)
+    && !/display:\s*none/i.test(timelineBanquetOccupancyBandRule)
+    && !/visibility:\s*hidden/i.test(timelineBanquetOccupancyBandRule)
     && !timelineCode.includes('data-banquet-preview-trigger')
     && !timelineCode.includes('data-banquet-service-marker')
     && !timelineConstructorCss.includes('.timeline-banquet-chip')
     && !timelineConstructorCss.includes('.timeline-banquet-service-marker')
     && !timelineCode.includes('showTimelineBanquetPopover')
     && !timelineConstructorCss.includes('.timeline-banquet-popover'));
+check('Room timeline service markers expose creator badges',
+    timelineCode.includes('function timelineBanquetOwnerName')
+    && timelineCode.includes('source?.createdBy')
+    && timelineCode.includes('source?.created_by')
+    && timelineCode.includes('function timelineRoomServiceMarkerOwnerName')
+    && timelineCode.includes('function timelineRoomServiceMarkerOwnerLetter')
+    && timelineCode.includes("markerEl.classList.toggle('has-user-letter'")
+    && timelineCode.includes("ownerBadge.className = 'user-letter'")
+    && timelineCode.includes("ownerBadge.setAttribute('aria-hidden', 'true')")
+    && timelineCode.includes('ownerName, summary.room, summary.customerName')
+    && /padding-right:\s*34px\s*;/.test(timelineRoomServiceMarkerWithBadgeRule)
+    && /position:\s*absolute\s*;/.test(timelineRoomServiceMarkerBadgeRule)
+    && /pointer-events:\s*none\s*;/.test(timelineRoomServiceMarkerBadgeRule));
 check('Room timeline service markers remain isolated from animator timeline',
     timelineRoomServiceMarkerBlock.includes('if (!isRoomTimelineView() || !summary) return')
     && timelineRoomServiceMarkerBlock.includes('timelineBanquetRoomGridForSummary(summary)')

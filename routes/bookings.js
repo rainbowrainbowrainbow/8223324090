@@ -28,7 +28,8 @@ const { applyBookingPackage, bookingPackageAudit } = require('../services/bookin
 const { buildBanquetSummary } = require('../services/banquetSummary');
 const {
     loadBanquetGroupByBookingId,
-    loadBanquetGroupById
+    loadBanquetGroupById,
+    reconcileBanquetGroupForBooking
 } = require('../services/banquetGroups');
 const { applyEffectiveBookingPrice, refreshMultiActivityPriceTotals } = require('../services/productPricing');
 const { broadcast } = require('../services/websocket');
@@ -319,6 +320,36 @@ function parkSideEffectsAllowedForContext(context) {
 
 function sideEffectsAllowedForContext(context) {
     return crmSideEffectsAllowedForContext(context);
+}
+
+async function reconcileBookingBanquetGroupsSafely(bookingIds, businessContext, user) {
+    if (!sideEffectsAllowedForContext(businessContext)) return [];
+    const uniqueIds = [...new Set((Array.isArray(bookingIds) ? bookingIds : [bookingIds])
+        .map(id => String(id || '').trim())
+        .filter(Boolean))];
+    const results = [];
+    for (const bookingId of uniqueIds) {
+        try {
+            const result = await reconcileBanquetGroupForBooking({
+                bookingId,
+                businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+                user,
+                source: 'booking_write_auto_group'
+            });
+            results.push(result);
+        } catch (err) {
+            log.warn(`Banquet auto-group reconciliation failed for ${bookingId}: ${err.message}`);
+            results.push({
+                success: false,
+                reconciled: false,
+                skipped: true,
+                reason: 'reconciliation_failed',
+                bookingId,
+                error: err.message
+            });
+        }
+    }
+    return results;
 }
 
 function bookingLeadAutoCreateAllowedForContext(context) {
@@ -2358,6 +2389,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
+        await reconcileBookingBanquetGroupsSafely(
+            [booking.id || b.id, ...linkedBookings.map(item => item.id)],
+            businessContext,
+            req.user
+        );
         booking.timelineProjection = await bookingDayProjectionStatus(client, {
             id: booking.id || b.id,
             date: b.date || booking.date,
@@ -3299,6 +3335,11 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
+        await reconcileBookingBanquetGroupsSafely(
+            [mainBooking.id || main.id, ...linkedBookings.map(item => item.id), ...activityBookings.map(item => item.id)],
+            businessContext,
+            req.user
+        );
         let allBookings = [mainBooking, ...linkedBookings, ...activityBookings];
         await Promise.all(allBookings.map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {
@@ -4246,6 +4287,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         await commitBookingTransaction(client, 'booking update');
+        await reconcileBookingBanquetGroupsSafely([id], businessContext, req.user);
 
         const username = req.user?.username;
         const bookingForNotify = {

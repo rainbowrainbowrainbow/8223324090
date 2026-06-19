@@ -4,6 +4,31 @@
 
 ---
 
+## v0.76.59 - Banquet auto grouping fix
+
+### Backend banquet groups / Room timeline / Production repair guard / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Однакові бронювання банкету збираються в durable group** - backend автоматично reconciles активні bookings з однаковими `business_context`, `date`, `room` і `customer_id`, якщо серед них є banquet/package anchor.
+- **Кейс `Марвел / 2026-06-19` закрито на рівні data model** - kitchen/root booking, `Бульбашкове шоу`, `АН(60)` і service markers мають повертати один `groupId` через `/api/banquets/by-booking/:bookingId` після deploy/repair.
+- **Room timeline лишився читабельним** - banquet details/root surface знову видимий і clickable, а `Підготовка`, `Видача`, `Напої` отримують creator badge без регресії activity cards.
+- **Production repair tool додано без автоматичного застосування** - `scripts/reconcile-banquet-groups.js` робить dry-run за замовчуванням, а `--apply` лишається окремою підтверджуваною production data дією.
+- **Регресійні тести покривають grouping і timeline** - `tests/route-smoke.test.js`, `tests/booking-package-contract.test.js`, `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють grouping, idempotency, негативні кейси, visible root block, service markers і animator isolation.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production settings, нових залежностей або змін Railway config.
+- **Релізні маркери піднято до `0.76.59`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.58 - Banquet timeline details fix
+
+### Frontend timeline / Room banquet details / Regression guard / Production follow-up / (Клешня, 18.06.2026) [codex]
+- **Banquet details/root block у `Кімнати` знову видимий** - room timeline більше не ховає banquet occupancy band через `display: none`, тому в кімнаті `Марвел` видно окрему поверхню деталей банкету поруч із service markers.
+- **`Підготовка`, `Видача`, `Напої` та activity cards залишились читабельними** - service markers і activity blocks не втратили свій lane layout, а banquet band лишився компактним без дублювання тексту всередині.
+- **Клік по banquet/root block відкриває банкетний інспектор** - visible occupancy band зберіг `pointer-events: auto`, а activity cards на кшталт `АН(60)` далі відкривають звичайну модалку бронювання.
+- **Регресійні тести більше не закріплюють прихований стан** - `tests/timeline-resources.test.js` і `tests/ui-check.js` тепер падають, якщо banquet occupancy band знову стане `display:none`, `visibility:hidden`, `opacity:0` або `pointer-events:none`.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production config, нових залежностей або змін production data.
+- **Релізні маркери піднято до `0.76.58`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.57 - Business Switcher Label Fix
 
 ### Frontend shell / Sidebar business switcher / Timeline header UX / Production follow-up / (Клешня, 18.06.2026) [codex]

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.57">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.57">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.57">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.57">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.57">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.57">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.57">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.57">
-    <link rel="stylesheet" href="css/features.css?v=0.76.57">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.57">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.57">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.57">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.57">
+    <link rel="stylesheet" href="css/base.css?v=0.76.59">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.59">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.59">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.59">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.59">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.59">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.59">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.59">
+    <link rel="stylesheet" href="css/features.css?v=0.76.59">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.59">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.59">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.59">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.59">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.57">✨ 0.76.57</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.59">✨ 0.76.59</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.57 — Business Switcher Label Fix</p>
+                <p class="tagline">AI First CRM v0.76.59 — Banquet auto grouping fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.57</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.59</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1728,6 +1728,27 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.76.59 — Banquet auto grouping fix</h4>
+                    <ul>
+                        <li><b>Однакові бронювання банкету збираються в durable group</b> — backend автоматично reconciles активні bookings з однаковими <code>business_context</code>, <code>date</code>, <code>room</code> і <code>customer_id</code>, якщо серед них є banquet/package anchor.</li>
+                        <li><b>Кейс <code>Марвел / 2026-06-19</code> закрито на рівні data model</b> — kitchen/root booking, <code>Бульбашкове шоу</code>, <code>АН(60)</code> і service markers мають повертати один <code>groupId</code> через <code>/api/banquets/by-booking/:bookingId</code> після deploy/repair.</li>
+                        <li><b>Room timeline лишився читабельним</b> — banquet details/root surface знову видимий і clickable, а <code>Підготовка</code>, <code>Видача</code>, <code>Напої</code> отримують creator badge без регресії activity cards.</li>
+                        <li><b>Production repair tool додано без автоматичного застосування</b> — <code>scripts/reconcile-banquet-groups.js</code> робить dry-run за замовчуванням, а <code>--apply</code> лишається окремою підтверджуваною production data дією.</li>
+                        <li><b>Регресійні тести покривають grouping і timeline</b> — route smoke, package contract, timeline resources і UI smoke перевіряють grouping, idempotency, негативні кейси, visible root block, service markers і animator isolation.</li>
+                        <li><b>Schema/env/auth/deploy config не змінювались</b> — без міграцій, secrets, ролей, production settings, нових залежностей або змін Railway config.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.76.58 — Banquet timeline details fix</h4>
+                    <ul>
+                        <li><b>Banquet details/root block у <code>Кімнати</code> знову видимий</b> — room timeline більше не ховає banquet occupancy band через <code>display: none</code>, тому в кімнаті <code>Марвел</code> видно окрему поверхню деталей банкету поруч із service markers.</li>
+                        <li><b><code>Підготовка</code>, <code>Видача</code>, <code>Напої</code> та activity cards залишились читабельними</b> — service markers і activity blocks не втратили свій lane layout, а banquet band лишився компактним без дублювання тексту всередині.</li>
+                        <li><b>Клік по banquet/root block відкриває банкетний інспектор</b> — visible occupancy band зберіг <code>pointer-events: auto</code>, а activity cards на кшталт <code>АН(60)</code> далі відкривають звичайну модалку бронювання.</li>
+                        <li><b>Регресійні тести більше не закріплюють прихований стан</b> — <code>tests/timeline-resources.test.js</code> і <code>tests/ui-check.js</code> тепер падають, якщо banquet occupancy band знову стане <code>display:none</code>, <code>visibility:hidden</code>, <code>opacity:0</code> або <code>pointer-events:none</code>.</li>
+                        <li><b>Schema/env/auth/deploy config не змінювались</b> — без міграцій, secrets, ролей, production settings, нових залежностей або змін production data.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.76.57 — Business Switcher Label Fix</h4>
                     <ul>
                         <li><b>Business switcher у timeline header більше не обрізає назву півсловом</b> — selector показує чистий короткий label замість зламаного переносу.</li>
@@ -1735,6 +1756,7 @@
                         <li><b>Full business name лишається доступною</b> — повна назва збережена в <code>title</code>, <code>aria-label</code>, <code>data-full-label</code> і option metadata.</li>
                         <li><b>Акаунти без business switch не змінювались</b> — single-business chip лишився доступним і отримав той самий clean label fallback.</li>
                         <li><b>Schema/env/auth/deploy config не змінювались</b> — без міграцій, secrets, ролей, production settings, нових залежностей або змін production data.</li>
+                        <li><b>Релізні маркери піднято до <code>0.76.57</code></b> — package, package-lock, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> синхронізовані.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -13846,30 +13868,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.57"></script>
-    <script src="js/timeline-visibility.js?v=0.76.57"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.57"></script>
-    <script src="js/config.js?v=0.76.57"></script>
-    <script src="js/api.js?v=0.76.57"></script>
-    <script src="js/ui.js?v=0.76.57"></script>
-    <script src="js/auth.js?v=0.76.57"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.57"></script>
-    <script src="js/timeline.js?v=0.76.57"></script>
-    <script src="js/booking.js?v=0.76.57"></script>
-    <script src="js/settings.js?v=0.76.57"></script>
-    <script src="js/booking-form.js?v=0.76.57"></script>
-    <script src="js/booking-linked.js?v=0.76.57"></script>
-    <script src="js/settings-dashboard.js?v=0.76.57"></script>
-    <script src="js/settings-history.js?v=0.76.57"></script>
-    <script src="js/settings-afisha.js?v=0.76.57"></script>
-    <script src="js/settings-certificates.js?v=0.76.57"></script>
-    <script src="js/offline.js?v=0.76.57"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.57"></script>
-    <script src="js/search.js?v=0.76.57"></script>
-    <script src="js/ws.js?v=0.76.57"></script>
-    <script src="js/app.js?v=0.76.57"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.57"></script>
-    <script src="js/components/sidebar.js?v=0.76.57"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.57"></script>
+    <script src="js/timeline-context.js?v=0.76.59"></script>
+    <script src="js/timeline-visibility.js?v=0.76.59"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.59"></script>
+    <script src="js/config.js?v=0.76.59"></script>
+    <script src="js/api.js?v=0.76.59"></script>
+    <script src="js/ui.js?v=0.76.59"></script>
+    <script src="js/auth.js?v=0.76.59"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.59"></script>
+    <script src="js/timeline.js?v=0.76.59"></script>
+    <script src="js/booking.js?v=0.76.59"></script>
+    <script src="js/settings.js?v=0.76.59"></script>
+    <script src="js/booking-form.js?v=0.76.59"></script>
+    <script src="js/booking-linked.js?v=0.76.59"></script>
+    <script src="js/settings-dashboard.js?v=0.76.59"></script>
+    <script src="js/settings-history.js?v=0.76.59"></script>
+    <script src="js/settings-afisha.js?v=0.76.59"></script>
+    <script src="js/settings-certificates.js?v=0.76.59"></script>
+    <script src="js/offline.js?v=0.76.59"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.59"></script>
+    <script src="js/search.js?v=0.76.59"></script>
+    <script src="js/ws.js?v=0.76.59"></script>
+    <script src="js/app.js?v=0.76.59"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.59"></script>
+    <script src="js/components/sidebar.js?v=0.76.59"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.59"></script>
 </body>
 </html>

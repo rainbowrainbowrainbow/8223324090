@@ -969,6 +969,10 @@ function firstTimelineBanquetValue(bookings = [], getter) {
     return null;
 }
 
+function timelineBanquetOwnerName(source = {}) {
+    return String(source?.createdBy || source?.created_by || '').trim();
+}
+
 function timelineBanquetSnapshotSummary(snapshot = {}) {
     if (!snapshot?.success) return null;
     const allBookings = timelineBanquetSnapshotBookings(snapshot);
@@ -1028,6 +1032,7 @@ function timelineBanquetServingInfo(summary = {}) {
     const kitchenBookings = Array.isArray(summary.kitchenBookings) ? summary.kitchenBookings : [];
 
     kitchenBookings.forEach(booking => {
+        const bookingOwnerName = timelineBanquetOwnerName(booking);
         timelineBanquetMenuPositions(booking).forEach((item, index) => {
             const servingTime = normalizeTimelineBanquetServingTime(item?.servingTime || item?.serving_time);
             const title = String(item?.title || item?.name || item?.productName || item?.product_name || `Позиція ${index + 1}`).trim();
@@ -1043,6 +1048,7 @@ function timelineBanquetServingInfo(summary = {}) {
                 count: 0,
                 items: []
             };
+            if (bookingOwnerName && !group.createdBy) group.createdBy = bookingOwnerName;
             const quantity = Number(item?.quantity || item?.qty || 0);
             group.count += 1;
             group.items.push({
@@ -1067,6 +1073,7 @@ function timelineBanquetServingInfo(summary = {}) {
                 label,
                 title,
                 time: servingTime,
+                createdBy: bookingOwnerName || null,
                 count: 1,
                 items: [{
                     title,
@@ -1347,6 +1354,29 @@ function uniqueTimelineBanquetWarnings(items = []) {
 
 function timelineBanquetMarkerLabel(marker = {}) {
     return [marker.label || 'Сервіс', marker.time || ''].filter(Boolean).join(' ');
+}
+
+function timelineRoomServiceMarkerOwnerName(marker = {}, summary = {}) {
+    const markerOwner = timelineBanquetOwnerName(marker);
+    if (markerOwner) return markerOwner;
+
+    const sources = [
+        summary.carrierBooking,
+        summary.primaryBooking,
+        ...(Array.isArray(summary.kitchenBookings) ? summary.kitchenBookings : []),
+        ...(Array.isArray(summary.allBookings) ? summary.allBookings : [])
+    ];
+
+    for (const source of sources) {
+        const owner = timelineBanquetOwnerName(source);
+        if (owner) return owner;
+    }
+    return '';
+}
+
+function timelineRoomServiceMarkerOwnerLetter(marker = {}, summary = {}) {
+    const owner = timelineRoomServiceMarkerOwnerName(marker, summary);
+    return owner ? owner.charAt(0).toUpperCase() : '';
 }
 
 function timelineBanquetRoomSignalKey(value) {
@@ -1951,6 +1981,8 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
         const typeKey = timelineBanquetRoomSignalKey(type);
         const label = timelineBanquetMarkerLabel(marker);
         const display = timelineRoomServiceMarkerDisplay(marker, type);
+        const ownerName = timelineRoomServiceMarkerOwnerName(marker, summary);
+        const ownerLetter = timelineRoomServiceMarkerOwnerLetter(marker, summary);
         const markerEl = document.createElement('button');
         const mainLine = document.createElement('span');
         const timeText = document.createElement('span');
@@ -1967,6 +1999,7 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
         markerEl.dataset.markerTitle = display.title;
         if (display.detail) markerEl.dataset.markerDetail = display.detail;
         if (groupId) markerEl.dataset.banquetRoomMarkerGroup = groupId;
+        markerEl.classList.toggle('has-user-letter', Boolean(ownerLetter));
         markerEl.style.left = `${left}px`;
         markerEl.style.top = `${markerTop}px`;
         markerEl.style.width = `${baseWidth}px`;
@@ -1984,8 +2017,16 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
             detailText.textContent = display.detail;
             markerEl.append(detailText);
         }
-        markerEl.title = timelineRoomServiceMarkerDetail(marker);
-        markerEl.setAttribute('aria-label', [`${marker.time} ${display.title}`, display.detail, summary.room, summary.customerName].filter(Boolean).join(' - '));
+        if (ownerLetter) {
+            const ownerBadge = document.createElement('span');
+            ownerBadge.className = 'user-letter';
+            ownerBadge.textContent = ownerLetter;
+            ownerBadge.title = ownerName;
+            ownerBadge.setAttribute('aria-hidden', 'true');
+            markerEl.append(ownerBadge);
+        }
+        markerEl.title = [timelineRoomServiceMarkerDetail(marker), ownerName].filter(Boolean).join(' - ');
+        markerEl.setAttribute('aria-label', [`${marker.time} ${display.title}`, display.detail, ownerName, summary.room, summary.customerName].filter(Boolean).join(' - '));
         markerEl.setAttribute('aria-haspopup', 'dialog');
         markerEl.onpointerdown = event => {
             event.preventDefault();

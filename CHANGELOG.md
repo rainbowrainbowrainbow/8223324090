@@ -4,6 +4,17 @@
 
 ---
 
+## v0.76.62 - Generated output artifact policy
+
+### Repo hygiene / Local QA artifacts / Release sync / (Клешня, 19.06.2026) [codex]
+- **Локальні generated artifacts більше не шумлять у `git status`** - папка `output/` додана в `.gitignore`, щоб test logs, Playwright screenshots, evidence JSON і тимчасові QA harness-и не виглядали як незавершені продуктові зміни.
+- **Робоча гілка лишається чистою після QA** - після запусків smoke/manual/browser перевірок disposable файли можна створювати локально без ризику випадково підтягнути їх у staging.
+- **Product behavior не змінювався** - це repo hygiene реліз без змін у CRM UI/API, бізнес-логіці, базі даних або інтеграціях.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.62`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.61 - Banquet modal UX cleanup
 
 ### Frontend booking modal / Banquet overview / Action bar cleanup / Regression tests / (Клешня, 19.06.2026) [codex]

@@ -123,10 +123,21 @@ body.booking-summary-page {
     padding-left: 18px;
 }
 
-.booking-summary-document {
+.booking-summary-print-root {
     width: min(100%, 210mm);
-    min-height: auto;
     margin: 0 auto;
+    overflow-x: visible;
+}
+
+.booking-summary-a4-page {
+    width: 100%;
+    aspect-ratio: 210 / 297;
+}
+
+.booking-summary-document {
+    width: 100%;
+    min-height: auto;
+    margin: 0;
     padding: 12mm;
     border-radius: 4px;
     background: var(--summary-panel);
@@ -370,23 +381,20 @@ body.booking-summary-page {
         padding: 16px 10px 32px;
     }
 
+    .booking-summary-print-root {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 8px;
+    }
+
+    .booking-summary-a4-page {
+        width: 210mm;
+        max-width: none;
+    }
+
     .booking-summary-document {
         min-height: auto;
-        padding: 18px 12px;
-    }
-
-    .summary-doc-header {
-        grid-template-columns: 1fr;
-    }
-
-    .summary-doc-meta {
-        text-align: left;
-    }
-
-    .summary-brief-line,
-    .summary-finance-lines p {
-        display: grid;
-        gap: 2px;
+        padding: 12mm;
     }
 }
 
@@ -396,15 +404,30 @@ body.booking-summary-page {
         margin: 10mm;
     }
 
+    html,
+    html[data-theme="dark"],
+    body.booking-summary-page,
+    body.booking-summary-page.dark-mode,
+    html[data-theme="dark"] body.booking-summary-page,
+    html[data-theme="dark"] body.booking-summary-page.dark-mode {
+        background: #fff !important;
+        background-color: #fff !important;
+        background-image: none !important;
+        color: #000 !important;
+        color-scheme: light !important;
+    }
+
     body.booking-summary-page {
-        background: #fff;
-        color: #000;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
     }
 
     .booking-summary-toolbar,
     .booking-summary-state,
     .booking-summary-warnings,
-    .booking-summary-toast {
+    .booking-summary-toast,
+    .toast {
         display: none !important;
     }
 
@@ -412,6 +435,16 @@ body.booking-summary-page {
         width: auto;
         margin: 0;
         padding: 0;
+        background: transparent !important;
+    }
+
+    .booking-summary-print-root,
+    .booking-summary-a4-page {
+        width: auto;
+        margin: 0;
+        overflow: visible;
+        aspect-ratio: auto;
+        background: #fff !important;
     }
 
     .booking-summary-document {
@@ -420,14 +453,108 @@ body.booking-summary-page {
         min-height: auto;
         margin: 0;
         padding: 0;
-        border-radius: 0;
-        box-shadow: none;
+        border-radius: 0 !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        color: #000 !important;
+    }
+
+    .summary-doc-header {
+        gap: 10px;
+        padding-bottom: 6px;
+    }
+
+    .summary-venue-name {
+        margin-bottom: 2px;
+        font-size: 16px;
+        line-height: 1.15;
+    }
+
+    .summary-venue-lines,
+    .summary-doc-meta {
+        gap: 1px;
+        font-size: 10px;
+        line-height: 1.25;
+    }
+
+    .summary-title {
+        margin: 9px 0 6px;
+        font-size: 20px;
+        line-height: 1.1;
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    .summary-brief {
+        gap: 2px;
+        margin-bottom: 7px;
+        padding-bottom: 6px;
+    }
+
+    .summary-brief-line {
+        gap: 2px 10px;
+        font-size: 11px;
+        line-height: 1.25;
+    }
+
+    .summary-section {
+        margin-top: 8px;
+        orphans: 2;
+        widows: 2;
+    }
+
+    .summary-section h2 {
+        margin-bottom: 4px;
+        padding-bottom: 3px;
+        font-size: 12px;
+        line-height: 1.2;
+    }
+
+    .summary-order-table th,
+    .summary-order-table td {
+        padding: 3px 5px;
+        font-size: 10px;
+        line-height: 1.18;
+    }
+
+    .summary-service-events {
+        gap: 2px;
+    }
+
+    .summary-service-event {
+        gap: 2px 8px;
+        padding: 3px 0;
+        font-size: 10px;
+    }
+
+    .summary-service-event small {
+        line-height: 1.2;
+    }
+
+    .summary-finance-lines,
+    .summary-note-block {
+        font-size: 11px;
+        line-height: 1.32;
+    }
+
+    .summary-finance-lines {
+        gap: 2px;
+    }
+
+    .summary-finance-lines p {
+        gap: 2px 10px;
+    }
+
+    .summary-terms ul {
+        padding-left: 14px;
     }
 
     .summary-doc-header,
     .summary-brief,
     .summary-finance-lines,
-    .summary-terms {
+    .summary-terms,
+    .summary-section--finance,
+    .summary-section--terms {
         break-inside: avoid;
         page-break-inside: avoid;
     }
@@ -442,8 +569,22 @@ body.booking-summary-page {
     }
 
     .summary-order-table tr,
+    .summary-order-table th,
+    .summary-order-table td,
+    .summary-terms li,
     .summary-service-event {
         break-inside: avoid;
         page-break-inside: avoid;
+    }
+
+    html[data-theme="dark"] > body.booking-summary-page,
+    html[data-theme="dark"] > body.booking-summary-page.dark-mode,
+    body.booking-summary-page,
+    body.booking-summary-page.dark-mode {
+        background: #fff !important;
+        background-color: #fff !important;
+        background-image: none !important;
+        color: #000 !important;
+        color-scheme: light !important;
     }
 }

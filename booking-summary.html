@@ -9,10 +9,10 @@
     <title>Event Genix | Вижимка банкету</title>
     <meta name="description" content="Preview і друк банкетної вижимки Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.76.70">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.70">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.70">
-    <link rel="stylesheet" href="css/booking-summary.css?v=0.76.70">
+    <link rel="stylesheet" href="css/base.css?v=0.76.71">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.71">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.71">
+    <link rel="stylesheet" href="css/booking-summary.css?v=0.76.71">
 </head>
 <body class="booking-summary-page">
     <header class="booking-summary-toolbar" aria-label="Дії з вижимкою">
@@ -32,10 +32,12 @@
             Завантаження вижимки...
         </section>
         <section id="bookingSummaryWarnings" class="booking-summary-warnings" hidden></section>
-        <article id="bookingSummaryDocument" class="booking-summary-document" aria-label="Документ вижимки банкету" hidden></article>
+        <div id="bookingSummaryPrintRoot" class="booking-summary-print-root" hidden>
+            <article id="bookingSummaryDocument" class="booking-summary-document booking-summary-a4-page" aria-label="Документ вижимки банкету" hidden></article>
+        </div>
     </main>
 
-    <script src="js/auth.js?v=0.76.70" defer></script>
-    <script src="js/booking-summary-page.js?v=0.76.70" defer></script>
+    <script src="js/auth.js?v=0.76.71" defer></script>
+    <script src="js/booking-summary-page.js?v=0.76.71" defer></script>
 </body>
 </html>

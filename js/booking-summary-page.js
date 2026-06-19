@@ -237,6 +237,7 @@
     function renderDocument(summary) {
         const doc = el('bookingSummaryDocument');
         if (!doc) return;
+        const printRoot = el('bookingSummaryPrintRoot');
         const venue = summary.venue || {};
         const event = summary.event || {};
         const customer = summary.customer || {};
@@ -244,6 +245,7 @@
         const counts = summary.counts || {};
         const people = countsText(counts);
 
+        if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
         doc.innerHTML = `
             <header class="summary-doc-header">
@@ -287,24 +289,24 @@
                 ])}
             </section>
 
-            <section class="summary-section">
+            <section class="summary-section summary-section--orders">
                 <h2>Замовлення</h2>
                 ${orderRowsHtml(summary)}
             </section>
 
             ${summaryServiceEventRows(summary).length ? `
-                <section class="summary-section">
+                <section class="summary-section summary-section--service-events">
                     <h2>Події видачі</h2>
                     ${serviceEventsHtml(summary)}
                 </section>
             ` : ''}
 
-            <section class="summary-section">
+            <section class="summary-section summary-section--finance">
                 <h2>Суми і завдаток</h2>
                 ${renderTotals(summary)}
             </section>
 
-            <section class="summary-section">
+            <section class="summary-section summary-section--terms">
                 <h2>${escapeHtml(summary.terms?.title || 'Умови банкету')}</h2>
                 ${renderTerms(summary)}
             </section>

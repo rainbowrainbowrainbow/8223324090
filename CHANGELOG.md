@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.71 - Booking summary PDF A4 cleanup
+
+### Booking summary / A4 preview / Print PDF / Pagination guardrails / Browser QA / (Клешня, 19.06.2026) [codex]
+- **Вижимка банкету отримала стабільний A4 preview contract** - preview тепер рендерить документ через `bookingSummaryPrintRoot` і `.booking-summary-a4-page` з пропорцією `210/297`, а не як content-height card.
+- **Print/PDF більше не тягне dark theme у документ** - `@media print` скидає `html`, `body.booking-summary-page`, wrapper і document до білого фону, прибирає `background-image`, screen shadow/radius і ховає toolbar/state/toast.
+- **Короткі вижимки вкладаються в одну A4 сторінку** - сценарій на кшталт `BK-2026-0489` перевірено Playwright PDF artifact, короткий PDF має 1 сторінку без зайвої темної другої.
+- **Довгі банкети переносяться контрольовано** - print-only density, `thead` repeat і `break-inside` guardrails захищають rows, service events, finance і terms від некрасивих розривів.
+- **Regression guardrails посилено** - `tests/ui-check.js` витягує саме `@media print` і фіксує A4 wrapper, white reset, hidden chrome, native `window.print()` і page-break contract без прив'язки до live booking id.
+- **Browser QA артефакти збережено локально** - desktop/narrow preview, short/long print screenshots і short/long PDFs підтвердили A4 ratio, білий документ, 1-page short та 2-page long output.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.71`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.70 - Booking details visual cleanup
 
 ### Frontend booking modal / Timeline click details / Copy affordance / Status badge / Regression tests / (Клешня, 19.06.2026) [codex]

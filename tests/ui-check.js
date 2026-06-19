@@ -58,6 +58,20 @@ function cssRuleIncludingSelectorText(css, selector) {
     return rule;
 }
 
+function cssAtRuleBlock(css, atRulePrefix) {
+    const start = css.indexOf(atRulePrefix);
+    if (start === -1) return '';
+    const open = css.indexOf('{', start);
+    if (open === -1) return '';
+    let depth = 0;
+    for (let i = open; i < css.length; i++) {
+        if (css[i] === '{') depth++;
+        if (css[i] === '}') depth--;
+        if (depth === 0) return css.slice(open + 1, i);
+    }
+    return '';
+}
+
 function hrSurfaceText() {
     return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
 }
@@ -547,23 +561,94 @@ checkPage('timeline-settings.html', (doc, html) => {
 checkPage('booking-summary.html', (doc, html) => {
     const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
     const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
+    const printCss = cssAtRuleBlock(pageCss, '@media print');
+    const printHtmlRule = cssRuleIncludingSelectorText(printCss, 'html');
+    const printDarkHtmlRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"]');
+    const printBodyRule = cssRuleIncludingSelectorText(printCss, 'body.booking-summary-page');
+    const printDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] body.booking-summary-page');
+    const printDirectDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] > body.booking-summary-page');
+    const printToolbarRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toolbar');
+    const printStateRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-state');
+    const printToastRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toast');
+    const printDocumentRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-document');
+    const printA4PageRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-a4-page');
+    const printSectionHeadingRule = cssRuleIncludingSelectorText(printCss, '.summary-section h2');
+    const printTableHeadRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table thead');
+    const printTableRowRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table tr');
+    const printServiceEventRule = cssRuleIncludingSelectorText(printCss, '.summary-service-event');
+    const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
+    const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
         && !!doc.getElementById('bookingSummaryCopy')
         && !!doc.getElementById('bookingSummaryPrint')
         && !!doc.getElementById('bookingSummaryWarnings')
+        && !!doc.getElementById('bookingSummaryPrintRoot')
         && !!doc.getElementById('bookingSummaryDocument'));
     check('Booking summary page loads standalone controller and print CSS',
         getHtmlScripts(html).includes('js/booking-summary-page.js')
         && html.includes('css/booking-summary.css')
-        && pageCss.includes('@media print')
-        && pageCss.includes('size: A4'));
+        && !!printCss
+        && printCss.includes('size: A4'));
+    check('Booking summary preview uses a stable A4 wrapper contract',
+        doc.getElementById('bookingSummaryPrintRoot')?.classList.contains('booking-summary-print-root')
+        && doc.getElementById('bookingSummaryDocument')?.classList.contains('booking-summary-document')
+        && doc.getElementById('bookingSummaryDocument')?.classList.contains('booking-summary-a4-page')
+        && pageCode.includes("el('bookingSummaryPrintRoot')")
+        && pageCss.includes('.booking-summary-print-root')
+        && pageCss.includes('.booking-summary-a4-page')
+        && pageCss.includes('aspect-ratio: 210 / 297')
+        && pageCss.includes('width: min(100%, 210mm)')
+        && pageCss.includes('width: 210mm')
+        && pageCss.includes('overflow-x: auto'));
+    check('Booking summary print resets dark theme and screen chrome',
+        printHtmlRule.includes('background: #fff !important')
+        && printDarkHtmlRule.includes('background-image: none !important')
+        && printBodyRule.includes('background-color: #fff !important')
+        && printDarkBodyRule.includes('color-scheme: light !important')
+        && printDirectDarkBodyRule.includes('background-image: none !important')
+        && printToolbarRule.includes('display: none !important')
+        && printStateRule.includes('display: none !important')
+        && printToastRule.includes('display: none !important')
+        && printDocumentRule.includes('border-radius: 0 !important')
+        && printDocumentRule.includes('background: #fff !important')
+        && printDocumentRule.includes('box-shadow: none !important')
+        && printDocumentRule.includes('color: #000 !important'));
+    check('Booking summary print pagination keeps dense summaries on A4 and protects row breaks',
+        pageCode.includes('summary-section--orders')
+        && pageCode.includes('summary-section--service-events')
+        && pageCode.includes('summary-section--finance')
+        && pageCode.includes('summary-section--terms')
+        && printCss.includes('.summary-section--finance')
+        && printCss.includes('.summary-section--terms')
+        && printCss.includes('orphans: 2')
+        && printCss.includes('widows: 2')
+        && printCss.includes('padding: 3px 5px')
+        && printSectionHeadingRule.includes('break-after: avoid')
+        && printSectionHeadingRule.includes('page-break-after: avoid')
+        && printTableHeadRule.includes('display: table-header-group')
+        && printTableRowRule.includes('break-inside: avoid')
+        && printTermsItemRule.includes('page-break-inside: avoid')
+        && printServiceEventRule.includes('break-inside: avoid')
+        && printA4PageRule.includes('aspect-ratio: auto')
+        && !pageCss.includes('height: 297mm'));
+    check('Booking summary print trigger stays browser-native without app-owned header or footer promises',
+        printTriggerCount === 1
+        && pageCode.includes('window.print()')
+        && !pageCode.includes('page.pdf')
+        && !pageCode.includes('jsPDF')
+        && !pageCode.includes('html2pdf')
+        && !pageCode.includes('displayHeaderFooter')
+        && !pageCss.includes('headerTemplate')
+        && !pageCss.includes('footerTemplate')
+        && !pageCss.includes('@top-')
+        && !pageCss.includes('@bottom-'));
     check('Booking summary page consumes the banquet summary API and prints client-side only',
         pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
         && pageCode.includes("const groupId = params.get('groupId') || '';")
         && pageCode.includes("requestParams.set('groupId', groupId)")
         && pageCode.includes('totals.activitySubtotal')
-        && pageCode.includes('window.print()')
+        && printTriggerCount === 1
         && pageCode.includes('bookingSummaryWarnings')
         && pageCode.includes('navigator.clipboard')
         && !pageCode.includes('pdf'));

@@ -490,7 +490,15 @@ function createFakePool() {
             group_name: 'Auto banquet',
             customer_id: 704,
             payment_method: null,
-            extra_data: {},
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 900,
+                    positionsSubtotal: 900,
+                    finalTotal: 900,
+                    menuPositions: [],
+                    serviceEvents: []
+                }
+            },
             created_at: '2099-06-01T11:05:00.000Z',
             updated_at: '2099-06-01T11:05:00.000Z'
         },
@@ -519,7 +527,15 @@ function createFakePool() {
             group_name: 'Auto banquet',
             customer_id: 704,
             payment_method: null,
-            extra_data: {},
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 800,
+                    positionsSubtotal: 800,
+                    finalTotal: 800,
+                    menuPositions: [],
+                    serviceEvents: []
+                }
+            },
             created_at: '2099-06-01T11:10:00.000Z',
             updated_at: '2099-06-01T11:10:00.000Z'
         },
@@ -2821,6 +2837,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(kitchen.data.bookings.kitchen.some(booking => booking.id === 'BK-AUTO-KITCHEN'), true);
         assert.equal(kitchen.data.bookings.activities.some(booking => booking.id === 'BK-AUTO-ACTIVITY'), true);
         assert.equal(kitchen.data.bookings.activities.some(booking => booking.id === 'BK-AUTO-ACTIVITY-SECOND'), true);
+        assert.equal(kitchen.data.bookings.kitchen.some(booking => booking.id === 'BK-AUTO-ACTIVITY'), false);
+        assert.equal(kitchen.data.bookings.kitchen.some(booking => booking.id === 'BK-AUTO-ACTIVITY-SECOND'), false);
 
         const groupId = kitchen.data.groupId;
         const activity = await readBanquet('BK-AUTO-ACTIVITY');
@@ -2834,6 +2852,9 @@ describe('route-level API safety smoke', () => {
         }
 
         const membersById = new Map(kitchen.data.members.map(member => [member.bookingId, member]));
+        assert.equal(membersById.get('BK-AUTO-KITCHEN')?.membershipRole, 'primary');
+        assert.equal(membersById.get('BK-AUTO-ACTIVITY')?.membershipRole, 'activity');
+        assert.equal(membersById.get('BK-AUTO-ACTIVITY-SECOND')?.membershipRole, 'activity');
         const effectiveRoles = groupedIds.map(bookingId => {
             const member = membersById.get(bookingId);
             return member?.isKitchenCandidate ? 'kitchen' : member?.role;
@@ -2844,6 +2865,25 @@ describe('route-level API safety smoke', () => {
         assert.equal(queries.some(q => /INSERT INTO banquet_group_bookings/i.test(q.text)), false);
         assert.equal(queries.some(q => /INSERT INTO booking_banquet_links/i.test(q.text)), false);
         assert.equal(queries.some(q => /^INSERT INTO history/i.test(q.text)), false);
+
+        queries.length = 0;
+        const idempotent = await reconcileBanquetGroupForBooking({
+            bookingId: 'BK-AUTO-KITCHEN',
+            businessContext: 'event_genix',
+            user: { id: 1, username: 'route-smoke', name: 'Route Smoke' },
+            source: 'route_smoke_auto_group'
+        });
+        assert.equal(idempotent.groupId, groupId);
+        assert.deepEqual(idempotent.attachedBookingIds, []);
+        assert.equal(queries.some(q => /INSERT INTO banquet_group_bookings/i.test(q.text)), false);
+
+        queries.length = 0;
+        const afterRepeat = await readBanquet('BK-AUTO-KITCHEN');
+        assert.equal(afterRepeat.status, 200, JSON.stringify(afterRepeat.data));
+        const memberRows = afterRepeat.data.members.filter(member => groupedIds.includes(member.bookingId));
+        assert.equal(memberRows.length, 3);
+        assert.equal(afterRepeat.data.bookings.kitchen.filter(booking => groupedIds.includes(booking.id)).length, 1);
+        assert.equal(afterRepeat.data.bookings.activities.filter(booking => groupedIds.includes(booking.id)).length, 2);
     });
 
     it('keeps different customer room date and cancelled bookings out of auto banquet grouping', async () => {

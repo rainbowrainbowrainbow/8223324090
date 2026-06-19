@@ -140,17 +140,7 @@ function bookingPackageHasBanquetData(row = {}) {
     if (!bookingPackage || typeof bookingPackage !== 'object') return false;
     const positions = packageArray(bookingPackage, 'menuPositions', 'menu_positions');
     const serviceEvents = packageArray(bookingPackage, 'serviceEvents', 'service_events');
-    if (hasNonEmptyArray(positions) || hasNonEmptyArray(serviceEvents)) return true;
-    return [
-        'programBasePrice',
-        'program_base_price',
-        'positionsSubtotal',
-        'positions_subtotal',
-        'servicesSubtotal',
-        'services_subtotal',
-        'finalTotal',
-        'final_total'
-    ].some(key => bookingPackage[key] != null);
+    return hasNonEmptyArray(positions) || hasNonEmptyArray(serviceEvents);
 }
 
 function isKitchenCandidate(row = {}) {
@@ -174,6 +164,21 @@ function isBanquetServiceLine(row = {}) {
 
 function normalizedBookingCategory(row = {}) {
     return String(row.category || row.bookingCategory || '').trim().toLowerCase();
+}
+
+function hasActivityCategory(row = {}) {
+    return ['activity', 'animation', 'show', 'quest', 'masterclass', 'pinata', 'photo', 'graduation']
+        .includes(normalizedBookingCategory(row));
+}
+
+function hasActivityProgramSignal(row = {}) {
+    return Boolean(
+        row.program_id
+        || row.programId
+        || String(row.program_name || row.programName || '').trim()
+        || String(row.program_code || row.programCode || '').trim()
+        || Number(row.price || 0) > 0
+    );
 }
 
 function textMatchesBanquetIdentity(row = {}) {
@@ -203,12 +208,10 @@ function isBanquetAnchor(row = {}) {
 }
 
 function isBanquetActivityCandidate(row = {}) {
-    if (isBanquetServiceLine(row) || isKitchenCandidate(row)) return false;
-    const category = normalizedBookingCategory(row);
-    if (['activity', 'animation', 'show', 'quest', 'masterclass', 'pinata', 'photo', 'graduation'].includes(category)) {
-        return true;
-    }
-    return Boolean(row.program_id || row.programId || Number(row.price || 0) > 0);
+    if (isBanquetServiceLine(row)) return false;
+    if (hasActivityCategory(row)) return true;
+    if (isKitchenCandidate(row)) return false;
+    return hasActivityProgramSignal(row);
 }
 
 function isRootBooking(row = {}) {
@@ -524,9 +527,9 @@ function selectBanquetAutoGroupPrimary(candidates = [], anchorBookingId = null) 
 
 function banquetAutoGroupRoleFor(row = {}, primaryBookingId = null) {
     if (cleanId(row.id) === cleanId(primaryBookingId)) return 'primary';
+    if (isBanquetActivityCandidate(row)) return 'activity';
     if (isKitchenCandidate(row) || bookingPackageHasBanquetData(row)) return 'kitchen';
     if (isBanquetServiceLine(row)) return 'service';
-    if (isBanquetActivityCandidate(row)) return 'activity';
     return 'manual';
 }
 
@@ -1172,9 +1175,10 @@ function computedRoleFor(row, membership, primaryId) {
     const bookingId = String(row.id || '');
     if (primaryId && bookingId === String(primaryId)) return 'primary';
     const explicit = membership?.role || null;
+    if (explicit === 'kitchen' && isBanquetActivityCandidate(row)) return 'activity';
     if (['kitchen', 'activity', 'service', 'manual'].includes(explicit)) return explicit;
-    if (isKitchenCandidate(row)) return 'kitchen';
-    if (row.program_id || row.programId || Number(row.price || 0) > 0) return 'activity';
+    if (isBanquetActivityCandidate(row)) return 'activity';
+    if (isKitchenCandidate(row) || bookingPackageHasBanquetData(row)) return 'kitchen';
     return 'manual';
 }
 

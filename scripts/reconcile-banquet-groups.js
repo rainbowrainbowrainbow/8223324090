@@ -102,19 +102,8 @@ function bookingPackageHasBanquetData(row = {}) {
     if (!bookingPackage || typeof bookingPackage !== 'object') return false;
     const positions = packageArray(bookingPackage, 'menuPositions', 'menu_positions');
     const serviceEvents = packageArray(bookingPackage, 'serviceEvents', 'service_events');
-    if ((Array.isArray(positions) && positions.length > 0) || (Array.isArray(serviceEvents) && serviceEvents.length > 0)) {
-        return true;
-    }
-    return [
-        'programBasePrice',
-        'program_base_price',
-        'positionsSubtotal',
-        'positions_subtotal',
-        'servicesSubtotal',
-        'services_subtotal',
-        'finalTotal',
-        'final_total'
-    ].some(key => bookingPackage[key] != null);
+    return (Array.isArray(positions) && positions.length > 0)
+        || (Array.isArray(serviceEvents) && serviceEvents.length > 0);
 }
 
 function isKitchenCandidate(row = {}) {
@@ -133,6 +122,11 @@ function cleanId(value) {
     return id || null;
 }
 
+function normalizeRole(value) {
+    const role = String(value || 'manual').trim().toLowerCase();
+    return role || 'manual';
+}
+
 function isRootBooking(row = {}) {
     return !String(row.linked_to || row.linkedTo || '').trim();
 }
@@ -147,6 +141,21 @@ function isBanquetServiceLine(row = {}) {
 
 function normalizedBookingCategory(row = {}) {
     return String(row.category || row.bookingCategory || '').trim().toLowerCase();
+}
+
+function hasActivityCategory(row = {}) {
+    return ['activity', 'animation', 'show', 'quest', 'masterclass', 'pinata', 'photo', 'graduation']
+        .includes(normalizedBookingCategory(row));
+}
+
+function hasActivityProgramSignal(row = {}) {
+    return Boolean(
+        row.program_id
+        || row.programId
+        || String(row.program_name || row.programName || '').trim()
+        || String(row.program_code || row.programCode || '').trim()
+        || Number(row.price || 0) > 0
+    );
 }
 
 function textMatchesBanquetIdentity(row = {}) {
@@ -176,12 +185,10 @@ function isBanquetAnchor(row = {}) {
 }
 
 function isBanquetActivityCandidate(row = {}) {
-    if (isBanquetServiceLine(row) || isKitchenCandidate(row)) return false;
-    const category = normalizedBookingCategory(row);
-    if (['activity', 'animation', 'show', 'quest', 'masterclass', 'pinata', 'photo', 'graduation'].includes(category)) {
-        return true;
-    }
-    return Boolean(row.program_id || row.programId || Number(row.price || 0) > 0);
+    if (isBanquetServiceLine(row)) return false;
+    if (hasActivityCategory(row)) return true;
+    if (isKitchenCandidate(row)) return false;
+    return hasActivityProgramSignal(row);
 }
 
 function timeKey(row = {}) {
@@ -201,9 +208,9 @@ function selectPrimary(candidates = []) {
 
 function roleFor(row = {}, primaryBookingId = null) {
     if (cleanId(row.id) === cleanId(primaryBookingId)) return 'primary';
+    if (isBanquetActivityCandidate(row)) return 'activity';
     if (isKitchenCandidate(row) || bookingPackageHasBanquetData(row)) return 'kitchen';
     if (isBanquetServiceLine(row)) return 'service';
-    if (isBanquetActivityCandidate(row)) return 'activity';
     return 'manual';
 }
 
@@ -320,13 +327,26 @@ function buildPlan(rows, memberships) {
             continue;
         }
 
-        const roles = sorted.map(row => ({
-            bookingId: row.id,
-            role: roleFor(row, primary.id),
-            alreadyMember: Boolean(membershipByBookingId.get(String(row.id)))
-        }));
+        const roles = sorted.map(row => {
+            const membership = membershipByBookingId.get(String(row.id)) || null;
+            return {
+                bookingId: row.id,
+                role: roleFor(row, primary.id),
+                currentRole: membership ? normalizeRole(membership.role) : null,
+                alreadyMember: Boolean(membership),
+                groupId: membership?.group_id || null
+            };
+        });
         const membershipsToAdd = roles.filter(item => !item.alreadyMember).map(item => item.bookingId);
-        if (existingGroupId && membershipsToAdd.length === 0) {
+        const roleUpdates = roles
+            .filter(item => item.alreadyMember && item.currentRole && item.currentRole !== item.role)
+            .map(item => ({
+                bookingId: item.bookingId,
+                currentRole: item.currentRole,
+                expectedRole: item.role,
+                groupId: item.groupId || existingGroupId
+            }));
+        if (existingGroupId && membershipsToAdd.length === 0 && roleUpdates.length === 0) {
             skipped.push({ ...base, reason: 'already_grouped', existingGroupId });
             continue;
         }
@@ -338,6 +358,7 @@ function buildPlan(rows, memberships) {
             anchorBookingIds: sorted.filter(isBanquetAnchor).map(row => row.id),
             roles,
             membershipsToAdd,
+            roleUpdates,
             willCreateGroup: !existingGroupId
         });
     }
@@ -346,7 +367,13 @@ function buildPlan(rows, memberships) {
 }
 
 function formatPlanLine(item, index = 0) {
-    const roles = item.roles.map(role => `${role.bookingId}:${role.role}${role.alreadyMember ? ':existing' : ''}`).join(', ');
+    const roles = item.roles.map(role => {
+        const current = role.currentRole && role.currentRole !== role.role ? `(${role.currentRole}->${role.role})` : '';
+        return `${role.bookingId}:${role.role}${role.alreadyMember ? ':existing' : ''}${current}`;
+    }).join(', ');
+    const roleUpdates = (item.roleUpdates || [])
+        .map(update => `${update.bookingId}:${update.currentRole}->${update.expectedRole}`)
+        .join(',') || '-';
     const existing = item.existingGroupId ? ` reuse=${item.existingGroupId}` : ' create=yes';
     return [
         `candidate #${index + 1}: ${item.room} / ${item.date}`,
@@ -357,6 +384,7 @@ function formatPlanLine(item, index = 0) {
         `bookings=${item.bookingIds.join(',')}`,
         `roles=${roles}`,
         `toAttach=${item.membershipsToAdd.join(',') || '-'}`,
+        `roleUpdates=${roleUpdates}`,
         existing.trim()
     ].join(' | ');
 }
@@ -384,10 +412,53 @@ function printPlan(plan, options) {
     }
 }
 
+async function applyRoleUpdates(db, item) {
+    const updates = Array.isArray(item.roleUpdates) ? item.roleUpdates : [];
+    const applied = [];
+    if (!updates.length) return applied;
+
+    for (const update of updates) {
+        const groupId = update.groupId || item.existingGroupId;
+        if (!groupId || !update.bookingId || !update.expectedRole) continue;
+        const result = await db.query(
+            `UPDATE banquet_group_bookings
+                SET role = $4,
+                    updated_at = NOW()
+              WHERE group_id = $1
+                AND booking_id = $2
+                AND COALESCE(NULLIF(BTRIM(business_context), ''), '${DEFAULT_TIMELINE_CONTEXT}') = $3
+                AND role IS DISTINCT FROM $4
+              RETURNING booking_id, role`,
+            [groupId, update.bookingId, item.businessContext || DEFAULT_TIMELINE_CONTEXT, update.expectedRole]
+        );
+        if (result.rowCount > 0) {
+            applied.push({
+                bookingId: update.bookingId,
+                previousRole: update.currentRole,
+                role: update.expectedRole
+            });
+        }
+    }
+
+    if (applied.length && item.existingGroupId) {
+        await db.query(
+            `UPDATE banquet_groups
+                SET updated_at = NOW(),
+                    updated_by = $3
+              WHERE id = $1
+                AND COALESCE(NULLIF(BTRIM(business_context), ''), '${DEFAULT_TIMELINE_CONTEXT}') = $2`,
+            [item.existingGroupId, item.businessContext || DEFAULT_TIMELINE_CONTEXT, SCRIPT_USER.username]
+        );
+    }
+
+    return applied;
+}
+
 async function applyPlan(plan, options) {
     const summary = {
         groupsCreated: 0,
         membershipsAdded: 0,
+        rolesUpdated: 0,
         skippedConflicts: plan.skipped.length,
         warnings: []
     };
@@ -401,6 +472,8 @@ async function applyPlan(plan, options) {
             });
             if (result.createdGroup) summary.groupsCreated += 1;
             summary.membershipsAdded += result.attachedBookingIds?.length || 0;
+            const appliedRoleUpdates = await applyRoleUpdates(pool, item);
+            summary.rolesUpdated += appliedRoleUpdates.length;
             if (result.skipped) {
                 summary.warnings.push({
                     bookingId: item.primaryBookingId,
@@ -408,7 +481,10 @@ async function applyPlan(plan, options) {
                 });
             }
             if (!options.json) {
-                console.log(`applied: ${item.room} / ${item.date} | group=${result.groupId || '-'} | created=${Boolean(result.createdGroup)} | added=${(result.attachedBookingIds || []).join(',') || '-'}`);
+                const roleUpdateLabel = appliedRoleUpdates
+                    .map(update => `${update.bookingId}:${update.previousRole}->${update.role}`)
+                    .join(',') || '-';
+                console.log(`applied: ${item.room} / ${item.date} | group=${result.groupId || item.existingGroupId || '-'} | created=${Boolean(result.createdGroup)} | added=${(result.attachedBookingIds || []).join(',') || '-'} | rolesUpdated=${roleUpdateLabel}`);
             }
         } catch (err) {
             summary.skippedConflicts += 1;
@@ -444,7 +520,7 @@ async function main() {
     if (options.json) {
         console.log(JSON.stringify({ applySummary: summary }, null, 2));
     } else {
-        console.log(`apply summary: groupsCreated=${summary.groupsCreated} membershipsAdded=${summary.membershipsAdded} skippedConflicts=${summary.skippedConflicts} warnings=${summary.warnings.length}`);
+        console.log(`apply summary: groupsCreated=${summary.groupsCreated} membershipsAdded=${summary.membershipsAdded} rolesUpdated=${summary.rolesUpdated} skippedConflicts=${summary.skippedConflicts} warnings=${summary.warnings.length}`);
         for (const warning of summary.warnings) {
             console.log(`WARN ${warning.bookingId}: ${warning.reason}`);
         }
@@ -461,6 +537,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    applyRoleUpdates,
     buildPlan,
     parseArgs
 };

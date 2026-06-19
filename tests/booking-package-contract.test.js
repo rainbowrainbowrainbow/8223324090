@@ -1148,6 +1148,185 @@ test('banquet group repair script is dry-run by default and reuses backend recon
     assert.doesNotMatch(script, /phone|instagram|child_name/i);
 });
 
+test('banquet group repair plan detects and applies activity role drift without duplicating groups', async () => {
+    const script = read('scripts', 'reconcile-banquet-groups.js');
+    const module = { exports: {} };
+    const context = {
+        console,
+        module,
+        exports: module.exports,
+        require: id => {
+            if (id === 'fs') {
+                return {
+                    existsSync: () => false,
+                    readFileSync: () => ''
+                };
+            }
+            if (id === '../db') {
+                return {
+                    pool: {
+                        query: async () => ({ rows: [], rowCount: 0 }),
+                        end: async () => {}
+                    }
+                };
+            }
+            if (id === '../services/banquetGroups') {
+                return { reconcileBanquetGroupForBooking: async () => ({}) };
+            }
+            if (id === '../services/booking') {
+                return { BANQUET_SERVICE_LINE_ID: 'banquet-service' };
+            }
+            if (id === '../services/timelineContext') {
+                return { DEFAULT_TIMELINE_CONTEXT: 'event_genix' };
+            }
+            return require(id);
+        },
+        process: { argv: ['node', 'script'], env: {}, exitCode: 0 },
+        Buffer,
+        setTimeout,
+        clearTimeout,
+        __dirname: path.join(repoRoot, 'scripts'),
+        __filename: path.join(repoRoot, 'scripts', 'reconcile-banquet-groups.js')
+    };
+    context.require.main = {};
+    vm.createContext(context);
+    vm.runInContext(script, context, { filename: 'scripts/reconcile-banquet-groups.js' });
+
+    const { applyRoleUpdates, buildPlan } = module.exports;
+    const bookings = [
+        {
+            id: 'BK-ROLE-ROOT',
+            business_context: 'event_genix',
+            date: '2099-06-23',
+            time: '12:45',
+            line_id: 'banquet-service',
+            room: 'Marvel',
+            customer_id: 801,
+            status: 'confirmed',
+            category: 'custom',
+            label: 'Kitchen',
+            extra_data: {
+                bookingPackage: {
+                    menuPositions: [{ productId: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 300, subtotal: 600 }],
+                    serviceEvents: [{ type: 'food_service', time: '12:45' }]
+                }
+            }
+        },
+        {
+            id: 'BK-ROLE-ANIMATION',
+            business_context: 'event_genix',
+            date: '2099-06-23',
+            time: '13:45',
+            line_id: 'animator-1',
+            room: 'Marvel',
+            customer_id: 801,
+            status: 'confirmed',
+            category: 'animation',
+            program_id: 'anim60',
+            program_name: 'Animation 60',
+            price: 1500,
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 1500,
+                    positionsSubtotal: 1500,
+                    finalTotal: 1500,
+                    menuPositions: [],
+                    serviceEvents: []
+                }
+            }
+        },
+        {
+            id: 'BK-ROLE-SHOW',
+            business_context: 'event_genix',
+            date: '2099-06-23',
+            time: '14:30',
+            line_id: 'animator-2',
+            room: 'Marvel',
+            customer_id: 801,
+            status: 'confirmed',
+            category: 'show',
+            program_id: 'bubble',
+            program_name: 'Bubble show',
+            price: 2400,
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 2400,
+                    positionsSubtotal: 2400,
+                    finalTotal: 2400,
+                    menuPositions: [],
+                    serviceEvents: []
+                }
+            }
+        }
+    ];
+    const memberships = [
+        { booking_id: 'BK-ROLE-ROOT', group_id: 'BQ-ROLE', role: 'primary', primary_booking_id: 'BK-ROLE-ROOT', group_status: 'active' },
+        { booking_id: 'BK-ROLE-ANIMATION', group_id: 'BQ-ROLE', role: 'kitchen', primary_booking_id: 'BK-ROLE-ROOT', group_status: 'active' },
+        { booking_id: 'BK-ROLE-SHOW', group_id: 'BQ-ROLE', role: 'kitchen', primary_booking_id: 'BK-ROLE-ROOT', group_status: 'active' }
+    ];
+
+    const plan = buildPlan(bookings, memberships);
+    assert.equal(plan.proposed.length, 1);
+    assert.equal(plan.skipped.length, 0);
+    assert.equal(plan.proposed[0].existingGroupId, 'BQ-ROLE');
+    assert.deepEqual(Array.from(plan.proposed[0].membershipsToAdd), []);
+    assert.deepEqual(
+        Array.from(plan.proposed[0].roleUpdates, update => `${update.bookingId}:${update.currentRole}->${update.expectedRole}`),
+        ['BK-ROLE-ANIMATION:kitchen->activity', 'BK-ROLE-SHOW:kitchen->activity']
+    );
+    assert.deepEqual(
+        Array.from(plan.proposed[0].roles, role => `${role.bookingId}:${role.role}:${role.alreadyMember}`),
+        [
+            'BK-ROLE-ROOT:primary:true',
+            'BK-ROLE-ANIMATION:activity:true',
+            'BK-ROLE-SHOW:activity:true'
+        ]
+    );
+
+    const roleByBookingId = new Map(memberships.map(row => [row.booking_id, row.role]));
+    const updates = [];
+    const db = {
+        query: async (sql, params) => {
+            if (/UPDATE banquet_group_bookings/i.test(sql)) {
+                const [groupId, bookingId, businessContext, role] = params;
+                assert.equal(groupId, 'BQ-ROLE');
+                assert.equal(businessContext, 'event_genix');
+                if (roleByBookingId.get(bookingId) !== role) {
+                    roleByBookingId.set(bookingId, role);
+                    updates.push({ bookingId, role });
+                    return { rows: [{ booking_id: bookingId, role }], rowCount: 1 };
+                }
+                return { rows: [], rowCount: 0 };
+            }
+            if (/UPDATE banquet_groups/i.test(sql)) {
+                assert.equal(params[0], 'BQ-ROLE');
+                assert.equal(params[1], 'event_genix');
+                return { rows: [], rowCount: 1 };
+            }
+            throw new Error(`Unexpected SQL: ${sql}`);
+        }
+    };
+
+    const applied = await applyRoleUpdates(db, plan.proposed[0]);
+    assert.deepEqual(
+        Array.from(applied, update => `${update.bookingId}:${update.previousRole}->${update.role}`),
+        ['BK-ROLE-ANIMATION:kitchen->activity', 'BK-ROLE-SHOW:kitchen->activity']
+    );
+    assert.deepEqual(updates, [
+        { bookingId: 'BK-ROLE-ANIMATION', role: 'activity' },
+        { bookingId: 'BK-ROLE-SHOW', role: 'activity' }
+    ]);
+
+    const repairedMemberships = memberships.map(row => ({
+        ...row,
+        role: roleByBookingId.get(row.booking_id)
+    }));
+    const repairedPlan = buildPlan(bookings, repairedMemberships);
+    assert.equal(repairedPlan.proposed.length, 0);
+    assert.equal(repairedPlan.skipped.length, 1);
+    assert.equal(repairedPlan.skipped[0].reason, 'already_grouped');
+});
+
 test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', () => {
     const manifestCode = read('js', 'kitchen-menu-images.js');
     const context = { window: {}, Object };

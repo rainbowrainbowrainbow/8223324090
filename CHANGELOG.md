@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.60 - Banquet member role fix
+
+### Backend banquet groups / Role repair / Room timeline verification / Production repair guard / (Клешня, 19.06.2026) [codex]
+- **Ролі учасників банкету класифікуються коректно** - kitchen/root booking лишається `primary`/`kitchen`, а animation/show bookings більше не потрапляють у `bookings.kitchen` тільки через commercial `bookingPackage` totals.
+- **Кейс `Марвел / 2026-06-19` отримав role repair path** - `BK-2026-0489` має бути root/kitchen, а `BK-2026-0490` (`АН(60)`) і `BK-2026-0491` (`Бульбашкове шоу`) мають бути `activity` в одному `groupId`.
+- **Service markers не перетворюються на fake activity bookings** - `Підготовка`, `Видача` і `Напої` далі беруться з banquet/root package service data і не змінюють click behavior room timeline.
+- **Production repair tool навчився бачити role drift** - dry-run показує `current role -> expected role`, а `--apply` оновлює тільки неправильні ролі в існуючих groups без дублювання memberships.
+- **Регресійні тести закривають kitchen/activity buckets** - route smoke і booking package contract перевіряють same groupId, правильні `bookings.kitchen`/`bookings.activities`, idempotency і repair для вже створених groups.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production settings, нових залежностей або змін Railway config.
+- **Релізні маркери піднято до `0.76.60`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.59 - Banquet auto grouping fix
 
 ### Backend banquet groups / Room timeline / Production repair guard / Regression tests / (Клешня, 19.06.2026) [codex]

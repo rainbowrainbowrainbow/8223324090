@@ -562,22 +562,33 @@ checkPage('booking-summary.html', (doc, html) => {
     const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
     const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
     const printCss = cssAtRuleBlock(pageCss, '@media print');
+    const mobileCss = cssAtRuleBlock(pageCss, '@media (max-width: 760px)');
     const printHtmlRule = cssRuleIncludingSelectorText(printCss, 'html');
     const printDarkHtmlRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"]');
     const printBodyRule = cssRuleIncludingSelectorText(printCss, 'body.booking-summary-page');
     const printDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] body.booking-summary-page');
     const printDirectDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] > body.booking-summary-page');
+    const printDirectBodyRule = cssRuleIncludingSelectorText(printCss, 'html > body.booking-summary-page');
     const printToolbarRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toolbar');
     const printStateRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-state');
     const printToastRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toast');
     const printDocumentRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-document');
     const printA4PageRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-a4-page');
+    const mobilePrintRootRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-print-root');
+    const mobileA4PageRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-a4-page');
     const printSectionHeadingRule = cssRuleIncludingSelectorText(printCss, '.summary-section h2');
     const printTableHeadRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table thead');
     const printTableRowRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table tr');
     const printServiceEventRule = cssRuleIncludingSelectorText(printCss, '.summary-service-event');
     const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
     const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
+    const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
+    const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
+    const summaryBriefItemRule = cssRuleText(pageCss, '.summary-brief-item');
+    const mobileBriefGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-brief-grid');
+    const printBriefGridRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-grid');
+    const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
+    const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
     const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
@@ -600,14 +611,16 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('.booking-summary-a4-page')
         && pageCss.includes('aspect-ratio: 210 / 297')
         && pageCss.includes('width: min(100%, 210mm)')
-        && pageCss.includes('width: 210mm')
-        && pageCss.includes('overflow-x: auto'));
+        && mobilePrintRootRule.includes('overflow-x: visible')
+        && mobileA4PageRule.includes('width: 100%')
+        && mobileA4PageRule.includes('max-width: 210mm'));
     check('Booking summary print resets dark theme and screen chrome',
         printHtmlRule.includes('background: #fff !important')
         && printDarkHtmlRule.includes('background-image: none !important')
         && printBodyRule.includes('background-color: #fff !important')
         && printDarkBodyRule.includes('color-scheme: light !important')
         && printDirectDarkBodyRule.includes('background-image: none !important')
+        && printDirectBodyRule.includes('background-color: #fff !important')
         && printToolbarRule.includes('display: none !important')
         && printStateRule.includes('display: none !important')
         && printToastRule.includes('display: none !important')
@@ -656,6 +669,7 @@ checkPage('booking-summary.html', (doc, html) => {
     check('Booking summary header labels generated account as manager, not author',
         pageCode.includes('<span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
         && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
+        && !pageCode.includes('Автор:')
         && !pageCode.includes("compactFact('Менеджер', event.manager)"));
     check('Booking summary header metadata uses scoped optical alignment for screen and print',
         summaryHeaderRule.includes('--summary-doc-meta-offset: 4px')
@@ -665,18 +679,42 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('line-height: 1.25;')
         && printCss.includes('--summary-doc-meta-offset: 3px')
         && !pageCss.includes('height: 297mm'));
-    check('Booking summary sheet uses compact text header and keeps table only for ordered rows',
-        pageCode.includes('function compactFact')
-        && pageCode.includes('summary-brief')
+    check('Booking summary sheet uses two-column brief and keeps table only for ordered rows',
+        pageCode.includes('function briefItem')
+        && pageCode.includes('function briefColumn')
+        && pageCode.includes('summary-brief-grid')
+        && pageCode.includes('summary-brief-column')
+        && pageCode.includes('summary-brief-label')
+        && pageCode.includes('summary-brief-value')
         && pageCode.includes('summary-finance-lines')
         && pageCode.includes('<table class="summary-order-table">')
+        && !pageCode.includes('function compactFact')
+        && !pageCode.includes('function compactLine')
+        && !pageCode.includes('compactLine([')
+        && !pageCode.includes('summary-brief-line')
+        && !pageCode.includes("compactFact('Менеджер', event.manager)")
         && !pageCode.includes('summary-info-grid')
         && !pageCode.includes('summary-total-card')
         && !pageCode.includes('<td class="money">')
-        && pageCss.includes('.summary-brief-line')
+        && pageCss.includes('.summary-brief-grid')
+        && pageCss.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
+        && summaryBriefRule.includes('--summary-brief-label-width: 118px')
+        && summaryBriefRule.includes('break-inside: avoid')
+        && summaryBriefGridRule.includes('min-width: 0')
+        && summaryBriefItemRule.includes('grid-template-columns: minmax(var(--summary-brief-label-width), 34%) minmax(0, 1fr)')
+        && pageCss.includes('.summary-brief-column')
+        && pageCss.includes('.summary-brief-label')
+        && pageCss.includes('.summary-brief-value')
+        && mobileBriefGridRule.includes('grid-template-columns: 1fr')
+        && printCss.includes('--summary-brief-label-width: 106px')
+        && printBriefGridRule.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
+        && printBriefGridRule.includes('page-break-inside: avoid')
+        && printBriefColumnRule.includes('break-inside: avoid')
+        && printBriefItemRule.includes('page-break-inside: avoid')
         && pageCss.includes('.summary-finance-lines p')
         && pageCss.includes('.summary-order-table thead')
         && pageCss.includes('break-inside: avoid')
+        && !pageCss.includes('.summary-brief-line')
         && !pageCss.includes('.summary-info-grid')
         && !pageCss.includes('.summary-total-card'));
 });

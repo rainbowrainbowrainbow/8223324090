@@ -79,15 +79,20 @@
         return String(value);
     }
 
-    function compactFact(label, value) {
-        return `<span class="summary-brief-item"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(formatValue(value))}</span>`;
+    function briefItem(label, value) {
+        return `
+            <div class="summary-brief-item">
+                <span class="summary-brief-label">${escapeHtml(label)}:</span>
+                <span class="summary-brief-value">${escapeHtml(formatValue(value))}</span>
+            </div>
+        `;
     }
 
-    function compactLine(items = []) {
+    function briefColumn(items = []) {
         return `
-            <p class="summary-brief-line">
+            <div class="summary-brief-column">
                 ${items.filter(Boolean).join('')}
-            </p>
+            </div>
         `;
     }
 
@@ -267,25 +272,23 @@
             <h1 class="summary-title">${escapeHtml(summary.document?.title || 'Вижимка банкету')}</h1>
 
             <section class="summary-brief" aria-label="Коротка інформація по банкету">
-                ${compactLine([
-                    compactFact('Клієнт', customer.name),
-                    compactFact('Телефон', customer.phone),
-                    compactFact('Кімната', event.room),
-                    compactFact('Дата', formatDate(event.date))
-                ])}
-                ${compactLine([
-                    compactFact('Час', event.time),
-                    compactFact('Учасники', people),
-                    compactFact('Програма', event.programName)
-                ])}
-                ${compactLine([
-                    compactFact('Іменинник', celebrant.name),
-                    compactFact('Дата народження', formatDate(celebrant.birthday))
-                ])}
-                ${compactLine([
-                    compactFact('Оформлено', formatDateTime(event.createdAt)),
-                    compactFact('Booking ID', summary.bookingId || '—')
-                ])}
+                <div class="summary-brief-grid">
+                    ${briefColumn([
+                        briefItem('Клієнт', customer.name),
+                        briefItem('Телефон', customer.phone),
+                        briefItem('Кімната', event.room),
+                        briefItem('Дата', formatDate(event.date)),
+                        briefItem('Час', event.time)
+                    ])}
+                    ${briefColumn([
+                        briefItem('Учасники', people),
+                        briefItem('Програма', event.programName),
+                        briefItem('Іменинник', celebrant.name),
+                        briefItem('Дата народження', formatDate(celebrant.birthday)),
+                        briefItem('Оформлено', formatDateTime(event.createdAt)),
+                        briefItem('Booking ID', summary.bookingId || '—')
+                    ])}
+                </div>
             </section>
 
             <section class="summary-section summary-section--orders">

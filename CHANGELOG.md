@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.74 - Booking summary two-column brief
+
+### Booking summary / Two-column brief / A4 preview / Print PDF / Regression tests / Browser QA / (Клешня, 19.06.2026) [codex]
+- **Compact brief у вижимці банкету перероблено у два стовпчики** - блок під `ВИЖИМКА БАНКЕТУ` більше не рендериться довгими inline-рядками, а має структуровані `.summary-brief-grid`, `.summary-brief-column` і `.summary-brief-item`.
+- **Поля згруповано для швидшого читання** - ліворуч лишаються клієнт, телефон, кімната, дата і час, праворуч - учасники, програма, іменинник, дата народження, оформлення і Booking ID.
+- **Дубль менеджера не повернувся** - менеджер лишається тільки у правій шапці документа як `Менеджер: <ім'я акаунту>`, без повтору в body brief і без `Автор`.
+- **Preview/PDF contract збережено** - A4-like preview не ламається, короткий PDF artifact лишається на 1 сторінці, print media тримає білий документ без чорних полів.
+- **Mobile preview став безпечнішим для вузьких екранів** - brief переходить в один стовпчик, A4 wrapper підганяється до viewport, а таблиця не створює горизонтальний overflow за межі аркуша.
+- **Regression guardrails оновлено** - `tests/ui-check.js` блокує повернення `compactLine`, `compactFact`, `.summary-brief-line`, `Автор`, дубля менеджера і fixed `height: 297mm` у content root.
+- **Browser QA пройдено для desktop/mobile/print** - Playwright перевірив `BK-2026-0489`, два стовпчики на desktop/print, один стовпчик на mobile, відсутність overflow і PDF page count.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.74`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.73 - Booking summary manager header cleanup
 
 ### Booking summary / Manager header / PDF preview / Header alignment / Regression tests / Browser QA / (Клешня, 19.06.2026) [codex]

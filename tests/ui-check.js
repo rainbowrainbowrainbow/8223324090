@@ -1786,6 +1786,37 @@ const bookingDetailEditControlsBlock = bookingDetailEditControlsStart >= 0 && bo
     : '';
 const bookingDetailCompactFooterBlock = (bookingDetailEditControlsBlock.match(/<div class="booking-actions modal-footer-sticky booking-actions--compact">[\s\S]*?<\/div>/) || [''])[0];
 const bookingDetailAdvancedActionsBlock = (bookingDetailEditControlsBlock.match(/<details class="booking-detail-advanced-actions">[\s\S]*?<\/details>/) || [''])[0];
+const bookingDetailStandardStart = bookingCode.indexOf('const bookingDetailIdLabel', bookingCode.indexOf('async function showBookingDetails'));
+const bookingDetailStandardEnd = bookingCode.indexOf('// v24.3.1: CRM', bookingDetailStandardStart);
+const bookingDetailStandardBlock = bookingDetailStandardStart >= 0 && bookingDetailStandardEnd > bookingDetailStandardStart
+    ? bookingCode.slice(bookingDetailStandardStart, bookingDetailStandardEnd)
+    : '';
+function bookingDetailRowBlock(source, label) {
+    const labelAt = source.indexOf(`<span class="label">${label}:</span>`);
+    if (labelAt < 0) return '';
+    const rowStart = source.lastIndexOf('<div class="booking-detail-row', labelAt);
+    const rowEnd = source.indexOf('</div>', labelAt);
+    if (rowStart < 0 || rowEnd < rowStart) return '';
+    return source.slice(rowStart, rowEnd + '</div>'.length);
+}
+function bookingDetailRowHasNoCopyAffordance(source, label) {
+    const row = bookingDetailRowBlock(source, label);
+    return Boolean(row)
+        && !row.includes('booking-detail-row--copyable')
+        && !row.includes('data-copy=')
+        && !row.includes('detail-copy-btn');
+}
+const bookingDetailLineDetailStart = bookingDetailStandardBlock.indexOf('const lineDetailHtml');
+const bookingDetailLineDetailEnd = bookingDetailStandardBlock.indexOf('const hostsDetailHtml', bookingDetailLineDetailStart);
+const bookingDetailLineDetailBlock = bookingDetailLineDetailStart >= 0 && bookingDetailLineDetailEnd > bookingDetailLineDetailStart
+    ? bookingDetailStandardBlock.slice(bookingDetailLineDetailStart, bookingDetailLineDetailEnd)
+    : '';
+const bookingDetailLineRowHasNoCopyAffordance = bookingDetailLineDetailBlock.includes('<div class="booking-detail-row">')
+    && bookingDetailLineDetailBlock.includes('${lineRoleLabel}:')
+    && !bookingDetailLineDetailBlock.includes('booking-detail-row--copyable')
+    && !bookingDetailLineDetailBlock.includes('data-copy=')
+    && !bookingDetailLineDetailBlock.includes('detail-copy-btn');
+const bookingDetailStatusBadgeRule = cssRuleText(globalModalsCss, '#bookingModal .booking-detail-row .status-badge');
 const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
 const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
@@ -1876,9 +1907,19 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-meta')
     && globalModalsCss.includes('.booking-detail-meta-item')
     && !/\.booking-detail-header\s*\{[^}]*linear-gradient\(135deg,\s*var\(--primary\)/.test(globalModalsCss)
-    && globalModalsCss.includes('.booking-detail-row--copyable:focus-within .detail-copy-btn')
-    && globalModalsCss.includes('visibility: hidden')
-    && !/\.detail-copy-btn\s*\{[\s\S]*?display:\s*none/.test(globalModalsCss)
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Дата')
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Час')
+    && bookingDetailLineRowHasNoCopyAffordance
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ведучих')
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ціна')
+    && bookingDetailRowHasNoCopyAffordance(bookingCode, 'Сценарій')
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Статус')
+    && bookingCode.includes('customer-action-btn" title="Скопіювати імʼя"')
+    && bookingCode.includes("navigator.clipboard.writeText('${escapeHtml(customer.phone)}')")
+    && bookingCode.includes("navigator.clipboard.writeText('@${escapeHtml(igName)}')")
+    && bookingDetailStatusBadgeRule.includes('justify-self: end')
+    && bookingDetailStatusBadgeRule.includes('width: fit-content')
+    && bookingDetailStatusBadgeRule.includes('max-width: 100%')
     && bookingCode.includes('const editControls = isViewer() ?')
     && bookingCode.includes('booking-actions modal-footer-sticky booking-actions--compact')
     && bookingCode.includes('booking-detail-action--primary btn-edit-booking')

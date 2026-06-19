@@ -8083,10 +8083,9 @@ async function showBookingDetails(bookingId) {
         .join(': ') || (roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
     const bookingChildrenCount = bookingKitchenChildrenCountFromBooking(booking);
     const lineDetailHtml = roomFirstServiceBooking ? '' : `
-        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(line ? line.name : '-')}">
+        <div class="booking-detail-row">
             <span class="label">${lineRoleLabel}:</span>
             <span class="value">${escapeHtml(line ? line.name : '-')}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
     `;
     const hostsDetailHtml = roomFirstServiceBooking ? '' : `
@@ -8131,23 +8130,20 @@ async function showBookingDetails(bookingId) {
             </div>
         </div>
         ${priorityCustomerBlockHtml}
-        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.date)}">
+        <div class="booking-detail-row">
             <span class="label">Дата:</span>
             <span class="value">${escapeHtml(booking.date)}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
-        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(booking.time)} - ${escapeHtml(endTime)}">
+        <div class="booking-detail-row">
             <span class="label">Час:</span>
             <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         ${lineDetailHtml}
         ${hostsDetailHtml}
         ${animationExtrasHtml}
-        <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(formatPrice(booking.price))}">
+        <div class="booking-detail-row">
             <span class="label">Ціна:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
-            <button type="button" class="detail-copy-btn" title="Скопіювати">📋</button>
         </div>
         ${renderEducationLessonDetail(booking)}
         ${renderBookingWorkspaceDetail(booking)}

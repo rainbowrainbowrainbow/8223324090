@@ -850,10 +850,16 @@ body.dark-mode .fin-check-hint,
     color: var(--gray-800);
 }
 
+#bookingModal .booking-detail-row .status-badge {
+    justify-self: end;
+    width: fit-content;
+    max-width: 100%;
+}
+
 /* v24.3.1: Copyable detail rows */
 .booking-detail-row--copyable {
-    grid-template-columns: minmax(128px, 0.62fr) minmax(0, 1fr) 32px;
-    padding: 10px 10px 10px 14px;
+    grid-template-columns: minmax(128px, 0.62fr) minmax(0, 1fr);
+    padding: 12px 52px 12px 14px;
     transition: background var(--speed-fast) var(--ease-smooth);
     cursor: default;
 }
@@ -863,6 +869,10 @@ body.dark-mode .fin-check-hint,
 }
 
 .detail-copy-btn {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1046,9 +1056,13 @@ body.dark-mode .fin-check-hint,
 
     .booking-detail-row,
     .booking-detail-row--copyable {
-        grid-template-columns: 1fr 32px;
-        gap: 6px 10px;
+        grid-template-columns: 1fr;
+        gap: 6px;
         padding: 10px 8px;
+    }
+
+    .booking-detail-row--copyable {
+        padding-right: 48px;
     }
 
     .booking-detail-row .label,
@@ -1059,13 +1073,11 @@ body.dark-mode .fin-check-hint,
     }
 
     .booking-detail-row--copyable .value {
-        grid-column: 1;
+        grid-column: 1 / -1;
     }
 
     .booking-detail-row--copyable .detail-copy-btn {
-        grid-column: 2;
-        grid-row: 1 / span 2;
-        align-self: center;
+        right: 8px;
     }
 
     #bookingModal .booking-actions.modal-footer-sticky {

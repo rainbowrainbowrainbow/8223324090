@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.70 - Booking details visual cleanup
+
+### Frontend booking modal / Timeline click details / Copy affordance / Status badge / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Деталі бронювання з timeline свята стали візуально рівнішими** - прості рядки `Дата`, `Час`, `Аніматор`, `Ведучих`, `Ціна`, `Сценарій` і `Статус` більше не показують зайву clipboard-іконку на hover.
+- **Copy affordance звужено до полів, де копіювання має сенс** - customer name, phone, Instagram, invite link, notes і явна дія `Скопіювати все` лишаються доступними без візуального шуму у стандартних detail rows.
+- **Status badge зроблено компактним у booking details modal** - `Підтверджене`/`Попереднє` більше не розтягується на всю value column і вирівнюється справа як badge по контенту.
+- **Mobile layout отримав стабільніший action reserve** - copyable rows мають окремий правий простір під кнопку, а прості рядки переходять у читабельний stacked layout без прихованої колонки.
+- **Timeline click flow не змінювався** - activity blocks далі відкривають booking details modal, без зміни inspector ownership, auth, API, schema або booking data flow.
+- **UI guardrails оновлено** - `tests/ui-check.js` фіксує відсутність copy affordance у простих booking details rows, збережені customer copy actions і compact status badge.
+- **Релізні маркери піднято до `0.76.70`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.69 - Timeline dynamic width alignment
 
 ### Frontend timeline / Dynamic content width / Add animator lane / Browser QA / Regression tests / (Клешня, 19.06.2026) [codex]

@@ -968,6 +968,10 @@ const timelineBanquetRoomCardBlock = timelineCode.slice(
     timelineCode.indexOf('function timelineBanquetRoomCardSignals'),
     timelineCode.indexOf('function clearTimelineBanquetRoomPreviews')
 );
+const timelineBanquetOccupancyRoleBlock = timelineCode.slice(
+    timelineCode.indexOf('function timelineBanquetPreviewRoleUsesOccupancyBand'),
+    timelineCode.indexOf('function timelineBanquetPreviewRoleUsesGridDuplicateHide')
+);
 const timelineRoomServiceMarkerBlock = timelineCode.slice(
     timelineCode.indexOf('function renderTimelineRoomServiceMarkers'),
     timelineCode.indexOf('function clearTimelineBanquetRoomPreviews')
@@ -980,6 +984,7 @@ const timelineRenderStartIndex = timelineCode.indexOf('async function renderTime
 const timelineRenderClearIndex = timelineCode.indexOf('clearTimelineBanquetRoomPreviews()', timelineRenderStartIndex);
 const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedDate)', timelineRenderStartIndex);
 const timelineBanquetOccupancyBandRule = cssRuleText(timelineConstructorCss, '.booking-block.is-timeline-banquet-occupancy-band');
+const timelineBanquetGridDuplicateRule = cssRuleText(timelineConstructorCss, '.booking-block.is-timeline-banquet-grid-duplicate');
 const timelineRoomServiceMarkerWithBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker.has-user-letter');
 const timelineRoomServiceMarkerBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker .user-letter');
 const timelineRoomVisualTokensRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms');
@@ -1004,7 +1009,11 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('function hydrateTimelineBanquetPreview')
     && timelineCode.includes('function timelineBanquetPreviewRoleUsesOccupancyBand')
     && timelineCode.includes('function setTimelineBanquetOccupancyBand')
+    && timelineCode.includes('function timelineBanquetPreviewRoleUsesGridDuplicateHide')
+    && timelineCode.includes('function setTimelineBanquetGridDuplicateHidden')
+    && timelineCode.includes('function applyTimelineBanquetGridPreviewVisuals')
     && timelineCode.includes('is-timeline-banquet-occupancy-band')
+    && timelineCode.includes('is-timeline-banquet-grid-duplicate')
     && timelineCode.includes('requestIdleCallback')
     && timelineCode.includes('data-banquet-room-card')
     && timelineCode.includes('data-banquet-room-marker')
@@ -1025,9 +1034,8 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band .title')
     && /opacity:\s*0\.72\s*;/.test(timelineBanquetOccupancyBandRule)
-    && /pointer-events:\s*auto\s*;/.test(timelineBanquetOccupancyBandRule)
-    && !/display:\s*none/i.test(timelineBanquetOccupancyBandRule)
-    && !/visibility:\s*hidden/i.test(timelineBanquetOccupancyBandRule)
+    && /display:\s*none\s*!important\s*;/.test(timelineBanquetGridDuplicateRule)
+    && /pointer-events:\s*none\s*;/.test(timelineBanquetGridDuplicateRule)
     && !timelineCode.includes('data-banquet-preview-trigger')
     && !timelineCode.includes('data-banquet-service-marker')
     && !timelineConstructorCss.includes('.timeline-banquet-chip')
@@ -1099,9 +1107,12 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineCode.includes('function timelineRoomServiceMarkerDisplay')
     && timelineCode.includes('function timelineRoomServiceMarkerLane')
     && timelineCode.includes('function syncTimelineRoomServiceMarkerLayout')
-    && timelineCode.includes('setTimelineBanquetOccupancyBand(target.block, hasRoomServiceMarkers')
-    && timelineCode.includes('setTimelineBanquetOccupancyBand(block, hasRoomServiceMarkers')
-    && !/function timelineBanquetPreviewRoleUsesOccupancyBand[\s\S]*normalizedRole === 'kitchen'/.test(timelineCode)
+    && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers)')
+    && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers)')
+    && timelineCode.includes('timelineBanquetPreviewRoleUsesGridDuplicateHide(role)')
+    && timelineCode.includes("normalizedRole === 'kitchen'")
+    && timelineCode.includes('setTimelineBanquetGridDuplicateHidden(block, false)')
+    && !/normalizedRole === 'kitchen'/.test(timelineBanquetOccupancyRoleBlock)
     && timelineCode.includes('markerEl.dataset.markerTitle = display.title')
     && timelineCode.includes('markerEl.dataset.markerLane = String(laneIndex)')
     && timelineResourcesTestCode.includes("querySelectorAll('.line-grid .timeline-room-service-marker')")
@@ -1110,7 +1121,9 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineResourcesTestCode.includes('room timeline renders multiple menu serving markers inside the room grid')
     && timelineResourcesTestCode.includes('room timeline renders room_setup service event as a separate room-grid marker')
     && timelineResourcesTestCode.includes('room timeline keeps mixed same-time room-grid markers without dedupe')
-    && timelineResourcesTestCode.includes('room timeline keeps kitchen booking block normal when service markers exist')
+    && timelineResourcesTestCode.includes('room timeline hides duplicate banquet grid blocks when service markers exist')
+    && timelineResourcesTestCode.includes("querySelector('.booking-block.is-timeline-banquet-occupancy-band')")
+    && timelineResourcesTestCode.includes("rootBlock.classList.contains('is-timeline-banquet-grid-duplicate')")
     && timelineResourcesTestCode.includes('assert.notEqual(markers[0].left, markers[1].left)')
     && timelineResourcesTestCode.includes('parseFloat(markers[2].left) > parseFloat(markers[1].left)')
     && timelineResourcesTestCode.includes('ctx.__timelineViewState.room = false')

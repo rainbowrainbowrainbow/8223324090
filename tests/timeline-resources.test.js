@@ -313,6 +313,10 @@ function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
         room: 'Room A',
         label: 'Animator'
     };
+    const rootBlock = ctx.document.createElement('div');
+    rootBlock.className = 'booking-block banquet-block';
+    rootBlock.dataset.bookingId = rootBooking.id;
+    rootBlock.innerHTML = '<div class="user-letter">R</div><div class="title">Root banquet block</div><div class="subtitle">11:00</div>';
     const kitchenBlock = ctx.document.createElement('div');
     kitchenBlock.className = 'booking-block banquet-block';
     kitchenBlock.dataset.bookingId = kitchenBooking.id;
@@ -321,7 +325,7 @@ function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
     activityBlock.className = 'booking-block animation';
     activityBlock.dataset.bookingId = activityBooking.id;
     activityBlock.innerHTML = '<div class="user-letter">A</div><div class="title">Animator block</div><div class="subtitle">12:00</div>';
-    lineGrid.append(kitchenBlock, activityBlock);
+    lineGrid.append(rootBlock, kitchenBlock, activityBlock);
 
     ctx.__cachedBookings = [rootBooking, kitchenBooking, activityBooking];
     ctx.applyTimelineBanquetPreview({
@@ -346,7 +350,7 @@ function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
         ]
     });
 
-    return { ctx, kitchenBlock, activityBlock };
+    return { ctx, rootBlock, kitchenBlock, activityBlock };
 }
 
 test('timeline resource migration creates durable multi-cabinet resources', () => {
@@ -966,6 +970,9 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function timelineBanquetBlockCanOpenInspector/);
     assert.match(timeline, /function timelineBanquetPreviewRoleUsesOccupancyBand/);
     assert.match(timeline, /function setTimelineBanquetOccupancyBand/);
+    assert.match(timeline, /function timelineBanquetPreviewRoleUsesGridDuplicateHide/);
+    assert.match(timeline, /function setTimelineBanquetGridDuplicateHidden/);
+    assert.match(timeline, /function applyTimelineBanquetGridPreviewVisuals/);
     assert.match(timeline, /function timelineBanquetRoomCardSignals/);
     assert.match(timeline, /function timelineBanquetRoomServingSignals/);
     assert.match(timeline, /function normalizeTimelineBanquetServiceEventType/);
@@ -979,10 +986,12 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*isRoomTimelineView\(\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
     assert.match(timeline, /timelineBanquetServingInfo\(summary\)/);
-    assert.match(timeline, /hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesOccupancyBand\(targetRole\)/);
-    assert.match(timeline, /hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesOccupancyBand\(carrierRole\)/);
+    assert.match(timeline, /applyTimelineBanquetGridPreviewVisuals\(target\.block, targetRole, hasRoomServiceMarkers\)/);
+    assert.match(timeline, /applyTimelineBanquetGridPreviewVisuals\(block, carrierRole, hasRoomServiceMarkers\)/);
     assert.match(timeline, /clearTimelineBanquetPreviewVisuals\(block\)[\s\S]*setTimelineBanquetOccupancyBand\(block, false\)/);
+    assert.match(timeline, /clearTimelineBanquetPreviewVisuals\(block\)[\s\S]*setTimelineBanquetGridDuplicateHidden\(block, false\)/);
     assert.match(timeline, /clearTimelineBanquetRoomPreviews\(\)[\s\S]*booking-block\.has-timeline-banquet-preview-trigger/);
+    assert.match(timeline, /clearTimelineBanquetRoomPreviews\(\)[\s\S]*booking-block\.is-timeline-banquet-grid-duplicate/);
     assert.match(timeline, /timelineBanquetRoomServingSignals\(servingMarkers\)/);
     assert.match(timeline, /signals\.push\(\.\.\.timelineBanquetRoomServingSignals\(servingMarkers\)\)/);
     assert.match(timeline, /case 'room_setup':\s*return 'Підготувати кімнату'/);
@@ -1009,6 +1018,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band/);
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band \.title/);
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band \.subtitle/);
+    assert.match(css, /\.booking-block\.is-timeline-banquet-grid-duplicate\s*\{[\s\S]*display:\s*none !important;[\s\S]*pointer-events:\s*none/);
     assert.match(css, /\.timeline-line\.has-timeline-room-service-marker-lanes/);
     assert.match(css, /\.line-grid\.has-timeline-room-operational-lanes/);
     assert.match(css, /\.timeline-line\.has-timeline-room-operational-lanes/);
@@ -1327,10 +1337,11 @@ test('short and tiny timeline activity blocks have dedicated compact CSS layout'
     assert.match(css, /body\.dark-mode \.booking-block\.booking-block--short \.timeline-compact-booking-label,[\s\S]*?html\[data-theme="dark"\] \.booking-block\.booking-block--tiny \.timeline-compact-booking-label\s*\{[\s\S]*color:\s*rgba\(248, 250, 252, 0\.98\)/);
 });
 
-test('room timeline keeps kitchen booking block normal when service markers exist', () => {
+test('room timeline hides duplicate banquet grid blocks when service markers exist', () => {
     const css = read('css/timeline.css');
     const markerRule = cssRule(css, '.timeline-room-service-marker');
-    const { ctx, kitchenBlock, activityBlock } = applyTimelineBanquetPreviewWithVisibleBlocks({
+    const duplicateRule = cssRule(css, '.booking-block.is-timeline-banquet-grid-duplicate');
+    const { ctx, rootBlock, kitchenBlock, activityBlock } = applyTimelineBanquetPreviewWithVisibleBlocks({
         menuPositions: [
             { id: 'item-a', title: 'Pizza', servingTime: '12:00' }
         ],
@@ -1343,31 +1354,44 @@ test('room timeline keeps kitchen booking block normal when service markers exis
     assert.equal(cssDeclaration(markerRule, 'display'), 'flex');
     assert.equal(cssDeclaration(markerRule, 'pointer-events'), 'auto');
     assert.ok(cssNumberValue(markerRule, 'z-index') > 0);
+    assert.equal(cssDeclaration(duplicateRule, 'display'), 'none !important');
+    assert.equal(cssDeclaration(duplicateRule, 'pointer-events'), 'none');
+    assert.equal(rootBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
+    assert.equal(rootBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
+    assert.equal(rootBlock.classList.contains('is-timeline-banquet-grid-duplicate'), true);
+    assert.equal(rootBlock.dataset.timelineBanquetGridDuplicate, '1');
+    assert.equal(rootBlock.dataset.timelineBanquetPreviewRole, 'primary');
+    assert.equal(rootBlock.getAttribute('aria-hidden'), 'true');
     assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
+    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), true);
     assert.equal(
-        ctx.document.querySelector('.booking-block.is-timeline-banquet-occupancy-band[data-timeline-banquet-preview-role="kitchen"]'),
+        ctx.document.querySelector('.booking-block.is-timeline-banquet-occupancy-band'),
         null
     );
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicate, '1');
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
-    assert.equal(kitchenBlock.querySelector('.title')?.textContent, 'Kitchen duplicate block');
     assert.ok(kitchenBlock._timelineBanquetSummary);
     assert.equal(ctx.timelineBanquetBlockCanOpenInspector(kitchenBlock), true);
+    assert.ok(ctx.document.querySelector('[data-banquet-room-card]'));
 
     assert.equal(activityBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
     assert.equal(activityBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
+    assert.equal(activityBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(activityBlock.dataset.timelineBanquetPreviewRole, 'activity');
     assert.equal(ctx.timelineBanquetBlockCanOpenInspector(activityBlock), false);
 
     ctx.clearTimelineBanquetPreviewVisuals(kitchenBlock);
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
+    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicate, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, undefined);
 });
 
 test('room timeline keeps kitchen booking block normal when no service markers exist', () => {
-    const { ctx, kitchenBlock } = applyTimelineBanquetPreviewWithVisibleBlocks({
+    const { ctx, rootBlock, kitchenBlock } = applyTimelineBanquetPreviewWithVisibleBlocks({
         menuPositions: [
             { id: 'item-a', title: 'Pizza' }
         ],
@@ -1376,8 +1400,11 @@ test('room timeline keeps kitchen booking block normal when no service markers e
 
     assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker').length, 0);
     assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
+    assert.equal(rootBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
+    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicate, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
 });
 

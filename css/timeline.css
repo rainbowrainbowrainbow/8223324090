@@ -897,6 +897,11 @@ html[data-theme="dark"] .booking-block.booking-block--tiny .timeline-compact-boo
     pointer-events: none;
 }
 
+.booking-block.is-timeline-banquet-grid-duplicate {
+    display: none !important;
+    pointer-events: none;
+}
+
 .line-grid.has-timeline-room-service-markers,
 .line-grid.has-timeline-room-operational-lanes {
     overflow: visible;

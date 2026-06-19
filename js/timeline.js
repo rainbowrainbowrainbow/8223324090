@@ -1219,8 +1219,12 @@ function setTimelineBanquetPreviewRole(block, role) {
 }
 
 function timelineBanquetPreviewRoleUsesOccupancyBand(role) {
+    return false;
+}
+
+function timelineBanquetPreviewRoleUsesGridDuplicateHide(role) {
     const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
-    return TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole);
+    return normalizedRole === 'kitchen' || TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole);
 }
 
 function setTimelineBanquetOccupancyBand(block, enabled = false) {
@@ -1232,6 +1236,18 @@ function setTimelineBanquetOccupancyBand(block, enabled = false) {
     } else {
         delete block.dataset.timelineBanquetOccupancyBand;
         block.removeAttribute('aria-description');
+    }
+}
+
+function setTimelineBanquetGridDuplicateHidden(block, enabled = false) {
+    if (!block) return;
+    block.classList.toggle('is-timeline-banquet-grid-duplicate', Boolean(enabled));
+    if (enabled) {
+        block.dataset.timelineBanquetGridDuplicate = '1';
+        block.setAttribute('aria-hidden', 'true');
+    } else {
+        delete block.dataset.timelineBanquetGridDuplicate;
+        block.removeAttribute('aria-hidden');
     }
 }
 
@@ -2048,7 +2064,7 @@ function clearTimelineBanquetRoomPreviews() {
     TIMELINE_BANQUET_ROOM_PREVIEWS.clear();
     clearTimelineRoomServiceMarkers();
     hideTimelineBanquetInspector();
-    document.querySelectorAll('.booking-block.has-timeline-banquet-preview-trigger, .booking-block.is-timeline-banquet-occupancy-band').forEach(block => {
+    document.querySelectorAll('.booking-block.has-timeline-banquet-preview-trigger, .booking-block.is-timeline-banquet-occupancy-band, .booking-block.is-timeline-banquet-grid-duplicate').forEach(block => {
         clearTimelineBanquetPreviewVisuals(block);
     });
     document.querySelectorAll('.line-header.has-timeline-banquet-room-preview').forEach(header => {
@@ -2102,11 +2118,18 @@ function clearTimelineBanquetPreviewVisuals(block, options = {}) {
     if (!block) return;
     block.classList.remove('has-timeline-banquet-preview-trigger');
     setTimelineBanquetOccupancyBand(block, false);
+    setTimelineBanquetGridDuplicateHidden(block, false);
     if (options.clearSummary !== false) {
         delete block._timelineBanquetSummary;
         delete block.dataset.banquetGroupId;
         delete block.dataset.timelineBanquetPreviewRole;
     }
+}
+
+function applyTimelineBanquetGridPreviewVisuals(block, role, hasRoomServiceMarkers = false) {
+    const hideGridDuplicate = Boolean(hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesGridDuplicateHide(role));
+    setTimelineBanquetGridDuplicateHidden(block, hideGridDuplicate);
+    setTimelineBanquetOccupancyBand(block, false);
 }
 
 function resolveTimelineBanquetPreviewTargets(snapshot = {}, summary = {}, carrier = null) {
@@ -2159,14 +2182,14 @@ function applyTimelineBanquetPreview(snapshot = {}) {
         const targetRole = timelineBanquetPreviewRoleForTarget(target, previewRolesByBookingId);
         target.block.dataset.banquetGroupId = groupId;
         setTimelineBanquetPreviewRole(target.block, targetRole);
-        setTimelineBanquetOccupancyBand(target.block, hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesOccupancyBand(targetRole));
+        applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers);
         target.block._timelineBanquetSummary = targetSummary;
         target.block.classList.add('has-timeline-banquet-preview-trigger');
     });
     const carrierRole = timelineBanquetPreviewRoleForTarget({ block, booking: carrier.booking || summary.carrierBooking || summary.primaryBooking }, previewRolesByBookingId);
     block.dataset.banquetGroupId = groupId;
     setTimelineBanquetPreviewRole(block, carrierRole);
-    setTimelineBanquetOccupancyBand(block, hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesOccupancyBand(carrierRole));
+    applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers);
     block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
     registerTimelineBanquetRoomPreview(summaryForInspector);

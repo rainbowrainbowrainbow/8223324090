@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.66 - Room timeline duplicate block hotfix
+
+### Frontend room timeline / Banquet duplicate blocks / Root occupancy hotfix / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Порожній напівпрозорий block у room timeline прибрано повністю** - duplicate `primary`/`root`/`banquet`/`kitchen` blocks більше не малюються як grid occupancy surface, коли банкет уже має service markers.
+- **Root cause попереднього fix закрито** - `0.76.65` прибрав `.is-timeline-banquet-occupancy-band` тільки для `kitchen`, але реальний блок у сценарії `Марвел` міг приходити з `primary`/`root`/`banquet` ролі.
+- **Service markers лишаються основною робочою поверхнею** - `Підготовка`, `Видача`, `Напої` та інші `.timeline-room-service-marker` далі видно в кімнаті й вони відкривають banquet inspector.
+- **Ліва картка `Банкет` зберігає доступ до деталей** - room header preview лишається clickable, тому приховані duplicate grid blocks не забирають inspector flow.
+- **Activity bookings не зачеплені** - `АН(60)`, `Бульбашкове шоу` та інші activity cards далі відкривають звичайні booking details, а не banquet inspector.
+- **Регресійні тести тепер покривають реальний root/primary case** - `tests/timeline-resources.test.js` додає видимий primary block у harness і перевіряє hidden duplicate state для `primary` і `kitchen`; `tests/ui-check.js` тримає static guardrails.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.66`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.65 - Room timeline banquet marker cleanup
 
 ### Frontend room timeline / Banquet markers / Kitchen occupancy cleanup / Regression tests / (Клешня, 19.06.2026) [codex]

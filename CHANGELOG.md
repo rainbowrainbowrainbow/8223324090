@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.61 - Banquet modal UX cleanup
+
+### Frontend booking modal / Banquet overview / Action bar cleanup / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Модалка бронювання отримала компактний action bar** - у нижній панелі за замовчуванням лишились основні дії `Редагувати`, `Вижимка` і `Ще`, без великої різнокольорової сітки кнопок.
+- **Banquet overview став робочим підсумком, а не debug-екраном** - клієнт показується ближче до верху, технічні `groupId`/roles/ids сховані в muted `Технічне`, а порожні service/manual секції не шумлять у звичайному перегляді.
+- **Root kitchen/menu більше не показує false empty state** - якщо основна/root бронь є кухонною бронню, її меню рендериться в секції `Меню`, а activity bookings залишаються в `Активності`.
+- **Service events стали читабельними checklist-рядками** - `Підготувати кімнату`, `Видача`, `Напої` показуються як щільні рядки з часом без дублювання назв ліворуч/праворуч.
+- **Рідкісні операції сховані в collapsed advanced actions** - `Перенести час` і switch line більше не перекривають робочий текст модалки, але лишаються доступними через `Додаткові дії`.
+- **Регресійні тести закривають старий clutter** - `tests/ui-check.js` і `tests/booking-package-contract.test.js` перевіряють compact defaults, hidden time shift, root menu, service checklist і activity section.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.61`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.60 - Banquet member role fix
 
 ### Backend banquet groups / Role repair / Room timeline verification / Production repair guard / (Клешня, 19.06.2026) [codex]

@@ -1866,9 +1866,9 @@ body.dark-mode .booking-banquet-unlink-btn {
     gap: 12px;
     margin: 14px 0;
     padding: 14px;
-    border: 1px solid rgba(20, 184, 166, 0.26);
+    border: 1px solid var(--gray-200);
     border-radius: 14px;
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(15, 23, 42, 0.03));
+    background: var(--gray-50);
 }
 
 .booking-banquet-full-header,
@@ -1913,22 +1913,22 @@ body.dark-mode .booking-banquet-unlink-btn {
 
 .booking-banquet-group-pill,
 .booking-banquet-role {
-    color: #0F766E;
-    background: rgba(20, 184, 166, 0.16);
-    border: 1px solid rgba(20, 184, 166, 0.24);
+    color: var(--primary-dark);
+    background: var(--primary-50);
+    border: 1px solid var(--primary-light);
 }
 
 .booking-banquet-group-pill--muted,
 .booking-banquet-status {
-    color: #475569;
-    background: rgba(148, 163, 184, 0.15);
-    border: 1px solid rgba(148, 163, 184, 0.24);
+    color: var(--gray-600);
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
 }
 
 .booking-banquet-price {
-    color: #92400E;
-    background: rgba(245, 158, 11, 0.14);
-    border: 1px solid rgba(245, 158, 11, 0.22);
+    color: var(--gray-700);
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
 }
 
 .booking-banquet-warnings {
@@ -1938,10 +1938,10 @@ body.dark-mode .booking-banquet-unlink-btn {
 
 .booking-banquet-warning {
     padding: 8px 10px;
-    border: 1px solid rgba(245, 158, 11, 0.28);
+    border: 1px solid var(--warning);
     border-radius: 10px;
-    background: rgba(245, 158, 11, 0.09);
-    color: #92400E;
+    background: var(--gray-50);
+    color: var(--gray-800);
     font-size: 12px;
     font-weight: 800;
 }
@@ -1954,7 +1954,7 @@ body.dark-mode .booking-banquet-unlink-btn {
 
 .booking-banquet-section-title,
 .booking-banquet-subtitle {
-    color: #0F766E;
+    color: var(--primary-dark);
     font-size: 12px;
     font-weight: 950;
     text-transform: uppercase;
@@ -1965,9 +1965,9 @@ body.dark-mode .booking-banquet-unlink-btn {
 .booking-banquet-candidate,
 .booking-banquet-action-row {
     padding: 10px;
-    border: 1px solid rgba(148, 163, 184, 0.22);
+    border: 1px solid var(--gray-200);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.58);
+    background: var(--white);
 }
 
 .booking-banquet-member {
@@ -1992,7 +1992,7 @@ body.dark-mode .booking-banquet-unlink-btn {
 .booking-banquet-empty {
     padding: 10px;
     border-radius: 10px;
-    background: rgba(148, 163, 184, 0.1);
+    background: var(--gray-100);
     color: var(--gray-500);
     font-size: 12px;
     font-weight: 800;
@@ -2003,7 +2003,7 @@ body.dark-mode .booking-banquet-unlink-btn {
     gap: 6px;
     padding: 8px;
     border-radius: 10px;
-    background: rgba(15, 23, 42, 0.04);
+    background: var(--gray-50);
 }
 
 .booking-banquet-child {
@@ -2041,62 +2041,210 @@ body.dark-mode .booking-banquet-unlink-btn {
 
 .booking-banquet-candidate-role {
     min-height: 36px;
-    border: 1px solid rgba(148, 163, 184, 0.34);
+    border: 1px solid var(--gray-200);
     border-radius: 10px;
-    background: rgba(15, 23, 42, 0.03);
+    background: var(--white);
     color: var(--gray-700);
     font-weight: 850;
 }
 
 .booking-banquet-candidate-badge--match {
     justify-self: start;
-    color: #047857;
-    background: rgba(16, 185, 129, 0.14);
+    color: var(--primary-dark);
+    background: var(--primary-50);
 }
 
 .booking-banquet-candidate-badge--manual {
     justify-self: start;
-    color: #B45309;
-    background: rgba(245, 158, 11, 0.14);
+    color: var(--gray-700);
+    background: var(--gray-100);
+}
+
+.booking-banquet-section--work {
+    padding: 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    background: var(--white);
+}
+
+.booking-banquet-section--summary .booking-banquet-member {
+    border-style: dashed;
+}
+
+.booking-banquet-summary-note {
+    padding: 10px;
+    border-radius: 10px;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-banquet-service-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--gray-50);
+}
+
+.booking-banquet-service-row--checklist {
+    justify-content: flex-start;
+}
+
+.booking-banquet-service-check {
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--primary);
+    border-radius: 999px;
+    background: var(--white);
+    flex: 0 0 auto;
+}
+
+.booking-banquet-service-main {
+    min-width: 0;
+}
+
+.booking-banquet-service-row strong {
+    display: block;
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 950;
+}
+
+.booking-banquet-service-row small {
+    display: block;
+    margin-top: 3px;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.booking-banquet-service-row span {
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.booking-banquet-technical {
+    border: 1px dashed var(--gray-200);
+    border-radius: 12px;
+    background: var(--white);
+}
+
+.booking-banquet-technical > summary {
+    min-height: 38px;
+    padding: 9px 12px;
+    list-style: none;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.booking-banquet-technical > summary::marker {
+    content: "";
+}
+
+.booking-banquet-technical > summary::-webkit-details-marker {
+    width: 0;
+    height: 0;
+    margin: 0;
+    color: transparent;
+}
+
+.booking-banquet-technical > summary:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.booking-banquet-technical-body {
+    display: grid;
+    gap: 8px;
+    padding: 0 12px 12px;
+}
+
+.booking-banquet-technical-meta-row,
+.booking-banquet-technical-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 0.8fr) minmax(90px, 0.7fr) minmax(0, 1.5fr);
+    gap: 8px;
+    align-items: center;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.booking-banquet-technical-meta-row {
+    grid-template-columns: minmax(80px, 0.4fr) minmax(0, 1fr);
+}
+
+.booking-banquet-technical-meta-row code {
+    color: var(--gray-600);
+    font-family: inherit;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.booking-banquet-technical-grid {
+    display: grid;
+    gap: 6px;
+}
+
+.booking-banquet-technical-row--muted {
+    opacity: 0.82;
 }
 
 html[data-theme="dark"] .booking-banquet-full-detail,
 body.dark-mode .booking-banquet-full-detail {
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(15, 23, 42, 0.42));
-    border-color: rgba(45, 212, 191, 0.24);
+    background: var(--gray-50);
+    border-color: var(--gray-200);
 }
 
 html[data-theme="dark"] .booking-banquet-full-title,
 html[data-theme="dark"] .booking-banquet-member-title,
+html[data-theme="dark"] .booking-banquet-service-row strong,
 html[data-theme="dark"] .booking-banquet-candidate strong,
 body.dark-mode .booking-banquet-full-title,
 body.dark-mode .booking-banquet-member-title,
+body.dark-mode .booking-banquet-service-row strong,
 body.dark-mode .booking-banquet-candidate strong {
-    color: rgba(248, 250, 252, 0.94);
+    color: var(--gray-900);
 }
 
 html[data-theme="dark"] .booking-banquet-member,
 html[data-theme="dark"] .booking-banquet-candidate,
 html[data-theme="dark"] .booking-banquet-action-row,
+html[data-theme="dark"] .booking-banquet-section--work,
+html[data-theme="dark"] .booking-banquet-technical,
 body.dark-mode .booking-banquet-member,
 body.dark-mode .booking-banquet-candidate,
-body.dark-mode .booking-banquet-action-row {
-    background: rgba(15, 23, 42, 0.62);
-    border-color: rgba(148, 163, 184, 0.24);
+body.dark-mode .booking-banquet-action-row,
+body.dark-mode .booking-banquet-section--work,
+body.dark-mode .booking-banquet-technical {
+    background: var(--white);
+    border-color: var(--gray-200);
 }
 
 html[data-theme="dark"] .booking-banquet-empty,
 html[data-theme="dark"] .booking-banquet-children,
+html[data-theme="dark"] .booking-banquet-summary-note,
+html[data-theme="dark"] .booking-banquet-service-row,
 body.dark-mode .booking-banquet-empty,
-body.dark-mode .booking-banquet-children {
-    background: rgba(15, 23, 42, 0.7);
+body.dark-mode .booking-banquet-children,
+body.dark-mode .booking-banquet-summary-note,
+body.dark-mode .booking-banquet-service-row {
+    background: var(--gray-50);
 }
 
 html[data-theme="dark"] .booking-banquet-candidate-role,
 body.dark-mode .booking-banquet-candidate-role {
-    background: rgba(15, 23, 42, 0.78);
-    color: rgba(226, 232, 240, 0.92);
-    border-color: rgba(148, 163, 184, 0.28);
+    background: var(--white);
+    color: var(--gray-700);
+    border-color: var(--gray-200);
 }
 
 @media (max-width: 640px) {
@@ -2115,6 +2263,13 @@ body.dark-mode .booking-banquet-candidate-role {
     .booking-banquet-candidate-role,
     .booking-banquet-candidate .btn-secondary {
         width: 100%;
+    }
+
+    .booking-banquet-service-row,
+    .booking-banquet-technical-row,
+    .booking-banquet-technical-meta-row {
+        align-items: stretch;
+        grid-template-columns: 1fr;
     }
 }
 

@@ -1683,6 +1683,13 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const bookingDetailEditControlsStart = bookingCode.indexOf('const secondaryActionHtml = [');
+const bookingDetailEditControlsEnd = bookingCode.indexOf('const bookingDetailIdLabel', bookingDetailEditControlsStart);
+const bookingDetailEditControlsBlock = bookingDetailEditControlsStart >= 0 && bookingDetailEditControlsEnd > bookingDetailEditControlsStart
+    ? bookingCode.slice(bookingDetailEditControlsStart, bookingDetailEditControlsEnd)
+    : '';
+const bookingDetailCompactFooterBlock = (bookingDetailEditControlsBlock.match(/<div class="booking-actions modal-footer-sticky booking-actions--compact">[\s\S]*?<\/div>/) || [''])[0];
+const bookingDetailAdvancedActionsBlock = (bookingDetailEditControlsBlock.match(/<details class="booking-detail-advanced-actions">[\s\S]*?<\/details>/) || [''])[0];
 const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
 const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
@@ -1757,17 +1764,37 @@ check('Booking panel header shows client and child count live context',
 check('Booking detail modal has a wider stable card without hover reflow',
     htmlContains('index.html', 'modal-content booking-detail-modal-content')
     && bookingCode.includes('class="booking-detail-heading"')
-    && bookingCode.includes('--booking-detail-header-bg')
+    && bookingCode.includes('booking-detail-header--compact')
+    && bookingCode.includes('bookingDetailTimeRange')
+    && bookingCode.includes('bookingDetailIdLabel')
+    && bookingCode.includes('booking-detail-meta')
+    && bookingCode.includes('booking-detail-meta-item')
+    && !bookingCode.includes('--booking-detail-header-bg')
+    && !bookingCode.includes('generateBookingHeaderGradient')
+    && !bookingCode.includes('getCategoryIcon')
+    && !bookingCode.includes('booking-detail-icon')
     && globalModalsCss.includes('#bookingModal .booking-detail-modal-content')
     && globalModalsCss.includes('max-width: min(760px, calc(100vw - 40px))')
     && globalModalsCss.includes('#bookingModal .booking-detail-header .booking-detail-title')
     && globalModalsCss.includes('background: transparent !important')
+    && globalModalsCss.includes('padding: 14px 60px 14px 18px')
+    && globalModalsCss.includes('.booking-detail-meta')
+    && globalModalsCss.includes('.booking-detail-meta-item')
+    && !/\.booking-detail-header\s*\{[^}]*linear-gradient\(135deg,\s*var\(--primary\)/.test(globalModalsCss)
     && globalModalsCss.includes('.booking-detail-row--copyable:focus-within .detail-copy-btn')
     && globalModalsCss.includes('visibility: hidden')
     && !/\.detail-copy-btn\s*\{[\s\S]*?display:\s*none/.test(globalModalsCss)
-    && globalModalsCss.includes('#bookingModal .booking-actions.modal-footer-sticky')
-    && globalModalsCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr))')
-    && globalModalsCss.includes('grid-column: 1 / -1')
+    && bookingCode.includes('const editControls = isViewer() ?')
+    && bookingCode.includes('booking-actions modal-footer-sticky booking-actions--compact')
+    && bookingCode.includes('booking-detail-action--primary btn-edit-booking')
+    && bookingCode.includes('booking-detail-more-actions')
+    && bookingCode.includes('booking-detail-danger-zone')
+    && bookingCode.includes('booking-detail-danger-action')
+    && !bookingCode.includes('class="btn-delete-booking">Видалити</button>')
+    && globalModalsCss.includes('#bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact')
+    && globalModalsCss.includes('grid-template-columns: minmax(0, 1.08fr)')
+    && globalModalsCss.includes('.booking-detail-more-actions__panel')
+    && globalModalsCss.includes('.booking-detail-danger-zone')
     && panelCss.includes('.booking-detail-package-row > div')
     && panelCss.includes('overflow-wrap: anywhere'));
 check('Booking detail modal links to banquet summary preview with return URL',
@@ -1776,7 +1803,50 @@ check('Booking detail modal links to banquet summary preview with return URL',
     && bookingCode.includes('businessContext')
     && bookingCode.includes('returnPath')
     && bookingCode.includes('booking-summary-action')
-    && bookingCode.includes('Сформувати вижимку'));
+    && bookingCode.includes('Вижимка'));
+check('Booking detail modal keeps rare operational actions collapsed',
+    bookingCode.includes('const timeShiftControlsHtml = `')
+    && bookingCode.includes('const advancedActionsHtml = `')
+    && bookingCode.includes('<details class="booking-detail-advanced-actions">')
+    && !bookingCode.includes('booking-detail-advanced-actions" open')
+    && bookingCode.includes('booking-detail-advanced-actions__summary')
+    && bookingCode.includes('Показати додаткові операції бронювання')
+    && bookingCode.includes('shiftBookingTime')
+    && bookingCode.includes('${timeShiftControlsHtml}')
+    && bookingCode.includes('${lineSwitchHtml}')
+    && !bookingCode.includes('${lineSwitchHtml}\n        ${inviteSectionHtml}')
+    && globalModalsCss.includes('.booking-detail-advanced-actions')
+    && globalModalsCss.includes('.booking-detail-advanced-actions__summary:focus-visible')
+    && globalModalsCss.includes('.booking-detail-advanced-actions .booking-time-shift')
+    && globalModalsCss.includes('scroll-margin-bottom: 96px'));
+check('Booking banquet modal UX regression guard keeps compact defaults',
+    bookingDetailEditControlsBlock.includes('const secondaryActionHtml = [')
+    && bookingDetailEditControlsBlock.includes('const moreActionsHtml = secondaryActionHtml ?')
+    && bookingDetailEditControlsBlock.includes('const dangerZoneHtml = canDeleteTimelineBooking() ?')
+    && bookingDetailCompactFooterBlock.includes('booking-detail-action--primary btn-edit-booking')
+    && bookingDetailCompactFooterBlock.includes('booking-summary-action">Вижимка</a>')
+    && bookingDetailCompactFooterBlock.includes('${moreActionsHtml}')
+    && !bookingDetailCompactFooterBlock.includes('duplicateBooking')
+    && !bookingDetailCompactFooterBlock.includes('showRecurringModal')
+    && !bookingDetailCompactFooterBlock.includes('openBookingChat')
+    && !bookingDetailCompactFooterBlock.includes('deleteBooking')
+    && bookingDetailEditControlsBlock.includes('booking-detail-action--more')
+    && bookingDetailEditControlsBlock.includes('booking-detail-more-actions__panel')
+    && bookingDetailEditControlsBlock.includes('class="booking-detail-secondary-action">Повторити</button>')
+    && bookingDetailEditControlsBlock.includes('class="booking-detail-secondary-action">Повторюване</button>')
+    && bookingDetailEditControlsBlock.includes('class="booking-detail-secondary-action">Чат команди</button>')
+    && bookingDetailAdvancedActionsBlock.includes('booking-detail-advanced-actions__summary')
+    && bookingDetailAdvancedActionsBlock.includes('${timeShiftControlsHtml}')
+    && bookingDetailAdvancedActionsBlock.includes('${lineSwitchHtml}')
+    && !bookingDetailAdvancedActionsBlock.includes(' open')
+    && bookingDetailEditControlsBlock.indexOf('${dangerZoneHtml}') >= 0
+    && bookingDetailEditControlsBlock.indexOf('<div class="booking-actions modal-footer-sticky booking-actions--compact">') > bookingDetailEditControlsBlock.indexOf('${dangerZoneHtml}')
+    && bookingDetailEditControlsBlock.includes('booking-detail-danger-action">Видалити</button>')
+    && !bookingDetailEditControlsBlock.includes('class="btn-delete-booking">Видалити</button>')
+    && globalModalsCss.includes('#bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact')
+    && globalModalsCss.includes('.booking-detail-more-actions__panel')
+    && globalModalsCss.includes('.booking-detail-danger-zone')
+    && globalModalsCss.includes('.booking-detail-advanced-actions'));
 check('Booking detail modal renders full banquet group details with controlled manual attach',
     bookingCode.includes('function renderFullBanquetDetail')
     && bookingCode.includes('apiGetBanquetByBooking(booking.id)')
@@ -1785,11 +1855,33 @@ check('Booking detail modal renders full banquet group details with controlled m
     && bookingCode.includes('function attachBookingToBanquetGroupFromDetails')
     && bookingCode.includes('apiAttachBanquetGroupBooking')
     && bookingCode.includes('bookingDetailIsRoot(target)')
-    && bookingCode.includes('Технічні linked_to children')
+    && bookingCode.includes('const fullBanquetDetailHtml = renderFullBanquetDetail(booking, bookings, banquetSnapshot)')
+    && bookingCode.includes('booking-customer-block--priority')
+    && bookingCode.includes('const priorityCustomerBlockHtml = hasBanquetOverview ? customerBlockHtml :')
+    && bookingCode.includes('function bookingDetailHasMenuOverview')
+    && bookingCode.includes('function bookingDetailCanOwnBanquetPackage')
+    && bookingCode.includes('bookingDetailIsRoot(booking)')
+    && bookingCode.includes('bookingDetailCanOwnBanquetPackage(booking)')
+    && bookingCode.includes('if (!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) return')
+    && bookingCode.includes('includeServiceEvents: false')
+    && bookingCode.includes("renderBanquetWorkSection('Банкет'")
+    && bookingCode.includes('renderBanquetMenuSection(packageBooking)')
+    && bookingCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)')
+    && bookingCode.includes('renderBanquetActivitiesSection(activityMembers)')
+    && bookingCode.includes('renderBanquetWarningsSection(warnings)')
+    && bookingCode.includes('renderBanquetTechnicalSection({')
+    && !bookingCode.includes('group-first')
+    && !bookingCode.includes('Service / manual')
+    && !bookingCode.includes('Кухня / меню не прив')
+    && !bookingCode.includes('Технічні linked_to children')
     && bookingCode.includes('Кандидати підібрані тільки за тим самим бізнес-контекстом і датою')
     && timelineConstructorCss.includes('.booking-banquet-full-detail')
+    && timelineConstructorCss.includes('.booking-banquet-section--work')
+    && timelineConstructorCss.includes('.booking-banquet-service-row')
+    && timelineConstructorCss.includes('.booking-banquet-technical')
     && timelineConstructorCss.includes('.booking-banquet-candidate-role')
-    && timelineConstructorCss.includes('.booking-banquet-warning'));
+    && timelineConstructorCss.includes('.booking-banquet-warning')
+    && globalModalsCss.includes('.booking-customer-block--priority'));
 check('Timeline booking links only an existing customer card',
     htmlContains('index.html', 'Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.')
     && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')
@@ -2001,6 +2093,11 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && bookingCode.includes('Не вказано час видачі')
     && bookingCode.includes('function groupedBookingMenuPositions')
     && bookingCode.includes('booking-detail-package-serving-group')
+    && bookingCode.includes('booking-detail-package-table')
+    && bookingCode.includes('booking-detail-package-table-row')
+    && bookingCode.includes('booking-detail-package-service-row')
+    && bookingCode.includes('booking-banquet-service-row--checklist')
+    && !bookingCode.includes("<strong>${escapeHtml(BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Подія')}</strong>")
     && bookingCode.includes('Час видачі не вказано')
     && htmlContains('index.html', 'Страви й торти додаються з каталогу')
     && htmlContains('services/bookingPackage.js', 'BOOKING_PACKAGE_SCHEMA_VERSION = 2')
@@ -2019,6 +2116,11 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && panelCss.includes('.booking-menu-service-event')
     && panelCss.includes('.booking-menu-serving-warning')
     && panelCss.includes('.booking-detail-package-serving-group')
+    && panelCss.includes('.booking-detail-package-table')
+    && panelCss.includes('.booking-detail-package-table-row')
+    && panelCss.includes('.booking-detail-package-service-row')
+    && panelCss.includes('.booking-detail-package-total')
+    && timelineConstructorCss.includes('.booking-banquet-service-row--checklist')
     && htmlContains('css/booking-summary.css', '.summary-service-events')
     && htmlContains('css/booking-summary.css', '.summary-order-table .serving'));
 check('Booking menu serving toolbar wraps responsively inside narrow booking panels',

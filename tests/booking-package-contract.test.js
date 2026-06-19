@@ -216,6 +216,50 @@ function createBookingMenuCatalogHarness() {
     return context;
 }
 
+function createBanquetModalDetailHarness() {
+    const bookingJs = read('js', 'booking.js');
+    const packageStart = bookingJs.indexOf('function bookingServingTimeLabel(');
+    const packageEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail(');
+    const banquetStart = bookingJs.indexOf('function bookingDetailId(');
+    const banquetEnd = bookingJs.indexOf('function renderEducationLessonDetail(');
+    assert.ok(packageStart >= 0 && packageEnd > packageStart, 'booking package detail render slice exists');
+    assert.ok(banquetStart >= 0 && banquetEnd > banquetStart, 'banquet modal detail render slice exists');
+
+    const context = {
+        console,
+        window: {
+            TimelineBusinessContext: {
+                current: () => ({ apiValue: 'event_genix' })
+            }
+        },
+        BOOKING_SERVICE_EVENT_TYPES: {
+            cake: 'Винос торта',
+            custom: 'Інше',
+            food_service: 'Видача страв',
+            drinks: 'Напої',
+            room_setup: 'Підготувати кімнату'
+        },
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;'),
+        formatPrice: value => `${Number(value || 0).toLocaleString('uk-UA')} ₴`,
+        getBookingPackageFromBooking: booking => booking?.bookingPackage
+            || booking?.booking_package
+            || booking?.extraData?.bookingPackage
+            || booking?.extra_data?.bookingPackage
+            || null,
+        bookingMenuMissingServingTimeCount: positions => (positions || []).filter(item => !item?.servingTime).length,
+        bookingKitchenTypeLabel: type => (type === 'cake' ? 'ТОРТ' : 'МЕНЮ'),
+        isViewer: () => true
+    };
+    vm.createContext(context);
+    vm.runInContext(`${bookingJs.slice(packageStart, packageEnd)}\n${bookingJs.slice(banquetStart, banquetEnd)}`, context, { filename: 'js/booking.js' });
+    return context;
+}
+
 function dispatchPointerElement(window, element, type = 'click') {
     element.dispatchEvent(new window.MouseEvent(type, {
         bubbles: true,
@@ -1355,4 +1399,131 @@ test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', ()
             `missing kitchen image asset: ${value}`
         );
     });
+});
+
+test('booking modal banquet UX renders root menu, service checklist, and activities without legacy clutter', () => {
+    const context = createBanquetModalDetailHarness();
+    const rootBooking = {
+        id: 'BK-UX-ROOT',
+        businessContext: 'event_genix',
+        date: '2026-06-19',
+        time: '12:45',
+        room: 'Марвел',
+        label: 'Кухня',
+        status: 'confirmed',
+        price: 4780,
+        extraData: {
+            bookingPackage: {
+                finalTotal: 4780,
+                menuPositions: [
+                    {
+                        id: 'menu-1',
+                        title: 'Ковбаски гриль',
+                        kitchenType: 'menu',
+                        quantity: 1,
+                        servingUnit: 'порція',
+                        unitPrice: 350,
+                        subtotal: 350,
+                        servingTime: '12:45'
+                    }
+                ],
+                serviceEvents: [
+                    { id: 'setup-1', type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' },
+                    { id: 'drinks-1', type: 'drinks', title: 'Напої', time: '15:45' }
+                ]
+            }
+        }
+    };
+    const snapshot = {
+        source: 'group',
+        groupId: 'BQ-UX',
+        group: {
+            id: 'BQ-UX',
+            groupName: 'UX test banquet',
+            date: '2026-06-19',
+            room: 'Марвел',
+            status: 'active'
+        },
+        members: [
+            { bookingId: 'BK-UX-ROOT', role: 'primary', isPrimary: true, booking: rootBooking },
+            {
+                bookingId: 'BK-UX-AN',
+                role: 'activity',
+                booking: {
+                    id: 'BK-UX-AN',
+                    date: '2026-06-19',
+                    time: '13:45',
+                    room: 'Марвел',
+                    label: 'АН(60)',
+                    status: 'confirmed',
+                    price: 1500
+                }
+            },
+            {
+                bookingId: 'BK-UX-BUBBLES',
+                role: 'activity',
+                booking: {
+                    id: 'BK-UX-BUBBLES',
+                    date: '2026-06-19',
+                    time: '12:00',
+                    room: 'Марвел',
+                    label: 'Бульбашкове шоу',
+                    status: 'confirmed',
+                    price: 2400
+                }
+            }
+        ],
+        warnings: []
+    };
+
+    const html = context.renderFullBanquetDetail(rootBooking, [], snapshot);
+    const dom = new JSDOM(`<main>${html}</main>`);
+    const document = dom.window.document;
+    const text = document.body.textContent;
+
+    assert.equal(document.querySelectorAll('.booking-banquet-section--summary .booking-banquet-member--primary').length, 1);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row').length, 1);
+    assert.match(document.querySelector('.booking-banquet-section--menu')?.textContent || '', /Ковбаски гриль/);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--service .booking-banquet-service-row--checklist').length, 2);
+    assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /12:00\s*·\s*Підготувати кімнату/);
+    assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /15:45\s*·\s*Напої/);
+    assert.equal(document.querySelectorAll('.booking-banquet-section--activities .booking-banquet-member--activity').length, 2);
+    assert.match(document.querySelector('.booking-banquet-section--activities')?.textContent || '', /АН\(60\)/);
+    assert.match(document.querySelector('.booking-banquet-section--activities')?.textContent || '', /Бульбашкове шоу/);
+    assert.equal(document.querySelector('.booking-banquet-section--menu')?.textContent.includes('АН(60)'), false);
+    assert.equal(document.querySelector('.booking-banquet-section--service')?.textContent.includes('Бульбашкове шоу'), false);
+    assert.equal(text.includes('Кухня / меню не прив'), false);
+    assert.equal(text.includes('Service / manual'), false);
+    assert.equal(text.includes('group-first'), false);
+    assert.ok(document.querySelector('details.booking-banquet-technical'), 'technical details stay available but collapsed by default');
+    assert.equal(document.querySelector('details.booking-banquet-technical')?.hasAttribute('open'), false);
+});
+
+test('booking modal banquet overview separates work summary from technical metadata', () => {
+    const bookingJs = read('js', 'booking.js');
+    assert.match(bookingJs, /function renderFullBanquetDetail\(/);
+    assert.match(bookingJs, /function bookingDetailHasMenuOverview\(/);
+    assert.match(bookingJs, /function bookingDetailHasServiceOverview\(/);
+    assert.match(bookingJs, /function bookingDetailCanOwnBanquetPackage\(/);
+    assert.match(bookingJs, /bookingDetailIsRoot\(booking\)[\s\S]*bookingDetailHasMenuOverview\(booking\)[\s\S]*bookingDetailHasServiceOverview\(booking\)/);
+    assert.match(bookingJs, /candidates\.find\(booking => booking && bookingDetailCanOwnBanquetPackage\(booking\)\)/);
+    assert.match(bookingJs, /if \(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) return '';/);
+    assert.match(bookingJs, /renderBanquetWorkSection\('Банкет'/);
+    assert.match(bookingJs, /renderBanquetMenuSection\(packageBooking\)/);
+    assert.match(bookingJs, /renderBanquetServiceSection\(packageBooking, serviceManualMembers\)/);
+    assert.match(bookingJs, /renderBanquetActivitiesSection\(activityMembers\)/);
+    assert.match(bookingJs, /renderBanquetWarningsSection\(warnings\)/);
+    assert.match(bookingJs, /renderBanquetTechnicalSection\(\{/);
+    assert.match(bookingJs, /includeServiceEvents: false/);
+    assert.match(bookingJs, /booking-detail-package-table/);
+    assert.match(bookingJs, /booking-detail-package-table-row/);
+    assert.match(bookingJs, /booking-detail-package-service-row/);
+    assert.match(bookingJs, /booking-banquet-service-row--checklist/);
+    assert.match(bookingJs, /\$\{event\.time \? `\$\{escapeHtml\(event\.time\)\} · ` : ''\}/);
+    assert.match(bookingJs, /booking-customer-block--priority/);
+    assert.doesNotMatch(bookingJs, /group-first/);
+    assert.doesNotMatch(bookingJs, /Service \/ manual/);
+    assert.doesNotMatch(bookingJs, /Кухня \/ меню не прив/);
+    assert.doesNotMatch(bookingJs, /Технічні linked_to children/);
+    assert.doesNotMatch(bookingJs, /<strong>\$\{escapeHtml\(BOOKING_SERVICE_EVENT_TYPES\[event\.type\] \|\| 'Подія'\)\}<\/strong>/);
 });

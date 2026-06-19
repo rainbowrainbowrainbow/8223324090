@@ -48,6 +48,16 @@ function cssRuleText(css, selector) {
     return match ? match[1] : '';
 }
 
+function cssRuleIncludingSelectorText(css, selector) {
+    const normalizedSelector = String(selector || '').trim().replace(/\s+/g, ' ');
+    let rule = '';
+    for (const match of css.matchAll(/([^{}]+)\{([\s\S]*?)\}/g)) {
+        const selectors = match[1].split(',').map(item => item.trim().replace(/\s+/g, ' '));
+        if (selectors.includes(normalizedSelector)) rule = match[2];
+    }
+    return rule;
+}
+
 function hrSurfaceText() {
     return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
 }
@@ -972,6 +982,18 @@ const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedD
 const timelineBanquetOccupancyBandRule = cssRuleText(timelineConstructorCss, '.booking-block.is-timeline-banquet-occupancy-band');
 const timelineRoomServiceMarkerWithBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker.has-user-letter');
 const timelineRoomServiceMarkerBadgeRule = cssRuleText(timelineConstructorCss, '.timeline-room-service-marker .user-letter');
+const timelineRoomVisualTokensRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms');
+const timelineRoomActivityBadgeRule = cssRuleIncludingSelectorText(timelineConstructorCss, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .user-letter');
+const timelineRoomTinyActivityBadgeRule = cssRuleIncludingSelectorText(timelineConstructorCss, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .user-letter');
+const timelineRoomCompactActivityBadgeRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .timeline-container.compact .booking-block.is-room-timeline-activity-card .user-letter');
+const timelineRoomServiceMarkerScopedBadgeRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .timeline-room-service-marker .user-letter');
+const timelineRoomActivityTimeRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-block-time');
+const timelineRoomActivityTitleRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-title');
+const timelineRoomActivityDetailRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-detail');
+const timelineRoomServiceMainRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .timeline-room-service-marker-main');
+const timelineRoomServiceTimeRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .timeline-room-service-marker-time');
+const timelineRoomServiceTitleRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .timeline-room-service-marker-title');
+const timelineRoomServiceDetailRule = cssRuleText(timelineConstructorCss, 'body.timeline-view-rooms .timeline-room-service-marker-detail');
 check('Room timeline banquet preview hydrates from cached group snapshots without blocking render',
     timelineCode.includes('TIMELINE_BANQUET_SNAPSHOT_CACHE')
     && timelineCode.includes('function loadTimelineBanquetSnapshotForBooking')
@@ -1025,6 +1047,30 @@ check('Room timeline service markers expose creator badges',
     && /padding-right:\s*34px\s*;/.test(timelineRoomServiceMarkerWithBadgeRule)
     && /position:\s*absolute\s*;/.test(timelineRoomServiceMarkerBadgeRule)
     && /pointer-events:\s*none\s*;/.test(timelineRoomServiceMarkerBadgeRule));
+check('Room timeline badges and text metrics are token-aligned without animator overrides',
+    /--timeline-room-card-badge-size:\s*18px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-badge-font-size:\s*10px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-badge-font-weight:\s*900\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-badge-offset-top:\s*7px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-badge-offset-right:\s*8px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-time-font-size:\s*13px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-title-font-size:\s*12px\s*;/.test(timelineRoomVisualTokensRule)
+    && /--timeline-room-card-detail-font-size:\s*12px\s*;/.test(timelineRoomVisualTokensRule)
+    && /width:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomActivityBadgeRule)
+    && /height:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomActivityBadgeRule)
+    && /font-size:\s*var\(--timeline-room-card-badge-font-size\)\s*;/.test(timelineRoomActivityBadgeRule)
+    && /width:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomTinyActivityBadgeRule)
+    && /width:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomCompactActivityBadgeRule)
+    && /width:\s*var\(--timeline-room-card-badge-size\)\s*;/.test(timelineRoomServiceMarkerScopedBadgeRule)
+    && /font-size:\s*var\(--timeline-room-card-time-font-size\)\s*;/.test(timelineRoomActivityTimeRule)
+    && /font-size:\s*var\(--timeline-room-card-title-font-size\)\s*;/.test(timelineRoomActivityTitleRule)
+    && /font-size:\s*var\(--timeline-room-card-detail-font-size\)\s*;/.test(timelineRoomActivityDetailRule)
+    && /font-size:\s*var\(--timeline-room-card-time-font-size\)\s*;/.test(timelineRoomServiceMainRule)
+    && /line-height:\s*var\(--timeline-room-card-time-line-height\)\s*;/.test(timelineRoomServiceMainRule)
+    && /font-size:\s*var\(--timeline-room-card-time-font-size\)\s*;/.test(timelineRoomServiceTimeRule)
+    && /font-size:\s*var\(--timeline-room-card-title-font-size\)\s*;/.test(timelineRoomServiceTitleRule)
+    && /font-size:\s*var\(--timeline-room-card-detail-font-size\)\s*;/.test(timelineRoomServiceDetailRule)
+    && !/body\.timeline-view-animators[\s\S]*--timeline-room-card-(?:badge|time|title|detail)/.test(timelineConstructorCss));
 check('Room timeline service markers remain isolated from animator timeline',
     timelineRoomServiceMarkerBlock.includes('if (!isRoomTimelineView() || !summary) return')
     && timelineRoomServiceMarkerBlock.includes('timelineBanquetRoomGridForSummary(summary)')

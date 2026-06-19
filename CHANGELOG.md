@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.64 - Room timeline visual consistency
+
+### Frontend room timeline / Badge alignment / Typography consistency / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Бейджі автора в room timeline вирівняні в один візуальний стандарт** - service markers і activity cards тепер використовують однаковий розмір, позицію, вагу шрифту й opacity для `.user-letter`.
+- **Сервісні маркери та картки активностей отримали узгоджену типографіку** - час, назва й деталі в `Підготовка`, `Видача`, `Напої`, `АН(60)` і `Бульбашкове шоу` більше не виглядають як різні UI-системи.
+- **Зміни обмежені тільки виглядом `Кімнати`** - нормалізація стилів scoped через `body.timeline-view-rooms`, тому timeline аніматорів не отримав нових overrides.
+- **Регресійні тести закривають visual drift** - `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють shared badge tokens, typography tokens і відсутність room-fix overrides для animator timeline.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.64`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.63 - Banquet header schedule summary
 
 ### Frontend booking modal / Banquet root header / Schedule summary / Regression tests / (Клешня, 19.06.2026) [codex]

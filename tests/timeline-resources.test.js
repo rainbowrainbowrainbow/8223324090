@@ -53,6 +53,17 @@ function cssRule(css, selector) {
     return match[1];
 }
 
+function cssRuleIncludingSelector(css, selector) {
+    const normalizedSelector = String(selector || '').trim().replace(/\s+/g, ' ');
+    let rule = '';
+    for (const match of css.matchAll(/([^{}]+)\{([\s\S]*?)\}/g)) {
+        const selectors = match[1].split(',').map(item => item.trim().replace(/\s+/g, ' '));
+        if (selectors.includes(normalizedSelector)) rule = match[2];
+    }
+    if (rule) return rule;
+    assert.fail(`CSS rule exists for selector ${selector}`);
+}
+
 function cssDeclaration(rule, property) {
     const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = rule.match(new RegExp(`${escaped}\\s*:\\s*([^;]+);`));
@@ -1076,6 +1087,109 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.notEqual(markers[0].markerTop, markers[1].markerTop);
     assert.equal(layout.hasGridLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
+});
+
+test('room timeline creator badges share one scoped metric system', () => {
+    const css = read('css/timeline.css');
+    const roomTokensRule = cssRule(css, 'body.timeline-view-rooms');
+    const expectedTokens = {
+        '--timeline-room-card-badge-size': '18px',
+        '--timeline-room-card-badge-font-size': '10px',
+        '--timeline-room-card-badge-font-weight': '900',
+        '--timeline-room-card-badge-offset-top': '7px',
+        '--timeline-room-card-badge-offset-right': '8px',
+        '--timeline-room-card-badge-opacity': '1'
+    };
+
+    Object.entries(expectedTokens).forEach(([property, value]) => {
+        assert.equal(cssDeclaration(roomTokensRule, property), value);
+    });
+
+    const activityBadgeRule = cssRuleIncludingSelector(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .user-letter');
+    const shortActivityBadgeRule = cssRuleIncludingSelector(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--short .user-letter');
+    const tinyActivityBadgeRule = cssRuleIncludingSelector(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .user-letter');
+    const compactActivityBadgeRule = cssRule(css, 'body.timeline-view-rooms .timeline-container.compact .booking-block.is-room-timeline-activity-card .user-letter');
+    const serviceMarkerBadgeRule = cssRule(css, 'body.timeline-view-rooms .timeline-room-service-marker .user-letter');
+    const sharedBadgeDeclarations = {
+        top: 'var(--timeline-room-card-badge-offset-top)',
+        right: 'var(--timeline-room-card-badge-offset-right)',
+        width: 'var(--timeline-room-card-badge-size)',
+        'min-width': 'var(--timeline-room-card-badge-size)',
+        height: 'var(--timeline-room-card-badge-size)',
+        'min-height': 'var(--timeline-room-card-badge-size)',
+        'font-size': 'var(--timeline-room-card-badge-font-size)',
+        'font-weight': 'var(--timeline-room-card-badge-font-weight)',
+        'line-height': '1',
+        opacity: 'var(--timeline-room-card-badge-opacity)'
+    };
+
+    [
+        activityBadgeRule,
+        shortActivityBadgeRule,
+        tinyActivityBadgeRule,
+        compactActivityBadgeRule,
+        serviceMarkerBadgeRule
+    ].forEach((rule) => {
+        Object.entries(sharedBadgeDeclarations).forEach(([property, value]) => {
+            assert.equal(cssDeclaration(rule, property), value, `${property} uses shared room badge token`);
+        });
+    });
+
+    assert.equal(cssDeclaration(activityBadgeRule, 'display'), 'flex');
+    assert.equal(cssDeclaration(activityBadgeRule, 'align-items'), 'center');
+    assert.equal(cssDeclaration(activityBadgeRule, 'justify-content'), 'center');
+    assert.doesNotMatch(css, /body\.timeline-view-animators[\s\S]*--timeline-room-card-badge/);
+});
+
+test('room timeline activity and service marker typography use shared room tokens', () => {
+    const css = read('css/timeline.css');
+    const roomTokensRule = cssRule(css, 'body.timeline-view-rooms');
+    const expectedTokens = {
+        '--timeline-room-card-time-font-size': '13px',
+        '--timeline-room-card-title-font-size': '12px',
+        '--timeline-room-card-detail-font-size': '12px',
+        '--timeline-room-card-time-line-height': '1.1',
+        '--timeline-room-card-title-line-height': '1.1',
+        '--timeline-room-card-detail-line-height': '1.12',
+        '--timeline-room-card-title-font-weight': '900',
+        '--timeline-room-card-detail-font-weight': '850'
+    };
+
+    Object.entries(expectedTokens).forEach(([property, value]) => {
+        assert.equal(cssDeclaration(roomTokensRule, property), value);
+    });
+
+    const activityMainRule = cssRule(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-main');
+    const activityTimeRule = cssRule(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-block-time');
+    const activityTitleRule = cssRule(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-title');
+    const activityDetailRule = cssRule(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-detail');
+    const shortActivityMainRule = cssRuleIncludingSelector(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--short .timeline-room-activity-main');
+    const shortActivityTitleRule = cssRuleIncludingSelector(css, 'body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--short .timeline-room-activity-title');
+    const serviceMainRule = cssRule(css, 'body.timeline-view-rooms .timeline-room-service-marker-main');
+    const serviceTimeRule = cssRule(css, 'body.timeline-view-rooms .timeline-room-service-marker-time');
+    const serviceTitleRule = cssRule(css, 'body.timeline-view-rooms .timeline-room-service-marker-title');
+    const serviceDetailRule = cssRule(css, 'body.timeline-view-rooms .timeline-room-service-marker-detail');
+
+    [activityMainRule, activityTimeRule, shortActivityMainRule, serviceMainRule, serviceTimeRule].forEach((rule) => {
+        assert.equal(cssDeclaration(rule, 'font-size'), 'var(--timeline-room-card-time-font-size)');
+        assert.equal(cssDeclaration(rule, 'font-weight'), 'var(--timeline-room-card-title-font-weight)');
+    });
+    [activityMainRule, activityTimeRule, shortActivityMainRule, serviceMainRule, serviceTimeRule].forEach((rule) => {
+        assert.equal(cssDeclaration(rule, 'line-height'), 'var(--timeline-room-card-time-line-height)');
+    });
+    [activityTitleRule, shortActivityTitleRule, serviceTitleRule].forEach((rule) => {
+        assert.equal(cssDeclaration(rule, 'font-size'), 'var(--timeline-room-card-title-font-size)');
+        assert.equal(cssDeclaration(rule, 'line-height'), 'var(--timeline-room-card-title-line-height)');
+    });
+    [activityTitleRule, serviceTitleRule].forEach((rule) => {
+        assert.equal(cssDeclaration(rule, 'font-weight'), 'var(--timeline-room-card-title-font-weight)');
+    });
+    [activityDetailRule, serviceDetailRule].forEach((rule) => {
+        assert.equal(cssDeclaration(rule, 'font-size'), 'var(--timeline-room-card-detail-font-size)');
+        assert.equal(cssDeclaration(rule, 'font-weight'), 'var(--timeline-room-card-detail-font-weight)');
+        assert.equal(cssDeclaration(rule, 'line-height'), 'var(--timeline-room-card-detail-line-height)');
+    });
+    assert.doesNotMatch(css, /body\.timeline-view-animators[\s\S]*--timeline-room-card-(?:time|title|detail)/);
 });
 
 test('room timeline service markers omit creator badge when owner is unavailable', () => {

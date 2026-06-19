@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.69 - Timeline dynamic width alignment
+
+### Frontend timeline / Dynamic content width / Add animator lane / Browser QA / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Timeline surface отримав єдиний width contract** - верхня time scale, `.line-grid`, `.timeline-line` і нижня зона `Додати аніматора` тепер рахуються від фактичного time range, cell width і zoom, а не від viewport.
+- **Короткі й довгі бізнес-діапазони більше не обрізають brow/grid/add-zone** - сценарії на кшталт `17:45-20:00`, `18:00-20:00` і довший день `10:00-22:00` використовують спільні `--timeline-grid-width` та `--timeline-content-width`.
+- **CTA `Додати аніматора` лишається охайним у видимій області** - сама dashed lane тягнеться на всю ширину timeline content, а текст кнопки центрується відносно видимого scroll viewport і має compact/icon-only стани для вузьких екранів.
+- **Mobile responsive overrides синхронізовано з новим contract** - mobile rules більше не повертають time scale, rows або add lane до незалежних `max-content`/`100%` ширин.
+- **Layout width більше не анімується як `transition: all`** - add-zone не проходить через проміжні stretched стани між viewport width і content width під час синхронізації.
+- **Browser QA пройдено для desktop/mobile і zoom 15/30/60** - Playwright перевірив alignment ticks/grid, відсутність обриву brow/add-zone, стабільний CTA center і незміщені booking blocks.
+- **Регресійні guardrails додано** - `tests/timeline-resources.test.js` і `tests/ui-check.js` фіксують dynamic width helper, CSS variables, responsive overrides і add-zone CTA positioning.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.69`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.68 - Animator timeline room badge cleanup
 
 ### Frontend animator timeline / Compact booking room badges / 30-minute activity cards / Regression tests / (Клешня, 19.06.2026) [codex]

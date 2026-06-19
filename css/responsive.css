@@ -1985,23 +1985,31 @@
     }
 
     body.timeline-dashboard-page .time-scale {
-        width: max-content !important;
-        min-width: max-content !important;
+        width: var(--timeline-grid-width, max-content) !important;
+        min-width: var(--timeline-grid-width, max-content) !important;
         margin-left: var(--timeline-line-header-w, 72px) !important;
     }
 
     body.timeline-dashboard-page .timeline-lines {
-        width: max-content !important;
-        min-width: 100% !important;
+        width: var(--timeline-content-width, 100%) !important;
+        min-width: var(--timeline-content-width, 100%) !important;
     }
 
     body.timeline-dashboard-page .timeline-line {
-        width: max-content !important;
-        min-width: 100% !important;
+        width: var(--timeline-content-width, 100%) !important;
+        min-width: var(--timeline-content-width, 100%) !important;
     }
 
     body.timeline-dashboard-page .line-grid {
-        flex: 0 0 auto !important;
+        flex: 0 0 var(--timeline-grid-width, auto) !important;
+        width: var(--timeline-grid-width, auto) !important;
+        min-width: var(--timeline-grid-width, 0) !important;
+    }
+
+    body.timeline-dashboard-page .btn-add-line-big {
+        width: var(--timeline-content-width, 100%) !important;
+        min-width: var(--timeline-content-width, 100%) !important;
+        max-width: none !important;
     }
 
     body.timeline-dashboard-page .time-mark.hour {

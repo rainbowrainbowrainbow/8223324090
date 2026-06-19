@@ -1724,6 +1724,130 @@ test('room-to-animator timeline view switch reconciles vertical shell height', (
     assert.match(responsive, /height: clamp\(360px, calc\(var\(--eg-viewport-height, 100dvh\) - 250px\), 58dvh\) !important;/);
 });
 
+test('timeline dynamic width contract derives surfaces from range and cell geometry', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const styleTargets = [];
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const header = { getBoundingClientRect: () => ({ width: 96 }) };
+    const makeTarget = () => {
+        const vars = new Map();
+        const target = {
+            vars,
+            style: {
+                setProperty(name, value) {
+                    vars.set(name, value);
+                }
+            },
+            addEventListener() {},
+            closest(selector) {
+                return selector === '.timeline-container' ? container : null;
+            },
+            querySelector(selector) {
+                return selector === '.grid-cell' ? cell : null;
+            },
+            getBoundingClientRect: () => ({ width: 0 })
+        };
+        styleTargets.push(target);
+        return target;
+    };
+    const container = makeTarget();
+    const scroll = makeTarget();
+    const lines = makeTarget();
+    const timeScale = makeTarget();
+    const addLineBtn = makeTarget();
+    const grid = makeTarget();
+    scroll.closest = selector => selector === '.timeline-container' ? container : null;
+
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        getTimeRange: () => ({ start: '17:45', end: '20:00' }),
+        document: {
+            getElementById(id) {
+                return {
+                    timelineScroll: scroll,
+                    timelineLines: lines,
+                    timeScale,
+                    addLineBtn
+                }[id] || null;
+            },
+            querySelector(selector) {
+                if (selector === '.line-header') return header;
+                if (selector === '.timeline-container') return container;
+                if (selector === '.line-grid[data-line-id]') return grid;
+                return null;
+            }
+        },
+        window: {
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        },
+        requestAnimationFrame: () => 1
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    const geometry = context.syncTimelineContentWidth(new Date('2026-06-19T00:00:00'), grid);
+    assert.equal(geometry.cellWidth, 40);
+    assert.equal(geometry.gridWidth, 400);
+    assert.equal(geometry.headerWidth, 96);
+    assert.equal(geometry.contentWidth, 496);
+    for (const target of [container, scroll, lines, timeScale, addLineBtn]) {
+        assert.equal(target.vars.get('--timeline-grid-width'), '400px');
+        assert.equal(target.vars.get('--timeline-content-width'), '496px');
+    }
+
+    const helperContractEnd = timeline.indexOf('function visibleTimelineAddLineParts');
+    assert.ok(helperContractEnd > helperStart, 'timeline width contract block is locatable');
+    const helperBlock = timeline.slice(timeline.indexOf('function timelineRangeBoundMinutes'), helperContractEnd);
+    assert.match(helperBlock, /if \(endMinutes <= startMinutes\) endMinutes \+= 24 \* 60/);
+    assert.doesNotMatch(helperBlock, /17:45|20:00|clientWidth|innerWidth|viewport/i);
+
+    assert.equal(cssDeclaration(cssRule(css, '.timeline-scroll'), '--timeline-content-width'), '100%');
+    assert.equal(cssDeclaration(cssRule(css, '.timeline-scroll'), '--timeline-grid-width'), 'max-content');
+    assert.equal(cssDeclaration(cssRule(css, '.time-scale'), 'width'), 'var(--timeline-grid-width, max-content)');
+    assert.equal(cssDeclaration(cssRule(css, '.time-scale'), 'min-width'), 'var(--timeline-grid-width, max-content)');
+    assert.equal(cssDeclaration(cssRule(css, '.timeline-lines'), 'width'), 'var(--timeline-content-width, 100%)');
+    assert.equal(cssDeclaration(cssRule(css, '.timeline-line'), 'width'), 'var(--timeline-content-width, 100%)');
+    const cssWithoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const lineGridRule = cssRuleIncludingSelector(cssWithoutComments, '.line-grid');
+    assert.equal(cssDeclaration(lineGridRule, 'flex'), '0 0 var(--timeline-grid-width, auto)');
+    assert.equal(cssDeclaration(lineGridRule, 'width'), 'var(--timeline-grid-width, auto)');
+    assert.equal(cssDeclaration(lineGridRule, 'min-width'), 'var(--timeline-grid-width, 0)');
+    assert.equal(cssDeclaration(cssRule(css, '.btn-add-line-big'), 'width'), 'var(--timeline-content-width, 100%)');
+    assert.equal(cssDeclaration(cssRule(css, '.btn-add-line-big'), 'min-width'), 'var(--timeline-content-width, 100%)');
+    assert.doesNotMatch(cssDeclaration(cssRule(css, '.btn-add-line-big'), 'transition'), /^all\b/);
+    assert.equal(cssDeclaration(cssRule(css, '.btn-add-line-big--centered-cta > span'), 'transform'), 'translateX(var(--timeline-add-cta-x, 0px))');
+
+    const responsiveCss = read('css/responsive.css');
+    const responsiveWithoutComments = responsiveCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.equal(
+        cssDeclaration(cssRuleIncludingSelector(responsiveWithoutComments, 'body.timeline-dashboard-page .time-scale'), 'width'),
+        'var(--timeline-grid-width, max-content) !important'
+    );
+    assert.equal(
+        cssDeclaration(cssRuleIncludingSelector(responsiveWithoutComments, 'body.timeline-dashboard-page .timeline-lines'), 'width'),
+        'var(--timeline-content-width, 100%) !important'
+    );
+    assert.equal(
+        cssDeclaration(cssRuleIncludingSelector(responsiveWithoutComments, 'body.timeline-dashboard-page .timeline-line'), 'width'),
+        'var(--timeline-content-width, 100%) !important'
+    );
+    assert.equal(
+        cssDeclaration(cssRuleIncludingSelector(responsiveWithoutComments, 'body.timeline-dashboard-page .line-grid'), 'flex'),
+        '0 0 var(--timeline-grid-width, auto) !important'
+    );
+    assert.equal(
+        cssDeclaration(cssRuleIncludingSelector(responsiveWithoutComments, 'body.timeline-dashboard-page .btn-add-line-big'), 'min-width'),
+        'var(--timeline-content-width, 100%) !important'
+    );
+});
+
 test('timeline visual settings keep park animator and room views isolated', () => {
     assert.equal(normalizeTimelineVisibilityView('rooms'), 'rooms');
     assert.equal(normalizeTimelineVisibilityView('bad', 'animators'), 'animators');

@@ -190,6 +190,8 @@
 .timeline-scroll {
     overflow-x: auto;
     --timeline-scroll-pad: 20px;
+    --timeline-content-width: 100%;
+    --timeline-grid-width: max-content;
     padding: var(--timeline-scroll-pad, 20px);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
@@ -207,6 +209,8 @@
 /* Time scale */
 .time-scale {
     display: flex;
+    width: var(--timeline-grid-width, max-content);
+    min-width: var(--timeline-grid-width, max-content);
     margin-bottom: 12px;
     margin-left: 110px;
     position: sticky;
@@ -274,11 +278,15 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    width: var(--timeline-content-width, 100%);
+    min-width: var(--timeline-content-width, 100%);
 }
 
 .timeline-line {
     display: flex;
     align-items: stretch;
+    width: var(--timeline-content-width, 100%);
+    min-width: var(--timeline-content-width, 100%);
     min-height: 64px;
     border-radius: var(--radius-xs);
     transition: background var(--speed-fast);
@@ -355,7 +363,9 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 
 /* Grid */
 .line-grid {
-    flex: 1;
+    flex: 0 0 var(--timeline-grid-width, auto);
+    width: var(--timeline-grid-width, auto);
+    min-width: var(--timeline-grid-width, 0);
     display: flex;
     position: relative;
     background: var(--gray-50);
@@ -2661,9 +2671,11 @@ html[data-theme="dark"] .booking-block .booking-block-room {
 .btn-add-line-big {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 10px;
-    width: 100%;
+    width: var(--timeline-content-width, 100%);
+    min-width: var(--timeline-content-width, 100%);
+    min-height: 54px;
     padding: 16px;
     margin-top: 12px;
     background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-light) 100%);
@@ -2674,7 +2686,23 @@ html[data-theme="dark"] .booking-block .booking-block-room {
     color: var(--primary-dark);
     cursor: pointer;
     font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
+    position: relative;
+    overflow: hidden;
+    transition:
+        background var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        border-style var(--speed-fast) var(--ease-smooth),
+        color var(--speed-fast) var(--ease-smooth),
+        box-shadow var(--speed-fast) var(--ease-smooth),
+        transform var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-add-line-big--centered-cta > span {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    transform: translateX(var(--timeline-add-cta-x, 0px));
+    will-change: transform;
 }
 
 .btn-add-line-big:hover {
@@ -2685,9 +2713,38 @@ html[data-theme="dark"] .booking-block .booking-block-room {
     transform: translateY(-1px);
 }
 
+.btn-add-line-big:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary), #FFFFFF 18%);
+    outline-offset: 3px;
+}
+
 .btn-add-line-big span:first-child {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 28px;
     font-weight: 900;
+    line-height: 1;
+}
+
+.btn-add-line-big span:last-child {
+    display: inline-block;
+    max-width: min(220px, calc(100vw - 120px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-add-line-big--compact-cta {
+    gap: 6px;
+}
+
+.btn-add-line-big--compact-cta span:last-child {
+    max-width: 150px;
+}
+
+.btn-add-line-big--icon-only > span:not(:first-child) {
+    display: none;
 }
 
 /* ==========================================

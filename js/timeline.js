@@ -506,6 +506,142 @@ function timelineDurationWidth(duration, anchor) {
     return timelineMinutesToPixels(duration, anchor) - 4;
 }
 
+let _timelineAddLineCtaPositioningBound = false;
+let _timelineAddLineCtaRaf = 0;
+
+function timelineRangeBoundMinutes(value) {
+    if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+        if (match) {
+            const hours = Number.parseInt(match[1], 10);
+            const minutes = Number.parseInt(match[2] || '0', 10);
+            if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+                return (hours * 60) + Math.max(0, Math.min(59, minutes));
+            }
+        }
+    }
+
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.round(numeric * 60) : 0;
+}
+
+function timelineRangeDurationMinutes(date) {
+    const { start, end } = getTimeRange(date);
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+    return Math.max(0, endMinutes - startMinutes);
+}
+
+function timelineRangeCellCount(date) {
+    const cellMinutes = Math.max(1, Number(CONFIG.TIMELINE.CELL_MINUTES) || 30);
+    return Math.max(1, Math.ceil(timelineRangeDurationMinutes(date) / cellMinutes));
+}
+
+function timelineRangeMarkCount(date) {
+    return timelineRangeCellCount(date) + 1;
+}
+
+function getTimelineLineHeaderWidth() {
+    const measured = document.querySelector('.line-header')?.getBoundingClientRect?.().width;
+    if (Number.isFinite(measured) && measured > 0) return measured;
+
+    if (typeof window !== 'undefined') {
+        const cssValue = window.getComputedStyle(document.documentElement).getPropertyValue('--timeline-line-header-w');
+        const cssWidth = parseFloat(cssValue);
+        if (Number.isFinite(cssWidth) && cssWidth > 0) return cssWidth;
+    }
+
+    return 130;
+}
+
+function syncTimelineContentWidth(date, anchor) {
+    const scroll = document.getElementById('timelineScroll');
+    const container = scroll?.closest?.('.timeline-container') || document.querySelector('.timeline-container');
+    const lines = document.getElementById('timelineLines');
+    const timeScale = document.getElementById('timeScale');
+    const addLineBtn = document.getElementById('addLineBtn');
+    const widthAnchor = anchor || document.querySelector('.line-grid[data-line-id]') || timeScale || scroll;
+    const cellWidth = getTimelineCellWidth(widthAnchor);
+    const gridWidth = Math.ceil(timelineRangeMarkCount(date) * cellWidth);
+    const headerWidth = Math.ceil(getTimelineLineHeaderWidth());
+    const contentWidth = Math.ceil(headerWidth + gridWidth);
+    const targets = [container, scroll, lines, timeScale, addLineBtn].filter(Boolean);
+
+    targets.forEach(target => {
+        target.style.setProperty('--timeline-grid-width', `${gridWidth}px`);
+        target.style.setProperty('--timeline-content-width', `${contentWidth}px`);
+    });
+
+    bindTimelineAddLineCtaPositioning();
+    scheduleTimelineAddLineCtaSync();
+
+    return { cellWidth, gridWidth, headerWidth, contentWidth };
+}
+
+function visibleTimelineAddLineParts(button) {
+    return Array.from(button?.children || [])
+        .filter(part => part?.tagName === 'SPAN' && window.getComputedStyle(part).display !== 'none');
+}
+
+function syncTimelineAddLineCtaPosition() {
+    const scroll = document.getElementById('timelineScroll');
+    const button = document.getElementById('addLineBtn');
+    if (!scroll || !button) return false;
+
+    const buttonStyle = window.getComputedStyle(button);
+    if (buttonStyle.display === 'none' || button.hidden) return false;
+
+    const scrollRect = scroll.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    const visibleWidth = Math.max(0, Math.min(scroll.clientWidth || scrollRect.width || 0, buttonRect.width || 0));
+    if (!visibleWidth || !buttonRect.width) return false;
+
+    button.classList.toggle('btn-add-line-big--compact-cta', visibleWidth < 260);
+    button.classList.toggle('btn-add-line-big--icon-only', visibleWidth < 150);
+    button.classList.add('btn-add-line-big--centered-cta');
+
+    const parts = visibleTimelineAddLineParts(button);
+    if (!parts.length) return false;
+
+    const first = parts[0];
+    const last = parts[parts.length - 1];
+    const firstRect = first.getBoundingClientRect();
+    const lastRect = last.getBoundingClientRect();
+    const groupWidth = Math.max(1, lastRect.right - firstRect.left);
+    const baseLeft = Number(first.offsetLeft || 0);
+    const targetLeft = (scrollRect.left + (visibleWidth / 2)) - buttonRect.left - (groupWidth / 2);
+    const maxTranslate = Math.max(0, (button.clientWidth || buttonRect.width) - baseLeft - groupWidth - 16);
+    const translate = Math.max(0, Math.min(maxTranslate, targetLeft - baseLeft));
+
+    button.style.setProperty('--timeline-add-cta-x', `${Math.round(translate)}px`);
+    return true;
+}
+
+function scheduleTimelineAddLineCtaSync() {
+    if (_timelineAddLineCtaRaf) return;
+    const run = () => {
+        _timelineAddLineCtaRaf = 0;
+        syncTimelineAddLineCtaPosition();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+        _timelineAddLineCtaRaf = requestAnimationFrame(run);
+    } else {
+        _timelineAddLineCtaRaf = setTimeout(run, 0);
+    }
+}
+
+function bindTimelineAddLineCtaPositioning() {
+    if (_timelineAddLineCtaPositioningBound) return;
+    const scroll = document.getElementById('timelineScroll');
+    if (!scroll) return;
+    _timelineAddLineCtaPositioningBound = true;
+    scroll.addEventListener('scroll', scheduleTimelineAddLineCtaSync, { passive: true });
+    window.addEventListener?.('resize', scheduleTimelineAddLineCtaSync, { passive: true });
+    window.visualViewport?.addEventListener?.('resize', scheduleTimelineAddLineCtaSync, { passive: true });
+    window.visualViewport?.addEventListener?.('scroll', scheduleTimelineAddLineCtaSync, { passive: true });
+}
+
 function timelineBookingBlockDensity(width) {
     const safeWidth = Number(width);
     if (!Number.isFinite(safeWidth) || safeWidth < 90) return 'tiny';
@@ -667,6 +803,7 @@ function renderTimeScale(date) {
     endMark.className = 'time-mark hour end-mark';
     endMark.textContent = `${end}:00`;
     container.appendChild(endMark);
+    syncTimelineContentWidth(date, container);
 }
 
 function timelineShouldRenderAfisha() {
@@ -2678,6 +2815,8 @@ async function renderTimeline() {
         });
         } catch (e) { console.error('[Timeline] Error rendering line:', line?.id, e); }
     });
+
+    syncTimelineContentWidth(selectedDate, container.querySelector('.line-grid[data-line-id]'));
 
     _debugRender(`RENDERED gen=${thisGen} blocks=${container.querySelectorAll('.booking-block').length}`);
 

@@ -1327,11 +1327,9 @@ test('short and tiny timeline activity blocks have dedicated compact CSS layout'
     assert.match(css, /body\.dark-mode \.booking-block\.booking-block--short \.timeline-compact-booking-label,[\s\S]*?html\[data-theme="dark"\] \.booking-block\.booking-block--tiny \.timeline-compact-booking-label\s*\{[\s\S]*color:\s*rgba\(248, 250, 252, 0\.98\)/);
 });
 
-test('room timeline de-emphasizes duplicate kitchen booking block when service markers exist', () => {
+test('room timeline keeps kitchen booking block normal when service markers exist', () => {
     const css = read('css/timeline.css');
     const markerRule = cssRule(css, '.timeline-room-service-marker');
-    const bandRule = cssRule(css, '.booking-block.is-timeline-banquet-occupancy-band');
-    const bandTextRule = css.match(/\.booking-block\.is-timeline-banquet-occupancy-band > \*,[\s\S]*?\.booking-block\.is-timeline-banquet-occupancy-band \.booking-banquet-link-handle\s*\{([\s\S]*?)\}/);
     const { ctx, kitchenBlock, activityBlock } = applyTimelineBanquetPreviewWithVisibleBlocks({
         menuPositions: [
             { id: 'item-a', title: 'Pizza', servingTime: '12:00' }
@@ -1342,27 +1340,18 @@ test('room timeline de-emphasizes duplicate kitchen booking block when service m
     });
 
     assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker').length, 2);
-    assert.ok(cssNumberValue(markerRule, 'z-index') > cssNumberValue(bandRule, 'z-index'));
-    assert.doesNotMatch(bandRule, /display:\s*none/i);
-    assert.doesNotMatch(bandRule, /visibility:\s*hidden/i);
-    assert.equal(cssNumberValue(bandRule, 'opacity'), 0.72);
-    assert.equal(cssDeclaration(bandRule, 'pointer-events'), 'auto');
-    assert.ok(bandTextRule, 'occupancy band hides duplicate booking text rule exists');
-    assert.match(bandTextRule[1], /visibility:\s*hidden/);
-    assert.match(bandTextRule[1], /opacity:\s*0\s*!important/);
-    assert.match(bandTextRule[1], /pointer-events:\s*none/);
-    assert.ok(
-        css.indexOf('opacity: 0 !important') < css.indexOf('.booking-block .subtitle'),
-        'occupancy band hidden text remains stronger than later generic booking text opacity'
-    );
+    assert.equal(cssDeclaration(markerRule, 'display'), 'flex');
+    assert.equal(cssDeclaration(markerRule, 'pointer-events'), 'auto');
+    assert.ok(cssNumberValue(markerRule, 'z-index') > 0);
     assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
-    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), true);
+    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
     assert.equal(
-        ctx.document.querySelector('.booking-block.is-timeline-banquet-occupancy-band.has-timeline-banquet-preview-trigger'),
-        kitchenBlock
+        ctx.document.querySelector('.booking-block.is-timeline-banquet-occupancy-band[data-timeline-banquet-preview-role="kitchen"]'),
+        null
     );
-    assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, '1');
+    assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
+    assert.equal(kitchenBlock.querySelector('.title')?.textContent, 'Kitchen duplicate block');
     assert.ok(kitchenBlock._timelineBanquetSummary);
     assert.equal(ctx.timelineBanquetBlockCanOpenInspector(kitchenBlock), true);
 

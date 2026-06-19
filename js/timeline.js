@@ -1220,7 +1220,7 @@ function setTimelineBanquetPreviewRole(block, role) {
 
 function timelineBanquetPreviewRoleUsesOccupancyBand(role) {
     const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
-    return normalizedRole === 'kitchen' || TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole);
+    return TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole);
 }
 
 function setTimelineBanquetOccupancyBand(block, enabled = false) {

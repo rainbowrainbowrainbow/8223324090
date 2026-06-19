@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.65 - Room timeline banquet marker cleanup
+
+### Frontend room timeline / Banquet markers / Kitchen occupancy cleanup / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Порожній напівпрозорий kitchen occupancy band прибрано з room timeline** - kitchen booking більше не отримує `.is-timeline-banquet-occupancy-band`, коли банкет уже показує service markers.
+- **Service markers лишаються робочими** - `Підготовка`, `Видача`, `Напої` та інші markers далі рендеряться в `.timeline-room-service-marker` і відкривають banquet inspector кліком.
+- **Ліва картка `Банкет` не змінювалась** - room header preview зберігає hover/click behavior і не залежить від kitchen band cleanup.
+- **Activity bookings лишаються звичайними бронюваннями** - блоки на кшталт `АН(60)` і `Бульбашкове шоу` не відкривають banquet inspector замість booking details.
+- **Регресійні тести оновлено під нову UX-логіку** - `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють service markers, нормальний kitchen block і відсутність kitchen occupancy band.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.65`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.64 - Room timeline visual consistency
 
 ### Frontend room timeline / Badge alignment / Typography consistency / Regression tests / (Клешня, 19.06.2026) [codex]

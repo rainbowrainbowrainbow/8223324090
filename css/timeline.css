@@ -708,6 +708,7 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
     display: flex;
     align-items: center;
     gap: 4px;
+    width: calc(100% - 18px);
     max-width: calc(100% - 18px);
     margin-top: 1px;
     color: rgba(255, 255, 255, 0.86);
@@ -2412,6 +2413,10 @@ body.dark-mode .booking-banquet-candidate-role {
 .booking-block.has-booking-room-meta .booking-block-room {
     margin-left: 0;
     max-width: min(96px, calc(100% - 48px));
+}
+
+.booking-block.booking-block--short.has-booking-room-meta .timeline-compact-booking-meta .booking-block-room {
+    max-width: min(72px, 100%);
 }
 
 body.dark-mode .booking-block .booking-block-room,

@@ -611,7 +611,8 @@ test('animator timeline booking blocks show room meta without room timeline dupl
     assert.match(css, /\.booking-block \.booking-block-room/);
     assert.match(css, /\.booking-block\.has-booking-room-meta \.subtitle\s*\{[\s\S]*display:\s*flex;[\s\S]*gap:\s*6px;[\s\S]*overflow:\s*hidden/);
     assert.match(css, /\.booking-block\.has-booking-room-meta \.booking-block-room\s*\{[\s\S]*margin-left:\s*0;[\s\S]*max-width:\s*min\(96px, calc\(100% - 48px\)\)/);
-    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-meta\s*\{[\s\S]*display:\s*flex;[\s\S]*gap:\s*4px/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-meta\s*\{[\s\S]*display:\s*flex;[\s\S]*gap:\s*4px;[\s\S]*width:\s*calc\(100% - 18px\);[\s\S]*max-width:\s*calc\(100% - 18px\)/);
+    assert.match(css, /\.booking-block\.booking-block--short\.has-booking-room-meta \.timeline-compact-booking-meta \.booking-block-room\s*\{[\s\S]*max-width:\s*min\(72px, 100%\)/);
     assert.match(css, /body\.dark-mode \.booking-block \.booking-block-room/);
     assert.match(css, /html\[data-theme="dark"\] \.booking-block \.booking-block-room/);
 });
@@ -1330,6 +1331,7 @@ test('short and tiny timeline activity blocks have dedicated compact CSS layout'
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-meta,[\s\S]*?\.booking-block\.booking-block--tiny \.duration-badge\s*\{[\s\S]*display:\s*none/);
     assert.match(css, /\.booking-block\.booking-block--short \.user-letter,\s*\.booking-block\.booking-block--tiny \.user-letter\s*\{[\s\S]*position:\s*absolute;[\s\S]*width:\s*17px/);
     assert.match(css, /\.booking-block\.booking-block--short \.booking-block-room\s*\{[\s\S]*max-width:\s*72px;[\s\S]*margin-left:\s*0/);
+    assert.match(css, /\.booking-block\.booking-block--short\.has-booking-room-meta \.timeline-compact-booking-meta \.booking-block-room\s*\{[\s\S]*max-width:\s*min\(72px, 100%\)/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--short,[\s\S]*?body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--tiny\s*\{[\s\S]*min-width:\s*124px;[\s\S]*padding:\s*7px 9px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--short \.timeline-room-activity-title,[\s\S]*?body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--tiny \.timeline-room-activity-title\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.quest\s*\{[\s\S]*--timeline-room-card-accent:\s*#A78BFA/);

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.68 - Animator timeline room badge cleanup
+
+### Frontend animator timeline / Compact booking room badges / 30-minute activity cards / Regression tests / (Клешня, 19.06.2026) [codex]
+- **Кімната `Marvel` більше не обрізається у 30-хвилинних activity blocks** - compact `.booking-block--short` тепер дає room badge весь доступний meta-рядок після creator badge reserve.
+- **Root cause закрито в compact CSS** - загальний `.has-booking-room-meta .booking-block-room` reserve `calc(100% - 48px)` лишається для звичайного subtitle layout, але не стискає room badge у `.timeline-compact-booking-meta`.
+- **60-хвилинні blocks і звичайний subtitle layout не змінювались** - повнорозмірні активності далі показують room meta через існуючий safe max-width.
+- **Room timeline не зачеплений** - зміна scoped до compact booking block layout на animator timeline і не змінює banquet room service markers.
+- **Регресійні guardrails додано** - `tests/timeline-resources.test.js` і `tests/ui-check.js` перевіряють ширину compact meta row та окремий max-width для short room badge.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.68`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.67 - Room timeline typography cleanup
 
 ### Frontend room timeline / Banquet marker typography / Text descender safety / Regression tests / (Клешня, 19.06.2026) [codex]

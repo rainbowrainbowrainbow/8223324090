@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.67",
+  "version": "0.76.68",
   "eventGenix": {
-    "releaseLabel": "Room timeline typography cleanup"
+    "releaseLabel": "Animator timeline room badge cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

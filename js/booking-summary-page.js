@@ -260,7 +260,7 @@
                 <div class="summary-doc-meta">
                     <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
                     <span>Сформовано: ${escapeHtml(formatDateTime(summary.document?.generatedAt))}</span>
-                    <span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
+                    <span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
                 </div>
             </header>
 
@@ -280,8 +280,7 @@
                 ])}
                 ${compactLine([
                     compactFact('Іменинник', celebrant.name),
-                    compactFact('Дата народження', formatDate(celebrant.birthday)),
-                    compactFact('Менеджер', event.manager)
+                    compactFact('Дата народження', formatDate(celebrant.birthday))
                 ])}
                 ${compactLine([
                     compactFact('Оформлено', formatDateTime(event.createdAt)),

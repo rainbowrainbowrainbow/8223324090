@@ -577,6 +577,7 @@ checkPage('booking-summary.html', (doc, html) => {
     const printTableRowRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table tr');
     const printServiceEventRule = cssRuleIncludingSelectorText(printCss, '.summary-service-event');
     const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
+    const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
     const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
@@ -652,6 +653,18 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('bookingSummaryWarnings')
         && pageCode.includes('navigator.clipboard')
         && !pageCode.includes('pdf'));
+    check('Booking summary header labels generated account as manager, not author',
+        pageCode.includes('<span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
+        && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
+        && !pageCode.includes("compactFact('Менеджер', event.manager)"));
+    check('Booking summary header metadata uses scoped optical alignment for screen and print',
+        summaryHeaderRule.includes('--summary-doc-meta-offset: 4px')
+        && summaryHeaderRule.includes('align-items: start')
+        && pageCss.includes('align-self: start;')
+        && pageCss.includes('padding-top: var(--summary-doc-meta-offset);')
+        && pageCss.includes('line-height: 1.25;')
+        && printCss.includes('--summary-doc-meta-offset: 3px')
+        && !pageCss.includes('height: 297mm'));
     check('Booking summary sheet uses compact text header and keeps table only for ordered rows',
         pageCode.includes('function compactFact')
         && pageCode.includes('summary-brief')

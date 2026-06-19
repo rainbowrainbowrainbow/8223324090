@@ -72,6 +72,8 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.success, true);
     assert.equal(summary.schemaVersion, BANQUET_SUMMARY_SCHEMA_VERSION);
     assert.equal(summary.bookingId, 'BK-SUMMARY');
+    assert.equal(summary.document.generatedBy, 'Manager Name');
+    assert.equal(summary.event.manager, 'manager');
     assert.equal(summary.venue.name, 'Розважальний центр "Парк Закревського Періоду"');
     assert.equal(summary.customer.name, 'Олена Тест');
     assert.equal(summary.celebrant.name, 'Мія');

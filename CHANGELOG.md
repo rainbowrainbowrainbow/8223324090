@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.73 - Booking summary manager header cleanup
+
+### Booking summary / Manager header / PDF preview / Header alignment / Regression tests / Browser QA / (Клешня, 19.06.2026) [codex]
+- **У шапці вижимки `Автор` замінено на `Менеджер`** - правий metadata block тепер показує `Менеджер: Сергій` з того самого account source `summary.document.generatedBy`.
+- **Нижній дубль менеджера прибрано з compact brief** - `Менеджер` більше не повторюється під заголовком документа, а brief залишає клієнта, телефон, кімнату, дату, час, учасників, програму, іменинника, дату народження, оформлення і Booking ID.
+- **Правий metadata block вирівняно з лівою шапкою** - `.summary-doc-meta` отримав scoped optical offset, контрольований `line-height` і окремий print offset без зміни A4 width/height contract.
+- **Preview/PDF behavior не регреснув** - A4-like preview лишився з ratio близько `0.71`, print media лишається білим документом без shadow/radius, короткий PDF artifact має 1 сторінку.
+- **Regression guardrails посилено** - `tests/ui-check.js` фіксує `Менеджер` у header, відсутність `Автор`, відсутність нижнього `compactFact('Менеджер', event.manager)` і scoped header alignment.
+- **Backend data contract зафіксовано** - `tests/booking-digest.test.js` підтверджує, що `summary.document.generatedBy` лишається account name, а `summary.event.manager` лишається booking `created_by`.
+- **Browser QA пройдено для desktop/narrow/print** - Playwright перевірив `BK-2026-0489`, label counts, A4 ratio, print media і PDF page count.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.73`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.72 - Banquet details visual cleanup
 
 ### Booking details modal / Banquet rows / Copy affordance / UI guardrails / Browser QA / (Клешня, 19.06.2026) [codex]

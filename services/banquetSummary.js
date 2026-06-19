@@ -172,6 +172,36 @@ function buildProgramRow(mainBooking = {}, programBasePrice) {
     };
 }
 
+function shouldIncludeProgramOrderRow(primaryBooking = {}, programBasePrice, menuRows = []) {
+    const extra = extraDataOf(primaryBooking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const scenario = cleanText(valueOf(workspace, 'scenario'), 80);
+    const hasEvent = valueOf(workspace, 'hasEvent', 'has_event');
+    const normalizedScenario = String(scenario || '').trim().toLowerCase();
+    const normalizedHasEvent = typeof hasEvent === 'string' ? hasEvent.trim().toLowerCase() : hasEvent;
+    const programId = cleanText(valueOf(primaryBooking, 'programId', 'program_id'), 120);
+    const programCode = cleanText(valueOf(primaryBooking, 'programCode', 'program_code'), 80);
+    const normalizedProgramCode = String(programCode || '').trim().toUpperCase();
+    const kitchenIdentityOnly = normalizedScenario === 'kitchen_only'
+        || normalizedHasEvent === false
+        || normalizedHasEvent === 'false'
+        || normalizedHasEvent === 0
+        || normalizedHasEvent === '0';
+
+    if (
+        kitchenIdentityOnly
+        && money(programBasePrice) === 0
+        && !programId
+        && (!programCode || normalizedProgramCode === 'KITCHEN')
+        && Array.isArray(menuRows)
+        && menuRows.length
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
 function buildLinkedActivityRows(linkedBookings = [], options = {}) {
     const source = options.source || 'linked_booking';
     return (Array.isArray(linkedBookings) ? linkedBookings : [])
@@ -485,7 +515,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         ? money(Math.max(0, bookingPrice - menuSubtotal))
         : bookingPrice;
     const programBasePrice = explicitProgramBasePrice ?? inferredProgramBasePrice;
-    const programRow = buildProgramRow(primaryBooking, programBasePrice);
+    const programRow = shouldIncludeProgramOrderRow(primaryBooking, programBasePrice, menuRows)
+        ? buildProgramRow(primaryBooking, programBasePrice)
+        : null;
     const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
     const activitySubtotal = sumKnown(activityRows);
     const orderRows = [programRow, ...activityRows, ...menuRows, ...serviceEventRows].filter(Boolean);

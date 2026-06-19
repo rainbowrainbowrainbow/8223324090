@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.75 - Booking summary order row cleanup
+
+### Booking summary / Order rows / Kitchen-only banquet / PDF preview / Copy text / Regression tests / Browser QA / (Клешня, 20.06.2026) [codex]
+- **Таблиця `Замовлення` у вижимці банкету більше не показує ім'я клієнта як позицію** - kitchen-only identity booking з `program_code: KITCHEN` і `programBasePrice: 0` не створює нульовий program row, якщо є реальні menu positions.
+- **Клієнт лишається у правильному місці** - `Живий тест форми` залишається в brief/header як клієнт документа, але не дублюється в order table і не виглядає як куплена позиція.
+- **Реальні куплені позиції збережено** - меню, linked activities, service events і справжні paid program rows не видаляються новою умовою.
+- **Copy text і PDF отримують той самий очищений contract** - секція `Замовлення` не містить customer identity row, а preview/PDF автоматично рендерять оновлені `summary.orderRows`.
+- **Regression guardrail додано** - `tests/booking-digest.test.js` фіксує kitchen-only/no-event сценарій з menu positions, перевіряє totals і блокує повернення `Живий тест форми` у `orderRows`.
+- **Browser QA пройдено для desktop/mobile/print/PDF** - локальний Playwright сценарій на даних як у `BK-2026-0489` підтвердив brief customer, очищену таблицю, copy text без customer у `Замовлення`, 1-page PDF і відсутність mobile overflow.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.75`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.74 - Booking summary two-column brief
 
 ### Booking summary / Two-column brief / A4 preview / Print PDF / Regression tests / Browser QA / (Клешня, 19.06.2026) [codex]

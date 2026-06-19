@@ -105,6 +105,68 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
 });
 
+test('banquet summary keeps kitchen-only customer identity out of order rows', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        generatedBy: { username: 'sergey', name: 'Сергій' },
+        customer: {
+            id: 48,
+            name: 'Живий тест форми',
+            phone: '+380501112233'
+        },
+        mainBooking: {
+            id: 'BK-2026-0489',
+            business_context: 'event_genix',
+            date: '2026-06-19',
+            time: '12:45',
+            room: 'Марвел',
+            label: 'Кухня',
+            program_code: 'KITCHEN',
+            program_name: 'Живий тест форми',
+            category: 'custom',
+            duration: 30,
+            price: 4780,
+            notes: 'тест примітка',
+            created_by: 'Sergey',
+            created_at: '2026-06-18T13:35:00.000Z',
+            status: 'confirmed',
+            kids_count: 11,
+            banquet_adults: 2,
+            banquet_tables: 1,
+            extra_data: {
+                bookingPackage: {
+                    schemaVersion: 2,
+                    programBasePrice: 0,
+                    positionsSubtotal: 4780,
+                    finalTotal: 4780,
+                    menuPositions: [
+                        { productId: 'meat_platter', title: 'Мʼясне плато', quantity: 1, unitPrice: 1200, subtotal: 1200, servingTime: '18:45' },
+                        { productId: 'grill_sausages', title: 'Ковбаски гриль', quantity: 1, unitPrice: 980, subtotal: 980, servingTime: '12:45' },
+                        { productId: 'pasta_spinach', title: 'Паста зі шпинатом', quantity: 5, unitPrice: 520, subtotal: 2600, servingTime: '12:45' }
+                    ],
+                    serviceEvents: []
+                },
+                bookingWorkspace: {
+                    schemaVersion: 2,
+                    scenario: 'kitchen_only',
+                    hasEvent: false,
+                    source: 'booking_workspace_v2'
+                }
+            }
+        }
+    });
+
+    assert.equal(summary.customer.name, 'Живий тест форми');
+    assert.equal(summary.event.programName, 'Живий тест форми');
+    assert.equal(summary.totals.programBasePrice, 0);
+    assert.equal(summary.totals.menuSubtotal, 4780);
+    assert.equal(summary.totals.orderTotal, 4780);
+    assert.equal(summary.orderRows.some(row => row.type === 'program' && row.title === 'Живий тест форми'), false);
+    assert.equal(summary.orderRows.some(row => row.title === 'Живий тест форми'), false);
+    assert.equal(summary.orderRows[0].type, 'menu');
+    assert.deepEqual(summary.orderRows.map(row => row.title), ['Мʼясне плато', 'Ковбаски гриль', 'Паста зі шпинатом']);
+});
+
 test('banquet summary treats legacy banquet_guests as children fallback without duplicate guests', () => {
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',

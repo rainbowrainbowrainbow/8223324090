@@ -32,6 +32,15 @@ const originalEnv = {
     HR_VACANCY_AI_MODEL: process.env.HR_VACANCY_AI_MODEL
 };
 
+function banquetTermsPriceRuleRows() {
+    return [
+        { code: 'banquet_own_cake_fee', value: 500 },
+        { code: 'banquet_cork_fee', value: 100 },
+        { code: 'banquet_menu_correction_deadline_days', value: 3 },
+        { code: 'banquet_date_change_deadline_days', value: 5 }
+    ];
+}
+
 function listen(app) {
     return new Promise(resolve => {
         const s = app.listen(0, '127.0.0.1', () => {
@@ -2511,6 +2520,12 @@ function createFakePool() {
                     };
                 }
                 return { rows: [] };
+            }
+            if (/FROM price_rules\s+WHERE code = ANY\(\$1::text\[\]\)/i.test(text)) {
+                const requested = new Set(params[0] || []);
+                return {
+                    rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code))
+                };
             }
 
             throw new Error(`Unexpected route-smoke DB query: ${text}`);

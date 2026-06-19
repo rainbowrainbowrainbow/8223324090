@@ -580,6 +580,8 @@ checkPage('booking-summary.html', (doc, html) => {
     const printTableHeadRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table thead');
     const printTableRowRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table tr');
     const printServiceEventRule = cssRuleIncludingSelectorText(printCss, '.summary-service-event');
+    const printTermsRule = cssRuleIncludingSelectorText(printCss, '.summary-terms');
+    const printTermsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--terms');
     const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
     const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
     const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
@@ -590,6 +592,10 @@ checkPage('booking-summary.html', (doc, html) => {
     const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
     const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
     const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
+    const renderTermsBody = pageCode.match(/function renderTerms\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function renderDocument/)?.[1] || '';
+    const renderDocumentBody = pageCode.match(/function renderDocument\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function summaryText/)?.[1] || '';
+    const summaryTextBody = pageCode.match(/function summaryText\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    async function copyText/)?.[1] || '';
+    const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
         && !!doc.getElementById('bookingSummaryCopy')
@@ -646,6 +652,26 @@ checkPage('booking-summary.html', (doc, html) => {
         && printServiceEventRule.includes('break-inside: avoid')
         && printA4PageRule.includes('aspect-ratio: auto')
         && !pageCss.includes('height: 297mm'));
+    check('Booking summary terms stay backend-driven across preview, copy text, and print',
+        renderDocumentBody.includes('summary-section--terms')
+        && renderDocumentBody.includes('${renderTerms(summary)}')
+        && renderDocumentBody.includes('summary.terms?.title')
+        && renderTermsBody.includes('const terms = summary?.terms || {}')
+        && renderTermsBody.includes('const items = Array.isArray(terms.items) ? terms.items.filter(Boolean) : []')
+        && renderTermsBody.includes('items.map(item => `<li>${escapeHtml(item)}</li>`).join')
+        && renderTermsBody.includes('Умови банкету не заповнені')
+        && summaryTextBody.includes('const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : []')
+        && summaryTextBody.includes('terms.map(item => `- ${item}`)')
+        && summaryTextBody.includes("terms.length ? terms.map")
+        && !frontendBanquetTermsHardcode.test(pageCode)
+        && !frontendBanquetTermsHardcode.test(pageCss));
+    check('Booking summary print keeps banquet terms section and list items unbroken',
+        printTermsSectionRule.includes('break-inside: avoid')
+        && printTermsSectionRule.includes('page-break-inside: avoid')
+        && printTermsRule.includes('break-inside: avoid')
+        && printTermsRule.includes('page-break-inside: avoid')
+        && printTermsItemRule.includes('break-inside: avoid')
+        && printTermsItemRule.includes('page-break-inside: avoid'));
     check('Booking summary print trigger stays browser-native without app-owned header or footer promises',
         printTriggerCount === 1
         && pageCode.includes('window.print()')

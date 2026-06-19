@@ -26,6 +26,7 @@ const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
 const { buildBanquetSummary } = require('../services/banquetSummary');
+const { loadBanquetTermsDefaults, snapshotBanquetTermsForBooking } = require('../services/banquetTerms');
 const {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
@@ -1896,13 +1897,15 @@ router.get('/:id/banquet-summary', async (req, res) => {
             }
         }
 
+        const banquetTermsDefaults = await loadBanquetTermsDefaults(pool);
         const summary = buildBanquetSummary({
             mainBooking: summaryPrimaryBooking,
             customer,
             linkedBookings,
             businessContext,
             generatedBy: req.user,
-            resolvedGroup
+            resolvedGroup,
+            banquetTermsDefaults
         });
         res.json(summary);
     } catch (err) {
@@ -2131,6 +2134,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        await snapshotBanquetTermsForBooking(client, b);
         normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
             await client.query('ROLLBACK');
@@ -2944,6 +2948,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             await applyEffectiveBookingPrice(client, activity, { businessContext });
         }
         refreshMultiActivityPriceTotals([main, ...banquetActivities]);
+        await snapshotBanquetTermsForBooking(client, main);
+        for (const activity of banquetActivities) {
+            await snapshotBanquetTermsForBooking(client, activity);
+        }
 
         const ensuredMainLine = await ensureBookingTimelineLine(client, main, businessContext, {
             name: main.lineName || main.animatorName || null
@@ -4088,6 +4096,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         b.customerId = updateCustomerId;
 
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        await snapshotBanquetTermsForBooking(client, b);
         const updateExtraDataSql = bookingExtraDataSqlValue(b);
 
         let ensuredSecondAnimatorLineForUpdate = null;

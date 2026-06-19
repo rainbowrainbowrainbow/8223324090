@@ -445,7 +445,23 @@ function explicitDepositOf(mainBooking = {}) {
     };
 }
 
-function termsOf(mainBooking = {}, warnings) {
+function normalizeResolvedTerms(defaults = null) {
+    if (!defaults) return { title: 'Умови банкету', items: [], missingCodes: [] };
+    const source = Array.isArray(defaults) ? { items: defaults } : defaults;
+    const items = Array.isArray(source.items)
+        ? source.items.map(item => cleanText(item, 800)).filter(Boolean)
+        : [];
+    const missingCodes = Array.isArray(source.missingCodes)
+        ? source.missingCodes.map(code => cleanText(code, 120)).filter(Boolean)
+        : [];
+    return {
+        title: cleanText(source.title, 120) || 'Умови банкету',
+        items,
+        missingCodes
+    };
+}
+
+function termsOf(mainBooking = {}, warnings, options = {}) {
     const extra = extraDataOf(mainBooking);
     const rawTerms = extra.banquetTerms || extra.banquet_terms || extra.terms || [];
     const items = Array.isArray(rawTerms)
@@ -453,6 +469,28 @@ function termsOf(mainBooking = {}, warnings) {
         : cleanText(rawTerms, 3000)
             ? cleanText(rawTerms, 3000).split(/\r?\n/).map(item => cleanText(item, 800)).filter(Boolean)
             : [];
+    if (items.length) {
+        return {
+            title: 'Умови банкету',
+            items
+        };
+    }
+
+    const defaults = normalizeResolvedTerms(options.defaults || options.banquetTermsDefaults);
+    if (defaults.missingCodes.length) {
+        warnings.push({
+            code: 'banquet_terms_price_rule_missing',
+            message: `Не знайдено price_rules для стандартних умов банкету: ${defaults.missingCodes.join(', ')}.`
+        });
+    }
+
+    if (defaults.items.length) {
+        return {
+            title: defaults.title,
+            items: defaults.items
+        };
+    }
+
     if (!items.length) {
         warnings.push({
             code: 'terms_missing',
@@ -465,7 +503,7 @@ function termsOf(mainBooking = {}, warnings) {
     };
 }
 
-function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null } = {}) {
+function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null, banquetTermsDefaults = null } = {}) {
     if (!mainBooking || typeof mainBooking !== 'object') {
         throw new Error('mainBooking is required');
     }
@@ -614,7 +652,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             note: deposit.note,
             source: deposit.source
         },
-        terms: termsOf(primaryBooking, warnings),
+        terms: termsOf(primaryBooking, warnings, { banquetTermsDefaults }),
         warnings
     };
 }

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.76 - Banquet terms price center defaults
+
+### Banquet summary / Price center / Standard terms / Snapshot terms / PDF preview / Copy text / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Стандартні умови банкету підключено до центру цін** - додано seed migration для `banquet_own_cake_fee`, `banquet_cork_fee`, `banquet_menu_correction_deadline_days` і `banquet_date_change_deadline_days`, без перезапису operator-edited rows.
+- **Цифри в умовах більше не хардкодяться у preview/PDF** - backend збирає текст умов із `price_rules`, тому `Свій торт`, `Cork Fee`, корегування меню і зміна дати читають актуальні значення з price center.
+- **Нові банкетні бронювання фіксують snapshot умов** - при create/full create/update backend записує `extra_data.banquetTerms`, щоб стара вижимка не змінювалась після редагування price center.
+- **Старі бронювання отримують fallback без фейкових чисел** - якщо snapshot terms ще немає, summary використовує актуальні price rules; якщо rule відсутній, додається warning і не підставляється вигадане значення.
+- **Вижимка, PDF і copy text читають один contract** - блок `Умови банкету` у preview/print і текст для копіювання беруть `summary.terms.items`, а fallback `Умови банкету не заповнені` лишається тільки коли backend справді не дав terms.
+- **Regression guardrails посилено** - `booking-digest`, `booking-package-contract`, route smoke і UI smoke фіксують price-rule defaults, snapshot behavior, fallback behavior, відсутність frontend hardcode і print break rules для terms.
+- **Auth/deploy/secrets/new dependencies не змінювались** - додано лише idempotent seed migration і backend/frontend guardrails для банкетних умов.
+- **Релізні маркери піднято до `0.76.76`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.75 - Booking summary order row cleanup
 
 ### Booking summary / Order rows / Kitchen-only banquet / PDF preview / Copy text / Regression tests / Browser QA / (Клешня, 20.06.2026) [codex]

@@ -18,6 +18,7 @@ function clearModules() {
         '../services/bookingAutomation',
         '../services/leadBookingLink',
         '../services/bookingPackage',
+        '../services/banquetTerms',
         '../services/websocket',
         '../services/eventBus',
         '../routes/dashboard',
@@ -126,6 +127,15 @@ function testExcludeIdSet(value) {
         raw.push(value);
     }
     return new Set(raw.map(item => String(item || '').trim()).filter(Boolean));
+}
+
+function banquetTermsPriceRuleRows() {
+    return [
+        { code: 'banquet_own_cake_fee', value: 500 },
+        { code: 'banquet_cork_fee', value: 100 },
+        { code: 'banquet_menu_correction_deadline_days', value: 3 },
+        { code: 'banquet_date_change_deadline_days', value: 5 }
+    ];
 }
 
 function stateBackedRoomConflict(state) {
@@ -241,6 +251,13 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
                     next_price_rule_effective_from: null
                 }],
                 rowCount: 1
+            };
+        }
+        if (/FROM price_rules\s+WHERE code = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const requested = new Set(params[0] || []);
+            return {
+                rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code)),
+                rowCount: requested.size
             };
         }
         if (/SELECT id FROM customers WHERE phone = \$1/i.test(sql)) {
@@ -444,6 +461,18 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
                 row.status !== 'cancelled' &&
                 row.id !== excludedId &&
                 !String(row.linked_to || '').trim()
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT id, time, duration, label, program_code FROM bookings\s+WHERE date = \$1 AND room = \$2/i.test(sql)) {
+            const [date, room, businessContext, excludeIds] = params;
+            const excluded = testExcludeIdSet(excludeIds || []);
+            const rows = state.rows.filter(row =>
+                row.date === date &&
+                row.room === room &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+                row.status !== 'cancelled' &&
+                !excluded.has(String(row.id))
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
@@ -796,7 +825,87 @@ test('POST /api/bookings allows room kitchen booking when anchor is past but ope
                 : state.rows[0].extra_data;
             assert.equal(extra.bookingPackage.menuPositions[0].servingTime, '18:18');
             assert.equal(extra.bookingPackage.serviceEvents[0].time, '19:15');
+            assert.equal(Array.isArray(extra.banquetTerms), true);
+            assert.equal(extra.banquetTerms.some(item => item.includes('500') && item.includes('100')), true);
+            assert.equal(extra.banquetTermsSnapshot.source, 'price_rules');
         });
+    });
+});
+
+test('PUT /api/bookings/:id keeps manual banquet terms instead of overwriting snapshot from price rules', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-MANUAL',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '12:15',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen order',
+            program_name: 'Kitchen',
+            category: 'kitchen',
+            duration: 30,
+            price: 800,
+            hosts: 0,
+            second_animator: null,
+            room: 'Marvel Room',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: 'Manual terms',
+            extra_data: {
+                banquetTerms: ['Manual terms stay locked.'],
+                bookingWorkspace: { scenario: 'kitchen_only', hasEvent: false },
+                bookingPackage: {
+                    menuPositions: [
+                        { id: 'menu-1', title: 'Fruit plate', quantity: 2, unitPrice: 400, subtotal: 800, servingTime: '18:18' }
+                    ],
+                    serviceEvents: []
+                }
+            },
+            customer_id: null,
+            payment_method: null,
+            banquet_guests: 8,
+            banquet_adults: null,
+            banquet_tables: null,
+            banquet_menu: 'Fruit plate - 2',
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await fetch(`${baseUrl}/api/bookings/BK-2099-MANUAL`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: '2099-02-10',
+                time: '12:30',
+                lineId: 'banquet-service',
+                room: 'Marvel Room',
+                programCode: 'KITCHEN',
+                category: 'kitchen',
+                duration: 30,
+                price: 800,
+                status: 'confirmed',
+                extraData: {
+                    bookingWorkspace: { scenario: 'kitchen_only', hasEvent: false },
+                    bookingPackage: {
+                        menuPositions: [
+                            { id: 'menu-1', title: 'Fruit plate', quantity: 2, unitPrice: 400, subtotal: 800, servingTime: '18:18' }
+                        ],
+                        serviceEvents: []
+                    }
+                }
+            })
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(await res.json().catch(() => ({}))));
+        const row = state.rows.find(item => item.id === 'BK-2099-MANUAL');
+        const extra = typeof row.extra_data === 'string' ? JSON.parse(row.extra_data) : row.extra_data;
+        assert.deepEqual(extra.banquetTerms, ['Manual terms stay locked.']);
+        assert.equal(extra.banquetTermsSnapshot, undefined);
     });
 });
 

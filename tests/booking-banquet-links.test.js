@@ -25,6 +25,15 @@ function clearModules() {
     });
 }
 
+function banquetTermsPriceRuleRows() {
+    return [
+        { code: 'banquet_own_cake_fee', value: 500 },
+        { code: 'banquet_cork_fee', value: 100 },
+        { code: 'banquet_menu_correction_deadline_days', value: 3 },
+        { code: 'banquet_date_change_deadline_days', value: 5 }
+    ];
+}
+
 function bookingRow(overrides = {}) {
     return {
         id: 'BK-2099-0001',
@@ -286,6 +295,12 @@ function makeDb(rows, links = [], options = {}) {
                 data: JSON.parse(scoped ? params[3] : params[2])
             });
             return { rows: [], rowCount: 1 };
+        }
+        if (/FROM price_rules\s+WHERE code = ANY\(\$1::text\[\]\)/i.test(sql)) {
+            const requested = new Set(params[0] || []);
+            return {
+                rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code))
+            };
         }
         throw new Error(`Unexpected banquet-link query: ${sql}`);
     }

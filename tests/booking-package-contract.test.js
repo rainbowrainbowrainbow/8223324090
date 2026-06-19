@@ -882,6 +882,46 @@ test('product effective pricing resolves current and next rule by booking date',
     });
 });
 
+test('banquet terms numeric defaults are seeded through price rules without overwriting operator edits', () => {
+    const migration = read('db', 'migrations', '267_banquet_terms_price_rules.sql');
+    const expectedRules = [
+        ['banquet_own_cake_fee', 500, 'грн'],
+        ['banquet_cork_fee', 100, 'грн'],
+        ['banquet_menu_correction_deadline_days', 3, 'доби'],
+        ['banquet_date_change_deadline_days', 5, 'діб']
+    ];
+
+    assert.match(migration, /-- MIGRATION_KIND: seed/);
+    assert.match(migration, /INSERT INTO price_rules/);
+    assert.match(migration, /ON CONFLICT \(code\) DO NOTHING/);
+    assert.doesNotMatch(migration, /ON CONFLICT \(code\) DO UPDATE/i);
+
+    for (const [code, value, unit] of expectedRules) {
+        assert.match(migration, new RegExp(`'${code}'`));
+        assert.match(migration, new RegExp(`\\b${value}\\b`));
+        assert.match(migration, new RegExp(`'${unit}'`));
+    }
+});
+
+test('booking routes snapshot banquet terms on create, full create, and update without frontend ownership', () => {
+    const route = read('routes', 'bookings.js');
+    const termsService = read('services', 'banquetTerms.js');
+
+    assert.match(route, /snapshotBanquetTermsForBooking/);
+    assert.match(route, /await snapshotBanquetTermsForBooking\(client, b\)/);
+    assert.match(route, /await snapshotBanquetTermsForBooking\(client, main\)/);
+    assert.match(route, /for \(const activity of banquetActivities\)[\s\S]*await snapshotBanquetTermsForBooking\(client, activity\)/);
+    assert.ok(
+        route.lastIndexOf('await snapshotBanquetTermsForBooking(client, b);') > route.indexOf('mergeExistingExtraDataForBookingUpdate(b, oldBooking);'),
+        'update route snapshots after existing extra_data is merged so old/manual terms survive'
+    );
+    assert.match(termsService, /function bookingNeedsBanquetTermsSnapshot/);
+    assert.match(termsService, /function snapshotBanquetTermsForBooking/);
+    assert.match(termsService, /hasSnapshotTerms\(extra\)/);
+    assert.match(termsService, /extra\.banquetTerms = defaults\.items/);
+    assert.doesNotMatch(read('js', 'booking.js'), /banquetTermsSnapshot/);
+});
+
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');

@@ -5,11 +5,30 @@ const {
     BANQUET_SUMMARY_SCHEMA_VERSION,
     buildBanquetSummary
 } = require('../services/banquetSummary');
+const {
+    renderBanquetTermsFromPriceRules,
+    loadBanquetTermsDefaults,
+    bookingNeedsBanquetTermsSnapshot,
+    snapshotBanquetTermsForBooking
+} = require('../services/banquetTerms');
+
+function standardBanquetTermsPriceRules(overrides = {}) {
+    const omitted = new Set(overrides.omit || []);
+    return [
+        ['banquet_own_cake_fee', 500],
+        ['banquet_cork_fee', 100],
+        ['banquet_menu_correction_deadline_days', 3],
+        ['banquet_date_change_deadline_days', 5]
+    ]
+        .filter(([code]) => !omitted.has(code))
+        .map(([code, value]) => ({ code, value: overrides[code] ?? value }));
+}
 
 test('banquet summary builds structured KeyCRM-like contract from booking package and linked activities', () => {
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',
         generatedBy: { username: 'manager', name: 'Manager Name' },
+        banquetTermsDefaults: renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules()),
         customer: {
             id: 10,
             name: 'Олена Тест',
@@ -103,6 +122,195 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
+});
+
+test('banquet terms renderer builds standard terms from price rules', () => {
+    const rendered = renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules());
+
+    assert.equal(rendered.title, 'Умови банкету');
+    assert.deepEqual(rendered.missingCodes, []);
+    assert.deepEqual(rendered.items, [
+        'Заборонено приносити їжу/напої/торт.',
+        'Сума завдатку не повертається. Свій торт - 500грн. Cork Fee – 100грн.',
+        'Корегування меню здійснюється максимум за 3 доби. Зміна дати за 5 діб.',
+        'Винагорода офіціантів вітається, але завжди залишається на ваш розсуд.'
+    ]);
+});
+
+test('banquet terms defaults load required numeric values from price_rules', async () => {
+    const queries = [];
+    const defaults = await loadBanquetTermsDefaults({
+        async query(sql, params) {
+            queries.push({ sql, params });
+            return { rows: standardBanquetTermsPriceRules() };
+        }
+    });
+
+    assert.equal(queries.length, 1);
+    assert.match(queries[0].sql, /FROM price_rules/);
+    assert.deepEqual([...queries[0].params[0]].sort(), [
+        'banquet_cork_fee',
+        'banquet_date_change_deadline_days',
+        'banquet_menu_correction_deadline_days',
+        'banquet_own_cake_fee'
+    ]);
+    assert.equal(defaults.items.length, 4);
+    assert.deepEqual(defaults.missingCodes, []);
+});
+
+test('banquet terms snapshot is captured for new kitchen booking payloads', async () => {
+    const booking = {
+        programCode: 'KITCHEN',
+        category: 'kitchen',
+        extraData: {
+            bookingWorkspace: { scenario: 'kitchen_only', hasEvent: false },
+            bookingPackage: {
+                menuPositions: [
+                    { id: 'menu-1', title: 'Ковбаски гриль', quantity: 1 }
+                ],
+                serviceEvents: []
+            }
+        }
+    };
+    const result = await snapshotBanquetTermsForBooking({
+        async query() {
+            return { rows: standardBanquetTermsPriceRules() };
+        }
+    }, booking);
+
+    assert.equal(result.applied, true);
+    assert.equal(bookingNeedsBanquetTermsSnapshot(booking), false);
+    assert.equal(Array.isArray(booking.extraData.banquetTerms), true);
+    assert.equal(booking.extraData.banquetTerms.length, 4);
+    assert.equal(booking.extraData.banquetTerms.some(item => item.includes('500грн') && item.includes('100грн')), true);
+    assert.equal(booking.extraData.banquetTermsSnapshot.source, 'price_rules');
+    assert.deepEqual([...booking.extraData.banquetTermsSnapshot.priceRuleCodes].sort(), [
+        'banquet_cork_fee',
+        'banquet_date_change_deadline_days',
+        'banquet_menu_correction_deadline_days',
+        'banquet_own_cake_fee'
+    ]);
+});
+
+test('banquet terms snapshot is not overwritten when manual terms already exist', async () => {
+    let queried = false;
+    const booking = {
+        programCode: 'KITCHEN',
+        category: 'kitchen',
+        extraData: {
+            banquetTerms: ['Індивідуальні умови клієнта.'],
+            bookingWorkspace: { scenario: 'kitchen_only', hasEvent: false },
+            bookingPackage: {
+                menuPositions: [
+                    { id: 'menu-1', title: 'Ковбаски гриль', quantity: 1 }
+                ],
+                serviceEvents: []
+            }
+        }
+    };
+    const result = await snapshotBanquetTermsForBooking({
+        async query() {
+            queried = true;
+            return { rows: standardBanquetTermsPriceRules({ banquet_own_cake_fee: 999 }) };
+        }
+    }, booking);
+
+    assert.equal(result.applied, false);
+    assert.equal(queried, false);
+    assert.deepEqual(booking.extraData.banquetTerms, ['Індивідуальні умови клієнта.']);
+});
+
+test('banquet summary prefers captured snapshot over current price-rule defaults', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        banquetTermsDefaults: renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules({
+            banquet_own_cake_fee: 900,
+            banquet_cork_fee: 300
+        })),
+        mainBooking: {
+            id: 'BK-TERMS-SNAPSHOT',
+            date: '2099-08-01',
+            time: '12:00',
+            room: 'Marvel',
+            program_name: 'Banquet',
+            price: 0,
+            extra_data: {
+                banquetTerms: [
+                    'Snapshot cake fee 500грн.',
+                    'Snapshot cork fee 100грн.'
+                ],
+                bookingPackage: {
+                    menuPositions: [
+                        { id: 'menu-1', title: 'Ковбаски гриль', quantity: 1 }
+                    ],
+                    serviceEvents: []
+                }
+            }
+        }
+    });
+
+    assert.deepEqual(summary.terms.items, [
+        'Snapshot cake fee 500грн.',
+        'Snapshot cork fee 100грн.'
+    ]);
+    assert.equal(summary.terms.items.some(item => item.includes('900грн') || item.includes('300грн')), false);
+});
+
+test('banquet summary falls back to price-rule terms when booking snapshot terms are missing', () => {
+    const defaults = renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules({
+        banquet_own_cake_fee: 650,
+        banquet_cork_fee: 120,
+        banquet_menu_correction_deadline_days: 4,
+        banquet_date_change_deadline_days: 6
+    }));
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        banquetTermsDefaults: defaults,
+        mainBooking: {
+            id: 'BK-TERMS-DEFAULT',
+            date: '2099-08-01',
+            time: '12:00',
+            room: 'Marvel',
+            program_name: 'Banquet',
+            price: 0,
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 0,
+                    positionsSubtotal: 0,
+                    finalTotal: 0,
+                    menuPositions: []
+                }
+            }
+        }
+    });
+
+    assert.equal(summary.terms.items.some(item => item.includes('650грн') && item.includes('120грн')), true);
+    assert.equal(summary.terms.items.some(item => item.includes('4 доби') && item.includes('6 діб')), true);
+    assert.equal(summary.warnings.some(warning => warning.code === 'banquet_terms_price_rule_missing'), false);
+    assert.equal(summary.warnings.some(warning => warning.code === 'terms_missing'), false);
+});
+
+test('banquet summary warns and avoids fake values when banquet terms price rules are incomplete', () => {
+    const defaults = renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules({
+        omit: ['banquet_cork_fee']
+    }));
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        banquetTermsDefaults: defaults,
+        mainBooking: {
+            id: 'BK-TERMS-MISSING',
+            date: '2099-08-01',
+            time: '12:00',
+            room: 'Marvel',
+            program_name: 'Banquet',
+            price: 0
+        }
+    });
+
+    assert.deepEqual(defaults.missingCodes, ['banquet_cork_fee']);
+    assert.deepEqual(summary.terms.items, []);
+    assert.equal(summary.warnings.some(warning => warning.code === 'banquet_terms_price_rule_missing'), true);
+    assert.equal(summary.warnings.some(warning => warning.code === 'terms_missing'), true);
 });
 
 test('banquet summary keeps kitchen-only customer identity out of order rows', () => {

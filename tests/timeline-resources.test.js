@@ -1195,6 +1195,9 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /'banquet_group_schema_unavailable'/);
     assert.match(timeline, /function timelineBanquetSnapshotWarningText/);
     assert.match(timeline, /\.map\(timelineBanquetSnapshotWarningText\)/);
+    assert.doesNotMatch(timeline, /Booking is not attached to a banquet group\./);
+    assert.doesNotMatch(timeline, /Loaded from legacy booking_banquet_links because no banquet group exists yet\./);
+    assert.doesNotMatch(timeline, /Banquet group schema is not available\./);
     assert.match(timeline, /bookingWorkspace/);
     assert.match(timeline, /comments\.kitchen/);
     assert.match(timeline, /comments\.activity/);

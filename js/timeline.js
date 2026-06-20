@@ -21,12 +21,6 @@ const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES = new Set([
     'legacy_banquet_links_fallback',
     'banquet_group_schema_unavailable'
 ]);
-const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_TEXTS = new Set([
-    'Booking is not attached to a banquet group.',
-    'Loaded from legacy booking_banquet_links because no banquet group exists yet.',
-    'Banquet group schema is not available.',
-    'Banquet group schema is not available; legacy links were used if possible.'
-]);
 const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
     byBooking: new Map(),
     byGroup: new Map()
@@ -1214,7 +1208,13 @@ function timelineBanquetSnapshotWarningText(warning) {
     const code = String(warning?.code || '').trim();
     const text = String(warning?.message || warning?.text || warning || '').trim();
     if (code && TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES.has(code)) return '';
-    if (TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_TEXTS.has(text)) return '';
+    const normalized = text.toLowerCase();
+    const looksTechnicalBanquetWarning = (
+        (normalized.includes('attached') && normalized.includes('banquet group'))
+        || (normalized.includes('legacy') && normalized.includes('booking_banquet_links'))
+        || (normalized.includes('schema') && normalized.includes('banquet group'))
+    );
+    if (looksTechnicalBanquetWarning) return '';
     return text;
 }
 

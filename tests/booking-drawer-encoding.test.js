@@ -31,6 +31,25 @@ test('booking drawer frontend sources do not contain mojibake markers', () => {
     assertCleanEncoding('index.html booking panel', html.slice(start, end + '</aside>'.length));
 });
 
+test('booking detail scenario row is hidden only for kitchen bookings', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function shouldHideBookingWorkspaceScenarioDetail');
+    const helperEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail', helperStart);
+    assert.ok(helperStart >= 0, 'kitchen scenario visibility helper exists');
+    assert.ok(helperEnd > helperStart, 'helper block has a stable end');
+    const helperBlock = bookingJs.slice(helperStart, helperEnd);
+    assert.match(helperBlock, /scenario === 'kitchen_only'/);
+    assert.match(helperBlock, /programCode === 'KITCHEN'/);
+    assert.match(helperBlock, /programName === 'kitchen' \|\| programName === 'кухня'/);
+
+    const renderEnd = bookingJs.indexOf('function initBookingPackageWorkspace', helperEnd);
+    assert.ok(renderEnd > helperEnd, 'workspace detail block has a stable end');
+    const renderBlock = bookingJs.slice(helperEnd, renderEnd);
+    assert.match(renderBlock, /const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail\(booking\)\s*\?\s*''\s*:/);
+    assert.match(renderBlock, /<span class="label">Сценарій:<\/span><span class="value">\$\{escapeHtml\(meta\.label\)\}<\/span>/);
+    assert.match(renderBlock, /\$\{scenarioRowHtml\}/);
+});
+
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');

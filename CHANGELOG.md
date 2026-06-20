@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.80 - Booking Detail Modal Cleanup
+
+### Booking detail modal / Kitchen detail cleanup / UI labels / Regression tests / (Клешня, 20.06.2026) [codex]
+- **`Ціна` у detail modal перейменовано на `Сума`** - змінено тільки user-facing label, внутрішні `price`, `formatPrice`, API payload і SQL fields не перейменовувались.
+- **Зайвий рядок `Сценарій: Кухня` приховано для кухонних бронювань** - kitchen-only, `programCode: KITCHEN` і `programName: Кухня/Kitchen` більше не показують дубль сценарію в detail modal.
+- **Звичайні сценарії не зламано** - для свят, активностей, анімацій і програм рядок `Сценарій` лишається як раніше.
+- **Scope обмежено detail modal** - title `Кухня: ...`, badges, summary, PDF/вижимка, schema, API і deploy config не змінювались.
+- **Regression guardrails додано** - UI smoke і drawer static test фіксують label `Сума`, відсутність старого `Ціна:` у detail block і conditional render для kitchen scenario row.
+- **Релізні маркери піднято до `0.76.80`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.79 - Booking Detail Status Actions
 
 ### Booking detail modal / Status actions / Preliminary endpoint / Banquet member contract / Regression tests / (Клешня, 20.06.2026) [codex]

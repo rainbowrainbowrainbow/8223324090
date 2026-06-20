@@ -4128,11 +4128,26 @@ function renderBookingPackageDetail(booking, options = {}) {
     `;
 }
 
+function shouldHideBookingWorkspaceScenarioDetail(booking = {}) {
+    const workspace = bookingWorkspaceFromBooking(booking);
+    const scenario = String(workspace.scenario || '').trim().toLowerCase();
+    if (scenario === 'kitchen_only') return true;
+
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    if (programCode === 'KITCHEN') return true;
+
+    const programName = String(booking.programName || booking.program_name || '').trim().toLowerCase();
+    return programName === 'kitchen' || programName === 'кухня';
+}
+
 function renderBookingWorkspaceDetail(booking) {
     const workspace = getBookingWorkspaceFromBooking(booking);
     if (!workspace && booking?.programId) return '';
     const scenario = workspace?.scenario || (booking?.programId ? 'event' : 'lead_only');
     const meta = getBookingWorkspaceScenarioMeta(scenario);
+    const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail(booking)
+        ? ''
+        : `<div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span></div>`;
     const lead = workspace?.leadDetails || {};
     const leadRows = [
         lead.source ? `<div class="booking-detail-row"><span class="label">Джерело ліда:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
@@ -4143,7 +4158,7 @@ function renderBookingWorkspaceDetail(booking) {
         lead.notes ? `<div class="booking-detail-row"><span class="label">Нотатки ліда:</span><span class="value">${escapeHtml(lead.notes)}</span></div>` : ''
     ].join('');
     return `
-        <div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span></div>
+        ${scenarioRowHtml}
         ${leadRows}
     `;
 }
@@ -8588,7 +8603,7 @@ async function showBookingDetails(bookingId) {
         ${hostsDetailHtml}
         ${animationExtrasHtml}
         <div class="booking-detail-row">
-            <span class="label">Ціна:</span>
+            <span class="label">Сума:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
         </div>
         ${renderEducationLessonDetail(booking)}

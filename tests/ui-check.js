@@ -194,6 +194,11 @@ checkPage('index.html', (doc, html) => {
         && bookingCode.includes('function populatePrimaryAnimatorSelect')
         && bookingCode.includes('openAnimationBookingInAnimatorView')
         && bookingCode.includes('openRoomBookingAnimationBridge'));
+    check('Timeline regular line headers render title-only resource names',
+        htmlContains('js/timeline.js', 'line-header line-header--title-only')
+        && htmlContains('js/timeline.js', '<span class="line-name">${escapeHtml(line.name)}</span>')
+        && !htmlContains('js/timeline.js', 'getLineSubtitle(lineForHeader)')
+        && htmlContains('css/timeline.css', '.line-header--title-only .line-name'));
     check('Animator timeline filters banquet service pseudo-lines and kitchen blocks',
         htmlContains('js/timeline.js', "TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
         && htmlContains('js/timeline.js', 'function isParkAnimatorTimelineView')

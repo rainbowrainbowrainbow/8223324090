@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.91 - Timeline line header cleanup
+
+### Timeline line headers / Animator view / Room view / Responsive layout / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Лінії таймлайну тепер показують тільки назву ресурсу** - у режимі аніматорів лишається ПІБ аніматора, у режимі кімнат лишається назва банкетної кімнати.
+- **Службові підписи прибрано з regular headers** - `10:00-20:00 · зі зміни`, `зі зміни` і `редагувати аніматор` більше не займають місце в лівому блоці таймлайну.
+- **Розміри рядків не зменшувались** - header лишається тієї ж геометрії, а назва вертикально центрується і коректно переноситься на вузьких екранах.
+- **Службові рядки не зачеплені** - Афіша та pending row зберігають власні функціональні підписи.
+- **Regression guard оновлено** - UI smoke і focused contract test забороняють повернення subtitle helper у regular line header.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.91`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.90 - UI fix
 
 ### Timeline animator modal / Staff select / Dark focus state / Regression tests / (Клешня, 20.06.2026) [codex]

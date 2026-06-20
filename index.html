@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.90">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.90">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.90">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.90">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.90">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.90">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.90">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.90">
-    <link rel="stylesheet" href="css/features.css?v=0.76.90">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.90">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.90">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.90">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.90">
+    <link rel="stylesheet" href="css/base.css?v=0.76.91">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.91">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.91">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.91">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.91">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.91">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.91">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.91">
+    <link rel="stylesheet" href="css/features.css?v=0.76.91">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.91">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.91">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.91">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.91">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.90">✨ 0.76.90</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.91">✨ 0.76.91</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.90 — UI fix</p>
+                <p class="tagline">AI First CRM v0.76.91 — Timeline line header cleanup</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.90</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.91</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1738,6 +1738,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.76.91 — Timeline line header cleanup</h4>
+                    <ul>
+                        <li><b>Лінії таймлайну тепер показують тільки назву ресурсу</b> — у режимі аніматорів лишається ПІБ аніматора, у режимі кімнат лишається назва банкетної кімнати.</li>
+                        <li><b>Службові підписи прибрано з regular headers</b> — <code>10:00-20:00 · зі зміни</code>, <code>зі зміни</code> і <code>редагувати аніматор</code> більше не займають місце в лівому блоці таймлайну.</li>
+                        <li><b>Розміри рядків не зменшувались</b> — header лишається тієї ж геометрії, а назва вертикально центрується і коректно переноситься на вузьких екранах.</li>
+                        <li><b>Службові рядки не зачеплені</b> — Афіша та pending row зберігають власні функціональні підписи.</li>
+                        <li><b>Regression guard оновлено</b> — UI smoke і focused contract test забороняють повернення subtitle helper у regular line header.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.76.90 — UI fix</h4>
                     <ul>
@@ -14224,30 +14234,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.90"></script>
-    <script src="js/timeline-visibility.js?v=0.76.90"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.90"></script>
-    <script src="js/config.js?v=0.76.90"></script>
-    <script src="js/api.js?v=0.76.90"></script>
-    <script src="js/ui.js?v=0.76.90"></script>
-    <script src="js/auth.js?v=0.76.90"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.90"></script>
-    <script src="js/timeline.js?v=0.76.90"></script>
-    <script src="js/booking.js?v=0.76.90"></script>
-    <script src="js/settings.js?v=0.76.90"></script>
-    <script src="js/booking-form.js?v=0.76.90"></script>
-    <script src="js/booking-linked.js?v=0.76.90"></script>
-    <script src="js/settings-dashboard.js?v=0.76.90"></script>
-    <script src="js/settings-history.js?v=0.76.90"></script>
-    <script src="js/settings-afisha.js?v=0.76.90"></script>
-    <script src="js/settings-certificates.js?v=0.76.90"></script>
-    <script src="js/offline.js?v=0.76.90"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.90"></script>
-    <script src="js/search.js?v=0.76.90"></script>
-    <script src="js/ws.js?v=0.76.90"></script>
-    <script src="js/app.js?v=0.76.90"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.90"></script>
-    <script src="js/components/sidebar.js?v=0.76.90"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.90"></script>
+    <script src="js/timeline-context.js?v=0.76.91"></script>
+    <script src="js/timeline-visibility.js?v=0.76.91"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.91"></script>
+    <script src="js/config.js?v=0.76.91"></script>
+    <script src="js/api.js?v=0.76.91"></script>
+    <script src="js/ui.js?v=0.76.91"></script>
+    <script src="js/auth.js?v=0.76.91"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.91"></script>
+    <script src="js/timeline.js?v=0.76.91"></script>
+    <script src="js/booking.js?v=0.76.91"></script>
+    <script src="js/settings.js?v=0.76.91"></script>
+    <script src="js/booking-form.js?v=0.76.91"></script>
+    <script src="js/booking-linked.js?v=0.76.91"></script>
+    <script src="js/settings-dashboard.js?v=0.76.91"></script>
+    <script src="js/settings-history.js?v=0.76.91"></script>
+    <script src="js/settings-afisha.js?v=0.76.91"></script>
+    <script src="js/settings-certificates.js?v=0.76.91"></script>
+    <script src="js/offline.js?v=0.76.91"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.91"></script>
+    <script src="js/search.js?v=0.76.91"></script>
+    <script src="js/ws.js?v=0.76.91"></script>
+    <script src="js/app.js?v=0.76.91"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.91"></script>
+    <script src="js/components/sidebar.js?v=0.76.91"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.91"></script>
 </body>
 </html>

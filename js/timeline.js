@@ -475,20 +475,6 @@ function getTimeRange(date) {
     };
 }
 
-function getLineSubtitle(line) {
-    const presentation = window.TimelineBusinessContext?.presentation?.();
-    if (presentation?.mode === 'education') {
-        const count = Number(line?.bookingCount || 0);
-        return count > 0 ? `${count} зайнятих слотів` : 'вільний кабінет';
-    }
-    if (line && line.shiftStart && line.shiftEnd) {
-        return `${String(line.shiftStart).slice(0, 5)}-${String(line.shiftEnd).slice(0, 5)} · зі зміни`;
-    }
-    if (line && line.source === 'staff_schedule') return 'зі зміни';
-    if (presentation?.lineTypeLabel) return `редагувати ${presentation.lineTypeLabel}`;
-    return 'редагувати';
-}
-
 function getTimelineCellWidth(anchor) {
     const localCell = anchor?.querySelector?.('.grid-cell') || anchor?.closest?.('.line-grid')?.querySelector?.('.grid-cell');
     const measured = localCell?.getBoundingClientRect?.().width;
@@ -2969,15 +2955,13 @@ async function renderTimeline() {
     lines.forEach(line => {
         try {
         const lineBookings = lineBookingsById.get(String(line.id)) || [];
-        const lineForHeader = { ...line, bookingCount: lineBookings.length };
         const lineEl = document.createElement('div');
         lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;
         lineEl.dataset.lineType = line.resourceType || window.TimelineBusinessContext?.presentation?.().lineTypeLabel || 'line';
 
         lineEl.innerHTML = `
-            <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
+            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
-                <span class="line-sub">${escapeHtml(getLineSubtitle(lineForHeader))}</span>
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id, selectedDate)}

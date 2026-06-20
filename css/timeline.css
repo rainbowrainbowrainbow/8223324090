@@ -332,6 +332,16 @@
     color: var(--gray-800);
 }
 
+.line-header--title-only {
+    justify-content: center;
+}
+
+.line-header--title-only .line-name {
+    display: block;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+}
+
 .line-sub {
     font-size: 10px;
     color: var(--gray-400);

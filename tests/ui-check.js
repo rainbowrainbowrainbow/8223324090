@@ -251,7 +251,10 @@ checkPage('index.html', (doc, html) => {
         && modalsCss.includes('.timeline-line-editor-modal')
         && modalsCss.includes('.timeline-line-editor-actions')
         && modalsCss.includes('.form-group select')
-        && modalsCss.includes('appearance: none'));
+        && modalsCss.includes('appearance: none')
+        && modalsCss.includes('#editLineModal .timeline-line-editor-form select')
+        && modalsCss.includes('color-scheme: dark')
+        && modalsCss.includes('#editLineModal .timeline-line-editor-form select:focus'));
     check('Legacy certificate batch quantity picker hides radio without display none and keeps focus ring', !!doc.querySelector('input[name="batchQty"]') && !legacyBatchInputRule.includes('display: none') && legacyBatchInputRule.includes('opacity: 0') && legacyBatchInputRule.includes('clip-path: inset(50%)') && featuresCss.includes('.batch-qty-option:has(input:focus-visible)') && featuresCss.includes('.batch-qty-option:has(input:checked)') && featuresCss.includes('body.dark-mode .batch-qty-option:has(input:checked)'));
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     const pinataModeOptions = Array.from(doc.getElementById('pinataMode')?.querySelectorAll('option') || []).map(option => option.value);

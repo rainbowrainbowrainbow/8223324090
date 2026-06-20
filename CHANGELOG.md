@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.90 - UI fix
+
+### Timeline animator modal / Staff select / Dark focus state / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Модалка `Редагувати аніматора` більше не відкриває Staff select у світлому системному стилі** - поле лишається в темній CRM-поверхні навіть у focus/opened state.
+- **Стрілка select стабілізована** - caret закріплений справа, має достатній padding і не перекриває ім'я аніматора.
+- **Контраст і focus state виправлено** - текст, border і focus ring читабельні на desktop і mobile.
+- **Regression guard оновлено** - `tests/ui-check.js` перевіряє окремий styling contract для `#editLineNameSelect`.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.90`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.89 - Banquet Guest Arrival Wording
 
 ### Banquet wording / Timeline preview / Booking detail / Banquet sheet / Regression tests / (Клешня, 20.06.2026) [codex]

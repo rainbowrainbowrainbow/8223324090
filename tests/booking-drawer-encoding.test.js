@@ -50,6 +50,41 @@ test('booking detail scenario row is hidden only for kitchen bookings', () => {
     assert.match(renderBlock, /\$\{scenarioRowHtml\}/);
 });
 
+test('booking detail title removes redundant kitchen prefix only for kitchen bookings', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function bookingDetailIsKitchenTitleToken');
+    const helperEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail', helperStart);
+    assert.ok(helperStart >= 0, 'kitchen title token helper exists');
+    assert.ok(helperEnd > helperStart, 'title helper block has a stable end');
+    const helperBlock = bookingJs.slice(helperStart, helperEnd);
+    assert.match(helperBlock, /text\.toUpperCase\(\) === 'KITCHEN' \|\| text\.toLowerCase\(\) === 'кухня'/);
+    assert.match(helperBlock, /function bookingDetailModalTitle\(booking = \{\}, fallback = 'Бронювання'\)/);
+    assert.match(helperBlock, /if \(shouldHideBookingWorkspaceScenarioDetail\(booking\)\)/);
+    assert.match(helperBlock, /\[programName, label, booking\.room, booking\.id\]/);
+    assert.match(helperBlock, /!bookingDetailIsKitchenTitleToken\(value\)/);
+    assert.match(helperBlock, /return \[label \|\| programCode, programName\]\.filter\(Boolean\)\.join\(': '\) \|\| fallback;/);
+
+    const modalStart = bookingJs.indexOf('async function showBookingDetails');
+    const modalEnd = bookingJs.indexOf('const bookingChildrenCount', modalStart);
+    assert.ok(modalStart >= 0 && modalEnd > modalStart, 'booking detail modal title block exists');
+    const modalBlock = bookingJs.slice(modalStart, modalEnd);
+    assert.match(modalBlock, /const bookingDetailTitle = bookingDetailModalTitle\(booking, roomFirstServiceBooking \? 'Кімнатна бронь' : 'Бронювання'\);/);
+    assert.doesNotMatch(modalBlock, /const bookingDetailTitle = \[booking\.label \|\| booking\.programCode, booking\.programName\]/);
+});
+
+test('booking detail summary action is labeled banquet sheet without changing preview route', () => {
+    const bookingJs = read('js', 'booking.js');
+    const actionStart = bookingJs.indexOf('const editControls = isViewer() ?');
+    const actionEnd = bookingJs.indexOf('const bookingDetailIdLabel', actionStart);
+    assert.ok(actionStart >= 0 && actionEnd > actionStart, 'booking detail action block exists');
+    const actionBlock = bookingJs.slice(actionStart, actionEnd);
+    assert.match(actionBlock, /summaryPreviewHref/);
+    assert.match(actionBlock, /class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист<\/a>/);
+    assert.doesNotMatch(actionBlock, /booking-summary-action">Вижимка<\/a>/);
+    assert.match(bookingJs, /function bookingSummaryPreviewUrl/);
+    assert.match(bookingJs, /\/booking-summary\.html\?/);
+});
+
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');

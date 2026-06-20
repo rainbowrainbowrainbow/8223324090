@@ -4140,6 +4140,27 @@ function shouldHideBookingWorkspaceScenarioDetail(booking = {}) {
     return programName === 'kitchen' || programName === 'кухня';
 }
 
+function bookingDetailIsKitchenTitleToken(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    return text.toUpperCase() === 'KITCHEN' || text.toLowerCase() === 'кухня';
+}
+
+function bookingDetailModalTitle(booking = {}, fallback = 'Бронювання') {
+    const label = String(booking.label || '').trim();
+    const programCode = String(booking.programCode || booking.program_code || '').trim();
+    const programName = String(booking.programName || booking.program_name || '').trim();
+
+    if (shouldHideBookingWorkspaceScenarioDetail(booking)) {
+        return [programName, label, booking.room, booking.id]
+            .map(value => String(value || '').trim())
+            .find(value => value && !bookingDetailIsKitchenTitleToken(value))
+            || fallback;
+    }
+
+    return [label || programCode, programName].filter(Boolean).join(': ') || fallback;
+}
+
 function renderBookingWorkspaceDetail(booking) {
     const workspace = getBookingWorkspaceFromBooking(booking);
     if (!workspace && booking?.programId) return '';
@@ -8532,16 +8553,14 @@ async function showBookingDetails(bookingId) {
         ${dangerZoneHtml}
         <div class="booking-actions modal-footer-sticky booking-actions--compact">
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="booking-detail-action booking-detail-action--primary btn-edit-booking">Редагувати</button>
-            <a href="${escapeHtml(summaryPreviewHref)}" class="booking-detail-action booking-detail-action--secondary booking-summary-action">Вижимка</a>
+            <a href="${escapeHtml(summaryPreviewHref)}" class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист</a>
             ${moreActionsHtml}
         </div>
     `;
 
     const bookingDetailIdLabel = booking.id ? String(booking.id) : '----';
     const bookingDetailTimeRange = `${booking.time} - ${endTime}`;
-    const bookingDetailTitle = [booking.label || booking.programCode, booking.programName]
-        .filter(Boolean)
-        .join(': ') || (roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
+    const bookingDetailTitle = bookingDetailModalTitle(booking, roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');
     const bookingChildrenCount = bookingKitchenChildrenCountFromBooking(booking);
     const lineDetailHtml = roomFirstServiceBooking ? '' : `
         <div class="booking-detail-row">

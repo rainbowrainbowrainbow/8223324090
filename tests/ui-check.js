@@ -2100,6 +2100,12 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && bookingCode.includes("if (scenario === 'kitchen_only') return true;")
     && bookingCode.includes("if (programCode === 'KITCHEN') return true;")
     && bookingCode.includes("return programName === 'kitchen' || programName === 'кухня';")
+    && bookingCode.includes('function bookingDetailModalTitle(booking = {}, fallback = \'Бронювання\')')
+    && bookingCode.includes('if (shouldHideBookingWorkspaceScenarioDetail(booking))')
+    && bookingCode.includes('[programName, label, booking.room, booking.id]')
+    && bookingCode.includes('!bookingDetailIsKitchenTitleToken(value)')
+    && bookingDetailStandardBlock.includes("const bookingDetailTitle = bookingDetailModalTitle(booking, roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');")
+    && !bookingDetailStandardBlock.includes("const bookingDetailTitle = [booking.label || booking.programCode, booking.programName]")
     && bookingCode.includes('const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail(booking)')
     && bookingCode.includes('<span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span>')
     && bookingCode.includes('${scenarioRowHtml}')
@@ -2160,7 +2166,8 @@ check('Booking detail modal links to banquet summary preview with return URL',
     && bookingCode.includes('businessContext')
     && bookingCode.includes('returnPath')
     && bookingCode.includes('booking-summary-action')
-    && bookingCode.includes('Вижимка'));
+    && bookingCode.includes('Банкетний лист')
+    && !bookingDetailEditControlsBlock.includes('booking-summary-action">Вижимка</a>'));
 check('Booking detail modal keeps rare operational actions collapsed',
     bookingCode.includes('const timeShiftControlsHtml = `')
     && bookingCode.includes('const advancedActionsHtml = `')
@@ -2181,7 +2188,8 @@ check('Booking banquet modal UX regression guard keeps compact defaults',
     && bookingDetailEditControlsBlock.includes('const moreActionsHtml = secondaryActionHtml ?')
     && bookingDetailEditControlsBlock.includes('const dangerZoneHtml = canDeleteTimelineBooking() ?')
     && bookingDetailCompactFooterBlock.includes('booking-detail-action--primary btn-edit-booking')
-    && bookingDetailCompactFooterBlock.includes('booking-summary-action">Вижимка</a>')
+    && bookingDetailCompactFooterBlock.includes('booking-summary-action">Банкетний лист</a>')
+    && !bookingDetailCompactFooterBlock.includes('Вижимка')
     && bookingDetailCompactFooterBlock.includes('${moreActionsHtml}')
     && !bookingDetailCompactFooterBlock.includes('duplicateBooking')
     && !bookingDetailCompactFooterBlock.includes('showRecurringModal')

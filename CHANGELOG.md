@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.81 - Booking Detail Copy Cleanup
+
+### Booking detail modal / Kitchen title cleanup / Banquet sheet label / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Зайвий prefix `Кухня:` прибрано з title kitchen detail modal** - кухонна бронь показує змістовну назву на кшталт `Живий тест форми`, без дублювання очевидного сценарію.
+- **Action `Вижимка` у detail modal перейменовано на `Банкетний лист`** - змінено тільки user-facing текст кнопки, route preview, URL contract і summary generation flow не змінювались.
+- **Некухонні title лишились як раніше** - звичайні свята, активності, анімації та програми продовжують формувати заголовок за попереднім contract.
+- **Scope обмежено detail modal і release refs** - schema, API, permissions, deploy config, PDF/summary generation і database не змінювались.
+- **Regression guardrails додано** - drawer static test і UI smoke фіксують відсутність `Кухня:` у kitchen title, новий label `Банкетний лист` і незмінний preview route.
+- **Релізні маркери піднято до `0.76.81`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.80 - Booking Detail Modal Cleanup
 
 ### Booking detail modal / Kitchen detail cleanup / UI labels / Regression tests / (Клешня, 20.06.2026) [codex]

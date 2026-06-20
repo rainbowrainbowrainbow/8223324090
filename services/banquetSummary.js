@@ -346,6 +346,70 @@ function mergeSummaryComments(...comments) {
     return cleanText(unique.join(' · '), 500);
 }
 
+function uniqueSummaryCommentSources(entries = []) {
+    const result = [];
+    const seen = new Set();
+    for (const entry of entries) {
+        const booking = entry?.booking;
+        if (!booking) continue;
+        const id = bookingIdOf(booking);
+        const key = id || `${entry.role || 'manual'}:${result.length}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push({
+            booking,
+            role: cleanText(entry.role, 40) || 'manual'
+        });
+    }
+    return result;
+}
+
+function buildSummaryComments({ primaryBooking, kitchenBooking, activityBookings = [], serviceBookings = [], manualBookings = [] } = {}) {
+    const comments = [];
+    const seenTexts = new Set();
+    const sources = uniqueSummaryCommentSources([
+        { booking: kitchenBooking, role: 'kitchen' },
+        ...(activityBookings || []).map(booking => ({ booking, role: 'activity' })),
+        { booking: primaryBooking, role: 'primary' },
+        ...(serviceBookings || []).map(booking => ({ booking, role: 'service' })),
+        ...(manualBookings || []).map(booking => ({ booking, role: 'manual' }))
+    ]);
+    const add = (type, label, text, booking) => {
+        const clean = cleanText(text, 500);
+        const key = clean ? clean.toLowerCase() : null;
+        if (!clean || seenTexts.has(key)) return;
+        seenTexts.add(key);
+        comments.push({
+            type,
+            label,
+            text: clean,
+            bookingId: bookingIdOf(booking)
+        });
+    };
+
+    sources.forEach(({ booking, role }) => {
+        const text = role === 'kitchen'
+            ? bookingSummaryComment(booking, 'kitchen', { fallbackKeys: ['notes'] })
+            : bookingWorkspaceComment(booking, 'kitchen');
+        add('kitchen', 'Кухня', text, booking);
+    });
+
+    sources.forEach(({ booking, role }) => {
+        const text = role === 'activity'
+            ? bookingSummaryComment(booking, 'activity', { fallbackKeys: ['notes'] })
+            : bookingWorkspaceComment(booking, 'activity');
+        add('activity', `Активність — ${bookingTitle(booking) || 'Активність'}`, text, booking);
+    });
+
+    sources.forEach(({ booking, role }) => {
+        const fallbackKeys = role === 'kitchen' || role === 'activity' ? [] : ['notes'];
+        const text = bookingSummaryComment(booking, 'internal', { fallbackKeys });
+        add('internal', 'Внутрішній коментар', text, booking);
+    });
+
+    return comments;
+}
+
 function applyKitchenCommentToMenuRows(menuRows = [], kitchenBooking = {}) {
     const kitchenComment = bookingSummaryComment(kitchenBooking, 'kitchen', { fallbackKeys: ['notes'] });
     if (!kitchenComment || !Array.isArray(menuRows) || !menuRows.length) return menuRows;
@@ -612,6 +676,13 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         ? buildProgramRow(primaryBooking, programBasePrice)
         : null;
     const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
+    const summaryComments = buildSummaryComments({
+        primaryBooking,
+        kitchenBooking,
+        activityBookings: groupState.activityBookings,
+        serviceBookings: groupState.serviceBookings,
+        manualBookings: groupState.manualBookings
+    });
     const activitySubtotal = sumKnown(activityRows);
     const orderRows = [programRow, ...activityRows, ...menuRows, ...serviceEventRows].filter(Boolean);
     const rowsTotal = sumKnown(orderRows);
@@ -663,7 +734,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         } : null,
         document: {
             type: 'banquet_summary',
-            title: 'Вижимка банкету',
+            title: 'БАНКЕТНИЙ ЛИСТ',
             generatedAt: new Date().toISOString(),
             generatedBy: cleanText(generatedBy?.name || generatedBy?.username || generatedBy, 160)
         },
@@ -692,6 +763,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         },
         orderRows,
         serviceEvents: serviceEventRows,
+        comments: summaryComments,
         totals: {
             programBasePrice,
             menuSubtotal,

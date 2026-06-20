@@ -560,6 +560,7 @@ checkPage('timeline-settings.html', (doc, html) => {
 
 checkPage('booking-summary.html', (doc, html) => {
     const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
+    const banquetSummaryServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'banquetSummary.js'), 'utf8');
     const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
     const printCss = cssAtRuleBlock(pageCss, '@media print');
     const mobileCss = cssAtRuleBlock(pageCss, '@media (max-width: 760px)');
@@ -583,6 +584,9 @@ checkPage('booking-summary.html', (doc, html) => {
     const printTermsRule = cssRuleIncludingSelectorText(printCss, '.summary-terms');
     const printTermsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--terms');
     const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
+    const printCommentsRule = cssRuleIncludingSelectorText(printCss, '.summary-comments');
+    const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
+    const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
     const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
     const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
     const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
@@ -603,6 +607,46 @@ checkPage('booking-summary.html', (doc, html) => {
         && !!doc.getElementById('bookingSummaryWarnings')
         && !!doc.getElementById('bookingSummaryPrintRoot')
         && !!doc.getElementById('bookingSummaryDocument'));
+    check('Booking summary page uses banquet sheet naming without changing internal route contracts',
+        doc.title === 'Event Genix | Банкетний лист'
+        && doc.querySelector('meta[name="description"]')?.getAttribute('content') === 'Preview і друк банкетного листа Event Genix'
+        && doc.querySelector('.booking-summary-toolbar')?.getAttribute('aria-label') === 'Дії з банкетним листом'
+        && doc.querySelector('.booking-summary-toolbar h1')?.textContent?.trim() === 'Банкетний лист'
+        && doc.getElementById('bookingSummaryState')?.textContent?.includes('Завантаження банкетного листа...')
+        && doc.getElementById('bookingSummaryDocument')?.getAttribute('aria-label') === 'Документ банкетного листа'
+        && pageCode.includes("summary.document?.title || 'БАНКЕТНИЙ ЛИСТ'")
+        && pageCode.includes("summary.venue?.name || 'Банкетний лист'")
+        && pageCode.includes('Потрібно увійти в CRM, щоб відкрити банкетний лист.')
+        && pageCode.includes('Не вдалося завантажити банкетний лист')
+        && pageCode.includes('Банкетний лист ще не завантажений')
+        && pageCode.includes('Текст банкетного листа скопійовано')
+        && banquetSummaryServiceCode.includes("title: 'БАНКЕТНИЙ ЛИСТ'")
+        && pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
+        && !html.includes('Вижимка банкету')
+        && !html.includes('вижимк')
+        && !pageCode.includes('Вижимка банкету')
+        && !pageCode.includes('вижимк')
+        && !banquetSummaryServiceCode.includes("title: 'Вижимка банкету'"));
+    check('Booking summary page renders canonical comments section and copy text',
+        pageCode.includes('function summaryCommentRows(summary)')
+        && pageCode.includes('function renderComments(summary)')
+        && renderDocumentBody.includes('summary-section--comments')
+        && renderDocumentBody.includes('${renderComments(summary)}')
+        && renderDocumentBody.indexOf('summary-section--comments') > renderDocumentBody.indexOf('summary-section--service-events')
+        && renderDocumentBody.indexOf('summary-section--comments') < renderDocumentBody.indexOf('summary-section--finance')
+        && summaryTextBody.includes('const comments = summaryCommentRows(summary)')
+        && summaryTextBody.includes('Примітки:')
+        && summaryTextBody.includes('comments.map(comment => `- ${comment.label}: ${comment.text}`)')
+        && pageCss.includes('.summary-comments')
+        && pageCss.includes('.summary-comment-row')
+        && printCommentsSectionRule.includes('break-inside: avoid')
+        && printCommentsRule.includes('break-inside: avoid')
+        && printCommentRowRule.includes('break-inside: avoid')
+        && banquetSummaryServiceCode.includes('function buildSummaryComments')
+        && banquetSummaryServiceCode.includes('comments: summaryComments')
+        && banquetSummaryServiceCode.includes("add('kitchen', 'Кухня'")
+        && banquetSummaryServiceCode.includes("add('activity', `Активність —")
+        && banquetSummaryServiceCode.includes("add('internal', 'Внутрішній коментар'"));
     check('Booking summary page loads standalone controller and print CSS',
         getHtmlScripts(html).includes('js/booking-summary-page.js')
         && html.includes('css/booking-summary.css')
@@ -637,8 +681,10 @@ checkPage('booking-summary.html', (doc, html) => {
     check('Booking summary print pagination keeps dense summaries on A4 and protects row breaks',
         pageCode.includes('summary-section--orders')
         && pageCode.includes('summary-section--service-events')
+        && pageCode.includes('summary-section--comments')
         && pageCode.includes('summary-section--finance')
         && pageCode.includes('summary-section--terms')
+        && printCss.includes('.summary-section--comments')
         && printCss.includes('.summary-section--finance')
         && printCss.includes('.summary-section--terms')
         && printCss.includes('orphans: 2')
@@ -672,6 +718,13 @@ checkPage('booking-summary.html', (doc, html) => {
         && printTermsRule.includes('page-break-inside: avoid')
         && printTermsItemRule.includes('break-inside: avoid')
         && printTermsItemRule.includes('page-break-inside: avoid'));
+    check('Booking summary print keeps comments section unbroken',
+        printCommentsSectionRule.includes('break-inside: avoid')
+        && printCommentsSectionRule.includes('page-break-inside: avoid')
+        && printCommentsRule.includes('break-inside: avoid')
+        && printCommentsRule.includes('page-break-inside: avoid')
+        && printCommentRowRule.includes('break-inside: avoid')
+        && printCommentRowRule.includes('page-break-inside: avoid'));
     check('Booking summary print trigger stays browser-native without app-owned header or footer promises',
         printTriggerCount === 1
         && pageCode.includes('window.print()')
@@ -1173,6 +1226,15 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('function applyTimelineBanquetPreview')
     && timelineCode.includes('function renderTimelineBanquetRoomCard')
     && timelineCode.includes('function showTimelineBanquetInspector')
+    && timelineCode.includes('function timelineBanquetCommentItems')
+    && timelineCode.includes('function timelineBanquetCommentsHtml')
+    && timelineCode.includes('function timelineBanquetActivityStartsText')
+    && timelineCode.includes('bookingWorkspace')
+    && timelineCode.includes('comments.kitchen')
+    && timelineCode.includes('comments.activity')
+    && timelineCode.includes('comments.internal')
+    && timelineCode.includes('Початок активностей')
+    && timelineCode.includes('Примітки')
     && timelineCode.includes('function hydrateTimelineBanquetPreview')
     && timelineCode.includes('function timelineBanquetPreviewRoleUsesOccupancyBand')
     && timelineCode.includes('function setTimelineBanquetOccupancyBand')
@@ -1197,6 +1259,9 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineConstructorCss.includes('.timeline-banquet-room-card-signal--room-setup')
     && timelineConstructorCss.includes('.timeline-banquet-room-card-glance')
     && timelineConstructorCss.includes('.timeline-banquet-inspector')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-section--notes')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-notes')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-note-text')
     && timelineConstructorCss.includes('.timeline-banquet-inspector-btn--primary')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band .title')
@@ -1311,7 +1376,10 @@ check('Room timeline banquet preview uses readable labels instead of single-lett
     && timelineCode.includes("label: 'Видача'")
     && timelineCode.includes("'Торт'")
     && timelineCode.includes("data-banquet-inspector-details>Деталі")
-    && timelineCode.includes('>Вижимка</a>')
+    && timelineCode.includes('Активність —')
+    && timelineCode.includes('Внутрішній коментар')
+    && timelineCode.includes('>Банкетний лист</a>')
+    && !timelineCode.includes('>Вижимка</a>')
     && /line-height:\s*1\.25\s*;/.test(timelineBanquetRoomCardSignalRule)
     && /padding:\s*2px 5px 3px\s*;/.test(timelineBanquetRoomCardSignalRule)
     && !timelineCode.includes('data-banquet-badge')
@@ -2232,6 +2300,13 @@ check('Booking detail modal renders full banquet group details with controlled m
     && bookingCode.includes("renderBanquetWorkSection('Банкет'")
     && bookingCode.includes('renderBanquetMenuSection(packageBooking)')
     && bookingCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)')
+    && bookingCode.includes('function fullBanquetDetailCommentItems')
+    && bookingCode.includes('function renderFullBanquetCommentsSection')
+    && bookingCode.includes("renderBanquetWorkSection('Примітки'")
+    && bookingCode.includes('renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })')
+    && bookingCode.includes("add('kitchen', 'Кухня'")
+    && bookingCode.includes("add('activity', `Активність —")
+    && bookingCode.includes("add('internal', 'Внутрішній коментар'")
     && bookingCode.includes('renderBanquetActivitiesSection(activityMembers)')
     && bookingCode.includes('renderBanquetWarningsSection(warnings)')
     && bookingCode.includes('renderBanquetTechnicalSection({')
@@ -2243,6 +2318,8 @@ check('Booking detail modal renders full banquet group details with controlled m
     && timelineConstructorCss.includes('.booking-banquet-full-detail')
     && timelineConstructorCss.includes('.booking-banquet-section--work')
     && timelineConstructorCss.includes('.booking-banquet-service-row')
+    && timelineConstructorCss.includes('.booking-banquet-comments')
+    && timelineConstructorCss.includes('.booking-banquet-comment-row')
     && timelineConstructorCss.includes('.booking-banquet-technical')
     && timelineConstructorCss.includes('.booking-banquet-candidate-role')
     && timelineConstructorCss.includes('.booking-banquet-warning')

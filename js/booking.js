@@ -7828,6 +7828,19 @@ function bookingDetailTitle(booking = {}) {
     ].filter(Boolean).join(' · ');
 }
 
+function bookingDetailActivityCommentTitle(booking = {}) {
+    return String(
+        booking.label
+        || booking.programName
+        || booking.program_name
+        || booking.programCode
+        || booking.program_code
+        || booking.room
+        || booking.id
+        || 'Активність'
+    ).trim();
+}
+
 function bookingDetailStatusLabel(booking = {}) {
     const status = String(booking.status || '').toLowerCase();
     if (status === 'cancelled') return 'Скасовано';
@@ -7846,6 +7859,43 @@ function bookingDetailRoleLabel(role) {
         technical: 'Технічне linked_to'
     };
     return labels[role] || role || 'Бронювання';
+}
+
+function bookingDetailExtraDataObject(booking = {}) {
+    const raw = booking.extraData !== undefined && booking.extraData !== null && booking.extraData !== ''
+        ? booking.extraData
+        : (booking.extra_data || {});
+    if (!raw) return {};
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+function bookingDetailWorkspaceComments(booking = {}) {
+    const extra = bookingDetailExtraDataObject(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const comments = workspace?.comments || {};
+    return comments && typeof comments === 'object' && !Array.isArray(comments) ? comments : {};
+}
+
+function bookingDetailCleanComment(value, maxLength = 2000) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text ? text.slice(0, maxLength) : '';
+}
+
+function bookingDetailWorkspaceComment(booking = {}, type = 'internal') {
+    if (!['kitchen', 'activity', 'internal'].includes(type)) return '';
+    return bookingDetailCleanComment(bookingDetailWorkspaceComments(booking)[type]);
+}
+
+function bookingDetailLegacyComment(booking = {}) {
+    return bookingDetailCleanComment(booking.notes);
 }
 
 function bookingDetailPackagePositionCount(booking = {}) {
@@ -8156,6 +8206,83 @@ function renderBanquetActivitiesSection(activityMembers = []) {
     return renderBanquetWorkSection('Активності', rows, 'activities');
 }
 
+function uniqueBanquetCommentSources(entries = []) {
+    const result = [];
+    const seen = new Set();
+    entries.forEach(entry => {
+        const booking = entry?.booking || entry;
+        if (!booking) return;
+        const id = bookingDetailId(booking);
+        const key = id || `${entry?.role || 'manual'}:${result.length}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        result.push({
+            booking,
+            role: String(entry?.role || 'manual').trim().toLowerCase()
+        });
+    });
+    return result;
+}
+
+function fullBanquetDetailCommentItems({ anchorBooking = {}, primaryMembers = [], kitchenMembers = [], activityMembers = [], serviceManualMembers = [], members = [] } = {}) {
+    const items = [];
+    const seenTexts = new Set();
+    const add = (type, label, text, booking) => {
+        const clean = bookingDetailCleanComment(text);
+        if (!clean) return;
+        const key = clean.toLowerCase();
+        if (seenTexts.has(key)) return;
+        seenTexts.add(key);
+        items.push({
+            type,
+            label,
+            text: clean,
+            bookingId: bookingDetailId(booking)
+        });
+    };
+    const anchorRole = bookingDetailIsKitchenCandidate(anchorBooking) ? 'kitchen' : 'internal';
+    const sources = uniqueBanquetCommentSources([
+        ...kitchenMembers.map(member => ({ booking: member.booking || member, role: 'kitchen' })),
+        ...activityMembers.map(member => ({ booking: member.booking || member, role: 'activity' })),
+        ...primaryMembers.map(member => ({ booking: member.booking || member, role: 'primary' })),
+        ...serviceManualMembers.map(member => ({ booking: member.booking || member, role: member.role || 'manual' })),
+        ...members.map(member => ({ booking: member.booking || member, role: member.isPrimary ? 'primary' : member.role })),
+        { booking: anchorBooking, role: anchorRole }
+    ]);
+
+    sources.forEach(({ booking, role }) => {
+        const text = role === 'kitchen'
+            ? (bookingDetailWorkspaceComment(booking, 'kitchen') || bookingDetailLegacyComment(booking))
+            : bookingDetailWorkspaceComment(booking, 'kitchen');
+        add('kitchen', 'Кухня', text, booking);
+    });
+    sources.forEach(({ booking, role }) => {
+        const text = role === 'activity'
+            ? (bookingDetailWorkspaceComment(booking, 'activity') || bookingDetailLegacyComment(booking))
+            : bookingDetailWorkspaceComment(booking, 'activity');
+        add('activity', `Активність — ${bookingDetailActivityCommentTitle(booking)}`, text, booking);
+    });
+    sources.forEach(({ booking, role }) => {
+        const text = bookingDetailWorkspaceComment(booking, 'internal')
+            || (role === 'kitchen' || role === 'activity' ? '' : bookingDetailLegacyComment(booking));
+        add('internal', 'Внутрішній коментар', text, booking);
+    });
+
+    return items;
+}
+
+function renderFullBanquetCommentsSection(context = {}) {
+    const comments = fullBanquetDetailCommentItems(context);
+    if (!comments.length) return '';
+    const rows = comments.map(comment => `
+        <div class="booking-banquet-comment-row booking-banquet-comment-row--${escapeHtml(comment.type)}">
+            <strong>${escapeHtml(comment.label)}</strong>
+            <span>${escapeHtml(comment.text)}</span>
+        </div>
+    `).join('');
+    return renderBanquetWorkSection('Примітки', `<div class="booking-banquet-comments">${rows}</div>`, 'comments');
+}
+
 function renderBanquetWarningsSection(warnings = []) {
     const rows = (warnings || [])
         .filter(Boolean)
@@ -8350,6 +8477,7 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
             ${renderBanquetWorkSection('Банкет', primaryBody, 'summary')}
             ${renderBanquetMenuSection(packageBooking)}
             ${renderBanquetServiceSection(packageBooking, serviceManualMembers)}
+            ${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}
             ${renderBanquetActivitiesSection(activityMembers)}
             ${renderBanquetWarningsSection(warnings)}
             ${renderBanquetTechnicalSection({

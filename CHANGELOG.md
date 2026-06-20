@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.82 - Banquet Sheet Content Cleanup
+
+### Banquet inspector / Banquet sheet / Notes / Activity starts / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Banquet inspector показує примітки** - у room timeline inspector додано секцію `Примітки` для кухні, активностей, внутрішнього коментаря і legacy `bookings.notes` fallback без порожніх рядків.
+- **Під `Видача` додано `Початок активностей`** - менеджер бачить старт активностей у форматі `12:00 - Бульб(30)` без дублювання нижнього списку активностей.
+- **User-facing `Вижимка` замінено на `Банкетний лист`** - назву оновлено в inspector action, booking detail action, сторінці preview, printable document title, copy/toast/error текстах.
+- **Банкетний лист отримав canonical comments section** - `summary.comments` збирає kitchen/activity/internal comments із `extra_data.bookingWorkspace.comments.*` і legacy `notes`, а copy text також містить `Примітки`.
+- **Full banquet detail block тепер не розходиться з inspector** - через `Деталі` видно ті самі примітки з правильними labels `Кухня`, `Активність — ...`, `Внутрішній коментар`.
+- **Schema/API/deploy config не змінювались** - зміни обмежені frontend render, summary service contract і regression tests; міграцій та env/config змін немає.
+- **Regression guardrails оновлено** - targeted tests, UI smoke і `npm test` фіксують новий naming, notes sections, activity starts і print-safe comments layout.
+- **Релізні маркери піднято до `0.76.82`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.81 - Booking Detail Copy Cleanup
 
 ### Booking detail modal / Kitchen title cleanup / Banquet sheet label / Regression tests / (Клешня, 20.06.2026) [codex]

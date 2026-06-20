@@ -1527,6 +1527,12 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
                     { id: 'setup-1', type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' },
                     { id: 'drinks-1', type: 'drinks', title: 'Напої', time: '15:45' }
                 ]
+            },
+            bookingWorkspace: {
+                comments: {
+                    kitchen: 'Підготувати дитячий стіл',
+                    internal: 'Перевірити оплату перед листом'
+                }
             }
         }
     };
@@ -1552,7 +1558,8 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
                     room: 'Марвел',
                     label: 'АН(60)',
                     status: 'confirmed',
-                    price: 1500
+                    price: 1500,
+                    notes: 'Попросити аніматора прийти раніше'
                 }
             },
             {
@@ -1583,6 +1590,14 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.equal(document.querySelectorAll('.booking-banquet-section--service .booking-banquet-service-row--checklist').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /12:00\s*·\s*Підготувати кімнату/);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /15:45\s*·\s*Напої/);
+    const commentsSection = document.querySelector('.booking-banquet-section--comments');
+    assert.ok(commentsSection, 'full banquet detail renders comments section');
+    assert.match(commentsSection?.textContent || '', /Кухня/);
+    assert.match(commentsSection?.textContent || '', /Підготувати дитячий стіл/);
+    assert.match(commentsSection?.textContent || '', /Активність\s*—\s*АН\(60\)/);
+    assert.match(commentsSection?.textContent || '', /Попросити аніматора прийти раніше/);
+    assert.match(commentsSection?.textContent || '', /Внутрішній коментар/);
+    assert.match(commentsSection?.textContent || '', /Перевірити оплату перед листом/);
     assert.equal(document.querySelectorAll('.booking-banquet-section--activities .booking-banquet-member--activity').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--activities')?.textContent || '', /АН\(60\)/);
     assert.match(document.querySelector('.booking-banquet-section--activities')?.textContent || '', /Бульбашкове шоу/);

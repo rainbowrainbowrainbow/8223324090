@@ -91,6 +91,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.success, true);
     assert.equal(summary.schemaVersion, BANQUET_SUMMARY_SCHEMA_VERSION);
     assert.equal(summary.bookingId, 'BK-SUMMARY');
+    assert.equal(summary.document.title, 'БАНКЕТНИЙ ЛИСТ');
     assert.equal(summary.document.generatedBy, 'Manager Name');
     assert.equal(summary.event.manager, 'manager');
     assert.equal(summary.venue.name, 'Розважальний центр "Парк Закревського Періоду"');
@@ -122,6 +123,77 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
+});
+
+test('banquet summary exposes canonical comments from workspace and legacy notes', () => {
+    const primary = {
+        id: 'BK-COMMENTS-PRIMARY',
+        business_context: 'event_genix',
+        date: '2099-08-12',
+        time: '12:00',
+        room: 'Марвел',
+        program_name: 'Свято',
+        price: 2500,
+        extra_data: {
+            banquetDeposit: { amount: 500 },
+            bookingWorkspace: {
+                comments: {
+                    internal: 'Передзвонити клієнту перед друком листа'
+                }
+            }
+        }
+    };
+    const kitchen = {
+        id: 'BK-COMMENTS-KITCHEN',
+        business_context: 'event_genix',
+        program_code: 'KITCHEN',
+        label: 'Кухня',
+        price: 900,
+        notes: 'legacy kitchen duplicate',
+        extra_data: {
+            bookingPackage: {
+                positionsSubtotal: 900,
+                menuPositions: [
+                    { productId: 'pizza', title: 'Pizza', quantity: 3, unitPrice: 300, subtotal: 900 }
+                ]
+            },
+            bookingWorkspace: {
+                comments: {
+                    kitchen: 'Підготувати дитячий стіл'
+                }
+            }
+        }
+    };
+    const activity = {
+        id: 'BK-COMMENTS-ACTIVITY',
+        business_context: 'event_genix',
+        program_name: 'Аквагрим',
+        price: 700,
+        notes: 'Попросити майстра прийти на 10 хв раніше'
+    };
+
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: primary,
+        resolvedGroup: {
+            source: 'banquet_group',
+            groupId: 'BQ-COMMENTS',
+            group: { id: 'BQ-COMMENTS', primaryBookingId: primary.id },
+            members: [
+                { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary },
+                { bookingId: kitchen.id, role: 'kitchen', isKitchenCandidate: true, booking: kitchen },
+                { bookingId: activity.id, role: 'activity', booking: activity }
+            ]
+        }
+    });
+
+    assert.deepEqual(summary.comments, [
+        { type: 'kitchen', label: 'Кухня', text: 'Підготувати дитячий стіл', bookingId: 'BK-COMMENTS-KITCHEN' },
+        { type: 'activity', label: 'Активність — Аквагрим', text: 'Попросити майстра прийти на 10 хв раніше', bookingId: 'BK-COMMENTS-ACTIVITY' },
+        { type: 'internal', label: 'Внутрішній коментар', text: 'Передзвонити клієнту перед друком листа', bookingId: 'BK-COMMENTS-PRIMARY' }
+    ]);
+    assert.equal(summary.orderRows.some(row => row.type === 'menu' && row.title === 'Pizza'), true);
+    assert.equal(summary.totals.orderTotal, 4100);
 });
 
 test('banquet terms renderer builds standard terms from price rules', () => {
@@ -373,6 +445,9 @@ test('banquet summary keeps kitchen-only customer identity out of order rows', (
     assert.equal(summary.orderRows.some(row => row.title === 'Живий тест форми'), false);
     assert.equal(summary.orderRows[0].type, 'menu');
     assert.deepEqual(summary.orderRows.map(row => row.title), ['Мʼясне плато', 'Ковбаски гриль', 'Паста зі шпинатом']);
+    assert.deepEqual(summary.comments, [
+        { type: 'kitchen', label: 'Кухня', text: 'тест примітка', bookingId: 'BK-2026-0489' }
+    ]);
 });
 
 test('banquet summary treats legacy banquet_guests as children fallback without duplicate guests', () => {

@@ -1032,6 +1032,91 @@ function timelineBanquetActivityPreviewItems(activityBookings = []) {
     })).filter(item => item.title);
 }
 
+function timelineBanquetBookingActivityTitle(booking = {}) {
+    return String(booking?.label || booking?.programName || booking?.program_name || booking?.programCode || booking?.program_code || 'Активність').trim();
+}
+
+function timelineBanquetCleanComment(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text ? text.slice(0, 500) : '';
+}
+
+function timelineBanquetWorkspaceComments(booking = {}) {
+    const extra = timelineExtraData(booking);
+    const workspace = extra?.bookingWorkspace || extra?.booking_workspace || {};
+    const comments = workspace?.comments || {};
+    return comments && typeof comments === 'object' ? comments : {};
+}
+
+function timelineBanquetCommentSources(summary = {}) {
+    const sources = [];
+    const seen = new Set();
+    const add = (booking, role = 'manual') => {
+        const id = String(booking?.id || booking?.bookingId || '').trim();
+        const key = id || `${role}:${sources.length}`;
+        if (!booking || seen.has(key)) return;
+        seen.add(key);
+        sources.push({ booking, role: String(role || 'manual').trim().toLowerCase() });
+    };
+
+    (summary.kitchenBookings || []).forEach(booking => add(booking, 'kitchen'));
+    (summary.activityBookings || []).forEach(booking => add(booking, 'activity'));
+    add(summary.primaryBooking, 'primary');
+    (summary.snapshot?.members || []).forEach(member => add(member?.booking, member?.isPrimary ? 'primary' : member?.role));
+    (summary.allBookings || []).forEach(booking => add(booking, 'manual'));
+
+    return sources;
+}
+
+function timelineBanquetCommentItems(summary = {}) {
+    const result = [];
+    const seenComments = new Set();
+    const addComment = (label, value) => {
+        const text = timelineBanquetCleanComment(value);
+        if (!text) return;
+        const key = text.toLocaleLowerCase('uk-UA');
+        if (seenComments.has(key)) return;
+        seenComments.add(key);
+        result.push({ label, text });
+    };
+
+    timelineBanquetCommentSources(summary).forEach(({ booking, role }) => {
+        const comments = timelineBanquetWorkspaceComments(booking);
+        const kitchenComment = timelineBanquetCleanComment(comments.kitchen);
+        const activityComment = timelineBanquetCleanComment(comments.activity);
+        const internalComment = timelineBanquetCleanComment(comments.internal);
+        const legacyComment = timelineBanquetCleanComment(booking?.notes);
+
+        if (kitchenComment) {
+            addComment('Кухня', kitchenComment);
+        }
+        if (activityComment) {
+            addComment(`Активність — ${timelineBanquetBookingActivityTitle(booking)}`, activityComment);
+        }
+        if (internalComment) {
+            addComment('Внутрішній коментар', internalComment);
+        }
+        if (!kitchenComment && !activityComment && !internalComment && legacyComment) {
+            if (role === 'kitchen' || role === 'service' || timelineBanquetBookingHasMenu(booking) || timelineBanquetServiceEvents(booking).length > 0) {
+                addComment('Кухня', legacyComment);
+            } else if (role === 'activity') {
+                addComment(`Активність — ${timelineBanquetBookingActivityTitle(booking)}`, legacyComment);
+            } else {
+                addComment('Внутрішній коментар', legacyComment);
+            }
+        }
+    });
+
+    return result;
+}
+
+function timelineBanquetActivityStartsText(summary = {}) {
+    const items = (summary.activityPreviewItems || [])
+        .filter(item => item?.time)
+        .map(item => `${item.time} — ${item.title || 'Активність'}`);
+    return items.join(' · ');
+}
+
 function normalizeTimelineBanquetServingTime(value) {
     const raw = String(value || '').trim();
     const match = raw.match(/^(\d{1,2}):(\d{2})/);
@@ -1136,6 +1221,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
     const date = snapshot?.group?.date || firstTimelineBanquetValue(sourceForCounts, booking => booking.date);
     const time = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.time);
     const duration = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.duration);
+    const activityPreviewItems = timelineBanquetActivityPreviewItems(activityBookings);
     return {
         snapshot,
         groupId: timelineBanquetSnapshotGroupId(snapshot),
@@ -1148,7 +1234,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         menuCount,
         activityCount: activityBookings.length,
         menuPreviewItems: timelineBanquetMenuPreviewItems(kitchenBookings),
-        activityPreviewItems: timelineBanquetActivityPreviewItems(activityBookings),
+        activityPreviewItems,
         summaryAvailable: true,
         customerName: firstTimelineBanquetValue(sourceForCounts, booking => booking.customerName || booking.customer_name || booking.groupName || booking.group_name),
         room: snapshot?.group?.room || firstTimelineBanquetValue(sourceForCounts, booking => booking.room),
@@ -1611,6 +1697,28 @@ function timelineBanquetActivityPreviewHtml(summary = {}) {
     return `<ul class="timeline-banquet-inspector-list timeline-banquet-inspector-activities">${rows}${more}</ul>`;
 }
 
+function timelineBanquetCommentsHtml(summary = {}) {
+    const allItems = timelineBanquetCommentItems(summary);
+    if (!allItems.length) return '';
+    const items = allItems.slice(0, 6);
+    const hiddenCount = Math.max(0, allItems.length - items.length);
+    const rows = items.map(item => `
+        <li>
+            <small class="timeline-banquet-inspector-note-label">${escapeHtml(item.label)}</small>
+            <span class="timeline-banquet-inspector-note-text">${escapeHtml(item.text)}</span>
+        </li>
+    `).join('');
+    const more = hiddenCount
+        ? `<li><span class="timeline-banquet-inspector-note-text">Ще приміток: ${escapeHtml(String(hiddenCount))}</span></li>`
+        : '';
+    return `
+        <div class="timeline-banquet-inspector-section timeline-banquet-inspector-section--notes">
+            <div class="timeline-banquet-inspector-subtitle">Примітки</div>
+            <ul class="timeline-banquet-inspector-list timeline-banquet-inspector-notes">${rows}${more}</ul>
+        </div>
+    `;
+}
+
 function showTimelineBanquetInspector(event, summary, trigger) {
     if (!summary) return;
     if (typeof hideTooltip === 'function') hideTooltip();
@@ -1625,6 +1733,8 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         .join(' · ');
     const menuLabel = `${summary.menuCount || 0} ${timelineBanquetPlural(summary.menuCount, 'позиція', 'позиції', 'позицій')}`;
     const activityLabel = `${summary.activityCount || 0} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`;
+    const activityStartsText = timelineBanquetActivityStartsText(summary);
+    const commentsHtml = timelineBanquetCommentsHtml(summary);
     inspector.innerHTML = `
         <div class="timeline-banquet-inspector-head">
             <div>
@@ -1642,9 +1752,11 @@ function showTimelineBanquetInspector(event, summary, trigger) {
                 <span>Дорослі</span><strong>${escapeHtml(String(summary.banquetAdults || '—'))}</strong>
                 <span>Меню</span><strong>${escapeHtml(menuLabel)}</strong>
                 <span>Видача</span><strong>${escapeHtml(servingText || '—')}</strong>
+                ${activityStartsText ? `<span>Початок активностей</span><strong>${escapeHtml(activityStartsText)}</strong>` : ''}
                 <span>Активності</span><strong>${escapeHtml(activityLabel)}</strong>
             </div>
             ${warnings}
+            ${commentsHtml}
             <div class="timeline-banquet-inspector-section">
                 <div class="timeline-banquet-inspector-subtitle">Меню</div>
                 ${timelineBanquetMenuPreviewHtml(summary)}
@@ -1656,7 +1768,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         </div>
         <div class="timeline-banquet-inspector-actions">
             <button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-details>Деталі</button>
-            <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Вижимка</a>
+            <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Банкетний лист</a>
         </div>
     `;
     inspector.querySelector('[data-banquet-inspector-close]')?.addEventListener('click', clickEvent => {

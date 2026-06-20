@@ -365,6 +365,33 @@ body.booking-summary-page {
     font-weight: 950;
 }
 
+.summary-comments {
+    display: grid;
+    gap: 5px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+.summary-comment-row {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 6px 12px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--summary-border);
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+.summary-comment-row strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.summary-comment-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .summary-terms ul {
     margin: 0;
     padding-left: 18px;
@@ -622,6 +649,20 @@ body.booking-summary-page {
         line-height: 1.32;
     }
 
+    .summary-comments {
+        gap: 3px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .summary-comment-row {
+        grid-template-columns: 130px minmax(0, 1fr);
+        gap: 3px 8px;
+        padding-bottom: 3px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
     .summary-finance-lines {
         gap: 2px;
     }
@@ -637,7 +678,9 @@ body.booking-summary-page {
     .summary-doc-header,
     .summary-brief,
     .summary-finance-lines,
+    .summary-comments,
     .summary-terms,
+    .summary-section--comments,
     .summary-section--finance,
     .summary-section--terms {
         break-inside: avoid;
@@ -657,6 +700,7 @@ body.booking-summary-page {
     .summary-order-table th,
     .summary-order-table td,
     .summary-terms li,
+    .summary-comment-row,
     .summary-service-event {
         break-inside: avoid;
         page-break-inside: avoid;

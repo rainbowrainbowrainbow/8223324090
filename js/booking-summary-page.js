@@ -142,6 +142,15 @@
         return explicit.length ? explicit : fromRows;
     }
 
+    function summaryCommentRows(summary) {
+        return (Array.isArray(summary?.comments) ? summary.comments : [])
+            .map(comment => ({
+                label: comment?.label || 'Примітка',
+                text: comment?.text || ''
+            }))
+            .filter(comment => comment.text);
+    }
+
     function summaryServingTime(row = {}) {
         const meta = row.meta || {};
         return meta.servingTime || meta.time || null;
@@ -201,6 +210,21 @@
                         </div>
                     `;
                 }).join('')}
+            </div>
+        `;
+    }
+
+    function renderComments(summary) {
+        const comments = summaryCommentRows(summary);
+        if (!comments.length) return '';
+        return `
+            <div class="summary-note-block summary-comments">
+                ${comments.map(comment => `
+                    <div class="summary-comment-row">
+                        <strong>${escapeHtml(comment.label)}</strong>
+                        <span>${escapeHtml(comment.text)}</span>
+                    </div>
+                `).join('')}
             </div>
         `;
     }
@@ -269,7 +293,7 @@
                 </div>
             </header>
 
-            <h1 class="summary-title">${escapeHtml(summary.document?.title || 'Вижимка банкету')}</h1>
+            <h1 class="summary-title">${escapeHtml(summary.document?.title || 'БАНКЕТНИЙ ЛИСТ')}</h1>
 
             <section class="summary-brief" aria-label="Коротка інформація по банкету">
                 <div class="summary-brief-grid">
@@ -302,6 +326,13 @@
                 </section>
             ` : ''}
 
+            ${summaryCommentRows(summary).length ? `
+                <section class="summary-section summary-section--comments">
+                    <h2>Примітки</h2>
+                    ${renderComments(summary)}
+                </section>
+            ` : ''}
+
             <section class="summary-section summary-section--finance">
                 <h2>Суми і завдаток</h2>
                 ${renderTotals(summary)}
@@ -324,10 +355,11 @@
         const currency = totals.currency || 'UAH';
         const rows = summaryOrderRows(summary);
         const serviceEvents = summaryServiceEventRows(summary);
+        const comments = summaryCommentRows(summary);
         const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : [];
 
         return [
-            summary.venue?.name || 'Вижимка банкету',
+            summary.venue?.name || 'Банкетний лист',
             `Booking ID: ${summary.bookingId || '—'}`,
             '',
             `Дата/час: ${formatDate(event.date)} ${formatValue(event.time)}`,
@@ -355,6 +387,11 @@
                     const note = orderRowComment(row);
                     return `${index + 1}. ${row.title || 'Подія'} — ${formatValue(meta.time || meta.servingTime)}${note ? ` (${note})` : ''}`;
                 })
+            ] : []),
+            ...(comments.length ? [
+                '',
+                'Примітки:',
+                ...comments.map(comment => `- ${comment.label}: ${comment.text}`)
             ] : []),
             '',
             `Сума замовлення: ${formatMoney(totals.orderTotal, currency)}`,
@@ -399,7 +436,7 @@
 
         const token = storedToken();
         if (!token) {
-            setState('Потрібно увійти в CRM, щоб відкрити вижимку.', 'error');
+            setState('Потрібно увійти в CRM, щоб відкрити банкетний лист.', 'error');
             return;
         }
 
@@ -411,7 +448,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data.success === false) {
-            setState(data.error || `Не вдалося завантажити вижимку (${response.status}).`, 'error');
+            setState(data.error || `Не вдалося завантажити банкетний лист (${response.status}).`, 'error');
             return;
         }
 
@@ -427,12 +464,12 @@
         });
         el('bookingSummaryCopy')?.addEventListener('click', async () => {
             if (!currentSummary) {
-                showToast('Вижимка ще не завантажена');
+                showToast('Банкетний лист ще не завантажений');
                 return;
             }
             try {
                 await copyText(summaryText(currentSummary));
-                showToast('Текст вижимки скопійовано');
+                showToast('Текст банкетного листа скопійовано');
             } catch {
                 showToast('Не вдалося скопіювати текст');
             }
@@ -443,7 +480,7 @@
         bindActions();
         loadSummary().catch(err => {
             console.error('[booking-summary] load failed', err);
-            setState('Не вдалося завантажити вижимку.', 'error');
+            setState('Не вдалося завантажити банкетний лист.', 'error');
         });
     });
 })();

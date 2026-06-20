@@ -1611,6 +1611,10 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
     margin-top: 14px;
 }
 
+.timeline-banquet-inspector-section--notes {
+    margin-top: 12px;
+}
+
 .timeline-banquet-inspector-subtitle {
     margin-bottom: 7px;
     color: #E2E8F0;
@@ -1648,6 +1652,24 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
     color: #CBD5E1;
     font-size: 10px;
     font-weight: 700;
+}
+
+.timeline-banquet-inspector-notes li {
+    border-color: rgba(94, 234, 212, 0.16);
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.timeline-banquet-inspector-note-label {
+    color: #5EEAD4 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+}
+
+.timeline-banquet-inspector-note-text {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
 }
 
 .timeline-banquet-inspector-empty {
@@ -2230,6 +2252,38 @@ body.dark-mode .booking-banquet-unlink-btn {
     white-space: nowrap;
 }
 
+.booking-banquet-comments {
+    display: grid;
+    gap: 8px;
+}
+
+.booking-banquet-comment-row {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 6px 12px;
+    padding: 9px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: var(--gray-50);
+}
+
+.booking-banquet-comment-row strong {
+    min-width: 0;
+    color: var(--primary-dark);
+    font-size: 12px;
+    font-weight: 950;
+    overflow-wrap: anywhere;
+}
+
+.booking-banquet-comment-row span {
+    min-width: 0;
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
 .booking-banquet-technical {
     border: 1px dashed var(--gray-200);
     border-radius: 12px;
@@ -2334,10 +2388,12 @@ html[data-theme="dark"] .booking-banquet-empty,
 html[data-theme="dark"] .booking-banquet-children,
 html[data-theme="dark"] .booking-banquet-summary-note,
 html[data-theme="dark"] .booking-banquet-service-row,
+html[data-theme="dark"] .booking-banquet-comment-row,
 body.dark-mode .booking-banquet-empty,
 body.dark-mode .booking-banquet-children,
 body.dark-mode .booking-banquet-summary-note,
-body.dark-mode .booking-banquet-service-row {
+body.dark-mode .booking-banquet-service-row,
+body.dark-mode .booking-banquet-comment-row {
     background: var(--gray-50);
 }
 
@@ -2367,6 +2423,7 @@ body.dark-mode .booking-banquet-candidate-role {
     }
 
     .booking-banquet-service-row,
+    .booking-banquet-comment-row,
     .booking-banquet-technical-row,
     .booking-banquet-technical-meta-row {
         align-items: stretch;

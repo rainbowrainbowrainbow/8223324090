@@ -20,6 +20,58 @@ function toQuantity(value) {
     return Math.round(n * 100) / 100;
 }
 
+const MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+
+function formatMenuQuantityNumber(value) {
+    const quantity = toQuantity(value);
+    return Number.isInteger(quantity) ? String(quantity) : String(quantity).replace('.', ',');
+}
+
+function menuPortionWord(value) {
+    const quantity = toQuantity(value);
+    if (!Number.isInteger(quantity)) return 'порції';
+    const absolute = Math.abs(quantity);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (lastTwo >= 11 && lastTwo <= 14) return 'порцій';
+    if (last === 1) return 'порція';
+    if (last >= 2 && last <= 4) return 'порції';
+    return 'порцій';
+}
+
+function normalizeMenuServingUnitDisplay(value) {
+    const text = cleanText(value, 80);
+    if (!text) return '';
+    return text
+        .replace(/\s+/g, ' ')
+        .replace(/^(\d+(?:[,.]\d+)?)\s*(кг|г|гр|мг|л|мл)$/iu, '$1 $2')
+        .trim();
+}
+
+function isPortionServingUnit(value) {
+    const unit = normalizeMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+    return !unit || MENU_PORTION_UNITS.has(unit);
+}
+
+function isPackServingUnit(value) {
+    return /^\d+(?:[,.]\d+)?\s*(кг|г|гр|мг|л|мл)$/iu.test(normalizeMenuServingUnitDisplay(value));
+}
+
+function formatMenuQuantityWithServingUnit(quantity, servingUnit) {
+    const quantityLabel = formatMenuQuantityNumber(quantity);
+    const unit = normalizeMenuServingUnitDisplay(servingUnit);
+    if (isPortionServingUnit(unit)) return `${quantityLabel} ${menuPortionWord(quantity)}`;
+    if (isPackServingUnit(unit)) return `${quantityLabel} ${menuPortionWord(quantity)} по ${unit}`;
+    return `${quantityLabel} ${unit}`.trim();
+}
+
+function formatMenuPositionQuantity(item = {}) {
+    return formatMenuQuantityWithServingUnit(
+        item.quantity ?? item.qty,
+        item.servingUnit || item.serving_unit || item.priceUnit || item.price_unit
+    );
+}
+
 function stableLineId(raw, index) {
     return cleanText(raw?.id || raw?.lineId || raw?.uid, 80) || `item-${index + 1}`;
 }
@@ -117,10 +169,9 @@ function buildLegacyBanquetMenu(positions, fallback = null) {
     if (!rows.length) return cleanText(fallback, 2000);
     return rows
         .map(item => {
-            const qty = item.quantity % 1 === 0 ? String(item.quantity) : String(item.quantity).replace('.', ',');
-            const price = item.unitPrice ? ` x ${item.unitPrice} грн` : '';
+            const price = item.unitPrice ? ` × ${item.unitPrice} грн` : '';
             const note = item.note ? ` (${item.note})` : '';
-            return `${item.title} - ${qty}${item.servingUnit ? ` ${item.servingUnit}` : ''}${price}${note}`;
+            return `${item.title} - ${formatMenuPositionQuantity(item)}${price}${note}`;
         })
         .join('\n');
 }
@@ -221,6 +272,9 @@ module.exports = {
     normalizeMenuPosition,
     normalizeMenuPositions,
     menuPositionsSubtotal,
+    normalizeMenuServingUnitDisplay,
+    formatMenuQuantityWithServingUnit,
+    formatMenuPositionQuantity,
     normalizeServiceEvent,
     normalizeServiceEvents,
     buildLegacyBanquetMenu,

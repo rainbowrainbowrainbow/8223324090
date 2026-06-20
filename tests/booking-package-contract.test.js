@@ -10,6 +10,9 @@ const {
     normalizeMenuPositions,
     normalizeServiceEvents,
     menuPositionsSubtotal,
+    normalizeMenuServingUnitDisplay,
+    formatMenuQuantityWithServingUnit,
+    formatMenuPositionQuantity,
     buildLegacyBanquetMenu,
     applyBookingPackage,
     bookingPackageAudit
@@ -120,7 +123,7 @@ function createBookingMenuCatalogHarness() {
                     name: 'Cake',
                     price: 120,
                     menuSection: 'Торти',
-                    servingUnit: 'шт',
+                    servingUnit: '100г',
                     sortOrder: 3,
                     isActive: true
                 }
@@ -218,10 +221,13 @@ function createBookingMenuCatalogHarness() {
 
 function createBanquetModalDetailHarness() {
     const bookingJs = read('js', 'booking.js');
+    const quantityHelperStart = bookingJs.indexOf('const BOOKING_MENU_PORTION_UNITS');
+    const quantityHelperEnd = bookingJs.indexOf('function isBookingMenuCatalogProduct');
     const packageStart = bookingJs.indexOf('function bookingServingTimeLabel(');
     const packageEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail(');
     const banquetStart = bookingJs.indexOf('function bookingDetailId(');
     const banquetEnd = bookingJs.indexOf('function renderEducationLessonDetail(');
+    assert.ok(quantityHelperStart >= 0 && quantityHelperEnd > quantityHelperStart, 'booking menu quantity helper slice exists');
     assert.ok(packageStart >= 0 && packageEnd > packageStart, 'booking package detail render slice exists');
     assert.ok(banquetStart >= 0 && banquetEnd > banquetStart, 'banquet modal detail render slice exists');
 
@@ -256,7 +262,7 @@ function createBanquetModalDetailHarness() {
         isViewer: () => true
     };
     vm.createContext(context);
-    vm.runInContext(`${bookingJs.slice(packageStart, packageEnd)}\n${bookingJs.slice(banquetStart, banquetEnd)}`, context, { filename: 'js/booking.js' });
+    vm.runInContext(`${bookingJs.slice(quantityHelperStart, quantityHelperEnd)}\n${bookingJs.slice(packageStart, packageEnd)}\n${bookingJs.slice(banquetStart, banquetEnd)}`, context, { filename: 'js/booking.js' });
     return context;
 }
 
@@ -332,9 +338,31 @@ test('booking package normalizes menu positions with price and subtotal', () => 
     assert.equal(positions[0].servingBatchId, 'wave-1');
     assert.equal(positions[1].servingTime, null);
     assert.equal(menuPositionsSubtotal(positions), 1210);
-    assert.match(buildLegacyBanquetMenu(positions), /Піца - 3 x 250 грн/);
-    assert.match(buildLegacyBanquetMenu(positions), /Сік - 2 x 80 грн \(яблуко\)/);
-    assert.match(buildLegacyBanquetMenu(positions), /Cake - 2,5 x 120 .* \(no nuts\)/);
+    assert.match(buildLegacyBanquetMenu(positions), /Піца - 3 порції × 250 грн/);
+    assert.match(buildLegacyBanquetMenu(positions), /Сік - 2 порції × 80 грн \(яблуко\)/);
+    assert.match(buildLegacyBanquetMenu(positions), /Cake - 2,5 порції × 120 .* \(no nuts\)/);
+});
+
+test('booking package quantity display separates portion count from packed serving unit', () => {
+    const cake = { productId: 'cake_custom', title: 'Нутелла', quantity: 5, servingUnit: '100г', unitPrice: 90, subtotal: 450 };
+    const normalized = normalizeMenuPositions([cake])[0];
+
+    assert.equal(normalizeMenuServingUnitDisplay('100г'), '100 г');
+    assert.equal(normalizeMenuServingUnitDisplay('0.5кг'), '0.5 кг');
+    assert.equal(formatMenuPositionQuantity(cake), '5 порцій по 100 г');
+    assert.equal(formatMenuQuantityWithServingUnit(5, '100 г'), '5 порцій по 100 г');
+    assert.equal(formatMenuQuantityWithServingUnit(5, '0.5кг'), '5 порцій по 0.5 кг');
+    assert.equal(formatMenuQuantityWithServingUnit(3, 'порція'), '3 порції');
+    assert.equal(formatMenuQuantityWithServingUnit(1, ''), '1 порція');
+    assert.equal(formatMenuQuantityWithServingUnit(2.5, ''), '2,5 порції');
+    assert.equal(formatMenuQuantityWithServingUnit(5, 'шт'), '5 шт');
+    assert.equal(normalized.quantity, 5);
+    assert.equal(normalized.servingUnit, '100г');
+    assert.equal(normalized.unitPrice, 90);
+    assert.equal(normalized.subtotal, 450);
+    assert.doesNotMatch(formatMenuPositionQuantity(cake), /5 100г|5 100 г/);
+    assert.match(buildLegacyBanquetMenu([cake]), /Нутелла - 5 порцій по 100 г × 90 грн/);
+    assert.doesNotMatch(buildLegacyBanquetMenu([cake]), /5 100г|5 100 г|5 100г x 90/);
 });
 
 test('booking package normalizes banquet service events without schema changes', () => {
@@ -356,6 +384,51 @@ test('booking package normalizes banquet service events without schema changes',
     assert.equal(events[2].type, 'custom');
     assert.equal(events[2].title, 'Custom reminder');
     assert.equal(events[2].durationMinutes, 15);
+});
+
+test('booking frontend quantity display helper matches menu package wording contract', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const cake = { quantity: 5, servingUnit: '100г', unitPrice: 90, subtotal: 450 };
+
+    assert.equal(ctx.normalizeBookingMenuServingUnitDisplay('100г'), '100 г');
+    assert.equal(ctx.normalizeBookingMenuServingUnitDisplay('0.5кг'), '0.5 кг');
+    assert.equal(ctx.formatBookingMenuPositionQuantity(cake), '5 порцій по 100 г');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(5, '100 г'), '5 порцій по 100 г');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(3, 'порція'), '3 порції');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(1, ''), '1 порція');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(2.5, ''), '2,5 порції');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(5, 'шт'), '5 шт');
+    assert.doesNotMatch(ctx.formatBookingMenuPositionQuantity(cake), /5 100г|5 100 г/);
+});
+
+test('booking form menu position rows use clear quantity wording', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+
+    ctx.setBookingMenuPositions([{
+        title: 'Нутелла',
+        quantity: 5,
+        servingUnit: '100г',
+        unitPrice: 90,
+        subtotal: 450,
+        kitchenType: 'cake',
+        note: 'без горіхів'
+    }]);
+    const cakeText = doc.getElementById('bookingMenuPositionsList').textContent;
+    assert.match(cakeText, /5 порцій по 100 г × 90 грн = 450 грн/);
+    assert.match(doc.getElementById('banquetMenu').value, /Нутелла - 5 порцій по 100 г × 90 грн \(без горіхів\)/);
+    assert.doesNotMatch(cakeText, /5 100г|5 100 г|5 100г x 90/);
+
+    ctx.setBookingMenuPositions([{
+        title: 'Бургер дитячий',
+        quantity: 3,
+        servingUnit: 'порція',
+        unitPrice: 260,
+        subtotal: 780,
+        kitchenType: 'menu'
+    }]);
+    const menuText = doc.getElementById('bookingMenuPositionsList').textContent;
+    assert.match(menuText, /3 порції × 260 грн = 780 грн/);
 });
 
 test('booking menu catalog inline edits keep menuPositions, legacy text, and reset state in sync', async () => {
@@ -398,6 +471,10 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-cart-item/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-thumb--cart/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /120 грн\s*\/\s*100 г/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /1 порція по 100 г/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').textContent, /100г/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartList').textContent, /100г|1 100 г/);
     assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogSummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
@@ -413,6 +490,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     ctx.commitBookingMenuCatalogInlineInput(quantityInput);
     assert.equal(ctx.getBookingMenuPositions()[0].quantity, 2.5);
     assert.equal(ctx.getBookingMenuPositions()[0].subtotal, 300);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /2,5 порції по 100 г/);
 
     ctx.setBookingMenuCatalogEditing('cake_custom', 'price');
     const priceInput = doc.querySelector('[data-menu-catalog-price-input="cake_custom"]');
@@ -428,7 +506,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     noteInput.value = 'без горіхів';
     ctx.commitBookingMenuCatalogInlineInput(noteInput);
     assert.equal(ctx.getBookingMenuPositions()[0].note, 'без горіхів');
-    assert.match(doc.getElementById('banquetMenu').value, /Cake - 2,5 шт x 140 грн \(без горіхів\)/);
+    assert.match(doc.getElementById('banquetMenu').value, /Cake - 2,5 порції по 100 г × 140 грн \(без горіхів\)/);
     assert.equal(ctx.BookingForm._dirty, true);
 
     ctx.setBookingMenuCatalogInsight('cake_custom', 'allergens');
@@ -695,7 +773,7 @@ test('booking menu catalog restores saved quantity, manual price, and note when 
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /95/);
     assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /подати о 16:30/);
-    assert.match(doc.getElementById('banquetMenu').value, /Сік яблучний - 2,5 л x 95 грн \(подати о 16:30\)/);
+    assert.match(doc.getElementById('banquetMenu').value, /Сік яблучний - 2,5 л × 95 грн \(подати о 16:30\)/);
 });
 
 test('booking menu catalog reloads products when the timeline cache cannot provide kitchen positions', async () => {
@@ -783,7 +861,7 @@ test('booking package persists final total into booking price and extraData', ()
     assert.equal(booking.extraData.bookingPackage.menuPositions[0].servingTime, '15:30');
     assert.equal(booking.extraData.bookingPackage.serviceEvents[0].type, 'cake');
     assert.equal(booking.extraData.bookingPackage.serviceEvents[0].time, '16:40');
-    assert.match(booking.banquetMenu, /Піца - 2 x 300 грн/);
+    assert.match(booking.banquetMenu, /Піца - 2 порції × 300 грн/);
 });
 
 test('booking package audit records client and commercial package changes', () => {

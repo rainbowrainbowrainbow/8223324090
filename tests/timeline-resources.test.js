@@ -192,10 +192,7 @@ function createTimelineBanquetMarkerScenario(bookingPackage, options = {}) {
         hasMenu: true,
         menuCount: (bookingPackage.menuPositions || []).length,
         activityCount: 0,
-        menuPreviewItems: (bookingPackage.menuPositions || []).map(item => ({
-            title: item.title,
-            servingTime: item.servingTime
-        })),
+        menuPreviewItems: ctx.timelineBanquetMenuPreviewItems([kitchenBooking]),
         warnings: []
     };
     const servingInfo = ctx.timelineBanquetServingInfo(summary);
@@ -1693,6 +1690,43 @@ test('room timeline renders multiple menu serving markers inside the room grid',
     assert.equal(layout.hasGridOperationalLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
     assert.equal(layout.hasLineOperationalLaneClass, true);
+});
+
+test('room timeline banquet inspector and service markers use clear menu quantity wording', () => {
+    const { ctx, inspectorSummary, markers } = renderTimelineBanquetRoomGridMarkers({
+        menuPositions: [
+            {
+                id: 'cake-nutella',
+                title: 'Нутелла',
+                quantity: 5,
+                servingUnit: '100г',
+                unitPrice: 90,
+                subtotal: 450,
+                servingTime: '14:30',
+                servingNote: 'без горіхів'
+            },
+            {
+                id: 'burger-child',
+                title: 'Бургер дитячий',
+                quantity: 3,
+                servingUnit: 'порція',
+                unitPrice: 260,
+                subtotal: 780,
+                servingTime: '16:30'
+            }
+        ],
+        serviceEvents: []
+    });
+
+    const inspectorHtml = ctx.timelineBanquetMenuPreviewHtml(inspectorSummary);
+    assert.match(inspectorHtml, /5 порцій по 100 г/);
+    assert.match(inspectorHtml, /3 порції/);
+    assert.match(inspectorHtml, /без горіхів/);
+    assert.doesNotMatch(inspectorHtml, /× 5|5 100г|5 100 г|x5/);
+
+    assert.match(markers[0].titleAttr, /Нутелла 5 порцій по 100 г без горіхів/);
+    assert.match(markers[1].titleAttr, /Бургер дитячий 3 порції/);
+    assert.doesNotMatch(markers.map(marker => marker.titleAttr).join('\n'), /x5|5 100г|5 100 г/);
 });
 
 test('room timeline renders room_setup service event as a separate room-grid marker', () => {

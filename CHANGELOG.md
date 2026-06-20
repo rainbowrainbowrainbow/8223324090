@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.87 - Kitchen Menu Quantity Wording
+
+### Kitchen menu / Quantity wording / Banquet sheet / Timeline inspector / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Кількість тортів і вагових позицій більше не виглядає як `5 100г`** - CRM показує зрозумілий текст `5 порцій по 100 г`, щоб менеджер не сприймав це як 5 кг 100 г.
+- **Форма бронювання показує коректний розрахунок** - рядки меню тепер рендеряться як `5 порцій по 100 г × 90 грн = 450 грн`, а звичайні позиції як `3 порції × 260 грн = 780 грн`.
+- **Kitchen catalog і selected cart не склеюють кількість з одиницею** - ціна показує нормалізований unit `90 грн / 100 г`, а cart описує вибір як `по 100 г` або `5 порцій по 100 г`.
+- **Banquet inspector і service markers отримали той самий wording** - preview меню та timeline markers більше не показують `x5` або `5 100г` для тортів/вагових позицій.
+- **Банкетний лист і copy text використовують єдиний contract** - таблиця `К-сть` і copied text показують `5 порцій по 100 г × 90 ₴ = 450 ₴`, без raw `UAH` у видимому тексті.
+- **Totals і saved data не змінювались** - `quantity`, `servingUnit`, `unitPrice`, `subtotal`, `bookingPackage`, API payload і DB/schema лишилися без змін.
+- **Regression guardrails посилено** - targeted tests і UI smoke забороняють повернення `5 100г`, `5 100 г`, `5 100г x 90` у формі, legacy text, inspector і банкетному листі.
+- **Релізні маркери піднято до `0.76.87`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.86 - Kitchen Catalog Total Layout
 
 ### Kitchen catalog / Total layout / UI cleanup / Regression tests / (Клешня, 20.06.2026) [codex]

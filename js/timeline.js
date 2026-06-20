@@ -1000,6 +1000,54 @@ function timelineBanquetMenuItemTitle(item = {}, index = 0) {
     ).trim();
 }
 
+const TIMELINE_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+
+function timelineMenuQuantityNumber(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace('.', ',');
+}
+
+function timelineMenuPortionWord(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    if (!Number.isInteger(rounded)) return 'порції';
+    const absolute = Math.abs(rounded);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (lastTwo >= 11 && lastTwo <= 14) return 'порцій';
+    if (last === 1) return 'порція';
+    if (last >= 2 && last <= 4) return 'порції';
+    return 'порцій';
+}
+
+function normalizeTimelineMenuServingUnitDisplay(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.replace(/^(\d+(?:[,.]\d+)?)\s*(кг|г|гр|мг|л|мл)$/iu, '$1 $2');
+}
+
+function isTimelineMenuPortionServingUnit(value) {
+    const unit = normalizeTimelineMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+    return !unit || TIMELINE_MENU_PORTION_UNITS.has(unit);
+}
+
+function isTimelineMenuPackServingUnit(value) {
+    return /^\d+(?:[,.]\d+)?\s*(кг|г|гр|мг|л|мл)$/iu.test(normalizeTimelineMenuServingUnitDisplay(value));
+}
+
+function timelineMenuQuantityLabel(item = {}) {
+    const quantity = Number(item?.quantity || item?.qty || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return '';
+    const unit = normalizeTimelineMenuServingUnitDisplay(
+        item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit
+    );
+    const quantityLabel = timelineMenuQuantityNumber(quantity);
+    if (isTimelineMenuPortionServingUnit(unit)) return `${quantityLabel} ${timelineMenuPortionWord(quantity)}`;
+    if (isTimelineMenuPackServingUnit(unit)) return `${quantityLabel} ${timelineMenuPortionWord(quantity)} по ${unit}`;
+    return `${quantityLabel} ${unit}`.trim();
+}
+
 function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
     const items = [];
     const noteText = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -1018,6 +1066,8 @@ function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
                 items.push({
                     title: fallbackTitle,
                     quantity: null,
+                    servingUnit: null,
+                    unitPrice: null,
                     servingTime: '',
                     note: null
                 });
@@ -1026,9 +1076,12 @@ function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
         }
         positions.forEach((item, index) => {
             const quantity = Number(item?.quantity || item?.qty || 0);
+            const unitPrice = Number(item?.unitPrice ?? item?.unit_price ?? item?.price);
             items.push({
                 title: timelineBanquetMenuItemTitle(item, index),
                 quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+                servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null,
+                unitPrice: Number.isFinite(unitPrice) && unitPrice >= 0 ? unitPrice : null,
                 servingTime: normalizeTimelineBanquetServingTime(item?.servingTime || item?.serving_time),
                 note: noteParts(item)
             });
@@ -1300,10 +1353,13 @@ function timelineBanquetServingInfo(summary = {}) {
             };
             if (bookingOwnerName && !group.createdBy) group.createdBy = bookingOwnerName;
             const quantity = Number(item?.quantity || item?.qty || 0);
+            const unitPrice = Number(item?.unitPrice ?? item?.unit_price ?? item?.price);
             group.count += 1;
             group.items.push({
                 title,
                 quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+                servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null,
+                unitPrice: Number.isFinite(unitPrice) && unitPrice >= 0 ? unitPrice : null,
                 note: item?.servingNote || item?.serving_note || item?.note || null
             });
             servingGroups.set(servingTime, group);
@@ -1686,7 +1742,7 @@ function timelineBanquetMenuPreviewHtml(summary = {}) {
     const hiddenCount = Math.max(0, allItems.length - items.length);
     const rows = items.map(item => {
         const meta = [
-            item.quantity ? `× ${item.quantity}` : '',
+            timelineMenuQuantityLabel(item),
             item.servingTime ? `Видача ${item.servingTime}` : 'Без часу'
         ].filter(Boolean).join(' · ');
         const note = String(item.note || '').trim();
@@ -1966,7 +2022,7 @@ function clearTimelineRoomServiceMarkers(lineGrid = null, groupId = '') {
 function timelineRoomServiceMarkerDetail(marker = {}) {
     const items = Array.isArray(marker.items) ? marker.items : [];
     const itemText = items
-        .map(item => [item?.title, item?.quantity ? `x${item.quantity}` : '', item?.note].filter(Boolean).join(' '))
+        .map(item => [item?.title, timelineMenuQuantityLabel(item), item?.note].filter(Boolean).join(' '))
         .filter(Boolean)
         .slice(0, 3);
     return [timelineBanquetMarkerLabel(marker), ...itemText].filter(Boolean).join('\n');

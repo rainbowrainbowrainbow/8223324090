@@ -68,15 +68,71 @@
         });
     }
 
+    function formatCurrencyLabel(currency = 'UAH') {
+        const normalized = String(currency || 'UAH').trim();
+        return normalized.toUpperCase() === 'UAH' ? '₴' : normalized;
+    }
+
     function formatMoney(value, currency = 'UAH') {
         const n = Number(value);
         if (!Number.isFinite(n)) return '—';
-        return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n)} ${currency}`;
+        return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n)} ${formatCurrencyLabel(currency)}`;
     }
 
     function formatValue(value) {
         if (value === undefined || value === null || value === '') return '—';
         return String(value);
+    }
+
+    const SUMMARY_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+
+    function summaryMenuQuantityNumber(value) {
+        const number = Number(String(value ?? '').replace(',', '.'));
+        if (!Number.isFinite(number) || number <= 0) return '';
+        return Number.isInteger(number)
+            ? String(number)
+            : new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(number);
+    }
+
+    function summaryMenuPortionWord(value) {
+        const number = Number(String(value ?? '').replace(',', '.'));
+        const absolute = Math.abs(number);
+        const integer = Math.floor(absolute);
+        if (!Number.isInteger(number)) return 'порції';
+        const mod10 = integer % 10;
+        const mod100 = integer % 100;
+        if (mod10 === 1 && mod100 !== 11) return 'порція';
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'порції';
+        return 'порцій';
+    }
+
+    function normalizeSummaryMenuServingUnitDisplay(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        return raw
+            .replace(/\s+/g, ' ')
+            .replace(/^(\d+(?:[.,]\d+)?)\s*(г|гр|гр\.|грам|грами|грамів)$/i, '$1 г')
+            .replace(/^(\d+(?:[.,]\d+)?)\s*(кг|kg)$/i, '$1 кг');
+    }
+
+    function isSummaryMenuPortionServingUnit(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return !normalized || SUMMARY_MENU_PORTION_UNITS.has(normalized);
+    }
+
+    function isSummaryMenuPackServingUnit(value) {
+        return /^\d+(?:[.,]\d+)?\s*(г|гр|гр\.|грам|грами|грамів|кг|kg)$/i.test(String(value || '').trim());
+    }
+
+    function summaryMenuQuantityLabel(row = {}) {
+        const meta = row.meta || {};
+        const quantity = summaryMenuQuantityNumber(row.quantity);
+        if (!quantity) return formatValue(row.quantity);
+        const rawUnit = meta.servingUnit || row.servingUnit || row.serving_unit || meta.priceUnit || row.priceUnit || row.price_unit || '';
+        if (isSummaryMenuPortionServingUnit(rawUnit)) return `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
+        const unit = normalizeSummaryMenuServingUnitDisplay(rawUnit);
+        if (isSummaryMenuPackServingUnit(rawUnit) && unit) return `${quantity} ${summaryMenuPortionWord(row.quantity)} по ${unit}`;
+        return unit ? `${quantity} ${unit}` : `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
     }
 
     function briefItem(label, value) {
@@ -166,7 +222,7 @@
                 <colgroup>
                     <col style="width:42px">
                     <col>
-                    <col style="width:72px">
+                    <col style="width:118px">
                     <col style="width:112px">
                     <col style="width:170px">
                 </colgroup>
@@ -184,7 +240,7 @@
                         <tr>
                             <td class="num">${index + 1}</td>
                             <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
-                            <td class="qty">${escapeHtml(formatValue(row.quantity))}</td>
+                            <td class="qty">${escapeHtml(summaryMenuQuantityLabel(row))}</td>
                             <td class="serving">${escapeHtml(formatValue(summaryServingTime(row)))}</td>
                             <td>${escapeHtml(formatValue(orderRowComment(row)))}</td>
                         </tr>
@@ -377,7 +433,8 @@
             ...(rows.length ? rows.map((row, index) => {
                 const comment = orderRowComment(row);
                 const servingTime = summaryServingTime(row);
-                return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${formatValue(row.quantity)} x ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
+                const quantityLabel = summaryMenuQuantityLabel(row);
+                return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${quantityLabel} × ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
             }) : ['Позиції відсутні']),
             ...(serviceEvents.length ? [
                 '',

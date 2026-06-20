@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 
 const {
     BANQUET_SUMMARY_SCHEMA_VERSION,
@@ -11,6 +15,8 @@ const {
     bookingNeedsBanquetTermsSnapshot,
     snapshotBanquetTermsForBooking
 } = require('../services/banquetTerms');
+
+const ROOT = path.resolve(__dirname, '..');
 
 function standardBanquetTermsPriceRules(overrides = {}) {
     const omitted = new Set(overrides.omit || []);
@@ -61,7 +67,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
                     positionsSubtotal: 1200,
                     finalTotal: 3700,
                     menuPositions: [
-                        { productId: 'pizza', title: 'Піца', quantity: 2, unitPrice: 300, subtotal: 600, note: 'без грибів', servingTime: '16:30', servingBatchId: 'serve-1630' },
+                        { productId: 'pizza', title: 'Піца', quantity: 2, servingUnit: '100г', unitPrice: 300, subtotal: 600, note: 'без грибів', servingTime: '16:30', servingBatchId: 'serve-1630' },
                         { productId: 'juice', title: 'Сік', quantity: 3, unitPrice: 200, subtotal: 600 }
                     ],
                     serviceEvents: [
@@ -106,6 +112,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.orderRows[1].type, 'activity');
     assert.equal(summary.orderRows[2].type, 'menu');
     assert.equal(summary.orderRows[2].meta.servingTime, '16:30');
+    assert.equal(summary.orderRows[2].meta.servingUnit, '100г');
     assert.equal(summary.orderRows[4].type, 'service_event');
     assert.equal(summary.orderRows[4].meta.time, '17:10');
     assert.equal(summary.serviceEvents.length, 1);
@@ -194,6 +201,125 @@ test('banquet summary exposes canonical comments from workspace and legacy notes
     ]);
     assert.equal(summary.orderRows.some(row => row.type === 'menu' && row.title === 'Pizza'), true);
     assert.equal(summary.totals.orderTotal, 4100);
+});
+
+test('banquet sheet renderer and copy text use clear menu quantity wording', async () => {
+    const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
+    const dom = new JSDOM(`<!doctype html><html><body>
+        <a id="bookingSummaryBack"></a>
+        <button id="bookingSummaryCopy" type="button"></button>
+        <button id="bookingSummaryPrint" type="button"></button>
+        <div id="bookingSummaryState"></div>
+        <div id="bookingSummaryWarnings"></div>
+        <div id="bookingSummaryPrintRoot">
+            <article id="bookingSummaryDocument"></article>
+        </div>
+        <div id="bookingSummaryToast"></div>
+    </body></html>`, {
+        url: 'http://localhost:3000/booking-summary.html?id=BK-QTY&businessContext=event_genix',
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const summary = {
+        success: true,
+        bookingId: 'BK-QTY',
+        venue: { name: 'Банкетний лист' },
+        document: { title: 'БАНКЕТНИЙ ЛИСТ' },
+        event: {
+            date: '2026-06-23',
+            time: '12:30',
+            room: 'Майнкрафт',
+            createdAt: '2026-06-20T10:00:00.000Z',
+            manager: 'Manager'
+        },
+        customer: { name: 'Банкети Юрія', phone: '+380501112233' },
+        celebrant: {},
+        counts: { children: 12, adults: 2 },
+        orderRows: [
+            {
+                type: 'menu',
+                title: 'Нутелла',
+                quantity: 5,
+                unitPrice: 90,
+                subtotal: 450,
+                meta: { servingUnit: '100г', servingTime: '14:30' }
+            },
+            {
+                type: 'menu',
+                title: 'Бургер',
+                quantity: 3,
+                unitPrice: 260,
+                subtotal: 780,
+                meta: { servingUnit: 'порція', servingTime: '16:30' }
+            },
+            {
+                type: 'menu',
+                title: 'Свічка',
+                quantity: 1,
+                unitPrice: 30,
+                subtotal: 30,
+                meta: { servingUnit: 'порція', servingTime: '16:35' }
+            },
+            {
+                type: 'menu',
+                title: 'Лимонад',
+                quantity: 2.5,
+                unitPrice: 95,
+                subtotal: 237.5,
+                meta: { servingUnit: 'л', servingTime: '16:40' }
+            }
+        ],
+        serviceEvents: [],
+        comments: [],
+        totals: {
+            currency: 'UAH',
+            orderTotal: 1497.5,
+            bookingPrice: 1497.5,
+            programBasePrice: 0,
+            menuSubtotal: 1497.5,
+            activitySubtotal: 0
+        },
+        deposit: { amount: 0, paymentMethod: null },
+        terms: { items: [] },
+        warnings: []
+    };
+    let copiedText = '';
+    window.localStorage.setItem('pzp_token', 'test-token');
+    window.fetch = async () => ({
+        ok: true,
+        json: async () => summary
+    });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    Object.defineProperty(window.navigator, 'clipboard', {
+        value: {
+            writeText: async text => {
+                copiedText = text;
+            }
+        },
+        configurable: true
+    });
+    vm.runInContext(pageCode, dom.getInternalVMContext(), { filename: 'js/booking-summary-page.js' });
+
+    window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const tableText = window.document.getElementById('bookingSummaryDocument').textContent;
+    assert.match(tableText, /5 порцій по 100 г/);
+    assert.match(tableText, /3 порції/);
+    assert.match(tableText, /1 порція/);
+    assert.match(tableText, /2,5 л/);
+    assert.doesNotMatch(tableText, /5 100г|5 100 г|5 100г x 90/);
+
+    window.document.getElementById('bookingSummaryCopy').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.match(copiedText, /Нутелла — 14:30 — 5 порцій по 100 г × 90 ₴ = 450 ₴/);
+    assert.match(copiedText, /Бургер — 16:30 — 3 порції × 260 ₴ = 780 ₴/);
+    assert.match(copiedText, /Свічка — 16:35 — 1 порція × 30 ₴ = 30 ₴/);
+    assert.match(copiedText, /Лимонад — 16:40 — 2,5 л × 95 ₴ = 237,5 ₴/);
+    assert.doesNotMatch(copiedText, /5 100г|5 100 г|5 100г x 90/);
 });
 
 test('banquet terms renderer builds standard terms from price rules', () => {

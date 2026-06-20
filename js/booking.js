@@ -1877,6 +1877,57 @@ function toBookingMoney(value) {
     return Math.round(n * 100) / 100;
 }
 
+const BOOKING_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+
+function formatBookingMenuQuantityNumber(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace('.', ',');
+}
+
+function bookingMenuPortionWord(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    if (!Number.isInteger(rounded)) return 'порції';
+    const absolute = Math.abs(rounded);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (lastTwo >= 11 && lastTwo <= 14) return 'порцій';
+    if (last === 1) return 'порція';
+    if (last >= 2 && last <= 4) return 'порції';
+    return 'порцій';
+}
+
+function normalizeBookingMenuServingUnitDisplay(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.replace(/^(\d+(?:[,.]\d+)?)\s*(кг|г|гр|мг|л|мл)$/iu, '$1 $2');
+}
+
+function isBookingMenuPortionServingUnit(value) {
+    const unit = normalizeBookingMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+    return !unit || BOOKING_MENU_PORTION_UNITS.has(unit);
+}
+
+function isBookingMenuPackServingUnit(value) {
+    return /^\d+(?:[,.]\d+)?\s*(кг|г|гр|мг|л|мл)$/iu.test(normalizeBookingMenuServingUnitDisplay(value));
+}
+
+function formatBookingMenuQuantityWithServingUnit(quantity, servingUnit) {
+    const quantityLabel = formatBookingMenuQuantityNumber(quantity);
+    const unit = normalizeBookingMenuServingUnitDisplay(servingUnit);
+    if (isBookingMenuPortionServingUnit(unit)) return `${quantityLabel} ${bookingMenuPortionWord(quantity)}`;
+    if (isBookingMenuPackServingUnit(unit)) return `${quantityLabel} ${bookingMenuPortionWord(quantity)} по ${unit}`;
+    return `${quantityLabel} ${unit}`.trim();
+}
+
+function formatBookingMenuPositionQuantity(item = {}) {
+    return formatBookingMenuQuantityWithServingUnit(
+        item.quantity ?? item.qty,
+        item.servingUnit || item.serving_unit || item.priceUnit || item.price_unit
+    );
+}
+
 function isBookingMenuCatalogProduct(product = {}) {
     const type = bookingKitchenType(product);
     const isKitchenMenu = product.domain === 'kitchen' && (type === 'menu' || type === 'cake');
@@ -2086,11 +2137,9 @@ function bookingMenuPositionsSubtotal(positions = getBookingMenuPositions()) {
 
 function bookingMenuPositionsToLegacyText(positions = getBookingMenuPositions()) {
     return positions.map(item => {
-        const qty = Number(item.quantity) % 1 === 0 ? String(item.quantity) : String(item.quantity).replace('.', ',');
-        const unit = item.servingUnit ? ` ${item.servingUnit}` : '';
-        const price = item.unitPrice ? ` x ${item.unitPrice} грн` : '';
+        const price = item.unitPrice ? ` × ${item.unitPrice} грн` : '';
         const note = item.note ? ` (${item.note})` : '';
-        return `${item.title} - ${qty}${unit}${price}${note}`;
+        return `${item.title} - ${formatBookingMenuPositionQuantity(item)}${price}${note}`;
     }).join('\n');
 }
 
@@ -3396,7 +3445,7 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
         const typeLabel = bookingKitchenTypeLabel(bookingKitchenType(product));
         const groupLabel = bookingMenuCatalogProductGroupLabel(product, filter, selectedIds.has(String(product.id || '')));
         const section = product.menuSection ? String(product.menuSection) : '';
-        const unit = product.servingUnit || product.priceUnit || '';
+        const unit = normalizeBookingMenuServingUnitDisplay(product.servingUnit || product.priceUnit || '');
         if (groupLabel !== currentGroup) {
             currentGroup = groupLabel;
             rows.push(`<div class="booking-menu-catalog-group-heading">${escapeHtml(groupLabel)}</div>`);
@@ -3467,6 +3516,7 @@ function renderBookingMenuCatalogCart() {
         const quantity = Number(item.quantity || 1);
         const unitPrice = toBookingMoney(item.unitPrice || 0);
         const note = item.note || '';
+        const cartQuantityLabel = formatBookingMenuPositionQuantity(item);
         const quantityControl = productId && isBookingMenuCatalogEditing(productId, 'quantity')
             ? `<input class="booking-menu-catalog-inline-input booking-menu-catalog-qty-input" type="number" min="0.1" step="0.1" value="${escapeHtml(String(quantity))}" data-menu-catalog-quantity-input="${escapeHtml(productId)}" aria-label="Кількість ${escapeHtml(title)}">`
             : productId
@@ -3486,7 +3536,7 @@ function renderBookingMenuCatalogCart() {
                     ${bookingMenuCatalogVisualHtml(product || item, title, 'booking-menu-catalog-thumb--cart')}
                     <div class="booking-menu-catalog-cart-title">
                         <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
-                        <small>${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}${item.servingUnit ? ` · ${escapeHtml(item.servingUnit)}` : ''}</small>
+                        <small>${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}${cartQuantityLabel ? ` · ${escapeHtml(cartQuantityLabel)}` : ''}</small>
                     </div>
                     <button type="button" class="booking-menu-catalog-remove" ${productId ? `data-menu-catalog-remove="${escapeHtml(productId)}"` : `data-menu-catalog-remove-index="${index}"`} aria-label="Видалити ${escapeHtml(title)}">×</button>
                 </div>
@@ -3629,7 +3679,7 @@ function renderBookingMenuPositions(options = {}) {
                 <div class="booking-menu-position-row" data-menu-index="${index}">
                     <div>
                         <div class="booking-menu-position-title"><span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}</div>
-                        <div class="booking-menu-position-meta">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''} x ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</div>
+                        <div class="booking-menu-position-meta">${escapeHtml(formatBookingMenuPositionQuantity(item))} × ${escapeHtml(formatPrice(item.unitPrice))} = ${escapeHtml(formatPrice(item.subtotal))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</div>
                     </div>
                     <label class="booking-menu-serving-picker">
                         <input type="checkbox" data-menu-serving-selected="${index}" aria-label="Вибрати позицію для групового часу">
@@ -4088,7 +4138,7 @@ function renderBookingPackageMenuRows(positions = []) {
                         <span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}
                         ${item.note || item.servingNote ? `<small>${item.note ? escapeHtml(item.note) : ''}${item.note && item.servingNote ? ' · ' : ''}${item.servingNote ? escapeHtml(item.servingNote) : ''}</small>` : ''}
                     </div>
-                    <span role="cell">${escapeHtml(String(item.quantity))}${item.servingUnit ? ` ${escapeHtml(item.servingUnit)}` : ''}</span>
+                    <span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>
                     <span role="cell">${escapeHtml(formatPrice(item.unitPrice || 0))}</span>
                     <strong role="cell">${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
                 </div>

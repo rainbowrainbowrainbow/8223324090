@@ -283,6 +283,10 @@ body.booking-summary-page {
     white-space: nowrap;
 }
 
+.summary-order-table .qty {
+    white-space: normal;
+}
+
 .summary-order-table .name {
     font-weight: 850;
 }

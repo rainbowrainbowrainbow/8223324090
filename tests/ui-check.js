@@ -647,6 +647,20 @@ checkPage('booking-summary.html', (doc, html) => {
         && banquetSummaryServiceCode.includes("add('kitchen', 'Кухня'")
         && banquetSummaryServiceCode.includes("add('activity', `Активність —")
         && banquetSummaryServiceCode.includes("add('internal', 'Внутрішній коментар'"));
+    check('Booking summary sheet uses clear menu quantity wording',
+        pageCode.includes('function summaryMenuQuantityLabel(row = {})')
+        && pageCode.includes('function formatCurrencyLabel(currency = \'UAH\')')
+        && pageCode.includes("return normalized.toUpperCase() === 'UAH' ? '₴' : normalized")
+        && pageCode.includes('function normalizeSummaryMenuServingUnitDisplay')
+        && pageCode.includes('по ${unit}')
+        && pageCode.includes('<col style="width:118px">')
+        && pageCode.includes('<td class="qty">${escapeHtml(summaryMenuQuantityLabel(row))}</td>')
+        && summaryTextBody.includes('const quantityLabel = summaryMenuQuantityLabel(row)')
+        && summaryTextBody.includes('— ${quantityLabel} × ${formatMoney(row.unitPrice, currency)}')
+        && !summaryTextBody.includes('formatValue(row.quantity)} x')
+        && banquetSummaryServiceCode.includes('servingUnit: item.servingUnit || null')
+        && pageCss.includes('.summary-order-table .qty')
+        && pageCss.includes('white-space: normal'));
     check('Booking summary page loads standalone controller and print CSS',
         getHtmlScripts(html).includes('js/booking-summary-page.js')
         && html.includes('css/booking-summary.css')
@@ -1244,6 +1258,11 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('comments.internal')
     && timelineCode.includes('item?.servingNote || item?.serving_note')
     && timelineCode.includes('item?.note || item?.notes')
+    && timelineCode.includes('function timelineMenuQuantityLabel')
+    && timelineCode.includes('servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null')
+    && timelineCode.includes('timelineMenuQuantityLabel(item)')
+    && !timelineCode.includes("item?.quantity ? `x${item.quantity}` : ''")
+    && !timelineCode.includes("item.quantity ? `× ${item.quantity}` : ''")
     && timelineCode.includes('timeline-banquet-inspector-menu-note')
     && timelineCode.includes('Початок активностей')
     && timelineCode.includes('Примітки')
@@ -2652,6 +2671,24 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && timelineConstructorCss.includes('.booking-banquet-service-row--checklist')
     && htmlContains('css/booking-summary.css', '.summary-service-events')
     && htmlContains('css/booking-summary.css', '.summary-order-table .serving'));
+check('Booking menu quantity wording separates portion count from packed serving unit',
+    bookingCode.includes('function normalizeBookingMenuServingUnitDisplay')
+    && bookingCode.includes('function formatBookingMenuQuantityWithServingUnit')
+    && bookingCode.includes('function formatBookingMenuPositionQuantity')
+    && bookingCode.includes('по ${unit}')
+    && bookingCode.includes('formatBookingMenuPositionQuantity(item))} × ${escapeHtml(formatPrice(item.unitPrice))}')
+    && bookingCode.includes('<span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>')
+    && bookingCode.includes('const price = item.unitPrice ? ` × ${item.unitPrice} грн` :')
+    && bookingCode.includes("const unit = normalizeBookingMenuServingUnitDisplay(product.servingUnit || product.priceUnit || '')")
+    && bookingCode.includes('const cartQuantityLabel = formatBookingMenuPositionQuantity(item)')
+    && bookingCode.includes('${cartQuantityLabel ? ` · ${escapeHtml(cartQuantityLabel)}` : \'\'}')
+    && htmlContains('services/bookingPackage.js', 'function normalizeMenuServingUnitDisplay')
+    && htmlContains('services/bookingPackage.js', 'function formatMenuQuantityWithServingUnit')
+    && htmlContains('services/bookingPackage.js', 'function formatMenuPositionQuantity')
+    && htmlContains('services/bookingPackage.js', 'formatMenuPositionQuantity(item)')
+    && htmlContains('services/bookingPackage.js', 'const price = item.unitPrice ? ` × ${item.unitPrice} грн` :')
+    && !bookingCode.includes('${escapeHtml(String(item.quantity))}${item.servingUnit')
+    && !htmlContains('services/bookingPackage.js', '${qty}${item.servingUnit'));
 check('Booking menu serving toolbar wraps responsively inside narrow booking panels',
     bookingCode.includes('data-menu-serving-time')
     && bookingCode.includes('data-menu-serving-apply-selected')

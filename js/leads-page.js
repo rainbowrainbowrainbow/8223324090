@@ -1175,6 +1175,22 @@ function workspaceText(value, fallback = '—') {
     return escapeHtml(value || fallback);
 }
 
+function workspaceBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function workspaceBookingDateTimeText(booking = {}) {
+    const dateText = workspaceDate(booking.date);
+    const timeText = booking.time || '';
+    const arrivalText = workspaceBookingIsBanquet(booking) && timeText ? `Прихід гостей: ${timeText}` : timeText;
+    return [dateText, arrivalText].filter(Boolean).join(' ');
+}
+
 function parseJsonArray(value) {
     if (Array.isArray(value)) return value;
     if (typeof value !== 'string') return [];
@@ -1644,7 +1660,7 @@ function renderLeadWorkspaceContent(workspace) {
                         <div class="workspace-row-top">
                             <div>
                                 <div class="workspace-row-title">${workspaceText(booking.programName || booking.category || `Бронювання ${booking.id}`)}</div>
-                                <div class="workspace-row-meta">${workspaceDate(booking.date)} ${workspaceText(booking.time, '')} · ${workspaceText(booking.status)} · ${workspaceMoney(booking.price)}</div>
+                                <div class="workspace-row-meta">${escapeHtml(workspaceBookingDateTimeText(booking))} · ${workspaceText(booking.status)} · ${workspaceMoney(booking.price)}</div>
                             </div>
                             ${booking.date ? `<a class="workspace-row-link" href="${escapeHtml(timelineHrefForBooking(booking, leadContextFromRecord(lead)))}">Таймлайн</a>` : ''}
                         </div>

@@ -670,7 +670,8 @@ router.get('/clients/:id/bookings', async (req, res) => {
     try {
         const scoped = scopedBookingParams(req.user, [req.params.id]);
         const result = await pool.query(`
-            SELECT b.id, b.date, b.time, b.program_name, b.category, b.duration, b.price, b.status, b.room, b.kids_count
+            SELECT b.id, b.date, b.time, b.program_name, b.category, b.duration, b.price, b.status, b.room, b.kids_count,
+                   b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
             FROM bookings b
             WHERE b.customer_id = $1 AND b.status != 'cancelled'
             ${scoped.sql}
@@ -731,7 +732,8 @@ router.get('/briefing', async (req, res) => {
 
         const [bookingsRes, tasksRes, expiringDiscounts, staffRes] = await Promise.all([
             pool.query(`
-                SELECT b.date, b.time, b.program_name, b.category, b.price, b.status, b.room, b.kids_count, b.customer_id
+                SELECT b.date, b.time, b.program_name, b.category, b.price, b.status, b.room, b.kids_count, b.customer_id,
+                       b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
                 FROM bookings b
                 WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
                 ${bookingsScope.sql}

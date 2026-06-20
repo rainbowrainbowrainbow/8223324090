@@ -357,8 +357,8 @@
                         briefItem('Клієнт', customer.name),
                         briefItem('Телефон', customer.phone),
                         briefItem('Кімната', event.room),
-                        briefItem('Дата', formatDate(event.date)),
-                        briefItem('Час', event.time)
+                        briefItem('Дата банкету', formatDate(event.date)),
+                        briefItem('Прихід гостей', event.time)
                     ])}
                     ${briefColumn([
                         briefItem('Учасники', people),
@@ -418,7 +418,8 @@
             summary.venue?.name || 'Банкетний лист',
             `Booking ID: ${summary.bookingId || '—'}`,
             '',
-            `Дата/час: ${formatDate(event.date)} ${formatValue(event.time)}`,
+            `Дата банкету: ${formatDate(event.date)}`,
+            `Прихід гостей: ${formatValue(event.time)}`,
             `Замовник: ${formatValue(customer.name)}`,
             `Телефон: ${formatValue(customer.phone)}`,
             `Іменинник: ${formatValue(celebrant.name)}`,

@@ -33,6 +33,22 @@ function centerScopedApiUrl(path) {
     return typeof apiUrl === 'function' ? apiUrl(path) : path;
 }
 
+function centerBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function centerBookingDateTimeText(booking = {}) {
+    const dateText = booking.date ? new Date(booking.date).toLocaleDateString('uk-UA') : '';
+    const timeText = booking.time || '';
+    const arrivalText = centerBookingIsBanquet(booking) && timeText ? `Прихід гостей: ${timeText}` : timeText;
+    return [dateText, arrivalText].filter(Boolean).join(' ');
+}
+
 async function apiCenterOverview() {
     try {
         const response = await fetch(`${API_BASE}/center/overview`, { headers: getAuthHeaders(false) });
@@ -1904,10 +1920,10 @@ async function showClientProfile(clientId) {
     if (bookings.length > 0) {
         html += '<div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--gray-600)">Історія бронювань</div>';
         html += bookings.map(b => {
-            const dateStr = b.date ? new Date(b.date).toLocaleDateString('uk-UA') : '';
+            const dateTimeText = centerBookingDateTimeText(b);
             return `
             <div class="client-booking-row">
-                <span class="client-booking-date">${dateStr} ${b.time || ''}</span>
+                <span class="client-booking-date">${escapeHtml(dateTimeText)}</span>
                 <span class="client-booking-program">${escapeHtml(b.program_name)}</span>
                 <span class="client-booking-price">${formatPrice(b.price)}</span>
                 <span class="client-booking-status ${b.status}">${b.status === 'confirmed' ? '✓' : '~'}</span>

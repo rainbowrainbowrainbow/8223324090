@@ -1433,7 +1433,8 @@ router.get('/:id', async (req, res) => {
         const bookingParams = [numId, businessContext];
         const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookings = await pool.query(
-            `SELECT id, date, time, program_name, program_code, label, price, status, room, duration
+            `SELECT id, date, time, program_name, program_code, label, category, price, status, room, duration,
+                    banquet_guests, banquet_adults, banquet_tables, banquet_menu
              FROM bookings b
              WHERE b.customer_id = $1
                AND COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
@@ -1444,8 +1445,10 @@ router.get('/:id', async (req, res) => {
         );
         customer.bookings = bookings.rows.map(b => ({
             id: b.id, date: b.date, time: b.time, programName: b.program_name,
-            programCode: b.program_code, label: b.label, price: b.price,
-            status: b.status, room: b.room, duration: b.duration
+            programCode: b.program_code, label: b.label, category: b.category, price: b.price,
+            status: b.status, room: b.room, duration: b.duration,
+            banquetGuests: b.banquet_guests, banquetAdults: b.banquet_adults,
+            banquetTables: b.banquet_tables, banquetMenu: b.banquet_menu
         }));
 
         try {

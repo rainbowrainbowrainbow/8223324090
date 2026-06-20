@@ -47,6 +47,23 @@ function requestFinanceBusinessContext(req, res) {
     return context;
 }
 
+function financeBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquet_guests || booking.banquetGuests)
+        || Boolean(booking.banquet_adults || booking.banquetAdults)
+        || Boolean(booking.banquet_tables || booking.banquetTables)
+        || Boolean(booking.banquet_menu || booking.banquetMenu);
+}
+
+function financeBookingDateLineHtml(booking = {}) {
+    if (financeBookingIsBanquet(booking)) {
+        return `<p><strong>Дата банкету:</strong> ${_escH(booking.date)}</p>
+<p><strong>Прихід гостей:</strong> ${_escH(booking.time || '')}</p>`;
+    }
+    return `<p><strong>Дата проведення:</strong> ${_escH(booking.date)} о ${_escH(booking.time || '')}</p>`;
+}
+
 function businessScopeSql(alias = '', paramRef = '$1') {
     const column = alias ? `${alias}.business_context` : 'business_context';
     return `COALESCE(${column}, ${BUSINESS_SQL_DEFAULT}) = ${paramRef}`;
@@ -1473,7 +1490,7 @@ th{background:#f8f9fa;font-weight:700}
 <div class="subtitle">${actNumber} від ${actDate}</div>
 <p><strong>Замовник:</strong> ${_escH(b.customer_name) || 'Не вказано'}</p>
 <p><strong>Телефон:</strong> ${_escH(b.customer_phone) || 'Не вказано'}</p>
-<p><strong>Дата проведення:</strong> ${b.date} о ${b.time}</p>
+${financeBookingDateLineHtml(b)}
 <table>
 <thead><tr><th>№</th><th>Послуга</th><th>Тривалість</th><th>Сума, ₴</th></tr></thead>
 <tbody>

@@ -6348,6 +6348,20 @@ const DashboardPage = (() => {
         `;
     }
 
+    function dashboardWidgetBookingIsBanquet(booking = {}) {
+        const category = String(booking.category || '').toLowerCase();
+        return category === 'banquet'
+            || Boolean(booking.banquetGuests || booking.banquet_guests)
+            || Boolean(booking.banquetAdults || booking.banquet_adults)
+            || Boolean(booking.banquetTables || booking.banquet_tables)
+            || Boolean(booking.banquetMenu || booking.banquet_menu);
+    }
+
+    function dashboardWidgetBookingTimeText(booking = {}) {
+        const time = booking.start_time ? String(booking.start_time).substring(0, 5) : '';
+        return dashboardWidgetBookingIsBanquet(booking) && time ? `Прихід гостей: ${time}` : time;
+    }
+
     function renderBookings(data, container) {
         if (!data.bookings || data.bookings.length === 0) {
             container.innerHTML = '<div class="widget-empty">Немає бронювань на сьогодні</div>';
@@ -6355,11 +6369,11 @@ const DashboardPage = (() => {
         }
 
         const items = data.bookings.slice(0, 6).map(b => {
-            const time = b.start_time ? b.start_time.substring(0, 5) : '';
+            const time = dashboardWidgetBookingTimeText(b);
             const statusCls = b.status || 'preliminary';
             const statusLabel = b.status === 'confirmed' ? 'Підтв.' : 'Попер.';
             return `<div class="widget-booking-item">
-                <div class="widget-booking-time">${time}</div>
+                <div class="widget-booking-time">${escapeHtml(time)}</div>
                 <div class="widget-booking-info">
                     <div class="widget-booking-name">${escapeHtml(b.client_name || '')}</div>
                     <div class="widget-booking-program">${escapeHtml(b.program || '')} · ${b.children_count || 0} діт.</div>

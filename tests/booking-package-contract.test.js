@@ -282,9 +282,10 @@ function renderBookingDetailHeaderForTest(context, booking, banquetSnapshot = nu
     const headerScheduleHtml = context.bookingDetailHeaderScheduleSummary(headerPackageBooking);
     const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
         && context.bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const isBanquetArrivalMode = context.bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml);
     const endTime = addMinutesForBookingDetailHeaderTest(booking.time, booking.duration);
     const bookingDetailTimeRange = `${booking.time} - ${endTime}`;
-    const headerTimeMetaHtml = useBanquetHeaderSchedule
+    const headerTimeMetaHtml = useBanquetHeaderSchedule || isBanquetArrivalMode
         ? ''
         : `<span class="booking-detail-meta-item">${context.escapeHtml(bookingDetailTimeRange)}</span>`;
 
@@ -1836,7 +1837,7 @@ test('booking modal banquet root header shows planned schedule instead of techni
     });
     const emptyDocument = new JSDOM(`<main>${emptyHeader}</main>`).window.document;
     assert.equal(emptyDocument.querySelector('.booking-detail-header-schedule'), null);
-    assert.match(emptyDocument.querySelector('.booking-detail-meta')?.textContent || '', /10:00 - 10:30/);
+    assert.equal((emptyDocument.querySelector('.booking-detail-meta')?.textContent || '').includes('10:00 - 10:30'), false);
 });
 
 test('booking modal banquet overview separates work summary from technical metadata', () => {
@@ -1845,6 +1846,14 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.match(bookingJs, /function bookingDetailHasMenuOverview\(/);
     assert.match(bookingJs, /function bookingDetailHasServiceOverview\(/);
     assert.match(bookingJs, /function bookingDetailCanOwnBanquetPackage\(/);
+    assert.match(bookingJs, /function bookingDetailIsBanquetArrivalMode\(/);
+    assert.match(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата банкету' : 'Дата';/);
+    assert.match(bookingJs, /const bookingDetailTimeLabel = isBanquetArrivalMode \? 'Прихід гостей' : 'Час';/);
+    assert.match(bookingJs, /const bookingDetailTimeValue = isBanquetArrivalMode \? \(booking\.time \|\| '-'\) : bookingDetailTimeRange;/);
+    assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailDateLabel\)\}:<\/span>/);
+    assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailTimeLabel\)\}:<\/span>/);
+    assert.doesNotMatch(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата\/час'/);
+    assert.doesNotMatch(bookingJs, /const bookingDetailTimeLabel = isBanquetArrivalMode \? 'Час'/);
     assert.match(bookingJs, /bookingDetailIsRoot\(booking\)[\s\S]*bookingDetailHasMenuOverview\(booking\)[\s\S]*bookingDetailHasServiceOverview\(booking\)/);
     assert.match(bookingJs, /candidates\.find\(booking => booking && bookingDetailCanOwnBanquetPackage\(booking\)\)/);
     assert.match(bookingJs, /if \(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) return '';/);

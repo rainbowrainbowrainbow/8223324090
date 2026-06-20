@@ -1203,6 +1203,11 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /item\?\.note \|\| item\?\.notes/);
     assert.match(timeline, /timeline-banquet-inspector-menu-note/);
     assert.match(timeline, /Початок активностей/);
+    assert.match(timeline, /<span>Прихід гостей<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
+    assert.match(timeline, /\['Прихід гостей', timelineBanquetDateTimeText\(summary\)\]/);
+    assert.match(timeline, /Прихід гостей: \$\{arrivalText\}/);
+    assert.doesNotMatch(timeline, /<span>Дата\/час<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
+    assert.doesNotMatch(timeline, /\['Час', timelineBanquetDateTimeText\(summary\)\]/);
     assert.match(timeline, /Примітки/);
     assert.match(timeline, /Активність —/);
     assert.match(timeline, /Внутрішній коментар/);

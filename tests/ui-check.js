@@ -630,6 +630,13 @@ checkPage('booking-summary.html', (doc, html) => {
     check('Booking summary page renders canonical comments section and copy text',
         pageCode.includes('function summaryCommentRows(summary)')
         && pageCode.includes('function renderComments(summary)')
+        && renderDocumentBody.includes("briefItem('Дата банкету', formatDate(event.date))")
+        && renderDocumentBody.includes("briefItem('Прихід гостей', event.time)")
+        && !renderDocumentBody.includes("briefItem('Дата', formatDate(event.date))")
+        && !renderDocumentBody.includes("briefItem('Час', event.time)")
+        && summaryTextBody.includes('`Дата банкету: ${formatDate(event.date)}`')
+        && summaryTextBody.includes('`Прихід гостей: ${formatValue(event.time)}`')
+        && !summaryTextBody.includes('Дата' + '/час:')
         && renderDocumentBody.includes('summary-section--comments')
         && renderDocumentBody.includes('${renderComments(summary)}')
         && renderDocumentBody.indexOf('summary-section--comments') > renderDocumentBody.indexOf('summary-section--service-events')
@@ -1409,8 +1416,10 @@ check('Room timeline banquet preview uses readable labels instead of single-lett
     && timelineBanquetRoomCardBlock.includes('timelineBanquetPlural(activityCount')
     && timelineBanquetRoomCardBlock.includes("['Кімната'")
     && timelineBanquetRoomCardBlock.includes("['Клієнт'")
-    && timelineBanquetRoomCardBlock.includes("['Час'")
+    && timelineBanquetRoomCardBlock.includes("['Прихід гостей'")
     && timelineBanquetRoomCardBlock.includes("['Сигнали'")
+    && timelineCode.includes('<span>Прихід гостей</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>')
+    && !timelineCode.includes('<span>Дата' + '/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>')
     && timelineCode.includes("label: 'Видача'")
     && timelineCode.includes("'Торт'")
     && timelineCode.includes("data-banquet-inspector-details>Деталі")
@@ -2004,6 +2013,26 @@ check('Center hot leads update canonical pipeline stage', centerCode.includes('J
 const legacyCenterHotLeadFetch = "fetch('/api/leads/" + "hot'";
 check('Center hot leads list uses scoped business API URL', centerCode.includes('function centerScopedApiUrl') && centerCode.includes('CrmBusinessContext?.apiUrl') && centerCode.includes("fetch(centerScopedApiUrl('/api/leads/hot')") && !centerCode.includes(legacyCenterHotLeadFetch));
 check('Center renders freshness and truth strip from overview metadata', centerCode.includes('function renderCenterTruth') && centerCode.includes('generatedAt') && centerCode.includes('confirmedBookings') && centerCode.includes('setInitialLoadingStates'));
+const centerRouteCode = fileText('routes/center.js');
+const leadBookingLinkCode = fileText('services/leadBookingLink.js');
+const telegramTemplatesBanquetCode = fileText('services/templates.js');
+const financeRouteCode = fileText('routes/finance.js');
+check('Mixed booking previews use banquet arrival wording without global time rename',
+    customersCode.includes('function customerBookingDateTimeText')
+    && customersCode.includes('Прихід гостей: ${timeText}')
+    && customersRouteCode.includes('banquet_guests')
+    && leadsCode.includes('function workspaceBookingDateTimeText')
+    && leadsRouteCode.includes('banquetGuests: row.banquet_guests')
+    && centerCode.includes('function centerBookingDateTimeText')
+    && centerRouteCode.includes('b.banquet_guests')
+    && dashboardPageCode.includes('function dashboardWidgetBookingTimeText')
+    && dashboardRouteCode.includes('b.banquet_guests')
+    && leadBookingLinkCode.includes('function bookingLeadDateTimeNotes')
+    && leadBookingLinkCode.includes('Дата банкету')
+    && telegramTemplatesBanquetCode.includes('function bookingScheduleLine')
+    && telegramTemplatesBanquetCode.includes('Прихід гостей')
+    && settingsCode.includes('function settingsBookingScheduleLine')
+    && financeRouteCode.includes('function financeBookingDateLineHtml'));
 check('Center birthdays uses canonical CRM token key', htmlContains('center.html', "localStorage.getItem('pzp_token') || localStorage.getItem('token')"));
 check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
 check('CRM system UI exposes requestId-aware errors and shared state renderers',
@@ -2094,6 +2123,17 @@ function bookingDetailRowHasNoCopyAffordance(source, label) {
     const row = bookingDetailRowBlock(source, label);
     return Boolean(row)
         && !row.includes('booking-detail-row--copyable')
+        && !row.includes('data-copy=')
+        && !row.includes('detail-copy-btn');
+}
+function bookingDetailDynamicLabelRowHasNoCopyAffordance(source, labelExpression) {
+    const labelAt = source.indexOf(`<span class="label">${labelExpression}:</span>`);
+    if (labelAt < 0) return false;
+    const rowStart = source.lastIndexOf('<div class="booking-detail-row', labelAt);
+    const rowEnd = source.indexOf('</div>', labelAt);
+    if (rowStart < 0 || rowEnd < rowStart) return false;
+    const row = source.slice(rowStart, rowEnd + '</div>'.length);
+    return !row.includes('booking-detail-row--copyable')
         && !row.includes('data-copy=')
         && !row.includes('detail-copy-btn');
 }
@@ -2199,8 +2239,11 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-meta')
     && globalModalsCss.includes('.booking-detail-meta-item')
     && !/\.booking-detail-header\s*\{[^}]*linear-gradient\(135deg,\s*var\(--primary\)/.test(globalModalsCss)
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Дата')
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Час')
+    && bookingDetailStandardBlock.includes("const bookingDetailDateLabel = isBanquetArrivalMode ? 'Дата банкету' : 'Дата';")
+    && bookingDetailStandardBlock.includes("const bookingDetailTimeLabel = isBanquetArrivalMode ? 'Прихід гостей' : 'Час';")
+    && bookingDetailStandardBlock.includes("const bookingDetailTimeValue = isBanquetArrivalMode ? (booking.time || '-') : bookingDetailTimeRange;")
+    && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailDateLabel)}')
+    && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailTimeLabel)}')
     && bookingDetailLineRowHasNoCopyAffordance
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ведучих')
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Сума')
@@ -2263,11 +2306,14 @@ check('Booking detail modal switches banquet root header from time range to sche
     bookingCode.includes('function bookingDetailHeaderPackageBooking(')
     && bookingCode.includes('function bookingDetailHeaderIsBanquetScheduleMode(')
     && bookingCode.includes('function bookingDetailHeaderScheduleSummary(')
+    && bookingCode.includes('function bookingDetailIsBanquetArrivalMode(')
     && bookingCode.includes('const headerPackageBooking = bookingDetailHeaderPackageBooking(booking, banquetSnapshot)')
     && bookingCode.includes('const headerScheduleHtml = bookingDetailHeaderScheduleSummary(headerPackageBooking)')
     && bookingCode.includes('const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())')
     && bookingCode.includes('&& bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml)')
+    && bookingCode.includes('const isBanquetArrivalMode = bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml)')
     && bookingCode.includes('const headerTimeMetaHtml = useBanquetHeaderSchedule')
+    && bookingCode.includes('|| isBanquetArrivalMode')
     && bookingCode.includes('bookingDetailTimeRange')
     && bookingCode.includes('${headerTimeMetaHtml}')
     && bookingCode.includes('${useBanquetHeaderSchedule ? headerScheduleHtml : \'\'}')

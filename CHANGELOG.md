@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.89 - Banquet Guest Arrival Wording
+
+### Banquet wording / Timeline preview / Booking detail / Banquet sheet / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Банкетні timeline preview/inspector більше не підписують технічний слот як generic `Дата/час` або `Час`** - основний бізнес-сенс показано як `Прихід гостей`.
+- **Booking detail modal розділяє банкетну дату і прихід гостей** - для банкетів видно `Дата банкету` і `Прихід гостей`, а non-banquet бронювання лишають звичні `Дата` / `Час`.
+- **Банкетний лист і copied text використовують той самий wording** - printable summary та copy text показують `Дата банкету` і `Прихід гостей`, без generic `Дата/час`.
+- **Mixed previews отримали conditional wording** - customer, lead, center, dashboard, finance act і generated Telegram copy показують `Прихід гостей` тільки коли booking надійно визначений як banquet.
+- **Operational service labels збережено** - `Час видачі позицій`, `Видача` і service event times не перейменовані, бо це реальні операційні часи.
+- **Regression guardrails посилено** - focused tests і UI smoke забороняють повернення generic banquet `Дата/час`, `['Час'` у preview-card і втрату `Прихід гостей`.
+- **Релізні маркери піднято до `0.76.89`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.88 - Business Scoped Live Counters
 
 ### Business scope / Live counters / Dashboard / Work queue / Regression tests / (Клешня, 20.06.2026) [codex]

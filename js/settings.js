@@ -669,14 +669,36 @@ function handleTelegramResult(r) {
     }
 }
 
+function settingsBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function settingsBookingScheduleLine(booking = {}, { includeEndTime = false } = {}) {
+    if (settingsBookingIsBanquet(booking)) {
+        return [
+            `🕐 Дата банкету: ${booking.date || ''}`,
+            booking.time ? `🚪 Прихід гостей: ${booking.time}` : null,
+        ].filter(Boolean).join('\n') + '\n';
+    }
+    if (includeEndTime) {
+        const endTime = addMinutesToTime(booking.time, booking.duration);
+        return `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    }
+    return `🕐 ${booking.date} | ${booking.time}\n`;
+}
+
 function notifyBookingCreated(booking) {
     if (booking.status === 'preliminary') return;
 
-    const endTime = addMinutesToTime(booking.time, booking.duration);
     let text = `📌 <b>Нове бронювання</b>\n\n`;
     text += `✅ Підтверджене\n`;
     text += `🎭 ${booking.label}: ${booking.programName}\n`;
-    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += settingsBookingScheduleLine(booking, { includeEndTime: true });
     text += `🏠 ${booking.room}\n`;
     if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
     if (booking.notes) text += `📝 ${booking.notes}\n`;
@@ -687,18 +709,17 @@ function notifyBookingCreated(booking) {
 function notifyBookingDeleted(booking) {
     const text = `🗑 <b>Видалено бронювання</b>\n\n` +
         `🎭 ${booking.label}: ${booking.programName}\n` +
-        `🕐 ${booking.date} | ${booking.time}\n` +
+        settingsBookingScheduleLine(booking) +
         `🏠 ${booking.room}\n` +
         `\n👤 Видалив: ${AppState.currentUser?.username || '?'}`;
     apiTelegramNotify(text).then(handleTelegramResult);
 }
 
 function notifyBookingEdited(booking) {
-    const endTime = addMinutesToTime(booking.time, booking.duration);
     let text = `✏️ <b>Бронювання змінено</b>\n\n`;
     text += `🔖 ${booking.id}\n`;
     text += `🎭 ${booking.label}: ${booking.programName}\n`;
-    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += settingsBookingScheduleLine(booking, { includeEndTime: true });
     text += `🏠 ${booking.room}\n`;
     if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
     if (booking.notes) text += `📝 ${booking.notes}\n`;
@@ -711,7 +732,7 @@ function notifyStatusChanged(booking, newStatus) {
     const statusText = newStatus === 'confirmed' ? 'ПІДТВЕРДЖЕНО' : 'Попереднє';
     const text = `${icon} <b>Статус змінено: ${statusText}</b>\n\n` +
         `🎭 ${booking.label}: ${booking.programName}\n` +
-        `🕐 ${booking.date} | ${booking.time}\n` +
+        settingsBookingScheduleLine(booking) +
         `🏠 ${booking.room}\n` +
         `\n👤 Змінив: ${AppState.currentUser?.username || '?'}`;
     apiTelegramNotify(text).then(handleTelegramResult);

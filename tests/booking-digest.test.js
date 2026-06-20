@@ -306,6 +306,10 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     await new Promise(resolve => setTimeout(resolve, 0));
 
     const tableText = window.document.getElementById('bookingSummaryDocument').textContent;
+    assert.match(tableText, /Дата банкету/);
+    assert.match(tableText, /Прихід гостей/);
+    assert.doesNotMatch(tableText, /Дата\/час/);
+    assert.match(tableText, /12:30/);
     assert.match(tableText, /5 порцій по 100 г/);
     assert.match(tableText, /3 порції/);
     assert.match(tableText, /1 порція/);
@@ -315,6 +319,9 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     window.document.getElementById('bookingSummaryCopy').click();
     await new Promise(resolve => setTimeout(resolve, 0));
 
+    assert.match(copiedText, /Дата банкету: 23\.06\.2026/);
+    assert.match(copiedText, /Прихід гостей: 12:30/);
+    assert.doesNotMatch(copiedText, /Дата\/час/);
     assert.match(copiedText, /Нутелла — 14:30 — 5 порцій по 100 г × 90 ₴ = 450 ₴/);
     assert.match(copiedText, /Бургер — 16:30 — 3 порції × 260 ₴ = 780 ₴/);
     assert.match(copiedText, /Свічка — 16:35 — 1 порція × 30 ₴ = 30 ₴/);

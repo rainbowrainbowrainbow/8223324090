@@ -8131,6 +8131,23 @@ function bookingDetailCanOwnBanquetPackage(booking = {}) {
         && (bookingDetailHasMenuOverview(booking) || bookingDetailHasServiceOverview(booking));
 }
 
+function bookingDetailIsPrimaryBanquetMember(booking = {}, banquetSnapshot = null) {
+    const bookingId = bookingDetailId(booking);
+    if (!bookingId || !Array.isArray(banquetSnapshot?.members)) return false;
+    return banquetSnapshot.members.some(member => {
+        const memberId = String(member.bookingId || member.booking?.id || '').trim();
+        return member.isPrimary && memberId === bookingId;
+    });
+}
+
+function bookingDetailIsBanquetArrivalMode(booking = {}, banquetSnapshot = null, fullBanquetDetailHtml = '') {
+    const category = String(booking.category || '').trim().toLowerCase();
+    if (category === 'banquet') return true;
+    if (bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml)) return true;
+    if (bookingDetailIsPrimaryBanquetMember(booking, banquetSnapshot)) return true;
+    return Boolean(String(fullBanquetDetailHtml || '').trim() && bookingDetailCanOwnBanquetPackage(booking));
+}
+
 function banquetPackageBookingFromMembers(anchorBooking = {}, primaryMembers = [], kitchenMembers = [], members = []) {
     const candidates = [
         ...primaryMembers.map(member => member.booking || member),
@@ -8773,9 +8790,14 @@ async function showBookingDetails(bookingId) {
     const headerScheduleHtml = bookingDetailHeaderScheduleSummary(headerPackageBooking);
     const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
         && bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const isBanquetArrivalMode = bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml);
     const headerTimeMetaHtml = useBanquetHeaderSchedule
+        || isBanquetArrivalMode
         ? ''
         : `<span class="booking-detail-meta-item">${escapeHtml(bookingDetailTimeRange)}</span>`;
+    const bookingDetailDateLabel = isBanquetArrivalMode ? 'Дата банкету' : 'Дата';
+    const bookingDetailTimeLabel = isBanquetArrivalMode ? 'Прихід гостей' : 'Час';
+    const bookingDetailTimeValue = isBanquetArrivalMode ? (booking.time || '-') : bookingDetailTimeRange;
     const customerBlockHtml = booking.customerId
         ? `<div id="bookingCustomerBlock" class="booking-customer-block${hasBanquetOverview ? ' booking-customer-block--priority' : ''}"></div>`
         : '';
@@ -8800,12 +8822,12 @@ async function showBookingDetails(bookingId) {
         </div>
         ${priorityCustomerBlockHtml}
         <div class="booking-detail-row">
-            <span class="label">Дата:</span>
+            <span class="label">${escapeHtml(bookingDetailDateLabel)}:</span>
             <span class="value">${escapeHtml(booking.date)}</span>
         </div>
         <div class="booking-detail-row">
-            <span class="label">Час:</span>
-            <span class="value">${escapeHtml(booking.time)} - ${escapeHtml(endTime)}</span>
+            <span class="label">${escapeHtml(bookingDetailTimeLabel)}:</span>
+            <span class="value">${escapeHtml(bookingDetailTimeValue)}</span>
         </div>
         ${lineDetailHtml}
         ${hostsDetailHtml}

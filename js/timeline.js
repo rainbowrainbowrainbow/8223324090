@@ -1832,7 +1832,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
             <div class="timeline-banquet-inspector-grid">
                 <span>Клієнт</span><strong>${escapeHtml(summary.customerName || 'Не вказано')}</strong>
                 <span>Кімната</span><strong>${escapeHtml(summary.room || 'Не вказано')}</strong>
-                <span>Дата/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>
+                <span>Прихід гостей</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>
                 <span>Діти</span><strong>${escapeHtml(String(summary.kidsCount || '—'))}</strong>
                 <span>Дорослі</span><strong>${escapeHtml(String(summary.banquetAdults || '—'))}</strong>
                 <span>Меню</span><strong>${escapeHtml(menuLabel)}</strong>
@@ -1919,7 +1919,7 @@ function timelineBanquetGlanceRows(summary = {}, signalText = '') {
     return [
         ['Кімната', summary.room || 'Не вказано'],
         ['Клієнт', summary.customerName || 'Не вказано'],
-        ['Час', timelineBanquetDateTimeText(summary)],
+        ['Прихід гостей', timelineBanquetDateTimeText(summary)],
         ['Сигнали', signalText || '—']
     ];
 }
@@ -1952,7 +1952,8 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
         return `<span class="timeline-banquet-room-card-signal timeline-banquet-room-card-signal--${escapeHtml(key)}${markerClass}"${markerAttrs}>${escapeHtml(signal.label)}</span>`;
     }).join('');
     card.className = `timeline-banquet-room-card timeline-banquet-room-card--${tone}`;
-    card.setAttribute('aria-label', `Банкет: ${[summary.room, summary.customerName, timelineBanquetDateTimeText(summary), label].filter(Boolean).join(' · ')}`);
+    const arrivalText = timelineBanquetDateTimeText(summary);
+    card.setAttribute('aria-label', `Банкет: ${[summary.room, summary.customerName, arrivalText ? `Прихід гостей: ${arrivalText}` : '', label].filter(Boolean).join(' · ')}`);
     card.removeAttribute('title');
     card.innerHTML = `
         <span class="timeline-banquet-room-card-main">

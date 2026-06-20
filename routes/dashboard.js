@@ -1016,7 +1016,9 @@ router.get('/widgets/:type', async (req, res) => {
                 const bookingVisibility = getVisibleBookingScope(req.user, params, 'b');
                 const result = await pool.query(`
                     SELECT b.id, b.label as client_name, b.program_name as program,
-                           b.time as start_time, b.room, b.status, b.kids_count as children_count
+                           b.time as start_time, b.room, b.status, b.category,
+                           b.kids_count as children_count,
+                           b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
                     FROM bookings b
                     WHERE b.date = $1 AND b.status != 'cancelled'
                     ${bookingVisibility.sql}

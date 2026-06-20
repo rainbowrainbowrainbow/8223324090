@@ -37,14 +37,36 @@ function appendPinataOperationalLines(text, booking) {
     return text;
 }
 
+function notificationBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || booking.booking_category || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function bookingScheduleLine(booking = {}, { includeEndTime = false } = {}) {
+    if (notificationBookingIsBanquet(booking)) {
+        return [
+            `🕐 Дата банкету: ${esc(booking.date || '')}`,
+            booking.time ? `🚪 Прихід гостей: ${esc(booking.time)}` : null,
+        ].filter(Boolean).join('\n') + '\n';
+    }
+    if (includeEndTime) {
+        const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
+        return `🕐 ${esc(booking.date || '')} | ${esc(booking.time || '')} - ${esc(endTime)}\n`;
+    }
+    return `🕐 ${esc(booking.date || '')} | ${esc(booking.time || '')}\n`;
+}
+
 const notificationTemplates = {
     create(booking, extra) {
-        const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
         const statusIcon = booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене';
         let text = `📌 <b>Нове бронювання</b>\n\n`;
         text += `${statusIcon}\n`;
         text += `🎭 ${esc(booking.label || booking.program_code)}: ${esc(booking.program_name)}\n`;
-        text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+        text += bookingScheduleLine(booking, { includeEndTime: true });
         text += `🏠 ${esc(booking.room)}\n`;
         if (extra.lineName) text += `🎪 Аніматор: ${esc(extra.lineName)}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${esc(booking.second_animator || booking.secondAnimator)}\n`;
@@ -57,10 +79,9 @@ const notificationTemplates = {
     },
 
     edit(booking, extra) {
-        const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
         let text = `✏️ <b>Бронювання змінено</b>\n\n`;
         text += `🎭 ${esc(booking.label || booking.program_code)}: ${esc(booking.program_name)}\n`;
-        text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+        text += bookingScheduleLine(booking, { includeEndTime: true });
         text += `🏠 ${esc(booking.room)}\n`;
         if (extra.lineName) text += `🎪 Аніматор: ${esc(extra.lineName)}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${esc(booking.second_animator || booking.secondAnimator)}\n`;
@@ -75,7 +96,7 @@ const notificationTemplates = {
     delete(booking, extra) {
         let text = `🗑 <b>Видалено бронювання</b>\n\n`;
         text += `🎭 ${esc(booking.label || booking.program_code)}: ${esc(booking.program_name)}\n`;
-        text += `🕐 ${booking.date} | ${booking.time}\n`;
+        text += bookingScheduleLine(booking);
         text += `🏠 ${esc(booking.room)}\n`;
         if (extra.lineName) text += `🎪 Аніматор: ${esc(extra.lineName)}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${esc(booking.second_animator || booking.secondAnimator)}\n`;
@@ -87,7 +108,7 @@ const notificationTemplates = {
         const statusText = booking.status === 'confirmed' ? '✅ Підтверджене' : '⏳ Попереднє';
         let text = `⚡ <b>Статус змінено</b>\n\n`;
         text += `🎭 ${esc(booking.label || booking.program_code)}: ${esc(booking.program_name)}\n`;
-        text += `🕐 ${booking.date} | ${booking.time}\n`;
+        text += bookingScheduleLine(booking);
         text += `📊 ${statusText}\n`;
         if (extra.lineName) text += `🎪 Аніматор: ${esc(extra.lineName)}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${esc(booking.second_animator || booking.secondAnimator)}\n`;

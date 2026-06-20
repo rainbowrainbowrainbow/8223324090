@@ -46,6 +46,20 @@ function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+function roomConflictPolicyClient(rows, sourceGroups = []) {
+    const queries = [];
+    return {
+        queries,
+        query: async (sql, params) => {
+            queries.push({ sql, params });
+            if (/FROM banquet_group_bookings/i.test(sql) && /booking_id = \$1/i.test(sql)) {
+                return { rows: sourceGroups.map(group_id => ({ group_id })) };
+            }
+            return { rows };
+        }
+    };
+}
+
 function cssRule(css, selector) {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\}`));
@@ -718,6 +732,211 @@ test('room conflict checks can exclude same-banquet source ids without hiding un
     assert.equal(conflict.id, 'BK-OTHER');
     assert.deepEqual(queries[0].params[3], ['BK-SOURCE']);
     assert.match(queries[0].sql, /id != ALL\(\$4::text\[\]\)/);
+});
+
+test('room conflict policy keeps legacy room conflicts strict without allow flag', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Kitchen',
+        program_code: 'KITCHEN',
+        category: 'kitchen',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        60,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation' }
+        }
+    );
+
+    assert.equal(conflict.id, 'BK-KITCHEN');
+    assert.equal(client.queries.length, 1);
+    assert.doesNotMatch(client.queries[0].sql, /LEFT JOIN banquet_group_bookings/);
+});
+
+test('room conflict policy allows same-banquet kitchen and activity overlap', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Kitchen',
+        program_code: 'KITCHEN',
+        program_name: 'Kitchen',
+        category: 'kitchen',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        60,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'quest', programCode: 'QUEST' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+    assert.equal(client.queries.length, 1);
+    assert.match(client.queries[0].sql, /LEFT JOIN banquet_group_bookings/);
+});
+
+test('room conflict policy allows same-banquet kitchen candidate over activity booking', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-ACTIVITY',
+        time: '11:30',
+        duration: 60,
+        label: 'Activity',
+        program_code: 'AN',
+        program_name: 'Animation',
+        category: 'animation',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'activity',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'kitchen', programCode: 'KITCHEN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+});
+
+test('room conflict policy still blocks same-banquet activity over activity booking', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-ACTIVITY',
+        time: '11:30',
+        duration: 60,
+        label: 'Activity',
+        program_code: 'AN',
+        program_name: 'Animation',
+        category: 'animation',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'activity',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation', programCode: 'MAFIA' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict.id, 'BK-ACTIVITY');
+});
+
+test('room conflict policy keeps cancelled bookings out of policy conflict rows', async () => {
+    const client = roomConflictPolicyClient([]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        60,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation', programCode: 'AN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+    assert.match(client.queries[0].sql, /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/);
+});
+
+test('room conflict policy still blocks unrelated banquet room bookings', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-OTHER-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Other kitchen',
+        program_code: 'KITCHEN',
+        program_name: 'Kitchen',
+        category: 'kitchen',
+        banquet_group_id: 'BG-OTHER',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation', programCode: 'AN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict.id, 'BK-OTHER-KITCHEN');
+});
+
+test('room conflict policy can resolve same-banquet context from source booking membership', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Kitchen',
+        program_code: 'KITCHEN',
+        program_name: 'Kitchen',
+        category: 'kitchen',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }], ['BG-1']);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            sourceBookingId: 'BK-SOURCE',
+            candidateBooking: { category: 'animation', programCode: 'AN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+    assert.deepEqual(client.queries[0].params[3], ['BK-SOURCE']);
+    assert.match(client.queries[1].sql, /FROM banquet_group_bookings/);
+    assert.deepEqual(client.queries[1].params, ['BK-SOURCE', 'event_genix']);
 });
 
 test('free-room path becomes business-aware resource availability for cabinet modes', () => {

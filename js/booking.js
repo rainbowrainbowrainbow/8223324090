@@ -837,6 +837,18 @@ function attachBanquetGroupContextToBooking(booking, context = {}, role = 'activ
     return booking;
 }
 
+function isSelectedBanquetKitchenCreate(formData = {}) {
+    return formData.scenario === 'kitchen_only' || (formData.kitchenEnabled && !formData.hasEvent);
+}
+
+function isSelectedBanquetActivityCreate(formData = {}) {
+    return Boolean(formData.hasEvent && !formData.kitchenEnabled);
+}
+
+function selectedBanquetUnsupportedCreateMessage() {
+    return 'Прив’язка до банкету працює для кухні або однієї активності. Зніміть прив’язку або створіть бронювання окремо.';
+}
+
 if (typeof window !== 'undefined') {
     window.syncBookingCommentFieldPresentation = syncBookingCommentFieldPresentation;
 }
@@ -7368,19 +7380,14 @@ async function handleBookingSubmit(e) {
                 });
             } else if (shouldCreateEducationLessonSeries(booking)) {
                 createResult = await apiCreateEducationLessonSeries(booking);
-            } else if (selectedBanquetContext.groupId && formData.scenario === 'kitchen_only') {
-                if (!selectedBanquetContext.sourceBookingId) {
-                    showNotification('У вибраного банкету немає основної броні для прив’язки кухні.', 'error');
-                    unlockSubmitBtn();
-                    return;
-                }
+            } else if (selectedBanquetContext.groupId && isSelectedBanquetKitchenCreate(formData)) {
                 attachBanquetGroupContextToBooking(booking, selectedBanquetContext, 'kitchen', 'booking_banquet_group_selector');
                 createResult = await apiCreateBanquetMemberBooking(selectedBanquetContext.groupId, {
-                    sourceBookingId: selectedBanquetContext.sourceBookingId,
+                    sourceBookingId: selectedBanquetContext.sourceBookingId || null,
                     role: 'kitchen',
                     booking
                 });
-            } else if (selectedBanquetContext.groupId && formData.hasEvent && !formData.kitchenEnabled) {
+            } else if (selectedBanquetContext.groupId && isSelectedBanquetActivityCreate(formData)) {
                 if (selectedActivityPrograms.length > 1) {
                     showNotification('Для прив’язки до банкету оберіть одну активність. Додаткові активності додавайте окремо.', 'error');
                     unlockSubmitBtn();
@@ -7398,6 +7405,10 @@ async function handleBookingSubmit(e) {
                     booking,
                     linkedBookings: linked
                 });
+            } else if (selectedBanquetContext.groupId) {
+                showNotification(selectedBanquetUnsupportedCreateMessage(), 'error');
+                unlockSubmitBtn();
+                return;
             } else {
                 const additionalMultiHostActivity = selectedActivityPrograms
                     .slice(1)

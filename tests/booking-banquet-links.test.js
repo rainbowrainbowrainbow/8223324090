@@ -127,6 +127,49 @@ function bookingRowFromMemberInsert(params) {
     };
 }
 
+function bookingRowFromRootActivityInsert(params) {
+    return {
+        id: params[0],
+        business_context: params[1],
+        date: params[2],
+        time: params[3],
+        line_id: params[4],
+        program_id: params[5],
+        program_code: params[6],
+        label: params[7],
+        program_name: params[8],
+        category: params[9],
+        duration: params[10],
+        price: params[11],
+        hosts: params[12],
+        second_animator: params[13],
+        pinata_filler: params[14],
+        pinata_mode: params[15],
+        pinata_number: params[16],
+        pinata_filler_number: params[17],
+        client_pinata_service_price: params[18],
+        client_pinata_service_note: params[19],
+        costume: params[20],
+        room: params[21],
+        notes: params[22],
+        created_by: params[23],
+        linked_to: null,
+        status: params[24] || 'confirmed',
+        kids_count: params[25],
+        group_name: params[26],
+        extra_data: params[27],
+        skip_notification: params[28],
+        customer_id: params[29],
+        payment_method: params[30],
+        banquet_guests: null,
+        banquet_adults: null,
+        banquet_tables: null,
+        banquet_menu: null,
+        created_at: new Date('2099-01-01T00:00:00Z').toISOString(),
+        updated_at: new Date('2099-01-01T00:00:00Z').toISOString()
+    };
+}
+
 function makeDb(rows, links = [], options = {}) {
     const state = {
         rows: rows.map(row => ({ ...row })),
@@ -180,6 +223,48 @@ function makeDb(rows, links = [], options = {}) {
                 txSnapshot = null;
             }
             return { rows: [], rowCount: 0 };
+        }
+        if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(sql)) {
+            const [date, room, businessContext, excludeIds] = params;
+            const excluded = new Set((Array.isArray(excludeIds) ? excludeIds : []).map(String));
+            const rows = state.rows
+                .filter(row =>
+                    row.date === date &&
+                    row.room === room &&
+                    normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+                    String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
+                    !excluded.has(String(row.id))
+                )
+                .map(row => {
+                    const membership = state.banquetMemberships.find(item =>
+                        item.booking_id === row.id &&
+                        normalizeContext(item.business_context) === normalizeContext(businessContext)
+                    );
+                    return {
+                        id: row.id,
+                        time: row.time,
+                        duration: row.duration,
+                        label: row.label,
+                        program_code: row.program_code,
+                        program_name: row.program_name,
+                        category: row.category,
+                        extra_data: row.extra_data,
+                        line_id: row.line_id,
+                        banquet_group_id: membership?.group_id || null,
+                        banquet_group_role: membership?.role || null
+                    };
+                });
+            return { rows, rowCount: rows.length };
+        }
+        if (/SELECT group_id\s+FROM banquet_group_bookings\s+WHERE booking_id = \$1/i.test(sql)) {
+            const [bookingId, businessContext] = params;
+            const rows = state.banquetMemberships
+                .filter(item =>
+                    item.booking_id === bookingId &&
+                    normalizeContext(item.business_context) === normalizeContext(businessContext)
+                )
+                .map(item => ({ group_id: item.group_id }));
+            return { rows, rowCount: rows.length };
         }
         if (/FROM bookings b\s+(?:LEFT JOIN[\s\S]+?\s+)?WHERE b\.date = \$1/i.test(sql)) {
             return {
@@ -340,8 +425,39 @@ function makeDb(rows, links = [], options = {}) {
             );
             return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
+        if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND line_id = \$2/i.test(sql)) {
+            const [date, lineId, businessContext, excludeId] = params;
+            const rows = state.rows.filter(row =>
+                row.date === date &&
+                row.line_id === lineId &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+                String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
+                (!excludeId || row.id !== excludeId)
+            );
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
+        }
+        if (/SELECT id, category, time, duration FROM bookings WHERE date = \$1 AND program_id = \$2/i.test(sql)) {
+            const [date, programId, businessContext, excludeId] = params;
+            const rows = state.rows
+                .filter(row =>
+                    row.date === date &&
+                    row.program_id === programId &&
+                    normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+                    String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
+                    (!excludeId || row.id !== excludeId)
+                )
+                .map(row => ({
+                    id: row.id,
+                    category: row.category,
+                    time: row.time,
+                    duration: row.duration
+                }));
+            return { rows, rowCount: rows.length };
+        }
         if (/^INSERT INTO bookings /i.test(sql) && /RETURNING \*/i.test(sql)) {
-            const row = bookingRowFromMemberInsert(params);
+            const row = params.length >= 34
+                ? bookingRowFromMemberInsert(params)
+                : bookingRowFromRootActivityInsert(params);
             state.rows.push(row);
             return { rows: [{ ...row }], rowCount: 1 };
         }
@@ -349,15 +465,16 @@ function makeDb(rows, links = [], options = {}) {
             if (options.failBanquetMembershipInsert) {
                 throw new Error('simulated banquet membership insert failure');
             }
+            const activityMembership = /VALUES \(\$1, \$2, \$3, 'activity', 100, \$4, \$5\)/i.test(sql);
             const row = {
                 id: state.nextBanquetMembershipId++,
                 group_id: params[0],
                 business_context: params[1],
                 booking_id: params[2],
-                role: params[3],
-                sort_order: params[4],
-                created_by_user_id: params[5],
-                created_by: params[6],
+                role: activityMembership ? 'activity' : params[3],
+                sort_order: activityMembership ? 100 : params[4],
+                created_by_user_id: activityMembership ? params[3] : params[5],
+                created_by: activityMembership ? params[4] : params[6],
                 created_at: new Date('2099-01-01T00:00:00Z').toISOString(),
                 updated_at: new Date('2099-01-01T00:00:00Z').toISOString()
             };
@@ -799,6 +916,357 @@ test('POST banquet member-booking creates kitchen booking, membership, and compa
             booking_id: 'BK-ROOT',
             role: 'primary',
             sort_order: 10
+        }]
+    });
+});
+
+test('POST banquet activity-booking allows activity over same-banquet kitchen room slot', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-KITCHEN',
+            time: '12:00',
+            line_id: 'banquet-service',
+            customer_id: 101,
+            label: 'Kitchen order',
+            program_code: 'KITCHEN',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            duration: 60,
+            room: 'Room A',
+            extra_data: JSON.stringify({
+                banquetGroup: { groupId: 'BQ-ROOT', role: 'kitchen' }
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/activity-booking?businessContext=event_genix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceBookingId: 'BK-ROOT',
+                booking: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'line-activity-new',
+                    room: 'Room A',
+                    programId: 'program-mafia',
+                    programCode: 'MAFIA',
+                    label: 'Mafia',
+                    programName: 'Mafia',
+                    category: 'animation',
+                    duration: 60,
+                    price: 3000,
+                    hosts: 1
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 201, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.booking.id, 'BK-2099-9999');
+        assert.equal(data.membership.role, 'activity');
+        assert.ok(state.banquetMemberships.some(row => row.group_id === 'BQ-ROOT' && row.booking_id === 'BK-2099-9999' && row.role === 'activity'));
+        assert.ok(state.tx.includes('COMMIT'));
+        assert.ok(state.queries.some(query => /LEFT JOIN banquet_group_bookings bgb/i.test(query.sql)));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('POST banquet member-booking allows kitchen over same-banquet activity room slot', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-ACTIVITY',
+            time: '12:00',
+            line_id: 'line-activity-existing',
+            customer_id: 101,
+            label: 'Mafia',
+            program_id: 'program-mafia',
+            program_code: 'MAFIA',
+            program_name: 'Mafia',
+            category: 'animation',
+            duration: 60,
+            room: 'Room A',
+            extra_data: JSON.stringify({
+                banquetGroup: { groupId: 'BQ-ROOT', role: 'activity' }
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/member-booking?businessContext=event_genix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceBookingId: 'BK-ROOT',
+                role: 'kitchen',
+                booking: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'banquet-service',
+                    room: 'Room A',
+                    programCode: 'KITCHEN',
+                    label: 'Kitchen order',
+                    programName: 'Kitchen order',
+                    category: 'kitchen',
+                    duration: 60,
+                    price: 1400,
+                    hosts: 0
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 201, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.membership.role, 'kitchen');
+        assert.ok(state.banquetMemberships.some(row => row.group_id === 'BQ-ROOT' && row.booking_id === 'BK-2099-9999' && row.role === 'kitchen'));
+        assert.ok(state.tx.includes('COMMIT'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVITY',
+            role: 'activity',
+            sort_order: 100
+        }]
+    });
+});
+
+test('POST banquet activity-booking blocks activity over same-room activity in same banquet', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-ACTIVITY',
+            time: '12:00',
+            line_id: 'line-activity-existing',
+            customer_id: 101,
+            label: 'Mafia',
+            program_id: 'program-mafia',
+            program_code: 'MAFIA',
+            program_name: 'Mafia',
+            category: 'animation',
+            duration: 60,
+            room: 'Room A',
+            extra_data: JSON.stringify({
+                banquetGroup: { groupId: 'BQ-ROOT', role: 'activity' }
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/activity-booking?businessContext=event_genix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceBookingId: 'BK-ROOT',
+                booking: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'line-activity-new',
+                    room: 'Room A',
+                    programId: 'program-pryan',
+                    programCode: 'PRYAN',
+                    label: 'Pryan',
+                    programName: 'Pryan',
+                    category: 'animation',
+                    duration: 60,
+                    price: 300,
+                    hosts: 1
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'ACTIVITY_ROOM_CONFLICT');
+        assert.equal(data.conflictBookingId, 'BK-ACTIVITY');
+        assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        assert.ok(state.tx.includes('ROLLBACK'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVITY',
+            role: 'activity',
+            sort_order: 100
+        }]
+    });
+});
+
+test('POST banquet member-booking blocks unrelated banquet room slot', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-OTHER-KITCHEN',
+            time: '12:00',
+            line_id: 'banquet-service',
+            customer_id: 202,
+            label: 'Other kitchen',
+            program_code: 'KITCHEN',
+            program_name: 'Other kitchen',
+            category: 'kitchen',
+            duration: 60,
+            room: 'Room A',
+            extra_data: JSON.stringify({
+                banquetGroup: { groupId: 'BQ-OTHER', role: 'kitchen' }
+            })
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/member-booking?businessContext=event_genix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceBookingId: 'BK-ROOT',
+                role: 'kitchen',
+                booking: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'banquet-service',
+                    room: 'Room A',
+                    programCode: 'KITCHEN',
+                    label: 'Kitchen order',
+                    programName: 'Kitchen order',
+                    category: 'kitchen',
+                    duration: 60,
+                    price: 1400,
+                    hosts: 0
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'MEMBER_BOOKING_ROOM_CONFLICT');
+        assert.equal(data.conflictBookingId, 'BK-OTHER-KITCHEN');
+        assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        assert.ok(state.tx.includes('ROLLBACK'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }, {
+            id: 'BQ-OTHER',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-OTHER-ROOT',
+            customer_id: 202,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Other banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-OTHER',
+            business_context: 'event_genix',
+            booking_id: 'BK-OTHER-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
         }]
     });
 });

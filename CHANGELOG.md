@@ -4,6 +4,23 @@
 
 ---
 
+## v0.76.83 - Banquet Room Conflict Policy
+
+### Banquet room conflicts / Kitchen activity overlap / Frontend routing / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Кухня й активність одного банкету можуть стояти в один час в одній кімнаті** - room conflict policy тепер розрізняє same-banquet operational events і activity bookings, тому `Кімната ... зайнята: Кухня ...` більше не блокує дозволений сценарій.
+- **Захист від реальних конфліктів лишився strict** - дві activity в одній кімнаті/часі, unrelated banquet room booking і generic бронь без `banquetGroup` context далі блокуються.
+- **Ведучі й лінії не послаблювались** - `checkServerConflicts()` для animator/line_id лишається окремим guard, тому той самий ведучий не може отримати два одночасні booking blocks.
+- **Atomic banquet endpoints використовують той самий policy contract** - `/api/banquets/:groupId/activity-booking` і `/member-booking` дозволяють kitchen/service + activity overlap тільки в межах того самого `banquet_groups`.
+- **Generic create/full/update paths стали context-aware** - `POST /api/bookings`, `POST /api/bookings/full`, `PUT /api/bookings/:id` і atomic linked update беруть `extraData.banquetGroup` для allowed overlap, але без context лишають стару strict-поведінку.
+- **Frontend не губить прив'язку до банкету** - якщо менеджер вибрав банкет, kitchen-only і activity create ідуть в atomic banquet endpoints, а не випадково в generic `/api/bookings`.
+- **API помилки стали діагностичнішими** - frontend create wrappers повертають `code`, `status`, `details` і `conflictBookingId`, щоб `ACTIVITY_ROOM_CONFLICT` / `MEMBER_BOOKING_ROOM_CONFLICT` не губилися в toast handling.
+- **Cancelled members не блокують слот** - cancelled kitchen/activity member bookings не беруть участь у room conflict rows і не оживають через нову policy.
+- **Regression guardrails посилено** - targeted tests і `npm test` фіксують allowed same-banquet overlaps, blocked activity/activity, blocked unrelated room conflicts, line conflicts, cancelled rows і update path.
+- **Schema/env/deploy config не змінювались** - міграцій, нових залежностей, secrets або Railway config змін немає.
+- **Релізні маркери піднято до `0.76.83`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.82 - Banquet Sheet Content Cleanup
 
 ### Banquet inspector / Banquet sheet / Notes / Activity starts / Regression tests / (Клешня, 20.06.2026) [codex]

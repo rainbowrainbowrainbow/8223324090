@@ -1164,9 +1164,13 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.doesNotMatch(read('services/banquetGroups.js'), /groupName: normalizeActivityText\(input\.groupName \|\| input\.group_name \|\| rootBooking\.groupName/);
     assert.match(read('services/banquetGroups.js'), /async function assertMemberRoomSlotAvailable/);
     assert.match(read('services/banquetGroups.js'), /MEMBER_BOOKING_ROOM_CONFLICT/);
-    assert.match(read('services/banquetGroups.js'), /checkRoomConflict\(db, booking\.date, booking\.room, booking\.time, booking\.duration \|\| 0, \{ sourceBookingId \}, businessContext\)/);
+    assert.match(read('services/banquetGroups.js'), /allowSameBanquetOperationalOverlap:\s*true/);
+    assert.match(read('services/banquetGroups.js'), /candidateBooking:\s*booking/);
+    assert.match(read('services/banquetGroups.js'), /groupId:\s*cleanGroupId/);
     assert.match(route, /const activityRows = \[\]/);
-    assert.match(route, /checkRoomConflict\(client, activity\.date, activity\.room, activity\.time, activity\.duration \|\| 0, \{\s*excludeIds: \[main\.id\]\s*\}, businessContext\)/);
+    assert.match(route, /function bookingRoomConflictPolicyOptions/);
+    assert.match(route, /allowSameBanquetOperationalOverlap:\s*true/);
+    assert.match(route, /checkRoomConflict\(\s*client,\s*activity\.date,\s*activity\.room,\s*activity\.time,\s*activity\.duration \|\| 0,\s*bookingRoomConflictPolicyOptions\(activity, \{ excludeIds: \[main\.id\] \}\),\s*businessContext\s*\)/);
     assert.match(route, /upsertBanquetLink\(client, businessContext, main\.id, activity\.id/);
     assert.match(route, /activityRows\.map\(row => row\.id\)/);
     assert.match(route, /const activityBookings = activityRows\.map/);

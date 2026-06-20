@@ -1210,7 +1210,7 @@ function assertCreateMemberBookingPayload(booking, role) {
     }
 }
 
-async function assertActivitySlotAvailable(db, booking, businessContext, { sourceBookingId = null } = {}) {
+async function assertActivitySlotAvailable(db, booking, businessContext, { groupId = null, sourceBookingId = null } = {}) {
     const lineConflict = await checkServerConflicts(db, booking.date, booking.lineId, booking.time, booking.duration || 0, null, businessContext);
     if (lineConflict.overlap) {
         throw new BanquetGroupError('Activity line slot is busy', {
@@ -1230,7 +1230,12 @@ async function assertActivitySlotAvailable(db, booking, businessContext, { sourc
             details: { conflictBookingId: duplicate.id || null }
         });
     }
-    const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, { sourceBookingId }, businessContext);
+    const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, {
+        banquetGroupId: groupId,
+        sourceBookingId,
+        candidateBooking: booking,
+        allowSameBanquetOperationalOverlap: true
+    }, businessContext);
     if (roomConflict) {
         throw new BanquetGroupError('Activity room slot is busy', {
             status: 409,
@@ -1243,8 +1248,13 @@ async function assertActivitySlotAvailable(db, booking, businessContext, { sourc
     }
 }
 
-async function assertMemberRoomSlotAvailable(db, booking, businessContext, { sourceBookingId = null } = {}) {
-    const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, { sourceBookingId }, businessContext);
+async function assertMemberRoomSlotAvailable(db, booking, businessContext, { groupId = null, sourceBookingId = null } = {}) {
+    const roomConflict = await checkRoomConflict(db, booking.date, booking.room, booking.time, booking.duration || 0, {
+        banquetGroupId: groupId,
+        sourceBookingId,
+        candidateBooking: booking,
+        allowSameBanquetOperationalOverlap: true
+    }, businessContext);
     if (roomConflict) {
         throw new BanquetGroupError('Member booking room slot is busy', {
             status: 409,
@@ -1977,7 +1987,10 @@ async function createMemberBookingInBanquetGroup({
             role: normalizedRole
         });
         assertCreateMemberBookingPayload(rootMember, normalizedRole);
-        await assertMemberRoomSlotAvailable(client, rootMember, businessContext, { sourceBookingId: cleanSourceId });
+        await assertMemberRoomSlotAvailable(client, rootMember, businessContext, {
+            groupId: cleanGroupId,
+            sourceBookingId: cleanSourceId
+        });
 
         const memberRow = await insertRootMemberBooking(client, rootMember, businessContext);
         const membershipResult = await client.query(
@@ -2117,7 +2130,10 @@ async function createActivityBookingInBanquetGroup({
             user
         });
         assertCreateActivityPayload(rootActivity);
-        await assertActivitySlotAvailable(client, rootActivity, businessContext, { sourceBookingId: cleanSourceId });
+        await assertActivitySlotAvailable(client, rootActivity, businessContext, {
+            groupId: cleanGroupId,
+            sourceBookingId: cleanSourceId
+        });
 
         const activityRow = await insertRootActivityBooking(client, rootActivity, businessContext);
         const linkedRows = [];

@@ -2544,12 +2544,20 @@ check('Booking banquet selector loads same-customer groups and routes selected k
     && bookingCode.includes('apiGetBanquetCandidates({ date, customerId })')
     && bookingCode.includes('function selectedBookingBanquetGroupContext')
     && bookingCode.includes('preselectGroupId: groupResult.groupId')
+    && bookingCode.includes('function isSelectedBanquetKitchenCreate')
+    && bookingCode.includes('function isSelectedBanquetActivityCreate')
     && bookingCode.includes('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId')
     && bookingCode.includes('apiCreateBanquetActivityBooking(selectedBanquetContext.groupId')
+    && /else if \(selectedBanquetContext\.groupId\) \{[\s\S]*selectedBanquetUnsupportedCreateMessage\(\)[\s\S]*unlockSubmitBtn\(\);[\s\S]*return;[\s\S]*\} else \{[\s\S]*apiCreateBooking\(booking\)/.test(bookingCode)
+    && apiCode.includes('function apiFailureFromBody')
     && apiCode.includes('function apiGetBanquetCandidates')
     && apiCode.includes('/banquets/candidates')
     && apiCode.includes('function apiCreateBanquetMemberBooking')
-    && apiCode.includes('/member-booking'));
+    && apiCode.includes('/member-booking')
+    && /async function apiCreateBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateEducationLessonSeries/.test(apiCode)
+    && /async function apiCreateBookingFull[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiGetBanquetByBooking/.test(apiCode)
+    && /async function apiCreateBanquetMemberBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateBanquetActivityBooking/.test(apiCode)
+    && /async function apiCreateBanquetActivityBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiAttachBanquetGroupBooking/.test(apiCode));
 check('Booking kitchen menu supports serving times and banquet service events without schema changes',
     bookingCode.includes('servingTime')
     && bookingCode.includes('servingNote')

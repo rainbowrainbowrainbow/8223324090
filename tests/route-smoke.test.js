@@ -1213,6 +1213,43 @@ function createFakePool() {
                 );
                 return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
             }
+            if (/SELECT b\.id, b\.time, b\.duration, b\.label, b\.program_code, b\.program_name, b\.category, b\.extra_data, b\.line_id,\s+bgb\.group_id AS banquet_group_id, bgb\.role AS banquet_group_role\s+FROM bookings b\s+LEFT JOIN banquet_group_bookings bgb/i.test(text)) {
+                const excluded = new Set((Array.isArray(params[3]) ? params[3] : []).map(String));
+                const rows = hrState.bookings
+                    .filter(booking =>
+                        booking.date === params[0]
+                        && booking.room === params[1]
+                        && booking.business_context === params[2]
+                        && booking.status !== 'cancelled'
+                        && !excluded.has(String(booking.id))
+                    )
+                    .map(booking => {
+                        const membership = hrState.banquetMemberships.find(item =>
+                            item.booking_id === booking.id
+                            && item.business_context === params[2]
+                        );
+                        return {
+                            id: booking.id,
+                            time: booking.time,
+                            duration: booking.duration,
+                            label: booking.label,
+                            program_code: booking.program_code,
+                            program_name: booking.program_name,
+                            category: booking.category,
+                            extra_data: booking.extra_data,
+                            line_id: booking.line_id,
+                            banquet_group_id: membership?.group_id || null,
+                            banquet_group_role: membership?.role || null
+                        };
+                    });
+                return { rows, rowCount: rows.length };
+            }
+            if (/SELECT group_id\s+FROM banquet_group_bookings\s+WHERE booking_id = \$1/i.test(text)) {
+                const rows = hrState.banquetMemberships
+                    .filter(item => item.booking_id === params[0] && item.business_context === params[1])
+                    .map(item => ({ group_id: item.group_id }));
+                return { rows, rowCount: rows.length };
+            }
             if (/SELECT id, time, duration, label, program_code FROM bookings WHERE date = \$1 AND room = \$2/i.test(text)) {
                 const rows = hrState.bookings.filter(booking =>
                     booking.date === params[0]

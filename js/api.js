@@ -36,6 +36,17 @@ function apiErrorFromPayload(payload = {}, fallback = 'API error') {
     return error;
 }
 
+function apiFailureFromBody(body = {}, response = null, fallback = 'API error') {
+    return {
+        success: false,
+        error: body.error || body.message || fallback,
+        code: body.code || null,
+        conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
+        status: response?.status || body.status || null,
+        details: body.details || null
+    };
+}
+
 async function apiErrorFromResponse(response, fallback = 'API error') {
     const payload = await response.json().catch(() => ({}));
     return apiErrorFromPayload({ ...payload, status: response.status }, fallback);
@@ -1366,7 +1377,7 @@ async function apiCreateBooking(booking) {
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error', conflictBookingId: body.conflictBookingId || null };
+            return apiFailureFromBody(body, response);
         }
         return await response.json();
     } catch (err) {
@@ -1453,7 +1464,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error', conflictBookingId: body.conflictBookingId || null };
+            return apiFailureFromBody(body, response);
         }
         return await response.json();
     } catch (err) {
@@ -1539,13 +1550,7 @@ async function apiCreateBanquetMemberBooking(groupId, payload = {}) {
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return {
-                success: false,
-                error: body.error || 'API error',
-                code: body.code || null,
-                conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
-                status: response.status
-            };
+            return apiFailureFromBody(body, response);
         }
         return await response.json();
     } catch (err) {
@@ -1568,13 +1573,7 @@ async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return {
-                success: false,
-                error: body.error || 'API error',
-                code: body.code || null,
-                conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
-                status: response.status
-            };
+            return apiFailureFromBody(body, response);
         }
         return await response.json();
     } catch (err) {

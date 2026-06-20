@@ -137,6 +137,62 @@ function testExcludeIdSet(value) {
     return new Set(raw.map(item => String(item || '').trim()).filter(Boolean));
 }
 
+function testExtraData(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+}
+
+function testBanquetGroupId(booking = {}) {
+    const extra = testExtraData(booking.extraData ?? booking.extra_data);
+    const group = extra.banquetGroup || extra.banquet_group || booking.banquetGroup || booking.banquet_group || {};
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    return String(
+        booking.banquetGroupId
+        || booking.banquet_group_id
+        || group.groupId
+        || group.group_id
+        || group.id
+        || workspace.banquetGroupId
+        || workspace.banquet_group_id
+        || ''
+    ).trim();
+}
+
+function testBanquetRole(booking = {}) {
+    const extra = testExtraData(booking.extraData ?? booking.extra_data);
+    const group = extra.banquetGroup || extra.banquet_group || {};
+    const role = String(booking.banquetGroupRole || booking.banquet_group_role || group.role || '').trim().toLowerCase();
+    if (role) return role;
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    const category = String(booking.category || '').trim().toLowerCase();
+    if (programCode === 'KITCHEN' || category === 'kitchen') return 'kitchen';
+    if (['animation', 'activity', 'custom', 'quest', 'show', 'masterclass', 'workshop'].includes(category)) return 'activity';
+    return 'generic';
+}
+
+function testRoomPolicyAllowsOverlap(candidate, conflict, excludeArg) {
+    if (!excludeArg?.allowSameBanquetOperationalOverlap) return false;
+    const candidateGroupId = testBanquetGroupId(candidate) || String(excludeArg.banquetGroupId || '').trim();
+    const conflictGroupId = testBanquetGroupId(conflict);
+    if (!candidateGroupId || candidateGroupId !== conflictGroupId) return false;
+    const candidateRole = testBanquetRole(candidate);
+    const conflictRole = testBanquetRole(conflict);
+    const candidateActivity = candidateRole === 'activity';
+    const conflictActivity = conflictRole === 'activity';
+    const candidateOperational = ['kitchen', 'service', 'manual'].includes(candidateRole);
+    const conflictOperational = ['kitchen', 'service', 'manual'].includes(conflictRole);
+    return (candidateActivity && conflictOperational) || (candidateOperational && conflictActivity);
+}
+
 function banquetTermsPriceRuleRows() {
     return [
         { code: 'banquet_own_cake_fee', value: 500 },
@@ -149,14 +205,17 @@ function banquetTermsPriceRuleRows() {
 function stateBackedRoomConflict(state) {
     return async (_client, date, room, time, duration, excludeArg = null, businessContext = 'event_genix') => {
         const excluded = testExcludeIdSet(excludeArg);
-        return state.rows.find(row =>
-            row.date === date &&
-            row.room === room &&
-            normalizeContext(row.business_context) === normalizeContext(businessContext) &&
-            String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
-            !excluded.has(String(row.id)) &&
-            testIntervalsOverlap(time, duration, row.time, row.duration)
-        ) || null;
+        const candidate = excludeArg?.candidateBooking || {};
+        return state.rows.find(row => {
+            const conflicts = row.date === date &&
+                row.room === room &&
+                normalizeContext(row.business_context) === normalizeContext(businessContext) &&
+                String(row.status || 'confirmed').toLowerCase() !== 'cancelled' &&
+                !excluded.has(String(row.id)) &&
+                testIntervalsOverlap(time, duration, row.time, row.duration);
+            if (!conflicts) return false;
+            return !testRoomPolicyAllowsOverlap({ ...candidate, date, room, time, duration }, row, excludeArg);
+        }) || null;
     };
 }
 
@@ -819,6 +878,151 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
     });
 });
 
+test('POST /api/bookings allows same-banquet activity over existing kitchen room slot', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-KITCHEN',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '15:30',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen',
+            category: 'kitchen',
+            duration: 60,
+            price: 0,
+            hosts: 0,
+            room: 'Room A',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: JSON.stringify({ banquetGroup: { groupId: 'BQ-ROOM-1', role: 'kitchen' } }),
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createBooking(baseUrl, {
+            room: 'Room A',
+            time: '15:30',
+            lineId: 'line-1',
+            programId: 'anim-60',
+            programCode: 'AN',
+            label: 'AN(60)',
+            programName: 'Animation',
+            category: 'animation',
+            extraData: {
+                banquetGroup: {
+                    groupId: 'BQ-ROOM-1',
+                    sourceBookingId: 'BK-2099-ROOT',
+                    role: 'activity',
+                    source: 'room_booking_animation_bridge'
+                }
+            }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(state.rows.length, 2);
+        assert.equal(state.rows[1].room, 'Room A');
+    });
+});
+
+test('POST /api/bookings keeps strict room conflict without banquet group context', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-KITCHEN',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '15:30',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen',
+            category: 'kitchen',
+            duration: 60,
+            price: 0,
+            hosts: 0,
+            room: 'Room A',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createBooking(baseUrl, {
+            room: 'Room A',
+            time: '15:30',
+            lineId: 'line-1',
+            programId: 'anim-60',
+            programCode: 'AN',
+            label: 'AN(60)',
+            programName: 'Animation',
+            category: 'animation'
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(state.rows.length, 1);
+    });
+});
+
+test('POST /api/bookings ignores cancelled kitchen member room slot', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-CANCELLED-KITCHEN',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '15:30',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen',
+            category: 'kitchen',
+            duration: 60,
+            price: 0,
+            hosts: 0,
+            room: 'Room A',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'cancelled',
+            kids_count: null,
+            group_name: null,
+            extra_data: JSON.stringify({ banquetGroup: { groupId: 'BQ-CANCELLED-1', role: 'kitchen' } }),
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await createBooking(baseUrl, {
+            room: 'Room A',
+            time: '15:30',
+            lineId: 'line-1',
+            programId: 'anim-60',
+            programCode: 'AN',
+            label: 'AN(60)',
+            programName: 'Animation',
+            category: 'animation'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(state.rows.length, 2);
+        assert.equal(state.rows[0].status, 'cancelled');
+    });
+});
+
 test('POST /api/bookings allows room kitchen booking when anchor is past but operational times are future', async () => {
     await withMockedKyivNow('2026-06-18T11:58:30.000Z', async () => {
         await withApp({}, async ({ baseUrl, state }) => {
@@ -1058,6 +1262,169 @@ test('GET /api/bookings room view projects banquet service root with persisted s
         assert.equal(data[0].timelineProjection.view, 'rooms');
         assert.equal(data[0].timelineProjection.sourceLineId, 'banquet-service');
         assert.equal(data[0].extraData.bookingPackage.menuPositions[0].servingTime, '15:30');
+    });
+});
+
+test('PUT /api/bookings/:id still rejects unrelated room conflict when rescheduled', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-EDIT',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '14:00',
+            line_id: 'line-1',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'AN(60)',
+            program_name: 'Animation',
+            category: 'animation',
+            duration: 60,
+            price: 1500,
+            hosts: 1,
+            second_animator: null,
+            room: 'Room B',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: null,
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }, {
+            id: 'BK-2099-OTHER',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '15:30',
+            line_id: 'line-other',
+            program_id: 'quest-60',
+            program_code: 'QS',
+            label: 'Quest(60)',
+            program_name: 'Quest',
+            category: 'animation',
+            duration: 60,
+            price: 0,
+            hosts: 1,
+            second_animator: null,
+            room: 'Room A',
+            notes: null,
+            created_by: 'other-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: null,
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await updateBooking(baseUrl, 'BK-2099-EDIT', {
+            date: '2099-02-10',
+            time: '15:30',
+            lineId: 'line-1',
+            room: 'Room A',
+            programId: 'anim-60',
+            programCode: 'AN',
+            label: 'AN(60)',
+            programName: 'Animation',
+            category: 'animation',
+            duration: 60,
+            price: 1500,
+            hosts: 1,
+            status: 'confirmed'
+        });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-EDIT').room, 'Room B');
+    });
+});
+
+test('PUT /api/bookings/:id allows same-banquet activity over kitchen room slot when rescheduled', async () => {
+    await withApp({ stateBackedRoomConflicts: true }, async ({ baseUrl, state }) => {
+        state.rows.push({
+            id: 'BK-2099-EDIT-ACTIVITY',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '14:00',
+            line_id: 'line-1',
+            program_id: 'anim-60',
+            program_code: 'AN',
+            label: 'AN(60)',
+            program_name: 'Animation',
+            category: 'animation',
+            duration: 60,
+            price: 1500,
+            hosts: 1,
+            second_animator: null,
+            room: 'Room B',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: JSON.stringify({ banquetGroup: { groupId: 'BQ-UPDATE-1', role: 'activity' } }),
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        }, {
+            id: 'BK-2099-UPDATE-KITCHEN',
+            business_context: 'event_genix',
+            date: '2099-02-10',
+            time: '15:30',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen',
+            program_name: 'Kitchen',
+            category: 'kitchen',
+            duration: 60,
+            price: 0,
+            hosts: 0,
+            second_animator: null,
+            room: 'Room A',
+            notes: null,
+            created_by: 'creator-user',
+            linked_to: null,
+            status: 'confirmed',
+            kids_count: null,
+            group_name: null,
+            extra_data: JSON.stringify({ banquetGroup: { groupId: 'BQ-UPDATE-1', role: 'kitchen' } }),
+            customer_id: null,
+            payment_method: null,
+            created_at: '2099-01-01T00:00:00.000Z',
+            updated_at: '2099-01-01T00:00:00.000Z'
+        });
+
+        const res = await updateBooking(baseUrl, 'BK-2099-EDIT-ACTIVITY', {
+            date: '2099-02-10',
+            time: '15:30',
+            lineId: 'line-1',
+            room: 'Room A',
+            programId: 'anim-60',
+            programCode: 'AN',
+            label: 'AN(60)',
+            programName: 'Animation',
+            category: 'animation',
+            duration: 60,
+            price: 1500,
+            hosts: 1,
+            status: 'confirmed',
+            extraData: { banquetGroup: { groupId: 'BQ-UPDATE-1', role: 'activity' } }
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        const updated = state.rows.find(row => row.id === 'BK-2099-EDIT-ACTIVITY');
+        assert.equal(updated.room, 'Room A');
+        assert.equal(updated.time, '15:30');
     });
 });
 

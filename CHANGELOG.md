@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.77 - Banquet Field Separation
+
+### Banquet groups / Kitchen comments / Activity comments / Booking details / Recurring safety / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Кухня й активності більше не ділять legacy `bookings.notes` як основне поле** - нові коментарі пишуться в `extra_data.bookingWorkspace.comments.kitchen`, `activity` або `internal` залежно від сценарію бронювання.
+- **Detail modal показує правильний comment source** - нові бронювання читають коментар із `extraData`, а старі записи без нового contract продовжують показувати `bookings.notes`.
+- **Назва банкету винесена в `banquet_groups.group_name`** - нові кухонні й activity member bookings не використовують `bookings.group_name` як source of truth і не перетворюють legacy group name на назву нового банкету.
+- **Менеджер явно прив'язує бронь до банкету** - selector `Прив'язати до банкету` показує банкетні групи клієнта на дату, дозволяє вибрати інший банкет або залишити бронь без прив'язки.
+- **Kitchen member booking створюється атомарно** - новий backend flow створює booking, membership і compatibility link в одній транзакції, без сиріт при помилці attach.
+- **Bridge і multi-activity не копіюють чужі поля** - активності, створені з банкету, отримують власну примітку або порожнє поле, а назва банкету береться з `banquet_groups`.
+- **Recurring не розмножує legacy operational fields** - повторювані kitchen/activity member bookings не тягнуть старі `notes/groupName`, але зберігають workspace comments там, де це безпечно.
+- **Regression guardrails оновлено** - targeted tests, UI smoke і package contract фіксують candidates endpoint, atomic kitchen attach, read/display compatibility, selector routing і відсутність wrong copying.
+- **Schema/env/auth/deploy config не змінювались** - нової міграції немає; зміни обмежені UI/API/service contract і тестами.
+- **Релізні маркери піднято до `0.76.77`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.76 - Banquet terms price center defaults
 
 ### Banquet summary / Price center / Standard terms / Snapshot terms / PDF preview / Copy text / Regression tests / (Клешня, 20.06.2026) [codex]

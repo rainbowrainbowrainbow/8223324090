@@ -41,7 +41,9 @@ function quantity(value, fallback = 1) {
 }
 
 function extraDataOf(booking = {}) {
-    const raw = booking.extraData || booking.extra_data || {};
+    const raw = booking.extraData !== undefined && booking.extraData !== null && booking.extraData !== ''
+        ? booking.extraData
+        : (booking.extra_data || {});
     if (!raw) return {};
     if (typeof raw === 'string') {
         try {
@@ -67,6 +69,32 @@ function valueOf(source = {}, ...keys) {
         if (source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
     }
     return null;
+}
+
+function bookingWorkspaceOf(booking = {}) {
+    const extra = extraDataOf(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    return workspace && typeof workspace === 'object' && !Array.isArray(workspace) ? workspace : {};
+}
+
+function bookingWorkspaceCommentsOf(booking = {}) {
+    const comments = bookingWorkspaceOf(booking).comments || {};
+    return comments && typeof comments === 'object' && !Array.isArray(comments) ? comments : {};
+}
+
+function bookingWorkspaceComment(booking = {}, type = 'internal', max = 500) {
+    if (!['kitchen', 'activity', 'internal'].includes(type)) return null;
+    return cleanText(bookingWorkspaceCommentsOf(booking)[type], max);
+}
+
+function bookingSummaryComment(booking = {}, type = 'internal', options = {}) {
+    const fallbackKeys = Array.isArray(options.fallbackKeys) ? options.fallbackKeys : ['notes'];
+    const fallback = fallbackKeys.length ? valueOf(booking, ...fallbackKeys) : null;
+    return cleanText(
+        bookingWorkspaceComment(booking, type, options.max || 500)
+        || fallback,
+        options.max || 500
+    );
 }
 
 function bookingIdOf(booking = {}) {
@@ -162,7 +190,8 @@ function buildProgramRow(mainBooking = {}, programBasePrice) {
         quantity: 1,
         unitPrice: programBasePrice,
         subtotal: programBasePrice,
-        comment: cleanText(valueOf(mainBooking, 'notes'), 500),
+        comment: bookingSummaryComment(mainBooking, 'activity', { fallbackKeys: [] })
+            || bookingSummaryComment(mainBooking, 'internal', { fallbackKeys: ['notes'] }),
         meta: {
             programId: cleanText(valueOf(mainBooking, 'programId', 'program_id'), 120),
             programCode: cleanText(valueOf(mainBooking, 'programCode', 'program_code'), 80),
@@ -220,7 +249,7 @@ function buildLinkedActivityRows(linkedBookings = [], options = {}) {
                 quantity: 1,
                 unitPrice: subtotal,
                 subtotal,
-                comment: cleanText(valueOf(booking, 'notes') || valueOf(booking, 'label'), 500),
+                comment: bookingSummaryComment(booking, 'activity', { fallbackKeys: ['notes', 'label'] }),
                 meta: {
                     relationType: cleanText(booking._banquetLink?.relation_type || booking._banquetLink?.relationType, 80) || 'banquet_activity',
                     relationLabel: cleanText(booking._banquetLink?.label, 200),
@@ -302,6 +331,31 @@ function buildLegacyBanquetMenuRows(booking = {}) {
             comment: null,
             meta: {}
         }));
+}
+
+function mergeSummaryComments(...comments) {
+    const unique = [];
+    const seen = new Set();
+    for (const comment of comments) {
+        const clean = cleanText(comment, 500);
+        const key = clean ? clean.toLowerCase() : null;
+        if (!clean || seen.has(key)) continue;
+        seen.add(key);
+        unique.push(clean);
+    }
+    return cleanText(unique.join(' · '), 500);
+}
+
+function applyKitchenCommentToMenuRows(menuRows = [], kitchenBooking = {}) {
+    const kitchenComment = bookingSummaryComment(kitchenBooking, 'kitchen', { fallbackKeys: ['notes'] });
+    if (!kitchenComment || !Array.isArray(menuRows) || !menuRows.length) return menuRows;
+    return menuRows.map((row, index) => {
+        if (index !== 0) return row;
+        return {
+            ...row,
+            comment: mergeSummaryComments(kitchenComment, row.comment)
+        };
+    });
 }
 
 function sumKnown(rows = []) {
@@ -530,7 +584,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const samePrimaryAndKitchen = sameBooking(primaryBooking, kitchenBooking);
     const bookingPackage = kitchenPackage || {};
     const menuPositions = normalizeMenuPositions(bookingPackage.menuPositions || bookingPackage.menu_positions || []);
-    const menuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
+    const rawMenuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
+    const menuRows = applyKitchenCommentToMenuRows(rawMenuRows, kitchenBooking);
     const serviceEventRows = buildServiceEventRows(bookingPackage.serviceEvents || bookingPackage.service_events || []);
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
@@ -620,7 +675,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             programName: cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200),
             groupName: cleanText(
                 valueOf(groupState.group || {}, 'groupName', 'group_name')
-                || valueOf(primaryBooking, 'groupName', 'group_name'),
+                || (!groupState.group ? valueOf(primaryBooking, 'groupName', 'group_name') : null),
                 200
             ),
             createdAt: cleanText(valueOf(primaryBooking, 'createdAt', 'created_at'), 80),

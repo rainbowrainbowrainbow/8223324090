@@ -1479,6 +1479,27 @@ async function apiGetBanquetByBooking(bookingId) {
     }
 }
 
+async function apiGetBanquetCandidates(options = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (options.date) params.set('date', options.date);
+        if (options.customerId) params.set('customerId', options.customerId);
+        const query = params.toString();
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/candidates${query ? `?${query}` : ''}`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getBanquetCandidates error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiCreateBanquetGroup(primaryBookingId, options = {}) {
     try {
         const payload = timelineApiPayload({
@@ -1500,6 +1521,35 @@ async function apiCreateBanquetGroup(primaryBookingId, options = {}) {
         return await response.json();
     } catch (err) {
         console.error('API createBanquetGroup error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiCreateBanquetMemberBooking(groupId, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/member-booking`)}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({
+                sourceBookingId: payload.sourceBookingId,
+                role: payload.role || 'kitchen',
+                booking: payload.booking || payload.memberBooking || null
+            }))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                error: body.error || 'API error',
+                code: body.code || null,
+                conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
+                status: response.status
+            };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createBanquetMemberBooking error:', err);
         return { success: false, error: err.message, offline: true };
     }
 }

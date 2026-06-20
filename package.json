@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.76",
+  "version": "0.76.77",
   "eventGenix": {
-    "releaseLabel": "Banquet terms price center defaults"
+    "releaseLabel": "Banquet Field Separation"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

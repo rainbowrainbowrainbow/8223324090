@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.76">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.76">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.76">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.76">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.76">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.76">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.76">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.76">
-    <link rel="stylesheet" href="css/features.css?v=0.76.76">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.76">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.76">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.76">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.76">
+    <link rel="stylesheet" href="css/base.css?v=0.76.77">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.77">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.77">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.77">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.77">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.77">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.77">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.77">
+    <link rel="stylesheet" href="css/features.css?v=0.76.77">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.77">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.77">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.77">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.77">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.76">✨ 0.76.76</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.77">✨ 0.76.77</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.76 — Banquet terms price center defaults</p>
+                <p class="tagline">AI First CRM v0.76.77 — Banquet Field Separation</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.76</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.77</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -467,19 +467,27 @@
                     <div id="bookingCustomerDuplicateHint" class="booking-duplicate-hint hidden"></div>
                 </div>
 
+                <div id="bookingBanquetGroupSection" class="form-section hidden" hidden aria-hidden="true">
+                    <label for="bookingBanquetGroupSelect">Прив’язати до банкету</label>
+                    <select id="bookingBanquetGroupSelect">
+                        <option value="">Без прив’язки</option>
+                    </select>
+                    <small id="bookingBanquetGroupHint" class="form-hint">Оберіть банкет цього клієнта на вибрану дату.</small>
+                </div>
+
                 <input type="checkbox" id="bookingHasEventToggle" checked hidden aria-hidden="true">
                 <input type="checkbox" id="bookingKitchenToggle" hidden aria-hidden="true">
                 <input type="checkbox" id="bookingLeadDetailsToggle" hidden aria-hidden="true">
 
                 <section class="booking-section booking-notes-section">
                 <!-- Примітки -->
-                <div class="form-section">
+                <div id="bookingNotesSection" class="form-section">
                     <label>Примітки (опційно)</label>
                     <input type="text" id="bookingNotes" placeholder="Додаткова інформація...">
                 </div>
 
                 <!-- v5.10: Група/Банкет -->
-                <div class="form-section">
+                <div id="bookingGroupNameSection" class="form-section">
                     <label>Назва заявки / група (опційно)</label>
                     <input type="text" id="bookingGroupName" placeholder="Напр: День народження Олі, кухня для компанії" title="Об'єднує бронювання в одну подію або заявку">
                 </div>
@@ -1727,6 +1735,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.76.77 — Banquet Field Separation</h4>
+                    <ul>
+                        <li><b>Кухня й активності отримали окремі коментарі</b> — нові примітки пишуться в <code>extra_data.bookingWorkspace.comments</code>, а не в спільне legacy <code>bookings.notes</code>.</li>
+                        <li><b>Старі бронювання не ламаються</b> — detail modal показує новий comment з <code>extraData</code>, але для старих записів лишає fallback на <code>bookings.notes</code>.</li>
+                        <li><b>Назва банкету більше не береться з member booking</b> — canonical назва живе в <code>banquet_groups.group_name</code>, а <code>bookings.group_name</code> не стає source of truth для нового банкету.</li>
+                        <li><b>Менеджер бачить прив'язку до банкету</b> — selector <code>Прив'язати до банкету</code> показує групи клієнта на дату, дозволяє вибрати інший банкет або залишити без прив'язки.</li>
+                        <li><b>Кухонна бронь створюється атомарно</b> — booking, membership і compatibility link створюються в одній транзакції.</li>
+                        <li><b>Bridge і multi-activity не копіюють чужі notes/groupName</b> — активність має власну примітку, а банкетну назву бере з групи.</li>
+                        <li><b>Recurring захищено від розмноження legacy fields</b> — kitchen/activity member bookings не тягнуть старі <code>notes</code> і <code>groupName</code> у шаблони.</li>
+                        <li><b>Regression guardrails оновлено</b> — тести фіксують candidates endpoint, atomic attach, selector routing, read/display compatibility і відсутність wrong copying.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.76.76 — Banquet terms price center defaults</h4>
                     <ul>
@@ -14061,30 +14082,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.76"></script>
-    <script src="js/timeline-visibility.js?v=0.76.76"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.76"></script>
-    <script src="js/config.js?v=0.76.76"></script>
-    <script src="js/api.js?v=0.76.76"></script>
-    <script src="js/ui.js?v=0.76.76"></script>
-    <script src="js/auth.js?v=0.76.76"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.76"></script>
-    <script src="js/timeline.js?v=0.76.76"></script>
-    <script src="js/booking.js?v=0.76.76"></script>
-    <script src="js/settings.js?v=0.76.76"></script>
-    <script src="js/booking-form.js?v=0.76.76"></script>
-    <script src="js/booking-linked.js?v=0.76.76"></script>
-    <script src="js/settings-dashboard.js?v=0.76.76"></script>
-    <script src="js/settings-history.js?v=0.76.76"></script>
-    <script src="js/settings-afisha.js?v=0.76.76"></script>
-    <script src="js/settings-certificates.js?v=0.76.76"></script>
-    <script src="js/offline.js?v=0.76.76"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.76"></script>
-    <script src="js/search.js?v=0.76.76"></script>
-    <script src="js/ws.js?v=0.76.76"></script>
-    <script src="js/app.js?v=0.76.76"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.76"></script>
-    <script src="js/components/sidebar.js?v=0.76.76"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.76"></script>
+    <script src="js/timeline-context.js?v=0.76.77"></script>
+    <script src="js/timeline-visibility.js?v=0.76.77"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.77"></script>
+    <script src="js/config.js?v=0.76.77"></script>
+    <script src="js/api.js?v=0.76.77"></script>
+    <script src="js/ui.js?v=0.76.77"></script>
+    <script src="js/auth.js?v=0.76.77"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.77"></script>
+    <script src="js/timeline.js?v=0.76.77"></script>
+    <script src="js/booking.js?v=0.76.77"></script>
+    <script src="js/settings.js?v=0.76.77"></script>
+    <script src="js/booking-form.js?v=0.76.77"></script>
+    <script src="js/booking-linked.js?v=0.76.77"></script>
+    <script src="js/settings-dashboard.js?v=0.76.77"></script>
+    <script src="js/settings-history.js?v=0.76.77"></script>
+    <script src="js/settings-afisha.js?v=0.76.77"></script>
+    <script src="js/settings-certificates.js?v=0.76.77"></script>
+    <script src="js/offline.js?v=0.76.77"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.77"></script>
+    <script src="js/search.js?v=0.76.77"></script>
+    <script src="js/ws.js?v=0.76.77"></script>
+    <script src="js/app.js?v=0.76.77"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.77"></script>
+    <script src="js/components/sidebar.js?v=0.76.77"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.77"></script>
 </body>
 </html>

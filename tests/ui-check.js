@@ -266,7 +266,7 @@ checkPage('index.html', (doc, html) => {
     check('Room booking animation bridge creates banquet group activity atomically',
         bookingCode.includes('findOrCreateBanquetGroupForSourceBooking')
         && bookingCode.includes('BookingDrawerState.roomBookingAnimationBridge')
-        && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeContext.groupId')
+        && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeGroupId')
         && bookingCode.includes("!String(booking.linkedTo || '').trim()")
         && !/function canAddAnimationFromRoomBooking[\s\S]*!booking\.programId[\s\S]*function banquetGroupIdFromSnapshot/.test(bookingCode)
         && apiCode.includes('function apiGetBanquetByBooking')
@@ -2077,7 +2077,8 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ціна')
     && bookingDetailRowHasNoCopyAffordance(bookingCode, 'Сценарій')
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Статус')
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Примітки')
+    && bookingCode.includes('function renderBookingCommentDetailRow')
+    && bookingDetailStandardBlock.includes('${renderBookingCommentDetailRow(booking)}')
     && Boolean(bookingDetailGroupRow)
     && bookingDetailGroupRow.includes('<span class="value">${escapeHtml(booking.groupName)}</span>')
     && !bookingDetailGroupRow.includes('🎪')
@@ -2397,6 +2398,45 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
 check('Booking panel notes section omits noisy base-request helper copy',
     !bookingPanelHtml.includes('Базова заявка')
     && !bookingPanelHtml.includes('Коротка тема і примітки оператора без зайвого шуму.'));
+const roomBookingAnimationBridgeBlock = bookingCode.slice(
+    bookingCode.indexOf('async function openRoomBookingAnimationBridge'),
+    bookingCode.indexOf('// v43.5.0: Reveal a booking', bookingCode.indexOf('async function openRoomBookingAnimationBridge'))
+);
+check('Booking comments use workspace contract instead of legacy notes for new Park kitchen/activity bookings',
+    bookingPanelHtml.includes('id="bookingNotesSection"')
+    && bookingPanelHtml.includes('id="bookingGroupNameSection"')
+    && bookingCode.includes('function syncParkBookingGroupNameVisibility')
+    && bookingCode.includes('section.hidden = hidden')
+    && bookingCode.includes('commentType')
+    && bookingCode.includes('bookingComments: buildBookingWorkspaceComments(commentType, bookingComment)')
+    && bookingCode.includes('comments: normalizeBookingWorkspaceComments(formData.bookingComments || {})')
+    && bookingCode.includes('const shouldPersistLegacyNotes = !isParkTimelineBookingMode()')
+    && bookingCode.includes('notes: shouldPersistLegacyNotes ? rawBookingComment : null')
+    && bookingCode.includes('groupName: shouldPersistLegacyGroupName ?')
+    && bookingCode.includes('BookingDrawerState.legacyNotesFallback')
+    && !bookingCode.includes('groupName: sourceBooking.groupName')
+    && !bookingCode.includes('sourceBooking.notes')
+    && roomBookingAnimationBridgeBlock
+    && !roomBookingAnimationBridgeBlock.includes('sourceBooking.notes')
+    && !roomBookingAnimationBridgeBlock.includes('sourceBooking.groupName')
+    && /function buildMultiActivityBookingFromProgram[\s\S]*notes: null,[\s\S]*groupName: null,[\s\S]*function buildMultiActivityBookings/.test(bookingCode)
+    && /async function openRoomBookingAnimationBridge[\s\S]*BookingDrawerState\.roomBookingAnimationBridge = \{[\s\S]*groupId: groupResult\.groupId[\s\S]*sourceBookingId: sourceBooking\.id[\s\S]*function revealHiddenBooking/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking,[\s\S]*bridgeGroupId[\s\S]*bridgeSourceBookingId[\s\S]*'room_booking_animation_bridge'/.test(bookingCode));
+check('Booking banquet selector loads same-customer groups and routes selected kitchen/activity atomically',
+    bookingPanelHtml.includes('id="bookingBanquetGroupSection"')
+    && bookingPanelHtml.includes('id="bookingBanquetGroupSelect"')
+    && bookingPanelHtml.includes('Прив’язати до банкету')
+    && bookingPanelHtml.includes('Без прив’язки')
+    && bookingCode.includes('function refreshBookingBanquetGroupCandidates')
+    && bookingCode.includes('apiGetBanquetCandidates({ date, customerId })')
+    && bookingCode.includes('function selectedBookingBanquetGroupContext')
+    && bookingCode.includes('preselectGroupId: groupResult.groupId')
+    && bookingCode.includes('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId')
+    && bookingCode.includes('apiCreateBanquetActivityBooking(selectedBanquetContext.groupId')
+    && apiCode.includes('function apiGetBanquetCandidates')
+    && apiCode.includes('/banquets/candidates')
+    && apiCode.includes('function apiCreateBanquetMemberBooking')
+    && apiCode.includes('/member-booking'));
 check('Booking kitchen menu supports serving times and banquet service events without schema changes',
     bookingCode.includes('servingTime')
     && bookingCode.includes('servingNote')

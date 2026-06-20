@@ -2,6 +2,14 @@ const test = require('node:test');
 const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
+const repoRoot = path.resolve(__dirname, '..');
+
+function read(...segments) {
+    return fs.readFileSync(path.join(repoRoot, ...segments), 'utf8');
+}
 
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);
@@ -1695,6 +1703,50 @@ test('POST /api/bookings fails closed when PostgreSQL reports rollback on commit
         assert.match(res.data.error, /не підтвердив збереження/);
         assert.ok(state.tx.includes('COMMIT'));
     });
+});
+
+test('banquet member booking keeps booking insert and membership insert in one rollbackable transaction', () => {
+    const service = read('services', 'banquetGroups.js');
+    const start = service.indexOf('async function createMemberBookingInBanquetGroup');
+    const end = service.indexOf('async function createActivityBookingInBanquetGroup');
+    assert.ok(start >= 0 && end > start, 'createMemberBookingInBanquetGroup service slice exists');
+    const slice = service.slice(start, end);
+
+    assert.match(slice, /await client\.query\('BEGIN'\)/);
+    assert.ok(
+        slice.indexOf('const memberRow = await insertRootMemberBooking') < slice.indexOf('INSERT INTO banquet_group_bookings'),
+        'booking row is created before membership insert inside the same transaction'
+    );
+    assert.ok(
+        slice.indexOf('INSERT INTO banquet_group_bookings') < slice.indexOf("await client.query('COMMIT')"),
+        'membership insert happens before commit'
+    );
+    assert.match(slice, /await client\.query\('ROLLBACK'\)\.catch\(\(\) => \{\}\)/);
+    assert.match(service, /groupName: null/);
+    assert.match(service, /const ATOMIC_MEMBER_BOOKING_ROLES = new Set\(\['kitchen', 'service', 'manual'\]\)/);
+    assert.doesNotMatch(service, /normalizeShortText\(primary\.group_name/);
+});
+
+test('booking read compatibility prefers workspace comments and sanitizes recurring legacy fields', () => {
+    const bookingJs = read('js', 'booking.js');
+    const detailStart = bookingJs.indexOf('async function showBookingDetails');
+    const detailEnd = bookingJs.indexOf('// v24.3.1: CRM');
+    const detailSlice = bookingJs.slice(detailStart, detailEnd);
+    const recurringStart = bookingJs.indexOf('// Form submit handler');
+    const recurringEnd = bookingJs.indexOf('// ==========================================\r\n// v30.3: BULK OPERATIONS');
+    const recurringSlice = bookingJs.slice(recurringStart, recurringEnd);
+
+    assert.match(bookingJs, /function bookingWorkspaceCommentForDisplay/);
+    assert.match(bookingJs, /workspaceComment\s*\|\|\s*legacyComment/);
+    assert.match(detailSlice, /renderBookingCommentDetailRow\(booking/);
+    assert.doesNotMatch(detailSlice, /booking\.notes \? `<div class="booking-detail-row"><span class="label">Примітки:/);
+    assert.match(bookingJs, /bookingCommentValueForType\(editComments, editCommentType\) \|\| booking\.notes/);
+    assert.match(bookingJs, /bookingCommentValueForType\(duplicateComments, duplicateCommentType\) \|\| booking\.notes/);
+    assert.match(recurringSlice, /groupName: recurringLegacyGroupNameForBooking\(booking\)/);
+    assert.match(recurringSlice, /notes: recurringLegacyNotesForBooking\(booking\)/);
+    assert.match(recurringSlice, /extraData: recurringExtraDataForBooking\(booking\)/);
+    assert.doesNotMatch(recurringSlice, /notes: booking\.notes \|\| null/);
+    assert.match(bookingJs, /function recurringExtraDataForBooking[\s\S]*return \{ bookingWorkspace: recurringWorkspace \};/);
 });
 
 test('booking conflict locks serialize line and room resources in deterministic order', async () => {

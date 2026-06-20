@@ -1860,7 +1860,7 @@ const DashboardPage = (() => {
                 replyEscalation: _workQueueReplyFilters.escalation,
                 limit: '12'
             });
-            const resp = await fetch(`/api/work-queue?${params.toString()}`, {
+            const resp = await fetch(dashboardScopedApiUrl(`/api/work-queue?${params.toString()}`), {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
             if (resp.status === 403 || resp.status === 401) {
@@ -5830,13 +5830,19 @@ const DashboardPage = (() => {
         loadWidgetData('team_online');
     }
 
+    function dashboardScopedApiUrl(path) {
+        const apiUrl = window.CrmBusinessContext?.apiUrl;
+        return typeof apiUrl === 'function' ? apiUrl(path) : path;
+    }
+
     function buildWidgetDataUrl(type) {
         const url = new URL(`/api/dashboard/widgets/${type}`, window.location.origin);
         if (type === 'team_online') {
             url.searchParams.set('scope', isTeamOnlineHistoryEnabled() ? 'history' : 'online');
             url.searchParams.set('limit', isTeamOnlineHistoryEnabled() ? '80' : '30');
         }
-        return url.pathname + url.search;
+        const path = url.pathname + url.search;
+        return dashboardScopedApiUrl(path);
     }
 
     async function loadWidgetData(type, targetContainer = null) {
@@ -5869,7 +5875,7 @@ const DashboardPage = (() => {
 
     async function loadFunnelWidget(container) {
         try {
-            const resp = await fetch('/api/dashboard/widgets/funnel', {
+            const resp = await fetch(dashboardScopedApiUrl('/api/dashboard/widgets/funnel'), {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
             if (resp.status === 403 || resp.status === 401) {

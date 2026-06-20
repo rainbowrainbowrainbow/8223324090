@@ -5,6 +5,10 @@ const { buildTaskVisibilityScope, taskOwnerState } = require('./taskPolicy');
 const { normalizeSubtaskSummary } = require('./taskSubtasks');
 const { getVisibleBookingScope, resolveBookingDerivedLinkedRoute } = require('./bookingVisibility');
 const { attachTaskSchedule, canonicalTaskOrderSql } = require('./taskScheduling');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    pushBusinessScopeCondition
+} = require('./businessContext');
 
 const BUCKETS = [
     { key: 'overdue', label: 'Прострочено' },
@@ -166,7 +170,47 @@ function buildTaskVisibility(user, params, alias = 't') {
     return buildTaskVisibilityScope(user, params, alias);
 }
 
-function hrefForTask(row, actor = null) {
+function appendWorkQueueBusinessScope(params, businessScope, alias = 't') {
+    if (!businessScope) return '';
+    return `AND ${pushBusinessScopeCondition(params, businessScope, alias)}`;
+}
+
+function workQueueBusinessScopeMeta(scope = {}) {
+    const selectedContexts = Array.isArray(scope.selectedContexts) && scope.selectedContexts.length
+        ? scope.selectedContexts
+        : [scope.activeContext || DEFAULT_BUSINESS_CONTEXT];
+    return {
+        mode: scope.mode || 'single',
+        activeContext: scope.activeContext || selectedContexts[0] || DEFAULT_BUSINESS_CONTEXT,
+        selectedContexts,
+        readOnly: scope.readOnly === true,
+        canWrite: scope.canWrite !== false
+    };
+}
+
+function appendBusinessScopeToHref(href, businessScope) {
+    if (!href || !businessScope || !String(href).startsWith('/sales-funnel')) return href;
+    try {
+        const target = new URL(String(href), 'http://localhost');
+        const meta = workQueueBusinessScopeMeta(businessScope);
+        if (meta.mode === 'multi' || meta.mode === 'all') {
+            target.searchParams.set('businessScope', meta.mode);
+            target.searchParams.set('businessContext', meta.activeContext);
+            if (meta.mode === 'multi') target.searchParams.set('businessContexts', meta.selectedContexts.join(','));
+            else target.searchParams.delete('businessContexts');
+        } else {
+            if (meta.activeContext === DEFAULT_BUSINESS_CONTEXT) return href;
+            target.searchParams.set('businessContext', meta.activeContext);
+            target.searchParams.delete('businessScope');
+            target.searchParams.delete('businessContexts');
+        }
+        return `${target.pathname}${target.search}${target.hash}`;
+    } catch {
+        return href;
+    }
+}
+
+function hrefForTask(row, actor = null, options = {}) {
     const sourceType = row.task_source_type || row.source_type;
     const sourceId = row.task_source_id || row.source_id;
     const conversationId = row.linked_conversation_id;
@@ -176,7 +220,7 @@ function hrefForTask(row, actor = null) {
     const bookingDate = row.linked_booking_date || row.booking_date;
 
     if (conversationId) return `/omni?conversation=${encodeURIComponent(conversationId)}`;
-    if (leadId) return `/sales-funnel?lead=${encodeURIComponent(leadId)}`;
+    if (leadId) return appendBusinessScopeToHref(`/sales-funnel?lead=${encodeURIComponent(leadId)}`, options.businessScope);
     if (bookingId && bookingDate) {
         const route = resolveBookingDerivedLinkedRoute(
             actor,
@@ -247,7 +291,7 @@ function taskItem(row, bucket, options = {}) {
         subtaskProgressPercent: subtaskSummary.subtaskProgressPercent,
         confidence: hasExactCase ? 'exact' : (row.deadline ? 'durable' : 'suggested'),
         actionLabel: hasExactCase ? 'Відкрити кейс' : 'Відкрити задачу',
-        href: hrefForTask(row, options.actor),
+        href: hrefForTask(row, options.actor, { businessScope: options.businessScope }),
         meta: {
             status: row.status || null,
             category: row.category || null,
@@ -284,8 +328,8 @@ function taskItem(row, bucket, options = {}) {
     };
 }
 
-function leadHref(id) {
-    return `/sales-funnel?lead=${encodeURIComponent(id)}`;
+function leadHref(id, businessScope = null) {
+    return appendBusinessScopeToHref(`/sales-funnel?lead=${encodeURIComponent(id)}`, businessScope);
 }
 
 function leadTitle(row) {
@@ -313,9 +357,10 @@ function leadFunnelStageLabel(stage) {
     return LEAD_FUNNEL_STAGE_LABELS[normalized] || normalized.replace(/[_-]+/g, ' ');
 }
 
-function leadFunnelHref(stage = '') {
+function leadFunnelHref(stage = '', businessScope = null) {
     const normalized = normalizeFunnelStage(stage);
-    return normalized ? `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(normalized)}` : '/sales-funnel';
+    const href = normalized ? `/sales-funnel?view=kanban&pipeline_stage=${encodeURIComponent(normalized)}` : '/sales-funnel';
+    return appendBusinessScopeToHref(href, businessScope);
 }
 
 function normalizeLeadTypeStats(rows = []) {
@@ -329,7 +374,7 @@ function normalizeLeadTypeStats(rows = []) {
     return stats;
 }
 
-function normalizeLeadFunnelInsights(rows = [], typeRows = []) {
+function normalizeLeadFunnelInsights(rows = [], typeRows = [], businessScope = null) {
     const stages = (Array.isArray(rows) ? rows : []).map(row => {
         const stage = normalizeFunnelStage(row.stage || row.pipeline_stage);
         const total = Number(row.total || 0);
@@ -340,7 +385,7 @@ function normalizeLeadFunnelInsights(rows = [], typeRows = []) {
             total,
             waitingAction,
             oldestTouchAt: isoValue(row.oldest_touch_at),
-            href: leadFunnelHref(stage)
+            href: leadFunnelHref(stage, businessScope)
         };
     }).filter(row => row.total > 0);
 
@@ -363,7 +408,7 @@ function normalizeLeadFunnelInsights(rows = [], typeRows = []) {
         hotStage,
         classificationStats,
         operationalQueueStats,
-        href: '/sales-funnel'
+        href: appendBusinessScopeToHref('/sales-funnel', businessScope)
     };
 }
 
@@ -384,7 +429,7 @@ function leadItem(row, bucket, options = {}) {
         priority: options.priority || 'normal',
         confidence: options.confidence || 'durable',
         actionLabel: 'Відкрити кейс',
-        href: leadHref(leadId),
+        href: leadHref(leadId, options.businessScope),
         meta: {
             pipelineStage: row.pipeline_stage || null,
             assignedTo: row.assigned_name || row.assigned_to || null,
@@ -397,10 +442,10 @@ function conversationTitle(row) {
     return row.customer_name || row.customer_phone || `Conversation #${row.conversation_id}`;
 }
 
-function conversationItem(row, bucket = 'waiting_reply') {
+function conversationItem(row, bucket = 'waiting_reply', options = {}) {
     const dueAt = isoValue(row.due_at || row.reply_sla_at || row.awaiting_reply_since);
     const conversationHref = `/omni?conversation=${encodeURIComponent(row.conversation_id)}`;
-    const leadHrefValue = row.lead_id ? leadHref(row.lead_id) : null;
+    const leadHrefValue = row.lead_id ? leadHref(row.lead_id, options.businessScope) : null;
     const replySlaState = deriveReplySlaState(row);
     return {
         id: `${bucket}:conversation:${row.conversation_id}`,
@@ -508,10 +553,11 @@ async function source(pool, warnings, name, fn) {
     }
 }
 
-async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, signal) {
+async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, signal, businessScope = null) {
     const params = [...whereParams];
     const visibility = buildTaskVisibility(user, params, 't');
     const bookingVisibility = getVisibleBookingScope(user, params, 'sb');
+    const taskBusinessCondition = appendWorkQueueBusinessScope(params, businessScope, 't');
     const limitRef = pushParam(params, limit);
     const query = `
         SELECT t.id, t.title, t.description, t.status, t.priority, t.deadline, t.date,
@@ -561,6 +607,7 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
         LEFT JOIN conversation_messages rcm ON t.source_type = 'conversation_reply' AND t.source_id = rcm.id::text
         WHERE ${ACTIVE_TASK_STATUS_SQL}
           ${visibility}
+          ${taskBusinessCondition}
           AND (${whereSql})
         ORDER BY
           ${canonicalTaskOrderSql('t')},
@@ -569,7 +616,7 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
         LIMIT ${limitRef}
     `;
     const result = await pool.query(query, params);
-    return result.rows.map(row => taskItem(row, bucket, { actor: user, signal, canExecute: true }));
+    return result.rows.map(row => taskItem(row, bucket, { actor: user, signal, canExecute: true, businessScope }));
 }
 
 function compareItems(a, b) {
@@ -760,6 +807,7 @@ async function buildWorkQueue({
     replySla = 'all',
     replyOwner = 'all',
     replyEscalation = 'all',
+    businessScope = null,
     now = new Date()
 } = {}) {
     if (!pool || typeof pool.query !== 'function') {
@@ -784,7 +832,8 @@ async function buildWorkQueue({
         "(t.scheduled_end_at IS NOT NULL AND t.scheduled_end_at < NOW()) OR (t.scheduled_end_at IS NULL AND t.deadline IS NOT NULL AND t.deadline < NOW()) OR (t.scheduled_end_at IS NULL AND t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) < $1)",
         [todayStr],
         safeLimit,
-        'task_due_overdue'
+        'task_due_overdue',
+        businessScope
     ));
 
     const todayTasks = await source(pool, warnings, 'tasks_today', () => loadTaskBucket(
@@ -794,7 +843,8 @@ async function buildWorkQueue({
         "(t.scheduled_start_at IS NOT NULL AND (t.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NOT NULL AND t.deadline >= NOW() AND t.deadline::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) = $1)",
         [todayStr],
         safeLimit,
-        'task_due_today'
+        'task_due_today',
+        businessScope
     ));
 
     const tomorrowTasks = await source(pool, warnings, 'tasks_tomorrow', () => loadTaskBucket(
@@ -804,10 +854,14 @@ async function buildWorkQueue({
         "(t.scheduled_start_at IS NOT NULL AND (t.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NOT NULL AND t.deadline::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) = $1)",
         [tomorrowStr],
         safeLimit,
-        'task_due_tomorrow'
+        'task_due_tomorrow',
+        businessScope
     ));
 
     const callbackDue = await source(pool, warnings, 'lead_followups', async () => {
+        const params = [tomorrowStr, CLOSED_LEAD_STAGES];
+        const leadBusinessCondition = appendWorkQueueBusinessScope(params, businessScope, 'l');
+        const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT li.id AS interaction_id, li.lead_id, li.type, li.summary, li.details,
                    li.follow_up_date AS due_at, l.client_name, l.phone, l.pipeline_stage,
@@ -820,9 +874,10 @@ async function buildWorkQueue({
               AND li.follow_up_date::date <= $1::date
               AND COALESCE(l.pipeline_stage, 'new') <> ALL($2::text[])
               AND COALESCE(l.lead_type, 'quality') = 'quality'
+              ${leadBusinessCondition}
             ORDER BY li.follow_up_date ASC, li.created_at DESC
-            LIMIT $3
-        `, [tomorrowStr, CLOSED_LEAD_STAGES, safeLimit]);
+            LIMIT ${limitRef}
+        `, params);
         return result.rows.map(row => leadItem(row, 'callback_due', {
             sourceType: 'lead_interaction',
             source_id: row.interaction_id,
@@ -830,7 +885,8 @@ async function buildWorkQueue({
             subtitle: row.summary || row.details || row.phone || null,
             signal: 'lead_interactions.follow_up_date',
             confidence: 'exact',
-            priority: dateValue(row.due_at) <= todayStr ? 'high' : 'normal'
+            priority: dateValue(row.due_at) <= todayStr ? 'high' : 'normal',
+            businessScope
         }));
     });
 
@@ -842,6 +898,7 @@ async function buildWorkQueue({
             owner: replyOwnerFilter,
             escalation: replyEscalationFilter
         }, 'c', 'rt');
+        const replyBusinessCondition = appendWorkQueueBusinessScope(params, businessScope, 'c');
         const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
@@ -855,15 +912,17 @@ async function buildWorkQueue({
             FROM conversations c
             LEFT JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id
             LEFT JOIN tasks rt
-              ON rt.source_type = 'conversation_reply'
+             ON rt.source_type = 'conversation_reply'
              AND rt.source_id = c.reply_expected_message_id::text
              AND COALESCE(rt.status, 'todo') NOT IN ('done','cancelled','archived')
+             AND COALESCE(rt.business_context, 'event_genix') = COALESCE(c.business_context, 'event_genix')
             LEFT JOIN customers cust ON cust.id = c.customer_id
             WHERE c.reply_expected IS TRUE
               AND c.awaiting_reply_since IS NOT NULL
               AND COALESCE(c.status, 'open') NOT IN ('closed', 'spam')
               AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
               AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
+              ${replyBusinessCondition}
               ${replyScopeFilter}
               ${replyStateFilter}
             ORDER BY
@@ -871,7 +930,7 @@ async function buildWorkQueue({
               COALESCE(c.reply_sla_at, c.awaiting_reply_since) ASC
             LIMIT ${limitRef}
         `, params);
-        return result.rows.map(row => conversationItem(row, 'waiting_reply'));
+        return result.rows.map(row => conversationItem(row, 'waiting_reply', { businessScope }));
     });
 
     const needsConfirmation = await source(pool, warnings, 'bookings_confirmation', async () => {
@@ -914,6 +973,9 @@ async function buildWorkQueue({
     });
 
     const eventSoon = await source(pool, warnings, 'leads_event_soon', async () => {
+        const params = [todayStr, eventSoonStr, CLOSED_LEAD_STAGES];
+        const leadBusinessCondition = appendWorkQueueBusinessScope(params, businessScope, 'l');
+        const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT l.id, l.client_name, l.phone, l.event_date AS due_at,
                    l.pipeline_stage, l.assigned_to, l.booking_id, u.name AS assigned_name,
@@ -926,19 +988,25 @@ async function buildWorkQueue({
               AND l.event_date::date <= $2::date
               AND COALESCE(l.pipeline_stage, 'new') <> ALL($3::text[])
               AND COALESCE(l.lead_type, 'quality') = 'quality'
+              ${leadBusinessCondition}
             ORDER BY l.event_date ASC, l.updated_at DESC
-            LIMIT $4
-        `, [todayStr, eventSoonStr, CLOSED_LEAD_STAGES, safeLimit]);
+            LIMIT ${limitRef}
+        `, params);
         return result.rows.map(row => leadItem(row, 'event_soon', {
             title: `Подія скоро: ${leadTitle(row)}`,
             subtitle: [row.program_name, row.phone].filter(Boolean).join(' · ') || null,
             signal: 'leads.event_date',
             confidence: 'durable',
-            priority: dateValue(row.due_at) <= tomorrowStr ? 'high' : 'normal'
+            priority: dateValue(row.due_at) <= tomorrowStr ? 'high' : 'normal',
+            businessScope
         }));
     });
 
     const funnelInsights = await source(pool, warnings, 'leads_funnel_summary', async () => {
+        const funnelParams = [CLOSED_LEAD_STAGES];
+        const funnelBusinessCondition = appendWorkQueueBusinessScope(funnelParams, businessScope, 'l');
+        const typeParams = [];
+        const typeBusinessCondition = appendWorkQueueBusinessScope(typeParams, businessScope, 'l');
         const [result, typeResult] = await Promise.all([
             pool.query(`
                 SELECT COALESCE(NULLIF(l.pipeline_stage, ''), 'new') AS stage,
@@ -950,18 +1018,21 @@ async function buildWorkQueue({
                 FROM leads l
                 WHERE COALESCE(l.pipeline_stage, 'new') <> ALL($1::text[])
                   AND COALESCE(l.lead_type, 'quality') = 'quality'
+                  ${funnelBusinessCondition}
                 GROUP BY COALESCE(NULLIF(l.pipeline_stage, ''), 'new')
                 ORDER BY waiting_action DESC, total DESC, stage ASC
                 LIMIT 8
-            `, [CLOSED_LEAD_STAGES]),
+            `, funnelParams),
             pool.query(`
                 SELECT COALESCE(NULLIF(l.lead_type, ''), 'quality') AS lead_type,
                        COUNT(*)::int AS count
                 FROM leads l
+                WHERE 1 = 1
+                  ${typeBusinessCondition}
                 GROUP BY COALESCE(NULLIF(l.lead_type, ''), 'quality')
-            `)
+            `, typeParams)
         ]);
-        return normalizeLeadFunnelInsights(result.rows, typeResult.rows);
+        return normalizeLeadFunnelInsights(result.rows, typeResult.rows, businessScope);
     });
 
     const tomorrowBookings = await source(pool, warnings, 'bookings_tomorrow', async () => {
@@ -1032,7 +1103,8 @@ async function buildWorkQueue({
             canonicalBuckets: BUCKETS.map(bucket => bucket.key),
             heuristicBuckets: [],
             omittedBuckets: [],
-            funnelInsights: Array.isArray(funnelInsights) ? normalizeLeadFunnelInsights([]) : funnelInsights,
+            businessScope: businessScope ? workQueueBusinessScopeMeta(businessScope) : null,
+            funnelInsights: Array.isArray(funnelInsights) ? normalizeLeadFunnelInsights([], [], businessScope) : funnelInsights,
             intelligence: enrichedQueue.summary,
             bookingVisibility: {
                 visibleScopeOnly: true,

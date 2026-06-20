@@ -28,6 +28,11 @@ let pricePositionsData = [];
 // API CALLS — existing
 // ==========================================
 
+function centerScopedApiUrl(path) {
+    const apiUrl = window.CrmBusinessContext?.apiUrl;
+    return typeof apiUrl === 'function' ? apiUrl(path) : path;
+}
+
 async function apiCenterOverview() {
     try {
         const response = await fetch(`${API_BASE}/center/overview`, { headers: getAuthHeaders(false) });
@@ -2401,8 +2406,7 @@ async function loadHotLeads() {
     setContainerLoading('hotLeadsList', 'Перевіряємо гарячі ліди...');
     setBadgeCount('hotLeadsCount', 0);
     try {
-        const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
-        const resp = await fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + token } });
+        const resp = await fetch(centerScopedApiUrl('/api/leads/hot'), { headers: getAuthHeaders(false) });
         const data = await resp.json();
         if (!data.success || !data.leads.length) {
             container.innerHTML = centerStateHtml('Немає гарячих лідів', 'Ліди без відповіді або з високим ризиком не знайдені.');

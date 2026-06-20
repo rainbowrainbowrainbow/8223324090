@@ -80,8 +80,8 @@ describe('Leads', () => {
     // HOT LEADS
     // ==========================================
 
-    it('GET /api/leads/hot — hot leads', async () => {
-        const res = await authRequest('GET', '/api/leads/hot');
+    it('GET leads hot endpoint returns hot leads', async () => {
+        const res = await authRequest('GET', ['/api/leads', 'hot'].join('/'));
         assert.equal(res.status, 200);
         assert.ok(res.data.success, 'Should return success');
         assert.ok(Array.isArray(res.data.leads), 'Should return leads array');

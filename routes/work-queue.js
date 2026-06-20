@@ -7,6 +7,10 @@ const { pool } = require('../db');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { buildWorkQueue } = require('../services/workQueue');
 const {
+    resolveBusinessScope,
+    requireBusinessScope
+} = require('../services/businessContext');
+const {
     listReplyOwnerCandidates,
     reassignReplyExpectationOwner,
     clearReplyExpectation,
@@ -44,6 +48,12 @@ router.use(requireRole('manager'));
 function parsePositiveInt(value) {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function workQueueBusinessScope(req, res) {
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    return scope;
 }
 
 function parseConversationIds(value) {
@@ -591,9 +601,12 @@ router.patch('/tasks/:taskId/deadline', async (req, res) => {
 
 router.get('/', async (req, res) => {
     try {
+        const businessScope = workQueueBusinessScope(req, res);
+        if (!businessScope) return;
         const queue = await buildWorkQueue({
             pool,
             user: req.user,
+            businessScope,
             limit: req.query.limit,
             replyScope: req.query.replyScope || req.query.reply_scope,
             replySla: req.query.replySla || req.query.reply_sla,

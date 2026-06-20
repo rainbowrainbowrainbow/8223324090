@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.88 - Business Scoped Live Counters
+
+### Business scope / Live counters / Dashboard / Work queue / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Додано canonical read-only endpoint `/api/business/live-counters`** - backend повертає `leads.new`, `leads.hot`, `tasks.active`, `tasks.overdue` і `alerts.active` для single, multi та all business scopes.
+- **Counters більше не змішують бізнеси** - sidebar, profile pulse, dashboard widgets, work queue, assistant snapshots і center hot leads читають дані через активний `CrmBusinessContext`.
+- **Aggregate scopes явно read-only** - multi/all повертають totals і `byBusiness` тільки для allowed contexts користувача, без права запису.
+- **Dashboard lead/alert counters scoped у SQL** - `quick_stats`, `alerts`, `leads_new`, `/dashboard/today` і standalone `/dashboard/alerts` додають business scope condition до lead counters.
+- **Work queue і funnel snapshots scoped** - task buckets, lead followups, event-soon leads і funnel insights отримують `businessScope`, а funnel links зберігають aggregate context.
+- **Regression guardrails посилено** - backend endpoint tests, dashboard route guards, workQueue query guards і UI smoke ловлять повернення raw `/api/leads/hot` або `/api/leads/new-count` у user-facing counters.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.88`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.87 - Kitchen Menu Quantity Wording
 
 ### Kitchen menu / Quantity wording / Banquet sheet / Timeline inspector / Regression tests / (Клешня, 20.06.2026) [codex]

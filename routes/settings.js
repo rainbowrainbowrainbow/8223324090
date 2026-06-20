@@ -41,6 +41,7 @@ const {
     isTimelineContext,
     saveBusinessCabinetSettings
 } = require('../services/businessCabinet');
+const { buildBusinessLiveCounters } = require('../services/businessLiveCounters');
 const {
     getChatSettingsBundle,
     getAIProviderDiagnostics,
@@ -548,6 +549,18 @@ router.get('/business/profile', async (req, res) => {
         });
     } catch (err) {
         log.error('GET /business/profile error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.get('/business/live-counters', async (req, res) => {
+    try {
+        const scope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, scope)) return;
+        const payload = await buildBusinessLiveCounters(pool, req.user, scope);
+        res.json(payload);
+    } catch (err) {
+        log.error('GET /business/live-counters error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });

@@ -127,6 +127,7 @@ test('dashboard and analytics aggregates include selected business scope', () =>
     const analytics = read('routes/analytics.js');
     const stats = read('routes/stats.js');
     const board = read('routes/board.js');
+    const dashboard = read('routes/dashboard.js');
     const migration = read('db/migrations/236_dashboard_analytics_business_context_scope.sql');
 
     assert.match(analytics, /analyticsBusinessScope/);
@@ -153,6 +154,20 @@ test('dashboard and analytics aggregates include selected business scope', () =>
     assert.match(board, /pushBusinessScopeCondition\(bookingParams, businessScope, 'b'\)/);
     assert.match(board, /FROM staff_schedule[\s\S]*AND \$\{staffBusinessCondition\}/);
     assert.match(board, /businessScope: \{/);
+
+    assert.match(dashboard, /function dashboardBusinessScopeMeta/);
+    assert.match(dashboard, /coldLeadBusinessCondition = appendDashboardBusinessScope\(coldLeadParams, businessScope, 'l'\)/);
+    assert.match(dashboard, /SELECT COUNT\(\*\) as count FROM leads l[\s\S]*\$\{coldLeadBusinessCondition\}/);
+    assert.match(dashboard, /SELECT COUNT\(\*\) as c FROM leads l[\s\S]*\$\{coldLeadBusinessCondition\}/);
+    assert.match(dashboard, /leadBusinessCondition = appendDashboardBusinessScope\(leadParams, businessScope, 'l'\)/);
+    assert.match(dashboard, /newLeadBusinessCondition = appendDashboardBusinessScope\(newLeadParams, businessScope, 'l'\)/);
+    assert.match(dashboard, /SELECT COUNT\(\*\) as count FROM leads l[\s\S]*\$\{newLeadBusinessCondition\}/);
+    assert.match(dashboard, /lowStockBusinessCondition = appendDashboardBusinessScope\(lowStockParams, businessScope, 'ws'\)/);
+    assert.match(dashboard, /openShiftBusinessCondition = appendDashboardBusinessScope\(shiftParams, businessScope, 'cs'\)/);
+    assert.match(dashboard, /globalSignals: \['omni_account_alerts'\]/);
+    assert.doesNotMatch(dashboard, /SELECT COUNT\(\*\) as c FROM leads WHERE COALESCE\(pipeline_stage, 'new'\)/);
+    assert.doesNotMatch(dashboard, /FROM warehouse_stock WHERE quantity <= min_quantity/);
+    assert.doesNotMatch(dashboard, /FROM cash_register_shifts WHERE status='open'/);
 
     assert.match(migration, /ALTER TABLE hr_time_records[\s\S]*business_context VARCHAR\(64\)/);
     assert.match(migration, /ALTER TABLE staff_schedule[\s\S]*business_context VARCHAR\(64\)/);
@@ -393,4 +408,58 @@ test('background booking notifications and legacy bot reads stay inside a timeli
     assert.match(kleshnyaChat, /pushTimelineBusinessContext\(params, alias, actorTimelineBusinessContext\(targetActor\)\)/);
     assert.match(kleshnyaGreeting, /function scopedGreetingBookingVisibility/);
     assert.match(kleshnyaGreeting, /SELECT COUNT\(DISTINCT l\.line_id\) as cnt FROM lines_by_date l WHERE l\.date = \$1 AND \$\{animScope\}/);
+});
+
+test('business live counters endpoint uses canonical business scope and read-only aggregates', () => {
+    const settings = read('routes/settings.js');
+    const service = read('services/businessLiveCounters.js');
+    const leads = read('routes/leads.js');
+
+    assert.match(settings, /router\.get\('\/business\/live-counters'/);
+    assert.match(settings, /resolveBusinessScope\(req\)/);
+    assert.match(settings, /requireBusinessScope\(req, res, scope\)/);
+    assert.match(settings, /buildBusinessLiveCounters\(pool, req\.user, scope\)/);
+
+    assert.match(service, /function buildBusinessLiveCounters/);
+    assert.match(service, /function businessScopeMeta/);
+    assert.match(service, /scope\.readOnly === true/);
+    assert.match(service, /scope\.canWrite !== false/);
+    assert.match(service, /pushBusinessScopeCondition\(params, scope, 'l'\)/);
+    assert.match(service, /pushBusinessScopeCondition\(params, scope, 't'\)/);
+    assert.match(service, /pushBusinessScopeCondition\(params, scope, 'b'\)/);
+    assert.match(service, /buildTaskVisibilityScope\(user, params, 't'\)/);
+    assert.match(service, /getVisibleBookingScope\(user, params, 'b'\)/);
+    assert.match(service, /COALESCE\(l\.pipeline_stage, 'new'\) = 'new'/);
+    assert.match(service, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/);
+    assert.match(service, /FROM warehouse_stock ws/);
+    assert.match(service, /pushBusinessScopeCondition\(params, scope, 'ws'\)/);
+    assert.match(service, /FROM cash_register_shifts cs/);
+    assert.match(service, /pushBusinessScopeCondition\(params, scope, 'cs'\)/);
+    assert.match(service, /AS today_booking_count/);
+    assert.match(service, /INTERVAL '24 hours'/);
+    assert.match(service, /INTERVAL '48 hours'/);
+    assert.match(service, /task_action_history/);
+
+    assert.match(leads, /router\.get\('\/new-count'/);
+    assert.match(leads, /ensureBusinessContext\(req, res\)/);
+    assert.match(leads, /COALESCE\(business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$1/);
+});
+
+test('live counter regression guards keep dashboard lead SQL and work queue scoped', () => {
+    const dashboard = read('routes/dashboard.js');
+    const workQueue = read('services/workQueue.js');
+
+    assert.match(dashboard, /case 'quick_stats':[\s\S]*coldLeadBusinessCondition = appendDashboardBusinessScope\(coldLeadParams, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{coldLeadBusinessCondition\}/);
+    assert.match(dashboard, /case 'alerts':[\s\S]*coldLeadBusinessCondition = appendDashboardBusinessScope\(coldLeadParams, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{coldLeadBusinessCondition\}/);
+    assert.match(dashboard, /case 'leads_new':[\s\S]*leadBusinessCondition = appendDashboardBusinessScope\(leadParams, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{leadBusinessCondition\}/);
+    assert.match(dashboard, /router\.get\('\/today'[\s\S]*newLeadBusinessCondition = appendDashboardBusinessScope\(newLeadParams, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{newLeadBusinessCondition\}/);
+    assert.match(dashboard, /router\.get\('\/alerts'[\s\S]*coldLeadBusinessCondition = appendDashboardBusinessScope\(coldLeadParams, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{coldLeadBusinessCondition\}/);
+    assert.doesNotMatch(dashboard, /SELECT COUNT\(\*\) as c FROM leads WHERE COALESCE\(pipeline_stage, 'new'\)/);
+    assert.doesNotMatch(dashboard, /SELECT COUNT\(\*\) as count FROM leads WHERE COALESCE\(pipeline_stage, 'new'\)/);
+
+    assert.match(workQueue, /async function buildWorkQueue\(\{[\s\S]*businessScope = null/);
+    assert.match(workQueue, /async function loadTaskBucket[\s\S]*taskBusinessCondition = appendWorkQueueBusinessScope\(params, businessScope, 't'\)[\s\S]*FROM tasks t[\s\S]*\$\{taskBusinessCondition\}/);
+    assert.match(workQueue, /'lead_followups'[\s\S]*leadBusinessCondition = appendWorkQueueBusinessScope\(params, businessScope, 'l'\)[\s\S]*FROM lead_interactions li[\s\S]*\$\{leadBusinessCondition\}/);
+    assert.match(workQueue, /'leads_event_soon'[\s\S]*leadBusinessCondition = appendWorkQueueBusinessScope\(params, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{leadBusinessCondition\}/);
+    assert.match(workQueue, /'leads_funnel_summary'[\s\S]*funnelBusinessCondition = appendWorkQueueBusinessScope\(funnelParams, businessScope, 'l'\)[\s\S]*typeBusinessCondition = appendWorkQueueBusinessScope\(typeParams, businessScope, 'l'\)[\s\S]*FROM leads l[\s\S]*\$\{funnelBusinessCondition\}[\s\S]*FROM leads l[\s\S]*\$\{typeBusinessCondition\}/);
 });

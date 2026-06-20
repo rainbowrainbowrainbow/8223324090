@@ -3238,11 +3238,11 @@ function updateBookingMenuCatalogSummary() {
     const mobileCart = document.getElementById('bookingMenuCatalogMobileCartBtn');
     const panel = document.getElementById('bookingMenuCatalogPanel');
     if (inline) inline.textContent = summary.combined;
-    if (header) header.textContent = summary.combined;
-    if (cartSummary) cartSummary.textContent = summary.combined;
+    if (header) header.textContent = summary.countText;
+    if (cartSummary) cartSummary.textContent = summary.countText;
     if (footerCount) footerCount.textContent = summary.countText;
     if (footerTotal) footerTotal.textContent = summary.subtotalText;
-    if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.subtotalText}`;
+    if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.countText}`;
     panel?.classList.toggle('booking-menu-catalog-has-selection', getBookingMenuPositions().length > 0);
 }
 

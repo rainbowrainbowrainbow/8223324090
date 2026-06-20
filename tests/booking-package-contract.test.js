@@ -399,7 +399,11 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-cart-item/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-thumb--cart/);
     assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
-    assert.match(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /140|120|грн/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogSummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.match(doc.getElementById('bookingMenuCatalogEntrySummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.match(doc.getElementById('bookingMenuCatalogFooterTotal').textContent, /120|140|РіСЂРЅ|грн|₴/);
     assert.match(doc.getElementById('bookingMenuPositionsJson').value, /cake_custom/);
 
     ctx.setBookingMenuCatalogEditing('cake_custom', 'quantity');
@@ -581,6 +585,8 @@ test('booking menu catalog mobile list add does not auto-open cart sheet', () =>
     assert.equal(doc.querySelector('#bookingMenuPositionsList [data-menu-serving-time="0"]').value, '15:30');
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /250|РіСЂРЅ|грн|₴/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /250|РіСЂРЅ|грн|₴/);
     assert.equal(panel.classList.contains('booking-menu-catalog-cart-open'), false);
     assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'false');
 
@@ -957,6 +963,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuCatalogList/);
     assert.match(html, /bookingMenuCatalogCart/);
     assert.match(html, /bookingMenuCatalogCartList/);
+    assert.match(html, /booking-menu-catalog-footer-count/);
+    assert.match(html, /booking-menu-catalog-footer-total" aria-live="polite"/);
+    assert.match(html, /<span>Разом<\/span>/);
+    assert.doesNotMatch(html, /id="bookingMenuCatalogSummary">[^<]*₴/);
+    assert.doesNotMatch(html, /id="bookingMenuCatalogCartSummary">[^<]*₴/);
     assert.match(html, /bookingMenuInsightPanel/);
     assert.match(html, /Кількість дітей/);
     assert.doesNotMatch(bookingPanelHtml, /<label>Гостей<\/label>/);
@@ -990,6 +1001,14 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /findBookingProductById/);
     assert.match(bookingJs, /function renderBookingMenuCatalog/);
     assert.match(bookingJs, /function renderBookingMenuCatalogCart/);
+    assert.match(bookingJs, /if \(inline\) inline\.textContent = summary\.combined;/);
+    assert.match(bookingJs, /if \(header\) header\.textContent = summary\.countText;/);
+    assert.match(bookingJs, /if \(cartSummary\) cartSummary\.textContent = summary\.countText;/);
+    assert.match(bookingJs, /if \(footerTotal\) footerTotal\.textContent = summary\.subtotalText;/);
+    assert.match(bookingJs, /if \(mobileCart\) mobileCart\.textContent = `Вибрано · \$\{summary\.countText\}`;/);
+    assert.doesNotMatch(bookingJs, /if \(header\) header\.textContent = summary\.combined;/);
+    assert.doesNotMatch(bookingJs, /if \(cartSummary\) cartSummary\.textContent = summary\.combined;/);
+    assert.doesNotMatch(bookingJs, /if \(mobileCart\) mobileCart\.textContent = `Вибрано · \$\{summary\.subtotalText\}`;/);
     assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
     assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
     assert.match(bookingJs, /bookingMenuCatalogHandleImageError/);
@@ -1203,6 +1222,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*z-index:\s*var\(--z-modal,\s*30000\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-panel > \.booking-menu-catalog-header,\s*\.booking-menu-catalog-panel > \.booking-menu-catalog-body,\s*\.booking-menu-catalog-panel > \.booking-menu-catalog-footer\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
+    assert.match(panelCss, /\.booking-menu-catalog-footer\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto auto auto;[\s\S]*gap:\s*12px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-footer-total\s*\{[\s\S]*justify-content:\s*flex-end;[\s\S]*min-width:\s*max-content;/);
+    assert.match(panelCss, /\.booking-menu-catalog-footer-total strong\s*\{[\s\S]*font-size:\s*22px;[\s\S]*font-weight:\s*1000;/);
+    assert.match(panelCss, /@media \(max-width:\s*900px\)[\s\S]*grid-template-areas:\s*"count done"[\s\S]*"total done"[\s\S]*"cart cart";/);
+    assert.match(panelCss, /@media \(max-width:\s*900px\)[\s\S]*\.booking-menu-catalog-footer-total\s*\{[\s\S]*grid-area:\s*total;[\s\S]*justify-content:\s*flex-start;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*330px\)[\s\S]*overflow:\s*hidden;/);
     assert.match(panelCss, /\.booking-menu-catalog-browser,\s*\.booking-menu-catalog-cart\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
     assert.match(panelCss, /\.booking-menu-catalog-browser\s*\{[\s\S]*isolation:\s*isolate;[\s\S]*contain:\s*paint;[\s\S]*transform:\s*translateZ\(0\);/);

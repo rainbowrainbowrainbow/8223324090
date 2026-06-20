@@ -2521,6 +2521,33 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && panelCss.includes('.booking-menu-catalog-item.selected')
     && panelCss.includes('.booking-menu-catalog-inline-input')
     && panelCss.includes('@media (max-width: 900px)'));
+check('Booking kitchen catalog keeps the aggregate total only in the footer',
+    htmlContains('index.html', '<small id="bookingMenuCatalogSummary">0 позицій</small>')
+    && htmlContains('index.html', '<small id="bookingMenuCatalogCartSummary">0 позицій</small>')
+    && !htmlContains('index.html', '<small id="bookingMenuCatalogSummary">0 позицій · 0 ₴</small>')
+    && !htmlContains('index.html', '<small id="bookingMenuCatalogCartSummary">0 позицій · 0 ₴</small>')
+    && bookingCode.includes('if (inline) inline.textContent = summary.combined')
+    && bookingCode.includes('if (header) header.textContent = summary.countText')
+    && bookingCode.includes('if (cartSummary) cartSummary.textContent = summary.countText')
+    && bookingCode.includes('if (footerTotal) footerTotal.textContent = summary.subtotalText')
+    && bookingCode.includes('if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.countText}`')
+    && !bookingCode.includes('if (header) header.textContent = summary.combined')
+    && !bookingCode.includes('if (cartSummary) cartSummary.textContent = summary.combined')
+    && !bookingCode.includes('if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.subtotalText}`'));
+check('Booking kitchen catalog footer presents the only total as a right-aligned primary summary',
+    htmlContains('index.html', 'booking-menu-catalog-footer-count')
+    && htmlContains('index.html', 'booking-menu-catalog-footer-total" aria-live="polite"')
+    && htmlContains('index.html', '<span>Разом</span>')
+    && panelCss.includes('.booking-menu-catalog-footer-total')
+    && panelCss.includes('grid-template-columns: minmax(0, 1fr) auto auto auto')
+    && panelCss.includes('justify-content: flex-end')
+    && panelCss.includes('font-size: 22px')
+    && panelCss.includes('font-weight: 1000')
+    && panelCss.includes('grid-template-areas:')
+    && panelCss.includes('"count done"')
+    && panelCss.includes('"total done"')
+    && panelCss.includes('"cart cart"')
+    && panelCss.includes('grid-area: total'));
 check('Booking panel notes section omits noisy base-request helper copy',
     !bookingPanelHtml.includes('Базова заявка')
     && !bookingPanelHtml.includes('Коротка тема і примітки оператора без зайвого шуму.'));

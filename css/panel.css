@@ -2807,6 +2807,10 @@ body.booking-menu-catalog-active {
 .booking-menu-catalog-footer {
     position: relative;
     z-index: 3;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 12px;
     margin-top: 10px;
     border-radius: 14px;
     border-color: rgba(148, 163, 184, 0.28);
@@ -2815,6 +2819,39 @@ body.booking-menu-catalog-active {
         0 -18px 42px rgba(2, 6, 23, 0.38),
         0 12px 28px rgba(0, 0, 0, 0.18);
     backdrop-filter: blur(14px);
+}
+
+.booking-menu-catalog-footer-count {
+    min-width: 0;
+}
+
+.booking-menu-catalog-footer-count strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.booking-menu-catalog-footer-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: max-content;
+    text-align: right;
+}
+
+.booking-menu-catalog-footer-total span {
+    color: rgba(203, 213, 225, 0.76);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.booking-menu-catalog-footer-total strong {
+    color: #99f6e4;
+    font-size: 22px;
+    font-weight: 1000;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .booking-menu-catalog-done {
@@ -3387,16 +3424,36 @@ body.booking-menu-catalog-active {
     .booking-menu-catalog-footer {
         align-items: center;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-areas:
+            "count done"
+            "total done"
+            "cart cart";
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
         padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
     }
 
+    .booking-menu-catalog-footer-count {
+        grid-area: count;
+    }
+
+    .booking-menu-catalog-footer-total {
+        grid-area: total;
+        justify-content: flex-start;
+        min-width: 0;
+    }
+
+    .booking-menu-catalog-footer-total strong {
+        font-size: 20px;
+    }
+
     .booking-menu-catalog-mobile-cart {
+        grid-area: cart;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         white-space: nowrap;
+        width: 100%;
     }
 
     .booking-menu-catalog-panel:not(.booking-menu-catalog-has-selection) .booking-menu-catalog-mobile-cart {
@@ -3404,6 +3461,8 @@ body.booking-menu-catalog-active {
     }
 
     .booking-menu-catalog-done {
+        grid-area: done;
+        align-self: stretch;
         min-width: 132px;
     }
 }

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.86 - Kitchen Catalog Total Layout
+
+### Kitchen catalog / Total layout / UI cleanup / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Загальна сума більше не дублюється в catalog modal** - header `Каталог кухні / меню`, sidebar `Вибрано` і mobile cart trigger показують тільки кількість позицій, без повтору total.
+- **Єдиний primary total перенесено вниз** - нижній footer показує `Разом` і велику суму праворуч біля кнопки `Готово`, щоб менеджер бачив фінальну вартість в одному стабільному місці.
+- **Mobile footer отримав стабільний layout** - count, total, cart trigger і `Готово` розкладені через grid areas без перекриття та обрізання суми.
+- **Per-item prices і subtotals лишилися на місці** - ціни окремих позицій і subtotal у sidebar item cards не змінювались.
+- **Логіка розрахунку не змінювалась** - `bookingMenuPositionsSubtotal()`, `formatPrice()`, `menuPositions`, `bookingPackage`, API і DB contract лишилися як були.
+- **Regression guardrails додано** - targeted contract test і UI smoke фіксують, що total не повертається в header/sidebar/mobile trigger і лишається тільки у footer.
+- **Schema/API/DB/deploy config не змінювались** - зміни обмежені frontend markup/CSS/render і тестами.
+- **Релізні маркери піднято до `0.76.86`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.85 - Banquet Inspector Notes Cleanup
 
 ### Banquet inspector / Raw warning cleanup / Cache-bust / Regression tests / (Клешня, 20.06.2026) [codex]

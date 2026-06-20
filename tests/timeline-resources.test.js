@@ -1189,10 +1189,19 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function timelineBanquetCommentItems/);
     assert.match(timeline, /function timelineBanquetCommentsHtml/);
     assert.match(timeline, /function timelineBanquetActivityStartsText/);
+    assert.match(timeline, /TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES/);
+    assert.match(timeline, /'banquet_group_not_found'/);
+    assert.match(timeline, /'legacy_banquet_links_fallback'/);
+    assert.match(timeline, /'banquet_group_schema_unavailable'/);
+    assert.match(timeline, /function timelineBanquetSnapshotWarningText/);
+    assert.match(timeline, /\.map\(timelineBanquetSnapshotWarningText\)/);
     assert.match(timeline, /bookingWorkspace/);
     assert.match(timeline, /comments\.kitchen/);
     assert.match(timeline, /comments\.activity/);
     assert.match(timeline, /comments\.internal/);
+    assert.match(timeline, /item\?\.servingNote \|\| item\?\.serving_note/);
+    assert.match(timeline, /item\?\.note \|\| item\?\.notes/);
+    assert.match(timeline, /timeline-banquet-inspector-menu-note/);
     assert.match(timeline, /Початок активностей/);
     assert.match(timeline, /Примітки/);
     assert.match(timeline, /Активність —/);
@@ -1248,6 +1257,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.timeline-banquet-inspector/);
     assert.match(css, /\.timeline-banquet-inspector-section--notes/);
     assert.match(css, /\.timeline-banquet-inspector-notes/);
+    assert.match(css, /\.timeline-banquet-inspector-menu-note/);
     assert.match(css, /\.timeline-banquet-inspector-note-text/);
     assert.match(css, /\.timeline-room-service-marker-main/);
     assert.match(css, /\.timeline-room-service-marker-detail/);

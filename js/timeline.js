@@ -16,6 +16,17 @@ const TIMELINE_BANQUET_SERVICE_LINE_LABEL = 'Банкет / кімната';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
 const TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set(['primary', 'root', 'banquet']);
 const TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual']);
+const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES = new Set([
+    'banquet_group_not_found',
+    'legacy_banquet_links_fallback',
+    'banquet_group_schema_unavailable'
+]);
+const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_TEXTS = new Set([
+    'Booking is not attached to a banquet group.',
+    'Loaded from legacy booking_banquet_links because no banquet group exists yet.',
+    'Banquet group schema is not available.',
+    'Banquet group schema is not available; legacy links were used if possible.'
+]);
 const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
     byBooking: new Map(),
     byGroup: new Map()
@@ -997,6 +1008,14 @@ function timelineBanquetMenuItemTitle(item = {}, index = 0) {
 
 function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
     const items = [];
+    const noteText = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const noteParts = item => {
+        const parts = [
+            noteText(item?.servingNote || item?.serving_note),
+            noteText(item?.note || item?.notes)
+        ].filter(Boolean);
+        return [...new Set(parts)].join(' · ') || null;
+    };
     kitchenBookings.forEach(booking => {
         const positions = timelineBanquetMenuPositions(booking);
         if (!positions.length) {
@@ -1017,7 +1036,7 @@ function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
                 title: timelineBanquetMenuItemTitle(item, index),
                 quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
                 servingTime: normalizeTimelineBanquetServingTime(item?.servingTime || item?.serving_time),
-                note: item?.servingNote || item?.serving_note || item?.note || null
+                note: noteParts(item)
             });
         });
     });
@@ -1191,6 +1210,14 @@ function firstTimelineBanquetValue(bookings = [], getter) {
     return null;
 }
 
+function timelineBanquetSnapshotWarningText(warning) {
+    const code = String(warning?.code || '').trim();
+    const text = String(warning?.message || warning?.text || warning || '').trim();
+    if (code && TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES.has(code)) return '';
+    if (TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_TEXTS.has(text)) return '';
+    return text;
+}
+
 function timelineBanquetOwnerName(source = {}) {
     return String(source?.createdBy || source?.created_by || '').trim();
 }
@@ -1215,7 +1242,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
     const menuCount = kitchenBookings.reduce((sum, booking) => sum + timelineBanquetMenuCount(booking), 0);
     const sourceForCounts = [primaryBooking, ...kitchenBookings, ...activityBookings, ...allBookings].filter(Boolean);
     const warnings = (snapshot.warnings || [])
-        .map(warning => warning?.message || warning?.code || String(warning || '').trim())
+        .map(timelineBanquetSnapshotWarningText)
         .filter(Boolean);
     const carrierBooking = null;
     const date = snapshot?.group?.date || firstTimelineBanquetValue(sourceForCounts, booking => booking.date);
@@ -1662,10 +1689,12 @@ function timelineBanquetMenuPreviewHtml(summary = {}) {
             item.quantity ? `× ${item.quantity}` : '',
             item.servingTime ? `Видача ${item.servingTime}` : 'Без часу'
         ].filter(Boolean).join(' · ');
+        const note = String(item.note || '').trim();
         return `
             <li>
                 <span>${escapeHtml(item.title || 'Позиція меню')}</span>
                 <small>${escapeHtml(meta)}</small>
+                ${note ? `<small class="timeline-banquet-inspector-menu-note">${escapeHtml(note)}</small>` : ''}
             </li>
         `;
     }).join('');

@@ -1654,6 +1654,13 @@ html[data-theme="dark"] .timeline-room-service-marker--service {
     font-weight: 700;
 }
 
+.timeline-banquet-inspector-menu-note {
+    color: #E2E8F0 !important;
+    font-weight: 800 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .timeline-banquet-inspector-notes li {
     border-color: rgba(94, 234, 212, 0.16);
     background: rgba(15, 23, 42, 0.7);

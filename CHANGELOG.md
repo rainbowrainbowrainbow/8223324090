@@ -4,6 +4,19 @@
 
 ---
 
+## v0.76.84 - Banquet Inspector Notes Cleanup
+
+### Banquet inspector / Menu item notes / Technical warnings / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Примітки до позицій меню видно в banquet inspector** - compact popup тепер показує `bookingPackage.menuPositions[].note`, `notes`, `servingNote` і `serving_note` під рядком кількості та часу видачі.
+- **Порожні примітки не рендеряться** - позиції без note виглядають як раніше, без зайвих порожніх рядків або дублювання.
+- **Кілька джерел примітки зведено без дублів** - якщо в позиції є і `servingNote`, і `note`, inspector показує їх компактно одним рядком.
+- **Technical banquet warnings прибрано з compact inspector** - raw English `Booking is not attached to a banquet group.`, legacy fallback і schema warnings більше не показуються менеджеру в popup.
+- **Backend/API/DB не змінювались** - snapshot contract і `banquet_groups` лишаються без міграцій або route changes; cleanup зроблено на frontend render-рівні.
+- **Regression guardrails оновлено** - targeted timeline test, UI smoke і повний `npm test` фіксують menu notes render, hidden technical warnings і стабільний inspector contract.
+- **Релізні маркери піднято до `0.76.84`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.83 - Banquet Room Conflict Policy
 
 ### Banquet room conflicts / Kitchen activity overlap / Frontend routing / Regression tests / (Клешня, 20.06.2026) [codex]

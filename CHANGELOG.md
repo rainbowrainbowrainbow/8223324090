@@ -4,6 +4,18 @@
 
 ---
 
+## v0.76.78 - Booking Summary Brief Cleanup
+
+### Booking summary / Header metadata / Brief cleanup / Cache-bust / UI guardrails / (Клешня, 20.06.2026) [codex]
+- **Booking ID прибрано з body brief вижимки** - ідентифікатор лишається у правій metadata-шапці документа і в copy text, але більше не дублюється під заголовком `ВИЖИМКА БАНКЕТУ`.
+- **Header label лишається `Менеджер`, не `Автор`** - UI guardrail підтверджує, що `booking-summary-page.js` не містить нового `Автор:` у шапці документа.
+- **Cache-bust піднято для summary frontend** - version refs оновлено до `0.76.78`, щоб браузер забрав новий `booking-summary-page.js` після деплою.
+- **Regression guardrail додано** - `tests/ui-check.js` блокує повернення `briefItem('Booking ID')` у короткий блок вижимки.
+- **Schema/env/auth/deploy config не змінювались** - зміна тільки у frontend summary render, release refs і UI smoke.
+- **Релізні маркери піднято до `0.76.78`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.77 - Banquet Field Separation
 
 ### Banquet groups / Kitchen comments / Activity comments / Booking details / Recurring safety / Regression tests / (Клешня, 20.06.2026) [codex]

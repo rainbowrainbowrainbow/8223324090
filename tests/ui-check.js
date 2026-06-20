@@ -697,6 +697,10 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
         && !pageCode.includes('Автор:')
         && !pageCode.includes("compactFact('Менеджер', event.manager)"));
+    check('Booking summary keeps Booking ID in header metadata only',
+        pageCode.includes('<span>Booking ID: ${escapeHtml(summary.bookingId ||')
+        && pageCode.includes('`Booking ID: ${summary.bookingId ||')
+        && !pageCode.includes("briefItem('Booking ID'"));
     check('Booking summary header metadata uses scoped optical alignment for screen and print',
         summaryHeaderRule.includes('--summary-doc-meta-offset: 4px')
         && summaryHeaderRule.includes('align-items: start')

@@ -285,8 +285,7 @@
                         briefItem('Програма', event.programName),
                         briefItem('Іменинник', celebrant.name),
                         briefItem('Дата народження', formatDate(celebrant.birthday)),
-                        briefItem('Оформлено', formatDateTime(event.createdAt)),
-                        briefItem('Booking ID', summary.bookingId || '—')
+                        briefItem('Оформлено', formatDateTime(event.createdAt))
                     ])}
                 </div>
             </section>

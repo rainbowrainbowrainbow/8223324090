@@ -1957,6 +1957,11 @@ const bookingDetailStandardEnd = bookingCode.indexOf('// v24.3.1: CRM', bookingD
 const bookingDetailStandardBlock = bookingDetailStandardStart >= 0 && bookingDetailStandardEnd > bookingDetailStandardStart
     ? bookingCode.slice(bookingDetailStandardStart, bookingDetailStandardEnd)
     : '';
+const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
+const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
+const bookingStatusActionBlock = bookingStatusActionStart >= 0 && bookingStatusActionEnd > bookingStatusActionStart
+    ? uiCode.slice(bookingStatusActionStart, bookingStatusActionEnd)
+    : '';
 function bookingDetailRowBlock(source, label) {
     const labelAt = source.indexOf(`<span class="label">${label}:</span>`);
     if (labelAt < 0) return '';
@@ -2086,10 +2091,10 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && Boolean(bookingDetailGroupRow)
     && bookingDetailGroupRow.includes('<span class="value">${escapeHtml(booking.groupName)}</span>')
     && !bookingDetailGroupRow.includes('🎪')
-    && bookingDetailStandardBlock.includes('booking-detail-row booking-detail-row--summary')
-    && bookingDetailStandardBlock.includes('detail-copy-summary-btn')
-    && bookingDetailStandardBlock.includes('Скопіювати всю інформацію')
-    && bookingDetailStandardBlock.includes('📋 Скопіювати все')
+    && !bookingDetailStandardBlock.includes('booking-detail-row booking-detail-row--summary')
+    && !bookingDetailStandardBlock.includes('detail-copy-summary-btn')
+    && !bookingDetailStandardBlock.includes('Скопіювати всю інформацію')
+    && !bookingDetailStandardBlock.includes('📋 Скопіювати все')
     && bookingCode.includes('customer-action-btn" title="Скопіювати імʼя"')
     && bookingCode.includes("navigator.clipboard.writeText('${escapeHtml(customer.phone)}')")
     && bookingCode.includes("navigator.clipboard.writeText('@${escapeHtml(igName)}')")
@@ -2109,6 +2114,17 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-danger-zone')
     && panelCss.includes('.booking-detail-package-row > div')
     && panelCss.includes('overflow-wrap: anywhere'));
+check('Booking status actions use narrow endpoints and edit_booking visibility',
+    apiCode.includes('async function apiMarkBookingPreliminary(id, payload = {})')
+    && apiCode.includes('/preliminary')
+    && bookingStatusActionBlock.includes('apiConfirmBooking(bookingId, { source: \'booking_panel\' })')
+    && bookingStatusActionBlock.includes('apiMarkBookingPreliminary(bookingId, { source: \'booking_panel\' })')
+    && !bookingStatusActionBlock.includes('apiUpdateBooking')
+    && bookingStatusActionBlock.includes('preliminaryResult?.error')
+    && bookingCode.includes('function canEditTimelineBooking()')
+    && bookingCode.includes("canAccess('edit_booking')")
+    && bookingDetailStandardBlock.includes('${canEditTimelineBooking() ? `<div class="status-toggle-section">')
+    && /async bulkStatus\(status\)[\s\S]*canEditTimelineBooking\(\)[\s\S]*apiConfirmBooking\(id, \{ source: 'booking_panel' \}\)[\s\S]*apiMarkBookingPreliminary\(id, \{ source: 'booking_panel' \}\)[\s\S]*async function _loadPinataStockBadge/.test(bookingCode));
 check('Booking detail modal switches banquet root header from time range to schedule summary',
     bookingCode.includes('function bookingDetailHeaderPackageBooking(')
     && bookingCode.includes('function bookingDetailHeaderIsBanquetScheduleMode(')

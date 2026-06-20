@@ -830,6 +830,25 @@ async function insertBookingConfirmationHistory(client, { booking, actor, source
     );
 }
 
+async function insertBookingMarkedPreliminaryHistory(client, { booking, actor, source, note, previousStatus, changedAt }) {
+    await insertScopedHistory(client, 'booking_marked_preliminary', actor?.username, {
+            entity_type: 'booking',
+            entity_id: booking.id,
+            business_context: booking.business_context || DEFAULT_TIMELINE_CONTEXT,
+            action_type: 'booking_marked_preliminary',
+            actor_user_id: actorUserId(actor),
+            meta: {
+                from_status: previousStatus || 'confirmed',
+                to_status: 'preliminary',
+                source,
+                note,
+                marked_preliminary_at: changedAt || booking.updated_at || null
+            }
+        },
+        booking.business_context || DEFAULT_TIMELINE_CONTEXT
+    );
+}
+
 function bookingNotificationPayload(row) {
     const mapped = mapBookingRow(row);
     return {
@@ -878,6 +897,31 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
         updated_by: username,
         confirmation_source: source
     }, `booking_confirmed_${booking.id}_${Date.now()}`);
+}
+
+function runBookingPreliminarySideEffects(row, actor, source, updatedRows = [], previousStatus = 'confirmed') {
+    const booking = mapBookingRow(row);
+    const username = actor?.username;
+
+    const broadcastRows = updatedRows.length ? updatedRows : [row];
+    for (const updatedRow of broadcastRows) {
+        const updatedBooking = mapBookingRow(updatedRow);
+        broadcast('booking:updated', updatedBooking, actor?.id?.toString(), updatedBooking.date);
+    }
+    _alertPush();
+
+    publishEvent('booking.status_changed', {
+        booking_id: booking.id,
+        business_context: booking.businessContext || DEFAULT_TIMELINE_CONTEXT,
+        date: booking.date,
+        time: booking.time,
+        room: booking.room,
+        program_code: booking.programCode,
+        old_status: previousStatus || 'confirmed',
+        new_status: 'preliminary',
+        updated_by: username,
+        status_source: source
+    }, `booking_preliminary_${booking.id}_${Date.now()}`);
 }
 
 const ATOMIC_LINKED_FIELDS = new Map([
@@ -3872,6 +3916,129 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
         booking: mapBookingRow(confirmedRow),
         action: { type: 'booking_confirmed', source, durableMutation: true },
         cascade: { confirmedCount: confirmedRows.length }
+    });
+});
+
+router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) => {
+    const { id } = req.params;
+    if (!validateId(id)) return res.status(400).json({ success: false, error: 'Invalid booking id' });
+
+    const source = normalizeConfirmationSource(req.body?.source);
+    const note = normalizeConfirmationNote(req.body?.note);
+    const actor = req.user || {};
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+    const client = await pool.connect();
+    let preliminaryRow = null;
+    let preliminaryRows = [];
+    let previousStatus = 'confirmed';
+
+    try {
+        await client.query('BEGIN');
+
+        const current = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
+        if (!current) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Booking not found' });
+        }
+        if (!canEditBooking(req.user, current)) {
+            await client.query('ROLLBACK');
+            return sendBookingDenied(req, res, current);
+        }
+
+        let rootBooking = current;
+        if (current.linked_to) {
+            rootBooking = await getScopedBookingById(client, current.linked_to, businessContext, { forUpdate: true });
+            if (!rootBooking) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Root booking not found' });
+            }
+            if (!canEditBooking(req.user, rootBooking)) {
+                await client.query('ROLLBACK');
+                return sendBookingDenied(req, res, rootBooking);
+            }
+        }
+
+        const currentStatus = normalizeBookingStatus(current.status, 'confirmed');
+        const rootStatus = normalizeBookingStatus(rootBooking.status, 'confirmed');
+        previousStatus = rootStatus || currentStatus || 'confirmed';
+
+        if (currentStatus === 'cancelled' || rootStatus === 'cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'Cancelled bookings cannot be marked preliminary',
+                currentStatus: currentStatus === 'cancelled' ? currentStatus : rootStatus || null
+            });
+        }
+
+        const rootId = rootBooking.id;
+        const updateResult = await client.query(
+            `UPDATE bookings
+             SET status = 'preliminary',
+                 confirmed_at = NULL,
+                 confirmed_by = NULL,
+                 confirmation_note = NULL,
+                 confirmation_source = NULL,
+                 updated_at = NOW()
+             WHERE (id = $1 OR linked_to = $1)
+               AND ${bookingContextSql('', '$2')}
+               AND ${bookingActiveStatusSql()}
+               AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) != 'preliminary'
+             RETURNING *`,
+            [rootId, businessContext]
+        );
+
+        preliminaryRows = updateResult.rows;
+        preliminaryRow = updateResult.rows.find(row => row.id === rootId)
+            || {
+                ...rootBooking,
+                status: 'preliminary',
+                confirmed_at: null,
+                confirmed_by: null,
+                confirmation_note: null,
+                confirmation_source: null
+            };
+
+        if (!preliminaryRows.length) {
+            await client.query('COMMIT');
+            return res.json({
+                success: true,
+                ok: true,
+                booking: mapBookingRow(preliminaryRow),
+                action: { type: 'booking_marked_preliminary', source, idempotent: true, durableMutation: false },
+                cascade: { markedPreliminaryCount: 0 }
+            });
+        }
+
+        await insertBookingMarkedPreliminaryHistory(client, {
+            booking: preliminaryRow,
+            actor,
+            source,
+            note,
+            previousStatus,
+            changedAt: preliminaryRows[0]?.updated_at || preliminaryRow.updated_at
+        });
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (preliminary)', rbErr));
+        log.error('Error marking booking preliminary', err);
+        return res.status(500).json({ success: false, error: 'Failed to mark booking preliminary' });
+    } finally {
+        client.release();
+    }
+
+    if (sideEffectsAllowedForContext(preliminaryRow.business_context || DEFAULT_TIMELINE_CONTEXT)) {
+        runBookingPreliminarySideEffects(preliminaryRow, actor, source, preliminaryRows, previousStatus);
+    }
+    res.json({
+        success: true,
+        ok: true,
+        booking: mapBookingRow(preliminaryRow),
+        action: { type: 'booking_marked_preliminary', source, durableMutation: true },
+        cascade: { markedPreliminaryCount: preliminaryRows.length }
     });
 });
 

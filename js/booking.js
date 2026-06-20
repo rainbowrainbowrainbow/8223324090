@@ -434,6 +434,11 @@ function canDeleteTimelineBooking() {
     return !isViewer();
 }
 
+function canEditTimelineBooking() {
+    if (typeof canAccess === 'function') return canAccess('edit_booking');
+    return !isViewer();
+}
+
 function isMinimalTimelineBookingMode() {
     const mode = getTimelineBookingPresentation().mode;
     return mode === 'simple' || mode === 'specialist';
@@ -8600,11 +8605,8 @@ async function showBookingDetails(bookingId) {
         ${fullBanquetDetailHtml}
         ${standardCustomerBlockHtml}
         ${booking.updatedAt ? `<div class="booking-detail-row"><span class="label">Оновлено:</span><span class="value">${new Date(booking.updatedAt).toLocaleString('uk-UA')}</span></div>` : ''}
-        <div class="booking-detail-row booking-detail-row--summary" data-copy="${escapeHtml(booking.date)} ${escapeHtml(booking.time)}-${escapeHtml(endTime)} ${escapeHtml(booking.programName)} ${escapeHtml(booking.room)} ${escapeHtml(line ? line.name : '')} ${escapeHtml(formatPrice(booking.price))}">
-            <button type="button" class="detail-copy-summary-btn" title="Скопіювати всю інформацію">📋 Скопіювати все</button>
-        </div>
         ${descriptionHtml}
-        ${!isViewer() ? `<div class="status-toggle-section">
+        ${canEditTimelineBooking() ? `<div class="status-toggle-section">
             <button class="btn-status-toggle" onclick="changeBookingStatus('${escapeHtml(booking.id)}', '${booking.status === 'preliminary' ? 'confirmed' : 'preliminary'}')">
                 ${booking.status === 'preliminary' ? '✅ Підтвердити' : '⏳ Зробити попереднім'}
             </button>
@@ -8625,17 +8627,6 @@ async function showBookingDetails(bookingId) {
             }
         });
     });
-    const summaryBtn = document.querySelector('.detail-copy-summary-btn');
-    if (summaryBtn) {
-        summaryBtn.addEventListener('click', function() {
-            const text = this.closest('[data-copy]')?.dataset.copy;
-            if (text) {
-                navigator.clipboard.writeText(text);
-                this.textContent = '✓ Скопійовано';
-                setTimeout(() => this.textContent = '📋 Скопіювати все', 800);
-            }
-        });
-    }
 
     // v24.3.1: CRM — smart hyperlinks + contextual actions
     if (booking.customerId) {
@@ -9507,11 +9498,14 @@ const BulkOps = {
             const deleteButton = canDeleteTimelineBooking()
                 ? '<button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>'
                 : '';
+            const statusButtons = canEditTimelineBooking()
+                ? `<button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
+                <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>`
+                : '';
             bar.innerHTML = `
                 <span class="bulk-count">${this.selected.size} обрано</span>
                 ${deleteButton}
-                <button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
-                <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>
+                ${statusButtons}
                 <button class="bulk-cancel" onclick="BulkOps.clear()">✕ Скасувати</button>
             `;
         } else if (bar) {
@@ -9553,25 +9547,40 @@ const BulkOps = {
 
     async bulkStatus(status) {
         if (this._busy) return;
+        if (!canEditTimelineBooking()) {
+            showNotification('Недостатньо прав для зміни статусу бронювань', 'error');
+            return;
+        }
         this._busy = true;
         try {
             const ids = Array.from(this.selected);
+            let failed = 0;
             for (const id of ids) {
                 try {
                     const bookings = await getBookingsForDate(AppState.selectedDate);
                     const b = bookings.find(x => x.id === id);
                     if (b && status === 'confirmed' && b.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
-                        await apiConfirmBooking(id, { source: 'booking_panel' });
-                    } else if (b) {
-                        await apiUpdateBooking(id, { ...b, status });
+                        const result = await apiConfirmBooking(id, { source: 'booking_panel' });
+                        if (result?.success === false) failed += 1;
+                    } else if (b && status === 'preliminary' && b.status !== 'preliminary' && typeof apiMarkBookingPreliminary === 'function') {
+                        const result = await apiMarkBookingPreliminary(id, { source: 'booking_panel' });
+                        if (result?.success === false) failed += 1;
+                    } else if (b && status !== 'confirmed' && status !== 'preliminary') {
+                        failed += 1;
                     }
-                } catch (e) { /* continue */ }
+                } catch (e) {
+                    failed += 1;
+                }
             }
 
             this.clear();
             AppState.cachedBookings = {};
             await renderTimeline();
-            showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+            if (failed > 0) {
+                showNotification(`Статус змінено не для всіх: ${ids.length - failed}/${ids.length}`, 'warning');
+            } else {
+                showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+            }
         } finally {
             this._busy = false;
         }

@@ -901,38 +901,6 @@ body.dark-mode .fin-check-hint,
     color: var(--primary-dark);
 }
 
-/* Copy-all summary row */
-.booking-detail-row--summary {
-    display: block;
-    border-bottom: none;
-    padding: 10px 0 4px;
-}
-
-.detail-copy-summary-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    width: 100%;
-    min-height: 40px;
-    padding: 8px 14px;
-    background: var(--gray-50);
-    border: 1px solid var(--gray-200);
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 900;
-    color: var(--gray-500);
-    font-family: inherit;
-    transition: all var(--speed-fast) var(--ease-smooth);
-}
-
-.detail-copy-summary-btn:hover {
-    background: var(--primary-50);
-    border-color: var(--primary);
-    color: var(--primary-dark);
-}
-
 .booking-actions { margin-top: 24px; }
 
 #bookingModal .booking-actions.modal-footer-sticky {

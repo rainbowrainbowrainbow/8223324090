@@ -867,8 +867,6 @@ body.dark-mode .booking-detail-row {
 body.dark-mode .booking-detail-row--copyable:hover { background: rgba(255,255,255,0.04); }
 body.dark-mode .detail-copy-btn { background: rgba(255,255,255,0.08); }
 body.dark-mode .detail-copy-btn:hover { background: rgba(16,185,129,0.15); }
-body.dark-mode .detail-copy-summary-btn { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #94A3B8; }
-body.dark-mode .detail-copy-summary-btn:hover { background: rgba(16,185,129,0.1); border-color: var(--primary); color: #6ee7b7; }
 
 /* Warning banner */
 body.dark-mode .warning-banner {

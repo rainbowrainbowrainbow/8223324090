@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.79 - Booking Detail Status Actions
+
+### Booking detail modal / Status actions / Preliminary endpoint / Banquet member contract / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Зайву кнопку `Скопіювати все` прибрано з detail modal** - точкові copy actions для клієнта, телефону та Instagram лишаються доступними, але summary-copy рядок більше не показується.
+- **Дію `Зробити попереднім` винесено в окремий backend endpoint** - `POST /api/bookings/:id/preliminary` переводить бронювання без generic full edit flow, очищає confirmation metadata і лишається idempotent для вже попередніх броней.
+- **Frontend status action більше не використовує full update** - confirmed -> preliminary йде через новий API helper, після успіху оновлює кеш таймлайну, закриває modal і показує зрозумілий toast.
+- **Status cascade обмежено технічними linked bookings** - root booking і active `linked_to` children переходять у preliminary, але kitchen/activity members у `banquet_group_bookings` не змінюються приховано.
+- **Banquet summary попереджає про різні статуси members** - mixed statuses читаються з `bookings.status`, а `bookings.group_name` не бере участі у status logic.
+- **Regression guardrails додано** - targeted tests фіксують preliminary endpoint, cancelled booking guard, linked children behavior, banquet member contract і відсутність кнопки `Скопіювати все`.
+- **Schema/env/secrets/deploy config не змінювались** - нових міграцій, залежностей, секретів або production config немає; authorization використовує існуючий `edit_booking`.
+- **Релізні маркери піднято до `0.76.79`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.78 - Booking Summary Brief Cleanup
 
 ### Booking summary / Header metadata / Brief cleanup / Cache-bust / UI guardrails / (Клешня, 20.06.2026) [codex]

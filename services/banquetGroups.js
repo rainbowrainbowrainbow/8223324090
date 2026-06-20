@@ -1479,6 +1479,16 @@ function computedRoleFor(row, membership, primaryId) {
     return 'manual';
 }
 
+function bookingStatusForContract(row = {}) {
+    return normalizeBookingStatus(row.status, 'confirmed') || 'confirmed';
+}
+
+function bookingStatusWarningLabel(status) {
+    if (status === 'preliminary') return 'попередні';
+    if (status === 'cancelled') return 'скасовані';
+    return 'підтверджені';
+}
+
 function buildSnapshot({
     source,
     businessContext,
@@ -1534,6 +1544,13 @@ function buildSnapshot({
     if (source === BANQUET_GROUP_SOURCE.SINGLE) warnings.push({ code: 'banquet_group_not_found', message: 'Booking is not attached to a banquet group.' });
     if (!roleBuckets.primary) warnings.push({ code: 'primary_booking_missing', message: 'Primary banquet booking could not be determined.' });
     if (!roleBuckets.kitchen.length) warnings.push({ code: 'kitchen_booking_missing', message: 'No kitchen/menu booking was detected for this banquet.' });
+    const memberStatuses = [...new Set(members.map(member => bookingStatusForContract(member.booking)).filter(Boolean))].sort();
+    if (memberStatuses.length > 1) {
+        warnings.push({
+            code: 'banquet_member_status_mismatch',
+            message: `У банкеті різні статуси бронювань: ${memberStatuses.map(bookingStatusWarningLabel).join(', ')}. Це дозволено для окремих кухні або активностей, але перевірте перед друком вижимки.`
+        });
+    }
 
     return {
         success: true,

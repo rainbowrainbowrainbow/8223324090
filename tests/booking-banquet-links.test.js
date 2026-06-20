@@ -969,7 +969,7 @@ test('DELETE room activity link removes only the shared-room relation pair', asy
 
 test('GET banquet summary excludes cancelled banquet group activities', async () => {
     await withApp([
-        bookingRow({ id: 'BK-ROOT', time: '12:00', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet', room: 'Room A', price: 1000 }),
+        bookingRow({ id: 'BK-ROOT', time: '12:00', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet', room: 'Room A', price: 1000, status: 'preliminary' }),
         bookingRow({ id: 'BK-ACTIVE', time: '13:00', label: 'Foam show', program_name: 'Foam show', category: 'activity', room: 'Room A', price: 700 }),
         bookingRow({ id: 'BK-CANCELLED', time: '14:00', label: 'Neon show', program_name: 'Neon show', category: 'activity', room: 'Room A', price: 500, status: 'cancelled' })
     ], [{
@@ -989,6 +989,8 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         const activityRows = data.orderRows.filter(row => row.type === 'activity');
         assert.deepEqual(activityRows.map(row => row.bookingId), ['BK-ACTIVE']);
         assert.equal(data.totals.activitySubtotal, 700);
+        assert.ok(data.warnings.some(warning => warning.code === 'banquet_member_status_mismatch'));
+        assert.equal(data.event.status, 'preliminary');
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',

@@ -2785,53 +2785,53 @@ async function renderMinimapAsync(container, snapshotDate) {
 // ЗМІНА СТАТУСУ БРОНЮВАННЯ
 // ==========================================
 
-// v5.0: Use PUT for atomic status update instead of DELETE+CREATE
 async function changeBookingStatus(bookingId, newStatus) {
     try {
         const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
-        if (!booking) return;
+        if (!booking) {
+            showNotification('Бронювання не знайдено. Оновіть timeline і спробуйте ще раз.', 'error');
+            return;
+        }
 
-        if (newStatus === 'confirmed' && booking.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
-            const confirmResult = await apiConfirmBooking(bookingId, { source: 'booking_panel' });
-            if (!confirmResult || confirmResult.success === false) {
-                showNotification(confirmResult?.error || 'Помилка: не вдалося підтвердити бронювання', 'error');
-                return;
-            }
+        const refreshTimeline = async () => {
             if (typeof window.invalidateTimelineDateCache === 'function') window.invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
             else delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeAllModals();
             await renderTimeline();
+        };
+
+        if (newStatus === 'confirmed' && booking.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
+            const confirmResult = await apiConfirmBooking(bookingId, { source: 'booking_panel' });
+            if (!confirmResult || confirmResult.success === false) {
+                showNotification(confirmResult?.error || 'Не вдалося підтвердити бронювання', 'error');
+                return;
+            }
+            await refreshTimeline();
             showNotification('Бронювання підтверджено', 'success');
             return;
         }
 
-        const updated = { ...booking, status: newStatus };
-        const statusResult = await apiUpdateBooking(bookingId, updated);
-        // v5.2: Перевіряти результат зміни статусу
-        if (statusResult && statusResult.success === false) {
-            showNotification('Помилка: не вдалося змінити статус на сервері', 'error');
+        if (newStatus === 'preliminary' && booking.status !== 'preliminary' && typeof apiMarkBookingPreliminary === 'function') {
+            const preliminaryResult = await apiMarkBookingPreliminary(bookingId, { source: 'booking_panel' });
+            if (!preliminaryResult || preliminaryResult.success === false) {
+                showNotification(preliminaryResult?.error || 'Не вдалося зробити бронювання попереднім', 'error');
+                return;
+            }
+            await refreshTimeline();
+            showNotification('Бронювання зроблено попереднім', 'success');
             return;
         }
 
-        // Оновити linked
-        const linked = bookings.filter(b => b.linkedTo === bookingId);
-        for (const lb of linked) {
-            const lbResult = await apiUpdateBooking(lb.id, { ...lb, status: newStatus });
-            if (lbResult && lbResult.success === false) {
-                console.warn(`Failed to update linked booking ${lb.id} status`);
-            }
+        if (booking.status === newStatus) {
+            await refreshTimeline();
+            showNotification(newStatus === 'preliminary' ? 'Бронювання вже попереднє' : 'Бронювання вже підтверджене', 'success');
+            return;
         }
 
-        // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
-
-        if (typeof window.invalidateTimelineDateCache === 'function') window.invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
-        else delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-        closeAllModals();
-        await renderTimeline();
-        showNotification(`Статус: ${newStatus === 'preliminary' ? 'Попереднє' : 'Підтверджене'}`, 'success');
+        showNotification('Невідома дія зміни статусу бронювання', 'error');
     } catch (error) {
-        handleError('Зміна статусу', error);
+        handleError('Зміна статусу бронювання', error);
     }
 }
 

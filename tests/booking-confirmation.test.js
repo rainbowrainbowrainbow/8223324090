@@ -109,6 +109,26 @@ function makeDb(initialRows) {
             }
             return { rows: updated, rowCount: updated.length };
         }
+        if (/UPDATE bookings SET status = 'preliminary'/i.test(sql)) {
+            const [id, businessContext] = params;
+            const updated = [];
+            for (const row of state.rows) {
+                const status = String(row.status || 'confirmed').trim().toLowerCase() || 'confirmed';
+                if ((row.id === id || row.linked_to === id) &&
+                    (!businessContext || normalizeContext(row.business_context) === normalizeContext(businessContext)) &&
+                    status !== 'cancelled' &&
+                    status !== 'preliminary') {
+                    row.status = 'preliminary';
+                    row.confirmed_at = null;
+                    row.confirmed_by = null;
+                    row.confirmation_note = null;
+                    row.confirmation_source = null;
+                    row.updated_at = '2099-05-14T13:30:00.000Z';
+                    updated.push({ ...row });
+                }
+            }
+            return { rows: updated, rowCount: updated.length };
+        }
         if (/^INSERT INTO history/i.test(sql)) {
             const scoped = params.length === 4;
             state.histories.push({
@@ -143,6 +163,16 @@ async function listen(app) {
 
 async function request(baseUrl, id = 'BK-2099-0001', role = 'manager', body = {}) {
     const res = await fetch(`${baseUrl}/api/bookings/${encodeURIComponent(id)}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-role': role },
+        body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, data };
+}
+
+async function requestPreliminary(baseUrl, id = 'BK-2099-0001', role = 'manager', body = {}) {
+    const res = await fetch(`${baseUrl}/api/bookings/${encodeURIComponent(id)}/preliminary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-role': role },
         body: JSON.stringify(body)
@@ -268,6 +298,163 @@ test('POST /api/bookings/:id/confirm fails closed when object-level booking scop
         assert.equal(res.data.error, 'Booking not found');
         assert.equal(state.rows[0].status, 'preliminary');
         assert.equal(state.histories.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+    });
+});
+
+test('POST /api/bookings/:id/preliminary marks confirmed booking and active linked children preliminary', async () => {
+    await withApp([
+        bookingRow({
+            status: 'confirmed',
+            confirmed_at: '2099-05-14T12:00:00.000Z',
+            confirmed_by: 12,
+            confirmation_note: 'old root note',
+            confirmation_source: 'queue'
+        }),
+        bookingRow({
+            id: 'BK-2099-0002',
+            linked_to: 'BK-2099-0001',
+            status: 'confirmed',
+            confirmed_at: '2099-05-14T12:01:00.000Z',
+            confirmed_by: 12,
+            confirmation_note: 'old child note',
+            confirmation_source: 'queue'
+        }),
+        bookingRow({
+            id: 'BK-2099-0003',
+            linked_to: 'BK-2099-0001',
+            status: 'cancelled',
+            confirmed_at: '2099-05-14T12:02:00.000Z',
+            confirmed_by: 12,
+            confirmation_note: 'cancelled child note',
+            confirmation_source: 'queue'
+        })
+    ], async ({ baseUrl, state, sideEffects }) => {
+        const res = await requestPreliminary(baseUrl, 'BK-2099-0001', 'manager', {
+            source: 'booking_panel',
+            note: 'client is not ready'
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.status, 'preliminary');
+        assert.equal(res.data.action.type, 'booking_marked_preliminary');
+        assert.equal(res.data.action.durableMutation, true);
+        assert.equal(res.data.cascade.markedPreliminaryCount, 2);
+        assert.equal(state.rows[0].status, 'preliminary');
+        assert.equal(state.rows[0].confirmed_at, null);
+        assert.equal(state.rows[0].confirmed_by, null);
+        assert.equal(state.rows[0].confirmation_note, null);
+        assert.equal(state.rows[0].confirmation_source, null);
+        assert.equal(state.rows[1].status, 'preliminary');
+        assert.equal(state.rows[1].confirmed_at, null);
+        assert.equal(state.rows[1].confirmed_by, null);
+        assert.equal(state.rows[1].confirmation_note, null);
+        assert.equal(state.rows[1].confirmation_source, null);
+        assert.equal(state.rows[2].status, 'cancelled');
+        assert.equal(state.rows[2].confirmed_at, '2099-05-14T12:02:00.000Z');
+        assert.equal(state.histories.length, 1);
+        assert.equal(state.histories[0].action, 'booking_marked_preliminary');
+        assert.equal(state.histories[0].data.action_type, 'booking_marked_preliminary');
+        assert.equal(state.histories[0].data.actor_user_id, 17);
+        assert.equal(state.histories[0].data.meta.from_status, 'confirmed');
+        assert.equal(state.histories[0].data.meta.to_status, 'preliminary');
+        assert.equal(state.histories[0].data.meta.source, 'booking_panel');
+        assert.equal(state.histories[0].data.meta.note, 'client is not ready');
+        assert.equal(sideEffects.automation.length, 0);
+        assert.equal(sideEffects.notifications.length, 0);
+        assert.equal(sideEffects.broadcasts.length, 2);
+        assert.equal(sideEffects.events.length, 1);
+        assert.equal(sideEffects.events[0][0], 'booking.status_changed');
+        assert.equal(sideEffects.events[0][1].old_status, 'confirmed');
+        assert.equal(sideEffects.events[0][1].new_status, 'preliminary');
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    });
+});
+
+test('POST /api/bookings/:id/preliminary resolves linked child id to root booking group', async () => {
+    await withApp([
+        bookingRow({
+            status: 'confirmed',
+            confirmed_at: '2099-05-14T12:00:00.000Z',
+            confirmed_by: 12
+        }),
+        bookingRow({
+            id: 'BK-2099-0002',
+            linked_to: 'BK-2099-0001',
+            status: 'confirmed',
+            confirmed_at: '2099-05-14T12:01:00.000Z',
+            confirmed_by: 12
+        }),
+        bookingRow({
+            id: 'BK-2099-0003',
+            linked_to: 'BK-2099-0001',
+            status: 'confirmed',
+            confirmed_at: '2099-05-14T12:02:00.000Z',
+            confirmed_by: 12
+        })
+    ], async ({ baseUrl, state, sideEffects }) => {
+        const res = await requestPreliminary(baseUrl, 'BK-2099-0002', 'manager', { source: 'booking_panel' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.booking.id, 'BK-2099-0001');
+        assert.equal(res.data.cascade.markedPreliminaryCount, 3);
+        assert.equal(state.rows[0].status, 'preliminary');
+        assert.equal(state.rows[1].status, 'preliminary');
+        assert.equal(state.rows[2].status, 'preliminary');
+        assert.equal(state.histories[0].data.entity_id, 'BK-2099-0001');
+        assert.equal(sideEffects.broadcasts.length, 3);
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    });
+});
+
+test('POST /api/bookings/:id/preliminary is idempotent for already preliminary bookings', async () => {
+    await withApp([
+        bookingRow({ status: 'preliminary' })
+    ], async ({ baseUrl, state, sideEffects }) => {
+        const res = await requestPreliminary(baseUrl, 'BK-2099-0001', 'manager', { source: 'dashboard' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.action.idempotent, true);
+        assert.equal(res.data.action.durableMutation, false);
+        assert.equal(res.data.cascade.markedPreliminaryCount, 0);
+        assert.equal(state.rows[0].status, 'preliminary');
+        assert.equal(state.histories.length, 0);
+        assert.equal(sideEffects.automation.length, 0);
+        assert.equal(sideEffects.broadcasts.length, 0);
+        assert.equal(sideEffects.events.length, 0);
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+    });
+});
+
+test('POST /api/bookings/:id/preliminary rejects cancelled bookings without mutation', async () => {
+    await withApp([
+        bookingRow({
+            status: 'cancelled',
+            confirmed_at: '2099-05-14T12:00:00.000Z',
+            confirmed_by: 12,
+            confirmation_note: 'cancelled root note',
+            confirmation_source: 'queue'
+        }),
+        bookingRow({
+            id: 'BK-2099-0002',
+            linked_to: 'BK-2099-0001',
+            status: 'confirmed',
+            confirmed_at: '2099-05-14T12:01:00.000Z',
+            confirmed_by: 12
+        })
+    ], async ({ baseUrl, state, sideEffects }) => {
+        const res = await requestPreliminary(baseUrl, 'BK-2099-0001', 'manager', { source: 'queue' });
+
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.currentStatus, 'cancelled');
+        assert.equal(state.rows[0].status, 'cancelled');
+        assert.equal(state.rows[0].confirmed_at, '2099-05-14T12:00:00.000Z');
+        assert.equal(state.rows[1].status, 'confirmed');
+        assert.equal(state.histories.length, 0);
+        assert.equal(sideEffects.broadcasts.length, 0);
+        assert.equal(sideEffects.events.length, 0);
         assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
     });
 });

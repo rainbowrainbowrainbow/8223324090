@@ -1679,6 +1679,25 @@ async function apiConfirmBooking(id, payload = {}) {
     }
 }
 
+async function apiMarkBookingPreliminary(id, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/preliminary`)}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload(payload || {}))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status, currentStatus: body.currentStatus || null };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API markBookingPreliminary error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiUpdateLinkedBookingsAtomic(id, payload) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/linked-atomic`)}`, {

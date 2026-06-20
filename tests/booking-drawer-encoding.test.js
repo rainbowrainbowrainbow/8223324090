@@ -283,11 +283,21 @@ test('timeline caches are scoped by business and display mode before booking vis
 test('booking lifecycle actions force fresh day snapshots before mutating the server', () => {
     const bookingJs = read('js', 'booking.js');
     const uiJs = read('js', 'ui.js');
+    const apiJs = read('js', 'api.js');
+    const changeStatusStart = uiJs.indexOf('async function changeBookingStatus');
+    const changeStatusEnd = uiJs.indexOf('// ==========================================', changeStatusStart + 1);
+    const changeStatusSource = changeStatusStart >= 0 && changeStatusEnd > changeStatusStart
+        ? uiJs.slice(changeStatusStart, changeStatusEnd)
+        : '';
 
     assert.match(bookingJs, /async function deleteBooking\(bookingId\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /async function shiftBookingTime\(bookingId, minutes\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /async function switchBookingLine\(bookingId, targetLineId\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(uiJs, /async function changeBookingStatus\(bookingId, newStatus\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(apiJs, /async function apiMarkBookingPreliminary\(id, payload = \{\}\)[\s\S]*\/preliminary/);
+    assert.match(changeStatusSource, /apiConfirmBooking\(bookingId, \{ source: 'booking_panel' \}\)/);
+    assert.match(changeStatusSource, /apiMarkBookingPreliminary\(bookingId, \{ source: 'booking_panel' \}\)/);
+    assert.doesNotMatch(changeStatusSource, /apiUpdateBooking/);
     assert.match(bookingJs, /invalidateBookingTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
     assert.match(uiJs, /invalidateTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
 });
@@ -300,7 +310,8 @@ test('booking drawer keeps readable Ukrainian labels for manager-facing controls
     assert.match(bookingJs, /label: 'Анімація'/);
     assert.match(bookingJs, /label: 'Квести'/);
     assert.match(bookingJs, /label: 'Піньяти'/);
-    assert.match(bookingJs, /Скопіювати всю інформацію/);
+    assert.doesNotMatch(bookingJs, /detail-copy-summary-btn/);
+    assert.doesNotMatch(bookingJs, /Скопіювати всю інформацію/);
     assert.match(bookingJs, /Редагувати бронювання/);
     assert.match(bookingJs, /Не вдалося скопіювати/);
 

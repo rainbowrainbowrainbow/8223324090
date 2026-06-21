@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.102 - Banquet kitchen linking and entry pricing
+
+### Banquet groups / Kitchen from activity / Entry pricing / Banquet sheet / Regression checks / (Клешня, 22.06.2026) [codex]
+- **Кухня з активності тепер автоматично створює або використовує банкетну групу** - сценарій `активність перша -> Банкети -> Кімнати -> кухня` більше не лишає селект `Прив'язати до банкету` без реальної групи.
+- **Source-активність стає primary booking у банкеті** - backend створює `banquet_groups`, membership `role='primary'`, kitchen membership `role='kitchen'` і compatibility link в одній транзакції без дублювання груп.
+- **Кількість дітей з активності підтягується у кухню** - якщо поле гостей порожнє, `kidsCount` з бронювання-джерела автоматично заповнює `banquetGuests`; ручна правка менеджера не перезаписується.
+- **`Вхід` рахується окремо за правилами Центру цін** - будні `300 грн/дитина`, вихідні `400 грн/дитина`; бізнес-розрахунок читає `price_rules` і не бере ціни з graduation-модуля.
+- **`Вхід` зберігається як окремий блок пакета** - `entryCharge`, `entrySubtotal` і `finalTotal` зберігаються в `extraData.bookingPackage`, а меню не отримує дубльовану позицію входу.
+- **Банкетний лист показує `Вхід` окремим рядком** - summary, details, print і copy text показують рядок на кшталт `Вхід — 12 дітей × 300 грн = 3600 грн` окремо від меню.
+- **Додано regression checks для критичних ризиків** - тести покривають відсутність дубльованих banquet groups, customer mismatch, rollback, weekday/weekend entry, ручний entry у меню і fallback для старих пакетів.
+- **Релізні маркери піднято до `0.76.102`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.101 - Booking summary terms and print layout fix
 
 ### Booking summary / Banquet terms / Price Center / Print layout / Regression checks / (Клешня, 21.06.2026) [codex]

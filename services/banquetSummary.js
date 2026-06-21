@@ -344,6 +344,71 @@ function buildServiceEventRows(serviceEvents = []) {
     }));
 }
 
+function buildEntryChargeRow(bookingPackage = {}, warnings = []) {
+    const entry = bookingPackage.entryCharge || bookingPackage.entry_charge || null;
+    const fallbackSubtotal = money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal'));
+    const fallbackRow = () => {
+        if (fallbackSubtotal === null || fallbackSubtotal <= 0) return null;
+        if (Array.isArray(warnings)) {
+            warnings.push({
+                code: 'entry_charge_snapshot_missing',
+                message: 'У пакеті є сума входу, але немає деталізації entryCharge. Рядок входу показано без кількості та ціни.'
+            });
+        }
+        return {
+            id: 'entry:banquet_entry_snapshot',
+            type: 'entry',
+            source: 'booking_package_entry_subtotal_fallback',
+            bookingId: null,
+            title: 'Вхід',
+            quantity: null,
+            unitPrice: null,
+            subtotal: fallbackSubtotal,
+            comment: 'Деталі входу не збережені у пакеті.',
+            meta: {
+                ruleCode: null,
+                dateType: null,
+                fallback: true
+            }
+        };
+    };
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return fallbackRow();
+    const subtotal = money(valueOf(entry, 'subtotal'));
+    if (subtotal === null) return fallbackRow();
+    return {
+        id: `entry:${cleanText(valueOf(entry, 'ruleCode', 'rule_code'), 120) || 'banquet_entry'}`,
+        type: 'entry',
+        source: cleanText(valueOf(entry, 'source'), 120) || 'banquet_entry_price_rules',
+        bookingId: null,
+        title: cleanText(valueOf(entry, 'title'), 160) || 'Вхід',
+        quantity: quantity(valueOf(entry, 'quantity'), null),
+        unitPrice: money(valueOf(entry, 'unitPrice', 'unit_price')),
+        subtotal,
+        comment: null,
+        meta: {
+            ruleCode: cleanText(valueOf(entry, 'ruleCode', 'rule_code'), 120),
+            dateType: cleanText(valueOf(entry, 'dateType', 'date_type'), 40)
+        }
+    };
+}
+
+function pushPackageWarnings(warnings, bookingPackage = {}) {
+    const packageWarnings = Array.isArray(bookingPackage.warnings) ? bookingPackage.warnings : [];
+    for (const warning of packageWarnings) {
+        const code = cleanText(warning?.code, 120);
+        const message = cleanText(warning?.message, 1000);
+        if (!code && !message) continue;
+        const normalized = {
+            code: code || 'booking_package_warning',
+            message: message || code
+        };
+        if (Array.isArray(warning?.missingCodes)) {
+            normalized.missingCodes = warning.missingCodes.map(item => cleanText(item, 120)).filter(Boolean);
+        }
+        warnings.push(normalized);
+    }
+}
+
 function buildLegacyBanquetMenuRows(booking = {}) {
     const menu = cleanText(valueOf(booking, 'banquetMenu', 'banquet_menu'), 5000);
     if (!menu) return [];
@@ -731,6 +796,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const rawMenuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
     const menuRows = applyKitchenCommentToMenuRows(rawMenuRows, kitchenBooking);
     const serviceEventRows = buildServiceEventRows(bookingPackage.serviceEvents || bookingPackage.service_events || []);
+    const entryRow = buildEntryChargeRow(bookingPackage, warnings);
+    pushPackageWarnings(warnings, bookingPackage);
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
             code: 'legacy_banquet_menu_used',
@@ -747,9 +814,10 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
 
     const bookingPrice = money(valueOf(primaryBooking, 'price'));
     const menuSubtotal = money(valueOf(bookingPackage, 'positionsSubtotal', 'positions_subtotal')) ?? sumKnown(menuRows);
+    const entrySubtotal = money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal')) ?? money(entryRow?.subtotal);
     const explicitProgramBasePrice = money(valueOf(primaryPackage, 'programBasePrice', 'program_base_price'));
-    const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null && menuSubtotal !== null
-        ? money(Math.max(0, bookingPrice - menuSubtotal))
+    const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null
+        ? money(Math.max(0, bookingPrice - (menuSubtotal || 0) - (entrySubtotal || 0)))
         : bookingPrice;
     const programBasePrice = explicitProgramBasePrice ?? inferredProgramBasePrice;
     const programRow = shouldIncludeProgramOrderRow(primaryBooking, programBasePrice, menuRows)
@@ -764,10 +832,10 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         manualBookings: groupState.manualBookings
     });
     const activitySubtotal = sumKnown(activityRows);
-    const orderRows = [programRow, ...activityRows, ...menuRows, ...serviceEventRows].filter(Boolean);
+    const orderRows = [programRow, ...activityRows, entryRow, ...menuRows, ...serviceEventRows].filter(Boolean);
     const rowsTotal = sumKnown(orderRows);
     const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
-    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal);
+    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
     const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
     const deposit = explicitDepositOf(primaryBooking);
     const paidAmount = money(valueOf(primaryBooking, 'paidAmount', 'paid_amount'));
@@ -851,6 +919,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         totals: {
             programBasePrice,
             menuSubtotal,
+            entrySubtotal,
             activitySubtotal,
             orderTotal,
             bookingPrice,

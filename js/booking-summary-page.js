@@ -149,6 +149,33 @@
         return unit ? `${quantity} ${unit}` : `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
     }
 
+    function summaryEntryQuantityLabel(row = {}) {
+        const quantity = summaryMenuQuantityNumber(row.quantity);
+        return quantity ? `${quantity} дітей` : formatValue(row.quantity);
+    }
+
+    function summaryOrderQuantityLabel(row = {}) {
+        return row?.type === 'entry' ? summaryEntryQuantityLabel(row) : summaryMenuQuantityLabel(row);
+    }
+
+    function summaryEntryUnitAmountLabel(row = {}, currency = 'UAH') {
+        const unitPrice = Number(row.unitPrice);
+        const subtotal = row.subtotal;
+        if (Number.isFinite(unitPrice) && unitPrice > 0) {
+            return `× ${formatMoney(unitPrice, currency)} = ${formatMoney(subtotal, currency)}`;
+        }
+        return formatMoney(subtotal, currency);
+    }
+
+    function summaryEntryFullAmountLabel(row = {}, currency = 'UAH') {
+        const quantityLabel = summaryEntryQuantityLabel(row);
+        const unitPrice = Number(row.unitPrice);
+        if (Number.isFinite(unitPrice) && unitPrice > 0) {
+            return `${quantityLabel} × ${formatMoney(unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}`;
+        }
+        return `${quantityLabel} = ${formatMoney(row.subtotal, currency)}`;
+    }
+
     function briefItem(label, value) {
         return `
             <div class="summary-brief-item">
@@ -220,6 +247,7 @@
 
     function orderRowsHtml(summary) {
         const rows = summaryOrderRows(summary);
+        const currency = summary?.totals?.currency || 'UAH';
         if (!rows.length) {
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
         }
@@ -242,15 +270,22 @@
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows.map((row, index) => `
-                        <tr>
-                            <td class="num">${index + 1}</td>
-                            <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
-                            <td class="qty">${escapeHtml(summaryMenuQuantityLabel(row))}</td>
-                            <td class="serving">${escapeHtml(formatValue(summaryServingTime(row)))}</td>
-                            <td>${escapeHtml(formatValue(orderRowComment(row)))}</td>
-                        </tr>
-                    `).join('')}
+                    ${rows.map((row, index) => {
+                        const isEntry = row?.type === 'entry';
+                        const entryAmount = isEntry ? summaryEntryUnitAmountLabel(row, currency) : null;
+                        const comment = isEntry
+                            ? [entryAmount, row.comment].filter(Boolean).join(' · ')
+                            : orderRowComment(row);
+                        return `
+                            <tr>
+                                <td class="num">${index + 1}</td>
+                                <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
+                                <td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>
+                                <td class="serving">${escapeHtml(isEntry ? '—' : formatValue(summaryServingTime(row)))}</td>
+                                <td>${escapeHtml(formatValue(comment))}</td>
+                            </tr>
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         `;
@@ -301,6 +336,7 @@
                     <strong>Сума:</strong> ${escapeHtml(formatMoney(totals.orderTotal, currency))}
                     <span>Програма: ${escapeHtml(formatMoney(totals.programBasePrice, currency))}</span>
                     <span>Бронювання: ${escapeHtml(formatMoney(totals.bookingPrice, currency))}</span>
+                    <span>Вхід: ${escapeHtml(formatMoney(totals.entrySubtotal, currency))}</span>
                     <span>Меню: ${escapeHtml(formatMoney(totals.menuSubtotal, currency))}</span>
                     <span>Активності: ${escapeHtml(formatMoney(totals.activitySubtotal, currency))}</span>
                 </p>
@@ -444,7 +480,11 @@
             ...(rows.length ? rows.map((row, index) => {
                 const comment = orderRowComment(row);
                 const servingTime = summaryServingTime(row);
-                const quantityLabel = summaryMenuQuantityLabel(row);
+                const quantityLabel = summaryOrderQuantityLabel(row);
+                if (row?.type === 'entry') {
+                    const entryComment = row.comment ? ` (${row.comment})` : '';
+                    return `${index + 1}. ${row.title || 'Вхід'} — ${summaryEntryFullAmountLabel(row, currency)}${entryComment}`;
+                }
                 return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${quantityLabel} × ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
             }) : ['Позиції відсутні']),
             ...(serviceEvents.length ? [
@@ -463,6 +503,8 @@
             ] : []),
             '',
             `Сума замовлення: ${formatMoney(totals.orderTotal, currency)}`,
+            `Вхід: ${formatMoney(totals.entrySubtotal, currency)}`,
+            `Меню: ${formatMoney(totals.menuSubtotal, currency)}`,
             `Сума бронювання: ${formatMoney(totals.bookingPrice, currency)}`,
             `Завдаток: ${formatMoney(deposit.amount, currency)}`,
             `Спосіб внесення: ${formatValue(deposit.paymentMethod)}`,

@@ -1559,6 +1559,29 @@ async function apiCreateBanquetMemberBooking(groupId, payload = {}) {
     }
 }
 
+async function apiCreateBanquetMemberBookingFromSource(payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl('/banquets/from-source/member-booking')}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(),
+            body: JSON.stringify(timelineApiPayload({
+                sourceBookingId: payload.sourceBookingId || payload.source_booking_id,
+                role: payload.role || 'kitchen',
+                booking: payload.booking || payload.memberBooking || payload.member_booking || null
+            }))
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return apiFailureFromBody(body, response);
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API createBanquetMemberBookingFromSource error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activity-booking`)}`, {

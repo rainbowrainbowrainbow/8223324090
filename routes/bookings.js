@@ -24,7 +24,7 @@ const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
-const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
+const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
 const { buildBanquetSummary } = require('../services/banquetSummary');
 const { loadBanquetTermsDefaults, snapshotBanquetTermsForBooking } = require('../services/banquetTerms');
 const {
@@ -2225,6 +2225,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        await applyBookingPackageEntryCharge(client, b, { businessContext });
         await snapshotBanquetTermsForBooking(client, b);
         normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
@@ -3051,8 +3052,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         await client.query('BEGIN');
 
         await applyEffectiveBookingPrice(client, main, { businessContext });
+        await applyBookingPackageEntryCharge(client, main, { businessContext });
         for (const activity of banquetActivities) {
             await applyEffectiveBookingPrice(client, activity, { businessContext });
+            await applyBookingPackageEntryCharge(client, activity, { businessContext });
         }
         refreshMultiActivityPriceTotals([main, ...banquetActivities]);
         await snapshotBanquetTermsForBooking(client, main);
@@ -4332,6 +4335,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         b.customerId = updateCustomerId;
 
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        await applyBookingPackageEntryCharge(client, b, { businessContext });
         await snapshotBanquetTermsForBooking(client, b);
         const updateExtraDataSql = bookingExtraDataSqlValue(b);
 

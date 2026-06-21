@@ -7,9 +7,14 @@ const { JSDOM } = require('jsdom');
 
 const {
     BOOKING_PACKAGE_SCHEMA_VERSION,
+    BANQUET_ENTRY_PRICE_RULE_CODES,
+    BANQUET_ENTRY_SOURCE,
     normalizeMenuPositions,
     normalizeServiceEvents,
     menuPositionsSubtotal,
+    banquetEntryDateType,
+    buildBanquetEntryCharge,
+    applyBookingPackageEntryCharge,
     normalizeMenuServingUnitDisplay,
     formatMenuQuantityWithServingUnit,
     formatMenuPositionQuantity,
@@ -865,6 +870,131 @@ test('booking package persists final total into booking price and extraData', ()
     assert.match(booking.banquetMenu, /Піца - 2 порції × 300 грн/);
 });
 
+test('booking package calculates banquet entry from center price rules by weekday and weekend', async () => {
+    assert.equal(banquetEntryDateType('2026-06-23'), 'weekday');
+    assert.equal(banquetEntryDateType('2026-06-27'), 'weekend');
+
+    const priceRules = [
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 },
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekend, value: 400 }
+    ];
+    const queries = [];
+    const weekdayBooking = await applyBookingPackageEntryCharge({
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            return { rows: priceRules.filter(rule => params[0].includes(rule.code)) };
+        }
+    }, applyBookingPackage({
+        date: '2026-06-23',
+        category: 'kitchen',
+        price: 1200,
+        programBasePrice: 0,
+        banquetGuests: 12,
+        menuPositions: [
+            { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 600, subtotal: 1200 }
+        ]
+    }));
+
+    assert.match(queries[0].sql, /FROM price_rules/);
+    assert.deepEqual([...queries[0].params[0]].sort(), [
+        BANQUET_ENTRY_PRICE_RULE_CODES.weekday,
+        BANQUET_ENTRY_PRICE_RULE_CODES.weekend
+    ].sort());
+    assert.deepEqual(weekdayBooking.extraData.bookingPackage.entryCharge, {
+        title: 'Вхід',
+        quantity: 12,
+        unitPrice: 300,
+        subtotal: 3600,
+        ruleCode: BANQUET_ENTRY_PRICE_RULE_CODES.weekday,
+        dateType: 'weekday',
+        source: BANQUET_ENTRY_SOURCE
+    });
+    assert.equal(weekdayBooking.extraData.bookingPackage.entrySubtotal, 3600);
+    assert.equal(weekdayBooking.extraData.bookingPackage.finalTotal, 4800);
+    assert.equal(weekdayBooking.price, 4800);
+
+    const weekendBooking = await applyBookingPackageEntryCharge({
+        async query(_sql, params) {
+            return { rows: priceRules.filter(rule => params[0].includes(rule.code)) };
+        }
+    }, applyBookingPackage({
+        date: '2026-06-27',
+        category: 'kitchen',
+        price: 1200,
+        programBasePrice: 0,
+        banquetGuests: 12,
+        menuPositions: [
+            { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 600, subtotal: 1200 }
+        ]
+    }));
+
+    assert.equal(weekendBooking.extraData.bookingPackage.entryCharge.ruleCode, BANQUET_ENTRY_PRICE_RULE_CODES.weekend);
+    assert.equal(weekendBooking.extraData.bookingPackage.entryCharge.unitPrice, 400);
+    assert.equal(weekendBooking.extraData.bookingPackage.entrySubtotal, 4800);
+    assert.equal(weekendBooking.extraData.bookingPackage.finalTotal, 6000);
+});
+
+test('booking package entry charge uses source kids count and protects manual entry rows', () => {
+    const priceRules = [
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 },
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekend, value: 400 }
+    ];
+    const fromSource = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        menuPositions: []
+    }, {
+        priceRules,
+        sourceBooking: { kids_count: 7 }
+    });
+
+    assert.equal(fromSource.entryCharge.quantity, 7);
+    assert.equal(fromSource.entrySubtotal, 2100);
+
+    const manualExact = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        banquetGuests: 7,
+        menuPositions: [{ title: 'Вхід', quantity: 7, unitPrice: 300 }]
+    }, { priceRules });
+    assert.equal(manualExact.entryCharge, null);
+    assert.equal(manualExact.warnings[0].code, 'manual_entry_position_present');
+
+    const conservativeTitle = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        banquetGuests: 7,
+        menuPositions: [{ title: 'Вхідний браслет', quantity: 1, unitPrice: 50 }]
+    }, { priceRules });
+    assert.equal(conservativeTitle.entryCharge.quantity, 7);
+});
+
+test('booking package entry charge warns instead of silently using zero when data is missing', () => {
+    const missingQuantity = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        menuPositions: []
+    }, {
+        priceRules: [{ code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 }]
+    });
+    assert.equal(missingQuantity.entryCharge, null);
+    assert.equal(missingQuantity.entrySubtotal, 0);
+    assert.equal(missingQuantity.warnings[0].code, 'entry_quantity_missing');
+
+    const missingRule = buildBanquetEntryCharge({
+        date: '2026-06-27',
+        category: 'kitchen',
+        banquetGuests: 3,
+        menuPositions: []
+    }, {
+        priceRules: [{ code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 }]
+    });
+    assert.equal(missingRule.entryCharge, null);
+    assert.equal(missingRule.entrySubtotal, 0);
+    assert.equal(missingRule.warnings[0].code, 'entry_price_rule_missing');
+    assert.deepEqual(missingRule.warnings[0].missingCodes, [BANQUET_ENTRY_PRICE_RULE_CODES.weekend]);
+});
+
 test('booking package audit records client and commercial package changes', () => {
     const audit = bookingPackageAudit(
         {
@@ -1382,6 +1512,50 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
         true,
         'missing kitchen fallback image asset'
     );
+});
+
+test('booking create flow bridges room-source kitchen without an existing banquet group', () => {
+    const bookingJs = read('js', 'booking.js');
+    const apiJs = read('js', 'api.js');
+    const bridgeStart = bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge');
+    const bridgeCall = bookingJs.indexOf('apiCreateBanquetMemberBookingFromSource', bridgeStart);
+    const normalCreate = bookingJs.indexOf('createResult = await apiCreateBooking(booking)', bridgeStart);
+
+    assert.match(apiJs, /async function apiCreateBanquetMemberBookingFromSource\(payload = \{\}\)/);
+    assert.match(apiJs, /\/banquets\/from-source\/member-booking/);
+    assert.match(bookingJs, /function validateActivityFirstKitchenBridge\(/);
+    assert.match(bookingJs, /function hasUsableSelectedBanquetGroup\(/);
+    assert.match(bookingJs, /function activityFirstKitchenSourceContext\(/);
+    assert.match(bookingJs, /autoFilledBanquetGuestsFromRoom: null/);
+    assert.match(bookingJs, /function roomBookingKidsCount\(/);
+    assert.match(bookingJs, /function syncAutoFilledBanquetGuestsFromRoom\(/);
+    assert.match(bookingJs, /function markBanquetGuestsManualOverride\(/);
+    assert.match(bookingJs, /const BOOKING_ENTRY_PRICE_RULE_CODES = Object\.freeze/);
+    assert.match(bookingJs, /function getBookingEntryChargeEstimate\(/);
+    assert.match(bookingJs, /function bookingMenuPositionIsEntry\(/);
+    assert.match(bookingJs, /function bookingPackageEntryChargeFromPackage\(/);
+    assert.match(bookingJs, /function formatBookingPackageEntryAmount\(/);
+    assert.match(bookingJs, /function renderBookingPackageEntryRow\(/);
+    assert.match(bookingJs, /booking-summary-row--subtotal/);
+    assert.match(bookingJs, /booking-detail-package-entry-row/);
+    assert.match(bookingJs, /entrySubtotal: kitchenEnabled \? \(packageTotals\.entrySubtotal \|\| 0\) : 0/);
+    assert.match(bookingJs, /entryCharge: formData\.entryCharge \|\| null/);
+    assert.match(bookingJs, /finalTotal: toBookingMoney\(programBasePrice \+ positionsSubtotal \+ entryEstimate\.entrySubtotal\)/);
+    assert.match(bookingJs, /Вхід/);
+    assert.match(bookingJs, /guests\.value = String\(sourceKidsCount\)/);
+    assert.match(bookingJs, /BookingDrawerState\.autoFilledBanquetGuestsFromRoom = \{[\s\S]*sourceBookingId,[\s\S]*value: String\(sourceKidsCount\)/);
+    assert.match(bookingJs, /if \(id === 'banquetGuests' && typeof markBanquetGuestsManualOverride === 'function'\) markBanquetGuestsManualOverride\(\)/);
+    assert.match(bookingJs, /function clearAutoFilledBanquetFromRoomSelection\(\)[\s\S]*BookingDrawerState\.roomSelectionBanquetContext = null;[\s\S]*clearAutoFilledBanquetGuestsFromRoom\(\);/);
+    assert.match(bookingJs, /syncAutoFilledBanquetGuestsFromRoom\(sourceBooking\)/);
+    assert.match(bookingJs, /BookingDrawerState\.roomSelectionBanquetContext = banquetContext;\s*if \(banquetContext\.groupId\)/);
+    assert.match(bookingJs, /if \(!booking \|\| \(!context\.groupId && !context\.sourceBookingId\)\) return booking;/);
+    assert.match(bookingJs, /groupId: context\.groupId \|\| null/);
+    assert.match(bookingJs, /attachBanquetGroupContextToBooking\(booking, sourceContext, 'kitchen', 'activity_first_kitchen_bridge'\)/);
+    assert.match(bookingJs, /sourceBookingId: sourceContext\.sourceBookingId/);
+    assert.match(bookingJs, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)/);
+    assert.ok(bridgeStart >= 0, 'activity-first kitchen bridge is evaluated in create flow');
+    assert.ok(bridgeCall > bridgeStart, 'source-member API is called from create flow');
+    assert.ok(normalCreate > bridgeCall, 'source-member API branch runs before normal booking fallback');
 });
 
 test('banquet group repair script is dry-run by default and reuses backend reconciliation', () => {

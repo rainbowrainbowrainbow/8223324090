@@ -697,6 +697,7 @@ async function withApp(dbOptions, fn) {
     });
     installMock('../services/bookingPackage', {
         applyBookingPackage: booking => booking,
+        applyBookingPackageEntryCharge: async (_queryable, booking) => booking,
         bookingPackageAudit: () => ({})
     });
     installMock('../services/websocket', { broadcast: () => null });

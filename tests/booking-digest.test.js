@@ -134,6 +134,93 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
 });
 
+test('banquet summary renders package entry charge as a separate order row and total', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: {
+            id: 'BK-ENTRY-SUMMARY',
+            business_context: 'event_genix',
+            date: '2026-06-23',
+            time: '12:30',
+            room: 'Рок',
+            program_name: 'Паперове неон-шоу',
+            category: 'activity',
+            price: 7700,
+            kids_count: 12,
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 2900,
+                    positionsSubtotal: 1200,
+                    entryCharge: {
+                        title: 'Вхід',
+                        quantity: 12,
+                        unitPrice: 300,
+                        subtotal: 3600,
+                        ruleCode: 'banquet_entry_weekday_child',
+                        dateType: 'weekday',
+                        source: 'banquet_entry_price_rules'
+                    },
+                    entrySubtotal: 3600,
+                    finalTotal: 7700,
+                    menuPositions: [
+                        { id: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 600, subtotal: 1200 }
+                    ],
+                    warnings: [
+                        { code: 'entry_test_warning', message: 'Entry warning is visible.' }
+                    ]
+                }
+            }
+        }
+    });
+
+    const entryRow = summary.orderRows.find(row => row.type === 'entry');
+    assert.ok(entryRow, 'entry charge should be rendered as a separate row');
+    assert.equal(entryRow.title, 'Вхід');
+    assert.equal(entryRow.quantity, 12);
+    assert.equal(entryRow.subtotal, 3600);
+    assert.equal(summary.totals.entrySubtotal, 3600);
+    assert.equal(summary.totals.menuSubtotal, 1200);
+    assert.equal(summary.totals.orderTotal, 7700);
+    assert.equal(summary.warnings.some(warning => warning.code === 'entry_test_warning'), true);
+});
+
+test('banquet summary renders safe entry fallback when charge details are missing', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: {
+            id: 'BK-ENTRY-FALLBACK',
+            business_context: 'event_genix',
+            date: '2026-06-28',
+            time: '13:00',
+            room: 'Рок',
+            program_name: 'Банкет',
+            price: 4800,
+            extra_data: {
+                bookingPackage: {
+                    programBasePrice: 0,
+                    positionsSubtotal: 1200,
+                    entrySubtotal: 3600,
+                    finalTotal: 4800,
+                    menuPositions: [
+                        { id: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 600, subtotal: 1200 }
+                    ]
+                }
+            }
+        }
+    });
+
+    const entryRow = summary.orderRows.find(row => row.type === 'entry');
+    assert.ok(entryRow, 'entry subtotal fallback should still render an entry row');
+    assert.equal(entryRow.source, 'booking_package_entry_subtotal_fallback');
+    assert.equal(entryRow.quantity, null);
+    assert.equal(entryRow.unitPrice, null);
+    assert.equal(entryRow.subtotal, 3600);
+    assert.equal(summary.orderRows.filter(row => row.type === 'entry').length, 1);
+    assert.equal(summary.totals.entrySubtotal, 3600);
+    assert.equal(summary.totals.menuSubtotal, 1200);
+    assert.equal(summary.warnings.some(warning => warning.code === 'entry_charge_snapshot_missing'), true);
+});
+
 test('banquet summary exposes canonical comments from workspace and legacy notes', () => {
     const primary = {
         id: 'BK-COMMENTS-PRIMARY',
@@ -272,16 +359,28 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
                 unitPrice: 95,
                 subtotal: 237.5,
                 meta: { servingUnit: 'л', servingTime: '16:40' }
+            },
+            {
+                type: 'entry',
+                title: 'Вхід',
+                quantity: 12,
+                unitPrice: 300,
+                subtotal: 3600,
+                meta: {
+                    ruleCode: 'banquet_entry_weekday_child',
+                    dateType: 'weekday'
+                }
             }
         ],
         serviceEvents: [],
         comments: [],
         totals: {
             currency: 'UAH',
-            orderTotal: 1497.5,
-            bookingPrice: 1497.5,
+            orderTotal: 5097.5,
+            bookingPrice: 5097.5,
             programBasePrice: 0,
             menuSubtotal: 1497.5,
+            entrySubtotal: 3600,
             activitySubtotal: 0
         },
         deposit: { amount: 0, paymentMethod: null },
@@ -325,6 +424,9 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(tableText, /3 порції/);
     assert.match(tableText, /1 порція/);
     assert.match(tableText, /2,5 л/);
+    assert.match(tableText, /Вхід/);
+    assert.match(tableText, /12 дітей/);
+    assert.match(tableText, /300 ₴ = 3\s*600 ₴/);
     assert.doesNotMatch(tableText, /5 100г|5 100 г|5 100г x 90/);
 
     window.document.getElementById('bookingSummaryCopy').click();
@@ -341,6 +443,8 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(copiedText, /Бургер — 16:30 — 3 порції × 260 ₴ = 780 ₴/);
     assert.match(copiedText, /Свічка — 16:35 — 1 порція × 30 ₴ = 30 ₴/);
     assert.match(copiedText, /Лимонад — 16:40 — 2,5 л × 95 ₴ = 237,5 ₴/);
+    assert.match(copiedText, /Вхід — 12 дітей × 300 ₴ = 3\s*600 ₴/);
+    assert.match(copiedText, /Вхід: 3\s*600 ₴/);
     assert.doesNotMatch(copiedText, /5 100г|5 100 г|5 100г x 90/);
 });
 

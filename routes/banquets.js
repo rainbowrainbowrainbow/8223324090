@@ -17,6 +17,7 @@ const {
     attachBookingToBanquetGroup,
     createActivityBookingInBanquetGroup,
     createBanquetGroup,
+    createMemberBookingFromSourceBooking,
     createMemberBookingInBanquetGroup,
     detachBookingFromBanquetGroup,
     loadBanquetGroupCandidates,
@@ -166,6 +167,29 @@ router.post('/', async (req, res) => {
         return res.status(201).json(result);
     } catch (err) {
         if (!(err instanceof BanquetGroupError)) log.error('POST /banquets error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.post('/from-source/member-booking', async (req, res) => {
+    try {
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'create')) return;
+        const sourceBookingId = req.body?.sourceBookingId || req.body?.source_booking_id;
+        if (!validateId(sourceBookingId)) {
+            return res.status(400).json({ success: false, error: 'Invalid source booking ID' });
+        }
+        const result = await createMemberBookingFromSourceBooking({
+            sourceBookingId,
+            memberBooking: req.body?.booking || req.body?.memberBooking || req.body?.member_booking,
+            role: req.body?.role,
+            businessContext,
+            user: req.user
+        });
+        return res.status(201).json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetGroupError)) log.error('POST /banquets/from-source/member-booking error', err);
         return sendWriteError(res, err);
     }
 });

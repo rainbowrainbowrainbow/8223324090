@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.76.101",
+  "version": "0.76.102",
   "eventGenix": {
-    "releaseLabel": "Booking summary terms and print layout fix"
+    "releaseLabel": "Banquet kitchen linking and entry pricing"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

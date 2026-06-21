@@ -1,6 +1,13 @@
 const BOOKING_PACKAGE_SCHEMA_VERSION = 2;
 const SERVICE_EVENT_TYPES = new Set(['food_service', 'cake', 'drinks', 'room_setup', 'custom']);
 const SERVICE_EVENT_STATUSES = new Set(['planned', 'done', 'skipped']);
+const BANQUET_ENTRY_PRICE_RULE_CODES = Object.freeze({
+    weekday: 'banquet_entry_weekday_child',
+    weekend: 'banquet_entry_weekend_child'
+});
+const BANQUET_ENTRY_PRICE_RULE_CODE_LIST = Object.freeze(Object.values(BANQUET_ENTRY_PRICE_RULE_CODES));
+const BANQUET_ENTRY_SOURCE = 'banquet_entry_price_rules';
+const BANQUET_ENTRY_TITLE = 'Вхід';
 
 function cleanText(value, max = 240) {
     if (value === undefined || value === null) return null;
@@ -18,6 +25,50 @@ function toQuantity(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return 1;
     return Math.round(n * 100) / 100;
+}
+
+function toPositiveInteger(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.trunc(n);
+}
+
+function normalizeDateOnly(value) {
+    if (value === undefined || value === null || value === '') return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+    const text = String(value).trim();
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+    return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function banquetEntryDateType(value) {
+    const dateText = normalizeDateOnly(value);
+    if (!dateText) return null;
+    const [year, month, day] = dateText.split('-').map(Number);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    return weekday === 0 || weekday === 6 ? 'weekend' : 'weekday';
+}
+
+function normalizeRuleMap(priceRules = []) {
+    if (priceRules && typeof priceRules === 'object' && !Array.isArray(priceRules)) {
+        return new Map(Object.entries(priceRules));
+    }
+    return new Map((Array.isArray(priceRules) ? priceRules : [])
+        .map(rule => [String(rule?.code || '').trim(), rule])
+        .filter(([code]) => code));
+}
+
+function numericRuleValue(rule) {
+    const value = Number(rule?.value);
+    if (!Number.isFinite(value) || value < 0) return null;
+    return toMoney(value);
 }
 
 const MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
@@ -132,6 +183,166 @@ function menuPositionsSubtotal(positions) {
     return toMoney((positions || []).reduce((sum, item) => sum + toMoney(item.subtotal), 0));
 }
 
+function extraDataObjectOf(booking = {}) {
+    const raw = booking.extraData ?? booking.extra_data;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    if (typeof raw === 'string' && raw.trim()) {
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+}
+
+function hasBanquetEntrySurface(booking = {}) {
+    const extra = extraDataObjectOf(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const scenario = String(workspace.scenario || booking.scenario || '').trim().toLowerCase();
+    const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    return category === 'banquet'
+        || category === 'kitchen'
+        || programCode === 'KITCHEN'
+        || scenario === 'kitchen_only'
+        || scenario === 'event_kitchen'
+        || booking.banquetGuests != null
+        || booking.banquet_guests != null
+        || booking.banquetAdults != null
+        || booking.banquet_adults != null
+        || booking.banquetTables != null
+        || booking.banquet_tables != null;
+}
+
+function banquetEntryQuantityForBooking(booking = {}, options = {}) {
+    const sources = [
+        booking.banquetGuests,
+        booking.banquet_guests,
+        booking.kidsCount,
+        booking.kids_count,
+        options.sourceBooking?.kids_count,
+        options.sourceBooking?.kidsCount,
+        options.primaryBooking?.kids_count,
+        options.primaryBooking?.kidsCount,
+        options.sourceBooking?.banquet_guests,
+        options.sourceBooking?.banquetGuests,
+        options.primaryBooking?.banquet_guests,
+        options.primaryBooking?.banquetGuests
+    ];
+    for (const value of sources) {
+        const quantity = toPositiveInteger(value);
+        if (quantity) return quantity;
+    }
+    return null;
+}
+
+function normalizeEntryTitle(value) {
+    return String(value || '')
+        .normalize('NFC')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function isEntryIdentifier(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'entry'
+        || text === 'banquet_entry'
+        || text === BANQUET_ENTRY_SOURCE
+        || BANQUET_ENTRY_PRICE_RULE_CODE_LIST.includes(text);
+}
+
+function isManualEntryMenuPosition(item = {}) {
+    if (!item || typeof item !== 'object') return false;
+    if (item.isEntryCharge === true || item.entryCharge === true || item.entry_charge === true) return true;
+    if (isEntryIdentifier(item.source) || isEntryIdentifier(item.type) || isEntryIdentifier(item.kitchenType || item.kitchen_type)) return true;
+    if (isEntryIdentifier(item.id) || isEntryIdentifier(item.productId || item.product_id) || isEntryIdentifier(item.code || item.productCode || item.product_code)) return true;
+    return normalizeEntryTitle(item.title || item.label || item.name || item.productName) === 'вхід';
+}
+
+function bookingPackageWarnings(previousWarnings = [], nextWarnings = []) {
+    const result = [];
+    const seen = new Set();
+    for (const warning of [...(Array.isArray(previousWarnings) ? previousWarnings : []), ...nextWarnings]) {
+        const code = cleanText(warning?.code, 120);
+        const message = cleanText(warning?.message, 1000);
+        if (!code && !message) continue;
+        const key = `${code || ''}:${message || ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const normalized = { code: code || 'booking_package_warning', message: message || code };
+        if (Array.isArray(warning?.missingCodes)) {
+            normalized.missingCodes = warning.missingCodes.map(item => cleanText(item, 120)).filter(Boolean);
+        }
+        result.push(normalized);
+    }
+    return result;
+}
+
+function buildBanquetEntryCharge(booking = {}, options = {}) {
+    const warnings = [];
+    if (!hasBanquetEntrySurface(booking)) {
+        return { entryCharge: null, entrySubtotal: 0, warnings };
+    }
+
+    const positions = Array.isArray(options.positions) ? options.positions : normalizeMenuPositions(extractIncomingPositions(booking));
+    if (positions.some(isManualEntryMenuPosition)) {
+        warnings.push({
+            code: 'manual_entry_position_present',
+            message: 'У меню вже є окрема позиція "Вхід", автоматичний вхід не додано вдруге.'
+        });
+        return { entryCharge: null, entrySubtotal: 0, warnings };
+    }
+
+    const quantity = banquetEntryQuantityForBooking(booking, options);
+    if (!quantity) {
+        warnings.push({
+            code: 'entry_quantity_missing',
+            message: 'Кількість дітей для автоматичного входу не вказана, вхід не додано до суми.'
+        });
+        return { entryCharge: null, entrySubtotal: 0, warnings };
+    }
+
+    const dateType = banquetEntryDateType(booking.date || booking.bookingDate || booking.date_at || options.date);
+    if (!dateType) {
+        warnings.push({
+            code: 'entry_date_missing',
+            message: 'Дата бронювання некоректна, вхід не додано до суми.'
+        });
+        return { entryCharge: null, entrySubtotal: 0, warnings };
+    }
+
+    const ruleCode = BANQUET_ENTRY_PRICE_RULE_CODES[dateType];
+    const rules = normalizeRuleMap(options.priceRules);
+    const rule = rules.get(ruleCode);
+    const unitPrice = numericRuleValue(rule);
+    if (unitPrice === null) {
+        warnings.push({
+            code: 'entry_price_rule_missing',
+            message: `Не знайдено price_rules.${ruleCode}, вхід не додано до суми.`,
+            missingCodes: [ruleCode]
+        });
+        return { entryCharge: null, entrySubtotal: 0, warnings };
+    }
+
+    const subtotal = toMoney(quantity * unitPrice);
+    return {
+        entryCharge: {
+            title: BANQUET_ENTRY_TITLE,
+            quantity,
+            unitPrice,
+            subtotal,
+            ruleCode,
+            dateType,
+            source: BANQUET_ENTRY_SOURCE
+        },
+        entrySubtotal: subtotal,
+        warnings
+    };
+}
+
 function normalizeServiceEvent(raw, index = 0) {
     if (!raw || typeof raw !== 'object') return null;
     const type = normalizeServingType(raw.type || raw.eventType || raw.event_type, 'custom');
@@ -207,7 +418,7 @@ function hasBookingPackageInput(booking = {}) {
         || Boolean(extra.bookingPackage || extra.booking_package || extra.menuPositions || extra.serviceEvents);
 }
 
-function buildBookingPackage(booking = {}) {
+function buildBookingPackage(booking = {}, options = {}) {
     const extra = booking.extraData || booking.extra_data || {};
     const previousPackage = extra.bookingPackage || extra.booking_package || {};
     const positions = normalizeMenuPositions(extractIncomingPositions(booking));
@@ -218,22 +429,38 @@ function buildBookingPackage(booking = {}) {
         booking.programBasePrice ?? booking.program_base_price ?? previousPackage.programBasePrice,
         fallbackBase
     );
-    const finalTotal = toMoney(programBasePrice + positionsSubtotal);
-    return {
+    const entryResult = Object.prototype.hasOwnProperty.call(options, 'priceRules')
+        ? buildBanquetEntryCharge(booking, {
+            ...options,
+            positions
+        })
+        : {
+            entryCharge: null,
+            entrySubtotal: 0,
+            warnings: []
+        };
+    const entrySubtotal = entryResult.entryCharge ? toMoney(entryResult.entrySubtotal) : 0;
+    const finalTotal = toMoney(programBasePrice + positionsSubtotal + entrySubtotal);
+    const warnings = bookingPackageWarnings(previousPackage.warnings, entryResult.warnings);
+    const result = {
         schemaVersion: BOOKING_PACKAGE_SCHEMA_VERSION,
         programBasePrice,
         positionsSubtotal,
+        entryCharge: entryResult.entryCharge || null,
+        entrySubtotal,
         finalTotal,
         menuPositions: positions,
         serviceEvents,
         source: 'booking_workspace'
     };
+    if (warnings.length) result.warnings = warnings;
+    return result;
 }
 
-function applyBookingPackage(booking = {}) {
+function applyBookingPackage(booking = {}, options = {}) {
     if (!hasBookingPackageInput(booking)) return booking;
     const extra = booking.extraData && typeof booking.extraData === 'object' ? { ...booking.extraData } : {};
-    const bookingPackage = buildBookingPackage({ ...booking, extraData: extra });
+    const bookingPackage = buildBookingPackage({ ...booking, extraData: extra }, options);
     booking.extraData = {
         ...extra,
         bookingPackage
@@ -241,6 +468,28 @@ function applyBookingPackage(booking = {}) {
     booking.price = bookingPackage.finalTotal;
     booking.banquetMenu = buildLegacyBanquetMenu(bookingPackage.menuPositions, booking.banquetMenu);
     return booking;
+}
+
+async function loadBanquetEntryPriceRules(queryable) {
+    if (!queryable || typeof queryable.query !== 'function') return [];
+    const result = await queryable.query(
+        `SELECT code, name, value, unit, category, description
+           FROM price_rules
+          WHERE code = ANY($1::text[])`,
+        [BANQUET_ENTRY_PRICE_RULE_CODE_LIST]
+    );
+    return result.rows || [];
+}
+
+async function applyBookingPackageEntryCharge(queryable, booking = {}, options = {}) {
+    if (!hasBookingPackageInput(booking)) return booking;
+    const priceRules = Array.isArray(options.priceRules)
+        ? options.priceRules
+        : await loadBanquetEntryPriceRules(queryable);
+    return applyBookingPackage(booking, {
+        ...options,
+        priceRules
+    });
 }
 
 function bookingPackageAudit(oldRow, nextBooking) {
@@ -269,9 +518,17 @@ function bookingPackageAudit(oldRow, nextBooking) {
 
 module.exports = {
     BOOKING_PACKAGE_SCHEMA_VERSION,
+    BANQUET_ENTRY_PRICE_RULE_CODES,
+    BANQUET_ENTRY_PRICE_RULE_CODE_LIST,
+    BANQUET_ENTRY_SOURCE,
     normalizeMenuPosition,
     normalizeMenuPositions,
     menuPositionsSubtotal,
+    banquetEntryDateType,
+    banquetEntryQuantityForBooking,
+    isManualEntryMenuPosition,
+    buildBanquetEntryCharge,
+    loadBanquetEntryPriceRules,
     normalizeMenuServingUnitDisplay,
     formatMenuQuantityWithServingUnit,
     formatMenuPositionQuantity,
@@ -280,5 +537,6 @@ module.exports = {
     buildLegacyBanquetMenu,
     buildBookingPackage,
     applyBookingPackage,
+    applyBookingPackageEntryCharge,
     bookingPackageAudit
 };

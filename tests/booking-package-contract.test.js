@@ -1720,6 +1720,40 @@ test('activity-first kitchen source-only save uses source bridge before normal c
     assert.ok(normalCreateCall > sourceBridgeCall, 'normal booking create remains fallback after source-only bridge');
 });
 
+test('kitchen-first activity source-only save uses source bridge before normal create', () => {
+    const bookingJs = read('js', 'booking.js');
+    const apiJs = read('js', 'api.js');
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateKitchenFirstActivityBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+    const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetActivityBookingFromSource');
+    const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetActivityBooking(bridgeGroupId');
+    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
+
+    assert.match(apiJs, /async function apiCreateBanquetActivityBookingFromSource\(payload = \{\}\)/);
+    assert.match(apiJs, /\/banquets\/from-source\/activity-booking/);
+    assert.match(bookingJs, /function roomBookingLooksLikeKitchen\(/);
+    assert.match(bookingJs, /function kitchenFirstActivitySelectorContext\(/);
+    assert.match(bookingJs, /function kitchenFirstActivitySelectorOptionLabel/);
+    assert.match(bookingJs, /const showKitchenFirstBanquetCreateOption = Boolean\(sourceOnlyKitchenContext && !selectedGroupId && !visibleCandidates\.length\)/);
+    assert.match(bookingJs, /Створити банкет з кухні/);
+    assert.match(bookingJs, /Банкет буде створено автоматично з кухні/);
+    assert.match(validateBridgeBlock, /const bridgeContext = BookingDrawerState\.roomBookingAnimationBridge;/);
+    assert.match(validateBridgeBlock, /!bridgeContext\?\.sourceBookingId \|\| bridgeContext\.groupId/);
+    assert.match(validateBridgeBlock, /roomBookingLooksLikeKitchen\(sourceBooking\)/);
+    assert.match(validateBridgeBlock, /String\(sourceCustomerId\) === String\(selectedCustomerId\)/);
+    assert.match(createFlowBlock, /const kitchenFirstActivityBridge = validateKitchenFirstActivityBridge\(formData, selectedBanquetContext\);/);
+    assert.match(createFlowBlock, /else if \(kitchenFirstActivityBridge\.shouldUse\)[\s\S]*apiCreateBanquetActivityBookingFromSource\(\{[\s\S]*sourceBookingId: sourceContext\.sourceBookingId,[\s\S]*linkedBookings: linked/);
+    assert.ok(sourceBridgeCall >= 0, 'source-only activity save calls from-source activity endpoint');
+    assert.ok(realGroupCall >= 0 && realGroupCall < sourceBridgeCall, 'existing bridge group endpoint remains before source-only activity bridge');
+    assert.ok(normalCreateCall > sourceBridgeCall, 'normal booking create remains fallback after source-only activity bridge');
+});
+
 test('activity-first kitchen existing banquet group still uses group member endpoint', () => {
     const bookingJs = read('js', 'booking.js');
     const createFlowBlock = bookingJs.slice(

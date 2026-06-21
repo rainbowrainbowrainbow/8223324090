@@ -4,6 +4,23 @@
 
 ---
 
+## v0.76.101 - Booking summary terms and print layout fix
+
+### Booking summary / Banquet terms / Price Center / Print layout / Regression checks / (Клешня, 21.06.2026) [codex]
+- **`Умови банкету` у Банкетному листі тепер беруть актуальні цифри з Центру цін** - auto price-rule snapshots більше не заморожують старі значення для `Свій торт`, `Cork Fee`, строків коригування меню і зміни дати.
+- **Manual custom terms не перезаписуються** - якщо умови були задані вручну, Банкетний лист продовжує показувати саме їх, а не поточні default price rules.
+- **`Свій торт`, `Cork Fee`, строки коригування меню і зміни дати доступні як окремий блок у Центрі цін** - керування йде через існуючий `price_rules` update flow без нової сутності, міграції або дублювання API.
+- **Блок `Умови банкету` у Банкетному листі візуально опущено нижче після фінансового блоку** - секція більше не виглядає приклеєною до `Суми і завдаток`, але порядок документа збережено.
+- **Print preview шапка Банкетного листа більше не злипається у stacked layout** - print CSS явно тримає симетричну 3+3 metadata grid для лівих рядків закладу і правих рядків `Booking ID` / дати / менеджера.
+- **Native print title став акуратнішим** - під час друку document title тимчасово змінюється на `Банкетний лист BK-...` і повертається після `afterprint` або timeout fallback.
+- **Preview, copy text і print використовують один contract умов** - frontend рендерить `summary.terms.items` і не має hardcoded `500грн`, `100грн`, `3 доби` або `5 діб`.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому Chromium перевірив desktop/mobile harness і PDF artifact без зміни env/Railway config.
+- **DB/migrations/auth/Railway config не змінювались** - реліз без schema changes, secrets, deploy config або нових dependencies.
+- **Додано regression checks** - tests покривають source contract умов, Центр цін, print spacing, print header grid, print title restore і відсутність frontend hardcode.
+- **Релізні маркери піднято до `0.76.101`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.100 - Booking summary details rows fix
 
 ### Booking summary / Details rows / Birthday format / Program contract / Copy text / Regression checks / (Клешня, 21.06.2026) [codex]

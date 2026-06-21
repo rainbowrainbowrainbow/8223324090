@@ -969,6 +969,7 @@ test('product effective pricing resolves current and next rule by booking date',
 
 test('banquet terms numeric defaults are seeded through price rules without overwriting operator edits', () => {
     const migration = read('db', 'migrations', '267_banquet_terms_price_rules.sql');
+    const centerRoute = read('routes', 'center.js');
     const expectedRules = [
         ['banquet_own_cake_fee', 500, 'грн'],
         ['banquet_cork_fee', 100, 'грн'],
@@ -986,11 +987,17 @@ test('banquet terms numeric defaults are seeded through price rules without over
         assert.match(migration, new RegExp(`\\b${value}\\b`));
         assert.match(migration, new RegExp(`'${unit}'`));
     }
+
+    assert.match(centerRoute, /router\.get\('\/prices'/);
+    assert.match(centerRoute, /SELECT \* FROM price_rules ORDER BY category, code/);
+    assert.match(centerRoute, /router\.put\('\/prices\/:code'/);
+    assert.match(centerRoute, /UPDATE price_rules SET/);
 });
 
 test('booking routes snapshot banquet terms on create, full create, and update without frontend ownership', () => {
     const route = read('routes', 'bookings.js');
     const termsService = read('services', 'banquetTerms.js');
+    const summaryService = read('services', 'banquetSummary.js');
 
     assert.match(route, /snapshotBanquetTermsForBooking/);
     assert.match(route, /await snapshotBanquetTermsForBooking\(client, b\)/);
@@ -1004,6 +1011,11 @@ test('booking routes snapshot banquet terms on create, full create, and update w
     assert.match(termsService, /function snapshotBanquetTermsForBooking/);
     assert.match(termsService, /hasSnapshotTerms\(extra\)/);
     assert.match(termsService, /extra\.banquetTerms = defaults\.items/);
+    assert.match(summaryService, /function termsSnapshotSourceOf/);
+    assert.match(summaryService, /function isPriceRuleTermsSnapshot/);
+    assert.match(summaryService, /priceRuleSnapshot[\s\S]*defaults\.items/);
+    assert.match(summaryService, /source:\s*'snapshot_fallback'/);
+    assert.match(summaryService, /source:\s*'manual'/);
     assert.doesNotMatch(read('js', 'booking.js'), /banquetTermsSnapshot/);
 });
 

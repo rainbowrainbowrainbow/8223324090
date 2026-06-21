@@ -440,7 +440,7 @@ test('banquet terms snapshot is not overwritten when manual terms already exist'
     assert.deepEqual(booking.extraData.banquetTerms, ['Індивідуальні умови клієнта.']);
 });
 
-test('banquet summary prefers captured snapshot over current price-rule defaults', () => {
+test('banquet summary refreshes auto price-rule snapshot terms from current price rules', () => {
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',
         banquetTermsDefaults: renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules({
@@ -459,6 +459,16 @@ test('banquet summary prefers captured snapshot over current price-rule defaults
                     'Snapshot cake fee 500грн.',
                     'Snapshot cork fee 100грн.'
                 ],
+                banquetTermsSnapshot: {
+                    source: 'price_rules',
+                    priceRuleCodes: [
+                        'banquet_own_cake_fee',
+                        'banquet_cork_fee',
+                        'banquet_menu_correction_deadline_days',
+                        'banquet_date_change_deadline_days'
+                    ],
+                    capturedAt: '2099-07-01T09:00:00.000Z'
+                },
                 bookingPackage: {
                     menuPositions: [
                         { id: 'menu-1', title: 'Ковбаски гриль', quantity: 1 }
@@ -469,11 +479,43 @@ test('banquet summary prefers captured snapshot over current price-rule defaults
         }
     });
 
-    assert.deepEqual(summary.terms.items, [
-        'Snapshot cake fee 500грн.',
-        'Snapshot cork fee 100грн.'
-    ]);
+    assert.equal(summary.terms.items.some(item => item.includes('900грн') && item.includes('300грн')), true);
+    assert.equal(summary.terms.items.some(item => item.includes('Snapshot cake fee 500грн.')), false);
+    assert.equal(summary.terms.source, 'price_rules');
+    assert.equal(summary.terms.snapshotSource, 'price_rules');
+});
+
+test('banquet summary preserves manual custom terms over current price-rule defaults', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        banquetTermsDefaults: renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules({
+            banquet_own_cake_fee: 900,
+            banquet_cork_fee: 300
+        })),
+        mainBooking: {
+            id: 'BK-TERMS-MANUAL',
+            date: '2099-08-01',
+            time: '12:00',
+            room: 'Marvel',
+            program_name: 'Banquet',
+            price: 0,
+            extra_data: {
+                banquetTerms: [
+                    'Manual custom terms stay locked.'
+                ],
+                bookingPackage: {
+                    menuPositions: [
+                        { id: 'menu-1', title: 'Ковбаски гриль', quantity: 1 }
+                    ],
+                    serviceEvents: []
+                }
+            }
+        }
+    });
+
+    assert.deepEqual(summary.terms.items, ['Manual custom terms stay locked.']);
     assert.equal(summary.terms.items.some(item => item.includes('900грн') || item.includes('300грн')), false);
+    assert.equal(summary.terms.source, 'manual');
 });
 
 test('banquet summary falls back to price-rule terms when booking snapshot terms are missing', () => {
@@ -531,6 +573,51 @@ test('banquet summary warns and avoids fake values when banquet terms price rule
     assert.deepEqual(summary.terms.items, []);
     assert.equal(summary.warnings.some(warning => warning.code === 'banquet_terms_price_rule_missing'), true);
     assert.equal(summary.warnings.some(warning => warning.code === 'terms_missing'), true);
+});
+
+test('banquet summary falls back to stored price-rule snapshot when current terms rules are incomplete', () => {
+    const defaults = renderBanquetTermsFromPriceRules(standardBanquetTermsPriceRules({
+        omit: ['banquet_cork_fee']
+    }));
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        banquetTermsDefaults: defaults,
+        mainBooking: {
+            id: 'BK-TERMS-SNAPSHOT-FALLBACK',
+            date: '2099-08-01',
+            time: '12:00',
+            room: 'Marvel',
+            program_name: 'Banquet',
+            price: 0,
+            extra_data: {
+                banquetTerms: [
+                    'Snapshot cake fee 500грн.',
+                    'Snapshot cork fee 100грн.'
+                ],
+                banquetTermsSnapshot: {
+                    source: 'price_rules',
+                    priceRuleCodes: [
+                        'banquet_own_cake_fee',
+                        'banquet_cork_fee',
+                        'banquet_menu_correction_deadline_days',
+                        'banquet_date_change_deadline_days'
+                    ],
+                    capturedAt: '2099-07-01T09:00:00.000Z'
+                }
+            }
+        }
+    });
+
+    assert.deepEqual(summary.terms.items, [
+        'Snapshot cake fee 500грн.',
+        'Snapshot cork fee 100грн.'
+    ]);
+    assert.equal(summary.terms.source, 'snapshot_fallback');
+    assert.equal(summary.terms.snapshotSource, 'price_rules');
+    assert.deepEqual(summary.terms.missingCodes, ['banquet_cork_fee']);
+    assert.equal(summary.warnings.some(warning => warning.code === 'banquet_terms_price_rule_missing'), true);
+    assert.equal(summary.warnings.some(warning => warning.code === 'banquet_terms_snapshot_fallback'), true);
+    assert.equal(summary.warnings.some(warning => warning.code === 'terms_missing'), false);
 });
 
 test('banquet summary keeps kitchen-only customer identity out of order rows', () => {

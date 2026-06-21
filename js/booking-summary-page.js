@@ -488,6 +488,26 @@
         textarea.remove();
     }
 
+    function printSummaryDocument() {
+        const originalTitle = document.title;
+        const printTitle = currentSummary?.bookingId
+            ? `Банкетний лист ${currentSummary.bookingId}`
+            : 'Банкетний лист';
+        let restored = false;
+
+        const restoreTitle = () => {
+            if (restored) return;
+            restored = true;
+            document.title = originalTitle;
+            window.removeEventListener('afterprint', restoreTitle);
+        };
+
+        window.addEventListener('afterprint', restoreTitle, { once: true });
+        document.title = printTitle;
+        window.print();
+        setTimeout(restoreTitle, 1000);
+    }
+
     async function loadSummary() {
         const params = qs();
         const id = params.get('id');
@@ -527,9 +547,7 @@
     }
 
     function bindActions() {
-        el('bookingSummaryPrint')?.addEventListener('click', () => {
-            window.print();
-        });
+        el('bookingSummaryPrint')?.addEventListener('click', printSummaryDocument);
         el('bookingSummaryCopy')?.addEventListener('click', async () => {
             if (!currentSummary) {
                 showToast('Банкетний лист ще не завантажений');

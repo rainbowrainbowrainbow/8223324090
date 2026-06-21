@@ -404,11 +404,35 @@ check('HR structure route sanitizes structured node payloads', hrRouteCode.inclu
     check('HR resume uploads use authenticated Postgres-linked route storage', hrRouteCode.includes('multer.memoryStorage()') && hrRouteCode.includes('job_application_resume_files') && hrRouteCode.includes("router.post('/applications/:id/resume-files'") && hrRouteCode.includes("router.get('/applications/:id/resume-files/:fileId/download'"));
 });
 
-checkPage('center.html', (doc) => {
+checkPage('center.html', (doc, html) => {
+    const centerPageCode = fs.readFileSync(path.join(ROOT, 'js', 'center-page.js'), 'utf8');
+    const bookingSummaryPageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
+    const centerCss = cssTextWithImports('css/pages.css');
+    const bookingSummaryHardcode = /(500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('tabs exist', doc.querySelectorAll('.center-tab-btn').length > 0);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
     check('Control Center has modern truth header', !!doc.querySelector('.center-hero') && !!doc.getElementById('centerTruthStrip') && !!doc.getElementById('centerFreshness'));
     check('Control Center tabs expose ARIA state', [...doc.querySelectorAll('.center-tab-btn')].every(btn => btn.getAttribute('role') === 'tab' && btn.hasAttribute('aria-selected')));
+    check('Center exposes banquet terms price rules as a first-class price block',
+        centerPageCode.includes('const BANQUET_TERMS_PRICE_RULES')
+        && centerPageCode.includes("code: 'banquet_own_cake_fee'")
+        && centerPageCode.includes("code: 'banquet_cork_fee'")
+        && centerPageCode.includes("code: 'banquet_menu_correction_deadline_days'")
+        && centerPageCode.includes("code: 'banquet_date_change_deadline_days'")
+        && centerPageCode.includes('function renderBanquetTermsPriceBlock')
+        && centerPageCode.includes('Умови банкету')
+        && centerPageCode.includes('Плата за свій торт')
+        && centerPageCode.includes('Cork Fee')
+        && centerPageCode.includes('Меню можна коригувати за')
+        && centerPageCode.includes('Дату можна змінити за')
+        && centerPageCode.includes('Не знайдено правила')
+        && centerPageCode.includes('confirmPriceChange(this)')
+        && centerPageCode.includes('apiUpdatePrice(code')
+        && html.includes('css/pages.css')
+        && centerCss.includes('.banquet-terms-price-panel')
+        && centerCss.includes('.banquet-terms-price-row')
+        && centerCss.includes('.banquet-terms-price-grid')
+        && !bookingSummaryHardcode.test(bookingSummaryPageCode));
 });
 
 checkPage('copilot.html', (doc) => {
@@ -628,6 +652,8 @@ checkPage('booking-summary.html', (doc, html) => {
     const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
     const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
     const summaryMetaGridRule = cssRuleText(pageCss, '.summary-doc-meta-grid');
+    const termsSectionRule = cssRuleText(pageCss, '.summary-section--terms');
+    const printTermsSpacingRule = cssRuleText(printCss, '.summary-section--terms');
     const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
     const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
     const summaryBriefItemRule = cssRuleText(pageCss, '.summary-brief-item');
@@ -763,6 +789,8 @@ checkPage('booking-summary.html', (doc, html) => {
         && printTableRowRule.includes('break-inside: avoid')
         && printTermsItemRule.includes('page-break-inside: avoid')
         && printServiceEventRule.includes('break-inside: avoid')
+        && termsSectionRule.includes('margin-top: 18px')
+        && printTermsSpacingRule.includes('margin-top: 12px')
         && printA4PageRule.includes('aspect-ratio: auto')
         && !pageCss.includes('height: 297mm'));
     check('Booking summary terms stay backend-driven across preview, copy text, and print',
@@ -776,6 +804,15 @@ checkPage('booking-summary.html', (doc, html) => {
         && summaryTextBody.includes('const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : []')
         && summaryTextBody.includes('terms.map(item => `- ${item}`)')
         && summaryTextBody.includes("terms.length ? terms.map")
+        && !frontendBanquetTermsHardcode.test(pageCode)
+        && !frontendBanquetTermsHardcode.test(pageCss));
+    check('Booking summary terms distinguish manual terms from auto price-rule snapshots',
+        banquetSummaryServiceCode.includes('function termsSnapshotSourceOf')
+        && banquetSummaryServiceCode.includes('function isPriceRuleTermsSnapshot')
+        && banquetSummaryServiceCode.includes("source: 'manual'")
+        && banquetSummaryServiceCode.includes("source: 'snapshot_fallback'")
+        && banquetSummaryServiceCode.includes("source: defaults.source || 'price_rules'")
+        && banquetSummaryServiceCode.includes('priceRuleSnapshot')
         && !frontendBanquetTermsHardcode.test(pageCode)
         && !frontendBanquetTermsHardcode.test(pageCss));
     check('Booking summary print keeps banquet terms section and list items unbroken',
@@ -794,6 +831,12 @@ checkPage('booking-summary.html', (doc, html) => {
         && printCommentRowRule.includes('page-break-inside: avoid'));
     check('Booking summary print trigger stays browser-native without app-owned header or footer promises',
         printTriggerCount === 1
+        && pageCode.includes('function printSummaryDocument()')
+        && pageCode.includes('const originalTitle = document.title')
+        && pageCode.includes('document.title = printTitle')
+        && pageCode.includes('document.title = originalTitle')
+        && pageCode.includes("window.addEventListener('afterprint', restoreTitle")
+        && pageCode.includes('setTimeout(restoreTitle, 1000)')
         && pageCode.includes('window.print()')
         && !pageCode.includes('page.pdf')
         && !pageCode.includes('jsPDF')
@@ -834,7 +877,13 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('.summary-doc-meta > span:nth-child(1)')
         && pageCss.includes('display: contents')
         && mobileMetaGridRule.includes('grid-template-columns: 1fr')
+        && printMetaGridRule.includes('grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr)')
+        && printMetaGridRule.includes('grid-template-rows: repeat(3, auto)')
         && printMetaGridRule.includes('column-gap: 10px')
+        && printCss.includes('.summary-venue-lines > span')
+        && printCss.includes('.summary-doc-meta > span')
+        && printCss.includes('grid-column: 2')
+        && printCss.includes('text-align: right')
         && !pageCss.includes('--summary-doc-meta-offset')
         && !pageCss.includes('padding-top: var(--summary-doc-meta-offset)')
         && !printCss.includes('--summary-doc-meta-offset')

@@ -607,26 +607,54 @@ function normalizeResolvedTerms(defaults = null) {
     return {
         title: cleanText(source.title, 120) || 'Умови банкету',
         items,
-        missingCodes
+        missingCodes,
+        source: cleanText(source.source, 120)
     };
+}
+
+function termsSnapshotOf(extra = {}) {
+    const snapshot = extra.banquetTermsSnapshot
+        || extra.banquet_terms_snapshot
+        || extra.termsSnapshot
+        || extra.terms_snapshot
+        || {};
+    return snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) ? snapshot : {};
+}
+
+function termsSnapshotSourceOf(extra = {}) {
+    return cleanText(valueOf(termsSnapshotOf(extra), 'source', 'termsSource', 'terms_source'), 120);
+}
+
+function isPriceRuleTermsSnapshot(extra = {}) {
+    return String(termsSnapshotSourceOf(extra) || '').toLowerCase() === 'price_rules';
+}
+
+function normalizeRawTerms(rawTerms) {
+    return Array.isArray(rawTerms)
+        ? rawTerms.map(item => cleanText(item, 800)).filter(Boolean)
+        : cleanText(rawTerms, 3000)
+            ? cleanText(rawTerms, 3000).split(/\r?\n/).map(item => cleanText(item, 800)).filter(Boolean)
+            : [];
 }
 
 function termsOf(mainBooking = {}, warnings, options = {}) {
     const extra = extraDataOf(mainBooking);
     const rawTerms = extra.banquetTerms || extra.banquet_terms || extra.terms || [];
-    const items = Array.isArray(rawTerms)
-        ? rawTerms.map(item => cleanText(item, 800)).filter(Boolean)
-        : cleanText(rawTerms, 3000)
-            ? cleanText(rawTerms, 3000).split(/\r?\n/).map(item => cleanText(item, 800)).filter(Boolean)
-            : [];
-    if (items.length) {
+    const items = normalizeRawTerms(rawTerms);
+    const snapshotSource = termsSnapshotSourceOf(extra);
+    const priceRuleSnapshot = isPriceRuleTermsSnapshot(extra);
+    const defaults = normalizeResolvedTerms(options.defaults || options.banquetTermsDefaults);
+
+    if (items.length && !priceRuleSnapshot) {
         return {
             title: 'Умови банкету',
-            items
+            items,
+            source: 'manual',
+            snapshotSource: snapshotSource || null,
+            missingCodes: []
         };
     }
 
-    const defaults = normalizeResolvedTerms(options.defaults || options.banquetTermsDefaults);
     if (defaults.missingCodes.length) {
         warnings.push({
             code: 'banquet_terms_price_rule_missing',
@@ -637,7 +665,24 @@ function termsOf(mainBooking = {}, warnings, options = {}) {
     if (defaults.items.length) {
         return {
             title: defaults.title,
-            items: defaults.items
+            items: defaults.items,
+            source: defaults.source || 'price_rules',
+            snapshotSource: priceRuleSnapshot ? snapshotSource : null,
+            missingCodes: defaults.missingCodes
+        };
+    }
+
+    if (items.length && priceRuleSnapshot) {
+        warnings.push({
+            code: 'banquet_terms_snapshot_fallback',
+            message: 'Актуальні price_rules для умов банкету недоступні, тому використано збережений snapshot умов.'
+        });
+        return {
+            title: 'Умови банкету',
+            items,
+            source: 'snapshot_fallback',
+            snapshotSource: snapshotSource || 'price_rules',
+            missingCodes: defaults.missingCodes
         };
     }
 
@@ -649,7 +694,10 @@ function termsOf(mainBooking = {}, warnings, options = {}) {
     }
     return {
         title: 'Умови банкету',
-        items
+        items,
+        source: null,
+        snapshotSource: snapshotSource || null,
+        missingCodes: defaults.missingCodes
     };
 }
 

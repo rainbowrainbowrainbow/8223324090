@@ -275,6 +275,10 @@ body.booking-summary-page {
     margin-top: 12px;
 }
 
+.summary-section--terms {
+    margin-top: 18px;
+}
+
 .summary-section h2 {
     margin: 0 0 6px;
     padding: 0 0 4px;
@@ -620,14 +624,50 @@ body.booking-summary-page {
     }
 
     .summary-doc-meta-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
+        grid-template-rows: repeat(3, auto);
         column-gap: 10px;
         row-gap: 1px;
+        align-items: start;
     }
 
     .summary-venue-lines,
     .summary-doc-meta {
+        display: contents;
         font-size: 10px;
         line-height: 1.25;
+    }
+
+    .summary-venue-lines > span,
+    .summary-doc-meta > span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .summary-venue-lines > span {
+        grid-column: 1;
+        text-align: left;
+    }
+
+    .summary-doc-meta > span {
+        grid-column: 2;
+        text-align: right;
+    }
+
+    .summary-venue-lines > span:nth-child(1),
+    .summary-doc-meta > span:nth-child(1) {
+        grid-row: 1;
+    }
+
+    .summary-venue-lines > span:nth-child(2),
+    .summary-doc-meta > span:nth-child(2) {
+        grid-row: 2;
+    }
+
+    .summary-venue-lines > span:nth-child(3),
+    .summary-doc-meta > span:nth-child(3) {
+        grid-row: 3;
     }
 
     .summary-title {
@@ -670,6 +710,10 @@ body.booking-summary-page {
         margin-top: 8px;
         orphans: 2;
         widows: 2;
+    }
+
+    .summary-section--terms {
+        margin-top: 12px;
     }
 
     .summary-section h2 {

@@ -140,6 +140,7 @@ function venueForContext(businessContext, warnings) {
         code: 'venue_neutral_fallback',
         message: 'Для цього businessContext немає окремої шапки закладу.'
     });
+
     return {
         name: businessContextLabel(context),
         addressLine1: null,
@@ -229,6 +230,37 @@ function shouldIncludeProgramOrderRow(primaryBooking = {}, programBasePrice, men
     }
 
     return true;
+}
+
+function isRealBanquetProgram(booking = {}) {
+    const workspace = bookingWorkspaceOf(booking);
+    const scenario = cleanText(valueOf(workspace, 'scenario'), 80);
+    const hasEvent = valueOf(workspace, 'hasEvent', 'has_event');
+    const normalizedScenario = String(scenario || '').trim().toLowerCase();
+    const normalizedHasEvent = typeof hasEvent === 'string' ? hasEvent.trim().toLowerCase() : hasEvent;
+    const programId = cleanText(valueOf(booking, 'programId', 'program_id'), 120);
+    const programCode = cleanText(valueOf(booking, 'programCode', 'program_code'), 80);
+    const normalizedProgramCode = String(programCode || '').trim().toUpperCase();
+    const category = cleanText(valueOf(booking, 'category'), 80);
+    const normalizedCategory = String(category || '').trim().toLowerCase();
+
+    if (
+        normalizedScenario === 'kitchen_only'
+        || normalizedScenario === 'lead_only'
+        || normalizedHasEvent === false
+        || normalizedHasEvent === 'false'
+        || normalizedHasEvent === 0
+        || normalizedHasEvent === '0'
+        || normalizedProgramCode === 'KITCHEN'
+        || normalizedProgramCode === 'LEAD'
+    ) {
+        return false;
+    }
+
+    if (programId) return true;
+    if (programCode) return true;
+
+    return Boolean(normalizedCategory && !['custom', 'kitchen', 'lead', 'food', 'menu'].includes(normalizedCategory));
 }
 
 function buildLinkedActivityRows(linkedBookings = [], options = {}) {
@@ -719,6 +751,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         valueOf(kitchenBooking, 'banquetGuests', 'banquet_guests'),
         valueOf(primaryBooking, 'banquetGuests', 'banquet_guests')
     );
+    const eventProgramName = cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200);
+    const hasRealProgram = isRealBanquetProgram(primaryBooking);
 
     return {
         success: true,
@@ -743,7 +777,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             date: cleanText(valueOf(primaryBooking, 'date'), 40),
             time: cleanText(valueOf(primaryBooking, 'time'), 20),
             room: cleanText(valueOf(primaryBooking, 'room'), 120),
-            programName: cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200),
+            programName: eventProgramName,
+            hasRealProgram,
+            programDisplayName: hasRealProgram ? eventProgramName : null,
             groupName: cleanText(
                 valueOf(groupState.group || {}, 'groupName', 'group_name')
                 || (!groupState.group ? valueOf(primaryBooking, 'groupName', 'group_name') : null),

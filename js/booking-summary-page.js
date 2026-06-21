@@ -55,6 +55,20 @@
         return text;
     }
 
+    function formatBirthday(value) {
+        if (!value) return '—';
+        const text = String(value).trim();
+        const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) return `${isoMatch[3]}.${isoMatch[2]}.${isoMatch[1]}`;
+        const date = new Date(text);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleDateString('uk-UA', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    }
+
     function formatDateTime(value) {
         if (!value) return '—';
         const date = new Date(value);
@@ -150,14 +164,6 @@
                 ${items.filter(Boolean).join('')}
             </div>
         `;
-    }
-
-    function countsText(counts = {}) {
-        const parts = [];
-        if (counts.children !== undefined && counts.children !== null && counts.children !== '') parts.push(`Діти ${counts.children}`);
-        if (counts.adults !== undefined && counts.adults !== null && counts.adults !== '') parts.push(`Дорослі ${counts.adults}`);
-        if (counts.tables !== undefined && counts.tables !== null && counts.tables !== '') parts.push(`Столи ${counts.tables}`);
-        return parts.join(' · ') || null;
     }
 
     function renderWarnings(warnings = []) {
@@ -328,7 +334,7 @@
         const customer = summary.customer || {};
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
-        const people = countsText(counts);
+        const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
 
         if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
@@ -363,10 +369,10 @@
                         briefItem('Прихід гостей', event.time)
                     ])}
                     ${briefColumn([
-                        briefItem('Учасники', people),
-                        briefItem('Програма', event.programName),
+                        briefItem('Діти', counts.children),
+                        programLabel ? briefItem('Програма', programLabel) : '',
                         briefItem('Іменинник', celebrant.name),
-                        briefItem('Дата народження', formatDate(celebrant.birthday)),
+                        briefItem('Дата народження', formatBirthday(celebrant.birthday)),
                         briefItem('Оформлено', formatDateTime(event.createdAt))
                     ])}
                 </div>
@@ -415,6 +421,7 @@
         const serviceEvents = summaryServiceEventRows(summary);
         const comments = summaryCommentRows(summary);
         const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : [];
+        const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
 
         return [
             summary.venue?.name || 'Банкетний лист',
@@ -425,12 +432,13 @@
             `Замовник: ${formatValue(customer.name)}`,
             `Телефон: ${formatValue(customer.phone)}`,
             `Іменинник: ${formatValue(celebrant.name)}`,
-            `Дата народження: ${formatDate(celebrant.birthday)}`,
+            `Дата народження: ${formatBirthday(celebrant.birthday)}`,
             `Кімната: ${formatValue(event.room)}`,
             `Дата оформлення: ${formatDateTime(event.createdAt)}`,
             `Менеджер: ${formatValue(event.manager)}`,
             `Дітей: ${formatValue(counts.children)}`,
             `Дорослих: ${formatValue(counts.adults)}`,
+            ...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : []),
             '',
             'Замовлення:',
             ...(rows.length ? rows.map((row, index) => {

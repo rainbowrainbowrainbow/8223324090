@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.100 - Booking summary details rows fix
+
+### Booking summary / Details rows / Birthday format / Program contract / Copy text / Regression checks / (Клешня, 21.06.2026) [codex]
+- **У Банкетному листі дата народження більше не показує raw English date** - рядок `Дата народження` більше не виводить значення типу `Sat Oct 12`.
+- **Дата народження іменинника форматиться у CRM-форматі** - ISO і native date strings приводяться до нормального вигляду на кшталт `12.10.2018`, а невалідні або порожні значення безпечно показують `—`.
+- **`Програма` більше не показує імʼя клієнта для kitchen-only або room-first банкетів** - службовий `program_name`, який зберігає customer identity, не потрапляє у другу шапку як реальна програма.
+- **Реальна програма або активність усе ще показується, коли вона справді є** - backend додає `event.hasRealProgram` і `event.programDisplayName`, не прибираючи старе поле `event.programName` для сумісності.
+- **`Учасники` замінено на зрозумілий рядок `Діти`** - друга шапка Банкетного листа прямо показує кількість дітей, а відсутні значення лишаються у стандартному `—`.
+- **Copy text і print/PDF отримали той самий contract** - текст копіювання більше не містить `Програма: Юрій`, `Учасники` або raw birthday, а друкований документ використовує ті самі рядки.
+- **Додано regression checks для проблемних рядків** - tests покривають birthday formatting, kitchen-only program fallback, real program display, children count і copy text parity.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому реальний renderer перевірено без зміни env/Railway config.
+- **DB/migrations/auth/Railway config не змінювались** - реліз без schema changes, secrets, deploy config або нових dependencies.
+- **Релізні маркери піднято до `0.76.100`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.99 - Booking summary header alignment fix
 
 ### Booking summary / Header symmetry / Print PDF / Regression checks / (Клешня, 21.06.2026) [codex]

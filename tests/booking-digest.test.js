@@ -103,6 +103,8 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.venue.name, 'Розважальний центр "Парк Закревського Періоду"');
     assert.equal(summary.customer.name, 'Олена Тест');
     assert.equal(summary.celebrant.name, 'Мія');
+    assert.equal(summary.event.hasRealProgram, true);
+    assert.equal(summary.event.programDisplayName, 'День народження');
     assert.equal(summary.counts.children, 8);
     assert.equal(summary.counts.adults, 4);
     assert.equal(summary.counts.guests, null);
@@ -230,11 +232,13 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
             date: '2026-06-23',
             time: '12:30',
             room: 'Майнкрафт',
+            programName: 'Юрій',
+            hasRealProgram: false,
             createdAt: '2026-06-20T10:00:00.000Z',
             manager: 'Manager'
         },
         customer: { name: 'Банкети Юрія', phone: '+380501112233' },
-        celebrant: {},
+        celebrant: { name: 'Сергій', birthday: 'Sat Oct 12 2018 00:00:00 GMT+0300' },
         counts: { children: 12, adults: 2 },
         orderRows: [
             {
@@ -308,6 +312,13 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     const tableText = window.document.getElementById('bookingSummaryDocument').textContent;
     assert.match(tableText, /Дата банкету/);
     assert.match(tableText, /Прихід гостей/);
+    assert.match(tableText, /Діти/);
+    assert.match(tableText, /12/);
+    assert.match(tableText, /Дата народження/);
+    assert.match(tableText, /12\.10\.2018/);
+    assert.doesNotMatch(tableText, /Sat Oct 12/);
+    assert.doesNotMatch(tableText, /Учасники/);
+    assert.doesNotMatch(tableText, /Програма:\s*Юрій/);
     assert.doesNotMatch(tableText, /Дата\/час/);
     assert.match(tableText, /12:30/);
     assert.match(tableText, /5 порцій по 100 г/);
@@ -321,6 +332,10 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
 
     assert.match(copiedText, /Дата банкету: 23\.06\.2026/);
     assert.match(copiedText, /Прихід гостей: 12:30/);
+    assert.match(copiedText, /Дата народження: 12\.10\.2018/);
+    assert.match(copiedText, /Дітей: 12/);
+    assert.doesNotMatch(copiedText, /Sat Oct 12/);
+    assert.doesNotMatch(copiedText, /Програма: Юрій/);
     assert.doesNotMatch(copiedText, /Дата\/час/);
     assert.match(copiedText, /Нутелла — 14:30 — 5 порцій по 100 г × 90 ₴ = 450 ₴/);
     assert.match(copiedText, /Бургер — 16:30 — 3 порції × 260 ₴ = 780 ₴/);
@@ -571,6 +586,8 @@ test('banquet summary keeps kitchen-only customer identity out of order rows', (
 
     assert.equal(summary.customer.name, 'Живий тест форми');
     assert.equal(summary.event.programName, 'Живий тест форми');
+    assert.equal(summary.event.hasRealProgram, false);
+    assert.equal(summary.event.programDisplayName, null);
     assert.equal(summary.totals.programBasePrice, 0);
     assert.equal(summary.totals.menuSubtotal, 4780);
     assert.equal(summary.totals.orderTotal, 4780);

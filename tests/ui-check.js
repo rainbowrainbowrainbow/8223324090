@@ -877,6 +877,18 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCss.includes('.summary-brief-line')
         && !pageCss.includes('.summary-info-grid')
         && !pageCss.includes('.summary-total-card'));
+    check('Booking summary details rows use birthday, children, and conditional program contract',
+        pageCode.includes('function formatBirthday(value)')
+        && renderDocumentBody.includes("briefItem('Діти', counts.children)")
+        && renderDocumentBody.includes("programLabel ? briefItem('Програма', programLabel) : ''")
+        && renderDocumentBody.includes("briefItem('Дата народження', formatBirthday(celebrant.birthday))")
+        && summaryTextBody.includes('const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;')
+        && summaryTextBody.includes('`Дата народження: ${formatBirthday(celebrant.birthday)}`')
+        && summaryTextBody.includes('`Дітей: ${formatValue(counts.children)}`')
+        && summaryTextBody.includes('...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : [])')
+        && !renderDocumentBody.includes("briefItem('Учасники'")
+        && !renderDocumentBody.includes("briefItem('Програма', event.programName)")
+        && !summaryTextBody.includes('`Програма: ${formatValue(event.programName)}`'));
 });
 
 checkPage('sound.html', (doc, html) => {

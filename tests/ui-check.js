@@ -2907,7 +2907,7 @@ check('Booking comments use workspace contract instead of legacy notes for new P
     && !roomBookingAnimationBridgeBlock.includes('sourceBooking.notes')
     && !roomBookingAnimationBridgeBlock.includes('sourceBooking.groupName')
     && /function buildMultiActivityBookingFromProgram[\s\S]*notes: null,[\s\S]*groupName: null,[\s\S]*function buildMultiActivityBookings/.test(bookingCode)
-    && /async function openRoomBookingAnimationBridge[\s\S]*BookingDrawerState\.roomBookingAnimationBridge = \{[\s\S]*groupId: groupResult\.groupId[\s\S]*sourceBookingId: sourceBooking\.id[\s\S]*function revealHiddenBooking/.test(bookingCode)
+    && /async function openRoomBookingAnimationBridge[\s\S]*BookingDrawerState\.roomBookingAnimationBridge = \{[\s\S]*groupId: existingGroupId \|\| sourceBooking\.banquetGroupId \|\| sourceBooking\.banquet_group_id \|\| null,[\s\S]*sourceBookingId: sourceBooking\.id[\s\S]*function revealHiddenBooking/.test(bookingCode)
     && /attachBanquetGroupContextToBooking\(booking,[\s\S]*bridgeGroupId[\s\S]*bridgeSourceBookingId[\s\S]*'room_booking_animation_bridge'/.test(bookingCode));
 check('Booking banquet selector loads same-customer groups and routes selected kitchen/activity atomically',
     bookingPanelHtml.includes('id="bookingBanquetGroupSection"')
@@ -2917,11 +2917,13 @@ check('Booking banquet selector loads same-customer groups and routes selected k
     && bookingCode.includes('function refreshBookingBanquetGroupCandidates')
     && bookingCode.includes('apiGetBanquetCandidates({ date, customerId })')
     && bookingCode.includes('function selectedBookingBanquetGroupContext')
-    && bookingCode.includes('preselectGroupId: groupResult.groupId')
+    && bookingCode.includes('preselectGroupId: BookingDrawerState.roomBookingAnimationBridge.groupId ||')
     && bookingCode.includes('function isSelectedBanquetKitchenCreate')
     && bookingCode.includes('function isSelectedBanquetActivityCreate')
+    && bookingCode.includes('function validateKitchenFirstActivityBridge')
     && bookingCode.includes('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId')
     && bookingCode.includes('apiCreateBanquetActivityBooking(selectedBanquetContext.groupId')
+    && bookingCode.includes('apiCreateBanquetActivityBookingFromSource')
     && /else if \(selectedBanquetContext\.groupId\) \{[\s\S]*selectedBanquetUnsupportedCreateMessage\(\)[\s\S]*unlockSubmitBtn\(\);[\s\S]*return;[\s\S]*\} else \{[\s\S]*apiCreateBooking\(booking\)/.test(bookingCode)
     && apiCode.includes('function apiFailureFromBody')
     && apiCode.includes('function apiGetBanquetCandidates')
@@ -2931,7 +2933,9 @@ check('Booking banquet selector loads same-customer groups and routes selected k
     && /async function apiCreateBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateEducationLessonSeries/.test(apiCode)
     && /async function apiCreateBookingFull[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiGetBanquetByBooking/.test(apiCode)
     && /async function apiCreateBanquetMemberBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateBanquetActivityBooking/.test(apiCode)
-    && /async function apiCreateBanquetActivityBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiAttachBanquetGroupBooking/.test(apiCode));
+    && /async function apiCreateBanquetActivityBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateBanquetActivityBookingFromSource/.test(apiCode)
+    && /async function apiCreateBanquetActivityBookingFromSource[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiAttachBanquetGroupBooking/.test(apiCode)
+    && apiCode.includes('/banquets/from-source/activity-booking'));
 check('Booking kitchen menu supports serving times and banquet service events without schema changes',
     bookingCode.includes('servingTime')
     && bookingCode.includes('servingNote')

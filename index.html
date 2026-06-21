@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.103">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.103">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.103">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.103">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.103">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.103">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.103">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.103">
-    <link rel="stylesheet" href="css/features.css?v=0.76.103">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.103">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.103">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.103">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.103">
+    <link rel="stylesheet" href="css/base.css?v=0.76.104">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.104">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.104">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.104">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.104">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.104">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.104">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.104">
+    <link rel="stylesheet" href="css/features.css?v=0.76.104">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.104">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.104">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.104">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.104">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.103">✨ 0.76.103</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.104">✨ 0.76.104</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.103 — Banquet activity-first selector fix</p>
+                <p class="tagline">AI First CRM v0.76.104 — Two-way banquet bridge fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.103</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.104</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1740,14 +1740,23 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.76.104 — Two-way banquet bridge fix</h4>
+                    <ul>
+                        <li><b>Працює зворотний сценарій <code>кухня перша → активність після</code></b> — активну програму можна додати з кухонної/банкетної броні в кімнаті без ручного створення банкетної групи.</li>
+                        <li><b>Банкет створюється або використовується при збереженні активності</b> — новий безпечний bridge endpoint створює групу з kitchen source або перевикористовує існуючу групу.</li>
+                        <li><b>Селект <code>Прив'язати до банкету</code> показує майбутню прив'язку</b> — якщо групи ще немає, але є валідна кухня-джерело, UI не лишає менеджера тільки з <code>Без прив'язки</code>.</li>
+                        <li><b>Save path став двостороннім і deterministic</b> — existing group, activity-first kitchen і kitchen-first activity мають окремі атомарні маршрути без випадкового fallback у звичайне створення броні.</li>
+                        <li><b>Customer mismatch і невалідні source bookings блокуються до insert</b> — frontend показує зрозумілу помилку, а backend повторно перевіряє root/active/customer/date/room у транзакції.</li>
+                        <li><b>Кімнатні kitchen/service броні не дублюються в animator timeline</b> — поведінка зафіксована тестами, щоб сервісні блоки лишались у кімнатній сітці та не змішувались з активними програмами.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.76.103 — Banquet activity-first selector fix</h4>
                     <ul>
-                        <li><b>Кухня з активності тепер показує майбутню прив'язку до банкету до збереження</b> — у сценарії <code>активність перша → Банкети → Кімнати → кухня</code> селект показує створення банкету з активності.</li>
+                        <li><b>Кухня з активності показує майбутню прив'язку до банкету до збереження</b> — у сценарії <code>активність перша → Банкети → Кімнати → кухня</code> селект показує створення банкету з активності.</li>
                         <li><b>Банкет створюється автоматично при збереженні кухні</b> — source-only контекст без <code>groupId</code> йде через безпечний bridge endpoint, де активність стає primary booking, а кухня додається як <code>role='kitchen'</code>.</li>
-                        <li><b>Виправлено помилковий стан <code>банкетів не знайдено</code></b> — програмний вибір кімнати тепер явно ініціалізує source activity context після оновлення доступності кімнат.</li>
-                        <li><b>Save path став deterministic</b> — frontend використовує той source context, який бачить UI, і не покладається на повторний fallback-пошук у кеші кімнат.</li>
+                        <li><b>Виправлено помилковий стан <code>банкетів не знайдено</code></b> — програмний вибір кімнати явно ініціалізує source activity context після оновлення доступності кімнат.</li>
                         <li><b>Preview <code>Вхід</code> підтягує правила Центру цін до збереження</b> — попередній розрахунок завантажує weekday/weekend правила, а backend лишається canonical source of truth.</li>
-                        <li><b>Додано regression checks</b> — tests покривають programmatic room open, virtual selector state без fake id, source-only save endpoint, existing group compatibility і customer mismatch.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -14364,30 +14373,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.103"></script>
-    <script src="js/timeline-visibility.js?v=0.76.103"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.103"></script>
-    <script src="js/config.js?v=0.76.103"></script>
-    <script src="js/api.js?v=0.76.103"></script>
-    <script src="js/ui.js?v=0.76.103"></script>
-    <script src="js/auth.js?v=0.76.103"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.103"></script>
-    <script src="js/timeline.js?v=0.76.103"></script>
-    <script src="js/booking.js?v=0.76.103"></script>
-    <script src="js/settings.js?v=0.76.103"></script>
-    <script src="js/booking-form.js?v=0.76.103"></script>
-    <script src="js/booking-linked.js?v=0.76.103"></script>
-    <script src="js/settings-dashboard.js?v=0.76.103"></script>
-    <script src="js/settings-history.js?v=0.76.103"></script>
-    <script src="js/settings-afisha.js?v=0.76.103"></script>
-    <script src="js/settings-certificates.js?v=0.76.103"></script>
-    <script src="js/offline.js?v=0.76.103"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.103"></script>
-    <script src="js/search.js?v=0.76.103"></script>
-    <script src="js/ws.js?v=0.76.103"></script>
-    <script src="js/app.js?v=0.76.103"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.103"></script>
-    <script src="js/components/sidebar.js?v=0.76.103"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.103"></script>
+    <script src="js/timeline-context.js?v=0.76.104"></script>
+    <script src="js/timeline-visibility.js?v=0.76.104"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.104"></script>
+    <script src="js/config.js?v=0.76.104"></script>
+    <script src="js/api.js?v=0.76.104"></script>
+    <script src="js/ui.js?v=0.76.104"></script>
+    <script src="js/auth.js?v=0.76.104"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.104"></script>
+    <script src="js/timeline.js?v=0.76.104"></script>
+    <script src="js/booking.js?v=0.76.104"></script>
+    <script src="js/settings.js?v=0.76.104"></script>
+    <script src="js/booking-form.js?v=0.76.104"></script>
+    <script src="js/booking-linked.js?v=0.76.104"></script>
+    <script src="js/settings-dashboard.js?v=0.76.104"></script>
+    <script src="js/settings-history.js?v=0.76.104"></script>
+    <script src="js/settings-afisha.js?v=0.76.104"></script>
+    <script src="js/settings-certificates.js?v=0.76.104"></script>
+    <script src="js/offline.js?v=0.76.104"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.104"></script>
+    <script src="js/search.js?v=0.76.104"></script>
+    <script src="js/ws.js?v=0.76.104"></script>
+    <script src="js/app.js?v=0.76.104"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.104"></script>
+    <script src="js/components/sidebar.js?v=0.76.104"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.104"></script>
 </body>
 </html>

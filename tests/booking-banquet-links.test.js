@@ -772,6 +772,91 @@ async function postSourceMemberBooking(baseUrl, payload) {
     return { res, data };
 }
 
+async function postSourceActivityBooking(baseUrl, payload) {
+    const res = await fetch(`${baseUrl}/api/banquets/from-source/activity-booking?businessContext=event_genix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const text = await res.text();
+    let data = {};
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch {
+        data = { raw: text };
+    }
+    return { res, data };
+}
+
+function kitchenFirstSourceBooking(overrides = {}) {
+    return bookingRow({
+        id: 'BK-KITCHEN-FIRST',
+        time: '13:15',
+        line_id: 'banquet-service',
+        program_id: null,
+        program_code: 'KITCHEN',
+        label: 'Kitchen order',
+        program_name: 'Kitchen order',
+        category: 'kitchen',
+        duration: 60,
+        price: 4600,
+        hosts: 0,
+        room: 'Room A',
+        notes: null,
+        group_name: null,
+        kids_count: 12,
+        customer_id: 101,
+        banquet_guests: 12,
+        banquet_adults: 8,
+        banquet_tables: 2,
+        banquet_menu: 'Pizza - 4 portions',
+        extra_data: JSON.stringify({
+            bookingWorkspace: {
+                scenario: 'kitchen_only',
+                comments: { kitchen: 'Kitchen source comment' }
+            },
+            bookingPackage: {
+                menuPositions: [
+                    { id: 'pizza', title: 'Pizza', quantity: 4, unitPrice: 250, subtotal: 1000 }
+                ]
+            }
+        }),
+        ...overrides
+    });
+}
+
+function sourceActivityPayload(overrides = {}) {
+    const { booking = {}, linkedBookings = [], ...rest } = overrides;
+    return {
+        sourceBookingId: 'BK-KITCHEN-FIRST',
+        booking: {
+            date: '2099-06-01',
+            time: '13:15',
+            lineId: 'line-activity-new',
+            room: 'Room A',
+            programId: 'program-mafia',
+            programCode: 'MAFIA',
+            label: 'Mafia',
+            programName: 'Mafia',
+            category: 'animation',
+            duration: 60,
+            price: 3000,
+            hosts: 1,
+            customerId: 101,
+            kidsCount: 12,
+            extraData: {
+                bookingWorkspace: {
+                    scenario: 'event',
+                    comments: { activity: 'Activity comment' }
+                }
+            },
+            ...booking
+        },
+        linkedBookings,
+        ...rest
+    };
+}
+
 test('GET bookings attaches visible banquet links symmetrically', async () => {
     await withApp([
         bookingRow({ id: 'BK-2099-0001', time: '12:00' }),
@@ -1120,6 +1205,136 @@ test('POST banquet source member-booking rolls back group and booking when membe
         activityFirstSourceBooking()
     ], [], async ({ baseUrl, state }) => {
         const { res, data } = await postSourceMemberBooking(baseUrl, sourceKitchenPayload());
+        assert.equal(res.status, 500, JSON.stringify(data));
+        assert.equal(state.banquetGroups.length, 0);
+        assert.equal(state.banquetMemberships.length, 0);
+        assert.equal(state.links.length, 0);
+        assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        assert.ok(state.tx.includes('ROLLBACK'));
+    }, {
+        failBanquetMembershipInsert: true
+    });
+});
+
+test('POST banquet source activity-booking creates group from kitchen-first booking atomically', async () => {
+    await withApp([
+        kitchenFirstSourceBooking()
+    ], [], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceActivityBooking(baseUrl, sourceActivityPayload());
+        assert.equal(res.status, 201, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.createdGroup, true);
+        assert.equal(data.booking.id, 'BK-2099-9999');
+
+        const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-KITCHEN-FIRST');
+        assert.ok(group, 'source kitchen should become the banquet primary booking when it is first');
+        assert.equal(group.customer_id, 101);
+        assert.equal(group.date, '2099-06-01');
+        assert.equal(group.room, 'Room A');
+        assert.equal(group.source, 'kitchen_first_activity_bridge');
+
+        assert.ok(state.banquetMemberships.some(row =>
+            row.group_id === group.id &&
+            row.booking_id === 'BK-KITCHEN-FIRST' &&
+            row.role === 'primary'
+        ), 'source kitchen should be attached as primary');
+        assert.ok(state.banquetMemberships.some(row =>
+            row.group_id === group.id &&
+            row.booking_id === 'BK-2099-9999' &&
+            row.role === 'activity'
+        ), 'new activity booking should be attached as activity');
+
+        const created = state.rows.find(row => row.id === 'BK-2099-9999');
+        assert.ok(created, 'activity booking should be inserted');
+        assert.equal(created.customer_id, 101);
+        assert.equal(created.group_name, null);
+        assert.equal(created.price, 3000);
+        assert.equal(created.kids_count, 12);
+        const extra = JSON.parse(created.extra_data);
+        assert.equal(extra.banquetGroup.groupId, group.id);
+        assert.equal(extra.banquetGroup.sourceBookingId, 'BK-KITCHEN-FIRST');
+        assert.equal(extra.banquetGroup.role, 'activity');
+        assert.equal(extra.banquetGroup.source, 'kitchen_first_activity_bridge');
+        assert.equal(extra.bookingWorkspace.comments.activity, 'Activity comment');
+        assert.equal(extra.bookingWorkspace.comments.kitchen, undefined);
+        assert.equal(state.links.length, 1);
+        assert.deepEqual(
+            [state.links[0].booking_a_id, state.links[0].booking_b_id].sort(),
+            ['BK-KITCHEN-FIRST', 'BK-2099-9999'].sort()
+        );
+        assert.equal(state.tx.filter(item => item === 'COMMIT').length, 1);
+        assert.equal(state.tx.includes('ROLLBACK'), false);
+    });
+});
+
+test('POST banquet source activity-booking reuses existing kitchen group without duplicates', async () => {
+    await withApp([
+        kitchenFirstSourceBooking()
+    ], [], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceActivityBooking(baseUrl, sourceActivityPayload());
+        assert.equal(res.status, 201, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(data.createdGroup, false);
+        assert.equal(data.group.id, 'BQ-KITCHEN-FIRST');
+
+        assert.equal(state.banquetGroups.length, 1);
+        assert.equal(state.banquetGroups[0].id, 'BQ-KITCHEN-FIRST');
+        assert.equal(
+            state.banquetMemberships.filter(row => row.group_id === 'BQ-KITCHEN-FIRST' && row.booking_id === 'BK-KITCHEN-FIRST').length,
+            1
+        );
+        assert.equal(
+            state.banquetMemberships.filter(row => row.group_id === 'BQ-KITCHEN-FIRST' && row.booking_id === 'BK-2099-9999' && row.role === 'activity').length,
+            1
+        );
+        assert.equal(state.links.length, 1);
+        assert.equal(state.tx.filter(item => item === 'COMMIT').length, 1);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-KITCHEN-FIRST',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-KITCHEN-FIRST',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Kitchen order',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-KITCHEN-FIRST',
+            business_context: 'event_genix',
+            booking_id: 'BK-KITCHEN-FIRST',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('POST banquet source activity-booking rejects customer mismatch before writes', async () => {
+    await withApp([
+        kitchenFirstSourceBooking()
+    ], [], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceActivityBooking(baseUrl, sourceActivityPayload({
+            booking: { customerId: 202 }
+        }));
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'CUSTOMER_BANQUET_MISMATCH');
+        assert.equal(state.banquetGroups.length, 0);
+        assert.equal(state.banquetMemberships.length, 0);
+        assert.equal(state.links.length, 0);
+        assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        assert.equal(state.tx.includes('COMMIT'), false);
+    });
+});
+
+test('POST banquet source activity-booking rolls back group and activity when membership insert fails', async () => {
+    await withApp([
+        kitchenFirstSourceBooking()
+    ], [], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceActivityBooking(baseUrl, sourceActivityPayload());
         assert.equal(res.status, 500, JSON.stringify(data));
         assert.equal(state.banquetGroups.length, 0);
         assert.equal(state.banquetMemberships.length, 0);

@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.104 - Two-way banquet bridge fix
+
+### Banquet two-way bridge / Kitchen-first activity / Selector state / Regression checks / (Клешня, 22.06.2026) [codex]
+- **Працює зворотний сценарій `кухня перша -> активність після`** - активну програму тепер можна додати з кухонної/банкетної броні в кімнаті без ручного створення банкетної групи.
+- **Банкет створюється або використовується атомарно при збереженні активності** - новий backend flow `/api/banquets/from-source/activity-booking` блокує source booking, перевіряє клієнта, створює або перевикористовує `banquet_groups`, додає активність як `role='activity'` і пише compatibility link в одній транзакції.
+- **Селект `Прив'язати до банкету` більше не виглядає порожнім для кухні-джерела** - якщо групи ще немає, але є валідна kitchen/source бронь, UI показує майбутнє створення банкету з кухні замість звичайного `Без прив'язки`.
+- **Save path став симетричним і deterministic** - реальна група йде через старий `/api/banquets/:groupId/activity-booking`, source-only кухня йде через новий from-source endpoint, а звичайне `apiCreateBooking` лишається тільки fallback без source context.
+- **Customer mismatch і невалідні source bookings блокуються до insert** - frontend показує зрозумілу помилку, а backend повторно перевіряє root/active/customer/date/room у транзакції.
+- **Кухонна бронь більше не створює групу на етапі відкриття drawer** - група створюється тільки під час збереження активності, тому немає напівготових банкетів після скасованого створення.
+- **Поведінку room/animator timeline зафіксовано тестами** - kitchen/service броні лишаються кімнатними блоками і не дублюються в animator timeline, щоб не змішувати сервісні замовлення з активними програмами.
+- **Додано regression checks для двостороннього bridge** - тести покривають створення групи з kitchen source, reuse existing group, customer mismatch, rollback і frontend source-only save order.
+- **Релізні маркери піднято до `0.76.104`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.103 - Banquet activity-first selector fix
 
 ### Banquet selector / Room-first kitchen / Entry preview / Regression checks / (Клешня, 22.06.2026) [codex]

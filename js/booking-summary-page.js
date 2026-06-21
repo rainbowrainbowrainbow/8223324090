@@ -334,18 +334,20 @@
         doc.hidden = false;
         doc.innerHTML = `
             <header class="summary-doc-header">
-                <div>
+                <div class="summary-doc-heading">
                     <h2 class="summary-venue-name">${escapeHtml(venue.name || 'Заклад')}</h2>
+                </div>
+                <div class="summary-doc-meta-grid">
                     <div class="summary-venue-lines">
                         <span>${escapeHtml(formatValue(venue.addressLine1))}</span>
                         <span>${escapeHtml(formatValue(venue.addressLine2))}</span>
                         <span>${escapeHtml(formatValue(venue.phone))}</span>
                     </div>
-                </div>
-                <div class="summary-doc-meta">
-                    <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
-                    <span>Сформовано: ${escapeHtml(formatDateTime(summary.document?.generatedAt))}</span>
-                    <span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
+                    <div class="summary-doc-meta">
+                        <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
+                        <span>Сформовано: ${escapeHtml(formatDateTime(summary.document?.generatedAt))}</span>
+                        <span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
+                    </div>
                 </div>
             </header>
 

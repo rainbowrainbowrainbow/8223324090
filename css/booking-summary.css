@@ -148,37 +148,71 @@ body.booking-summary-page {
 }
 
 .summary-doc-header {
-    --summary-doc-meta-offset: 4px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 14px;
+    gap: 4px;
     padding-bottom: 8px;
     border-bottom: 2px solid var(--summary-ink);
 }
 
+.summary-doc-heading {
+    min-width: 0;
+}
+
 .summary-venue-name {
-    margin: 0 0 4px;
+    margin: 0;
     font-size: 18px;
     font-weight: 950;
     color: var(--summary-ink);
+    line-height: 1.18;
+}
+
+.summary-doc-meta-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
+    grid-template-rows: repeat(3, auto);
+    column-gap: 14px;
+    row-gap: 2px;
+    align-items: start;
+    min-width: 0;
 }
 
 .summary-venue-lines,
 .summary-doc-meta {
-    display: grid;
-    gap: 2px;
+    display: contents;
     color: var(--summary-muted);
     font-size: 11px;
     font-weight: 650;
+    line-height: 1.25;
 }
 
-.summary-doc-meta {
-    align-self: start;
-    padding-top: var(--summary-doc-meta-offset);
+.summary-venue-lines > span,
+.summary-doc-meta > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.summary-venue-lines > span {
+    grid-column: 1;
+}
+
+.summary-doc-meta > span {
+    grid-column: 2;
     text-align: right;
-    align-content: start;
-    line-height: 1.25;
+}
+
+.summary-venue-lines > span:nth-child(1),
+.summary-doc-meta > span:nth-child(1) {
+    grid-row: 1;
+}
+
+.summary-venue-lines > span:nth-child(2),
+.summary-doc-meta > span:nth-child(2) {
+    grid-row: 2;
+}
+
+.summary-venue-lines > span:nth-child(3),
+.summary-doc-meta > span:nth-child(3) {
+    grid-row: 3;
 }
 
 .summary-title {
@@ -454,12 +488,29 @@ body.booking-summary-page {
     }
 
     .summary-doc-header {
-        grid-template-columns: 1fr;
         gap: 8px;
     }
 
+    .summary-doc-meta-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+        gap: 6px;
+    }
+
+    .summary-venue-lines,
     .summary-doc-meta {
-        padding-top: 0;
+        display: grid;
+        grid-template-rows: repeat(3, auto);
+        gap: 2px;
+    }
+
+    .summary-venue-lines > span,
+    .summary-doc-meta > span {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
+    .summary-doc-meta > span {
         text-align: left;
     }
 
@@ -559,20 +610,22 @@ body.booking-summary-page {
     }
 
     .summary-doc-header {
-        --summary-doc-meta-offset: 3px;
-        gap: 10px;
+        gap: 3px;
         padding-bottom: 6px;
     }
 
     .summary-venue-name {
-        margin-bottom: 2px;
         font-size: 16px;
         line-height: 1.15;
     }
 
+    .summary-doc-meta-grid {
+        column-gap: 10px;
+        row-gap: 1px;
+    }
+
     .summary-venue-lines,
     .summary-doc-meta {
-        gap: 1px;
         font-size: 10px;
         line-height: 1.25;
     }

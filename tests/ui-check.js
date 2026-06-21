@@ -627,10 +627,13 @@ checkPage('booking-summary.html', (doc, html) => {
     const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
     const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
     const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
+    const summaryMetaGridRule = cssRuleText(pageCss, '.summary-doc-meta-grid');
     const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
     const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
     const summaryBriefItemRule = cssRuleText(pageCss, '.summary-brief-item');
+    const mobileMetaGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-doc-meta-grid');
     const mobileBriefGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-brief-grid');
+    const printMetaGridRule = cssRuleIncludingSelectorText(printCss, '.summary-doc-meta-grid');
     const printBriefGridRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-grid');
     const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
     const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
@@ -638,6 +641,10 @@ checkPage('booking-summary.html', (doc, html) => {
     const renderTermsBody = pageCode.match(/function renderTerms\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function renderDocument/)?.[1] || '';
     const renderDocumentBody = pageCode.match(/function renderDocument\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function summaryText/)?.[1] || '';
     const summaryTextBody = pageCode.match(/function summaryText\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    async function copyText/)?.[1] || '';
+    const summaryVenueLinesTemplate = renderDocumentBody.match(/<div class="summary-venue-lines">([\s\S]*?)<\/div>/)?.[1] || '';
+    const summaryDocMetaTemplate = renderDocumentBody.match(/<div class="summary-doc-meta">([\s\S]*?)<\/div>/)?.[1] || '';
+    const summaryVenueLineCount = (summaryVenueLinesTemplate.match(/<span>/g) || []).length;
+    const summaryDocMetaLineCount = (summaryDocMetaTemplate.match(/<span>/g) || []).length;
     const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
@@ -814,13 +821,23 @@ checkPage('booking-summary.html', (doc, html) => {
         pageCode.includes('<span>Booking ID: ${escapeHtml(summary.bookingId ||')
         && pageCode.includes('`Booking ID: ${summary.bookingId ||')
         && !pageCode.includes("briefItem('Booking ID'"));
-    check('Booking summary header metadata uses scoped optical alignment for screen and print',
-        summaryHeaderRule.includes('--summary-doc-meta-offset: 4px')
-        && summaryHeaderRule.includes('align-items: start')
-        && pageCss.includes('align-self: start;')
-        && pageCss.includes('padding-top: var(--summary-doc-meta-offset);')
-        && pageCss.includes('line-height: 1.25;')
-        && printCss.includes('--summary-doc-meta-offset: 3px')
+    check('Booking summary header metadata uses symmetric three-row grid for screen and print',
+        renderDocumentBody.includes('<div class="summary-doc-heading">')
+        && renderDocumentBody.includes('<div class="summary-doc-meta-grid">')
+        && summaryVenueLineCount === 3
+        && summaryDocMetaLineCount === 3
+        && summaryHeaderRule.includes('display: grid')
+        && summaryHeaderRule.includes('border-bottom: 2px solid var(--summary-ink)')
+        && summaryMetaGridRule.includes('grid-template-columns')
+        && summaryMetaGridRule.includes('grid-template-rows: repeat(3, auto)')
+        && pageCss.includes('.summary-venue-lines > span:nth-child(1)')
+        && pageCss.includes('.summary-doc-meta > span:nth-child(1)')
+        && pageCss.includes('display: contents')
+        && mobileMetaGridRule.includes('grid-template-columns: 1fr')
+        && printMetaGridRule.includes('column-gap: 10px')
+        && !pageCss.includes('--summary-doc-meta-offset')
+        && !pageCss.includes('padding-top: var(--summary-doc-meta-offset)')
+        && !printCss.includes('--summary-doc-meta-offset')
         && !pageCss.includes('height: 297mm'));
     check('Booking summary sheet uses two-column brief and keeps table only for ordered rows',
         pageCode.includes('function briefItem')

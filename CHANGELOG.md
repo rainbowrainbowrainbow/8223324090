@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.99 - Booking summary header alignment fix
+
+### Booking summary / Header symmetry / Print PDF / Regression checks / (Клешня, 21.06.2026) [codex]
+- **Шапка Банкетного листа стала симетричною** - назва закладу винесена в окремий heading і більше не зсуває правий metadata block.
+- **Зліва і справа показуються по 3 вирівняні рядки** - адреса, локація/поверх і телефон стоять навпроти `Booking ID`, дати формування та менеджера.
+- **`Booking ID`, дата формування і менеджер вирівняні навпроти даних закладу** - обидві metadata колонки використовують спільний grid contract замість ручного vertical offset.
+- **Print/PDF layout збережено** - print rules повторюють той самий 3+3 рядковий стандарт, а divider line лишається під обома колонками.
+- **Старий offset workaround прибрано** - `--summary-doc-meta-offset` і повʼязаний `padding-top` більше не керують позицією правої колонки.
+- **Додано regression checks для header layout** - UI smoke перевіряє окремий heading, `.summary-doc-meta-grid`, рівно 3 рядки зліва/справа і відсутність старого workaround.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому Chromium перевірив desktop, mobile і print-mode layout без зміни env/Railway config.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.99`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.98 - Timeline start marker alignment fix
 
 ### Timeline marker alignment / Start labels / Compact density / Animator view / Room view / Browser QA / (Клешня, 21.06.2026) [codex]

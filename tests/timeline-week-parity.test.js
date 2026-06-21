@@ -53,6 +53,25 @@ test('day/week period switch resets outer horizontal scroll and keeps week shell
     assert.match(read('css/timeline.css'), /\.day-section-content\s*\{[\s\S]*overflow-x: auto/);
 });
 
+test('week mini timeline width is based on range duration without an extra end-label cell', () => {
+    const timeline = read('js/timeline.js');
+    const renderDaySectionBlock = timeline.slice(
+        timeline.indexOf('async function renderDaySectionHtml'),
+        timeline.indexOf('function renderMiniLineHtml')
+    );
+    const renderMiniLineBlock = timeline.slice(
+        timeline.indexOf('function renderMiniLineHtml'),
+        timeline.indexOf('async function renderMultiDayTimeline')
+    );
+
+    assert.match(renderDaySectionBlock, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
+    assert.match(renderMiniLineBlock, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
+    assert.match(renderDaySectionBlock, /for \(let h = start; h <= end; h\+\+\)/);
+    assert.match(renderDaySectionBlock, /--mini-grid-width: \$\{gridWidth\}px/);
+    assert.match(renderMiniLineBlock, /--mini-grid-width: \$\{gridWidth\}px/);
+    assert.doesNotMatch(renderDaySectionBlock + renderMiniLineBlock, /\(end - start \+ 1\)|timelineRangeMarkCount|scrollWidth/);
+});
+
 test('created booking reveal can find day blocks and week mini-blocks', () => {
     const booking = read('js/booking.js');
     const css = read('css/timeline.css');

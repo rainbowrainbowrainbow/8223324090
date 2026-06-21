@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.94 - Timeline range width fix
+
+### Timeline range width / Empty scroll zone / Animator view / Room view / Overlay width / Browser QA / (Клешня, 21.06.2026) [codex]
+- **Таймлайн більше не дозволяє скролитись у пусту зону після кінця робочого діапазону** - права межа поверхні тепер закінчується там, де закінчується налаштований час.
+- **Ширина grid/content відповідає configured range** - для `12:00-20:00` scrollable grid рахується від реальних інтервальних комірок, а не від кількості time marks.
+- **Мітка `20:00` лишається видимою, але не додає зайву scroll-комірку** - кінцева година позиціонується на правому краї range і не створює фейковий простір справа.
+- **Fix працює для animator і room timeline** - лінії свят і кімнат використовують один width contract, без окремого роздування room surface.
+- **Виправлено stale width від banquet link overlay** - SVG overlay більше не бере `scroll.scrollWidth` як source of truth і не може зберігати стару ширину після зміни дати/range.
+- **Перевірено zoom, compact, day/week і mobile** - Playwright harness підтвердив desktop/mobile сценарії для animator/room timeline, переходу `21.06.2026` -> `22.06.2026`, zoom `15/30/60`, compact і day/week.
+- **Попередній date scroll reset fix збережено** - зміна дати й далі скидає stale horizontal offset, але тепер ще й немає ручного scroll у пустий простір після кінця дня.
+- **Regression tests додано для width/overflow contract** - lifecycle, week parity, regression matrix, resources test і UI smoke фіксують canonical range width, overlay width і compact fit-screen behavior.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.94`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.93 - Timeline date scroll fix
 
 ### Timeline date navigation / Horizontal scroll state / Animator view / Room view / Regression tests / (Клешня, 21.06.2026) [codex]

@@ -2150,18 +2150,20 @@ test('timeline dynamic width contract derives surfaces from range and cell geome
 
     const geometry = context.syncTimelineContentWidth(new Date('2026-06-19T00:00:00'), grid);
     assert.equal(geometry.cellWidth, 40);
-    assert.equal(geometry.gridWidth, 400);
+    assert.equal(geometry.gridWidth, 360);
     assert.equal(geometry.headerWidth, 96);
-    assert.equal(geometry.contentWidth, 496);
+    assert.equal(geometry.contentWidth, 456);
     for (const target of [container, scroll, lines, timeScale, addLineBtn]) {
-        assert.equal(target.vars.get('--timeline-grid-width'), '400px');
-        assert.equal(target.vars.get('--timeline-content-width'), '496px');
+        assert.equal(target.vars.get('--timeline-grid-width'), '360px');
+        assert.equal(target.vars.get('--timeline-content-width'), '456px');
     }
 
     const helperContractEnd = timeline.indexOf('function visibleTimelineAddLineParts');
     assert.ok(helperContractEnd > helperStart, 'timeline width contract block is locatable');
     const helperBlock = timeline.slice(timeline.indexOf('function timelineRangeBoundMinutes'), helperContractEnd);
     assert.match(helperBlock, /if \(endMinutes <= startMinutes\) endMinutes \+= 24 \* 60/);
+    assert.match(helperBlock, /timelineRangeCellCount\(date\) \* cellWidth/);
+    assert.doesNotMatch(helperBlock, /timelineRangeMarkCount\(date\) \* cellWidth/);
     assert.doesNotMatch(helperBlock, /17:45|20:00|clientWidth|innerWidth|viewport/i);
 
     assert.equal(cssDeclaration(cssRule(css, '.timeline-scroll'), '--timeline-content-width'), '100%');

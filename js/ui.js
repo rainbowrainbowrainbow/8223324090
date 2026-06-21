@@ -2259,6 +2259,31 @@ function _timelineActiveTimeRange() {
     };
 }
 
+function _timelineRangeBoundMinutes(value) {
+    if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+        if (match) {
+            const hours = Number.parseInt(match[1], 10);
+            const minutes = Number.parseInt(match[2] || '0', 10);
+            if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+                return (hours * 60) + Math.max(0, Math.min(59, minutes));
+            }
+        }
+    }
+
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.round(numeric * 60) : 0;
+}
+
+function _timelineRangeCellCount(range, level) {
+    const fallbackCellMinutes = (typeof CONFIG !== 'undefined' && CONFIG?.TIMELINE?.CELL_MINUTES) || 30;
+    const cellMinutes = Math.max(1, Number(level) || fallbackCellMinutes);
+    const startMinutes = _timelineRangeBoundMinutes(range?.start);
+    let endMinutes = _timelineRangeBoundMinutes(range?.end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+    return Math.max(1, Math.ceil((endMinutes - startMinutes) / cellMinutes));
+}
+
 function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
     const scroll = document.getElementById('timelineScroll') || document.querySelector('.timeline-scroll');
     const container = scroll?.closest?.('.timeline-container') || document.querySelector('.timeline-container');
@@ -2270,7 +2295,7 @@ function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
             16
     );
     const range = _timelineActiveTimeRange();
-    const cells = Math.max(1, Math.ceil(((range.end - range.start) * 60) / level) + 1);
+    const cells = _timelineRangeCellCount(range, level);
     return Math.floor(availableWidth / cells);
 }
 

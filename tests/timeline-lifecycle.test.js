@@ -151,6 +151,8 @@ function createHarness() {
             restoreTimelineHorizontalScrollState,
             resetTimelineHorizontalScroll,
             markTimelineNavigationScrollReset,
+            syncTimelineContentWidth,
+            timelineRangeCellCount,
             hasActiveTimelineInteractionState,
             setSaveInFlight(value) { _timelineInteractionSaveInFlight = Boolean(value); },
             getSaveInFlight() { return _timelineInteractionSaveInFlight; },
@@ -256,6 +258,30 @@ test('date navigation resets stale horizontal scroll before rendering the next d
     assert.equal(formatDate(window.AppState.selectedDate), '2026-05-27');
     assert.equal(scroll.scrollLeft, 0);
     assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'date-change');
+});
+
+test('date navigation keeps day timeline width on canonical range cells', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    window.CONFIG.TIMELINE.CELL_MINUTES = 15;
+    window.CONFIG.TIMELINE.CELL_WIDTH = 40;
+    window.AppState.selectedDate = new Date('2026-06-21T00:00:00');
+
+    await api.renderTimeline();
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-06-21');
+    assert.equal(scroll.style.getPropertyValue('--timeline-grid-width'), '1600px');
+
+    scroll.scrollLeft = 1200;
+    await api.changeDate(1);
+
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-06-22');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.style.getPropertyValue('--timeline-grid-width'), '1280px');
+    assert.equal(scroll.style.getPropertyValue('--timeline-content-width'), '1410px');
+    assert.equal(
+        Number.parseFloat(scroll.style.getPropertyValue('--timeline-grid-width')),
+        api.timelineRangeCellCount(window.AppState.selectedDate) * window.CONFIG.TIMELINE.CELL_WIDTH
+    );
 });
 
 test('timeline view switch resets horizontal scroll between animator and room timelines', async () => {

@@ -634,7 +634,7 @@ function syncTimelineContentWidth(date, anchor) {
     const addLineBtn = document.getElementById('addLineBtn');
     const widthAnchor = anchor || document.querySelector('.line-grid[data-line-id]') || timeScale || scroll;
     const cellWidth = getTimelineCellWidth(widthAnchor);
-    const gridWidth = Math.ceil(timelineRangeMarkCount(date) * cellWidth);
+    const gridWidth = Math.ceil(timelineRangeCellCount(date) * cellWidth);
     const headerWidth = Math.ceil(getTimelineLineHeaderWidth());
     const contentWidth = Math.ceil(headerWidth + gridWidth);
     const targets = [container, scroll, lines, timeScale, addLineBtn].filter(Boolean);
@@ -3692,12 +3692,36 @@ function ensureBanquetLinkLayer() {
         layer.setAttribute('aria-hidden', 'true');
         scroll.insertBefore(layer, document.getElementById('timelineLines'));
     }
-    const width = Math.max(scroll.scrollWidth, scroll.clientWidth);
+    const width = Math.max(timelineBanquetLinkLayerSurfaceWidth(scroll), scroll.clientWidth);
     const height = Math.max(scroll.scrollHeight, scroll.clientHeight);
     layer.setAttribute('width', String(width));
     layer.setAttribute('height', String(height));
+    layer.style.width = `${width}px`;
+    layer.style.height = `${height}px`;
     layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
     return layer;
+}
+
+function timelineBanquetLinkLayerSurfaceWidth(scroll) {
+    const candidates = [
+        scroll,
+        document.getElementById('timelineLines'),
+        document.querySelector('.timeline-line'),
+        document.getElementById('addLineBtn'),
+        scroll?.closest?.('.timeline-container')
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        const cssWidth = parseFloat(window.getComputedStyle(candidate).getPropertyValue('--timeline-content-width'));
+        if (Number.isFinite(cssWidth) && cssWidth > 0) return Math.ceil(cssWidth);
+    }
+
+    for (const candidate of candidates) {
+        const rectWidth = candidate.getBoundingClientRect?.().width;
+        if (Number.isFinite(rectWidth) && rectWidth > 0) return Math.ceil(rectWidth);
+    }
+
+    return 0;
 }
 
 function clearBanquetLinkLayer() {

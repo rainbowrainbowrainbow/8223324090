@@ -1234,6 +1234,14 @@ const timelineSetViewBlock = timelineCode.slice(
     timelineCode.indexOf('async function setTimelineView'),
     timelineCode.indexOf('window.TimelineView =')
 );
+const timelineBanquetLinkLayerBlock = timelineCode.slice(
+    timelineCode.indexOf('function ensureBanquetLinkLayer'),
+    timelineCode.indexOf('function clearBanquetLinkLayer')
+);
+const timelineFitCellWidthBlock = uiCode.slice(
+    uiCode.indexOf('function _timelineFitCellWidth'),
+    uiCode.indexOf('function _timelineResponsiveCellWidth')
+);
 const timelineRenderStartIndex = timelineCode.indexOf('async function renderTimeline()');
 const timelineRenderClearIndex = timelineCode.indexOf('clearTimelineBanquetRoomPreviews()', timelineRenderStartIndex);
 const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedDate)', timelineRenderStartIndex);
@@ -1548,7 +1556,8 @@ check('Timeline add animator lane spans content while CTA stays visible-centered
 check('Timeline scale rows and add zone share a dynamic width contract',
     timelineCode.includes('function timelineRangeBoundMinutes(value)')
     && timelineCode.includes('function syncTimelineContentWidth(date, anchor)')
-    && timelineCode.includes('timelineRangeMarkCount(date) * cellWidth')
+    && timelineCode.includes('timelineRangeCellCount(date) * cellWidth')
+    && !timelineCode.includes('timelineRangeMarkCount(date) * cellWidth')
     && timelineCode.includes('const contentWidth = Math.ceil(headerWidth + gridWidth)')
     && timelineCode.includes("target.style.setProperty('--timeline-grid-width'")
     && timelineCode.includes("target.style.setProperty('--timeline-content-width'")
@@ -1566,7 +1575,17 @@ check('Timeline scale rows and add zone share a dynamic width contract',
     && responsiveCss.includes('width: var(--timeline-grid-width, max-content) !important;')
     && responsiveCss.includes('width: var(--timeline-content-width, 100%) !important;')
     && responsiveCss.includes('body.timeline-dashboard-page .btn-add-line-big')
+    && timelineConstructorCss.includes('.time-scale .time-mark.end-mark')
+    && timelineConstructorCss.includes('width: max-content !important;')
+    && timelineBanquetLinkLayerBlock.includes('timelineBanquetLinkLayerSurfaceWidth(scroll)')
+    && !timelineBanquetLinkLayerBlock.includes('scroll.scrollWidth')
     && timelineResourcesTestCode.includes('timeline dynamic width contract derives surfaces from range and cell geometry'));
+check('Timeline compact fit-screen width uses interval cells without adding the end label as a cell',
+    uiCode.includes('function _timelineRangeBoundMinutes(value)')
+    && uiCode.includes('function _timelineRangeCellCount(range, level)')
+    && timelineFitCellWidthBlock.includes('const cells = _timelineRangeCellCount(range, level)')
+    && !timelineFitCellWidthBlock.includes('+ 1')
+    && !timelineFitCellWidthBlock.includes('range.end - range.start'));
 check('Timeline now-line is measured to rows instead of covering the sticky time scale', uiCode.includes("document.getElementById('timelineLines')") && uiCode.includes('timelineLines.scrollHeight') && uiCode.includes('--timeline-now-line-top') && uiCode.includes('--timeline-now-line-height') && timelineConstructorCss.includes('top: var(--timeline-now-line-top, 0)') && timelineConstructorCss.includes('height: var(--timeline-now-line-height, 100%)') && !timelineConstructorCss.includes('.now-line-global {\n    position: absolute;\n    top: 0;\n    bottom: 0;'));
 check('Timeline period selector supports only day and week modes', htmlContains('index.html', 'data-period="1"') && htmlContains('index.html', 'data-period="7"') && !htmlContains('index.html', 'data-period="3"') && !htmlContains('index.html', 'id="daysCount"') && timelineConfigCode.includes('TIMELINE_PERIOD_WEEK = 7') && timelineConfigCode.includes('normalizeTimelineModeState') && appCode.includes('function applyTimelinePeriod') && appCode.includes("__timelinePeriodDelegatedBound") && appCode.includes('function bootstrapInitializeApp') && appCode.includes("document.readyState === 'loading'") && timelineVisibilityCode.includes("visualBlock('viewModes'"));
 check('Timeline dark event cards use solid readable surfaces', darkModeCss.includes('--eg-event-quest-bg: linear-gradient') && darkModeCss.includes('.timeline-dashboard-page .mini-booking-block') && darkModeCss.includes('.timeline-dashboard-page.dark-mode .booking-block,') && darkModeCss.includes('body.timeline-dashboard-page.dark-mode .booking-block.linked-ghost') && darkModeCss.includes('.timeline-dashboard-page .mini-booking-block.banquet'));

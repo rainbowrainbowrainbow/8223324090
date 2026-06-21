@@ -1582,6 +1582,25 @@ async function apiCreateBanquetMemberBookingFromSource(payload = {}) {
     }
 }
 
+async function apiGetCenterPriceRule(code) {
+    const safeCode = String(code || '').trim();
+    if (!safeCode) return { success: false, error: 'Price rule code is required' };
+    try {
+        const response = await fetch(`${API_BASE}/center/prices/${encodeURIComponent(safeCode)}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return apiFailureFromBody(body, response);
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getCenterPriceRule error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activity-booking`)}`, {

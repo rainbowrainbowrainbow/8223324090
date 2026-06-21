@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.103 - Banquet activity-first selector fix
+
+### Banquet selector / Room-first kitchen / Entry preview / Regression checks / (Клешня, 22.06.2026) [codex]
+- **Кухня з активності тепер показує майбутню прив'язку до банкету ще до збереження** - якщо менеджер відкриває кухню через `Банкети -> Кімнати` з валідної активності в кімнаті, селект показує стан створення банкету з цієї активності, а не порожній список.
+- **Банкет створюється автоматично при збереженні кухні** - source-only контекст без `groupId` гарантовано йде через `/api/banquets/from-source/member-booking`, тому активність стає primary booking, а кухня додається як `role='kitchen'`.
+- **Виправлено сценарій з помилковим повідомленням `банкетів не знайдено`** - програмний вибір кімнати тепер явно ініціалізує room-source context після refresh доступності кімнат, навіть коли `change` event не спрацьовує.
+- **Save path став deterministic** - frontend більше не покладається на повторний fallback-пошук source booking у кеші кімнат, а використовує той source context, який бачить UI.
+- **Preview `Вхід` підтягує правила Центру цін до збереження** - frontend легковажно завантажує `banquet_entry_weekday_child` і `banquet_entry_weekend_child` для попереднього розрахунку, але backend лишається canonical source of truth.
+- **Додано regression checks для selector/context flow** - тести покривають programmatic room open, virtual selector state без fake id, source-only save endpoint, existing group compatibility і customer mismatch до API call.
+- **Manual browser QA локально заблоковано середовищем** - локальний сервер не піднявся без `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому live-сценарій треба пройти після deploy на production із доступом до CRM.
+- **Релізні маркери піднято до `0.76.103`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.102 - Banquet kitchen linking and entry pricing
 
 ### Banquet groups / Kitchen from activity / Entry pricing / Banquet sheet / Regression checks / (Клешня, 22.06.2026) [codex]

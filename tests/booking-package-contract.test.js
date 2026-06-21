@@ -136,7 +136,20 @@ function createBookingMenuCatalogHarness() {
             selectedDate: '2026-06-12',
             productsBusinessContext: 'event_genix',
             productsPriceDate: '2026-06-12',
-            productsLoadedAt: Date.now()
+            productsLoadedAt: Date.now(),
+            priceRules: []
+        },
+        BOOKING_ENTRY_PRICE_RULE_CODES: Object.freeze({
+            weekday: 'banquet_entry_weekday_child',
+            weekend: 'banquet_entry_weekend_child'
+        }),
+        BOOKING_ENTRY_PRICE_RULE_SOURCE: 'banquet_entry_price_rules',
+        BookingDrawerState: {
+            entryPriceRules: [],
+            entryPriceRulesLoaded: false,
+            entryPriceRulesLoading: false,
+            entryPriceRulesPromise: null,
+            entryPriceRulesError: null
         },
         BookingForm: { _dirty: false },
         timelineKitchenEnabled: () => true,
@@ -198,6 +211,7 @@ function createBookingMenuCatalogHarness() {
                 approvedBlocks: payload.approvedBlocks || {}
             };
         },
+        apiGetCenterPriceRule: async () => ({ success: false, error: 'not configured' }),
         showNotification: () => {}
     };
     context.window.KITCHEN_MENU_IMAGES = Object.freeze({
@@ -823,6 +837,60 @@ test('booking menu catalog reloads products when the timeline cache cannot provi
     assert.equal(loadCount, 1);
     assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /Fresh menu position/);
     assert.equal(ctx.BookingPackageState.catalogProductsLastLoadKey, 'event_genix|2026-06-12');
+});
+
+test('booking entry preview loads center price rules before save', async () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('banquetGuests').value = '12';
+
+    assert.equal(ctx.getBookingEntryChargeEstimate().entrySubtotal, 0);
+
+    const requestedCodes = [];
+    ctx.apiGetCenterPriceRule = async code => {
+        requestedCodes.push(code);
+        return {
+            success: true,
+            price: {
+                code,
+                value: code === 'banquet_entry_weekend_child' ? 400 : 300,
+                unit: 'грн/дитина',
+                category: 'banquet'
+            }
+        };
+    };
+
+    const loaded = await ctx.preloadBookingEntryPriceRules({ force: true, render: false });
+    const estimate = ctx.getBookingEntryChargeEstimate();
+
+    assert.equal(loaded, true);
+    assert.deepEqual(requestedCodes, ['banquet_entry_weekday_child', 'banquet_entry_weekend_child']);
+    assert.equal(ctx.BookingDrawerState.entryPriceRulesLoaded, true);
+    assert.equal(estimate.entryCharge.ruleCode, 'banquet_entry_weekday_child');
+    assert.equal(estimate.entryCharge.unitPrice, 300);
+    assert.equal(estimate.entrySubtotal, 3600);
+});
+
+test('booking entry preview fetch failure does not block booking package fallback', async () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('banquetGuests').value = '12';
+    ctx.apiGetCenterPriceRule = async code => ({
+        success: false,
+        code: 'preview_fetch_failed',
+        error: `missing ${code}`
+    });
+
+    const loaded = await ctx.preloadBookingEntryPriceRules({ force: true, render: false });
+    const estimate = ctx.getBookingEntryChargeEstimate();
+    const totals = ctx.getBookingPackageTotals(null);
+
+    assert.equal(loaded, false);
+    assert.equal(ctx.BookingDrawerState.entryPriceRulesLoaded, false);
+    assert.match(ctx.BookingDrawerState.entryPriceRulesError, /missing banquet_entry_weekday_child/);
+    assert.equal(estimate.entryCharge, null);
+    assert.equal(estimate.entrySubtotal, 0);
+    assert.equal(totals.finalTotal, 0);
 });
 
 test('booking package detail accepts top-level menuPositions as a compatibility source', () => {
@@ -1520,6 +1588,12 @@ test('booking create flow bridges room-source kitchen without an existing banque
     const bridgeStart = bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge');
     const bridgeCall = bookingJs.indexOf('apiCreateBanquetMemberBookingFromSource', bridgeStart);
     const normalCreate = bookingJs.indexOf('createResult = await apiCreateBooking(booking)', bridgeStart);
+    const roomAvailabilityRefresh = bookingJs.indexOf('await refreshBookingRoomAvailabilityForSelectedDate();');
+    const roomSourceContextInit = bookingJs.indexOf('await initializeRoomFirstBookingSourceContext();', roomAvailabilityRefresh);
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
 
     assert.match(apiJs, /async function apiCreateBanquetMemberBookingFromSource\(payload = \{\}\)/);
     assert.match(apiJs, /\/banquets\/from-source\/member-booking/);
@@ -1527,11 +1601,29 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /function hasUsableSelectedBanquetGroup\(/);
     assert.match(bookingJs, /function activityFirstKitchenSourceContext\(/);
     assert.match(bookingJs, /autoFilledBanquetGuestsFromRoom: null/);
+    assert.match(bookingJs, /async function initializeRoomFirstBookingSourceContext\(\)[\s\S]*handleBookingRoomSelectionContextChange\(\)/);
+    assert.match(bookingJs, /async function initializeRoomFirstBookingSourceContext\(\)[\s\S]*BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*!roomContext\?\.sourceBookingId \|\| roomContext\.groupId/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorOptionLabel\(context = \{\}\)[\s\S]*Створити банкет з активності/);
+    assert.match(bookingJs, /const showActivityFirstBanquetCreateOption = Boolean\(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates\.length\)/);
+    assert.match(bookingJs, /const unlinkedOptionLabel = showActivityFirstBanquetCreateOption[\s\S]*activityFirstKitchenSelectorOptionLabel\(sourceOnlyRoomContext\)[\s\S]*'Без прив’язки'/);
+    assert.match(bookingJs, /<option value="">\$\{escapeHtml\(unlinkedOptionLabel\)\}<\/option>/);
+    assert.match(bookingJs, /Банкет буде створено автоматично з активності/);
+    assert.match(bookingJs, /source: groupId \? 'room_selection' : 'activity_first_kitchen_bridge'/);
+    assert.match(bookingJs, /BookingDrawerState\.roomSelectionBanquetContext = banquetContext;[\s\S]*else \{\s*renderBookingBanquetGroupSelector\(\);/);
+    assert.doesNotMatch(bookingJs, /__activity_first/);
     assert.match(bookingJs, /function roomBookingKidsCount\(/);
     assert.match(bookingJs, /function syncAutoFilledBanquetGuestsFromRoom\(/);
     assert.match(bookingJs, /function markBanquetGuestsManualOverride\(/);
     assert.match(bookingJs, /const BOOKING_ENTRY_PRICE_RULE_CODES = Object\.freeze/);
     assert.match(bookingJs, /function getBookingEntryChargeEstimate\(/);
+    assert.match(bookingJs, /entryPriceRules: \[\]/);
+    assert.match(bookingJs, /function preloadBookingEntryPriceRules\(/);
+    assert.match(bookingJs, /function requestBookingEntryPriceRulesPreview\(/);
+    assert.match(bookingJs, /apiGetCenterPriceRule\(code\)/);
+    assert.match(bookingJs, /if \(loadedRules\.length && options\.render !== false && shouldRenderBookingEntryPreviewAfterLoad\(\)\)/);
     assert.match(bookingJs, /function bookingMenuPositionIsEntry\(/);
     assert.match(bookingJs, /function bookingPackageEntryChargeFromPackage\(/);
     assert.match(bookingJs, /function formatBookingPackageEntryAmount\(/);
@@ -1553,9 +1645,110 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /attachBanquetGroupContextToBooking\(booking, sourceContext, 'kitchen', 'activity_first_kitchen_bridge'\)/);
     assert.match(bookingJs, /sourceBookingId: sourceContext\.sourceBookingId/);
     assert.match(bookingJs, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)/);
+    assert.match(bookingJs, /if \(createResult && createResult\.success === false\) \{\s*if \(createResult\.conflictBookingId\) revealHiddenBooking\(createResult\.conflictBookingId\);/);
+    assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
+    assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
+    assert.doesNotMatch(validateBridgeBlock, /sourceBookingToBanquetContext/);
+    assert.ok(roomAvailabilityRefresh >= 0, 'room availability is refreshed before room-first source context init');
+    assert.ok(roomSourceContextInit > roomAvailabilityRefresh, 'programmatic room-first open initializes source context after room availability refresh');
     assert.ok(bridgeStart >= 0, 'activity-first kitchen bridge is evaluated in create flow');
     assert.ok(bridgeCall > bridgeStart, 'source-member API is called from create flow');
     assert.ok(normalCreate > bridgeCall, 'source-member API branch runs before normal booking fallback');
+    assert.match(apiJs, /async function apiGetCenterPriceRule\(code\)/);
+    assert.match(apiJs, /\/center\/prices\/\$\{encodeURIComponent\(safeCode\)\}/);
+});
+
+test('activity-first kitchen room open initializes source context after programmatic room selection', () => {
+    const bookingJs = read('js', 'booking.js');
+    const openPanelBlock = bookingJs.slice(
+        bookingJs.indexOf('async function openBookingPanel'),
+        bookingJs.indexOf('// ==========================================\n// CRM: CUSTOMER DATA')
+    );
+    const initBlock = bookingJs.slice(
+        bookingJs.indexOf('async function initializeRoomFirstBookingSourceContext'),
+        bookingJs.indexOf('async function openBookingPanel')
+    );
+
+    assert.match(openPanelBlock, /ensureTimelineRoomOption\(line\.name\);\s*document\.getElementById\('roomSelect'\)\.value = line\.name;/);
+    assert.match(openPanelBlock, /await refreshBookingRoomAvailabilityForSelectedDate\(\);\s*await initializeRoomFirstBookingSourceContext\(\);/);
+    assert.match(initBlock, /handleBookingRoomSelectionContextChange\(\)/);
+    assert.match(initBlock, /BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
+    assert.doesNotMatch(initBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBooking/);
+});
+
+test('activity-first kitchen selector renders virtual create state without fake group id', () => {
+    const bookingJs = read('js', 'booking.js');
+    const selectorBlock = bookingJs.slice(
+        bookingJs.indexOf('function renderBookingBanquetGroupSelector'),
+        bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates')
+    );
+    const sourceOnlyBlock = bookingJs.slice(
+        bookingJs.indexOf('function activityFirstKitchenSelectorContext'),
+        bookingJs.indexOf('function clearSelectedBanquetGroupIfCustomerMismatch')
+    );
+
+    assert.match(sourceOnlyBlock, /if \(!roomContext\?\.sourceBookingId \|\| roomContext\.groupId\) return null;/);
+    assert.match(sourceOnlyBlock, /if \(!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)\) return null;/);
+    assert.match(sourceOnlyBlock, /String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
+    assert.match(selectorBlock, /const showActivityFirstBanquetCreateOption = Boolean\(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates\.length\);/);
+    assert.match(selectorBlock, /const unlinkedOptionLabel = showActivityFirstBanquetCreateOption[\s\S]*activityFirstKitchenSelectorOptionLabel\(sourceOnlyRoomContext\)[\s\S]*'Без прив’язки'/);
+    assert.match(selectorBlock, /<option value="">\$\{escapeHtml\(unlinkedOptionLabel\)\}<\/option>/);
+    assert.match(selectorBlock, /Банкет буде створено автоматично з активності/);
+    assert.doesNotMatch(selectorBlock, /__activity_first|virtualGroupId|fakeGroupId/);
+});
+
+test('activity-first kitchen source-only save uses source bridge before normal create', () => {
+    const bookingJs = read('js', 'booking.js');
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+    const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
+    const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId');
+    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
+
+    assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
+    assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
+    assert.doesNotMatch(validateBridgeBlock, /sourceBookingToBanquetContext/);
+    assert.match(createFlowBlock, /else if \(activityFirstKitchenBridge\.shouldUse\)[\s\S]*apiCreateBanquetMemberBookingFromSource\(\{[\s\S]*sourceBookingId: sourceContext\.sourceBookingId,[\s\S]*role: 'kitchen'/);
+    assert.ok(sourceBridgeCall >= 0, 'source-only kitchen save calls from-source member endpoint');
+    assert.ok(realGroupCall > sourceBridgeCall, 'real group member endpoint remains after source-only bridge');
+    assert.ok(normalCreateCall > sourceBridgeCall, 'normal booking create remains fallback after source-only bridge');
+});
+
+test('activity-first kitchen existing banquet group still uses group member endpoint', () => {
+    const bookingJs = read('js', 'booking.js');
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+
+    assert.match(createFlowBlock, /else if \(selectedBanquetContext\.groupId && isSelectedBanquetKitchenCreate\(formData\)\)[\s\S]*attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\);[\s\S]*apiCreateBanquetMemberBooking\(selectedBanquetContext\.groupId/);
+    assert.match(createFlowBlock, /sourceBookingId: selectedBanquetContext\.sourceBookingId \|\| null/);
+    assert.match(createFlowBlock, /role: 'kitchen'/);
+});
+
+test('activity-first kitchen customer mismatch is blocked before source bridge API call', () => {
+    const bookingJs = read('js', 'booking.js');
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const mismatchCheck = validateBridgeBlock.indexOf('if (!selectedMatchesSource && !autoFilledMatchesSource)');
+    const apiCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
+
+    assert.ok(mismatchCheck >= 0, 'source/customer mismatch guard exists');
+    assert.match(validateBridgeBlock, /error: 'Клієнт кухні не збігається з клієнтом бронювання в кімнаті/);
+    assert.match(createFlowBlock, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)[\s\S]*unlockSubmitBtn\(\);\s*return;/);
+    assert.ok(apiCall > createFlowBlock.indexOf('if (activityFirstKitchenBridge.shouldUse && activityFirstKitchenBridge.error)'), 'source API call is after mismatch/error guard');
 });
 
 test('banquet group repair script is dry-run by default and reuses backend reconciliation', () => {

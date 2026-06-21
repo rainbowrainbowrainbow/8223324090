@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.95">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.95">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.95">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.95">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.95">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.95">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.95">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.95">
-    <link rel="stylesheet" href="css/features.css?v=0.76.95">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.95">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.95">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.95">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.95">
+    <link rel="stylesheet" href="css/base.css?v=0.76.96">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.96">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.96">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.96">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.96">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.96">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.96">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.96">
+    <link rel="stylesheet" href="css/features.css?v=0.76.96">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.96">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.96">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.96">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.96">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.95">✨ 0.76.95</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.96">✨ 0.76.96</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.95 — Timeline marker alignment fix</p>
+                <p class="tagline">AI First CRM v0.76.96 — Timeline digest and print actions fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.95</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.96</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -159,6 +159,7 @@
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false"><span class="timeline-control-icon timeline-control-icon--dots" aria-hidden="true">⋯</span><span>Дії</span></button>
                         <div class="dropdown-content hidden" id="dropdownContent" role="menu" aria-label="Контекстні дії таймлайну">
                             <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест дня</button>
+                            <button type="button" id="exportPdfBtn" class="dropdown-item" role="menuitem" title="Друк / Зберегти як PDF">🖨 Друк розкладу</button>
                         </div>
                     </div>
                 </div>
@@ -1739,13 +1740,23 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.76.96 — Timeline digest and print actions fix</h4>
+                    <ul>
+                        <li><b>Виправлено повідомлення про помилки відправки дайджесту дня</b> — кнопка <code>Дії → Дайджест дня</code> більше не ховає всі Telegram failures за загальною помилкою.</li>
+                        <li><b>CRM показує конкретну причину Telegram-проблеми</b> — менеджер бачить окремі повідомлення для відсутнього <code>Telegram Chat ID</code>, не налаштованого або невалідного <code>bot token</code> і відмови Telegram API.</li>
+                        <li><b>Відновлено дію друку розкладу в меню <code>Дії</code></b> — пункт <code>🖨 Друк розкладу</code> знову доступний у timeline поруч із дайджестом.</li>
+                        <li><b><code>Друк / Зберегти як PDF</code> знову використовує існуючий timeline print flow</b> — повернуто DOM action без переписування <code>exportTimelinePdf()</code>, <code>window.print()</code> і print CSS.</li>
+                        <li><b>Regression tests захищають digest і print actions</b> — додано contract test для digest error mapping і UI smoke guard, щоб print button не зник непомітно.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.76.95 — Timeline marker alignment fix</h4>
                     <ul>
                         <li><b>Виправлено накладання late time labels біля кінця таймлайну</b> — мітки на правому краї більше не з'їжджають одна на одну після range width fix.</li>
-                        <li><b><code>19:45</code> і <code>20:00</code> більше не перекриваються</b> — кінцева мітка лишається видимою, а попередня зберігає читабельний відступ.</li>
-                        <li><b>Time labels використовують canonical timeline geometry</b> — мітки, grid, booking blocks і now-line більше не живуть у різних координатних системах.</li>
-                        <li><b>Fix працює для animator і room timeline</b> — лінії свят і кімнат отримали спільну edge-aware геометрію.</li>
-                        <li><b>Перевірено zoom, compact, mobile і week view</b> — regression tests і browser QA покривають edge marker alignment та зберігають попередні scroll reset/range width fixes.</li>
+                        <li><b><code>19:45</code> і <code>20:00</code> більше не перекриваються</b> — кінцева мітка лишається видимою на правому краї, а попередня мітка зберігає читабельний відступ.</li>
+                        <li><b>Time labels використовують canonical timeline geometry</b> — позиції міток рахуються з того самого координатного контракту, що grid, booking blocks і now-line.</li>
+                        <li><b>Fix працює для animator і room timeline</b> — лінії свят і кімнат отримали спільну edge-aware геометрію без окремих CSS workaround.</li>
+                        <li><b>Попередні scroll reset і range width overflow fixes збережено</b> — зміна дати не переносить stale <code>scrollLeft</code>, а таймлайн не повертає пусту scroll-зону після кінця range.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -14274,30 +14285,30 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.95"></script>
-    <script src="js/timeline-visibility.js?v=0.76.95"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.95"></script>
-    <script src="js/config.js?v=0.76.95"></script>
-    <script src="js/api.js?v=0.76.95"></script>
-    <script src="js/ui.js?v=0.76.95"></script>
-    <script src="js/auth.js?v=0.76.95"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.95"></script>
-    <script src="js/timeline.js?v=0.76.95"></script>
-    <script src="js/booking.js?v=0.76.95"></script>
-    <script src="js/settings.js?v=0.76.95"></script>
-    <script src="js/booking-form.js?v=0.76.95"></script>
-    <script src="js/booking-linked.js?v=0.76.95"></script>
-    <script src="js/settings-dashboard.js?v=0.76.95"></script>
-    <script src="js/settings-history.js?v=0.76.95"></script>
-    <script src="js/settings-afisha.js?v=0.76.95"></script>
-    <script src="js/settings-certificates.js?v=0.76.95"></script>
-    <script src="js/offline.js?v=0.76.95"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.95"></script>
-    <script src="js/search.js?v=0.76.95"></script>
-    <script src="js/ws.js?v=0.76.95"></script>
-    <script src="js/app.js?v=0.76.95"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.95"></script>
-    <script src="js/components/sidebar.js?v=0.76.95"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.95"></script>
+    <script src="js/timeline-context.js?v=0.76.96"></script>
+    <script src="js/timeline-visibility.js?v=0.76.96"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.96"></script>
+    <script src="js/config.js?v=0.76.96"></script>
+    <script src="js/api.js?v=0.76.96"></script>
+    <script src="js/ui.js?v=0.76.96"></script>
+    <script src="js/auth.js?v=0.76.96"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.96"></script>
+    <script src="js/timeline.js?v=0.76.96"></script>
+    <script src="js/booking.js?v=0.76.96"></script>
+    <script src="js/settings.js?v=0.76.96"></script>
+    <script src="js/booking-form.js?v=0.76.96"></script>
+    <script src="js/booking-linked.js?v=0.76.96"></script>
+    <script src="js/settings-dashboard.js?v=0.76.96"></script>
+    <script src="js/settings-history.js?v=0.76.96"></script>
+    <script src="js/settings-afisha.js?v=0.76.96"></script>
+    <script src="js/settings-certificates.js?v=0.76.96"></script>
+    <script src="js/offline.js?v=0.76.96"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.96"></script>
+    <script src="js/search.js?v=0.76.96"></script>
+    <script src="js/ws.js?v=0.76.96"></script>
+    <script src="js/app.js?v=0.76.96"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.96"></script>
+    <script src="js/components/sidebar.js?v=0.76.96"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.96"></script>
 </body>
 </html>

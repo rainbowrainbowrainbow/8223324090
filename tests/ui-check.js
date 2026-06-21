@@ -227,12 +227,34 @@ checkPage('index.html', (doc, html) => {
         && doc.getElementById('menuToggleBtn')?.querySelector('.timeline-control-icon--dots')
         && !!doc.getElementById('historyBtn')
         && !!doc.getElementById('digestBtn')
+        && !!doc.getElementById('exportPdfBtn')
+        && timelineActionMenu?.querySelector('#digestBtn')
+        && timelineActionMenu?.querySelector('#exportPdfBtn')
         && !doc.getElementById('afishaBtn')
         && !doc.getElementById('dashboardBtn')
         && !doc.getElementById('settingsBtn')
         && !doc.getElementById('certificatesBtn')
         && !timelineActionMenu?.querySelector('a[href="/programs"]')
         && !timelineActionMenu?.querySelector('a[href="/tasks"]'));
+    check('Timeline print action is restored through existing print flow',
+        doc.getElementById('exportPdfBtn')?.textContent.includes('Друк розкладу')
+        && doc.getElementById('exportPdfBtn')?.getAttribute('role') === 'menuitem'
+        && htmlContains('js/app.js', "document.getElementById('exportPdfBtn')")
+        && htmlContains('js/app.js', 'exportTimelinePdf')
+        && htmlContains('js/ui.js', 'function exportTimelinePdf')
+        && htmlContains('js/ui.js', 'window.print()')
+        && htmlContains('js/ui.js', 'printing-timeline')
+        && htmlContains('css/timeline.css', '@media print'));
+    check('Timeline day digest uses structured backend errors and actionable UI messages',
+        htmlContains('js/settings.js', 'function dailyDigestFailureMessage')
+        && htmlContains('js/settings.js', "code === 'NO_CHAT_ID'")
+        && htmlContains('js/settings.js', "code === 'NO_BOT_TOKEN'")
+        && htmlContains('js/settings.js', "code === 'TELEGRAM_SEND_FAILED'")
+        && htmlContains('js/settings.js', 'readDailyDigestResponse(response)')
+        && htmlContains('services/scheduler.js', 'function buildDigestSendResult')
+        && htmlContains('services/scheduler.js', "code: 'NO_BOT_TOKEN'")
+        && htmlContains('services/scheduler.js', "reason: 'telegram_send_failed'")
+        && htmlContains('routes/telegram.js', "code: 'DIGEST_INTERNAL_ERROR'"));
     check('Timeline history opens as a primary toolbar action with shared history styling',
         doc.querySelector('.v32-controls > #historyBtn.btn-history')
         && !timelineActionMenu?.querySelector('#historyBtn')
@@ -3019,7 +3041,7 @@ check('Timeline create toolbar button is absent while deep-link booking flow sta
 check('Timeline product sales API loads monthly report', appCode.includes('/api/analytics/product-sales?') && appCode.includes('loadProductSalesReport'));
 check('Timeline product sales export supports CSV and XLSX', appCode.includes("downloadProductSalesExport('csv')") && appCode.includes("downloadProductSalesExport('xlsx')"));
 check('Timeline product sales supports pinata quick filter', appCode.includes("categorySelect.value = 'pinata'"));
-check('Timeline product sales/export permission state does not fight visibility constructor', authCode.includes('function setTimelinePermissionHidden') && !authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'))") && authCode.includes("setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'))") && !authCode.includes("exportBtn.style.display = 'none'"));
+check('Timeline product sales/export permission state does not fight visibility constructor', authCode.includes('function setTimelinePermissionHidden') && !authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'))") && authCode.includes("setTimelinePermissionHidden('exportPdfBtn', !canAccess('export_data'))") && authCode.includes("setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'))") && timelineVisibilityCode.includes("visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn')") && !authCode.includes("exportBtn.style.display = 'none'"));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

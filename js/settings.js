@@ -738,6 +738,37 @@ function notifyStatusChanged(booking, newStatus) {
     apiTelegramNotify(text).then(handleTelegramResult);
 }
 
+async function readDailyDigestResponse(response) {
+    try {
+        return await response.json();
+    } catch (err) {
+        console.warn('[DailyDigest] Invalid JSON response', err);
+        return {
+            success: false,
+            code: 'DIGEST_INVALID_RESPONSE',
+            message: 'Сервер повернув некоректну відповідь для дайджесту.'
+        };
+    }
+}
+
+function dailyDigestFailureMessage(result = {}, response = null) {
+    const code = String(result.code || '').toUpperCase();
+    const reason = String(result.reason || '').toLowerCase();
+    if (code === 'NO_CHAT_ID' || reason === 'no_chat_id') {
+        return 'Telegram Chat ID не налаштовано. Додайте chat id у налаштуваннях Telegram.';
+    }
+    if (code === 'NO_BOT_TOKEN' || reason === 'no_bot_token') {
+        return 'Telegram bot token не налаштовано на сервері. Потрібна перевірка змінних середовища.';
+    }
+    if (code === 'TELEGRAM_SEND_FAILED' || reason === 'telegram_send_failed') {
+        return 'Telegram не прийняв дайджест. Перевірте бота, chat id або доступ до чату.';
+    }
+    if (code === 'DIGEST_INTERNAL_ERROR' || reason === 'digest_internal_error' || response?.status >= 500) {
+        return 'Не вдалося сформувати або відправити дайджест. Спробуйте пізніше.';
+    }
+    return result.message || 'Не вдалося відправити дайджест дня.';
+}
+
 async function sendDailyDigest() {
     const dateStr = formatDate(AppState.selectedDate);
     try {
@@ -745,15 +776,21 @@ async function sendDailyDigest() {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
-        const result = await response.json();
+        const result = await readDailyDigestResponse(response);
         if (result.success) {
-            showNotification('Дайджест відправлено в Telegram!', 'success');
+            showNotification(result.message || 'Дайджест дня відправлено в Telegram!', 'success');
         } else {
-            showNotification(result.reason === 'no_chat_id' ? 'Telegram Chat ID не налаштовано' : 'Помилка відправки дайджесту', 'error');
+            console.warn('[DailyDigest] Send failed', {
+                status: response.status,
+                code: result.code,
+                reason: result.reason,
+                message: result.message
+            });
+            showNotification(dailyDigestFailureMessage(result, response), 'error');
         }
     } catch (err) {
         console.error('Digest send error:', err);
-        showNotification('Помилка відправки дайджесту', 'error');
+        showNotification('Не вдалося відправити дайджест. Перевірте Telegram налаштування або спробуйте пізніше.', 'error');
     }
 }
 
@@ -1747,14 +1784,21 @@ async function sendTestDigest() {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
-        const result = await response.json();
+        const result = await readDailyDigestResponse(response);
         if (result.success) {
-            showNotification('Тестовий дайджест надіслано!', 'success');
+            showNotification(result.message || 'Тестовий дайджест надіслано!', 'success');
         } else {
-            showNotification('Помилка: ' + (result.reason || 'невідома'), 'error');
+            console.warn('[DailyDigest] Test send failed', {
+                status: response.status,
+                code: result.code,
+                reason: result.reason,
+                message: result.message
+            });
+            showNotification(dailyDigestFailureMessage(result, response), 'error');
         }
     } catch (err) {
-        showNotification('Помилка надсилання', 'error');
+        console.error('Test digest send error:', err);
+        showNotification('Не вдалося відправити тестовий дайджест. Перевірте Telegram налаштування або спробуйте пізніше.', 'error');
     }
 }
 

@@ -4,6 +4,22 @@
 
 ---
 
+## v0.76.96 - Timeline digest and print actions fix
+
+### Timeline actions / Day digest / Print schedule / Telegram diagnostics / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Виправлено повідомлення про помилки відправки дайджесту дня** - кнопка `Дії -> Дайджест дня` більше не зводить усі Telegram failures до загального `Помилка відправки дайджесту`.
+- **CRM показує конкретну причину Telegram-проблеми** - менеджер бачить окремі українські повідомлення для відсутнього `Telegram Chat ID`, не налаштованого або невалідного `bot token` і відмови Telegram API.
+- **Backend digest contract став структурованим** - `/api/telegram/digest/:date` повертає стабільні `code`, `reason`, `message`, `success`, `count` і `meta` без ламання старих полів.
+- **Відновлено дію друку розкладу в меню `Дії`** - пункт `Друк розкладу` знову доступний у timeline поруч із дайджестом дня.
+- **Існуюча логіка `Друк / Зберегти як PDF` знову доступна з timeline** - повернуто DOM action `#exportPdfBtn` без переписування `exportTimelinePdf()`, `window.print()` і print CSS.
+- **Print action підпорядковано існуючим export permissions** - дія друку використовує той самий `export_data` / `export` доступ і visibility block, що й timeline export.
+- **Regression tests додано для digest і print actions** - contract test фіксує digest error mapping, а UI smoke перевіряє `#exportPdfBtn`, print flow, CSS і structured digest handling.
+- **Production digest вручну не відправлявся** - реліз перевірено без небезпечного side effect у Telegram.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.96`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.95 - Timeline marker alignment fix
 
 ### Timeline marker alignment / Edge labels / Animator view / Room view / Regression tests / (Клешня, 21.06.2026) [codex]

@@ -53,7 +53,7 @@
         visualBlock('undo', 'Верхня панель', 'Скасувати дію', '#undoBtn'),
         visualBlock('roomLoad', 'Верхня панель', 'Кімнати / кабінети', '#roomLoadBtn'),
         visualBlock('productSales', 'Верхня панель', 'Продажі', '#productSalesBtn'),
-        visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn'),
+        visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn'),
         visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),
         visualBlock('history', 'Верхня панель', 'Історія змін', '#historyBtn'),
         visualBlock('digest', 'Меню дій', 'Дайджест дня', '#digestBtn'),

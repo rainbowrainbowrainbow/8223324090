@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.97 - Timeline resource header alignment fix
+
+### Timeline headers / Room rows / Banquet preview state / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Назви кімнат і локацій у високих timeline rows більше не прилипають до верхнього краю** - title-only headers зберігають акуратне вертикальне вирівнювання навіть коли room row розширюється через activity або service lanes.
+- **Прибрано stale banquet preview state без видимої preview card** - `has-timeline-banquet-room-preview` додається тільки після реального render успіху `[data-banquet-room-card]`, а порожній preview state очищується.
+- **Real banquet preview card behavior збережено** - коли preview card реально існує, її top-aligned layout, click handling і inspector flow працюють через існуючий механізм.
+- **Room/animator timeline, compact, mobile і week guardrails перевірені автоматично** - focused tests і UI smoke фіксують, що fix не чіпає grid, row height, booking cards або mini timeline headers.
+- **Regression tests додано для header alignment state** - `tests/timeline-resources.test.js` і `tests/ui-check.js` ловлять повернення stale preview class без rendered card.
+- **Browser QA локально заблокована відсутнім DB/env** - `npm start` зупиняється через відсутній `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`; env/Railway config не змінювались.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.97`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.96 - Timeline digest and print actions fix
 
 ### Timeline actions / Day digest / Print schedule / Telegram diagnostics / Regression tests / (Клешня, 21.06.2026) [codex]

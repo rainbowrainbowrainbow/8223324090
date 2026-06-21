@@ -199,6 +199,15 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/timeline.js', '<span class="line-name">${escapeHtml(line.name)}</span>')
         && !htmlContains('js/timeline.js', 'getLineSubtitle(lineForHeader)')
         && htmlContains('css/timeline.css', '.line-header--title-only .line-name'));
+    check('Timeline room preview state only top-aligns headers with a rendered preview card',
+        htmlContains('js/timeline.js', 'function clearTimelineBanquetRoomHeaderPreviewState(header)')
+        && htmlContains('js/timeline.js', 'return false;')
+        && htmlContains('js/timeline.js', 'return true;')
+        && htmlContains('js/timeline.js', 'const rendered = renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));')
+        && htmlContains('js/timeline.js', 'if (rendered) {')
+        && htmlContains('js/timeline.js', "header.classList.add('has-timeline-banquet-room-preview')")
+        && htmlContains('js/timeline.js', 'clearTimelineBanquetRoomHeaderPreviewState(header);')
+        && htmlContains('css/timeline.css', '.line-header.has-timeline-banquet-room-preview'));
     check('Animator timeline filters banquet service pseudo-lines and kitchen blocks',
         htmlContains('js/timeline.js', "TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
         && htmlContains('js/timeline.js', 'function isParkAnimatorTimelineView')

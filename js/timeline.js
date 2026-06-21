@@ -2162,7 +2162,7 @@ function timelineBanquetGlanceRows(summary = {}, signalText = '') {
 }
 
 function renderTimelineBanquetRoomCard(header, summary = {}) {
-    if (!isRoomTimelineView() || !header || !summary) return;
+    if (!isRoomTimelineView() || !header || !summary) return false;
     const signals = timelineBanquetRoomCardSignals(summary);
     if (!signals.length && timelineBanquetSummaryHasPersistentRoot(summary)) {
         const activityCount = Number(summary.activityCount || 0);
@@ -2171,7 +2171,7 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
             label: `${activityCount} ${timelineBanquetPlural(activityCount, 'активність', 'активності', 'активностей')}`
         });
     }
-    if (!signals.length) return;
+    if (!signals.length) return false;
     let card = header.querySelector('[data-banquet-room-card]');
     if (!card) {
         card = document.createElement('button');
@@ -2217,6 +2217,7 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
         event.stopPropagation();
         showTimelineBanquetInspector(event, summary, card);
     };
+    return true;
 }
 
 function timelineRoomServiceMarkerGroupId(summary = {}, fallback = '') {
@@ -2640,10 +2641,15 @@ function clearTimelineBanquetRoomPreviews() {
         clearTimelineBanquetPreviewVisuals(block);
     });
     document.querySelectorAll('.line-header.has-timeline-banquet-room-preview').forEach(header => {
-        header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
-        header.querySelector('[data-banquet-room-card]')?.remove();
-        delete header.dataset.timelineBanquetRoomPreview;
+        clearTimelineBanquetRoomHeaderPreviewState(header);
     });
+}
+
+function clearTimelineBanquetRoomHeaderPreviewState(header) {
+    if (!header) return;
+    header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
+    header.querySelector('[data-banquet-room-card]')?.remove();
+    delete header.dataset.timelineBanquetRoomPreview;
 }
 
 function timelineBanquetSummarySortValue(summary = {}) {
@@ -2665,9 +2671,13 @@ function registerTimelineBanquetRoomPreview(summary = {}) {
             header.querySelector('.line-name')?.textContent
         ].map(timelineBanquetRoomKey);
         if (!headerKeys.includes(key)) return;
-        header.dataset.timelineBanquetRoomPreview = key;
-        header.classList.add('has-timeline-banquet-room-preview');
-        renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));
+        const rendered = renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));
+        if (rendered) {
+            header.dataset.timelineBanquetRoomPreview = key;
+            header.classList.add('has-timeline-banquet-room-preview');
+        } else {
+            clearTimelineBanquetRoomHeaderPreviewState(header);
+        }
     });
 }
 

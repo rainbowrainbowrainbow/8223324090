@@ -1355,6 +1355,19 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
 });
 
+test('room timeline banquet preview state only top-aligns headers with rendered cards', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+
+    assert.match(timeline, /function clearTimelineBanquetRoomHeaderPreviewState\(header\)/);
+    assert.match(timeline, /function renderTimelineBanquetRoomCard\(header, summary = \{\}\)[\s\S]*return false;/);
+    assert.match(timeline, /function renderTimelineBanquetRoomCard\(header, summary = \{\}\)[\s\S]*card\.onclick[\s\S]*return true;/);
+    assert.match(timeline, /const rendered = renderTimelineBanquetRoomCard\(header, TIMELINE_BANQUET_ROOM_PREVIEWS\.get\(key\)\);/);
+    assert.match(timeline, /if \(rendered\) \{[\s\S]*header\.classList\.add\('has-timeline-banquet-room-preview'\)/);
+    assert.match(timeline, /else \{[\s\S]*clearTimelineBanquetRoomHeaderPreviewState\(header\);/);
+    assert.match(css, /\.line-header\.has-timeline-banquet-room-preview\s*\{[\s\S]*justify-content:\s*flex-start/);
+});
+
 test('room timeline service markers keep readable event-block dimensions and structured content', () => {
     const css = read('css/timeline.css');
     const markerRule = cssRule(css, '.timeline-room-service-marker');

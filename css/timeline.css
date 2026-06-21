@@ -52,25 +52,36 @@
 
 /* Mini timeline (multi-day mode) */
 .mini-time-scale {
-    display: flex;
-    width: max-content;
-    min-width: max-content;
+    display: block;
+    width: var(--mini-grid-width, max-content);
+    min-width: var(--mini-grid-width, max-content);
+    height: 18px;
     margin-left: 80px;
     margin-bottom: 6px;
+    position: relative;
 }
 
 .mini-time-mark {
-    width: var(--mini-hour-width, 120px);
-    min-width: var(--mini-hour-width, 120px);
+    width: var(--mini-time-mark-width, max-content);
+    min-width: 0;
     font-size: 10px;
     font-weight: 700;
     color: var(--gray-400);
+    text-align: center;
+    position: absolute;
+    left: var(--mini-time-mark-left, 0);
+    top: 0;
+    line-height: 1.15;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.mini-time-mark.start {
     text-align: left;
 }
 
 .mini-time-mark.end {
-    width: auto;
-    min-width: auto;
+    text-align: right;
 }
 
 .mini-timeline-lines {
@@ -208,9 +219,10 @@
 
 /* Time scale */
 .time-scale {
-    display: flex;
+    display: block;
     width: var(--timeline-grid-width, max-content);
     min-width: var(--timeline-grid-width, max-content);
+    height: 22px;
     margin-bottom: 12px;
     margin-left: 110px;
     position: sticky;
@@ -249,14 +261,19 @@
 }
 
 .time-mark {
-    width: 50px;
-    min-width: 50px;
+    width: var(--time-mark-label-width, max-content) !important;
+    min-width: 0 !important;
     text-align: center;
     font-size: 10px;
     font-weight: 600;
     color: var(--gray-400);
-    position: relative;
+    position: absolute;
+    left: var(--time-mark-label-left, 0);
+    top: 1px;
     z-index: 1;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 .time-mark.hour {
@@ -270,14 +287,16 @@
     font-size: 10px;
 }
 
+.time-scale .time-mark.start-mark {
+    text-align: left;
+}
+
 .time-scale .time-mark.end-mark {
-    position: absolute;
-    right: 0;
-    top: 1px;
-    width: max-content !important;
-    min-width: 0 !important;
     text-align: right;
-    pointer-events: none;
+}
+
+.time-scale .time-mark.edge-clamped:not(.start-mark):not(.end-mark) {
+    text-align: center;
 }
 
 /* ==========================================

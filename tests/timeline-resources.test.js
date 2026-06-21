@@ -2206,6 +2206,66 @@ test('timeline dynamic width contract derives surfaces from range and cell geome
     );
 });
 
+test('timeline time marker placement clamps end label without overlapping the previous mark', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const grid = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        getTimeRange: () => ({ start: '13:00', end: '20:00' }),
+        document: {
+            querySelector() {
+                return null;
+            }
+        },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    [
+        { level: 15, cellWidth: 40, previousLabel: '19:45' },
+        { level: 30, cellWidth: 54, previousLabel: '19:30' },
+        { level: 60, cellWidth: 84, previousLabel: '19:00' }
+    ].forEach(({ level, cellWidth, previousLabel }) => {
+        context.CONFIG.TIMELINE.CELL_MINUTES = level;
+        context.CONFIG.TIMELINE.CELL_WIDTH = cellWidth;
+        cell.getBoundingClientRect = () => ({ width: cellWidth });
+
+        const gridWidth = context.timelineRangeCellCount(new Date('2026-06-19T00:00:00')) * cellWidth;
+        const placements = context.timelineTimeMarkPlacements(new Date('2026-06-19T00:00:00'), grid, { gridWidth, cellWidth });
+        const endMark = placements.at(-1);
+        const previousMark = placements.at(-2);
+
+        assert.equal(endMark.label, '20:00');
+        assert.equal(previousMark.label, previousLabel);
+        assert.equal(endMark.x, gridWidth);
+        assert.equal(endMark.right, gridWidth);
+        assert.ok(endMark.left >= 0);
+        assert.ok(previousMark.right <= endMark.left, `${previousMark.label} overlaps ${endMark.label}`);
+        assert.equal(
+            context.timelineTimeToPixel(previousMark.label, new Date('2026-06-19T00:00:00'), grid),
+            previousMark.x
+        );
+    });
+});
+
 test('timeline visual settings keep park animator and room views isolated', () => {
     assert.equal(normalizeTimelineVisibilityView('rooms'), 'rooms');
     assert.equal(normalizeTimelineVisibilityView('bad', 'animators'), 'animators');

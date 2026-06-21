@@ -435,9 +435,16 @@ test('timeline width contract is shared by animator and room surfaces without se
         timeline.indexOf('function renderTimelineRoomServiceMarkers'),
         timeline.indexOf('function clearTimelineBanquetRoomPreviews')
     );
+    const markerGeometryBlock = timeline.slice(
+        timeline.indexOf('function timelineTimeToPixel'),
+        timeline.indexOf('let _timelineAddLineCtaPositioningBound')
+    );
 
     assert.match(syncWidthBlock, /const gridWidth = Math\.ceil\(timelineRangeCellCount\(date\) \* cellWidth\)/);
     assert.doesNotMatch(syncWidthBlock, /timelineRangeMarkCount\(date\) \* cellWidth/);
+    assert.match(markerGeometryBlock, /function timelineTimeMarkPlacements\(date, anchor, geometry = null\)/);
+    assert.match(markerGeometryBlock, /function timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
+    assert.match(markerGeometryBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
     assert.match(renderTimelineBlock, /syncTimelineContentWidth\(selectedDate, container\.querySelector\('\.line-grid\[data-line-id\]'\)\)/);
     assert.match(renderTimelineBlock, /if \(isRoomTimelineView\(\)\) \{[\s\S]*syncTimelineRoomOperationalLayout\(lineGrid\);[\s\S]*\}/);
     assert.match(roomServiceMarkerBlock, /const gridWidth = lineGrid\.scrollWidth \|\| lineGrid\.getBoundingClientRect\?\.\(\)\.width \|\| 0/);

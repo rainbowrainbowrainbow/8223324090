@@ -577,6 +577,179 @@ function timelineDurationWidth(duration, anchor) {
     return timelineMinutesToPixels(duration, anchor) - 4;
 }
 
+const TIMELINE_TIME_MARK_LABEL_GAP = 3;
+const TIMELINE_TIME_MARK_LABEL_WIDTH = 34;
+const TIMELINE_TIME_MARK_HOUR_LABEL_WIDTH = 38;
+
+function timelineDisplayTimeLabel(totalMinutes) {
+    const minutesInDay = 24 * 60;
+    const normalized = ((Math.round(totalMinutes) % minutesInDay) + minutesInDay) % minutesInDay;
+    const hours = Math.floor(normalized / 60);
+    const minutes = normalized % 60;
+    return `${hours}:${String(minutes).padStart(2, '0')}`;
+}
+
+function timelineMarkToPixel(markMinutes, startMinutes, anchor) {
+    return timelineMinutesToPixels(markMinutes - startMinutes, anchor);
+}
+
+function timelineTimeToPixel(time, date, anchor) {
+    const { start, end } = getTimeRange(date);
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+    let markMinutes = timelineRangeBoundMinutes(time);
+    if (markMinutes < startMinutes && endMinutes > 24 * 60) markMinutes += 24 * 60;
+    return timelineMarkToPixel(markMinutes, startMinutes, anchor);
+}
+
+function timelineIsEdgeMark(markMinutes, startMinutes, endMinutes) {
+    const rounded = Math.round(markMinutes);
+    return rounded === Math.round(startMinutes) || rounded === Math.round(endMinutes);
+}
+
+function timelineTimeMarkLabelWidth(label, isHour = false) {
+    const raw = String(label || '');
+    const base = isHour ? TIMELINE_TIME_MARK_HOUR_LABEL_WIDTH : TIMELINE_TIME_MARK_LABEL_WIDTH;
+    return Math.max(base, Math.ceil(raw.length * (isHour ? 7.2 : 6.2)) + 4);
+}
+
+function timelineLabelPlacement(markX, labelWidth, gridWidth, options = {}) {
+    const safeWidth = Math.max(1, Number(labelWidth) || TIMELINE_TIME_MARK_LABEL_WIDTH);
+    const safeGridWidth = Math.max(safeWidth, Number(gridWidth) || safeWidth);
+    const maxLeft = Math.max(0, safeGridWidth - safeWidth);
+    const gap = Math.max(0, Number(options.gap) || 0);
+    let left = Number(markX) - (safeWidth / 2);
+
+    if (options.edge === 'start') left = 0;
+    if (options.edge === 'end') left = maxLeft;
+    if (Number.isFinite(options.nextLeft)) left = Math.min(left, options.nextLeft - gap - safeWidth);
+    if (Number.isFinite(options.previousRight)) left = Math.max(left, options.previousRight + gap);
+
+    const clampedLeft = Math.max(0, Math.min(maxLeft, left));
+    return {
+        left: clampedLeft,
+        right: clampedLeft + safeWidth,
+        width: safeWidth,
+        edgeClamped: Math.abs(clampedLeft - left) > 0.5 || options.edge === 'start' || options.edge === 'end'
+    };
+}
+
+function timelineTimeMarkPlacements(date, anchor, geometry = null) {
+    const { start, end } = getTimeRange(date);
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+    const cellMinutes = Math.max(1, Number(CONFIG.TIMELINE.CELL_MINUTES) || 30);
+    const gridWidth = Math.ceil(geometry?.gridWidth || (timelineRangeCellCount(date) * getTimelineCellWidth(anchor)));
+    const entries = [];
+
+    for (let markMinutes = startMinutes; markMinutes < endMinutes; markMinutes += cellMinutes) {
+        const label = timelineDisplayTimeLabel(markMinutes);
+        const displayMinutes = ((Math.round(markMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+        const isHour = displayMinutes % 60 === 0;
+        entries.push({
+            label,
+            markMinutes,
+            x: timelineMarkToPixel(markMinutes, startMinutes, anchor),
+            labelWidth: timelineTimeMarkLabelWidth(label, isHour),
+            className: `time-mark ${isHour ? 'hour' : 'half'}${timelineIsEdgeMark(markMinutes, startMinutes, endMinutes) ? ' start-mark' : ''}`,
+            edge: Math.round(markMinutes) === Math.round(startMinutes) ? 'start' : ''
+        });
+    }
+
+    const endLabel = timelineDisplayTimeLabel(endMinutes);
+    entries.push({
+        label: endLabel,
+        markMinutes: endMinutes,
+        x: gridWidth,
+        labelWidth: timelineTimeMarkLabelWidth(endLabel, true),
+        className: 'time-mark hour end-mark',
+        edge: 'end'
+    });
+
+    const placements = entries.map(entry => ({
+        ...entry,
+        ...timelineLabelPlacement(entry.x, entry.labelWidth, gridWidth, { edge: entry.edge, gap: TIMELINE_TIME_MARK_LABEL_GAP })
+    }));
+
+    for (let index = placements.length - 2; index >= 0; index--) {
+        const current = placements[index];
+        const next = placements[index + 1];
+        const constrained = timelineLabelPlacement(current.x, current.labelWidth, gridWidth, {
+            edge: current.edge,
+            nextLeft: next.left,
+            gap: TIMELINE_TIME_MARK_LABEL_GAP
+        });
+        if (constrained.left < current.left || constrained.edgeClamped) {
+            current.left = constrained.left;
+            current.right = constrained.right;
+            current.edgeClamped = true;
+        }
+    }
+
+    return placements;
+}
+
+function timelineMiniTimeMarkPlacements(start, end, hourWidth) {
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+    const safeHourWidth = Math.max(1, Number(hourWidth) || 120);
+    const gridWidth = Math.max(safeHourWidth, ((endMinutes - startMinutes) / 60) * safeHourWidth);
+    const entries = [];
+
+    for (let markMinutes = startMinutes; markMinutes <= endMinutes; markMinutes += 60) {
+        const label = timelineDisplayTimeLabel(markMinutes);
+        const isStart = Math.round(markMinutes) === Math.round(startMinutes);
+        const isEnd = Math.round(markMinutes) === Math.round(endMinutes);
+        entries.push({
+            label,
+            markMinutes,
+            x: ((markMinutes - startMinutes) / 60) * safeHourWidth,
+            labelWidth: timelineTimeMarkLabelWidth(label, true),
+            className: `mini-time-mark${isStart ? ' start' : ''}${isEnd ? ' end' : ''}`,
+            edge: isStart ? 'start' : (isEnd ? 'end' : '')
+        });
+    }
+
+    const placements = entries.map(entry => ({
+        ...entry,
+        ...timelineLabelPlacement(entry.x, entry.labelWidth, gridWidth, { edge: entry.edge, gap: TIMELINE_TIME_MARK_LABEL_GAP })
+    }));
+
+    for (let index = placements.length - 2; index >= 0; index--) {
+        const current = placements[index];
+        const next = placements[index + 1];
+        const constrained = timelineLabelPlacement(current.x, current.labelWidth, gridWidth, {
+            edge: current.edge,
+            nextLeft: next.left,
+            gap: TIMELINE_TIME_MARK_LABEL_GAP
+        });
+        if (constrained.left < current.left || constrained.edgeClamped) {
+            current.left = constrained.left;
+            current.right = constrained.right;
+            current.edgeClamped = true;
+        }
+    }
+
+    return placements;
+}
+
+function renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth) {
+    const marks = timelineMiniTimeMarkPlacements(start, end, hourWidth);
+    let html = `<div class="mini-time-scale" style="--mini-hour-width: ${hourWidth}px; --mini-grid-width: ${gridWidth}px;">`;
+    marks.forEach(mark => {
+        const className = `${mark.className}${mark.edgeClamped ? ' edge-clamped' : ''}`;
+        html += `<div class="${escapeHtml(className)}" data-mark-minutes="${escapeHtml(String(mark.markMinutes))}" data-mark-x="${escapeHtml(String(Math.round(mark.x)))}" style="--mini-time-mark-left: ${Math.round(mark.left)}px; --mini-time-mark-width: ${Math.round(mark.width)}px;">${escapeHtml(mark.label)}</div>`;
+    });
+    html += '</div>';
+    return html;
+}
+
 let _timelineAddLineCtaPositioningBound = false;
 let _timelineAddLineCtaRaf = 0;
 
@@ -860,21 +1033,19 @@ function renderTimeScale(date) {
     const container = document.getElementById('timeScale');
     container.innerHTML = '';
 
-    const { start, end } = getTimeRange(date);
+    const geometry = syncTimelineContentWidth(date, container);
+    const marks = timelineTimeMarkPlacements(date, container, geometry);
 
-    for (let h = start; h < end; h++) {
-        for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
-            const mark = document.createElement('div');
-            mark.className = 'time-mark' + (m === 0 ? ' hour' : ' half');
-            mark.textContent = `${h}:${String(m).padStart(2, '0')}`;
-            container.appendChild(mark);
-        }
-    }
-    const endMark = document.createElement('div');
-    endMark.className = 'time-mark hour end-mark';
-    endMark.textContent = `${end}:00`;
-    container.appendChild(endMark);
-    syncTimelineContentWidth(date, container);
+    marks.forEach(entry => {
+        const mark = document.createElement('div');
+        mark.className = `${entry.className}${entry.edgeClamped ? ' edge-clamped' : ''}`;
+        mark.textContent = entry.label;
+        mark.dataset.markMinutes = String(entry.markMinutes);
+        mark.dataset.markX = String(Math.round(entry.x));
+        mark.style.setProperty('--time-mark-label-left', `${Math.round(entry.left)}px`);
+        mark.style.setProperty('--time-mark-label-width', `${Math.round(entry.width)}px`);
+        container.appendChild(mark);
+    });
 }
 
 function timelineShouldRenderAfisha() {
@@ -5900,11 +6071,7 @@ async function renderDaySectionHtml(date) {
     AppState.linesByDate = AppState.linesByDate || {};
     AppState.linesByDate[dateStr] = lines;
 
-    let timeScaleHtml = `<div class="mini-time-scale" style="--mini-hour-width: ${hourWidth}px; --mini-grid-width: ${gridWidth}px;">`;
-    for (let h = start; h <= end; h++) {
-        timeScaleHtml += `<div class="mini-time-mark${h === end ? ' end' : ''}">${h}:00</div>`;
-    }
-    timeScaleHtml += '</div>';
+    const timeScaleHtml = renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth);
 
     let html = `
         <div class="day-section" data-date="${dateStr}">

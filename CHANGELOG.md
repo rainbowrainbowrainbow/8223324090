@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.95 - Timeline marker alignment fix
+
+### Timeline marker alignment / Edge labels / Animator view / Room view / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Виправлено накладання late time labels біля кінця таймлайну** - мітки на правому краї більше не з'їжджають одна на одну після range width fix.
+- **`19:45` і `20:00` більше не перекриваються** - кінцева мітка лишається видимою на правому краї, а попередня мітка зберігає читабельний відступ.
+- **Time labels використовують canonical timeline geometry** - позиції міток рахуються з того самого координатного контракту, що grid, booking blocks і now-line.
+- **Fix працює для animator і room timeline** - лінії свят і кімнат отримали спільну edge-aware геометрію без окремих CSS workaround.
+- **Перевірено zoom, compact, mobile і week view** - сценарії `15/30/60`, compact mode, mobile far-right scroll і week mini timeline покриті browser QA та focused tests.
+- **Попередні scroll reset і range width overflow fixes збережено** - зміна дати не переносить stale `scrollLeft`, а таймлайн не повертає пусту scroll-зону після кінця range.
+- **Regression tests додано для edge marker alignment** - resources test, week parity, regression matrix і UI smoke фіксують, що edge labels не додають ширину й не перекриваються.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.95`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.94 - Timeline range width fix
 
 ### Timeline range width / Empty scroll zone / Animator view / Room view / Overlay width / Browser QA / (Клешня, 21.06.2026) [codex]

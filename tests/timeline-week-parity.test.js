@@ -55,6 +55,12 @@ test('day/week period switch resets outer horizontal scroll and keeps week shell
 
 test('week mini timeline width is based on range duration without an extra end-label cell', () => {
     const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+    const responsiveCss = read('css/responsive.css');
+    const helperBlock = timeline.slice(
+        timeline.indexOf('function timelineMiniTimeMarkPlacements'),
+        timeline.indexOf('let _timelineAddLineCtaPositioningBound')
+    );
     const renderDaySectionBlock = timeline.slice(
         timeline.indexOf('async function renderDaySectionHtml'),
         timeline.indexOf('function renderMiniLineHtml')
@@ -66,10 +72,18 @@ test('week mini timeline width is based on range duration without an extra end-l
 
     assert.match(renderDaySectionBlock, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
     assert.match(renderMiniLineBlock, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
-    assert.match(renderDaySectionBlock, /for \(let h = start; h <= end; h\+\+\)/);
-    assert.match(renderDaySectionBlock, /--mini-grid-width: \$\{gridWidth\}px/);
+    assert.match(renderDaySectionBlock, /const timeScaleHtml = renderMiniTimeScaleHtml\(start, end, hourWidth, gridWidth\)/);
+    assert.match(helperBlock, /timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
+    assert.match(helperBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
+    assert.match(helperBlock, /nextLeft: next\.left/);
+    assert.match(helperBlock, /--mini-grid-width: \$\{gridWidth\}px/);
     assert.match(renderMiniLineBlock, /--mini-grid-width: \$\{gridWidth\}px/);
     assert.doesNotMatch(renderDaySectionBlock + renderMiniLineBlock, /\(end - start \+ 1\)|timelineRangeMarkCount|scrollWidth/);
+    assert.match(css, /\.mini-time-scale\s*\{[\s\S]*width:\s*var\(--mini-grid-width, max-content\)/);
+    assert.match(css, /\.mini-time-mark\s*\{[\s\S]*position:\s*absolute/);
+    assert.match(css, /\.mini-time-mark\.end\s*\{[\s\S]*text-align:\s*right/);
+    assert.match(responsiveCss, /body\.timeline-dashboard-page \.mini-time-scale\s*\{[\s\S]*width:\s*var\(--mini-grid-width, max-content\) !important/);
+    assert.doesNotMatch(responsiveCss, /body\.timeline-dashboard-page \.mini-time-mark\s*\{[\s\S]*width:\s*var\(--mini-hour-width/);
 });
 
 test('created booking reveal can find day blocks and week mini-blocks', () => {

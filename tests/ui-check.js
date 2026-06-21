@@ -58,6 +58,20 @@ function cssRuleIncludingSelectorText(css, selector) {
     return rule;
 }
 
+function cssAtRuleBlock(css, atRulePrefix) {
+    const start = css.indexOf(atRulePrefix);
+    if (start === -1) return '';
+    const open = css.indexOf('{', start);
+    if (open === -1) return '';
+    let depth = 0;
+    for (let i = open; i < css.length; i++) {
+        if (css[i] === '{') depth++;
+        if (css[i] === '}') depth--;
+        if (depth === 0) return css.slice(open + 1, i);
+    }
+    return '';
+}
+
 function hrSurfaceText() {
     return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
 }
@@ -180,6 +194,20 @@ checkPage('index.html', (doc, html) => {
         && bookingCode.includes('function populatePrimaryAnimatorSelect')
         && bookingCode.includes('openAnimationBookingInAnimatorView')
         && bookingCode.includes('openRoomBookingAnimationBridge'));
+    check('Timeline regular line headers render title-only resource names',
+        htmlContains('js/timeline.js', 'line-header line-header--title-only')
+        && htmlContains('js/timeline.js', '<span class="line-name">${escapeHtml(line.name)}</span>')
+        && !htmlContains('js/timeline.js', 'getLineSubtitle(lineForHeader)')
+        && htmlContains('css/timeline.css', '.line-header--title-only .line-name'));
+    check('Timeline room preview state only top-aligns headers with a rendered preview card',
+        htmlContains('js/timeline.js', 'function clearTimelineBanquetRoomHeaderPreviewState(header)')
+        && htmlContains('js/timeline.js', 'return false;')
+        && htmlContains('js/timeline.js', 'return true;')
+        && htmlContains('js/timeline.js', 'const rendered = renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));')
+        && htmlContains('js/timeline.js', 'if (rendered) {')
+        && htmlContains('js/timeline.js', "header.classList.add('has-timeline-banquet-room-preview')")
+        && htmlContains('js/timeline.js', 'clearTimelineBanquetRoomHeaderPreviewState(header);')
+        && htmlContains('css/timeline.css', '.line-header.has-timeline-banquet-room-preview'));
     check('Animator timeline filters banquet service pseudo-lines and kitchen blocks',
         htmlContains('js/timeline.js', "TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
         && htmlContains('js/timeline.js', 'function isParkAnimatorTimelineView')
@@ -208,12 +236,34 @@ checkPage('index.html', (doc, html) => {
         && doc.getElementById('menuToggleBtn')?.querySelector('.timeline-control-icon--dots')
         && !!doc.getElementById('historyBtn')
         && !!doc.getElementById('digestBtn')
+        && !!doc.getElementById('exportPdfBtn')
+        && timelineActionMenu?.querySelector('#digestBtn')
+        && timelineActionMenu?.querySelector('#exportPdfBtn')
         && !doc.getElementById('afishaBtn')
         && !doc.getElementById('dashboardBtn')
         && !doc.getElementById('settingsBtn')
         && !doc.getElementById('certificatesBtn')
         && !timelineActionMenu?.querySelector('a[href="/programs"]')
         && !timelineActionMenu?.querySelector('a[href="/tasks"]'));
+    check('Timeline print action is restored through existing print flow',
+        doc.getElementById('exportPdfBtn')?.textContent.includes('Друк розкладу')
+        && doc.getElementById('exportPdfBtn')?.getAttribute('role') === 'menuitem'
+        && htmlContains('js/app.js', "document.getElementById('exportPdfBtn')")
+        && htmlContains('js/app.js', 'exportTimelinePdf')
+        && htmlContains('js/ui.js', 'function exportTimelinePdf')
+        && htmlContains('js/ui.js', 'window.print()')
+        && htmlContains('js/ui.js', 'printing-timeline')
+        && htmlContains('css/timeline.css', '@media print'));
+    check('Timeline day digest uses structured backend errors and actionable UI messages',
+        htmlContains('js/settings.js', 'function dailyDigestFailureMessage')
+        && htmlContains('js/settings.js', "code === 'NO_CHAT_ID'")
+        && htmlContains('js/settings.js', "code === 'NO_BOT_TOKEN'")
+        && htmlContains('js/settings.js', "code === 'TELEGRAM_SEND_FAILED'")
+        && htmlContains('js/settings.js', 'readDailyDigestResponse(response)')
+        && htmlContains('services/scheduler.js', 'function buildDigestSendResult')
+        && htmlContains('services/scheduler.js', "code: 'NO_BOT_TOKEN'")
+        && htmlContains('services/scheduler.js', "reason: 'telegram_send_failed'")
+        && htmlContains('routes/telegram.js', "code: 'DIGEST_INTERNAL_ERROR'"));
     check('Timeline history opens as a primary toolbar action with shared history styling',
         doc.querySelector('.v32-controls > #historyBtn.btn-history')
         && !timelineActionMenu?.querySelector('#historyBtn')
@@ -237,7 +287,10 @@ checkPage('index.html', (doc, html) => {
         && modalsCss.includes('.timeline-line-editor-modal')
         && modalsCss.includes('.timeline-line-editor-actions')
         && modalsCss.includes('.form-group select')
-        && modalsCss.includes('appearance: none'));
+        && modalsCss.includes('appearance: none')
+        && modalsCss.includes('#editLineModal .timeline-line-editor-form select')
+        && modalsCss.includes('color-scheme: dark')
+        && modalsCss.includes('#editLineModal .timeline-line-editor-form select:focus'));
     check('Legacy certificate batch quantity picker hides radio without display none and keeps focus ring', !!doc.querySelector('input[name="batchQty"]') && !legacyBatchInputRule.includes('display: none') && legacyBatchInputRule.includes('opacity: 0') && legacyBatchInputRule.includes('clip-path: inset(50%)') && featuresCss.includes('.batch-qty-option:has(input:focus-visible)') && featuresCss.includes('.batch-qty-option:has(input:checked)') && featuresCss.includes('body.dark-mode .batch-qty-option:has(input:checked)'));
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     const pinataModeOptions = Array.from(doc.getElementById('pinataMode')?.querySelectorAll('option') || []).map(option => option.value);
@@ -252,7 +305,7 @@ checkPage('index.html', (doc, html) => {
     check('Room booking animation bridge creates banquet group activity atomically',
         bookingCode.includes('findOrCreateBanquetGroupForSourceBooking')
         && bookingCode.includes('BookingDrawerState.roomBookingAnimationBridge')
-        && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeContext.groupId')
+        && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeGroupId')
         && bookingCode.includes("!String(booking.linkedTo || '').trim()")
         && !/function canAddAnimationFromRoomBooking[\s\S]*!booking\.programId[\s\S]*function banquetGroupIdFromSnapshot/.test(bookingCode)
         && apiCode.includes('function apiGetBanquetByBooking')
@@ -351,11 +404,35 @@ check('HR structure route sanitizes structured node payloads', hrRouteCode.inclu
     check('HR resume uploads use authenticated Postgres-linked route storage', hrRouteCode.includes('multer.memoryStorage()') && hrRouteCode.includes('job_application_resume_files') && hrRouteCode.includes("router.post('/applications/:id/resume-files'") && hrRouteCode.includes("router.get('/applications/:id/resume-files/:fileId/download'"));
 });
 
-checkPage('center.html', (doc) => {
+checkPage('center.html', (doc, html) => {
+    const centerPageCode = fs.readFileSync(path.join(ROOT, 'js', 'center-page.js'), 'utf8');
+    const bookingSummaryPageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
+    const centerCss = cssTextWithImports('css/pages.css');
+    const bookingSummaryHardcode = /(500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('tabs exist', doc.querySelectorAll('.center-tab-btn').length > 0);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
     check('Control Center has modern truth header', !!doc.querySelector('.center-hero') && !!doc.getElementById('centerTruthStrip') && !!doc.getElementById('centerFreshness'));
     check('Control Center tabs expose ARIA state', [...doc.querySelectorAll('.center-tab-btn')].every(btn => btn.getAttribute('role') === 'tab' && btn.hasAttribute('aria-selected')));
+    check('Center exposes banquet terms price rules as a first-class price block',
+        centerPageCode.includes('const BANQUET_TERMS_PRICE_RULES')
+        && centerPageCode.includes("code: 'banquet_own_cake_fee'")
+        && centerPageCode.includes("code: 'banquet_cork_fee'")
+        && centerPageCode.includes("code: 'banquet_menu_correction_deadline_days'")
+        && centerPageCode.includes("code: 'banquet_date_change_deadline_days'")
+        && centerPageCode.includes('function renderBanquetTermsPriceBlock')
+        && centerPageCode.includes('Умови банкету')
+        && centerPageCode.includes('Плата за свій торт')
+        && centerPageCode.includes('Cork Fee')
+        && centerPageCode.includes('Меню можна коригувати за')
+        && centerPageCode.includes('Дату можна змінити за')
+        && centerPageCode.includes('Не знайдено правила')
+        && centerPageCode.includes('confirmPriceChange(this)')
+        && centerPageCode.includes('apiUpdatePrice(code')
+        && html.includes('css/pages.css')
+        && centerCss.includes('.banquet-terms-price-panel')
+        && centerCss.includes('.banquet-terms-price-row')
+        && centerCss.includes('.banquet-terms-price-grid')
+        && !bookingSummaryHardcode.test(bookingSummaryPageCode));
 });
 
 checkPage('copilot.html', (doc) => {
@@ -546,41 +623,324 @@ checkPage('timeline-settings.html', (doc, html) => {
 
 checkPage('booking-summary.html', (doc, html) => {
     const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
+    const banquetSummaryServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'banquetSummary.js'), 'utf8');
     const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
+    const printCss = cssAtRuleBlock(pageCss, '@media print');
+    const mobileCss = cssAtRuleBlock(pageCss, '@media (max-width: 760px)');
+    const printHtmlRule = cssRuleIncludingSelectorText(printCss, 'html');
+    const printDarkHtmlRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"]');
+    const printBodyRule = cssRuleIncludingSelectorText(printCss, 'body.booking-summary-page');
+    const printDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] body.booking-summary-page');
+    const printDirectDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] > body.booking-summary-page');
+    const printDirectBodyRule = cssRuleIncludingSelectorText(printCss, 'html > body.booking-summary-page');
+    const printToolbarRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toolbar');
+    const printStateRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-state');
+    const printToastRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toast');
+    const printDocumentRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-document');
+    const printA4PageRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-a4-page');
+    const mobilePrintRootRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-print-root');
+    const mobileA4PageRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-a4-page');
+    const printSectionHeadingRule = cssRuleIncludingSelectorText(printCss, '.summary-section h2');
+    const printTableHeadRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table thead');
+    const printTableRowRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table tr');
+    const printServiceEventRule = cssRuleIncludingSelectorText(printCss, '.summary-service-event');
+    const printTermsRule = cssRuleIncludingSelectorText(printCss, '.summary-terms');
+    const printTermsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--terms');
+    const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
+    const printCommentsRule = cssRuleIncludingSelectorText(printCss, '.summary-comments');
+    const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
+    const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
+    const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
+    const summaryMetaGridRule = cssRuleText(pageCss, '.summary-doc-meta-grid');
+    const termsSectionRule = cssRuleText(pageCss, '.summary-section--terms');
+    const printTermsSpacingRule = cssRuleText(printCss, '.summary-section--terms');
+    const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
+    const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
+    const summaryBriefItemRule = cssRuleText(pageCss, '.summary-brief-item');
+    const mobileMetaGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-doc-meta-grid');
+    const mobileBriefGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-brief-grid');
+    const printMetaGridRule = cssRuleIncludingSelectorText(printCss, '.summary-doc-meta-grid');
+    const printBriefGridRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-grid');
+    const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
+    const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
+    const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
+    const renderTermsBody = pageCode.match(/function renderTerms\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function renderDocument/)?.[1] || '';
+    const renderDocumentBody = pageCode.match(/function renderDocument\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function summaryText/)?.[1] || '';
+    const summaryTextBody = pageCode.match(/function summaryText\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    async function copyText/)?.[1] || '';
+    const summaryVenueLinesTemplate = renderDocumentBody.match(/<div class="summary-venue-lines">([\s\S]*?)<\/div>/)?.[1] || '';
+    const summaryDocMetaTemplate = renderDocumentBody.match(/<div class="summary-doc-meta">([\s\S]*?)<\/div>/)?.[1] || '';
+    const summaryVenueLineCount = (summaryVenueLinesTemplate.match(/<span>/g) || []).length;
+    const summaryDocMetaLineCount = (summaryDocMetaTemplate.match(/<span>/g) || []).length;
+    const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
         && !!doc.getElementById('bookingSummaryCopy')
         && !!doc.getElementById('bookingSummaryPrint')
         && !!doc.getElementById('bookingSummaryWarnings')
+        && !!doc.getElementById('bookingSummaryPrintRoot')
         && !!doc.getElementById('bookingSummaryDocument'));
+    check('Booking summary page uses banquet sheet naming without changing internal route contracts',
+        doc.title === 'Event Genix | Банкетний лист'
+        && doc.querySelector('meta[name="description"]')?.getAttribute('content') === 'Preview і друк банкетного листа Event Genix'
+        && doc.querySelector('.booking-summary-toolbar')?.getAttribute('aria-label') === 'Дії з банкетним листом'
+        && doc.querySelector('.booking-summary-toolbar h1')?.textContent?.trim() === 'Банкетний лист'
+        && doc.getElementById('bookingSummaryState')?.textContent?.includes('Завантаження банкетного листа...')
+        && doc.getElementById('bookingSummaryDocument')?.getAttribute('aria-label') === 'Документ банкетного листа'
+        && pageCode.includes("summary.document?.title || 'БАНКЕТНИЙ ЛИСТ'")
+        && pageCode.includes("summary.venue?.name || 'Банкетний лист'")
+        && pageCode.includes('Потрібно увійти в CRM, щоб відкрити банкетний лист.')
+        && pageCode.includes('Не вдалося завантажити банкетний лист')
+        && pageCode.includes('Банкетний лист ще не завантажений')
+        && pageCode.includes('Текст банкетного листа скопійовано')
+        && banquetSummaryServiceCode.includes("title: 'БАНКЕТНИЙ ЛИСТ'")
+        && pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
+        && !html.includes('Вижимка банкету')
+        && !html.includes('вижимк')
+        && !pageCode.includes('Вижимка банкету')
+        && !pageCode.includes('вижимк')
+        && !banquetSummaryServiceCode.includes("title: 'Вижимка банкету'"));
+    check('Booking summary page renders canonical comments section and copy text',
+        pageCode.includes('function summaryCommentRows(summary)')
+        && pageCode.includes('function renderComments(summary)')
+        && renderDocumentBody.includes("briefItem('Дата банкету', formatDate(event.date))")
+        && renderDocumentBody.includes("briefItem('Прихід гостей', event.time)")
+        && !renderDocumentBody.includes("briefItem('Дата', formatDate(event.date))")
+        && !renderDocumentBody.includes("briefItem('Час', event.time)")
+        && summaryTextBody.includes('`Дата банкету: ${formatDate(event.date)}`')
+        && summaryTextBody.includes('`Прихід гостей: ${formatValue(event.time)}`')
+        && !summaryTextBody.includes('Дата' + '/час:')
+        && renderDocumentBody.includes('summary-section--comments')
+        && renderDocumentBody.includes('${renderComments(summary)}')
+        && renderDocumentBody.indexOf('summary-section--comments') > renderDocumentBody.indexOf('summary-section--service-events')
+        && renderDocumentBody.indexOf('summary-section--comments') < renderDocumentBody.indexOf('summary-section--finance')
+        && summaryTextBody.includes('const comments = summaryCommentRows(summary)')
+        && summaryTextBody.includes('Примітки:')
+        && summaryTextBody.includes('comments.map(comment => `- ${comment.label}: ${comment.text}`)')
+        && pageCss.includes('.summary-comments')
+        && pageCss.includes('.summary-comment-row')
+        && printCommentsSectionRule.includes('break-inside: avoid')
+        && printCommentsRule.includes('break-inside: avoid')
+        && printCommentRowRule.includes('break-inside: avoid')
+        && banquetSummaryServiceCode.includes('function buildSummaryComments')
+        && banquetSummaryServiceCode.includes('comments: summaryComments')
+        && banquetSummaryServiceCode.includes("add('kitchen', 'Кухня'")
+        && banquetSummaryServiceCode.includes("add('activity', `Активність —")
+        && banquetSummaryServiceCode.includes("add('internal', 'Внутрішній коментар'"));
+    check('Booking summary sheet uses clear menu quantity wording',
+        pageCode.includes('function summaryMenuQuantityLabel(row = {})')
+        && pageCode.includes('function formatCurrencyLabel(currency = \'UAH\')')
+        && pageCode.includes("return normalized.toUpperCase() === 'UAH' ? '₴' : normalized")
+        && pageCode.includes('function normalizeSummaryMenuServingUnitDisplay')
+        && pageCode.includes('function summaryOrderQuantityLabel(row = {})')
+        && pageCode.includes('function summaryEntryFullAmountLabel(row = {}, currency = \'UAH\')')
+        && pageCode.includes('по ${unit}')
+        && pageCode.includes('<col style="width:118px">')
+        && pageCode.includes('<td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>')
+        && summaryTextBody.includes('const quantityLabel = summaryOrderQuantityLabel(row)')
+        && summaryTextBody.includes('${summaryEntryFullAmountLabel(row, currency)}')
+        && summaryTextBody.includes('— ${quantityLabel} × ${formatMoney(row.unitPrice, currency)}')
+        && !summaryTextBody.includes('formatValue(row.quantity)} x')
+        && banquetSummaryServiceCode.includes('servingUnit: item.servingUnit || null')
+        && pageCss.includes('.summary-order-table .qty')
+        && pageCss.includes('white-space: normal'));
     check('Booking summary page loads standalone controller and print CSS',
         getHtmlScripts(html).includes('js/booking-summary-page.js')
         && html.includes('css/booking-summary.css')
-        && pageCss.includes('@media print')
-        && pageCss.includes('size: A4'));
+        && !!printCss
+        && printCss.includes('size: A4'));
+    check('Booking summary preview uses a stable A4 wrapper contract',
+        doc.getElementById('bookingSummaryPrintRoot')?.classList.contains('booking-summary-print-root')
+        && doc.getElementById('bookingSummaryDocument')?.classList.contains('booking-summary-document')
+        && doc.getElementById('bookingSummaryDocument')?.classList.contains('booking-summary-a4-page')
+        && pageCode.includes("el('bookingSummaryPrintRoot')")
+        && pageCss.includes('.booking-summary-print-root')
+        && pageCss.includes('.booking-summary-a4-page')
+        && pageCss.includes('aspect-ratio: 210 / 297')
+        && pageCss.includes('width: min(100%, 210mm)')
+        && mobilePrintRootRule.includes('overflow-x: visible')
+        && mobileA4PageRule.includes('width: 100%')
+        && mobileA4PageRule.includes('max-width: 210mm'));
+    check('Booking summary print resets dark theme and screen chrome',
+        printHtmlRule.includes('background: #fff !important')
+        && printDarkHtmlRule.includes('background-image: none !important')
+        && printBodyRule.includes('background-color: #fff !important')
+        && printDarkBodyRule.includes('color-scheme: light !important')
+        && printDirectDarkBodyRule.includes('background-image: none !important')
+        && printDirectBodyRule.includes('background-color: #fff !important')
+        && printToolbarRule.includes('display: none !important')
+        && printStateRule.includes('display: none !important')
+        && printToastRule.includes('display: none !important')
+        && printDocumentRule.includes('border-radius: 0 !important')
+        && printDocumentRule.includes('background: #fff !important')
+        && printDocumentRule.includes('box-shadow: none !important')
+        && printDocumentRule.includes('color: #000 !important'));
+    check('Booking summary print pagination keeps dense summaries on A4 and protects row breaks',
+        pageCode.includes('summary-section--orders')
+        && pageCode.includes('summary-section--service-events')
+        && pageCode.includes('summary-section--comments')
+        && pageCode.includes('summary-section--finance')
+        && pageCode.includes('summary-section--terms')
+        && printCss.includes('.summary-section--comments')
+        && printCss.includes('.summary-section--finance')
+        && printCss.includes('.summary-section--terms')
+        && printCss.includes('orphans: 2')
+        && printCss.includes('widows: 2')
+        && printCss.includes('padding: 3px 5px')
+        && printSectionHeadingRule.includes('break-after: avoid')
+        && printSectionHeadingRule.includes('page-break-after: avoid')
+        && printTableHeadRule.includes('display: table-header-group')
+        && printTableRowRule.includes('break-inside: avoid')
+        && printTermsItemRule.includes('page-break-inside: avoid')
+        && printServiceEventRule.includes('break-inside: avoid')
+        && termsSectionRule.includes('margin-top: 18px')
+        && printTermsSpacingRule.includes('margin-top: 12px')
+        && printA4PageRule.includes('aspect-ratio: auto')
+        && !pageCss.includes('height: 297mm'));
+    check('Booking summary terms stay backend-driven across preview, copy text, and print',
+        renderDocumentBody.includes('summary-section--terms')
+        && renderDocumentBody.includes('${renderTerms(summary)}')
+        && renderDocumentBody.includes('summary.terms?.title')
+        && renderTermsBody.includes('const terms = summary?.terms || {}')
+        && renderTermsBody.includes('const items = Array.isArray(terms.items) ? terms.items.filter(Boolean) : []')
+        && renderTermsBody.includes('items.map(item => `<li>${escapeHtml(item)}</li>`).join')
+        && renderTermsBody.includes('Умови банкету не заповнені')
+        && summaryTextBody.includes('const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : []')
+        && summaryTextBody.includes('terms.map(item => `- ${item}`)')
+        && summaryTextBody.includes("terms.length ? terms.map")
+        && !frontendBanquetTermsHardcode.test(pageCode)
+        && !frontendBanquetTermsHardcode.test(pageCss));
+    check('Booking summary terms distinguish manual terms from auto price-rule snapshots',
+        banquetSummaryServiceCode.includes('function termsSnapshotSourceOf')
+        && banquetSummaryServiceCode.includes('function isPriceRuleTermsSnapshot')
+        && banquetSummaryServiceCode.includes("source: 'manual'")
+        && banquetSummaryServiceCode.includes("source: 'snapshot_fallback'")
+        && banquetSummaryServiceCode.includes("source: defaults.source || 'price_rules'")
+        && banquetSummaryServiceCode.includes('priceRuleSnapshot')
+        && !frontendBanquetTermsHardcode.test(pageCode)
+        && !frontendBanquetTermsHardcode.test(pageCss));
+    check('Booking summary print keeps banquet terms section and list items unbroken',
+        printTermsSectionRule.includes('break-inside: avoid')
+        && printTermsSectionRule.includes('page-break-inside: avoid')
+        && printTermsRule.includes('break-inside: avoid')
+        && printTermsRule.includes('page-break-inside: avoid')
+        && printTermsItemRule.includes('break-inside: avoid')
+        && printTermsItemRule.includes('page-break-inside: avoid'));
+    check('Booking summary print keeps comments section unbroken',
+        printCommentsSectionRule.includes('break-inside: avoid')
+        && printCommentsSectionRule.includes('page-break-inside: avoid')
+        && printCommentsRule.includes('break-inside: avoid')
+        && printCommentsRule.includes('page-break-inside: avoid')
+        && printCommentRowRule.includes('break-inside: avoid')
+        && printCommentRowRule.includes('page-break-inside: avoid'));
+    check('Booking summary print trigger stays browser-native without app-owned header or footer promises',
+        printTriggerCount === 1
+        && pageCode.includes('function printSummaryDocument()')
+        && pageCode.includes('const originalTitle = document.title')
+        && pageCode.includes('document.title = printTitle')
+        && pageCode.includes('document.title = originalTitle')
+        && pageCode.includes("window.addEventListener('afterprint', restoreTitle")
+        && pageCode.includes('setTimeout(restoreTitle, 1000)')
+        && pageCode.includes('window.print()')
+        && !pageCode.includes('page.pdf')
+        && !pageCode.includes('jsPDF')
+        && !pageCode.includes('html2pdf')
+        && !pageCode.includes('displayHeaderFooter')
+        && !pageCss.includes('headerTemplate')
+        && !pageCss.includes('footerTemplate')
+        && !pageCss.includes('@top-')
+        && !pageCss.includes('@bottom-'));
     check('Booking summary page consumes the banquet summary API and prints client-side only',
         pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
         && pageCode.includes("const groupId = params.get('groupId') || '';")
         && pageCode.includes("requestParams.set('groupId', groupId)")
         && pageCode.includes('totals.activitySubtotal')
-        && pageCode.includes('window.print()')
+        && printTriggerCount === 1
         && pageCode.includes('bookingSummaryWarnings')
         && pageCode.includes('navigator.clipboard')
         && !pageCode.includes('pdf'));
-    check('Booking summary sheet uses compact text header and keeps table only for ordered rows',
-        pageCode.includes('function compactFact')
-        && pageCode.includes('summary-brief')
+    check('Booking summary header labels generated account as manager, not author',
+        pageCode.includes('<span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
+        && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
+        && !pageCode.includes('Автор:')
+        && !pageCode.includes("compactFact('Менеджер', event.manager)"));
+    check('Booking summary keeps Booking ID in header metadata only',
+        pageCode.includes('<span>Booking ID: ${escapeHtml(summary.bookingId ||')
+        && pageCode.includes('`Booking ID: ${summary.bookingId ||')
+        && !pageCode.includes("briefItem('Booking ID'"));
+    check('Booking summary header metadata uses symmetric three-row grid for screen and print',
+        renderDocumentBody.includes('<div class="summary-doc-heading">')
+        && renderDocumentBody.includes('<div class="summary-doc-meta-grid">')
+        && summaryVenueLineCount === 3
+        && summaryDocMetaLineCount === 3
+        && summaryHeaderRule.includes('display: grid')
+        && summaryHeaderRule.includes('border-bottom: 2px solid var(--summary-ink)')
+        && summaryMetaGridRule.includes('grid-template-columns')
+        && summaryMetaGridRule.includes('grid-template-rows: repeat(3, auto)')
+        && pageCss.includes('.summary-venue-lines > span:nth-child(1)')
+        && pageCss.includes('.summary-doc-meta > span:nth-child(1)')
+        && pageCss.includes('display: contents')
+        && mobileMetaGridRule.includes('grid-template-columns: 1fr')
+        && printMetaGridRule.includes('grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr)')
+        && printMetaGridRule.includes('grid-template-rows: repeat(3, auto)')
+        && printMetaGridRule.includes('column-gap: 10px')
+        && printCss.includes('.summary-venue-lines > span')
+        && printCss.includes('.summary-doc-meta > span')
+        && printCss.includes('grid-column: 2')
+        && printCss.includes('text-align: right')
+        && !pageCss.includes('--summary-doc-meta-offset')
+        && !pageCss.includes('padding-top: var(--summary-doc-meta-offset)')
+        && !printCss.includes('--summary-doc-meta-offset')
+        && !pageCss.includes('height: 297mm'));
+    check('Booking summary sheet uses two-column brief and keeps table only for ordered rows',
+        pageCode.includes('function briefItem')
+        && pageCode.includes('function briefColumn')
+        && pageCode.includes('summary-brief-grid')
+        && pageCode.includes('summary-brief-column')
+        && pageCode.includes('summary-brief-label')
+        && pageCode.includes('summary-brief-value')
         && pageCode.includes('summary-finance-lines')
         && pageCode.includes('<table class="summary-order-table">')
+        && !pageCode.includes('function compactFact')
+        && !pageCode.includes('function compactLine')
+        && !pageCode.includes('compactLine([')
+        && !pageCode.includes('summary-brief-line')
+        && !pageCode.includes("compactFact('Менеджер', event.manager)")
         && !pageCode.includes('summary-info-grid')
         && !pageCode.includes('summary-total-card')
         && !pageCode.includes('<td class="money">')
-        && pageCss.includes('.summary-brief-line')
+        && pageCss.includes('.summary-brief-grid')
+        && pageCss.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
+        && summaryBriefRule.includes('--summary-brief-label-width: 118px')
+        && summaryBriefRule.includes('break-inside: avoid')
+        && summaryBriefGridRule.includes('min-width: 0')
+        && summaryBriefItemRule.includes('grid-template-columns: minmax(var(--summary-brief-label-width), 34%) minmax(0, 1fr)')
+        && pageCss.includes('.summary-brief-column')
+        && pageCss.includes('.summary-brief-label')
+        && pageCss.includes('.summary-brief-value')
+        && mobileBriefGridRule.includes('grid-template-columns: 1fr')
+        && printCss.includes('--summary-brief-label-width: 106px')
+        && printBriefGridRule.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
+        && printBriefGridRule.includes('page-break-inside: avoid')
+        && printBriefColumnRule.includes('break-inside: avoid')
+        && printBriefItemRule.includes('page-break-inside: avoid')
         && pageCss.includes('.summary-finance-lines p')
         && pageCss.includes('.summary-order-table thead')
         && pageCss.includes('break-inside: avoid')
+        && !pageCss.includes('.summary-brief-line')
         && !pageCss.includes('.summary-info-grid')
         && !pageCss.includes('.summary-total-card'));
+    check('Booking summary details rows use birthday, children, and conditional program contract',
+        pageCode.includes('function formatBirthday(value)')
+        && renderDocumentBody.includes("briefItem('Діти', counts.children)")
+        && renderDocumentBody.includes("programLabel ? briefItem('Програма', programLabel) : ''")
+        && renderDocumentBody.includes("briefItem('Дата народження', formatBirthday(celebrant.birthday))")
+        && summaryTextBody.includes('const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;')
+        && summaryTextBody.includes('`Дата народження: ${formatBirthday(celebrant.birthday)}`')
+        && summaryTextBody.includes('`Дітей: ${formatValue(counts.children)}`')
+        && summaryTextBody.includes('...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : [])')
+        && !renderDocumentBody.includes("briefItem('Учасники'")
+        && !renderDocumentBody.includes("briefItem('Програма', event.programName)")
+        && !summaryTextBody.includes('`Програма: ${formatValue(event.programName)}`'));
 });
 
 checkPage('sound.html', (doc, html) => {
@@ -711,6 +1071,9 @@ check('Profile cabinet tasker has canonical My Day projection and default-collap
 check('Profile cabinet subtask add action is anchored above the editable subtask list', profileCode.includes('class="cabinet-subtask-list-toolbar"') && profileCode.indexOf('onclick="addCabinetSubtask()"') > profileCode.indexOf('id="cabinetSubtaskDraftStatus"') && profileCode.indexOf('onclick="addCabinetSubtask()"') < profileCode.indexOf('id="cabinetSubtaskList"') && profilePagesCss.includes('.cabinet-subtask-list-toolbar'));
 check('Profile my day decomposed task cards collapse without hiding progress truth', profileCode.includes('function cabinetTaskIsDecomposed') && profileCode.includes("activeTab === 'myday'") && profileCode.includes('is-subtasks-collapsed') && profileCode.includes('is-subtasks-expanded') && profileCode.includes('function renderCabinetSubtaskCollapsedSummary') && profileCode.includes('aria-controls="cabinetSubtasksPanel') && profilePagesCss.includes('.cabinet-task-card.is-subtasks-collapsed') && profilePagesCss.includes('.cabinet-subtask-compact-summary') && profilePagesCss.includes('.cabinet-subtask-toggle::after'));
 check('Profile my tasks duplicate is neutralized into My Day plus canonical Tasks link', renderMyDayBody.includes('return renderMyDayCommandCenterTab();') && renderMyDayCommandCenterBody.includes('renderCabinetTaskComposer') && renderMyDayCommandCenterBody.includes('renderCabinetPulseCluster()') && renderMyTasksBody.includes('return renderMyDayTab();') && profileCode.includes('function normalizeProfileTaskTab') && profileCode.includes("case 'mytasks': return renderMyDayTab();") && profileCode.includes('href="/tasks?view=today"') && profileCode.includes('href="/tasks?view=waiting"') && profileCode.includes('cabinet-command-center') && !profileCode.includes("setCabinetQuickMode('tasks')") && !profileCode.includes('href="/profile?tab=mytasks"') && !profileCode.includes('cabinet-shell--mytasks'));
+const legacyProfileNewLeadPath = ['/api/leads', 'new-count'].join('/');
+const legacyProfileApiGetNewLead = "apiGet('/leads/" + "new-count'";
+check('Profile cabinet pulse uses canonical business-scoped live counters', profileCode.includes('function apiGetScoped') && profileCode.includes("apiGetScoped('/business/live-counters')") && profileCode.includes('function profileLiveCounterBucket') && profileCode.includes('function syncCabinetPulseCounts(liveCounters)') && profileCode.includes('bucket.alerts?.active') && profileCode.includes('safeCabinetPulseCount(leads.hot) || safeCabinetPulseCount(leads.new)') && !profileCode.includes(legacyProfileApiGetNewLead) && !profileCode.includes(legacyProfileNewLeadPath) && !profileCode.includes("apiGet('/dashboard/alerts'"));
 check('Profile my day completed history strip uses real done task payload and accessible day groups', renderMyDayCommandCenterBody.includes('renderCabinetCompletedHistoryStrip()') && profileCode.includes('function renderCabinetCompletedHistoryStrip') && profileCode.includes('function renderCabinetCompletedHistoryTile') && profileCode.includes('function groupCabinetCompletedHistoryByDay') && profileCode.includes('function renderCabinetCompletedDayDivider') && profileCode.includes('data-cabinet-completed-day-divider') && profileCode.includes('aria-describedby=') && profilePagesCss.includes('.cabinet-completed-strip') && profilePagesCss.includes('.cabinet-completed-tile:focus-visible') && profilePagesCss.includes('.cabinet-completed-day-divider') && profilePagesCss.includes('.cabinet-completed-day-stats') && profilePagesCss.includes('.cabinet-completed-detail') && htmlContains('routes/tasks.js', 'completedHistoryLimit') && htmlContains('routes/tasks.js', "COALESCE(t.status, 'todo') = 'done'") && htmlContains('routes/tasks.js', 'completedHistoryOverflow'));
 check('Profile task creation reuses canonical TaskCreate adapter', profilePageHtml.includes('js/task-create.js') && fs.readFileSync(path.join(ROOT, 'tasks.html'), 'utf8').includes('js/task-create.js') && profileCode.includes('window.TaskCreate.buildPayload') && profileCode.includes('window.TaskCreate.createTask') && profileCode.includes('showCabinetTaskCreateSuccessToast') && profileCode.includes('window.TaskCreate.buildCreateNotification') && !profileCode.includes('Задачу створено, але частину деталей треба перевірити') && taskCreateCode.includes('window.TaskCreate') && taskCreateCode.includes('buildPayload') && taskCreateCode.includes('createTask') && taskCreateCode.includes('buildCreateNotification') && taskCreateCode.includes('/tasks'));
 check('Profile tasker completion replaces waiting primary segment and gates report-backed completion', cabinetTaskSegmentsBody.includes("{ id: 'actionable', label: 'Виконати'") && !cabinetTaskSegmentsBody.includes("{ id: 'waiting', label: 'Чекаю'") && profileCode.includes('cabinetTaskReportBadge') && profileCode.includes('cabinetTaskReportRequired') && profileCode.includes('window.TaskReportGate.openReportModal') && taskCreateCode.includes('window.TaskReportGate') && taskCreateCode.includes('/completion-report') && profilePagesCss.includes('.cabinet-task-report-badge'));
@@ -905,6 +1268,9 @@ check('Sidebar Sales group starts with Timeline shortcut', /key:\s*'sales'[\s\S]
 check('Global search preserves active business context for CRM results and keeps product direct links route-safe', searchCode.includes('CrmBusinessContext.apiUrl') && searchRoutes.includes('requireBusinessContext') && searchRoutes.includes('COALESCE(c.business_context') && !searchRoutes.includes('/programs?highlight=') && searchRoutes.includes("'/maysternya-doli'") && searchRoutes.includes('businessContext') && searchCode.includes("href: '/programs#kitchen-menu'"));
 check('Sidebar business context shell owns Products, Leads, and Customers scoping', htmlContains('js/api.js', 'CRM_BUSINESS_SCOPED_PAGES') && htmlContains('js/api.js', "products: { id: 'products'") && htmlContains('js/api.js', "leads: { id: 'leads'") && htmlContains('js/api.js', "customers: { id: 'customers'") && htmlContains('js/api.js', 'CRM_BUSINESS_SWITCH_ROLES') && htmlContains('js/api.js', 'function getCrmBusinessState') && htmlContains('js/components/sidebar.js', 'sidebarBusinessContextHost') && htmlContains('js/components/sidebar.js', 'api.switchTo(event.target.value') && htmlContains('js/auth.js', 'CrmBusinessContext?.renderShell') && !htmlContains('programs.html', 'productsBusinessSelect') && !htmlContains('customers.html', 'customerBusinessContext') && !htmlContains('leads.html', 'leadBusinessContext') && !htmlContains('js/api.js', 'id="globalBusinessContextSelect"'));
 check('Sidebar business switcher has one canonical hydrated state and guarded transition UX', htmlContains('js/api.js', 'function resolveCrmBusinessContextState') && htmlContains('js/api.js', 'storageBusinessId') && htmlContains('js/api.js', 'crmBusinessContextHydrated') && htmlContains('js/api.js', 'clearCrmBusinessContextStorage') && sidebarCode.includes('businessSwitching') && sidebarCode.includes('data-sidebar-business-switcher="true"') && sidebarCode.includes('aria-busy') && sidebarCode.includes('showNotification') && sidebarCode.includes('crmBusinessContextHydrated') && sidebarAuroraCss.includes('.sidebar-business-select:focus-visible') && sidebarAuroraCss.includes('.sidebar-business-context[data-switching="true"]') && sidebarAuroraCss.includes('.sidebar-nav.collapsed .sidebar-business-select'));
+const legacySidebarHotLeadPath = ['/api/leads', 'hot'].join('/');
+const legacySidebarNewLeadPath = ['/api/leads', 'new-count'].join('/');
+check('Sidebar live counters use canonical business-scoped endpoint', sidebarCode.includes("'/api/business/live-counters'") && sidebarCode.includes('function _fetchBusinessLiveCounters') && sidebarCode.includes('function _businessLiveCounterBucket') && sidebarCode.includes('function _businessScopeCounterLabel') && sidebarCode.includes("_setBadge('leads_new'") && sidebarCode.includes('focusChipFunnel') && sidebarCode.includes('crmBusinessContextChanged') && sidebarCode.includes('crmBusinessContextHydrated') && sidebarCode.includes('_refreshSidebarOperationalWidgets();') && !sidebarCode.includes(legacySidebarHotLeadPath) && !sidebarCode.includes(legacySidebarNewLeadPath));
 check('Sidebar business switcher uses clean display labels without half-word wrapping', sidebarCode.includes('function _sidebarBusinessDisplayLabel') && sidebarCode.includes('const firstWord = _firstSidebarBusinessWord(fullLabel)') && sidebarCode.includes('data-full-label') && sidebarCode.includes('data-display-label') && sidebarCode.includes('Поточний бізнес CRM: ${businessFullLabelFor(currentContext)}') && sidebarAuroraCss.includes('.sidebar-business-select option') && sidebarAuroraCss.includes('white-space: nowrap') && sidebarAuroraCss.includes('line-height: 1'));
 check('Sidebar business switcher exposes safe multi/all overview modes behind a gear panel', htmlContains('js/api.js', 'function resolveCrmBusinessScopeState') && htmlContains('js/api.js', 'allowsAggregate: crmBusinessPageAllowsAggregate') && htmlContains('js/api.js', 'hasPageBinding: crmBusinessPageHasBinding') && htmlContains('js/api.js', "const CRM_BUSINESS_AGGREGATE_PAGE_IDS = new Set(['dashboard', 'products', 'leads', 'customers', 'reports'])") && sidebarCode.includes('data-sidebar-business-settings-toggle') && sidebarCode.includes('sidebarBusinessSettingsPanel') && sidebarCode.includes('businessSettingsOpen') && sidebarCode.includes('aria-hidden="${settingsOpen ?') && sidebarCode.includes("' inert'") && sidebarCode.includes('data-sidebar-business-scope="true"') && sidebarCode.includes("['single', 'multi', 'all']") && sidebarCode.includes('data-business-scope-mode="${mode}"') && sidebarCode.includes('sidebar-business-readonly-note') && sidebarCode.includes('sidebar-business-multi-option') && sidebarCode.includes('sidebar-business-unavailable') && sidebarCode.includes('api.switchScope(nextScope') && sidebarAuroraCss.includes('.sidebar-business-settings-btn') && sidebarAuroraCss.includes('.sidebar-business-settings-panel') && sidebarAuroraCss.includes('.sidebar-business-scope-btn') && sidebarAuroraCss.includes('.sidebar-business-multi-option') && sidebarAuroraCss.includes('.sidebar-nav.collapsed .sidebar-business-settings-panel') && !htmlContains('js/api.js', 'id="globalBusinessContextSelect"'));
 check('Aggregate business scope has explicit read-only UX guards on scoped CRM modules', htmlContains('js/api.js', 'function guardCrmBusinessWrite') && htmlContains('js/api.js', 'guardWrite: guardCrmBusinessWrite') && htmlContains('js/customers-page.js', 'function guardCustomerWrite') && htmlContains('js/customers-page.js', 'customerBusinessReadOnlyNotice') && htmlContains('js/leads-page.js', 'function guardLeadWrite') && htmlContains('js/leads-page.js', 'leadBusinessReadOnlyNotice') && htmlContains('js/programs-page.js', 'function guardProductWrite') && htmlContains('js/programs-page.js', 'productBusinessReadOnlyNotice') && reportsPageCode.includes('function guardReportsWrite') && reportsPageCode.includes('reportsBusinessReadOnlyNotice') && layoutCss.includes('.crm-business-readonly-banner'));
@@ -980,6 +1346,14 @@ const timelineSetViewBlock = timelineCode.slice(
     timelineCode.indexOf('async function setTimelineView'),
     timelineCode.indexOf('window.TimelineView =')
 );
+const timelineBanquetLinkLayerBlock = timelineCode.slice(
+    timelineCode.indexOf('function ensureBanquetLinkLayer'),
+    timelineCode.indexOf('function clearBanquetLinkLayer')
+);
+const timelineFitCellWidthBlock = uiCode.slice(
+    uiCode.indexOf('function _timelineFitCellWidth'),
+    uiCode.indexOf('function _timelineResponsiveCellWidth')
+);
 const timelineRenderStartIndex = timelineCode.indexOf('async function renderTimeline()');
 const timelineRenderClearIndex = timelineCode.indexOf('clearTimelineBanquetRoomPreviews()', timelineRenderStartIndex);
 const timelineRenderFetchIndex = timelineCode.indexOf('getLinesForDate(selectedDate)', timelineRenderStartIndex);
@@ -1007,6 +1381,32 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('function applyTimelineBanquetPreview')
     && timelineCode.includes('function renderTimelineBanquetRoomCard')
     && timelineCode.includes('function showTimelineBanquetInspector')
+    && timelineCode.includes('function timelineBanquetCommentItems')
+    && timelineCode.includes('function timelineBanquetCommentsHtml')
+    && timelineCode.includes('function timelineBanquetActivityStartsText')
+    && timelineCode.includes('TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES')
+    && timelineCode.includes("'banquet_group_not_found'")
+    && timelineCode.includes("'legacy_banquet_links_fallback'")
+    && timelineCode.includes("'banquet_group_schema_unavailable'")
+    && timelineCode.includes('function timelineBanquetSnapshotWarningText')
+    && timelineCode.includes('.map(timelineBanquetSnapshotWarningText)')
+    && !timelineCode.includes('Booking is not attached to a banquet group.')
+    && !timelineCode.includes('Loaded from legacy booking_banquet_links because no banquet group exists yet.')
+    && !timelineCode.includes('Banquet group schema is not available.')
+    && timelineCode.includes('bookingWorkspace')
+    && timelineCode.includes('comments.kitchen')
+    && timelineCode.includes('comments.activity')
+    && timelineCode.includes('comments.internal')
+    && timelineCode.includes('item?.servingNote || item?.serving_note')
+    && timelineCode.includes('item?.note || item?.notes')
+    && timelineCode.includes('function timelineMenuQuantityLabel')
+    && timelineCode.includes('servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null')
+    && timelineCode.includes('timelineMenuQuantityLabel(item)')
+    && !timelineCode.includes("item?.quantity ? `x${item.quantity}` : ''")
+    && !timelineCode.includes("item.quantity ? `× ${item.quantity}` : ''")
+    && timelineCode.includes('timeline-banquet-inspector-menu-note')
+    && timelineCode.includes('Початок активностей')
+    && timelineCode.includes('Примітки')
     && timelineCode.includes('function hydrateTimelineBanquetPreview')
     && timelineCode.includes('function timelineBanquetPreviewRoleUsesOccupancyBand')
     && timelineCode.includes('function setTimelineBanquetOccupancyBand')
@@ -1031,6 +1431,10 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineConstructorCss.includes('.timeline-banquet-room-card-signal--room-setup')
     && timelineConstructorCss.includes('.timeline-banquet-room-card-glance')
     && timelineConstructorCss.includes('.timeline-banquet-inspector')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-section--notes')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-notes')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-menu-note')
+    && timelineConstructorCss.includes('.timeline-banquet-inspector-note-text')
     && timelineConstructorCss.includes('.timeline-banquet-inspector-btn--primary')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band')
     && timelineConstructorCss.includes('.booking-block.is-timeline-banquet-occupancy-band .title')
@@ -1140,12 +1544,17 @@ check('Room timeline banquet preview uses readable labels instead of single-lett
     && timelineBanquetRoomCardBlock.includes('timelineBanquetPlural(activityCount')
     && timelineBanquetRoomCardBlock.includes("['Кімната'")
     && timelineBanquetRoomCardBlock.includes("['Клієнт'")
-    && timelineBanquetRoomCardBlock.includes("['Час'")
+    && timelineBanquetRoomCardBlock.includes("['Прихід гостей'")
     && timelineBanquetRoomCardBlock.includes("['Сигнали'")
+    && timelineCode.includes('<span>Прихід гостей</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>')
+    && !timelineCode.includes('<span>Дата' + '/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>')
     && timelineCode.includes("label: 'Видача'")
     && timelineCode.includes("'Торт'")
     && timelineCode.includes("data-banquet-inspector-details>Деталі")
-    && timelineCode.includes('>Вижимка</a>')
+    && timelineCode.includes('Активність —')
+    && timelineCode.includes('Внутрішній коментар')
+    && timelineCode.includes('>Банкетний лист</a>')
+    && !timelineCode.includes('>Вижимка</a>')
     && /line-height:\s*1\.25\s*;/.test(timelineBanquetRoomCardSignalRule)
     && /padding:\s*2px 5px 3px\s*;/.test(timelineBanquetRoomCardSignalRule)
     && !timelineCode.includes('data-banquet-badge')
@@ -1259,7 +1668,8 @@ check('Timeline add animator lane spans content while CTA stays visible-centered
 check('Timeline scale rows and add zone share a dynamic width contract',
     timelineCode.includes('function timelineRangeBoundMinutes(value)')
     && timelineCode.includes('function syncTimelineContentWidth(date, anchor)')
-    && timelineCode.includes('timelineRangeMarkCount(date) * cellWidth')
+    && timelineCode.includes('timelineRangeCellCount(date) * cellWidth')
+    && !timelineCode.includes('timelineRangeMarkCount(date) * cellWidth')
     && timelineCode.includes('const contentWidth = Math.ceil(headerWidth + gridWidth)')
     && timelineCode.includes("target.style.setProperty('--timeline-grid-width'")
     && timelineCode.includes("target.style.setProperty('--timeline-content-width'")
@@ -1277,7 +1687,48 @@ check('Timeline scale rows and add zone share a dynamic width contract',
     && responsiveCss.includes('width: var(--timeline-grid-width, max-content) !important;')
     && responsiveCss.includes('width: var(--timeline-content-width, 100%) !important;')
     && responsiveCss.includes('body.timeline-dashboard-page .btn-add-line-big')
+    && timelineCode.includes('function timelineTimeToPixel(time, date, anchor)')
+    && timelineCode.includes('function timelineLabelPlacement(markX, labelWidth, gridWidth')
+    && timelineCode.includes('function timelineTimeMarkPlacements(date, anchor, geometry = null)')
+    && timelineCode.includes('function timelineMiniTimeMarkPlacements(start, end, hourWidth)')
+    && timelineCode.includes('function renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth)')
+    && timelineCode.includes('timelineTimeMarkPlacements(date, container, geometry)')
+    && timelineCode.includes('renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth)')
+    && timelineConstructorCss.includes('.time-scale .time-mark.end-mark')
+    && timelineConstructorCss.includes('.mini-time-mark.end')
+    && timelineConstructorCss.includes('width: var(--mini-grid-width, max-content)')
+    && timelineConstructorCss.includes('width: var(--mini-time-mark-width, max-content)')
+    && timelineConstructorCss.includes('width: var(--time-mark-label-width, max-content) !important;')
+    && timelineConstructorCss.includes('left: var(--time-mark-label-left, 0)')
+    && !cssRuleText(timelineConstructorCss, '.time-scale .time-mark.end-mark').includes('right: 0')
+    && cssRuleText(timelineConstructorCss, '.mini-time-mark').includes('position: absolute')
+    && timelineBanquetLinkLayerBlock.includes('timelineBanquetLinkLayerSurfaceWidth(scroll)')
+    && !timelineBanquetLinkLayerBlock.includes('scroll.scrollWidth')
     && timelineResourcesTestCode.includes('timeline dynamic width contract derives surfaces from range and cell geometry'));
+check('Timeline time marker collision resolver handles start and end edges',
+    timelineCode.includes('function timelineResolveTimeMarkCollisions(placements, gridWidth')
+    && timelineCode.includes('function timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth')
+    && timelineCode.includes('timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth)')
+    && timelineCode.includes('pushFromStart();')
+    && timelineCode.includes('pullFromEnd();')
+    && timelineCode.includes('timelineResolveTimeMarkCollisions(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP)')
+    && timelineResourcesTestCode.includes('timeline time marker placement clamps start label without overlapping the first interval mark')
+    && timelineResourcesTestCode.includes('timeline time marker placement thins minor labels when compact density cannot fit every interval')
+    && timelineResourcesTestCode.includes('timeline time marker placement clamps end label without overlapping the previous mark')
+    && cssRuleText(timelineConstructorCss, '.time-scale .time-mark.start-mark').includes('text-align: center')
+    && cssRuleText(timelineConstructorCss, '.mini-time-mark.start').includes('text-align: center')
+    && !cssRuleText(timelineConstructorCss, '.time-scale .time-mark.start-mark').includes('left: 0')
+    && !/time-mark\.start-mark[^{]*\{[^}]*text-align:\s*left/.test(timelineConstructorCss + responsiveCss)
+    && !/mini-time-mark\.start[^{]*\{[^}]*text-align:\s*left/.test(timelineConstructorCss + responsiveCss)
+    && htmlContains('tests/timeline-lifecycle.test.js', 'date navigation keeps start marker geometry readable after scroll reset')
+    && htmlContains('tests/timeline-week-parity.test.js', 'week mini timeline start and end labels use shared collision geometry')
+    && htmlContains('tests/timeline-release-proof.test.js', 'timeline release proof stack covers start and end marker alignment regressions'));
+check('Timeline compact fit-screen width uses interval cells without adding the end label as a cell',
+    uiCode.includes('function _timelineRangeBoundMinutes(value)')
+    && uiCode.includes('function _timelineRangeCellCount(range, level)')
+    && timelineFitCellWidthBlock.includes('const cells = _timelineRangeCellCount(range, level)')
+    && !timelineFitCellWidthBlock.includes('+ 1')
+    && !timelineFitCellWidthBlock.includes('range.end - range.start'));
 check('Timeline now-line is measured to rows instead of covering the sticky time scale', uiCode.includes("document.getElementById('timelineLines')") && uiCode.includes('timelineLines.scrollHeight') && uiCode.includes('--timeline-now-line-top') && uiCode.includes('--timeline-now-line-height') && timelineConstructorCss.includes('top: var(--timeline-now-line-top, 0)') && timelineConstructorCss.includes('height: var(--timeline-now-line-height, 100%)') && !timelineConstructorCss.includes('.now-line-global {\n    position: absolute;\n    top: 0;\n    bottom: 0;'));
 check('Timeline period selector supports only day and week modes', htmlContains('index.html', 'data-period="1"') && htmlContains('index.html', 'data-period="7"') && !htmlContains('index.html', 'data-period="3"') && !htmlContains('index.html', 'id="daysCount"') && timelineConfigCode.includes('TIMELINE_PERIOD_WEEK = 7') && timelineConfigCode.includes('normalizeTimelineModeState') && appCode.includes('function applyTimelinePeriod') && appCode.includes("__timelinePeriodDelegatedBound") && appCode.includes('function bootstrapInitializeApp') && appCode.includes("document.readyState === 'loading'") && timelineVisibilityCode.includes("visualBlock('viewModes'"));
 check('Timeline dark event cards use solid readable surfaces', darkModeCss.includes('--eg-event-quest-bg: linear-gradient') && darkModeCss.includes('.timeline-dashboard-page .mini-booking-block') && darkModeCss.includes('.timeline-dashboard-page.dark-mode .booking-block,') && darkModeCss.includes('body.timeline-dashboard-page.dark-mode .booking-block.linked-ghost') && darkModeCss.includes('.timeline-dashboard-page .mini-booking-block.banquet'));
@@ -1476,7 +1927,9 @@ check('CRM assistant foundation loads before the shared rail', authCode.includes
 check('Dynamic shell assets use root-relative paths for nested CRM routes', authCode.includes("link.href = '/css/sidebar-smart-menu.css' + suffix") && authCode.includes("script.src = '/js/sidebar-smart-menu.js' + suffix") && authCode.includes("const railCssPath = '/css/assistant-rail.css'") && authCode.includes("const foundationJsPath = '/js/assistant-foundation.js'") && authCode.includes("script.src = `/js/crm-feature-registry.js") && authCode.includes("script.src = `/js/search.js") && notificationCode.includes("link.href = '/css/sidebar-smart-menu.css' + suffix") && notificationCode.includes("script.src = '/js/sidebar-smart-menu.js' + suffix") && !authCode.includes("link.href = 'css/sidebar-smart-menu.css'") && !authCode.includes("const railCssPath = 'css/assistant-rail.css'") && !notificationCode.includes("link.href = 'css/sidebar-smart-menu.css'"));
 check('CRM assistant foundation exposes store, adapters, actions, targets, and reply schema contracts', assistantFoundationCode.includes('CONTRACT_VERSION') && assistantFoundationCode.includes('store =') && assistantFoundationCode.includes('function registerAdapter') && assistantFoundationCode.includes('actionRegistry') && assistantFoundationCode.includes('function normalizeTarget') && assistantFoundationCode.includes('function normalizeReply'));
 check('CRM assistant foundation wires first adapters for dashboard/tasks/leads/chat/finance', ["pageId: 'dashboard'", "pageId: 'tasks'", "pageId: 'finance'", "pageId: 'leads'", "pageId: 'chat'"].every(token => assistantFoundationCode.includes(token)));
-check('CRM assistant foundation uses API-backed adapter snapshots for priority pages', assistantFoundationCode.includes('function refreshAdapterSnapshot') && ['/api/work-queue', '/api/tasks/my-cabinet', '/api/finance/debts', '/api/finance/advanced-dashboard', '/api/leads/hot', '/api/chat/unread'].every(token => assistantFoundationCode.includes(token)));
+const assistantLeadsHotPath = ['/api/leads', 'hot'].join('/');
+check('CRM assistant foundation uses API-backed adapter snapshots for priority pages', assistantFoundationCode.includes('function refreshAdapterSnapshot') && ['/api/work-queue', '/api/tasks/my-cabinet', '/api/finance/debts', '/api/finance/advanced-dashboard', assistantLeadsHotPath, '/api/chat/unread'].every(token => assistantFoundationCode.includes(token)));
+check('CRM assistant snapshots scope work queue and hot leads', assistantFoundationCode.includes('function assistantScopedApiUrl') && assistantFoundationCode.includes("value.startsWith('/api/work-queue')") && assistantFoundationCode.includes("value.startsWith('/api/leads/hot')") && assistantFoundationCode.includes('CrmBusinessContext?.apiUrl') && assistantFoundationCode.includes('fetch(assistantScopedApiUrl(path)'));
 check('CRM assistant foundation exposes action proposal and teaching flow contracts', assistantFoundationCode.includes('function chooseActionProposal') && assistantFoundationCode.includes('function startTeachingFlow') && assistantFoundationCode.includes('function nextTeachingStep') && assistantFoundationCode.includes('function dismissTeachingFlow') && assistantFoundationCode.includes('currentTeachingFlow'));
 check('CRM assistant flagship core pages have actions and guided flows', ['dashboard.work-queue-review', 'tasks.overdue-review', 'finance.debt-review', 'leads.follow-up-review', 'chat.unread-review', 'dashboard.focus-work-queue', 'dashboard.show-overdue-tasks', 'tasks.focus-overdue', 'finance.open-debts', 'leads.focus-hot', 'chat.filter-unread'].every(token => assistantFoundationCode.includes(token)));
 check('CRM assistant dashboard filter actions route to live surfaces', assistantFoundationCode.includes('function openDashboardOverdueTasks') && assistantFoundationCode.includes('tasks.html?view=team&assistantFilter=overdue') && assistantFoundationCode.includes('function openDashboardReplyBacklog') && assistantFoundationCode.includes('omni.html?filter=waiting&replySla=overdue') && assistantFoundationCode.includes("'overdue', 'deadline', 'task'"));
@@ -1619,7 +2072,7 @@ check('Lead kanban drag persists vertical card order', leadsCode.includes("param
 check('Lead kanban card phone stays fully readable beside quality control', htmlContains('leads.html', '.kanban-card-meta { min-width: 0; display: grid; grid-template-columns: 1fr;') && htmlContains('leads.html', '.kanban-card-meta-text { min-width: 0; max-width: 100%; overflow: visible;') && htmlContains('leads.html', 'white-space: normal; overflow-wrap: anywhere;'));
 check('Lead kanban cards can change lead quality inline', leadsCode.includes('function renderLeadTypeSelect') && leadsCode.includes('data-lead-type-select') && leadsCode.includes('function bindKanbanLeadTypeMenuEvents') && leadsCode.includes('bindKanbanLeadTypeMenuEvents();') && leadsCode.includes('data-lead-type-option="true"') && leadsCode.includes('function showKanbanLeadTypeMenu') && leadsCode.includes('function updateLeadTypeFromKanbanSelect') && leadsCode.includes('persistLeadType(leadId, nextType, { reload: false, ...patchOptions })') && leadsCode.includes('window.showKanbanLeadTypeMenu = showKanbanLeadTypeMenu') && leadsCode.includes('window.updateLeadTypeFromKanbanSelect = updateLeadTypeFromKanbanSelect') && !leadsCode.includes('<select class="lead-type-select') && !leadsCode.includes('onclick="showKanbanLeadTypeMenu') && !leadsCode.includes('onclick="updateLeadTypeFromKanbanSelect') && leadsPageCss.includes('.kanban-card .lead-type-select--kanban') && leadsPageCss.includes('appearance: none') && leadsPageCss.includes('.lead-type-popover') && leadsPageCss.includes('body.dark-mode .kanban-card .lead-type-select--kanban.type-quality'));
 check('Lead type workflow routes non-sales classifications out of active kanban', leadsCode.includes('ACTIVE_KANBAN_LEAD_TYPES') && leadsCode.includes('LEAD_TYPE_WORKFLOW_MESSAGES') && leadsCode.includes('const LEAD_QUEUE_FILTERS') && leadsCode.includes('leadTypeForCurrentQueue') && leadsCode.includes('const kanbanLeads = leadsData') && leadsCode.includes('body.pipeline_stage = \'new\'') && !leadsCode.includes('[Співпраця] Потрібна задача для відділу') && leadsRouteCode.includes('const LEAD_TYPE_WORKFLOW') && leadsRouteCode.includes('function shouldAddLeadToMailing') && leadsRouteCode.includes('function onCollaborationLead') && leadsRouteCode.includes('duplicateMode: \'skip\'') && htmlContains('services/scheduler.js', "COALESCE(l.lead_type, 'quality') = 'quality'"));
-check('Lead sales analytics count only quality while exposing classification queues', leadsRouteCode.includes("const SALES_LEAD_TYPE = 'quality'") && leadsRouteCode.includes('salesStats') && leadsRouteCode.includes('salesStageStats') && leadsRouteCode.includes('classificationStats') && leadsRouteCode.includes('operationalQueueStats') && leadsRouteCode.includes('allStageStats') && leadsRouteCode.includes('allPipeline') && leadsRouteCode.includes("COALESCE(lead_type, 'quality') = 'quality'") && analyticsRouteCode.includes('const SALES_LEAD_TYPE_SQL') && analyticsRouteCode.includes('classificationStats') && analyticsRouteCode.includes('excludedLeadTypes') && dashboardRouteCode.includes('const SALES_LEAD_TYPE_FILTER') && dashboardRouteCode.includes("COALESCE(pipeline_stage, 'new') = 'new'") && workQueueCode.includes("source: 'quality leads.pipeline_stage + leads.last_contact_at_or_created_at'") && workQueueCode.includes('salesLeadType: SALES_LEAD_TYPE') && workQueueCode.includes('operationalQueueStats') && workQueueCode.includes("COALESCE(l.lead_type, 'quality') = 'quality'") && schedulerCode.includes("COALESCE(l.pipeline_stage, 'new') = 'new'") && leadsCode.includes('function isSalesMetricLead') && leadsCode.includes('renderFunnelBar(salesGrouped)'));
+check('Lead sales analytics count only quality while exposing classification queues', leadsRouteCode.includes("const SALES_LEAD_TYPE = 'quality'") && leadsRouteCode.includes('salesStats') && leadsRouteCode.includes('salesStageStats') && leadsRouteCode.includes('classificationStats') && leadsRouteCode.includes('operationalQueueStats') && leadsRouteCode.includes('allStageStats') && leadsRouteCode.includes('allPipeline') && leadsRouteCode.includes("COALESCE(lead_type, 'quality') = 'quality'") && analyticsRouteCode.includes('const SALES_LEAD_TYPE_SQL') && analyticsRouteCode.includes('classificationStats') && analyticsRouteCode.includes('excludedLeadTypes') && dashboardRouteCode.includes('const SALES_LEAD_TYPE_FILTER') && dashboardRouteCode.includes("COALESCE(l.pipeline_stage, 'new') = 'new'") && workQueueCode.includes("source: 'quality leads.pipeline_stage + leads.last_contact_at_or_created_at'") && workQueueCode.includes('salesLeadType: SALES_LEAD_TYPE') && workQueueCode.includes('operationalQueueStats') && workQueueCode.includes("COALESCE(l.lead_type, 'quality') = 'quality'") && schedulerCode.includes("COALESCE(l.pipeline_stage, 'new') = 'new'") && leadsCode.includes('function isSalesMetricLead') && leadsCode.includes('renderFunnelBar(salesGrouped)'));
 check('Lead type reason modal captures explicit lost_reason without native prompts', leadsCode.includes('const LEAD_TYPE_REASON_OPTIONS') && leadsCode.includes("'Бот/реклама'") && leadsCode.includes("'Немає бюджету'") && leadsCode.includes("'Попросив ціни'") && leadsCode.includes('function requestLeadTypeReason') && leadsCode.includes('function leadTypePatchOptions') && leadsCode.includes('body.lost_reason = lostReason') && leadsCode.includes('detailsMode: \'other\'') && leadsCode.includes("select?.value === 'Інше'") && htmlContains('leads.html', 'id="lostReasonTitle"') && htmlContains('leads.html', 'id="lostReasonNotesGroup"') && !/window\.prompt(?:\s|[?.(])/.test(leadsCode));
 check('Lead quality type return stays in Sales Funnel unless customer card opening is explicit', leadsCode.includes('function showQualityCategoryModal(leadId, options = {})') && leadsCode.includes("overlay.dataset.openCustomerCard = options.openCustomerCard ? 'true' : 'false'") && leadsCode.includes('const openCustomerCardAfterSave = overlay.dataset.openCustomerCard === \'true\'') && leadsCode.includes('if (openCustomerCardAfterSave) await openLeadCustomerCard(leadId);') && leadsCode.includes('else if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });') && !/await loadLeads\(\);\s*await openLeadCustomerCard\(leadId\);/.test(leadsCode));
 check('Lead collaboration type uses an atomic backend task handoff before changing type', leadsCode.includes('function requestCollaborationLeadTaskPayload') && leadsCode.includes('function createCollaborationLeadTask') && leadsCode.includes("formModal('Задача для співпраці'") && leadsCode.includes("apiFetch('/api/tasks/owners')") && leadsCode.includes('/collaboration-task') && leadsCode.includes('collaborationTaskPayload') && leadsCode.includes("source_type: 'lead'") && leadsCode.includes("source_id: String(leadId)") && leadsCode.includes("throw new Error('Форма задач недоступна") && leadsRouteCode.includes("router.post('/:id/collaboration-task'") && leadsRouteCode.includes('buildCollaborationTaskPayload') && leadsRouteCode.includes('logCollaborationWorkflow') && leadsRouteCode.includes("duplicateMode: 'reject'") && leadsRouteCode.includes('collaborationTaskHandled') && leadsRouteCode.includes("leadTypePatch.value === 'collaboration' && !collaborationTaskHandled") && leadsRouteCode.includes('duplicateMode: \'skip\''));
@@ -1727,7 +2180,29 @@ check('Omni page guides unavailable channels to account setup', omniHtml.include
 check('Omni page separates inbox from channel setup and health workspaces', omniHtml.includes('omni-workspace-modes') && omniHtml.includes('data-omni-mode="inbox"') && omniHtml.includes('id="omniChannelsWorkspace"') && omniHtml.includes('id="omniHealthWorkspace"') && omniHtml.includes('function setOmniMode') && omniHtml.includes('function renderOmniHealthWorkspace') && omniHtml.includes("hashPanel === 'accounts'") && omniHtml.includes('openAccountPanel'));
 check('Omni channel setup is not embedded in the conversation sidebar', omniHtml.indexOf('id="omniAccountsPanel"') > omniHtml.indexOf('id="omniChannelsWorkspace"') && !omniHtml.includes('omni-chat-empty-icon">Om'));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
+const legacyCenterHotLeadFetch = "fetch('/api/leads/" + "hot'";
+check('Center hot leads list uses scoped business API URL', centerCode.includes('function centerScopedApiUrl') && centerCode.includes('CrmBusinessContext?.apiUrl') && centerCode.includes("fetch(centerScopedApiUrl('/api/leads/hot')") && !centerCode.includes(legacyCenterHotLeadFetch));
 check('Center renders freshness and truth strip from overview metadata', centerCode.includes('function renderCenterTruth') && centerCode.includes('generatedAt') && centerCode.includes('confirmedBookings') && centerCode.includes('setInitialLoadingStates'));
+const centerRouteCode = fileText('routes/center.js');
+const leadBookingLinkCode = fileText('services/leadBookingLink.js');
+const telegramTemplatesBanquetCode = fileText('services/templates.js');
+const financeRouteCode = fileText('routes/finance.js');
+check('Mixed booking previews use banquet arrival wording without global time rename',
+    customersCode.includes('function customerBookingDateTimeText')
+    && customersCode.includes('Прихід гостей: ${timeText}')
+    && customersRouteCode.includes('banquet_guests')
+    && leadsCode.includes('function workspaceBookingDateTimeText')
+    && leadsRouteCode.includes('banquetGuests: row.banquet_guests')
+    && centerCode.includes('function centerBookingDateTimeText')
+    && centerRouteCode.includes('b.banquet_guests')
+    && dashboardPageCode.includes('function dashboardWidgetBookingTimeText')
+    && dashboardRouteCode.includes('b.banquet_guests')
+    && leadBookingLinkCode.includes('function bookingLeadDateTimeNotes')
+    && leadBookingLinkCode.includes('Дата банкету')
+    && telegramTemplatesBanquetCode.includes('function bookingScheduleLine')
+    && telegramTemplatesBanquetCode.includes('Прихід гостей')
+    && settingsCode.includes('function settingsBookingScheduleLine')
+    && financeRouteCode.includes('function financeBookingDateLineHtml'));
 check('Center birthdays uses canonical CRM token key', htmlContains('center.html', "localStorage.getItem('pzp_token') || localStorage.getItem('token')"));
 check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
 check('CRM system UI exposes requestId-aware errors and shared state renderers',
@@ -1751,6 +2226,35 @@ check('Timeline Android density reads lexical CONFIG and visual viewport', uiCod
 check('Timeline iOS and iPad viewport hardening is explicit', uiCode.includes('function syncTimelineViewportMetrics') && uiCode.includes('--eg-viewport-height') && uiCode.includes('--eg-viewport-width') && uiCode.includes('timeline-dashboard-root') && htmlContains('css/timeline.css', 'var(--eg-viewport-height') && responsiveCss.includes('v0.63.5: iPad/tablet timeline shell') && responsiveCss.includes('html.timeline-dashboard-root') && responsiveCss.includes('body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header'));
 check('Timeline compact mode fits desktop while phones keep readable horizontal scroll', uiCode.includes('function _timelineFitCellWidth') && uiCode.includes('phones must scroll horizontally instead of crushing readable time cells') && uiCode.includes("container.dataset.fitScreen = compact && viewportWidth > 768 ? 'true' : 'scroll'") && uiCode.includes('event?.target?.checked') && uiCode.includes('timeline-compact-mode') && htmlContains('js/app.js', 'compactToggle.checked = AppState.compactMode') && htmlContains('css/timeline.css', 'v0.56.5: timeline compact fit-screen density') && htmlContains('css/controls.css', 'keep compact zoom modes genuinely compact') && darkModeCss.includes('v0.63.55: operational compact timeline density') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .control-panel') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .booking-block'));
 check('Timeline phone layout has tidy toolbar rows and readable day/week scroll grids', responsiveCss.includes('v0.69.20: phone timeline toolbar and readable horizontal grid') && responsiveCss.includes('"prev date next"') && responsiveCss.includes('"today day day"') && responsiveCss.includes('.timeline-container[data-fit-screen="scroll"] .timeline-scroll') && responsiveCss.includes('width: max-content !important') && responsiveCss.includes('body.timeline-dashboard-page .multi-day-container') && responsiveCss.includes('body.timeline-dashboard-page .mini-line-grid') && responsiveCss.includes('--mini-grid-width') && responsiveCss.includes('body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn)'));
+check('Timeline horizontal scroll restore is scoped and reset on navigation context changes',
+    timelineCode.includes('function timelineHorizontalScrollStateKey')
+    && timelineCode.includes('function captureTimelineHorizontalScrollState')
+    && timelineCode.includes('function restoreTimelineHorizontalScrollState')
+    && timelineCode.includes('function resetTimelineHorizontalScroll')
+    && timelineCode.includes('function markTimelineNavigationScrollReset')
+    && timelineCode.includes('timelineCacheScopeKey()')
+    && timelineCode.includes('const timelineView = timelineCurrentView();')
+    && timelineCode.includes('timelineDateKey(date)')
+    && timelineCode.includes("AppState.multiDayMode ? 'week' : 'day'")
+    && timelineCode.includes('timelineHorizontalScrollZoomKey()')
+    && timelineCode.includes("AppState.compactMode ? 'compact' : 'regular'")
+    && timelineCode.includes("markTimelineNavigationScrollReset('date-change')")
+    && timelineCode.includes("markTimelineNavigationScrollReset('view-switch-before-render')")
+    && timelineCode.includes("markTimelineNavigationScrollReset('business-context-change')")
+    && appCode.includes('const previousPeriod = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY')
+    && appCode.includes('previousPeriod !== normalizedPeriod')
+    && appCode.includes("markTimelineNavigationScrollReset('date-input-change')")
+    && appCode.includes("markTimelineNavigationScrollReset('today')")
+    && appCode.includes("markTimelineNavigationScrollReset('period-change')")
+    && uiCode.includes('const previousCompactMode = Boolean(AppState.compactMode)')
+    && uiCode.includes('previousCompactMode !== Boolean(AppState.compactMode)')
+    && uiCode.includes('const previousLevel = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES')
+    && uiCode.includes('previousLevel !== nextLevel')
+    && uiCode.includes("markTimelineNavigationScrollReset('zoom-change')")
+    && uiCode.includes("markTimelineNavigationScrollReset('compact-change')")
+    && !timelineCode.includes('Preserve horizontal scroll position across date changes')
+    && !timelineCode.includes('Restore horizontal scroll position after render')
+    && !timelineCode.includes('const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0'));
 check('Timeline room-to-animator switch reconciles vertical shell height without removing iPhone guards',
     uiCode.includes('function syncTimelineViewHeight')
     && uiCode.includes('function resetTimelineVerticalScroll')
@@ -1775,6 +2279,16 @@ check('Tasks expose a live assistant snapshot for board-aware guidance', tasksCo
 check('Leads, Customers, Omni expose clearable filter summaries', leadsCode.includes('resetLeadFilters') && customersCode.includes('resetCustomerFilters') && omniHtml.includes('resetOmniFilters'));
 check('Dashboard work queue surfaces endpoint metadata', dashboardPageCode.includes('renderWorkQueueExplainability') && dashboardPageCode.includes('omittedBuckets'));
 check('Dashboard renders compact funnel widget from work queue insights', dashboardPageCode.includes('funnel:') && dashboardPageCode.includes('loadFunnelWidget') && dashboardPageCode.includes('renderCompactFunnelWidget') && dashboardPageCode.includes('funnelInsights'));
+check('Dashboard widgets append active CRM business scope', dashboardPageCode.includes('function dashboardScopedApiUrl') && dashboardPageCode.includes('CrmBusinessContext?.apiUrl') && dashboardPageCode.includes('function buildWidgetDataUrl(type)') && dashboardPageCode.includes('return dashboardScopedApiUrl(path)') && dashboardPageCode.includes('fetch(dashboardScopedApiUrl(`/api/work-queue?${params.toString()}`)') && dashboardPageCode.includes("fetch(dashboardScopedApiUrl('/api/dashboard/widgets/funnel')"));
+const legacyHotLeadPathForGuard = ['/api/leads', 'hot'].join('/');
+const legacyNewLeadPathForGuard = ['/api/leads', 'new-count'].join('/');
+const rawLegacyLeadFetchTokens = [
+    `fetch('${legacyHotLeadPathForGuard}'`,
+    `fetch("${legacyHotLeadPathForGuard}"`,
+    `fetch('${legacyNewLeadPathForGuard}'`,
+    `fetch("${legacyNewLeadPathForGuard}"`
+];
+check('User-facing operational counters avoid raw legacy lead endpoint fetches', [sidebarCode, profileCode, dashboardPageCode, assistantFoundationCode, centerCode].every(code => rawLegacyLeadFetchTokens.every(token => !code.includes(token))) && !profileCode.includes(legacyNewLeadPathForGuard) && dashboardPageCode.includes('function dashboardScopedApiUrl') && dashboardPageCode.includes('fetch(dashboardScopedApiUrl(`/api/work-queue?${params.toString()}`)') && assistantFoundationCode.includes('fetch(assistantScopedApiUrl(path)') && centerCode.includes("fetch(centerScopedApiUrl('/api/leads/hot')"));
 
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
@@ -1791,6 +2305,11 @@ const bookingDetailStandardEnd = bookingCode.indexOf('// v24.3.1: CRM', bookingD
 const bookingDetailStandardBlock = bookingDetailStandardStart >= 0 && bookingDetailStandardEnd > bookingDetailStandardStart
     ? bookingCode.slice(bookingDetailStandardStart, bookingDetailStandardEnd)
     : '';
+const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
+const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
+const bookingStatusActionBlock = bookingStatusActionStart >= 0 && bookingStatusActionEnd > bookingStatusActionStart
+    ? uiCode.slice(bookingStatusActionStart, bookingStatusActionEnd)
+    : '';
 function bookingDetailRowBlock(source, label) {
     const labelAt = source.indexOf(`<span class="label">${label}:</span>`);
     if (labelAt < 0) return '';
@@ -1806,6 +2325,17 @@ function bookingDetailRowHasNoCopyAffordance(source, label) {
         && !row.includes('data-copy=')
         && !row.includes('detail-copy-btn');
 }
+function bookingDetailDynamicLabelRowHasNoCopyAffordance(source, labelExpression) {
+    const labelAt = source.indexOf(`<span class="label">${labelExpression}:</span>`);
+    if (labelAt < 0) return false;
+    const rowStart = source.lastIndexOf('<div class="booking-detail-row', labelAt);
+    const rowEnd = source.indexOf('</div>', labelAt);
+    if (rowStart < 0 || rowEnd < rowStart) return false;
+    const row = source.slice(rowStart, rowEnd + '</div>'.length);
+    return !row.includes('booking-detail-row--copyable')
+        && !row.includes('data-copy=')
+        && !row.includes('detail-copy-btn');
+}
 const bookingDetailLineDetailStart = bookingDetailStandardBlock.indexOf('const lineDetailHtml');
 const bookingDetailLineDetailEnd = bookingDetailStandardBlock.indexOf('const hostsDetailHtml', bookingDetailLineDetailStart);
 const bookingDetailLineDetailBlock = bookingDetailLineDetailStart >= 0 && bookingDetailLineDetailEnd > bookingDetailLineDetailStart
@@ -1817,6 +2347,7 @@ const bookingDetailLineRowHasNoCopyAffordance = bookingDetailLineDetailBlock.inc
     && !bookingDetailLineDetailBlock.includes('data-copy=')
     && !bookingDetailLineDetailBlock.includes('detail-copy-btn');
 const bookingDetailStatusBadgeRule = cssRuleText(globalModalsCss, '#bookingModal .booking-detail-row .status-badge');
+const bookingDetailGroupRow = bookingDetailRowBlock(bookingDetailStandardBlock, 'Група');
 const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
 const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
@@ -1864,6 +2395,56 @@ check('Booking room dropdown keeps same-day booked rooms selectable with day boo
     && bookingCode.includes('зайнята зараз')
     && !bookingCode.includes('return !occupiedRooms.has(value) || value === selectedRoom')
     && !bookingCode.includes('Ця кімната вже має бронювання на цей день'));
+check('Room availability day bookings expose structured customer and banquet metadata',
+    htmlContains('routes/settings.js', 'LEFT JOIN banquet_group_bookings bgb')
+    && htmlContains('routes/settings.js', 'LEFT JOIN banquet_groups bg')
+    && htmlContains('routes/settings.js', 'customerId: b.customer_id ?? null')
+    && htmlContains('routes/settings.js', 'banquetGroupId: b.banquet_group_id || null')
+    && htmlContains('routes/settings.js', 'banquetGroupRole: b.banquet_group_role || null')
+    && htmlContains('routes/settings.js', 'isBanquetGroupMember: Boolean(b.banquet_group_id)')
+    && htmlContains('routes/settings.js', 'isBanquetPrimary: Boolean(')
+    && htmlContains('services/timelineResources.js', 'customerId: booking.customer_id ?? null')
+    && htmlContains('services/timelineResources.js', 'banquetGroupId: booking.banquet_group_id || null')
+    && htmlContains('services/timelineResources.js', 'banquetGroupRole: booking.banquet_group_role || null')
+    && htmlContains('services/timelineResources.js', 'isBanquetGroupMember: Boolean(booking.banquet_group_id)')
+    && htmlContains('services/timelineResources.js', 'isBanquetPrimary: Boolean('));
+const bookingRoomSelectionContextBlock = bookingCode.slice(
+    bookingCode.indexOf('function selectedRoomDayBookings'),
+    bookingCode.indexOf('function clearSelectedCustomerLink')
+);
+check('Booking room selection auto-fills customer and preselects banquet context without creating groups',
+    bookingCode.includes('const customerId = booking.customerId ?? booking.customer_id ?? null')
+    && bookingCode.includes('const banquetGroupId = booking.banquetGroupId || booking.banquet_group_id || null')
+    && bookingCode.includes('const banquetGroupPrimaryBookingId = booking.banquetGroupPrimaryBookingId || booking.banquet_group_primary_booking_id || null')
+    && bookingCode.includes('customerId,')
+    && bookingCode.includes('banquetGroupId,')
+    && bookingCode.includes('function selectedRoomDayBookings')
+    && bookingCode.includes('function pickRoomBanquetSourceBooking')
+    && bookingCode.includes('function roomBookingHasBanquetContext')
+    && bookingCode.includes('function sourceBookingToBanquetContext')
+    && bookingCode.includes('async function handleBookingRoomSelectionContextChange')
+    && bookingCode.includes('roomSelectionContextRequestToken')
+    && bookingCode.includes('autoFilledCustomerFromRoom')
+    && bookingCode.includes('autoFilledBanquetFromRoom')
+    && bookingCode.includes('markBookingCustomerSelectionManual({ render: false })')
+    && bookingCode.includes("document.getElementById('bookingBanquetGroupSelect')?.addEventListener('change'")
+    && /async function handleBookingRoomSelectionContextChange[\s\S]*pickRoomBanquetSourceBooking[\s\S]*hydrateBookingCustomerSelection\(sourceBooking[\s\S]*resolveRoomSelectionBanquetContext[\s\S]*BookingDrawerState\.selectedBanquetGroupId = banquetContext\.groupId[\s\S]*refreshBookingBanquetGroupCandidates/.test(bookingCode)
+    && /async function resolveRoomSelectionBanquetContext[\s\S]*apiGetBanquetByBooking\(sourceBookingId\)/.test(bookingCode)
+    && /function selectedBookingBanquetGroupContext[\s\S]*roomSelectionBanquetContext[\s\S]*roomContext\?\.sourceBookingId/.test(bookingCode)
+    && !/async function handleBookingRoomSelectionContextChange[\s\S]*apiCreateBanquetGroup/.test(bookingRoomSelectionContextBlock));
+check('Booking room auto-linked banquet context is cleared safely on customer mismatch',
+    bookingCode.includes("const ROOM_SELECTION_CUSTOMER_CHANGED_MESSAGE = 'Клієнта змінено, прив’язку до банкета з кімнати скинуто. Оберіть банкет вручну, якщо потрібно.'")
+    && bookingCode.includes('manualBanquetGroupSelection')
+    && bookingCode.includes('function selectedBookingBanquetGroupCustomerMismatch')
+    && bookingCode.includes('function clearRoomSelectionBanquetContextAfterCustomerChange')
+    && /function selectCustomerFromSearch[\s\S]*markBookingCustomerSelectionManual\(\{ render: false \}\)[\s\S]*clearSelectedBanquetGroupIfCustomerMismatch\(\)[\s\S]*ROOM_SELECTION_CUSTOMER_CHANGED_MESSAGE/.test(bookingCode)
+    && /bookingBanquetGroupSelect'\)\?\.addEventListener\('change'[\s\S]*manualBanquetGroupSelection = Boolean\(BookingDrawerState\.selectedBanquetGroupId\)/.test(bookingCode)
+    && bookingCode.includes("source: roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector'")
+    && /selectedBanquetContext\.groupId && selectedBookingBanquetGroupCustomerMismatch\(selectedBanquetContext\)[\s\S]*Клієнт бронювання не збігається з вибраним банкетом/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\)/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'activity', selectedBanquetContextSource\)/.test(bookingCode)
+    && htmlContains('services/banquetGroups.js', 'function resolveAtomicBanquetCustomerId')
+    && htmlContains('services/banquetGroups.js', "code: 'CUSTOMER_BANQUET_MISMATCH'"));
 check('Booking panel header shows client and child count live context',
     htmlContains('index.html', 'selectedCustomerDisplay')
     && htmlContains('index.html', 'selectedChildDisplay')
@@ -1907,13 +2488,39 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-meta')
     && globalModalsCss.includes('.booking-detail-meta-item')
     && !/\.booking-detail-header\s*\{[^}]*linear-gradient\(135deg,\s*var\(--primary\)/.test(globalModalsCss)
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Дата')
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Час')
+    && bookingDetailStandardBlock.includes("const bookingDetailDateLabel = isBanquetArrivalMode ? 'Дата банкету' : 'Дата';")
+    && bookingDetailStandardBlock.includes("const bookingDetailTimeLabel = isBanquetArrivalMode ? 'Прихід гостей' : 'Час';")
+    && bookingDetailStandardBlock.includes("const bookingDetailTimeValue = isBanquetArrivalMode ? (booking.time || '-') : bookingDetailTimeRange;")
+    && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailDateLabel)}')
+    && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailTimeLabel)}')
     && bookingDetailLineRowHasNoCopyAffordance
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ведучих')
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ціна')
+    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Сума')
+    && !bookingDetailStandardBlock.includes('<span class="label">Ціна:</span>')
     && bookingDetailRowHasNoCopyAffordance(bookingCode, 'Сценарій')
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Статус')
+    && bookingCode.includes('function renderBookingCommentDetailRow')
+    && bookingDetailStandardBlock.includes('${renderBookingCommentDetailRow(booking)}')
+    && Boolean(bookingDetailGroupRow)
+    && bookingDetailGroupRow.includes('<span class="value">${escapeHtml(booking.groupName)}</span>')
+    && !bookingDetailGroupRow.includes('🎪')
+    && !bookingDetailStandardBlock.includes('booking-detail-row booking-detail-row--summary')
+    && !bookingDetailStandardBlock.includes('detail-copy-summary-btn')
+    && !bookingDetailStandardBlock.includes('Скопіювати всю інформацію')
+    && !bookingDetailStandardBlock.includes('📋 Скопіювати все')
+    && bookingCode.includes('function shouldHideBookingWorkspaceScenarioDetail(booking = {})')
+    && bookingCode.includes("if (scenario === 'kitchen_only') return true;")
+    && bookingCode.includes("if (programCode === 'KITCHEN') return true;")
+    && bookingCode.includes("return programName === 'kitchen' || programName === 'кухня';")
+    && bookingCode.includes('function bookingDetailModalTitle(booking = {}, fallback = \'Бронювання\')')
+    && bookingCode.includes('if (shouldHideBookingWorkspaceScenarioDetail(booking))')
+    && bookingCode.includes('[programName, label, booking.room, booking.id]')
+    && bookingCode.includes('!bookingDetailIsKitchenTitleToken(value)')
+    && bookingDetailStandardBlock.includes("const bookingDetailTitle = bookingDetailModalTitle(booking, roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');")
+    && !bookingDetailStandardBlock.includes("const bookingDetailTitle = [booking.label || booking.programCode, booking.programName]")
+    && bookingCode.includes('const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail(booking)')
+    && bookingCode.includes('<span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span>')
+    && bookingCode.includes('${scenarioRowHtml}')
     && bookingCode.includes('customer-action-btn" title="Скопіювати імʼя"')
     && bookingCode.includes("navigator.clipboard.writeText('${escapeHtml(customer.phone)}')")
     && bookingCode.includes("navigator.clipboard.writeText('@${escapeHtml(igName)}')")
@@ -1933,15 +2540,29 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-danger-zone')
     && panelCss.includes('.booking-detail-package-row > div')
     && panelCss.includes('overflow-wrap: anywhere'));
+check('Booking status actions use narrow endpoints and edit_booking visibility',
+    apiCode.includes('async function apiMarkBookingPreliminary(id, payload = {})')
+    && apiCode.includes('/preliminary')
+    && bookingStatusActionBlock.includes('apiConfirmBooking(bookingId, { source: \'booking_panel\' })')
+    && bookingStatusActionBlock.includes('apiMarkBookingPreliminary(bookingId, { source: \'booking_panel\' })')
+    && !bookingStatusActionBlock.includes('apiUpdateBooking')
+    && bookingStatusActionBlock.includes('preliminaryResult?.error')
+    && bookingCode.includes('function canEditTimelineBooking()')
+    && bookingCode.includes("canAccess('edit_booking')")
+    && bookingDetailStandardBlock.includes('${canEditTimelineBooking() ? `<div class="status-toggle-section">')
+    && /async bulkStatus\(status\)[\s\S]*canEditTimelineBooking\(\)[\s\S]*apiConfirmBooking\(id, \{ source: 'booking_panel' \}\)[\s\S]*apiMarkBookingPreliminary\(id, \{ source: 'booking_panel' \}\)[\s\S]*async function _loadPinataStockBadge/.test(bookingCode));
 check('Booking detail modal switches banquet root header from time range to schedule summary',
     bookingCode.includes('function bookingDetailHeaderPackageBooking(')
     && bookingCode.includes('function bookingDetailHeaderIsBanquetScheduleMode(')
     && bookingCode.includes('function bookingDetailHeaderScheduleSummary(')
+    && bookingCode.includes('function bookingDetailIsBanquetArrivalMode(')
     && bookingCode.includes('const headerPackageBooking = bookingDetailHeaderPackageBooking(booking, banquetSnapshot)')
     && bookingCode.includes('const headerScheduleHtml = bookingDetailHeaderScheduleSummary(headerPackageBooking)')
     && bookingCode.includes('const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())')
     && bookingCode.includes('&& bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml)')
+    && bookingCode.includes('const isBanquetArrivalMode = bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml)')
     && bookingCode.includes('const headerTimeMetaHtml = useBanquetHeaderSchedule')
+    && bookingCode.includes('|| isBanquetArrivalMode')
     && bookingCode.includes('bookingDetailTimeRange')
     && bookingCode.includes('${headerTimeMetaHtml}')
     && bookingCode.includes('${useBanquetHeaderSchedule ? headerScheduleHtml : \'\'}')
@@ -1960,7 +2581,8 @@ check('Booking detail modal links to banquet summary preview with return URL',
     && bookingCode.includes('businessContext')
     && bookingCode.includes('returnPath')
     && bookingCode.includes('booking-summary-action')
-    && bookingCode.includes('Вижимка'));
+    && bookingCode.includes('Банкетний лист')
+    && !bookingDetailEditControlsBlock.includes('booking-summary-action">Вижимка</a>'));
 check('Booking detail modal keeps rare operational actions collapsed',
     bookingCode.includes('const timeShiftControlsHtml = `')
     && bookingCode.includes('const advancedActionsHtml = `')
@@ -1981,7 +2603,8 @@ check('Booking banquet modal UX regression guard keeps compact defaults',
     && bookingDetailEditControlsBlock.includes('const moreActionsHtml = secondaryActionHtml ?')
     && bookingDetailEditControlsBlock.includes('const dangerZoneHtml = canDeleteTimelineBooking() ?')
     && bookingDetailCompactFooterBlock.includes('booking-detail-action--primary btn-edit-booking')
-    && bookingDetailCompactFooterBlock.includes('booking-summary-action">Вижимка</a>')
+    && bookingDetailCompactFooterBlock.includes('booking-summary-action">Банкетний лист</a>')
+    && !bookingDetailCompactFooterBlock.includes('Вижимка')
     && bookingDetailCompactFooterBlock.includes('${moreActionsHtml}')
     && !bookingDetailCompactFooterBlock.includes('duplicateBooking')
     && !bookingDetailCompactFooterBlock.includes('showRecurringModal')
@@ -2024,6 +2647,13 @@ check('Booking detail modal renders full banquet group details with controlled m
     && bookingCode.includes("renderBanquetWorkSection('Банкет'")
     && bookingCode.includes('renderBanquetMenuSection(packageBooking)')
     && bookingCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)')
+    && bookingCode.includes('function fullBanquetDetailCommentItems')
+    && bookingCode.includes('function renderFullBanquetCommentsSection')
+    && bookingCode.includes("renderBanquetWorkSection('Примітки'")
+    && bookingCode.includes('renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })')
+    && bookingCode.includes("add('kitchen', 'Кухня'")
+    && bookingCode.includes("add('activity', `Активність —")
+    && bookingCode.includes("add('internal', 'Внутрішній коментар'")
     && bookingCode.includes('renderBanquetActivitiesSection(activityMembers)')
     && bookingCode.includes('renderBanquetWarningsSection(warnings)')
     && bookingCode.includes('renderBanquetTechnicalSection({')
@@ -2035,6 +2665,8 @@ check('Booking detail modal renders full banquet group details with controlled m
     && timelineConstructorCss.includes('.booking-banquet-full-detail')
     && timelineConstructorCss.includes('.booking-banquet-section--work')
     && timelineConstructorCss.includes('.booking-banquet-service-row')
+    && timelineConstructorCss.includes('.booking-banquet-comments')
+    && timelineConstructorCss.includes('.booking-banquet-comment-row')
     && timelineConstructorCss.includes('.booking-banquet-technical')
     && timelineConstructorCss.includes('.booking-banquet-candidate-role')
     && timelineConstructorCss.includes('.booking-banquet-warning')
@@ -2223,9 +2855,83 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && panelCss.includes('.booking-menu-catalog-item.selected')
     && panelCss.includes('.booking-menu-catalog-inline-input')
     && panelCss.includes('@media (max-width: 900px)'));
+check('Booking kitchen catalog keeps the aggregate total only in the footer',
+    htmlContains('index.html', '<small id="bookingMenuCatalogSummary">0 позицій</small>')
+    && htmlContains('index.html', '<small id="bookingMenuCatalogCartSummary">0 позицій</small>')
+    && !htmlContains('index.html', '<small id="bookingMenuCatalogSummary">0 позицій · 0 ₴</small>')
+    && !htmlContains('index.html', '<small id="bookingMenuCatalogCartSummary">0 позицій · 0 ₴</small>')
+    && bookingCode.includes('if (inline) inline.textContent = summary.combined')
+    && bookingCode.includes('if (header) header.textContent = summary.countText')
+    && bookingCode.includes('if (cartSummary) cartSummary.textContent = summary.countText')
+    && bookingCode.includes('if (footerTotal) footerTotal.textContent = summary.subtotalText')
+    && bookingCode.includes('if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.countText}`')
+    && !bookingCode.includes('if (header) header.textContent = summary.combined')
+    && !bookingCode.includes('if (cartSummary) cartSummary.textContent = summary.combined')
+    && !bookingCode.includes('if (mobileCart) mobileCart.textContent = `Вибрано · ${summary.subtotalText}`'));
+check('Booking kitchen catalog footer presents the only total as a right-aligned primary summary',
+    htmlContains('index.html', 'booking-menu-catalog-footer-count')
+    && htmlContains('index.html', 'booking-menu-catalog-footer-total" aria-live="polite"')
+    && htmlContains('index.html', '<span>Разом</span>')
+    && panelCss.includes('.booking-menu-catalog-footer-total')
+    && panelCss.includes('grid-template-columns: minmax(0, 1fr) auto auto auto')
+    && panelCss.includes('justify-content: flex-end')
+    && panelCss.includes('font-size: 22px')
+    && panelCss.includes('font-weight: 1000')
+    && panelCss.includes('grid-template-areas:')
+    && panelCss.includes('"count done"')
+    && panelCss.includes('"total done"')
+    && panelCss.includes('"cart cart"')
+    && panelCss.includes('grid-area: total'));
 check('Booking panel notes section omits noisy base-request helper copy',
     !bookingPanelHtml.includes('Базова заявка')
     && !bookingPanelHtml.includes('Коротка тема і примітки оператора без зайвого шуму.'));
+const roomBookingAnimationBridgeBlock = bookingCode.slice(
+    bookingCode.indexOf('async function openRoomBookingAnimationBridge'),
+    bookingCode.indexOf('// v43.5.0: Reveal a booking', bookingCode.indexOf('async function openRoomBookingAnimationBridge'))
+);
+check('Booking comments use workspace contract instead of legacy notes for new Park kitchen/activity bookings',
+    bookingPanelHtml.includes('id="bookingNotesSection"')
+    && bookingPanelHtml.includes('id="bookingGroupNameSection"')
+    && bookingCode.includes('function syncParkBookingGroupNameVisibility')
+    && bookingCode.includes('section.hidden = hidden')
+    && bookingCode.includes('commentType')
+    && bookingCode.includes('bookingComments: buildBookingWorkspaceComments(commentType, bookingComment)')
+    && bookingCode.includes('comments: normalizeBookingWorkspaceComments(formData.bookingComments || {})')
+    && bookingCode.includes('const shouldPersistLegacyNotes = !isParkTimelineBookingMode()')
+    && bookingCode.includes('notes: shouldPersistLegacyNotes ? rawBookingComment : null')
+    && bookingCode.includes('groupName: shouldPersistLegacyGroupName ?')
+    && bookingCode.includes('BookingDrawerState.legacyNotesFallback')
+    && !bookingCode.includes('groupName: sourceBooking.groupName')
+    && !bookingCode.includes('sourceBooking.notes')
+    && roomBookingAnimationBridgeBlock
+    && !roomBookingAnimationBridgeBlock.includes('sourceBooking.notes')
+    && !roomBookingAnimationBridgeBlock.includes('sourceBooking.groupName')
+    && /function buildMultiActivityBookingFromProgram[\s\S]*notes: null,[\s\S]*groupName: null,[\s\S]*function buildMultiActivityBookings/.test(bookingCode)
+    && /async function openRoomBookingAnimationBridge[\s\S]*BookingDrawerState\.roomBookingAnimationBridge = \{[\s\S]*groupId: groupResult\.groupId[\s\S]*sourceBookingId: sourceBooking\.id[\s\S]*function revealHiddenBooking/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking,[\s\S]*bridgeGroupId[\s\S]*bridgeSourceBookingId[\s\S]*'room_booking_animation_bridge'/.test(bookingCode));
+check('Booking banquet selector loads same-customer groups and routes selected kitchen/activity atomically',
+    bookingPanelHtml.includes('id="bookingBanquetGroupSection"')
+    && bookingPanelHtml.includes('id="bookingBanquetGroupSelect"')
+    && bookingPanelHtml.includes('Прив’язати до банкету')
+    && bookingPanelHtml.includes('Без прив’язки')
+    && bookingCode.includes('function refreshBookingBanquetGroupCandidates')
+    && bookingCode.includes('apiGetBanquetCandidates({ date, customerId })')
+    && bookingCode.includes('function selectedBookingBanquetGroupContext')
+    && bookingCode.includes('preselectGroupId: groupResult.groupId')
+    && bookingCode.includes('function isSelectedBanquetKitchenCreate')
+    && bookingCode.includes('function isSelectedBanquetActivityCreate')
+    && bookingCode.includes('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId')
+    && bookingCode.includes('apiCreateBanquetActivityBooking(selectedBanquetContext.groupId')
+    && /else if \(selectedBanquetContext\.groupId\) \{[\s\S]*selectedBanquetUnsupportedCreateMessage\(\)[\s\S]*unlockSubmitBtn\(\);[\s\S]*return;[\s\S]*\} else \{[\s\S]*apiCreateBooking\(booking\)/.test(bookingCode)
+    && apiCode.includes('function apiFailureFromBody')
+    && apiCode.includes('function apiGetBanquetCandidates')
+    && apiCode.includes('/banquets/candidates')
+    && apiCode.includes('function apiCreateBanquetMemberBooking')
+    && apiCode.includes('/member-booking')
+    && /async function apiCreateBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateEducationLessonSeries/.test(apiCode)
+    && /async function apiCreateBookingFull[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiGetBanquetByBooking/.test(apiCode)
+    && /async function apiCreateBanquetMemberBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateBanquetActivityBooking/.test(apiCode)
+    && /async function apiCreateBanquetActivityBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiAttachBanquetGroupBooking/.test(apiCode));
 check('Booking kitchen menu supports serving times and banquet service events without schema changes',
     bookingCode.includes('servingTime')
     && bookingCode.includes('servingNote')
@@ -2280,6 +2986,24 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && timelineConstructorCss.includes('.booking-banquet-service-row--checklist')
     && htmlContains('css/booking-summary.css', '.summary-service-events')
     && htmlContains('css/booking-summary.css', '.summary-order-table .serving'));
+check('Booking menu quantity wording separates portion count from packed serving unit',
+    bookingCode.includes('function normalizeBookingMenuServingUnitDisplay')
+    && bookingCode.includes('function formatBookingMenuQuantityWithServingUnit')
+    && bookingCode.includes('function formatBookingMenuPositionQuantity')
+    && bookingCode.includes('по ${unit}')
+    && bookingCode.includes('formatBookingMenuPositionQuantity(item))} × ${escapeHtml(formatPrice(item.unitPrice))}')
+    && bookingCode.includes('<span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>')
+    && bookingCode.includes('const price = item.unitPrice ? ` × ${item.unitPrice} грн` :')
+    && bookingCode.includes("const unit = normalizeBookingMenuServingUnitDisplay(product.servingUnit || product.priceUnit || '')")
+    && bookingCode.includes('const cartQuantityLabel = formatBookingMenuPositionQuantity(item)')
+    && bookingCode.includes('${cartQuantityLabel ? ` · ${escapeHtml(cartQuantityLabel)}` : \'\'}')
+    && htmlContains('services/bookingPackage.js', 'function normalizeMenuServingUnitDisplay')
+    && htmlContains('services/bookingPackage.js', 'function formatMenuQuantityWithServingUnit')
+    && htmlContains('services/bookingPackage.js', 'function formatMenuPositionQuantity')
+    && htmlContains('services/bookingPackage.js', 'formatMenuPositionQuantity(item)')
+    && htmlContains('services/bookingPackage.js', 'const price = item.unitPrice ? ` × ${item.unitPrice} грн` :')
+    && !bookingCode.includes('${escapeHtml(String(item.quantity))}${item.servingUnit')
+    && !htmlContains('services/bookingPackage.js', '${qty}${item.servingUnit'));
 check('Booking menu serving toolbar wraps responsively inside narrow booking panels',
     bookingCode.includes('data-menu-serving-time')
     && bookingCode.includes('data-menu-serving-apply-selected')
@@ -2425,7 +3149,7 @@ check('Timeline create toolbar button is absent while deep-link booking flow sta
 check('Timeline product sales API loads monthly report', appCode.includes('/api/analytics/product-sales?') && appCode.includes('loadProductSalesReport'));
 check('Timeline product sales export supports CSV and XLSX', appCode.includes("downloadProductSalesExport('csv')") && appCode.includes("downloadProductSalesExport('xlsx')"));
 check('Timeline product sales supports pinata quick filter', appCode.includes("categorySelect.value = 'pinata'"));
-check('Timeline product sales/export permission state does not fight visibility constructor', authCode.includes('function setTimelinePermissionHidden') && !authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'))") && authCode.includes("setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'))") && !authCode.includes("exportBtn.style.display = 'none'"));
+check('Timeline product sales/export permission state does not fight visibility constructor', authCode.includes('function setTimelinePermissionHidden') && !authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'))") && authCode.includes("setTimelinePermissionHidden('exportPdfBtn', !canAccess('export_data'))") && authCode.includes("setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'))") && timelineVisibilityCode.includes("visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn')") && !authCode.includes("exportBtn.style.display = 'none'"));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

@@ -41,7 +41,9 @@ function quantity(value, fallback = 1) {
 }
 
 function extraDataOf(booking = {}) {
-    const raw = booking.extraData || booking.extra_data || {};
+    const raw = booking.extraData !== undefined && booking.extraData !== null && booking.extraData !== ''
+        ? booking.extraData
+        : (booking.extra_data || {});
     if (!raw) return {};
     if (typeof raw === 'string') {
         try {
@@ -67,6 +69,32 @@ function valueOf(source = {}, ...keys) {
         if (source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
     }
     return null;
+}
+
+function bookingWorkspaceOf(booking = {}) {
+    const extra = extraDataOf(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    return workspace && typeof workspace === 'object' && !Array.isArray(workspace) ? workspace : {};
+}
+
+function bookingWorkspaceCommentsOf(booking = {}) {
+    const comments = bookingWorkspaceOf(booking).comments || {};
+    return comments && typeof comments === 'object' && !Array.isArray(comments) ? comments : {};
+}
+
+function bookingWorkspaceComment(booking = {}, type = 'internal', max = 500) {
+    if (!['kitchen', 'activity', 'internal'].includes(type)) return null;
+    return cleanText(bookingWorkspaceCommentsOf(booking)[type], max);
+}
+
+function bookingSummaryComment(booking = {}, type = 'internal', options = {}) {
+    const fallbackKeys = Array.isArray(options.fallbackKeys) ? options.fallbackKeys : ['notes'];
+    const fallback = fallbackKeys.length ? valueOf(booking, ...fallbackKeys) : null;
+    return cleanText(
+        bookingWorkspaceComment(booking, type, options.max || 500)
+        || fallback,
+        options.max || 500
+    );
 }
 
 function bookingIdOf(booking = {}) {
@@ -112,6 +140,7 @@ function venueForContext(businessContext, warnings) {
         code: 'venue_neutral_fallback',
         message: 'Для цього businessContext немає окремої шапки закладу.'
     });
+
     return {
         name: businessContextLabel(context),
         addressLine1: null,
@@ -162,7 +191,8 @@ function buildProgramRow(mainBooking = {}, programBasePrice) {
         quantity: 1,
         unitPrice: programBasePrice,
         subtotal: programBasePrice,
-        comment: cleanText(valueOf(mainBooking, 'notes'), 500),
+        comment: bookingSummaryComment(mainBooking, 'activity', { fallbackKeys: [] })
+            || bookingSummaryComment(mainBooking, 'internal', { fallbackKeys: ['notes'] }),
         meta: {
             programId: cleanText(valueOf(mainBooking, 'programId', 'program_id'), 120),
             programCode: cleanText(valueOf(mainBooking, 'programCode', 'program_code'), 80),
@@ -170,6 +200,67 @@ function buildProgramRow(mainBooking = {}, programBasePrice) {
             room: cleanText(valueOf(mainBooking, 'room'), 120)
         }
     };
+}
+
+function shouldIncludeProgramOrderRow(primaryBooking = {}, programBasePrice, menuRows = []) {
+    const extra = extraDataOf(primaryBooking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const scenario = cleanText(valueOf(workspace, 'scenario'), 80);
+    const hasEvent = valueOf(workspace, 'hasEvent', 'has_event');
+    const normalizedScenario = String(scenario || '').trim().toLowerCase();
+    const normalizedHasEvent = typeof hasEvent === 'string' ? hasEvent.trim().toLowerCase() : hasEvent;
+    const programId = cleanText(valueOf(primaryBooking, 'programId', 'program_id'), 120);
+    const programCode = cleanText(valueOf(primaryBooking, 'programCode', 'program_code'), 80);
+    const normalizedProgramCode = String(programCode || '').trim().toUpperCase();
+    const kitchenIdentityOnly = normalizedScenario === 'kitchen_only'
+        || normalizedHasEvent === false
+        || normalizedHasEvent === 'false'
+        || normalizedHasEvent === 0
+        || normalizedHasEvent === '0';
+
+    if (
+        kitchenIdentityOnly
+        && money(programBasePrice) === 0
+        && !programId
+        && (!programCode || normalizedProgramCode === 'KITCHEN')
+        && Array.isArray(menuRows)
+        && menuRows.length
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+function isRealBanquetProgram(booking = {}) {
+    const workspace = bookingWorkspaceOf(booking);
+    const scenario = cleanText(valueOf(workspace, 'scenario'), 80);
+    const hasEvent = valueOf(workspace, 'hasEvent', 'has_event');
+    const normalizedScenario = String(scenario || '').trim().toLowerCase();
+    const normalizedHasEvent = typeof hasEvent === 'string' ? hasEvent.trim().toLowerCase() : hasEvent;
+    const programId = cleanText(valueOf(booking, 'programId', 'program_id'), 120);
+    const programCode = cleanText(valueOf(booking, 'programCode', 'program_code'), 80);
+    const normalizedProgramCode = String(programCode || '').trim().toUpperCase();
+    const category = cleanText(valueOf(booking, 'category'), 80);
+    const normalizedCategory = String(category || '').trim().toLowerCase();
+
+    if (
+        normalizedScenario === 'kitchen_only'
+        || normalizedScenario === 'lead_only'
+        || normalizedHasEvent === false
+        || normalizedHasEvent === 'false'
+        || normalizedHasEvent === 0
+        || normalizedHasEvent === '0'
+        || normalizedProgramCode === 'KITCHEN'
+        || normalizedProgramCode === 'LEAD'
+    ) {
+        return false;
+    }
+
+    if (programId) return true;
+    if (programCode) return true;
+
+    return Boolean(normalizedCategory && !['custom', 'kitchen', 'lead', 'food', 'menu'].includes(normalizedCategory));
 }
 
 function buildLinkedActivityRows(linkedBookings = [], options = {}) {
@@ -190,7 +281,7 @@ function buildLinkedActivityRows(linkedBookings = [], options = {}) {
                 quantity: 1,
                 unitPrice: subtotal,
                 subtotal,
-                comment: cleanText(valueOf(booking, 'notes') || valueOf(booking, 'label'), 500),
+                comment: bookingSummaryComment(booking, 'activity', { fallbackKeys: ['notes', 'label'] }),
                 meta: {
                     relationType: cleanText(booking._banquetLink?.relation_type || booking._banquetLink?.relationType, 80) || 'banquet_activity',
                     relationLabel: cleanText(booking._banquetLink?.label, 200),
@@ -253,6 +344,71 @@ function buildServiceEventRows(serviceEvents = []) {
     }));
 }
 
+function buildEntryChargeRow(bookingPackage = {}, warnings = []) {
+    const entry = bookingPackage.entryCharge || bookingPackage.entry_charge || null;
+    const fallbackSubtotal = money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal'));
+    const fallbackRow = () => {
+        if (fallbackSubtotal === null || fallbackSubtotal <= 0) return null;
+        if (Array.isArray(warnings)) {
+            warnings.push({
+                code: 'entry_charge_snapshot_missing',
+                message: 'У пакеті є сума входу, але немає деталізації entryCharge. Рядок входу показано без кількості та ціни.'
+            });
+        }
+        return {
+            id: 'entry:banquet_entry_snapshot',
+            type: 'entry',
+            source: 'booking_package_entry_subtotal_fallback',
+            bookingId: null,
+            title: 'Вхід',
+            quantity: null,
+            unitPrice: null,
+            subtotal: fallbackSubtotal,
+            comment: 'Деталі входу не збережені у пакеті.',
+            meta: {
+                ruleCode: null,
+                dateType: null,
+                fallback: true
+            }
+        };
+    };
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return fallbackRow();
+    const subtotal = money(valueOf(entry, 'subtotal'));
+    if (subtotal === null) return fallbackRow();
+    return {
+        id: `entry:${cleanText(valueOf(entry, 'ruleCode', 'rule_code'), 120) || 'banquet_entry'}`,
+        type: 'entry',
+        source: cleanText(valueOf(entry, 'source'), 120) || 'banquet_entry_price_rules',
+        bookingId: null,
+        title: cleanText(valueOf(entry, 'title'), 160) || 'Вхід',
+        quantity: quantity(valueOf(entry, 'quantity'), null),
+        unitPrice: money(valueOf(entry, 'unitPrice', 'unit_price')),
+        subtotal,
+        comment: null,
+        meta: {
+            ruleCode: cleanText(valueOf(entry, 'ruleCode', 'rule_code'), 120),
+            dateType: cleanText(valueOf(entry, 'dateType', 'date_type'), 40)
+        }
+    };
+}
+
+function pushPackageWarnings(warnings, bookingPackage = {}) {
+    const packageWarnings = Array.isArray(bookingPackage.warnings) ? bookingPackage.warnings : [];
+    for (const warning of packageWarnings) {
+        const code = cleanText(warning?.code, 120);
+        const message = cleanText(warning?.message, 1000);
+        if (!code && !message) continue;
+        const normalized = {
+            code: code || 'booking_package_warning',
+            message: message || code
+        };
+        if (Array.isArray(warning?.missingCodes)) {
+            normalized.missingCodes = warning.missingCodes.map(item => cleanText(item, 120)).filter(Boolean);
+        }
+        warnings.push(normalized);
+    }
+}
+
 function buildLegacyBanquetMenuRows(booking = {}) {
     const menu = cleanText(valueOf(booking, 'banquetMenu', 'banquet_menu'), 5000);
     if (!menu) return [];
@@ -272,6 +428,95 @@ function buildLegacyBanquetMenuRows(booking = {}) {
             comment: null,
             meta: {}
         }));
+}
+
+function mergeSummaryComments(...comments) {
+    const unique = [];
+    const seen = new Set();
+    for (const comment of comments) {
+        const clean = cleanText(comment, 500);
+        const key = clean ? clean.toLowerCase() : null;
+        if (!clean || seen.has(key)) continue;
+        seen.add(key);
+        unique.push(clean);
+    }
+    return cleanText(unique.join(' · '), 500);
+}
+
+function uniqueSummaryCommentSources(entries = []) {
+    const result = [];
+    const seen = new Set();
+    for (const entry of entries) {
+        const booking = entry?.booking;
+        if (!booking) continue;
+        const id = bookingIdOf(booking);
+        const key = id || `${entry.role || 'manual'}:${result.length}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push({
+            booking,
+            role: cleanText(entry.role, 40) || 'manual'
+        });
+    }
+    return result;
+}
+
+function buildSummaryComments({ primaryBooking, kitchenBooking, activityBookings = [], serviceBookings = [], manualBookings = [] } = {}) {
+    const comments = [];
+    const seenTexts = new Set();
+    const sources = uniqueSummaryCommentSources([
+        { booking: kitchenBooking, role: 'kitchen' },
+        ...(activityBookings || []).map(booking => ({ booking, role: 'activity' })),
+        { booking: primaryBooking, role: 'primary' },
+        ...(serviceBookings || []).map(booking => ({ booking, role: 'service' })),
+        ...(manualBookings || []).map(booking => ({ booking, role: 'manual' }))
+    ]);
+    const add = (type, label, text, booking) => {
+        const clean = cleanText(text, 500);
+        const key = clean ? clean.toLowerCase() : null;
+        if (!clean || seenTexts.has(key)) return;
+        seenTexts.add(key);
+        comments.push({
+            type,
+            label,
+            text: clean,
+            bookingId: bookingIdOf(booking)
+        });
+    };
+
+    sources.forEach(({ booking, role }) => {
+        const text = role === 'kitchen'
+            ? bookingSummaryComment(booking, 'kitchen', { fallbackKeys: ['notes'] })
+            : bookingWorkspaceComment(booking, 'kitchen');
+        add('kitchen', 'Кухня', text, booking);
+    });
+
+    sources.forEach(({ booking, role }) => {
+        const text = role === 'activity'
+            ? bookingSummaryComment(booking, 'activity', { fallbackKeys: ['notes'] })
+            : bookingWorkspaceComment(booking, 'activity');
+        add('activity', `Активність — ${bookingTitle(booking) || 'Активність'}`, text, booking);
+    });
+
+    sources.forEach(({ booking, role }) => {
+        const fallbackKeys = role === 'kitchen' || role === 'activity' ? [] : ['notes'];
+        const text = bookingSummaryComment(booking, 'internal', { fallbackKeys });
+        add('internal', 'Внутрішній коментар', text, booking);
+    });
+
+    return comments;
+}
+
+function applyKitchenCommentToMenuRows(menuRows = [], kitchenBooking = {}) {
+    const kitchenComment = bookingSummaryComment(kitchenBooking, 'kitchen', { fallbackKeys: ['notes'] });
+    if (!kitchenComment || !Array.isArray(menuRows) || !menuRows.length) return menuRows;
+    return menuRows.map((row, index) => {
+        if (index !== 0) return row;
+        return {
+            ...row,
+            comment: mergeSummaryComments(kitchenComment, row.comment)
+        };
+    });
 }
 
 function sumKnown(rows = []) {
@@ -415,14 +660,97 @@ function explicitDepositOf(mainBooking = {}) {
     };
 }
 
-function termsOf(mainBooking = {}, warnings) {
-    const extra = extraDataOf(mainBooking);
-    const rawTerms = extra.banquetTerms || extra.banquet_terms || extra.terms || [];
-    const items = Array.isArray(rawTerms)
+function normalizeResolvedTerms(defaults = null) {
+    if (!defaults) return { title: 'Умови банкету', items: [], missingCodes: [] };
+    const source = Array.isArray(defaults) ? { items: defaults } : defaults;
+    const items = Array.isArray(source.items)
+        ? source.items.map(item => cleanText(item, 800)).filter(Boolean)
+        : [];
+    const missingCodes = Array.isArray(source.missingCodes)
+        ? source.missingCodes.map(code => cleanText(code, 120)).filter(Boolean)
+        : [];
+    return {
+        title: cleanText(source.title, 120) || 'Умови банкету',
+        items,
+        missingCodes,
+        source: cleanText(source.source, 120)
+    };
+}
+
+function termsSnapshotOf(extra = {}) {
+    const snapshot = extra.banquetTermsSnapshot
+        || extra.banquet_terms_snapshot
+        || extra.termsSnapshot
+        || extra.terms_snapshot
+        || {};
+    return snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) ? snapshot : {};
+}
+
+function termsSnapshotSourceOf(extra = {}) {
+    return cleanText(valueOf(termsSnapshotOf(extra), 'source', 'termsSource', 'terms_source'), 120);
+}
+
+function isPriceRuleTermsSnapshot(extra = {}) {
+    return String(termsSnapshotSourceOf(extra) || '').toLowerCase() === 'price_rules';
+}
+
+function normalizeRawTerms(rawTerms) {
+    return Array.isArray(rawTerms)
         ? rawTerms.map(item => cleanText(item, 800)).filter(Boolean)
         : cleanText(rawTerms, 3000)
             ? cleanText(rawTerms, 3000).split(/\r?\n/).map(item => cleanText(item, 800)).filter(Boolean)
             : [];
+}
+
+function termsOf(mainBooking = {}, warnings, options = {}) {
+    const extra = extraDataOf(mainBooking);
+    const rawTerms = extra.banquetTerms || extra.banquet_terms || extra.terms || [];
+    const items = normalizeRawTerms(rawTerms);
+    const snapshotSource = termsSnapshotSourceOf(extra);
+    const priceRuleSnapshot = isPriceRuleTermsSnapshot(extra);
+    const defaults = normalizeResolvedTerms(options.defaults || options.banquetTermsDefaults);
+
+    if (items.length && !priceRuleSnapshot) {
+        return {
+            title: 'Умови банкету',
+            items,
+            source: 'manual',
+            snapshotSource: snapshotSource || null,
+            missingCodes: []
+        };
+    }
+
+    if (defaults.missingCodes.length) {
+        warnings.push({
+            code: 'banquet_terms_price_rule_missing',
+            message: `Не знайдено price_rules для стандартних умов банкету: ${defaults.missingCodes.join(', ')}.`
+        });
+    }
+
+    if (defaults.items.length) {
+        return {
+            title: defaults.title,
+            items: defaults.items,
+            source: defaults.source || 'price_rules',
+            snapshotSource: priceRuleSnapshot ? snapshotSource : null,
+            missingCodes: defaults.missingCodes
+        };
+    }
+
+    if (items.length && priceRuleSnapshot) {
+        warnings.push({
+            code: 'banquet_terms_snapshot_fallback',
+            message: 'Актуальні price_rules для умов банкету недоступні, тому використано збережений snapshot умов.'
+        });
+        return {
+            title: 'Умови банкету',
+            items,
+            source: 'snapshot_fallback',
+            snapshotSource: snapshotSource || 'price_rules',
+            missingCodes: defaults.missingCodes
+        };
+    }
+
     if (!items.length) {
         warnings.push({
             code: 'terms_missing',
@@ -431,11 +759,14 @@ function termsOf(mainBooking = {}, warnings) {
     }
     return {
         title: 'Умови банкету',
-        items
+        items,
+        source: null,
+        snapshotSource: snapshotSource || null,
+        missingCodes: defaults.missingCodes
     };
 }
 
-function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null } = {}) {
+function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null, banquetTermsDefaults = null } = {}) {
     if (!mainBooking || typeof mainBooking !== 'object') {
         throw new Error('mainBooking is required');
     }
@@ -462,8 +793,11 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const samePrimaryAndKitchen = sameBooking(primaryBooking, kitchenBooking);
     const bookingPackage = kitchenPackage || {};
     const menuPositions = normalizeMenuPositions(bookingPackage.menuPositions || bookingPackage.menu_positions || []);
-    const menuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
+    const rawMenuRows = menuPositions.length ? buildMenuRows(menuPositions) : buildLegacyBanquetMenuRows(kitchenBooking);
+    const menuRows = applyKitchenCommentToMenuRows(rawMenuRows, kitchenBooking);
     const serviceEventRows = buildServiceEventRows(bookingPackage.serviceEvents || bookingPackage.service_events || []);
+    const entryRow = buildEntryChargeRow(bookingPackage, warnings);
+    pushPackageWarnings(warnings, bookingPackage);
     if (!menuPositions.length && menuRows.length) {
         warnings.push({
             code: 'legacy_banquet_menu_used',
@@ -480,18 +814,28 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
 
     const bookingPrice = money(valueOf(primaryBooking, 'price'));
     const menuSubtotal = money(valueOf(bookingPackage, 'positionsSubtotal', 'positions_subtotal')) ?? sumKnown(menuRows);
+    const entrySubtotal = money(valueOf(bookingPackage, 'entrySubtotal', 'entry_subtotal')) ?? money(entryRow?.subtotal);
     const explicitProgramBasePrice = money(valueOf(primaryPackage, 'programBasePrice', 'program_base_price'));
-    const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null && menuSubtotal !== null
-        ? money(Math.max(0, bookingPrice - menuSubtotal))
+    const inferredProgramBasePrice = samePrimaryAndKitchen && bookingPrice !== null
+        ? money(Math.max(0, bookingPrice - (menuSubtotal || 0) - (entrySubtotal || 0)))
         : bookingPrice;
     const programBasePrice = explicitProgramBasePrice ?? inferredProgramBasePrice;
-    const programRow = buildProgramRow(primaryBooking, programBasePrice);
+    const programRow = shouldIncludeProgramOrderRow(primaryBooking, programBasePrice, menuRows)
+        ? buildProgramRow(primaryBooking, programBasePrice)
+        : null;
     const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
+    const summaryComments = buildSummaryComments({
+        primaryBooking,
+        kitchenBooking,
+        activityBookings: groupState.activityBookings,
+        serviceBookings: groupState.serviceBookings,
+        manualBookings: groupState.manualBookings
+    });
     const activitySubtotal = sumKnown(activityRows);
-    const orderRows = [programRow, ...activityRows, ...menuRows, ...serviceEventRows].filter(Boolean);
+    const orderRows = [programRow, ...activityRows, entryRow, ...menuRows, ...serviceEventRows].filter(Boolean);
     const rowsTotal = sumKnown(orderRows);
     const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
-    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal);
+    const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
     const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
     const deposit = explicitDepositOf(primaryBooking);
     const paidAmount = money(valueOf(primaryBooking, 'paidAmount', 'paid_amount'));
@@ -523,6 +867,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         valueOf(kitchenBooking, 'banquetGuests', 'banquet_guests'),
         valueOf(primaryBooking, 'banquetGuests', 'banquet_guests')
     );
+    const eventProgramName = cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200);
+    const hasRealProgram = isRealBanquetProgram(primaryBooking);
 
     return {
         success: true,
@@ -538,7 +884,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         } : null,
         document: {
             type: 'banquet_summary',
-            title: 'Вижимка банкету',
+            title: 'БАНКЕТНИЙ ЛИСТ',
             generatedAt: new Date().toISOString(),
             generatedBy: cleanText(generatedBy?.name || generatedBy?.username || generatedBy, 160)
         },
@@ -547,10 +893,12 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             date: cleanText(valueOf(primaryBooking, 'date'), 40),
             time: cleanText(valueOf(primaryBooking, 'time'), 20),
             room: cleanText(valueOf(primaryBooking, 'room'), 120),
-            programName: cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200),
+            programName: eventProgramName,
+            hasRealProgram,
+            programDisplayName: hasRealProgram ? eventProgramName : null,
             groupName: cleanText(
                 valueOf(groupState.group || {}, 'groupName', 'group_name')
-                || valueOf(primaryBooking, 'groupName', 'group_name'),
+                || (!groupState.group ? valueOf(primaryBooking, 'groupName', 'group_name') : null),
                 200
             ),
             createdAt: cleanText(valueOf(primaryBooking, 'createdAt', 'created_at'), 80),
@@ -567,9 +915,11 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         },
         orderRows,
         serviceEvents: serviceEventRows,
+        comments: summaryComments,
         totals: {
             programBasePrice,
             menuSubtotal,
+            entrySubtotal,
             activitySubtotal,
             orderTotal,
             bookingPrice,
@@ -582,7 +932,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             note: deposit.note,
             source: deposit.source
         },
-        terms: termsOf(primaryBooking, warnings),
+        terms: termsOf(primaryBooking, warnings, { banquetTermsDefaults }),
         warnings
     };
 }

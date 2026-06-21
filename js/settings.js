@@ -669,14 +669,36 @@ function handleTelegramResult(r) {
     }
 }
 
+function settingsBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function settingsBookingScheduleLine(booking = {}, { includeEndTime = false } = {}) {
+    if (settingsBookingIsBanquet(booking)) {
+        return [
+            `🕐 Дата банкету: ${booking.date || ''}`,
+            booking.time ? `🚪 Прихід гостей: ${booking.time}` : null,
+        ].filter(Boolean).join('\n') + '\n';
+    }
+    if (includeEndTime) {
+        const endTime = addMinutesToTime(booking.time, booking.duration);
+        return `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    }
+    return `🕐 ${booking.date} | ${booking.time}\n`;
+}
+
 function notifyBookingCreated(booking) {
     if (booking.status === 'preliminary') return;
 
-    const endTime = addMinutesToTime(booking.time, booking.duration);
     let text = `📌 <b>Нове бронювання</b>\n\n`;
     text += `✅ Підтверджене\n`;
     text += `🎭 ${booking.label}: ${booking.programName}\n`;
-    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += settingsBookingScheduleLine(booking, { includeEndTime: true });
     text += `🏠 ${booking.room}\n`;
     if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
     if (booking.notes) text += `📝 ${booking.notes}\n`;
@@ -687,18 +709,17 @@ function notifyBookingCreated(booking) {
 function notifyBookingDeleted(booking) {
     const text = `🗑 <b>Видалено бронювання</b>\n\n` +
         `🎭 ${booking.label}: ${booking.programName}\n` +
-        `🕐 ${booking.date} | ${booking.time}\n` +
+        settingsBookingScheduleLine(booking) +
         `🏠 ${booking.room}\n` +
         `\n👤 Видалив: ${AppState.currentUser?.username || '?'}`;
     apiTelegramNotify(text).then(handleTelegramResult);
 }
 
 function notifyBookingEdited(booking) {
-    const endTime = addMinutesToTime(booking.time, booking.duration);
     let text = `✏️ <b>Бронювання змінено</b>\n\n`;
     text += `🔖 ${booking.id}\n`;
     text += `🎭 ${booking.label}: ${booking.programName}\n`;
-    text += `🕐 ${booking.date} | ${booking.time} - ${endTime}\n`;
+    text += settingsBookingScheduleLine(booking, { includeEndTime: true });
     text += `🏠 ${booking.room}\n`;
     if (booking.kidsCount) text += `👶 ${booking.kidsCount} дітей\n`;
     if (booking.notes) text += `📝 ${booking.notes}\n`;
@@ -711,10 +732,41 @@ function notifyStatusChanged(booking, newStatus) {
     const statusText = newStatus === 'confirmed' ? 'ПІДТВЕРДЖЕНО' : 'Попереднє';
     const text = `${icon} <b>Статус змінено: ${statusText}</b>\n\n` +
         `🎭 ${booking.label}: ${booking.programName}\n` +
-        `🕐 ${booking.date} | ${booking.time}\n` +
+        settingsBookingScheduleLine(booking) +
         `🏠 ${booking.room}\n` +
         `\n👤 Змінив: ${AppState.currentUser?.username || '?'}`;
     apiTelegramNotify(text).then(handleTelegramResult);
+}
+
+async function readDailyDigestResponse(response) {
+    try {
+        return await response.json();
+    } catch (err) {
+        console.warn('[DailyDigest] Invalid JSON response', err);
+        return {
+            success: false,
+            code: 'DIGEST_INVALID_RESPONSE',
+            message: 'Сервер повернув некоректну відповідь для дайджесту.'
+        };
+    }
+}
+
+function dailyDigestFailureMessage(result = {}, response = null) {
+    const code = String(result.code || '').toUpperCase();
+    const reason = String(result.reason || '').toLowerCase();
+    if (code === 'NO_CHAT_ID' || reason === 'no_chat_id') {
+        return 'Telegram Chat ID не налаштовано. Додайте chat id у налаштуваннях Telegram.';
+    }
+    if (code === 'NO_BOT_TOKEN' || reason === 'no_bot_token') {
+        return 'Telegram bot token не налаштовано на сервері. Потрібна перевірка змінних середовища.';
+    }
+    if (code === 'TELEGRAM_SEND_FAILED' || reason === 'telegram_send_failed') {
+        return 'Telegram не прийняв дайджест. Перевірте бота, chat id або доступ до чату.';
+    }
+    if (code === 'DIGEST_INTERNAL_ERROR' || reason === 'digest_internal_error' || response?.status >= 500) {
+        return 'Не вдалося сформувати або відправити дайджест. Спробуйте пізніше.';
+    }
+    return result.message || 'Не вдалося відправити дайджест дня.';
 }
 
 async function sendDailyDigest() {
@@ -724,15 +776,21 @@ async function sendDailyDigest() {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
-        const result = await response.json();
+        const result = await readDailyDigestResponse(response);
         if (result.success) {
-            showNotification('Дайджест відправлено в Telegram!', 'success');
+            showNotification(result.message || 'Дайджест дня відправлено в Telegram!', 'success');
         } else {
-            showNotification(result.reason === 'no_chat_id' ? 'Telegram Chat ID не налаштовано' : 'Помилка відправки дайджесту', 'error');
+            console.warn('[DailyDigest] Send failed', {
+                status: response.status,
+                code: result.code,
+                reason: result.reason,
+                message: result.message
+            });
+            showNotification(dailyDigestFailureMessage(result, response), 'error');
         }
     } catch (err) {
         console.error('Digest send error:', err);
-        showNotification('Помилка відправки дайджесту', 'error');
+        showNotification('Не вдалося відправити дайджест. Перевірте Telegram налаштування або спробуйте пізніше.', 'error');
     }
 }
 
@@ -1726,14 +1784,21 @@ async function sendTestDigest() {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return;
-        const result = await response.json();
+        const result = await readDailyDigestResponse(response);
         if (result.success) {
-            showNotification('Тестовий дайджест надіслано!', 'success');
+            showNotification(result.message || 'Тестовий дайджест надіслано!', 'success');
         } else {
-            showNotification('Помилка: ' + (result.reason || 'невідома'), 'error');
+            console.warn('[DailyDigest] Test send failed', {
+                status: response.status,
+                code: result.code,
+                reason: result.reason,
+                message: result.message
+            });
+            showNotification(dailyDigestFailureMessage(result, response), 'error');
         }
     } catch (err) {
-        showNotification('Помилка надсилання', 'error');
+        console.error('Test digest send error:', err);
+        showNotification('Не вдалося відправити тестовий дайджест. Перевірте Telegram налаштування або спробуйте пізніше.', 'error');
     }
 }
 

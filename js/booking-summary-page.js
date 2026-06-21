@@ -55,6 +55,20 @@
         return text;
     }
 
+    function formatBirthday(value) {
+        if (!value) return '—';
+        const text = String(value).trim();
+        const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) return `${isoMatch[3]}.${isoMatch[2]}.${isoMatch[1]}`;
+        const date = new Date(text);
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleDateString('uk-UA', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    }
+
     function formatDateTime(value) {
         if (!value) return '—';
         const date = new Date(value);
@@ -68,10 +82,15 @@
         });
     }
 
+    function formatCurrencyLabel(currency = 'UAH') {
+        const normalized = String(currency || 'UAH').trim();
+        return normalized.toUpperCase() === 'UAH' ? '₴' : normalized;
+    }
+
     function formatMoney(value, currency = 'UAH') {
         const n = Number(value);
         if (!Number.isFinite(n)) return '—';
-        return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n)} ${currency}`;
+        return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n)} ${formatCurrencyLabel(currency)}`;
     }
 
     function formatValue(value) {
@@ -79,24 +98,99 @@
         return String(value);
     }
 
-    function compactFact(label, value) {
-        return `<span class="summary-brief-item"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(formatValue(value))}</span>`;
+    const SUMMARY_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+
+    function summaryMenuQuantityNumber(value) {
+        const number = Number(String(value ?? '').replace(',', '.'));
+        if (!Number.isFinite(number) || number <= 0) return '';
+        return Number.isInteger(number)
+            ? String(number)
+            : new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(number);
     }
 
-    function compactLine(items = []) {
+    function summaryMenuPortionWord(value) {
+        const number = Number(String(value ?? '').replace(',', '.'));
+        const absolute = Math.abs(number);
+        const integer = Math.floor(absolute);
+        if (!Number.isInteger(number)) return 'порції';
+        const mod10 = integer % 10;
+        const mod100 = integer % 100;
+        if (mod10 === 1 && mod100 !== 11) return 'порція';
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'порції';
+        return 'порцій';
+    }
+
+    function normalizeSummaryMenuServingUnitDisplay(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        return raw
+            .replace(/\s+/g, ' ')
+            .replace(/^(\d+(?:[.,]\d+)?)\s*(г|гр|гр\.|грам|грами|грамів)$/i, '$1 г')
+            .replace(/^(\d+(?:[.,]\d+)?)\s*(кг|kg)$/i, '$1 кг');
+    }
+
+    function isSummaryMenuPortionServingUnit(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        return !normalized || SUMMARY_MENU_PORTION_UNITS.has(normalized);
+    }
+
+    function isSummaryMenuPackServingUnit(value) {
+        return /^\d+(?:[.,]\d+)?\s*(г|гр|гр\.|грам|грами|грамів|кг|kg)$/i.test(String(value || '').trim());
+    }
+
+    function summaryMenuQuantityLabel(row = {}) {
+        const meta = row.meta || {};
+        const quantity = summaryMenuQuantityNumber(row.quantity);
+        if (!quantity) return formatValue(row.quantity);
+        const rawUnit = meta.servingUnit || row.servingUnit || row.serving_unit || meta.priceUnit || row.priceUnit || row.price_unit || '';
+        if (isSummaryMenuPortionServingUnit(rawUnit)) return `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
+        const unit = normalizeSummaryMenuServingUnitDisplay(rawUnit);
+        if (isSummaryMenuPackServingUnit(rawUnit) && unit) return `${quantity} ${summaryMenuPortionWord(row.quantity)} по ${unit}`;
+        return unit ? `${quantity} ${unit}` : `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
+    }
+
+    function summaryEntryQuantityLabel(row = {}) {
+        const quantity = summaryMenuQuantityNumber(row.quantity);
+        return quantity ? `${quantity} дітей` : formatValue(row.quantity);
+    }
+
+    function summaryOrderQuantityLabel(row = {}) {
+        return row?.type === 'entry' ? summaryEntryQuantityLabel(row) : summaryMenuQuantityLabel(row);
+    }
+
+    function summaryEntryUnitAmountLabel(row = {}, currency = 'UAH') {
+        const unitPrice = Number(row.unitPrice);
+        const subtotal = row.subtotal;
+        if (Number.isFinite(unitPrice) && unitPrice > 0) {
+            return `× ${formatMoney(unitPrice, currency)} = ${formatMoney(subtotal, currency)}`;
+        }
+        return formatMoney(subtotal, currency);
+    }
+
+    function summaryEntryFullAmountLabel(row = {}, currency = 'UAH') {
+        const quantityLabel = summaryEntryQuantityLabel(row);
+        const unitPrice = Number(row.unitPrice);
+        if (Number.isFinite(unitPrice) && unitPrice > 0) {
+            return `${quantityLabel} × ${formatMoney(unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}`;
+        }
+        return `${quantityLabel} = ${formatMoney(row.subtotal, currency)}`;
+    }
+
+    function briefItem(label, value) {
         return `
-            <p class="summary-brief-line">
-                ${items.filter(Boolean).join('')}
-            </p>
+            <div class="summary-brief-item">
+                <span class="summary-brief-label">${escapeHtml(label)}:</span>
+                <span class="summary-brief-value">${escapeHtml(formatValue(value))}</span>
+            </div>
         `;
     }
 
-    function countsText(counts = {}) {
-        const parts = [];
-        if (counts.children !== undefined && counts.children !== null && counts.children !== '') parts.push(`Діти ${counts.children}`);
-        if (counts.adults !== undefined && counts.adults !== null && counts.adults !== '') parts.push(`Дорослі ${counts.adults}`);
-        if (counts.tables !== undefined && counts.tables !== null && counts.tables !== '') parts.push(`Столи ${counts.tables}`);
-        return parts.join(' · ') || null;
+    function briefColumn(items = []) {
+        return `
+            <div class="summary-brief-column">
+                ${items.filter(Boolean).join('')}
+            </div>
+        `;
     }
 
     function renderWarnings(warnings = []) {
@@ -137,6 +231,15 @@
         return explicit.length ? explicit : fromRows;
     }
 
+    function summaryCommentRows(summary) {
+        return (Array.isArray(summary?.comments) ? summary.comments : [])
+            .map(comment => ({
+                label: comment?.label || 'Примітка',
+                text: comment?.text || ''
+            }))
+            .filter(comment => comment.text);
+    }
+
     function summaryServingTime(row = {}) {
         const meta = row.meta || {};
         return meta.servingTime || meta.time || null;
@@ -144,6 +247,7 @@
 
     function orderRowsHtml(summary) {
         const rows = summaryOrderRows(summary);
+        const currency = summary?.totals?.currency || 'UAH';
         if (!rows.length) {
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
         }
@@ -152,7 +256,7 @@
                 <colgroup>
                     <col style="width:42px">
                     <col>
-                    <col style="width:72px">
+                    <col style="width:118px">
                     <col style="width:112px">
                     <col style="width:170px">
                 </colgroup>
@@ -166,15 +270,22 @@
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows.map((row, index) => `
-                        <tr>
-                            <td class="num">${index + 1}</td>
-                            <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
-                            <td class="qty">${escapeHtml(formatValue(row.quantity))}</td>
-                            <td class="serving">${escapeHtml(formatValue(summaryServingTime(row)))}</td>
-                            <td>${escapeHtml(formatValue(orderRowComment(row)))}</td>
-                        </tr>
-                    `).join('')}
+                    ${rows.map((row, index) => {
+                        const isEntry = row?.type === 'entry';
+                        const entryAmount = isEntry ? summaryEntryUnitAmountLabel(row, currency) : null;
+                        const comment = isEntry
+                            ? [entryAmount, row.comment].filter(Boolean).join(' · ')
+                            : orderRowComment(row);
+                        return `
+                            <tr>
+                                <td class="num">${index + 1}</td>
+                                <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
+                                <td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>
+                                <td class="serving">${escapeHtml(isEntry ? '—' : formatValue(summaryServingTime(row)))}</td>
+                                <td>${escapeHtml(formatValue(comment))}</td>
+                            </tr>
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         `;
@@ -200,6 +311,21 @@
         `;
     }
 
+    function renderComments(summary) {
+        const comments = summaryCommentRows(summary);
+        if (!comments.length) return '';
+        return `
+            <div class="summary-note-block summary-comments">
+                ${comments.map(comment => `
+                    <div class="summary-comment-row">
+                        <strong>${escapeHtml(comment.label)}</strong>
+                        <span>${escapeHtml(comment.text)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
     function renderTotals(summary) {
         const totals = summary?.totals || {};
         const deposit = summary?.deposit || {};
@@ -210,6 +336,7 @@
                     <strong>Сума:</strong> ${escapeHtml(formatMoney(totals.orderTotal, currency))}
                     <span>Програма: ${escapeHtml(formatMoney(totals.programBasePrice, currency))}</span>
                     <span>Бронювання: ${escapeHtml(formatMoney(totals.bookingPrice, currency))}</span>
+                    <span>Вхід: ${escapeHtml(formatMoney(totals.entrySubtotal, currency))}</span>
                     <span>Меню: ${escapeHtml(formatMoney(totals.menuSubtotal, currency))}</span>
                     <span>Активності: ${escapeHtml(formatMoney(totals.activitySubtotal, currency))}</span>
                 </p>
@@ -237,74 +364,81 @@
     function renderDocument(summary) {
         const doc = el('bookingSummaryDocument');
         if (!doc) return;
+        const printRoot = el('bookingSummaryPrintRoot');
         const venue = summary.venue || {};
         const event = summary.event || {};
         const customer = summary.customer || {};
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
-        const people = countsText(counts);
+        const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
 
+        if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
         doc.innerHTML = `
             <header class="summary-doc-header">
-                <div>
+                <div class="summary-doc-heading">
                     <h2 class="summary-venue-name">${escapeHtml(venue.name || 'Заклад')}</h2>
+                </div>
+                <div class="summary-doc-meta-grid">
                     <div class="summary-venue-lines">
                         <span>${escapeHtml(formatValue(venue.addressLine1))}</span>
                         <span>${escapeHtml(formatValue(venue.addressLine2))}</span>
                         <span>${escapeHtml(formatValue(venue.phone))}</span>
                     </div>
-                </div>
-                <div class="summary-doc-meta">
-                    <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
-                    <span>Сформовано: ${escapeHtml(formatDateTime(summary.document?.generatedAt))}</span>
-                    <span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
+                    <div class="summary-doc-meta">
+                        <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
+                        <span>Сформовано: ${escapeHtml(formatDateTime(summary.document?.generatedAt))}</span>
+                        <span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
+                    </div>
                 </div>
             </header>
 
-            <h1 class="summary-title">${escapeHtml(summary.document?.title || 'Вижимка банкету')}</h1>
+            <h1 class="summary-title">${escapeHtml(summary.document?.title || 'БАНКЕТНИЙ ЛИСТ')}</h1>
 
             <section class="summary-brief" aria-label="Коротка інформація по банкету">
-                ${compactLine([
-                    compactFact('Клієнт', customer.name),
-                    compactFact('Телефон', customer.phone),
-                    compactFact('Кімната', event.room),
-                    compactFact('Дата', formatDate(event.date))
-                ])}
-                ${compactLine([
-                    compactFact('Час', event.time),
-                    compactFact('Учасники', people),
-                    compactFact('Програма', event.programName)
-                ])}
-                ${compactLine([
-                    compactFact('Іменинник', celebrant.name),
-                    compactFact('Дата народження', formatDate(celebrant.birthday)),
-                    compactFact('Менеджер', event.manager)
-                ])}
-                ${compactLine([
-                    compactFact('Оформлено', formatDateTime(event.createdAt)),
-                    compactFact('Booking ID', summary.bookingId || '—')
-                ])}
+                <div class="summary-brief-grid">
+                    ${briefColumn([
+                        briefItem('Клієнт', customer.name),
+                        briefItem('Телефон', customer.phone),
+                        briefItem('Кімната', event.room),
+                        briefItem('Дата банкету', formatDate(event.date)),
+                        briefItem('Прихід гостей', event.time)
+                    ])}
+                    ${briefColumn([
+                        briefItem('Діти', counts.children),
+                        programLabel ? briefItem('Програма', programLabel) : '',
+                        briefItem('Іменинник', celebrant.name),
+                        briefItem('Дата народження', formatBirthday(celebrant.birthday)),
+                        briefItem('Оформлено', formatDateTime(event.createdAt))
+                    ])}
+                </div>
             </section>
 
-            <section class="summary-section">
+            <section class="summary-section summary-section--orders">
                 <h2>Замовлення</h2>
                 ${orderRowsHtml(summary)}
             </section>
 
             ${summaryServiceEventRows(summary).length ? `
-                <section class="summary-section">
+                <section class="summary-section summary-section--service-events">
                     <h2>Події видачі</h2>
                     ${serviceEventsHtml(summary)}
                 </section>
             ` : ''}
 
-            <section class="summary-section">
+            ${summaryCommentRows(summary).length ? `
+                <section class="summary-section summary-section--comments">
+                    <h2>Примітки</h2>
+                    ${renderComments(summary)}
+                </section>
+            ` : ''}
+
+            <section class="summary-section summary-section--finance">
                 <h2>Суми і завдаток</h2>
                 ${renderTotals(summary)}
             </section>
 
-            <section class="summary-section">
+            <section class="summary-section summary-section--terms">
                 <h2>${escapeHtml(summary.terms?.title || 'Умови банкету')}</h2>
                 ${renderTerms(summary)}
             </section>
@@ -321,28 +455,37 @@
         const currency = totals.currency || 'UAH';
         const rows = summaryOrderRows(summary);
         const serviceEvents = summaryServiceEventRows(summary);
+        const comments = summaryCommentRows(summary);
         const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : [];
+        const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
 
         return [
-            summary.venue?.name || 'Вижимка банкету',
+            summary.venue?.name || 'Банкетний лист',
             `Booking ID: ${summary.bookingId || '—'}`,
             '',
-            `Дата/час: ${formatDate(event.date)} ${formatValue(event.time)}`,
+            `Дата банкету: ${formatDate(event.date)}`,
+            `Прихід гостей: ${formatValue(event.time)}`,
             `Замовник: ${formatValue(customer.name)}`,
             `Телефон: ${formatValue(customer.phone)}`,
             `Іменинник: ${formatValue(celebrant.name)}`,
-            `Дата народження: ${formatDate(celebrant.birthday)}`,
+            `Дата народження: ${formatBirthday(celebrant.birthday)}`,
             `Кімната: ${formatValue(event.room)}`,
             `Дата оформлення: ${formatDateTime(event.createdAt)}`,
             `Менеджер: ${formatValue(event.manager)}`,
             `Дітей: ${formatValue(counts.children)}`,
             `Дорослих: ${formatValue(counts.adults)}`,
+            ...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : []),
             '',
             'Замовлення:',
             ...(rows.length ? rows.map((row, index) => {
                 const comment = orderRowComment(row);
                 const servingTime = summaryServingTime(row);
-                return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${formatValue(row.quantity)} x ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
+                const quantityLabel = summaryOrderQuantityLabel(row);
+                if (row?.type === 'entry') {
+                    const entryComment = row.comment ? ` (${row.comment})` : '';
+                    return `${index + 1}. ${row.title || 'Вхід'} — ${summaryEntryFullAmountLabel(row, currency)}${entryComment}`;
+                }
+                return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${quantityLabel} × ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
             }) : ['Позиції відсутні']),
             ...(serviceEvents.length ? [
                 '',
@@ -353,8 +496,15 @@
                     return `${index + 1}. ${row.title || 'Подія'} — ${formatValue(meta.time || meta.servingTime)}${note ? ` (${note})` : ''}`;
                 })
             ] : []),
+            ...(comments.length ? [
+                '',
+                'Примітки:',
+                ...comments.map(comment => `- ${comment.label}: ${comment.text}`)
+            ] : []),
             '',
             `Сума замовлення: ${formatMoney(totals.orderTotal, currency)}`,
+            `Вхід: ${formatMoney(totals.entrySubtotal, currency)}`,
+            `Меню: ${formatMoney(totals.menuSubtotal, currency)}`,
             `Сума бронювання: ${formatMoney(totals.bookingPrice, currency)}`,
             `Завдаток: ${formatMoney(deposit.amount, currency)}`,
             `Спосіб внесення: ${formatValue(deposit.paymentMethod)}`,
@@ -380,6 +530,26 @@
         textarea.remove();
     }
 
+    function printSummaryDocument() {
+        const originalTitle = document.title;
+        const printTitle = currentSummary?.bookingId
+            ? `Банкетний лист ${currentSummary.bookingId}`
+            : 'Банкетний лист';
+        let restored = false;
+
+        const restoreTitle = () => {
+            if (restored) return;
+            restored = true;
+            document.title = originalTitle;
+            window.removeEventListener('afterprint', restoreTitle);
+        };
+
+        window.addEventListener('afterprint', restoreTitle, { once: true });
+        document.title = printTitle;
+        window.print();
+        setTimeout(restoreTitle, 1000);
+    }
+
     async function loadSummary() {
         const params = qs();
         const id = params.get('id');
@@ -396,7 +566,7 @@
 
         const token = storedToken();
         if (!token) {
-            setState('Потрібно увійти в CRM, щоб відкрити вижимку.', 'error');
+            setState('Потрібно увійти в CRM, щоб відкрити банкетний лист.', 'error');
             return;
         }
 
@@ -408,7 +578,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data.success === false) {
-            setState(data.error || `Не вдалося завантажити вижимку (${response.status}).`, 'error');
+            setState(data.error || `Не вдалося завантажити банкетний лист (${response.status}).`, 'error');
             return;
         }
 
@@ -419,17 +589,15 @@
     }
 
     function bindActions() {
-        el('bookingSummaryPrint')?.addEventListener('click', () => {
-            window.print();
-        });
+        el('bookingSummaryPrint')?.addEventListener('click', printSummaryDocument);
         el('bookingSummaryCopy')?.addEventListener('click', async () => {
             if (!currentSummary) {
-                showToast('Вижимка ще не завантажена');
+                showToast('Банкетний лист ще не завантажений');
                 return;
             }
             try {
                 await copyText(summaryText(currentSummary));
-                showToast('Текст вижимки скопійовано');
+                showToast('Текст банкетного листа скопійовано');
             } catch {
                 showToast('Не вдалося скопіювати текст');
             }
@@ -440,7 +608,7 @@
         bindActions();
         loadSummary().catch(err => {
             console.error('[booking-summary] load failed', err);
-            setState('Не вдалося завантажити вижимку.', 'error');
+            setState('Не вдалося завантажити банкетний лист.', 'error');
         });
     });
 })();

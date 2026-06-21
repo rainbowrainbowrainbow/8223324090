@@ -79,11 +79,56 @@ async function setLastSent(key, dateStr) {
     } catch (err) { log.error(`setLastSent(${key}) error`, err); }
 }
 
+const DIGEST_SEND_MESSAGES = {
+    DIGEST_SENT: 'Дайджест дня відправлено',
+    NO_CHAT_ID: 'Telegram Chat ID не налаштовано',
+    NO_BOT_TOKEN: 'Telegram bot token не налаштовано на сервері',
+    TELEGRAM_SEND_FAILED: 'Telegram не прийняв дайджест. Перевірте налаштування бота або chat id.',
+    DIGEST_INTERNAL_ERROR: 'Не вдалося сформувати або відправити дайджест'
+};
+
+function classifyDigestSendFailure(result, err) {
+    const description = String(result?.description || result?.error || err?.message || '').toLowerCase();
+    if (description.includes('no bot token') || description.includes('bot token') || description.includes('invalid token') || description.includes('unauthorized')) {
+        return { code: 'NO_BOT_TOKEN', reason: 'no_bot_token', message: DIGEST_SEND_MESSAGES.NO_BOT_TOKEN };
+    }
+    if (description.includes('no_chat_id') || description.includes('chat not found') || description.includes('chat_id') || description.includes('chat id')) {
+        return { code: 'NO_CHAT_ID', reason: 'no_chat_id', message: DIGEST_SEND_MESSAGES.NO_CHAT_ID };
+    }
+    return { code: 'TELEGRAM_SEND_FAILED', reason: 'telegram_send_failed', message: DIGEST_SEND_MESSAGES.TELEGRAM_SEND_FAILED };
+}
+
+function buildDigestSendResult(result, count = 0, meta = {}) {
+    if (result?.ok) {
+        return {
+            success: true,
+            code: 'DIGEST_SENT',
+            message: DIGEST_SEND_MESSAGES.DIGEST_SENT,
+            count,
+            meta
+        };
+    }
+    const failure = classifyDigestSendFailure(result);
+    return {
+        success: false,
+        code: failure.code,
+        reason: failure.reason,
+        message: failure.message,
+        count,
+        meta
+    };
+}
+
 async function buildAndSendDigest(date, actor = null) {
     const chatId = await getConfiguredChatId();
     if (!chatId) {
         log.warn('No chat ID configured for digest');
-        return { success: false, reason: 'no_chat_id' };
+        return {
+            success: false,
+            code: 'NO_CHAT_ID',
+            reason: 'no_chat_id',
+            message: DIGEST_SEND_MESSAGES.NO_CHAT_ID
+        };
     }
     const bookingActor = notificationActor(actor);
 
@@ -117,12 +162,10 @@ async function buildAndSendDigest(date, actor = null) {
     if (bookings.length === 0 && afishaEvents.length === 0) {
         const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
         const result = await sendTelegramMessage(chatId, text);
-        return {
-            success: result?.ok || false,
-            count: 0,
-            reason: result?.ok ? undefined : (result?.description || 'send_failed'),
-            meta: { bookingVisibilityScope: bookingVisibility.scopeSource, privilegedSystemActor: !actor }
-        };
+        return buildDigestSendResult(result, 0, {
+            bookingVisibilityScope: bookingVisibility.scopeSource,
+            privilegedSystemActor: !actor
+        });
     }
 
     await ensureDefaultLines(date);
@@ -216,12 +259,10 @@ async function buildAndSendDigest(date, actor = null) {
         await scheduleAutoDelete(chatId, result.result.message_id);
     }
 
-    return {
-        success: result?.ok || false,
-        count: bookings.length,
-        reason: result?.ok ? undefined : (result?.description || 'send_failed'),
-        meta: { bookingVisibilityScope: bookingVisibility.scopeSource, privilegedSystemActor: !actor }
-    };
+    return buildDigestSendResult(result, bookings.length, {
+        bookingVisibilityScope: bookingVisibility.scopeSource,
+        privilegedSystemActor: !actor
+    });
 }
 
 async function sendTomorrowReminder(todayStr, actor = null) {
@@ -2316,7 +2357,10 @@ module.exports = {
     checkEventPipeline,
     checkNpsFollowUp,
     checkCleaningTasks,
-    checkGraduationOpsAutomation
+    checkGraduationOpsAutomation,
+    DIGEST_SEND_MESSAGES,
+    classifyDigestSendFailure,
+    buildDigestSendResult
 };
 
 // v33.15.0: Recurring announcements — play based on repeat_cron

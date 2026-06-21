@@ -19,6 +19,33 @@ let catalogProducts = [];
 let catalogFilter = 'all';
 let pricePositionsData = [];
 
+const BANQUET_TERMS_PRICE_RULES = Object.freeze([
+    {
+        code: 'banquet_own_cake_fee',
+        label: 'Плата за свій торт',
+        description: 'Сума, яка підставляється в умови банкету для власного торта.',
+        unit: 'грн'
+    },
+    {
+        code: 'banquet_cork_fee',
+        label: 'Cork Fee',
+        description: 'Плата за власні напої у стандартних умовах банкету.',
+        unit: 'грн'
+    },
+    {
+        code: 'banquet_menu_correction_deadline_days',
+        label: 'Меню можна коригувати за',
+        description: 'Крайній строк коригування меню до дати банкету.',
+        unit: 'доби'
+    },
+    {
+        code: 'banquet_date_change_deadline_days',
+        label: 'Дату можна змінити за',
+        description: 'Крайній строк зміни дати до дати банкету.',
+        unit: 'діб'
+    }
+]);
+
 // ==========================================
 // NOTIFICATIONS
 // ==========================================
@@ -27,6 +54,27 @@ let pricePositionsData = [];
 // ==========================================
 // API CALLS — existing
 // ==========================================
+
+function centerScopedApiUrl(path) {
+    const apiUrl = window.CrmBusinessContext?.apiUrl;
+    return typeof apiUrl === 'function' ? apiUrl(path) : path;
+}
+
+function centerBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function centerBookingDateTimeText(booking = {}) {
+    const dateText = booking.date ? new Date(booking.date).toLocaleDateString('uk-UA') : '';
+    const timeText = booking.time || '';
+    const arrivalText = centerBookingIsBanquet(booking) && timeText ? `Прихід гостей: ${timeText}` : timeText;
+    return [dateText, arrivalText].filter(Boolean).join(' ');
+}
 
 async function apiCenterOverview() {
     try {
@@ -507,7 +555,7 @@ function renderPrices(prices) {
     if (!container) return;
 
     if (!prices || prices.length === 0) {
-        container.innerHTML = '<div class="center-empty">Немає цінових правил</div>';
+        container.innerHTML = `${renderBanquetTermsPriceBlock([])}<div class="center-empty">Немає цінових правил</div>`;
         appendPriceAddRow(container);
         return;
     }
@@ -565,11 +613,84 @@ function renderPrices(prices) {
     }
 
     html += '</tbody></table>';
-    container.innerHTML = html;
+    container.innerHTML = `${renderBanquetTermsPriceBlock(prices)}${html}`;
 
     if (isAdminUser) {
         appendPriceAddRow(container);
     }
+}
+
+function priceRuleByCode(prices = []) {
+    return new Map((Array.isArray(prices) ? prices : [])
+        .map(price => [String(price?.code || '').trim(), price])
+        .filter(([code]) => code));
+}
+
+function formatBanquetRuleValue(rule, fallbackUnit = '') {
+    if (!rule) return '—';
+    const value = rule.value === null || rule.value === undefined || rule.value === ''
+        ? '—'
+        : Number(rule.value).toLocaleString('uk-UA');
+    const unit = rule.unit || fallbackUnit;
+    return `${value}${unit ? ` ${unit}` : ''}`;
+}
+
+function renderBanquetTermsPriceInput(rule, config) {
+    if (!rule) {
+        return `<span class="banquet-terms-price-missing">Не знайдено</span>`;
+    }
+    const unit = rule.unit || config.unit || '';
+    if (isAdminUser) {
+        return `<div class="price-inline-wrap banquet-terms-price-inline">
+            <input type="number" class="price-inline-input" value="${rule.value}" data-code="${escapeHtml(rule.code)}" data-original="${rule.value}" data-product-id="${rule.product_id || ''}"
+                onkeydown="if(event.key==='Enter')confirmPriceChange(this)"
+                oninput="this.parentElement.querySelector('.price-save-btn').classList.toggle('changed', this.value!=this.dataset.original)">
+            <span class="price-unit">${escapeHtml(unit)}</span>
+            <button class="price-save-btn" onclick="confirmPriceChange(this.parentElement.querySelector('.price-inline-input'))" title="Зберегти">✓</button>
+        </div>`;
+    }
+    return `<span class="price-value-cell">${escapeHtml(formatBanquetRuleValue(rule, config.unit))}</span>`;
+}
+
+function renderBanquetTermsPriceBlock(prices = []) {
+    const byCode = priceRuleByCode(prices);
+    const missing = [];
+    const rows = BANQUET_TERMS_PRICE_RULES.map(config => {
+        const rule = byCode.get(config.code);
+        if (!rule) missing.push(config.code);
+        const updatedInfo = rule?.updated_by
+            ? `${escapeHtml(rule.updated_by)}, ${new Date(rule.updated_at).toLocaleDateString('uk-UA')}`
+            : '';
+        return `
+            <div class="banquet-terms-price-row ${rule ? '' : 'is-missing'}">
+                <div class="banquet-terms-price-main">
+                    <strong>${escapeHtml(config.label)}</strong>
+                    <span>${escapeHtml(config.description)}</span>
+                    <code>${escapeHtml(config.code)}</code>
+                </div>
+                <div class="banquet-terms-price-control">
+                    ${renderBanquetTermsPriceInput(rule, config)}
+                    ${updatedInfo ? `<small>${updatedInfo}</small>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <section class="banquet-terms-price-panel" aria-label="Умови банкету">
+            <div class="banquet-terms-price-header">
+                <div>
+                    <strong>Умови банкету</strong>
+                    <span>Ці значення підставляються в Банкетний лист через price_rules.</span>
+                </div>
+                <span class="banquet-terms-price-badge">price_rules</span>
+            </div>
+            ${missing.length ? `<div class="banquet-terms-price-warning">Не знайдено правила: ${missing.map(code => `<code>${escapeHtml(code)}</code>`).join(', ')}. Додайте його через форму нижче або перевірте seed migration 267.</div>` : ''}
+            <div class="banquet-terms-price-grid">
+                ${rows}
+            </div>
+        </section>
+    `;
 }
 
 function appendPriceAddRow(container) {
@@ -1899,10 +2020,10 @@ async function showClientProfile(clientId) {
     if (bookings.length > 0) {
         html += '<div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--gray-600)">Історія бронювань</div>';
         html += bookings.map(b => {
-            const dateStr = b.date ? new Date(b.date).toLocaleDateString('uk-UA') : '';
+            const dateTimeText = centerBookingDateTimeText(b);
             return `
             <div class="client-booking-row">
-                <span class="client-booking-date">${dateStr} ${b.time || ''}</span>
+                <span class="client-booking-date">${escapeHtml(dateTimeText)}</span>
                 <span class="client-booking-program">${escapeHtml(b.program_name)}</span>
                 <span class="client-booking-price">${formatPrice(b.price)}</span>
                 <span class="client-booking-status ${b.status}">${b.status === 'confirmed' ? '✓' : '~'}</span>
@@ -2401,8 +2522,7 @@ async function loadHotLeads() {
     setContainerLoading('hotLeadsList', 'Перевіряємо гарячі ліди...');
     setBadgeCount('hotLeadsCount', 0);
     try {
-        const token = localStorage.getItem('pzp_token') || localStorage.getItem('token');
-        const resp = await fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + token } });
+        const resp = await fetch(centerScopedApiUrl('/api/leads/hot'), { headers: getAuthHeaders(false) });
         const data = await resp.json();
         if (!data.success || !data.leads.length) {
             container.innerHTML = centerStateHtml('Немає гарячих лідів', 'Ліди без відповіді або з високим ризиком не знайдені.');

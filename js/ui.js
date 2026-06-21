@@ -2259,6 +2259,31 @@ function _timelineActiveTimeRange() {
     };
 }
 
+function _timelineRangeBoundMinutes(value) {
+    if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+        if (match) {
+            const hours = Number.parseInt(match[1], 10);
+            const minutes = Number.parseInt(match[2] || '0', 10);
+            if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+                return (hours * 60) + Math.max(0, Math.min(59, minutes));
+            }
+        }
+    }
+
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.round(numeric * 60) : 0;
+}
+
+function _timelineRangeCellCount(range, level) {
+    const fallbackCellMinutes = (typeof CONFIG !== 'undefined' && CONFIG?.TIMELINE?.CELL_MINUTES) || 30;
+    const cellMinutes = Math.max(1, Number(level) || fallbackCellMinutes);
+    const startMinutes = _timelineRangeBoundMinutes(range?.start);
+    let endMinutes = _timelineRangeBoundMinutes(range?.end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+    return Math.max(1, Math.ceil((endMinutes - startMinutes) / cellMinutes));
+}
+
 function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
     const scroll = document.getElementById('timelineScroll') || document.querySelector('.timeline-scroll');
     const container = scroll?.closest?.('.timeline-container') || document.querySelector('.timeline-container');
@@ -2270,7 +2295,7 @@ function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
             16
     );
     const range = _timelineActiveTimeRange();
-    const cells = Math.max(1, Math.ceil(((range.end - range.start) * 60) / level) + 1);
+    const cells = _timelineRangeCellCount(range, level);
     return Math.floor(availableWidth / cells);
 }
 
@@ -2505,6 +2530,7 @@ function initTimelineResponsiveResize() {
 
 function toggleCompactMode(event) {
     const toggle = document.getElementById('compactModeToggle');
+    const previousCompactMode = Boolean(AppState.compactMode);
     AppState.compactMode = typeof event?.target?.checked === 'boolean'
         ? event.target.checked
         : toggle
@@ -2514,6 +2540,9 @@ function toggleCompactMode(event) {
     localStorage.setItem(key, AppState.compactMode);
     applyTimelineResponsiveDensity();
     if (toggle) toggle.checked = AppState.compactMode;
+    if (previousCompactMode !== Boolean(AppState.compactMode) && typeof markTimelineNavigationScrollReset === 'function') {
+        markTimelineNavigationScrollReset('compact-change');
+    }
     renderTimeline();
 }
 
@@ -2522,6 +2551,7 @@ function toggleCompactMode(event) {
 // ==========================================
 
 function changeZoom(level) {
+    const previousLevel = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES;
     const nextLevel = typeof normalizeTimelineZoomLevel === 'function'
         ? normalizeTimelineZoomLevel(level)
         : (parseInt(level, 10) || 30);
@@ -2531,6 +2561,9 @@ function changeZoom(level) {
     localStorage.setItem(key, nextLevel);
     applyTimelineResponsiveDensity();
     updateZoomButtons();
+    if (previousLevel !== nextLevel && typeof markTimelineNavigationScrollReset === 'function') {
+        markTimelineNavigationScrollReset('zoom-change');
+    }
     renderTimeline();
 }
 
@@ -2785,53 +2818,53 @@ async function renderMinimapAsync(container, snapshotDate) {
 // ЗМІНА СТАТУСУ БРОНЮВАННЯ
 // ==========================================
 
-// v5.0: Use PUT for atomic status update instead of DELETE+CREATE
 async function changeBookingStatus(bookingId, newStatus) {
     try {
         const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
         const booking = bookings.find(b => b.id === bookingId);
-        if (!booking) return;
+        if (!booking) {
+            showNotification('Бронювання не знайдено. Оновіть timeline і спробуйте ще раз.', 'error');
+            return;
+        }
 
-        if (newStatus === 'confirmed' && booking.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
-            const confirmResult = await apiConfirmBooking(bookingId, { source: 'booking_panel' });
-            if (!confirmResult || confirmResult.success === false) {
-                showNotification(confirmResult?.error || 'Помилка: не вдалося підтвердити бронювання', 'error');
-                return;
-            }
+        const refreshTimeline = async () => {
             if (typeof window.invalidateTimelineDateCache === 'function') window.invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
             else delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeAllModals();
             await renderTimeline();
+        };
+
+        if (newStatus === 'confirmed' && booking.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
+            const confirmResult = await apiConfirmBooking(bookingId, { source: 'booking_panel' });
+            if (!confirmResult || confirmResult.success === false) {
+                showNotification(confirmResult?.error || 'Не вдалося підтвердити бронювання', 'error');
+                return;
+            }
+            await refreshTimeline();
             showNotification('Бронювання підтверджено', 'success');
             return;
         }
 
-        const updated = { ...booking, status: newStatus };
-        const statusResult = await apiUpdateBooking(bookingId, updated);
-        // v5.2: Перевіряти результат зміни статусу
-        if (statusResult && statusResult.success === false) {
-            showNotification('Помилка: не вдалося змінити статус на сервері', 'error');
+        if (newStatus === 'preliminary' && booking.status !== 'preliminary' && typeof apiMarkBookingPreliminary === 'function') {
+            const preliminaryResult = await apiMarkBookingPreliminary(bookingId, { source: 'booking_panel' });
+            if (!preliminaryResult || preliminaryResult.success === false) {
+                showNotification(preliminaryResult?.error || 'Не вдалося зробити бронювання попереднім', 'error');
+                return;
+            }
+            await refreshTimeline();
+            showNotification('Бронювання зроблено попереднім', 'success');
             return;
         }
 
-        // Оновити linked
-        const linked = bookings.filter(b => b.linkedTo === bookingId);
-        for (const lb of linked) {
-            const lbResult = await apiUpdateBooking(lb.id, { ...lb, status: newStatus });
-            if (lbResult && lbResult.success === false) {
-                console.warn(`Failed to update linked booking ${lb.id} status`);
-            }
+        if (booking.status === newStatus) {
+            await refreshTimeline();
+            showNotification(newStatus === 'preliminary' ? 'Бронювання вже попереднє' : 'Бронювання вже підтверджене', 'success');
+            return;
         }
 
-        // v5.18.1: Telegram notification handled server-side in PUT handler (removed frontend duplicate)
-
-        if (typeof window.invalidateTimelineDateCache === 'function') window.invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
-        else delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-        closeAllModals();
-        await renderTimeline();
-        showNotification(`Статус: ${newStatus === 'preliminary' ? 'Попереднє' : 'Підтверджене'}`, 'success');
+        showNotification('Невідома дія зміни статусу бронювання', 'error');
     } catch (error) {
-        handleError('Зміна статусу', error);
+        handleError('Зміна статусу бронювання', error);
     }
 }
 

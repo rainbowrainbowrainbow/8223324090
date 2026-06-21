@@ -197,6 +197,13 @@
         return token ? { Authorization: `Bearer ${token}` } : {};
     }
 
+    function assistantScopedApiUrl(path) {
+        const value = String(path || '');
+        const shouldScope = value.startsWith('/api/work-queue') || value.startsWith('/api/leads/hot');
+        const apiUrl = window.CrmBusinessContext?.apiUrl;
+        return shouldScope && typeof apiUrl === 'function' ? apiUrl(value) : value;
+    }
+
     function emitTelemetry(eventType, details = {}) {
         const token = readStorage('pzp_token', '');
         if (!token || typeof fetch !== 'function') return false;
@@ -246,7 +253,7 @@
             err.status = 0;
             throw err;
         }
-        const response = await fetch(path, { headers: authHeaders() });
+        const response = await fetch(assistantScopedApiUrl(path), { headers: authHeaders() });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
             const err = new Error(payload?.error || `assistant_snapshot_http_${response.status}`);

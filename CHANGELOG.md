@@ -4,6 +4,477 @@
 
 ---
 
+## v0.76.103 - Banquet activity-first selector fix
+
+### Banquet selector / Room-first kitchen / Entry preview / Regression checks / (Клешня, 22.06.2026) [codex]
+- **Кухня з активності тепер показує майбутню прив'язку до банкету ще до збереження** - якщо менеджер відкриває кухню через `Банкети -> Кімнати` з валідної активності в кімнаті, селект показує стан створення банкету з цієї активності, а не порожній список.
+- **Банкет створюється автоматично при збереженні кухні** - source-only контекст без `groupId` гарантовано йде через `/api/banquets/from-source/member-booking`, тому активність стає primary booking, а кухня додається як `role='kitchen'`.
+- **Виправлено сценарій з помилковим повідомленням `банкетів не знайдено`** - програмний вибір кімнати тепер явно ініціалізує room-source context після refresh доступності кімнат, навіть коли `change` event не спрацьовує.
+- **Save path став deterministic** - frontend більше не покладається на повторний fallback-пошук source booking у кеші кімнат, а використовує той source context, який бачить UI.
+- **Preview `Вхід` підтягує правила Центру цін до збереження** - frontend легковажно завантажує `banquet_entry_weekday_child` і `banquet_entry_weekend_child` для попереднього розрахунку, але backend лишається canonical source of truth.
+- **Додано regression checks для selector/context flow** - тести покривають programmatic room open, virtual selector state без fake id, source-only save endpoint, existing group compatibility і customer mismatch до API call.
+- **Manual browser QA локально заблоковано середовищем** - локальний сервер не піднявся без `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому live-сценарій треба пройти після deploy на production із доступом до CRM.
+- **Релізні маркери піднято до `0.76.103`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.102 - Banquet kitchen linking and entry pricing
+
+### Banquet groups / Kitchen from activity / Entry pricing / Banquet sheet / Regression checks / (Клешня, 22.06.2026) [codex]
+- **Кухня з активності тепер автоматично створює або використовує банкетну групу** - сценарій `активність перша -> Банкети -> Кімнати -> кухня` більше не лишає селект `Прив'язати до банкету` без реальної групи.
+- **Source-активність стає primary booking у банкеті** - backend створює `banquet_groups`, membership `role='primary'`, kitchen membership `role='kitchen'` і compatibility link в одній транзакції без дублювання груп.
+- **Кількість дітей з активності підтягується у кухню** - якщо поле гостей порожнє, `kidsCount` з бронювання-джерела автоматично заповнює `banquetGuests`; ручна правка менеджера не перезаписується.
+- **`Вхід` рахується окремо за правилами Центру цін** - будні `300 грн/дитина`, вихідні `400 грн/дитина`; бізнес-розрахунок читає `price_rules` і не бере ціни з graduation-модуля.
+- **`Вхід` зберігається як окремий блок пакета** - `entryCharge`, `entrySubtotal` і `finalTotal` зберігаються в `extraData.bookingPackage`, а меню не отримує дубльовану позицію входу.
+- **Банкетний лист показує `Вхід` окремим рядком** - summary, details, print і copy text показують рядок на кшталт `Вхід — 12 дітей × 300 грн = 3600 грн` окремо від меню.
+- **Додано regression checks для критичних ризиків** - тести покривають відсутність дубльованих banquet groups, customer mismatch, rollback, weekday/weekend entry, ручний entry у меню і fallback для старих пакетів.
+- **Релізні маркери піднято до `0.76.102`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.101 - Booking summary terms and print layout fix
+
+### Booking summary / Banquet terms / Price Center / Print layout / Regression checks / (Клешня, 21.06.2026) [codex]
+- **`Умови банкету` у Банкетному листі тепер беруть актуальні цифри з Центру цін** - auto price-rule snapshots більше не заморожують старі значення для `Свій торт`, `Cork Fee`, строків коригування меню і зміни дати.
+- **Manual custom terms не перезаписуються** - якщо умови були задані вручну, Банкетний лист продовжує показувати саме їх, а не поточні default price rules.
+- **`Свій торт`, `Cork Fee`, строки коригування меню і зміни дати доступні як окремий блок у Центрі цін** - керування йде через існуючий `price_rules` update flow без нової сутності, міграції або дублювання API.
+- **Блок `Умови банкету` у Банкетному листі візуально опущено нижче після фінансового блоку** - секція більше не виглядає приклеєною до `Суми і завдаток`, але порядок документа збережено.
+- **Print preview шапка Банкетного листа більше не злипається у stacked layout** - print CSS явно тримає симетричну 3+3 metadata grid для лівих рядків закладу і правих рядків `Booking ID` / дати / менеджера.
+- **Native print title став акуратнішим** - під час друку document title тимчасово змінюється на `Банкетний лист BK-...` і повертається після `afterprint` або timeout fallback.
+- **Preview, copy text і print використовують один contract умов** - frontend рендерить `summary.terms.items` і не має hardcoded `500грн`, `100грн`, `3 доби` або `5 діб`.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому Chromium перевірив desktop/mobile harness і PDF artifact без зміни env/Railway config.
+- **DB/migrations/auth/Railway config не змінювались** - реліз без schema changes, secrets, deploy config або нових dependencies.
+- **Додано regression checks** - tests покривають source contract умов, Центр цін, print spacing, print header grid, print title restore і відсутність frontend hardcode.
+- **Релізні маркери піднято до `0.76.101`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.100 - Booking summary details rows fix
+
+### Booking summary / Details rows / Birthday format / Program contract / Copy text / Regression checks / (Клешня, 21.06.2026) [codex]
+- **У Банкетному листі дата народження більше не показує raw English date** - рядок `Дата народження` більше не виводить значення типу `Sat Oct 12`.
+- **Дата народження іменинника форматиться у CRM-форматі** - ISO і native date strings приводяться до нормального вигляду на кшталт `12.10.2018`, а невалідні або порожні значення безпечно показують `—`.
+- **`Програма` більше не показує імʼя клієнта для kitchen-only або room-first банкетів** - службовий `program_name`, який зберігає customer identity, не потрапляє у другу шапку як реальна програма.
+- **Реальна програма або активність усе ще показується, коли вона справді є** - backend додає `event.hasRealProgram` і `event.programDisplayName`, не прибираючи старе поле `event.programName` для сумісності.
+- **`Учасники` замінено на зрозумілий рядок `Діти`** - друга шапка Банкетного листа прямо показує кількість дітей, а відсутні значення лишаються у стандартному `—`.
+- **Copy text і print/PDF отримали той самий contract** - текст копіювання більше не містить `Програма: Юрій`, `Учасники` або raw birthday, а друкований документ використовує ті самі рядки.
+- **Додано regression checks для проблемних рядків** - tests покривають birthday formatting, kitchen-only program fallback, real program display, children count і copy text parity.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому реальний renderer перевірено без зміни env/Railway config.
+- **DB/migrations/auth/Railway config не змінювались** - реліз без schema changes, secrets, deploy config або нових dependencies.
+- **Релізні маркери піднято до `0.76.100`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.99 - Booking summary header alignment fix
+
+### Booking summary / Header symmetry / Print PDF / Regression checks / (Клешня, 21.06.2026) [codex]
+- **Шапка Банкетного листа стала симетричною** - назва закладу винесена в окремий heading і більше не зсуває правий metadata block.
+- **Зліва і справа показуються по 3 вирівняні рядки** - адреса, локація/поверх і телефон стоять навпроти `Booking ID`, дати формування та менеджера.
+- **`Booking ID`, дата формування і менеджер вирівняні навпроти даних закладу** - обидві metadata колонки використовують спільний grid contract замість ручного vertical offset.
+- **Print/PDF layout збережено** - print rules повторюють той самий 3+3 рядковий стандарт, а divider line лишається під обома колонками.
+- **Старий offset workaround прибрано** - `--summary-doc-meta-offset` і повʼязаний `padding-top` більше не керують позицією правої колонки.
+- **Додано regression checks для header layout** - UI smoke перевіряє окремий heading, `.summary-doc-meta-grid`, рівно 3 рядки зліва/справа і відсутність старого workaround.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому Chromium перевірив desktop, mobile і print-mode layout без зміни env/Railway config.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.99`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.98 - Timeline start marker alignment fix
+
+### Timeline marker alignment / Start labels / Compact density / Animator view / Room view / Browser QA / (Клешня, 21.06.2026) [codex]
+- **Виправлено накладання time labels на початку timeline** - стартові мітки на лівому краї більше не зʼїжджають одна на одну після edge-marker fixes.
+- **`10:00` і `10:15` більше не перекриваються у звичайному 15-хв режимі** - перша й друга мітки залишаються читабельними та привʼязаними до правильних ticks.
+- **Start label коректно використовує лівий gutter** - мітка старту може візуально зайти в службову зону, але не створює зайву scroll width і не зсуває grid, booking blocks або now-line.
+- **Compact/mobile density більше не ламає початок шкали** - якщо 15-хв labels фізично не влазять у вузьку cell, другорядні мітки проріджуються до читабельного кроку без overlap.
+- **Start/end labels використовують спільну canonical geometry** - початковий і кінцевий край таймлайну рахуються одним механізмом, збережено попередній fix для `19:45` / `20:00`.
+- **Fix працює для animator і room timeline** - перевірено day surface, room surface, zoom `15/30/60`, compact mode, mobile viewport і week mini timeline.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому Chromium перевірив реальну DOM/CSS geometry на generated harness без зміни env/Railway config.
+- **Regression tests додано для start-edge marker alignment** - resources, lifecycle, week parity, regression matrix, release proof і UI smoke фіксують, що start labels не перекриваються й щільні режими безпечно проріджують labels.
+- **Попередні fixes збережено** - date scroll reset, range width overflow, end marker alignment і resource header alignment не регреснули.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.98`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.97 - Timeline resource header alignment fix
+
+### Timeline headers / Room rows / Banquet preview state / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Назви кімнат і локацій у високих timeline rows більше не прилипають до верхнього краю** - title-only headers зберігають акуратне вертикальне вирівнювання навіть коли room row розширюється через activity або service lanes.
+- **Прибрано stale banquet preview state без видимої preview card** - `has-timeline-banquet-room-preview` додається тільки після реального render успіху `[data-banquet-room-card]`, а порожній preview state очищується.
+- **Real banquet preview card behavior збережено** - коли preview card реально існує, її top-aligned layout, click handling і inspector flow працюють через існуючий механізм.
+- **Room/animator timeline, compact, mobile і week guardrails перевірені автоматично** - focused tests і UI smoke фіксують, що fix не чіпає grid, row height, booking cards або mini timeline headers.
+- **Regression tests додано для header alignment state** - `tests/timeline-resources.test.js` і `tests/ui-check.js` ловлять повернення stale preview class без rendered card.
+- **Browser QA локально заблокована відсутнім DB/env** - `npm start` зупиняється через відсутній `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`; env/Railway config не змінювались.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.97`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.96 - Timeline digest and print actions fix
+
+### Timeline actions / Day digest / Print schedule / Telegram diagnostics / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Виправлено повідомлення про помилки відправки дайджесту дня** - кнопка `Дії -> Дайджест дня` більше не зводить усі Telegram failures до загального `Помилка відправки дайджесту`.
+- **CRM показує конкретну причину Telegram-проблеми** - менеджер бачить окремі українські повідомлення для відсутнього `Telegram Chat ID`, не налаштованого або невалідного `bot token` і відмови Telegram API.
+- **Backend digest contract став структурованим** - `/api/telegram/digest/:date` повертає стабільні `code`, `reason`, `message`, `success`, `count` і `meta` без ламання старих полів.
+- **Відновлено дію друку розкладу в меню `Дії`** - пункт `Друк розкладу` знову доступний у timeline поруч із дайджестом дня.
+- **Існуюча логіка `Друк / Зберегти як PDF` знову доступна з timeline** - повернуто DOM action `#exportPdfBtn` без переписування `exportTimelinePdf()`, `window.print()` і print CSS.
+- **Print action підпорядковано існуючим export permissions** - дія друку використовує той самий `export_data` / `export` доступ і visibility block, що й timeline export.
+- **Regression tests додано для digest і print actions** - contract test фіксує digest error mapping, а UI smoke перевіряє `#exportPdfBtn`, print flow, CSS і structured digest handling.
+- **Production digest вручну не відправлявся** - реліз перевірено без небезпечного side effect у Telegram.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.96`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.95 - Timeline marker alignment fix
+
+### Timeline marker alignment / Edge labels / Animator view / Room view / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Виправлено накладання late time labels біля кінця таймлайну** - мітки на правому краї більше не з'їжджають одна на одну після range width fix.
+- **`19:45` і `20:00` більше не перекриваються** - кінцева мітка лишається видимою на правому краї, а попередня мітка зберігає читабельний відступ.
+- **Time labels використовують canonical timeline geometry** - позиції міток рахуються з того самого координатного контракту, що grid, booking blocks і now-line.
+- **Fix працює для animator і room timeline** - лінії свят і кімнат отримали спільну edge-aware геометрію без окремих CSS workaround.
+- **Перевірено zoom, compact, mobile і week view** - сценарії `15/30/60`, compact mode, mobile far-right scroll і week mini timeline покриті browser QA та focused tests.
+- **Попередні scroll reset і range width overflow fixes збережено** - зміна дати не переносить stale `scrollLeft`, а таймлайн не повертає пусту scroll-зону після кінця range.
+- **Regression tests додано для edge marker alignment** - resources test, week parity, regression matrix і UI smoke фіксують, що edge labels не додають ширину й не перекриваються.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.95`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.94 - Timeline range width fix
+
+### Timeline range width / Empty scroll zone / Animator view / Room view / Overlay width / Browser QA / (Клешня, 21.06.2026) [codex]
+- **Таймлайн більше не дозволяє скролитись у пусту зону після кінця робочого діапазону** - права межа поверхні тепер закінчується там, де закінчується налаштований час.
+- **Ширина grid/content відповідає configured range** - для `12:00-20:00` scrollable grid рахується від реальних інтервальних комірок, а не від кількості time marks.
+- **Мітка `20:00` лишається видимою, але не додає зайву scroll-комірку** - кінцева година позиціонується на правому краї range і не створює фейковий простір справа.
+- **Fix працює для animator і room timeline** - лінії свят і кімнат використовують один width contract, без окремого роздування room surface.
+- **Виправлено stale width від banquet link overlay** - SVG overlay більше не бере `scroll.scrollWidth` як source of truth і не може зберігати стару ширину після зміни дати/range.
+- **Перевірено zoom, compact, day/week і mobile** - Playwright harness підтвердив desktop/mobile сценарії для animator/room timeline, переходу `21.06.2026` -> `22.06.2026`, zoom `15/30/60`, compact і day/week.
+- **Попередній date scroll reset fix збережено** - зміна дати й далі скидає stale horizontal offset, але тепер ще й немає ручного scroll у пустий простір після кінця дня.
+- **Regression tests додано для width/overflow contract** - lifecycle, week parity, regression matrix, resources test і UI smoke фіксують canonical range width, overlay width і compact fit-screen behavior.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.94`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.93 - Timeline date scroll fix
+
+### Timeline date navigation / Horizontal scroll state / Animator view / Room view / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Після зміни дати таймлайн більше не переносить старий горизонтальний scroll** - новий день відкривається з власного старту, а не з позиції, де менеджер був на попередній даті.
+- **Сценарій `21.06.2026` -> `22.06.2026` відкриває день з початку робочого діапазону** - для понеділка `22.06.2026` поверхня стартує з `12:00-20:00`, без випадкового показу `15:15`.
+- **Fix працює для animator і room timeline** - перемикання між лініями свят і кімнатами не переносить pixel offset між різними поверхнями.
+- **Scroll state тепер scoped by date/view/zoom/period/business context** - stale `scrollLeft` скидається при зміні дати, режиму, масштабу `15/30/60`, compact mode, day/week period і business context.
+- **Regression tests додано для date/view/zoom/period scroll behavior** - lifecycle, week parity, regression matrix і UI smoke перевіряють, що старий horizontal offset не повертається після навігації.
+- **Browser QA підтвердив desktop і mobile сценарії** - Playwright harness перевірив animator/room timeline, date navigation, zoom, compact, day/week і mobile swipe reset.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.93`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.92 - Banquet room auto-link
+
+### Banquet room auto-link / Booking drawer / Atomic banquet save / Mismatch guard / Browser QA / (Клешня, 21.06.2026) [codex]
+- **Кімната з існуючим банкетом тепер підтягує клієнта автоматично** - коли менеджер обирає варіант на кшталт `Ніндзя — 11:30 Юрій`, CRM знаходить source booking і заповнює картку клієнта.
+- **Активність і кухня прив’язуються до існуючого банкета** - вибраний `banquet group` preselect-иться у формі, а створення йде через наявні atomic banquet endpoints без дублювання груп.
+- **Менеджеру більше не треба повторно шукати того самого клієнта** - бронювання активності після кухні бере контекст з кімнати і показує зрозумілу підказку у формі.
+- **Додано захист від mismatch клієнта і банкета** - якщо після auto-link вручну вибрати іншого клієнта, прив’язка з кімнати скидається; backend також блокує чужий `customerId` у banquet atomic create.
+- **Room availability metadata структуровано** - `/api/rooms/free/:date/:time/:duration` і resource-backed availability повертають `customerId`, `banquetGroupId`, role і primary/customer metadata без зміни DB schema.
+- **Regression guardrails посилено** - focused route tests, durability test, timeline resources test, UI smoke і browser QA покривають metadata, auto-fill, atomic save routing, mismatch і responsive layout.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.92`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.91 - Timeline line header cleanup
+
+### Timeline line headers / Animator view / Room view / Responsive layout / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Лінії таймлайну тепер показують тільки назву ресурсу** - у режимі аніматорів лишається ПІБ аніматора, у режимі кімнат лишається назва банкетної кімнати.
+- **Службові підписи прибрано з regular headers** - `10:00-20:00 · зі зміни`, `зі зміни` і `редагувати аніматор` більше не займають місце в лівому блоці таймлайну.
+- **Розміри рядків не зменшувались** - header лишається тієї ж геометрії, а назва вертикально центрується і коректно переноситься на вузьких екранах.
+- **Службові рядки не зачеплені** - Афіша та pending row зберігають власні функціональні підписи.
+- **Regression guard оновлено** - UI smoke і focused contract test забороняють повернення subtitle helper у regular line header.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.91`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.90 - UI fix
+
+### Timeline animator modal / Staff select / Dark focus state / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Модалка `Редагувати аніматора` більше не відкриває Staff select у світлому системному стилі** - поле лишається в темній CRM-поверхні навіть у focus/opened state.
+- **Стрілка select стабілізована** - caret закріплений справа, має достатній padding і не перекриває ім'я аніматора.
+- **Контраст і focus state виправлено** - текст, border і focus ring читабельні на desktop і mobile.
+- **Regression guard оновлено** - `tests/ui-check.js` перевіряє окремий styling contract для `#editLineNameSelect`.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.90`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.89 - Banquet Guest Arrival Wording
+
+### Banquet wording / Timeline preview / Booking detail / Banquet sheet / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Банкетні timeline preview/inspector більше не підписують технічний слот як generic `Дата/час` або `Час`** - основний бізнес-сенс показано як `Прихід гостей`.
+- **Booking detail modal розділяє банкетну дату і прихід гостей** - для банкетів видно `Дата банкету` і `Прихід гостей`, а non-banquet бронювання лишають звичні `Дата` / `Час`.
+- **Банкетний лист і copied text використовують той самий wording** - printable summary та copy text показують `Дата банкету` і `Прихід гостей`, без generic `Дата/час`.
+- **Mixed previews отримали conditional wording** - customer, lead, center, dashboard, finance act і generated Telegram copy показують `Прихід гостей` тільки коли booking надійно визначений як banquet.
+- **Operational service labels збережено** - `Час видачі позицій`, `Видача` і service event times не перейменовані, бо це реальні операційні часи.
+- **Regression guardrails посилено** - focused tests і UI smoke забороняють повернення generic banquet `Дата/час`, `['Час'` у preview-card і втрату `Прихід гостей`.
+- **Релізні маркери піднято до `0.76.89`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.88 - Business Scoped Live Counters
+
+### Business scope / Live counters / Dashboard / Work queue / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Додано canonical read-only endpoint `/api/business/live-counters`** - backend повертає `leads.new`, `leads.hot`, `tasks.active`, `tasks.overdue` і `alerts.active` для single, multi та all business scopes.
+- **Counters більше не змішують бізнеси** - sidebar, profile pulse, dashboard widgets, work queue, assistant snapshots і center hot leads читають дані через активний `CrmBusinessContext`.
+- **Aggregate scopes явно read-only** - multi/all повертають totals і `byBusiness` тільки для allowed contexts користувача, без права запису.
+- **Dashboard lead/alert counters scoped у SQL** - `quick_stats`, `alerts`, `leads_new`, `/dashboard/today` і standalone `/dashboard/alerts` додають business scope condition до lead counters.
+- **Work queue і funnel snapshots scoped** - task buckets, lead followups, event-soon leads і funnel insights отримують `businessScope`, а funnel links зберігають aggregate context.
+- **Regression guardrails посилено** - backend endpoint tests, dashboard route guards, workQueue query guards і UI smoke ловлять повернення raw `/api/leads/hot` або `/api/leads/new-count` у user-facing counters.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.88`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.87 - Kitchen Menu Quantity Wording
+
+### Kitchen menu / Quantity wording / Banquet sheet / Timeline inspector / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Кількість тортів і вагових позицій більше не виглядає як `5 100г`** - CRM показує зрозумілий текст `5 порцій по 100 г`, щоб менеджер не сприймав це як 5 кг 100 г.
+- **Форма бронювання показує коректний розрахунок** - рядки меню тепер рендеряться як `5 порцій по 100 г × 90 грн = 450 грн`, а звичайні позиції як `3 порції × 260 грн = 780 грн`.
+- **Kitchen catalog і selected cart не склеюють кількість з одиницею** - ціна показує нормалізований unit `90 грн / 100 г`, а cart описує вибір як `по 100 г` або `5 порцій по 100 г`.
+- **Banquet inspector і service markers отримали той самий wording** - preview меню та timeline markers більше не показують `x5` або `5 100г` для тортів/вагових позицій.
+- **Банкетний лист і copy text використовують єдиний contract** - таблиця `К-сть` і copied text показують `5 порцій по 100 г × 90 ₴ = 450 ₴`, без raw `UAH` у видимому тексті.
+- **Totals і saved data не змінювались** - `quantity`, `servingUnit`, `unitPrice`, `subtotal`, `bookingPackage`, API payload і DB/schema лишилися без змін.
+- **Regression guardrails посилено** - targeted tests і UI smoke забороняють повернення `5 100г`, `5 100 г`, `5 100г x 90` у формі, legacy text, inspector і банкетному листі.
+- **Релізні маркери піднято до `0.76.87`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.86 - Kitchen Catalog Total Layout
+
+### Kitchen catalog / Total layout / UI cleanup / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Загальна сума більше не дублюється в catalog modal** - header `Каталог кухні / меню`, sidebar `Вибрано` і mobile cart trigger показують тільки кількість позицій, без повтору total.
+- **Єдиний primary total перенесено вниз** - нижній footer показує `Разом` і велику суму праворуч біля кнопки `Готово`, щоб менеджер бачив фінальну вартість в одному стабільному місці.
+- **Mobile footer отримав стабільний layout** - count, total, cart trigger і `Готово` розкладені через grid areas без перекриття та обрізання суми.
+- **Per-item prices і subtotals лишилися на місці** - ціни окремих позицій і subtotal у sidebar item cards не змінювались.
+- **Логіка розрахунку не змінювалась** - `bookingMenuPositionsSubtotal()`, `formatPrice()`, `menuPositions`, `bookingPackage`, API і DB contract лишилися як були.
+- **Regression guardrails додано** - targeted contract test і UI smoke фіксують, що total не повертається в header/sidebar/mobile trigger і лишається тільки у footer.
+- **Schema/API/DB/deploy config не змінювались** - зміни обмежені frontend markup/CSS/render і тестами.
+- **Релізні маркери піднято до `0.76.86`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.85 - Banquet Inspector Notes Cleanup
+
+### Banquet inspector / Raw warning cleanup / Cache-bust / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Фінально прибрано raw English warning з frontend bundle** - compact inspector ховає технічні banquet warnings за `code` і без повного англомовного тексту в `js/timeline.js`.
+- **Менеджерський popup лишається чистим** - legacy fallback, schema unavailable і missing banquet group diagnostics не показуються у compact inspector.
+- **Примітки позицій меню лишаються видимими** - `note`, `notes`, `servingNote` і `serving_note` показуються під кількістю та часом видачі.
+- **Cache-bust піднято до `0.76.85`** - новий `timeline.js?v=0.76.85` гарантує, що live не тримає старий bundle із технічним текстом.
+- **Regression guardrails посилено** - tests забороняють повернення повних raw English warning strings у `js/timeline.js`.
+- **Schema/API/DB не змінювались** - змінено тільки frontend render/filter, release refs і тести.
+
+---
+
+## v0.76.84 - Banquet Inspector Notes Cleanup
+
+### Banquet inspector / Menu item notes / Technical warnings / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Примітки до позицій меню видно в banquet inspector** - compact popup тепер показує `bookingPackage.menuPositions[].note`, `notes`, `servingNote` і `serving_note` під рядком кількості та часу видачі.
+- **Порожні примітки не рендеряться** - позиції без note виглядають як раніше, без зайвих порожніх рядків або дублювання.
+- **Кілька джерел примітки зведено без дублів** - якщо в позиції є і `servingNote`, і `note`, inspector показує їх компактно одним рядком.
+- **Technical banquet warnings прибрано з compact inspector** - missing banquet group, legacy fallback і schema warnings більше не показуються менеджеру в popup.
+- **Backend/API/DB не змінювались** - snapshot contract і `banquet_groups` лишаються без міграцій або route changes; cleanup зроблено на frontend render-рівні.
+- **Regression guardrails оновлено** - targeted timeline test, UI smoke і повний `npm test` фіксують menu notes render, hidden technical warnings і стабільний inspector contract.
+- **Релізні маркери піднято до `0.76.84`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.83 - Banquet Room Conflict Policy
+
+### Banquet room conflicts / Kitchen activity overlap / Frontend routing / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Кухня й активність одного банкету можуть стояти в один час в одній кімнаті** - room conflict policy тепер розрізняє same-banquet operational events і activity bookings, тому `Кімната ... зайнята: Кухня ...` більше не блокує дозволений сценарій.
+- **Захист від реальних конфліктів лишився strict** - дві activity в одній кімнаті/часі, unrelated banquet room booking і generic бронь без `banquetGroup` context далі блокуються.
+- **Ведучі й лінії не послаблювались** - `checkServerConflicts()` для animator/line_id лишається окремим guard, тому той самий ведучий не може отримати два одночасні booking blocks.
+- **Atomic banquet endpoints використовують той самий policy contract** - `/api/banquets/:groupId/activity-booking` і `/member-booking` дозволяють kitchen/service + activity overlap тільки в межах того самого `banquet_groups`.
+- **Generic create/full/update paths стали context-aware** - `POST /api/bookings`, `POST /api/bookings/full`, `PUT /api/bookings/:id` і atomic linked update беруть `extraData.banquetGroup` для allowed overlap, але без context лишають стару strict-поведінку.
+- **Frontend не губить прив'язку до банкету** - якщо менеджер вибрав банкет, kitchen-only і activity create ідуть в atomic banquet endpoints, а не випадково в generic `/api/bookings`.
+- **API помилки стали діагностичнішими** - frontend create wrappers повертають `code`, `status`, `details` і `conflictBookingId`, щоб `ACTIVITY_ROOM_CONFLICT` / `MEMBER_BOOKING_ROOM_CONFLICT` не губилися в toast handling.
+- **Cancelled members не блокують слот** - cancelled kitchen/activity member bookings не беруть участь у room conflict rows і не оживають через нову policy.
+- **Regression guardrails посилено** - targeted tests і `npm test` фіксують allowed same-banquet overlaps, blocked activity/activity, blocked unrelated room conflicts, line conflicts, cancelled rows і update path.
+- **Schema/env/deploy config не змінювались** - міграцій, нових залежностей, secrets або Railway config змін немає.
+- **Релізні маркери піднято до `0.76.83`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.82 - Banquet Sheet Content Cleanup
+
+### Banquet inspector / Banquet sheet / Notes / Activity starts / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Banquet inspector показує примітки** - у room timeline inspector додано секцію `Примітки` для кухні, активностей, внутрішнього коментаря і legacy `bookings.notes` fallback без порожніх рядків.
+- **Під `Видача` додано `Початок активностей`** - менеджер бачить старт активностей у форматі `12:00 - Бульб(30)` без дублювання нижнього списку активностей.
+- **User-facing `Вижимка` замінено на `Банкетний лист`** - назву оновлено в inspector action, booking detail action, сторінці preview, printable document title, copy/toast/error текстах.
+- **Банкетний лист отримав canonical comments section** - `summary.comments` збирає kitchen/activity/internal comments із `extra_data.bookingWorkspace.comments.*` і legacy `notes`, а copy text також містить `Примітки`.
+- **Full banquet detail block тепер не розходиться з inspector** - через `Деталі` видно ті самі примітки з правильними labels `Кухня`, `Активність — ...`, `Внутрішній коментар`.
+- **Schema/API/deploy config не змінювались** - зміни обмежені frontend render, summary service contract і regression tests; міграцій та env/config змін немає.
+- **Regression guardrails оновлено** - targeted tests, UI smoke і `npm test` фіксують новий naming, notes sections, activity starts і print-safe comments layout.
+- **Релізні маркери піднято до `0.76.82`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.81 - Booking Detail Copy Cleanup
+
+### Booking detail modal / Kitchen title cleanup / Banquet sheet label / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Зайвий prefix `Кухня:` прибрано з title kitchen detail modal** - кухонна бронь показує змістовну назву на кшталт `Живий тест форми`, без дублювання очевидного сценарію.
+- **Action `Вижимка` у detail modal перейменовано на `Банкетний лист`** - змінено тільки user-facing текст кнопки, route preview, URL contract і summary generation flow не змінювались.
+- **Некухонні title лишились як раніше** - звичайні свята, активності, анімації та програми продовжують формувати заголовок за попереднім contract.
+- **Scope обмежено detail modal і release refs** - schema, API, permissions, deploy config, PDF/summary generation і database не змінювались.
+- **Regression guardrails додано** - drawer static test і UI smoke фіксують відсутність `Кухня:` у kitchen title, новий label `Банкетний лист` і незмінний preview route.
+- **Релізні маркери піднято до `0.76.81`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.80 - Booking Detail Modal Cleanup
+
+### Booking detail modal / Kitchen detail cleanup / UI labels / Regression tests / (Клешня, 20.06.2026) [codex]
+- **`Ціна` у detail modal перейменовано на `Сума`** - змінено тільки user-facing label, внутрішні `price`, `formatPrice`, API payload і SQL fields не перейменовувались.
+- **Зайвий рядок `Сценарій: Кухня` приховано для кухонних бронювань** - kitchen-only, `programCode: KITCHEN` і `programName: Кухня/Kitchen` більше не показують дубль сценарію в detail modal.
+- **Звичайні сценарії не зламано** - для свят, активностей, анімацій і програм рядок `Сценарій` лишається як раніше.
+- **Scope обмежено detail modal** - title `Кухня: ...`, badges, summary, PDF/вижимка, schema, API і deploy config не змінювались.
+- **Regression guardrails додано** - UI smoke і drawer static test фіксують label `Сума`, відсутність старого `Ціна:` у detail block і conditional render для kitchen scenario row.
+- **Релізні маркери піднято до `0.76.80`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.79 - Booking Detail Status Actions
+
+### Booking detail modal / Status actions / Preliminary endpoint / Banquet member contract / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Зайву кнопку `Скопіювати все` прибрано з detail modal** - точкові copy actions для клієнта, телефону та Instagram лишаються доступними, але summary-copy рядок більше не показується.
+- **Дію `Зробити попереднім` винесено в окремий backend endpoint** - `POST /api/bookings/:id/preliminary` переводить бронювання без generic full edit flow, очищає confirmation metadata і лишається idempotent для вже попередніх броней.
+- **Frontend status action більше не використовує full update** - confirmed -> preliminary йде через новий API helper, після успіху оновлює кеш таймлайну, закриває modal і показує зрозумілий toast.
+- **Status cascade обмежено технічними linked bookings** - root booking і active `linked_to` children переходять у preliminary, але kitchen/activity members у `banquet_group_bookings` не змінюються приховано.
+- **Banquet summary попереджає про різні статуси members** - mixed statuses читаються з `bookings.status`, а `bookings.group_name` не бере участі у status logic.
+- **Regression guardrails додано** - targeted tests фіксують preliminary endpoint, cancelled booking guard, linked children behavior, banquet member contract і відсутність кнопки `Скопіювати все`.
+- **Schema/env/secrets/deploy config не змінювались** - нових міграцій, залежностей, секретів або production config немає; authorization використовує існуючий `edit_booking`.
+- **Релізні маркери піднято до `0.76.79`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.78 - Booking Summary Brief Cleanup
+
+### Booking summary / Header metadata / Brief cleanup / Cache-bust / UI guardrails / (Клешня, 20.06.2026) [codex]
+- **Booking ID прибрано з body brief вижимки** - ідентифікатор лишається у правій metadata-шапці документа і в copy text, але більше не дублюється під заголовком `ВИЖИМКА БАНКЕТУ`.
+- **Header label лишається `Менеджер`, не `Автор`** - UI guardrail підтверджує, що `booking-summary-page.js` не містить нового `Автор:` у шапці документа.
+- **Cache-bust піднято для summary frontend** - version refs оновлено до `0.76.78`, щоб браузер забрав новий `booking-summary-page.js` після деплою.
+- **Regression guardrail додано** - `tests/ui-check.js` блокує повернення `briefItem('Booking ID')` у короткий блок вижимки.
+- **Schema/env/auth/deploy config не змінювались** - зміна тільки у frontend summary render, release refs і UI smoke.
+- **Релізні маркери піднято до `0.76.78`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.77 - Banquet Field Separation
+
+### Banquet groups / Kitchen comments / Activity comments / Booking details / Recurring safety / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Кухня й активності більше не ділять legacy `bookings.notes` як основне поле** - нові коментарі пишуться в `extra_data.bookingWorkspace.comments.kitchen`, `activity` або `internal` залежно від сценарію бронювання.
+- **Detail modal показує правильний comment source** - нові бронювання читають коментар із `extraData`, а старі записи без нового contract продовжують показувати `bookings.notes`.
+- **Назва банкету винесена в `banquet_groups.group_name`** - нові кухонні й activity member bookings не використовують `bookings.group_name` як source of truth і не перетворюють legacy group name на назву нового банкету.
+- **Менеджер явно прив'язує бронь до банкету** - selector `Прив'язати до банкету` показує банкетні групи клієнта на дату, дозволяє вибрати інший банкет або залишити бронь без прив'язки.
+- **Kitchen member booking створюється атомарно** - новий backend flow створює booking, membership і compatibility link в одній транзакції, без сиріт при помилці attach.
+- **Bridge і multi-activity не копіюють чужі поля** - активності, створені з банкету, отримують власну примітку або порожнє поле, а назва банкету береться з `banquet_groups`.
+- **Recurring не розмножує legacy operational fields** - повторювані kitchen/activity member bookings не тягнуть старі `notes/groupName`, але зберігають workspace comments там, де це безпечно.
+- **Regression guardrails оновлено** - targeted tests, UI smoke і package contract фіксують candidates endpoint, atomic kitchen attach, read/display compatibility, selector routing і відсутність wrong copying.
+- **Schema/env/auth/deploy config не змінювались** - нової міграції немає; зміни обмежені UI/API/service contract і тестами.
+- **Релізні маркери піднято до `0.76.77`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.76 - Banquet terms price center defaults
+
+### Banquet summary / Price center / Standard terms / Snapshot terms / PDF preview / Copy text / Regression tests / (Клешня, 20.06.2026) [codex]
+- **Стандартні умови банкету підключено до центру цін** - додано seed migration для `banquet_own_cake_fee`, `banquet_cork_fee`, `banquet_menu_correction_deadline_days` і `banquet_date_change_deadline_days`, без перезапису operator-edited rows.
+- **Цифри в умовах більше не хардкодяться у preview/PDF** - backend збирає текст умов із `price_rules`, тому `Свій торт`, `Cork Fee`, корегування меню і зміна дати читають актуальні значення з price center.
+- **Нові банкетні бронювання фіксують snapshot умов** - при create/full create/update backend записує `extra_data.banquetTerms`, щоб стара вижимка не змінювалась після редагування price center.
+- **Старі бронювання отримують fallback без фейкових чисел** - якщо snapshot terms ще немає, summary використовує актуальні price rules; якщо rule відсутній, додається warning і не підставляється вигадане значення.
+- **Вижимка, PDF і copy text читають один contract** - блок `Умови банкету` у preview/print і текст для копіювання беруть `summary.terms.items`, а fallback `Умови банкету не заповнені` лишається тільки коли backend справді не дав terms.
+- **Regression guardrails посилено** - `booking-digest`, `booking-package-contract`, route smoke і UI smoke фіксують price-rule defaults, snapshot behavior, fallback behavior, відсутність frontend hardcode і print break rules для terms.
+- **Auth/deploy/secrets/new dependencies не змінювались** - додано лише idempotent seed migration і backend/frontend guardrails для банкетних умов.
+- **Релізні маркери піднято до `0.76.76`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.75 - Booking summary order row cleanup
+
+### Booking summary / Order rows / Kitchen-only banquet / PDF preview / Copy text / Regression tests / Browser QA / (Клешня, 20.06.2026) [codex]
+- **Таблиця `Замовлення` у вижимці банкету більше не показує ім'я клієнта як позицію** - kitchen-only identity booking з `program_code: KITCHEN` і `programBasePrice: 0` не створює нульовий program row, якщо є реальні menu positions.
+- **Клієнт лишається у правильному місці** - `Живий тест форми` залишається в brief/header як клієнт документа, але не дублюється в order table і не виглядає як куплена позиція.
+- **Реальні куплені позиції збережено** - меню, linked activities, service events і справжні paid program rows не видаляються новою умовою.
+- **Copy text і PDF отримують той самий очищений contract** - секція `Замовлення` не містить customer identity row, а preview/PDF автоматично рендерять оновлені `summary.orderRows`.
+- **Regression guardrail додано** - `tests/booking-digest.test.js` фіксує kitchen-only/no-event сценарій з menu positions, перевіряє totals і блокує повернення `Живий тест форми` у `orderRows`.
+- **Browser QA пройдено для desktop/mobile/print/PDF** - локальний Playwright сценарій на даних як у `BK-2026-0489` підтвердив brief customer, очищену таблицю, copy text без customer у `Замовлення`, 1-page PDF і відсутність mobile overflow.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.75`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.74 - Booking summary two-column brief
+
+### Booking summary / Two-column brief / A4 preview / Print PDF / Regression tests / Browser QA / (Клешня, 19.06.2026) [codex]
+- **Compact brief у вижимці банкету перероблено у два стовпчики** - блок під `ВИЖИМКА БАНКЕТУ` більше не рендериться довгими inline-рядками, а має структуровані `.summary-brief-grid`, `.summary-brief-column` і `.summary-brief-item`.
+- **Поля згруповано для швидшого читання** - ліворуч лишаються клієнт, телефон, кімната, дата і час, праворуч - учасники, програма, іменинник, дата народження, оформлення і Booking ID.
+- **Дубль менеджера не повернувся** - менеджер лишається тільки у правій шапці документа як `Менеджер: <ім'я акаунту>`, без повтору в body brief і без `Автор`.
+- **Preview/PDF contract збережено** - A4-like preview не ламається, короткий PDF artifact лишається на 1 сторінці, print media тримає білий документ без чорних полів.
+- **Mobile preview став безпечнішим для вузьких екранів** - brief переходить в один стовпчик, A4 wrapper підганяється до viewport, а таблиця не створює горизонтальний overflow за межі аркуша.
+- **Regression guardrails оновлено** - `tests/ui-check.js` блокує повернення `compactLine`, `compactFact`, `.summary-brief-line`, `Автор`, дубля менеджера і fixed `height: 297mm` у content root.
+- **Browser QA пройдено для desktop/mobile/print** - Playwright перевірив `BK-2026-0489`, два стовпчики на desktop/print, один стовпчик на mobile, відсутність overflow і PDF page count.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.74`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.73 - Booking summary manager header cleanup
+
+### Booking summary / Manager header / PDF preview / Header alignment / Regression tests / Browser QA / (Клешня, 19.06.2026) [codex]
+- **У шапці вижимки `Автор` замінено на `Менеджер`** - правий metadata block тепер показує `Менеджер: Сергій` з того самого account source `summary.document.generatedBy`.
+- **Нижній дубль менеджера прибрано з compact brief** - `Менеджер` більше не повторюється під заголовком документа, а brief залишає клієнта, телефон, кімнату, дату, час, учасників, програму, іменинника, дату народження, оформлення і Booking ID.
+- **Правий metadata block вирівняно з лівою шапкою** - `.summary-doc-meta` отримав scoped optical offset, контрольований `line-height` і окремий print offset без зміни A4 width/height contract.
+- **Preview/PDF behavior не регреснув** - A4-like preview лишився з ratio близько `0.71`, print media лишається білим документом без shadow/radius, короткий PDF artifact має 1 сторінку.
+- **Regression guardrails посилено** - `tests/ui-check.js` фіксує `Менеджер` у header, відсутність `Автор`, відсутність нижнього `compactFact('Менеджер', event.manager)` і scoped header alignment.
+- **Backend data contract зафіксовано** - `tests/booking-digest.test.js` підтверджує, що `summary.document.generatedBy` лишається account name, а `summary.event.manager` лишається booking `created_by`.
+- **Browser QA пройдено для desktop/narrow/print** - Playwright перевірив `BK-2026-0489`, label counts, A4 ratio, print media і PDF page count.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.73`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.72 - Banquet details visual cleanup
+
+### Booking details modal / Banquet rows / Copy affordance / UI guardrails / Browser QA / (Клешня, 19.06.2026) [codex]
+- **Рядок `Примітки` у booking/banquet details став звичайним read-only row** - прибрано `booking-detail-row--copyable`, `data-copy` і `detail-copy-btn`, тому hover більше не показує clipboard icon.
+- **Value `Примітки` вирівнюється як інші detail rows** - після видалення copyable reserve текст доходить до того самого правого краю, що `Дата`, `Час`, `Ціна` і `Сценарій`.
+- **Рядок `Група` показує чисту назву без `🎪`** - `тест група` більше не має зайвої декоративної іконки в деталях бронювання/банкету.
+- **Корисні copy actions збережено** - customer name, phone, Instagram і явна дія `Скопіювати все` лишаються доступними.
+- **Banquet details flow не змінювався** - `Редагувати`, `Вижимка`, `Ще`, нижній banquet detail block і timeline click flow лишаються на місці.
+- **UI guardrails оновлено** - `tests/ui-check.js` фіксує notes без copy affordance, group без `🎪`, customer copy actions, summary copy button і compact status badge.
+- **Browser QA пройдено для desktop/mobile/dark** - Playwright before/after підтвердив, що notes більше не copyable, group без emoji, layout desktop вирівняний, mobile читається.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.72`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.76.71 - Booking summary PDF A4 cleanup
+
+### Booking summary / A4 preview / Print PDF / Pagination guardrails / Browser QA / (Клешня, 19.06.2026) [codex]
+- **Вижимка банкету отримала стабільний A4 preview contract** - preview тепер рендерить документ через `bookingSummaryPrintRoot` і `.booking-summary-a4-page` з пропорцією `210/297`, а не як content-height card.
+- **Print/PDF більше не тягне dark theme у документ** - `@media print` скидає `html`, `body.booking-summary-page`, wrapper і document до білого фону, прибирає `background-image`, screen shadow/radius і ховає toolbar/state/toast.
+- **Короткі вижимки вкладаються в одну A4 сторінку** - сценарій на кшталт `BK-2026-0489` перевірено Playwright PDF artifact, короткий PDF має 1 сторінку без зайвої темної другої.
+- **Довгі банкети переносяться контрольовано** - print-only density, `thead` repeat і `break-inside` guardrails захищають rows, service events, finance і terms від некрасивих розривів.
+- **Regression guardrails посилено** - `tests/ui-check.js` витягує саме `@media print` і фіксує A4 wrapper, white reset, hidden chrome, native `window.print()` і page-break contract без прив'язки до live booking id.
+- **Browser QA артефакти збережено локально** - desktop/narrow preview, short/long print screenshots і short/long PDFs підтвердили A4 ratio, білий документ, 1-page short та 2-page long output.
+- **Schema/env/auth/deploy config не змінювались** - без міграцій, secrets, ролей, production data, Railway config, нових залежностей або зовнішніх інтеграцій.
+- **Релізні маркери піднято до `0.76.71`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.70 - Booking details visual cleanup
 
 ### Frontend booking modal / Timeline click details / Copy affordance / Status badge / Regression tests / (Клешня, 19.06.2026) [codex]

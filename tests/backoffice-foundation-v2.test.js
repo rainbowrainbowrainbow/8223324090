@@ -164,8 +164,8 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /NOT EXISTS \([\s\S]*FROM afisha a/);
         assert.match(linesRoute, /syncScheduledAnimatorLines\(date\)/);
         assert.match(linesRoute, /X-Timeline-Lines-Source/);
-        assert.match(timelinePage, /function getLineSubtitle/);
-        assert.match(timelinePage, /зі зміни/);
+        assert.match(timelinePage, /line-header line-header--title-only/);
+        assert.doesNotMatch(timelinePage, /getLineSubtitle\(lineForHeader\)/);
     });
 
     it('filters the timeline edit-line picker to active regular or freelance animators', () => {

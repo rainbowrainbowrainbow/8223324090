@@ -1109,6 +1109,20 @@ async function apiGet(path) {
     } catch (e) { console.error('API GET', path, e); return null; }
 }
 
+async function apiGetScoped(path) {
+    try {
+        const raw = String(path || '');
+        const normalized = raw.startsWith('/api') ? raw : `/api${raw.startsWith('/') ? raw : `/${raw}`}`;
+        const url = typeof window !== 'undefined' && window.CrmBusinessContext?.apiUrl
+            ? window.CrmBusinessContext.apiUrl(normalized)
+            : normalized;
+        const r = await fetch(url, { headers: getAuthHeaders(false) });
+        if (handleAuthError(r)) return null;
+        if (!r.ok) return null;
+        return await r.json();
+    } catch (e) { console.error('API scoped GET', path, e); return null; }
+}
+
 async function apiPost(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(body) });
@@ -1234,8 +1248,7 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/quests/titles') : null,
         isOwnProfile ? apiGet('/streaks') : null,
         isOwnProfile ? apiGet('/tasks/my-cabinet') : null,
-        isOwnProfile ? apiGet('/dashboard/alerts') : null,
-        isOwnProfile ? apiGet('/leads/new-count') : null,
+        isOwnProfile ? apiGetScoped('/business/live-counters') : null,
         isOwnProfile ? apiGet('/auth/security') : null
     ]);
 
@@ -1249,8 +1262,8 @@ async function loadProfileData(userId) {
     allStreaks = results[7];
     myCabinetData = results[8];
     applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
-    syncCabinetPulseCounts(results[9], results[10]);
-    profileSecurityData = results[11];
+    syncCabinetPulseCounts(results[9]);
+    profileSecurityData = results[10];
     profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
     ensureActiveProfessionKey();
 }
@@ -3790,27 +3803,45 @@ function bindCabinetSubtasks() {
     });
 }
 
-function syncCabinetPulseCounts(alertsData, funnelData) {
-    const alerts = Array.isArray(alertsData?.alerts) ? alertsData.alerts : [];
-    const readIds = (() => {
-        try { return new Set(JSON.parse(localStorage.getItem('crm_alerts_read_v2') || '[]')); } catch { return new Set(); }
-    })();
-    const dismissedIds = (() => {
-        try { return new Set(JSON.parse(localStorage.getItem('crm_alerts_dismissed') || '[]')); } catch { return new Set(); }
-    })();
-    const unreadAlerts = alerts.filter(alert => alert?.id && !readIds.has(alert.id) && !dismissedIds.has(alert.id));
+function profileLiveCounterScope(payload = {}) {
+    const safePayload = payload || {};
+    const apiScope = typeof window !== 'undefined' ? window.CrmBusinessContext?.scope?.() : null;
+    const scope = safePayload.scope || apiScope || {};
+    const selectedContexts = Array.isArray(scope.selectedContexts) && scope.selectedContexts.length
+        ? scope.selectedContexts
+        : [scope.activeContext || (typeof window !== 'undefined' ? window.CrmBusinessContext?.current?.() : null) || 'event_genix'];
+    return {
+        mode: scope.mode || 'single',
+        activeContext: scope.activeContext || selectedContexts[0] || 'event_genix',
+        selectedContexts
+    };
+}
+
+function profileLiveCounterBucket(payload = {}) {
+    const safePayload = payload || {};
+    const counters = safePayload.counters || {};
+    const scope = profileLiveCounterScope(safePayload);
+    if (scope.mode === 'multi' || scope.mode === 'all') return counters.total || {};
+    return counters.byBusiness?.[scope.activeContext] || counters.total || {};
+}
+
+function safeCabinetPulseCount(value) {
+    const count = Number(value || 0);
+    return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+}
+
+function syncCabinetPulseCounts(liveCounters) {
+    const bucket = profileLiveCounterBucket(liveCounters || {});
+    const leads = bucket.leads || {};
     cabinetPulseCounts = {
-        alerts: Number(alertsData?.count ?? unreadAlerts.length ?? 0) || 0,
-        funnel: Number(funnelData?.count || funnelData?.newCount || funnelData?.total || 0) || 0
+        alerts: safeCabinetPulseCount(bucket.alerts?.active),
+        funnel: safeCabinetPulseCount(leads.hot) || safeCabinetPulseCount(leads.new)
     };
 }
 
 async function refreshCabinetPulseCounts() {
-    const [alertsData, funnelData] = await Promise.all([
-        apiGet('/dashboard/alerts'),
-        apiGet('/leads/new-count')
-    ]);
-    syncCabinetPulseCounts(alertsData, funnelData);
+    const liveCounters = await apiGetScoped('/business/live-counters');
+    syncCabinetPulseCounts(liveCounters);
 }
 
 function formatCabinetPulseCount(value) {

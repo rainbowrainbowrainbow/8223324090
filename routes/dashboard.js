@@ -52,6 +52,19 @@ function appendDashboardBusinessScope(params, scope, alias = 't') {
     return `AND ${pushBusinessScopeCondition(params, scope, alias)}`;
 }
 
+function dashboardBusinessScopeMeta(scope = {}) {
+    const selectedContexts = Array.isArray(scope.selectedContexts) && scope.selectedContexts.length
+        ? scope.selectedContexts
+        : [scope.activeContext || 'event_genix'];
+    return {
+        mode: scope.mode || 'single',
+        activeContext: scope.activeContext || selectedContexts[0] || 'event_genix',
+        selectedContexts,
+        readOnly: scope.readOnly === true,
+        canWrite: scope.canWrite !== false
+    };
+}
+
 function buildOwnTaskFilter(user, params, alias = 't') {
     const userId = normalizeUserId(user);
     const typed = userId ? `${alias}.owner_user_id = $${params.push(userId)}` : 'FALSE';
@@ -1003,7 +1016,9 @@ router.get('/widgets/:type', async (req, res) => {
                 const bookingVisibility = getVisibleBookingScope(req.user, params, 'b');
                 const result = await pool.query(`
                     SELECT b.id, b.label as client_name, b.program_name as program,
-                           b.time as start_time, b.room, b.status, b.kids_count as children_count
+                           b.time as start_time, b.room, b.status, b.category,
+                           b.kids_count as children_count,
+                           b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
                     FROM bookings b
                     WHERE b.date = $1 AND b.status != 'cancelled'
                     ${bookingVisibility.sql}
@@ -1122,18 +1137,25 @@ router.get('/widgets/:type', async (req, res) => {
                 const overdueTaskBusinessCondition = appendDashboardBusinessScope(overdueTaskParams, businessScope, 't');
                 const bookingCountParams = [today];
                 const bookingCountVisibility = getVisibleBookingScope(req.user, bookingCountParams, 'b');
+                const bookingCountBusinessCondition = appendDashboardBusinessScope(bookingCountParams, businessScope, 'b');
                 const revenueParams = [today];
                 const revenueVisibility = getVisibleBookingScope(req.user, revenueParams, 'b');
+                const revenueBusinessCondition = appendDashboardBusinessScope(revenueParams, businessScope, 'b');
                 const unconfirmedParams = [today];
                 const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
+                const unconfirmedBusinessCondition = appendDashboardBusinessScope(unconfirmedParams, businessScope, 'b');
+                const lowStockParams = [];
+                const lowStockBusinessCondition = appendDashboardBusinessScope(lowStockParams, businessScope, 'ws');
+                const coldLeadParams = [];
+                const coldLeadBusinessCondition = appendDashboardBusinessScope(coldLeadParams, businessScope, 'l');
                 const [bookings, tasks, revenue, overdueQS, unconfirmedQS, lowStockQS, coldLeadsQS] = await Promise.all([
-                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql}`, bookingCountParams),
+                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
                     pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.status = 'in_progress' ${activeTaskVisibility} ${activeTaskBusinessCondition}`, activeTaskParams),
-                    pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql}`, revenueParams),
+                    pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
                     pool.query(`SELECT COUNT(*) as count FROM tasks t WHERE t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') ${overdueTaskVisibility} ${overdueTaskBusinessCondition}`, overdueTaskParams),
-                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql}`, unconfirmedParams),
-                    pool.query("SELECT COUNT(*) as count FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true"),
-                    pool.query(`SELECT COUNT(*) as count FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND created_at < NOW() - INTERVAL '48 hours'`)
+                    pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ${unconfirmedBusinessCondition}`, unconfirmedParams),
+                    pool.query(`SELECT COUNT(*) as count FROM warehouse_stock ws WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition}`, lowStockParams),
+                    pool.query(`SELECT COUNT(*) as count FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND l.created_at < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams)
                 ]);
                 const ov = parseInt(overdueQS.rows[0].count);
                 const uc = parseInt(unconfirmedQS.rows[0].count);
@@ -1147,7 +1169,12 @@ router.get('/widgets/:type', async (req, res) => {
                     overdueTasks: ov,
                     unconfirmedBookings: uc,
                     lowStockItems: ls,
-                    coldLeads: cl
+                    coldLeads: cl,
+                    meta: {
+                        businessScope: dashboardBusinessScopeMeta(businessScope),
+                        scopedCounters: ['bookingsToday', 'activeTasks', 'revenueToday', 'overdueTasks', 'unconfirmedBookings', 'lowStockItems', 'coldLeads'],
+                        globalCounters: []
+                    }
                 };
                 break;
             }
@@ -1159,8 +1186,15 @@ router.get('/widgets/:type', async (req, res) => {
                 const overdueBusinessCondition = appendDashboardBusinessScope(overdueParams, businessScope, 't');
                 const unconfirmedParams = [alertToday];
                 const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
+                const unconfirmedBusinessCondition = appendDashboardBusinessScope(unconfirmedParams, businessScope, 'b');
+                const lowStockParams = [];
+                const lowStockBusinessCondition = appendDashboardBusinessScope(lowStockParams, businessScope, 'ws');
+                const coldLeadParams = [];
+                const coldLeadBusinessCondition = appendDashboardBusinessScope(coldLeadParams, businessScope, 'l');
                 const shiftParams = [alertToday];
                 const shiftVisibility = getVisibleBookingScope(req.user, shiftParams, 'b');
+                const openShiftBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'cs');
+                const shiftBookingBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'b');
                 const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
                     buildUrgentTaskAlerts(req.user, businessScope, 5),
                     pool.query(`SELECT t.id, t.title, t.deadline FROM tasks t
@@ -1172,16 +1206,18 @@ router.get('/widgets/:type', async (req, res) => {
                     pool.query(`SELECT b.id, b.label, b.time FROM bookings b
                                 WHERE b.date = $1 AND b.status = 'preliminary'
                                   ${unconfirmedVisibility.sql}
+                                  ${unconfirmedBusinessCondition}
                                 ORDER BY b.time LIMIT 5`, unconfirmedParams),
-                    pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock
-                                WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
-                    pool.query(`SELECT COUNT(*) as c FROM leads
-                                WHERE COALESCE(pipeline_stage, 'new') = 'new'
+                    pool.query(`SELECT ws.name, ws.quantity, ws.min_quantity, ws.unit FROM warehouse_stock ws
+                                WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition} LIMIT 3`, lowStockParams),
+                    pool.query(`SELECT COUNT(*) as c FROM leads l
+                                WHERE COALESCE(l.pipeline_stage, 'new') = 'new'
                                   AND ${SALES_LEAD_TYPE_FILTER}
-                                  AND created_at < NOW() - INTERVAL '48 hours'`),
+                                  AND l.created_at < NOW() - INTERVAL '48 hours'
+                                  ${coldLeadBusinessCondition}`, coldLeadParams),
                     pool.query(`SELECT
-                                  (SELECT COUNT(*) FROM cash_register_shifts WHERE status = 'open') AS open_shifts,
-                                  (SELECT COUNT(*) FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${shiftVisibility.sql}) AS today_bk`,
+                                  (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.status = 'open' ${openShiftBusinessCondition}) AS open_shifts,
+                                  (SELECT COUNT(*) FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`,
                                 shiftParams)
                 ]);
                 const alerts = [];
@@ -1219,7 +1255,15 @@ router.get('/widgets/:type', async (req, res) => {
                     });
                 }
                 alerts.push(...await getOmniAccountAlertsAsync());
-                data = { alerts, count: alerts.length };
+                data = {
+                    alerts,
+                    count: alerts.length,
+                    meta: {
+                        businessScope: dashboardBusinessScopeMeta(businessScope),
+                        scopedSignals: ['urgent_tasks', 'overdue_tasks', 'unconfirmed_bookings', 'low_stock', 'cold_leads', 'cash_shift'],
+                        globalSignals: ['omni_account_alerts']
+                    }
+                };
                 break;
             }
 
@@ -1229,15 +1273,25 @@ router.get('/widgets/:type', async (req, res) => {
             }
 
             case 'leads_new': {
+                const leadParams = [];
+                const leadBusinessCondition = appendDashboardBusinessScope(leadParams, businessScope, 'l');
                 const result = await pool.query(`
-                    SELECT id, client_name AS name, phone, source, status, created_at
-                    FROM leads
-                    WHERE COALESCE(pipeline_stage, 'new') = 'new'
+                    SELECT l.id, l.client_name AS name, l.phone, l.source, l.status, l.created_at
+                    FROM leads l
+                    WHERE COALESCE(l.pipeline_stage, 'new') = 'new'
                       AND ${SALES_LEAD_TYPE_FILTER}
-                    ORDER BY created_at DESC
+                      ${leadBusinessCondition}
+                    ORDER BY l.created_at DESC
                     LIMIT 8
-                `);
-                data = { leads: result.rows, total: result.rows.length };
+                `, leadParams);
+                data = {
+                    leads: result.rows,
+                    total: result.rows.length,
+                    meta: {
+                        businessScope: dashboardBusinessScopeMeta(businessScope),
+                        scopedCounters: ['leads']
+                    }
+                };
                 break;
             }
 
@@ -1249,7 +1303,8 @@ router.get('/widgets/:type', async (req, res) => {
                     replyScope: 'all',
                     replySla: 'all',
                     replyOwner: 'all',
-                    replyEscalation: 'all'
+                    replyEscalation: 'all',
+                    businessScope
                 });
                 data = { meta: { funnelInsights: queue?.meta?.funnelInsights || {} } };
                 break;
@@ -1654,9 +1709,11 @@ router.get('/widgets/:type', async (req, res) => {
             // v39.10: Vice director operations overview
             case 'operations': {
                 const today = getKyivDateStr();
+                const complaintParams = [];
+                const complaintBusinessCondition = appendDashboardBusinessScope(complaintParams, businessScope, 'l');
                 const [procurement, complaints, quality, staffGaps] = await Promise.all([
                     pool.query(`SELECT id, name, status FROM procurement_lists WHERE status IN ('draft','ordered') ORDER BY created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
-                    pool.query(`SELECT COUNT(*)::int AS c FROM leads WHERE status = 'new' AND source = 'complaint' AND created_at > NOW() - INTERVAL '7 days'`).catch(() => ({ rows: [{ c: 0 }] })),
+                    pool.query(`SELECT COUNT(*)::int AS c FROM leads l WHERE l.status = 'new' AND l.source = 'complaint' AND l.created_at > NOW() - INTERVAL '7 days' ${complaintBusinessCondition}`, complaintParams).catch(() => ({ rows: [{ c: 0 }] })),
                     pool.query(`SELECT COALESCE(AVG(rating),0)::numeric(3,1) AS avg_rating, COUNT(*)::int AS count FROM event_reviews WHERE created_at > NOW() - INTERVAL '30 days'`).catch(() => ({ rows: [{ avg_rating: 0, count: 0 }] })),
                     pool.query(`SELECT COUNT(*)::int AS gaps FROM staff_schedule ss
                         JOIN staff s ON s.id = ss.staff_id
@@ -1710,20 +1767,24 @@ router.get('/today', async (req, res) => {
         const taskBusinessCondition = appendDashboardBusinessScope(taskParams, businessScope, 't');
         const bookingCountParams = [today];
         const bookingCountVisibility = getVisibleBookingScope(req.user, bookingCountParams, 'b');
+        const bookingCountBusinessCondition = appendDashboardBusinessScope(bookingCountParams, businessScope, 'b');
         const revenueParams = [today];
         const revenueVisibility = getVisibleBookingScope(req.user, revenueParams, 'b');
+        const revenueBusinessCondition = appendDashboardBusinessScope(revenueParams, businessScope, 'b');
+        const newLeadParams = [];
+        const newLeadBusinessCondition = appendDashboardBusinessScope(newLeadParams, businessScope, 'l');
 
         const [bookings, tasks, revenue, teamOnline, newLeads] = await Promise.all([
-            pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql}`, bookingCountParams),
+            pool.query(`SELECT COUNT(*) as count FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${bookingCountVisibility.sql} ${bookingCountBusinessCondition}`, bookingCountParams),
             pool.query(`SELECT COUNT(*) as count
                         FROM tasks t
                         WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
                         ${taskVisibility}
                         ${ownTaskFilter}
                         ${taskBusinessCondition}`, taskParams),
-            pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql}`, revenueParams),
+            pool.query(`SELECT COALESCE(SUM(b.price), 0) as total FROM bookings b WHERE b.date = $1 AND b.status = 'confirmed' ${revenueVisibility.sql} ${revenueBusinessCondition}`, revenueParams),
             pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
-            pool.query(`SELECT COUNT(*) as count FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER}`).catch(() => ({ rows: [{ count: 0 }] })),
+            pool.query(`SELECT COUNT(*) as count FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} ${newLeadBusinessCondition}`, newLeadParams).catch(() => ({ rows: [{ count: 0 }] })),
         ]);
 
         res.json({
@@ -1735,6 +1796,11 @@ router.get('/today', async (req, res) => {
                 revenueToday: parseFloat(revenue.rows[0].total),
                 teamOnline: parseInt(teamOnline.rows[0].count),
                 newLeads: parseInt(newLeads.rows[0].count),
+                meta: {
+                    businessScope: dashboardBusinessScopeMeta(businessScope),
+                    scopedCounters: ['bookingsToday', 'myActiveTasks', 'revenueToday', 'newLeads'],
+                    globalCounters: ['teamOnline']
+                }
             }
         });
     } catch (err) {
@@ -1824,8 +1890,15 @@ router.get('/alerts', async (req, res) => {
         const overdueBusinessCondition = appendDashboardBusinessScope(overdueParams, businessScope, 't');
         const unconfirmedParams = [today];
         const unconfirmedVisibility = getVisibleBookingScope(req.user, unconfirmedParams, 'b');
+        const unconfirmedBusinessCondition = appendDashboardBusinessScope(unconfirmedParams, businessScope, 'b');
+        const lowStockParams = [];
+        const lowStockBusinessCondition = appendDashboardBusinessScope(lowStockParams, businessScope, 'ws');
+        const coldLeadParams = [];
+        const coldLeadBusinessCondition = appendDashboardBusinessScope(coldLeadParams, businessScope, 'l');
         const shiftParams = [today];
         const shiftVisibility = getVisibleBookingScope(req.user, shiftParams, 'b');
+        const openShiftBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'cs');
+        const shiftBookingBusinessCondition = appendDashboardBusinessScope(shiftParams, businessScope, 'b');
         const [urgentAlerts, overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
             buildUrgentTaskAlerts(req.user, businessScope, 5),
             pool.query(`SELECT t.id, t.title, t.deadline, t.priority, t.status, t.owner_user_id,
@@ -1839,11 +1912,11 @@ router.get('/alerts', async (req, res) => {
                           ${overdueBusinessCondition}
                         ORDER BY t.deadline ASC
                         LIMIT 5`, overdueParams),
-            pool.query(`SELECT b.id, b.label, b.time FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ORDER BY b.time LIMIT 5`, unconfirmedParams),
-            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
-            pool.query(`SELECT COUNT(*) as c FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND created_at < NOW() - INTERVAL '48 hours'`),
-            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
-                               (SELECT COUNT(*) FROM bookings b WHERE b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql}) AS today_bk`, shiftParams)
+            pool.query(`SELECT b.id, b.label, b.time FROM bookings b WHERE b.date = $1 AND b.status = 'preliminary' ${unconfirmedVisibility.sql} ${unconfirmedBusinessCondition} ORDER BY b.time LIMIT 5`, unconfirmedParams),
+            pool.query(`SELECT ws.name, ws.quantity, ws.min_quantity, ws.unit FROM warehouse_stock ws WHERE ws.quantity <= ws.min_quantity AND ws.is_active = true ${lowStockBusinessCondition} LIMIT 3`, lowStockParams),
+            pool.query(`SELECT COUNT(*) as c FROM leads l WHERE COALESCE(l.pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND l.created_at < NOW() - INTERVAL '48 hours' ${coldLeadBusinessCondition}`, coldLeadParams),
+            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts cs WHERE cs.status='open' ${openShiftBusinessCondition}) AS open_shifts,
+                               (SELECT COUNT(*) FROM bookings b WHERE b.date=$1 AND b.status='confirmed' ${shiftVisibility.sql} ${shiftBookingBusinessCondition}) AS today_bk`, shiftParams)
         ]);
         const alerts = [];
         alerts.push(...urgentAlerts);
@@ -1888,7 +1961,16 @@ router.get('/alerts', async (req, res) => {
             });
         }
         alerts.push(...await getOmniAccountAlertsAsync());
-        res.json({ success: true, alerts, count: alerts.length });
+        res.json({
+            success: true,
+            alerts,
+            count: alerts.length,
+            meta: {
+                businessScope: dashboardBusinessScopeMeta(businessScope),
+                scopedSignals: ['urgent_tasks', 'overdue_tasks', 'unconfirmed_bookings', 'low_stock', 'cold_leads', 'cash_shift'],
+                globalSignals: ['omni_account_alerts']
+            }
+        });
     } catch (err) {
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -1907,10 +1989,12 @@ async function broadcastAlerts() {
             Promise.resolve({ rows: [] }),
             // Booking alerts are object-visible; global websocket broadcast cannot apply per-user booking scope.
             Promise.resolve({ rows: [] }),
-            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
-            pool.query(`SELECT COUNT(*) as c FROM leads WHERE COALESCE(pipeline_stage, 'new') = 'new' AND ${SALES_LEAD_TYPE_FILTER} AND created_at < NOW() - INTERVAL '48 hours'`),
-            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
-                               0 AS today_bk`)
+            // Stock alerts are business-scoped in /api/dashboard/alerts; the global websocket broadcast cannot apply per-user business scope.
+            Promise.resolve({ rows: [] }),
+            // Lead alerts are business-scoped in /api/dashboard/alerts; the global broadcast must not mix business contexts.
+            Promise.resolve({ rows: [{ c: 0 }] }),
+            // Cash alerts are business-scoped in /api/dashboard/alerts; avoid broadcasting cross-business finance state globally.
+            Promise.resolve({ rows: [{ open_shifts: 0, today_bk: 0 }] })
         ]);
         const alerts = [];
         overdue.rows.forEach(t => {

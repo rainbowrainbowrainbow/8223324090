@@ -14,6 +14,8 @@ const Sidebar = (() => {
         identityMetaLoading: false,
         identityMetaLoadedAt: 0,
         identityMetaDetails: {},
+        liveCountersPromise: null,
+        liveCountersUrl: '',
         roleRenderApplied: false,
         extraEditingId: '',
         railCloseTimer: null,
@@ -1273,7 +1275,7 @@ const Sidebar = (() => {
     }
 
     // ═══ RENDER ═══════════════════════════════════════════════════
-    function render(containerSelector) {
+    function render(containerSelector, options = {}) {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
         if (!container) return;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
@@ -1383,10 +1385,14 @@ const Sidebar = (() => {
         _initSpotlight();
         _initRipple();
         _initMagnetic();
+        if (options.refreshOperational !== false) _refreshSidebarOperationalWidgets();
+        _queueActiveIndicatorUpdate();
+    }
+
+    function _refreshSidebarOperationalWidgets() {
         _fetchLiveBadges();
         _refreshTaskMiniWidget();
         _refreshFunnelWidget();
-        _queueActiveIndicatorUpdate();
     }
 
     function _markShellReady() {
@@ -1595,6 +1601,90 @@ const Sidebar = (() => {
         const count = Number(value || 0);
         if (!Number.isFinite(count) || count <= 0) return '0';
         return count > 99 ? '99+' : String(Math.floor(count));
+    }
+
+    function _toSidebarCounterValue(value) {
+        const count = Number(value || 0);
+        return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    }
+
+    function _emptyBusinessLiveCounters() {
+        return {
+            leads: { new: 0, hot: 0 },
+            tasks: { active: 0, overdue: 0 },
+            alerts: { active: 0 }
+        };
+    }
+
+    function _sidebarScopedApiUrl(url) {
+        const apiUrl = window.CrmBusinessContext?.apiUrl;
+        return typeof apiUrl === 'function' ? apiUrl(url) : url;
+    }
+
+    function _sidebarAuthHeaders(token = localStorage.getItem('pzp_token')) {
+        if (typeof getAuthHeaders === 'function') return getAuthHeaders(false);
+        return token ? { 'Authorization': 'Bearer ' + token } : {};
+    }
+
+    async function _fetchBusinessLiveCounters(authHeaders = null) {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return null;
+        const url = _sidebarScopedApiUrl('/api/business/live-counters');
+        if (_state.liveCountersPromise && _state.liveCountersUrl === url) return _state.liveCountersPromise;
+        const headers = authHeaders || _sidebarAuthHeaders(token);
+        const request = fetch(url, { headers })
+            .then(response => response.ok ? response.json() : null)
+            .then(payload => payload?.success ? payload : null)
+            .catch(() => null)
+            .finally(() => {
+                if (_state.liveCountersPromise === request) {
+                    _state.liveCountersPromise = null;
+                    _state.liveCountersUrl = '';
+                }
+            });
+        _state.liveCountersPromise = request;
+        _state.liveCountersUrl = url;
+        return request;
+    }
+
+    function _businessLiveCounterScope(payload = {}) {
+        const safePayload = payload || {};
+        const user = _getCurrentSidebarUser();
+        const apiScope = window.CrmBusinessContext?.scope?.(user);
+        const scope = safePayload.scope || apiScope || {};
+        const selectedContexts = Array.isArray(scope.selectedContexts) && scope.selectedContexts.length
+            ? scope.selectedContexts
+            : [scope.activeContext || window.CrmBusinessContext?.current?.(user) || 'event_genix'];
+        return {
+            mode: scope.mode || 'single',
+            activeContext: scope.activeContext || selectedContexts[0] || 'event_genix',
+            selectedContexts,
+            readOnly: scope.readOnly === true,
+            canWrite: scope.canWrite !== false
+        };
+    }
+
+    function _businessLiveCounterBucket(payload = {}) {
+        const safePayload = payload || {};
+        const counters = safePayload.counters || {};
+        const scope = _businessLiveCounterScope(safePayload);
+        if (scope.mode === 'multi' || scope.mode === 'all') return counters.total || _emptyBusinessLiveCounters();
+        return counters.byBusiness?.[scope.activeContext] || counters.total || _emptyBusinessLiveCounters();
+    }
+
+    function _businessScopeCounterLabel(scope = {}) {
+        const mode = scope.mode || 'single';
+        if (mode === 'all') return 'усі доступні бізнеси, огляд без змін';
+        if (mode === 'multi') {
+            const count = Array.isArray(scope.selectedContexts) ? scope.selectedContexts.length : 0;
+            return `${count || 'кілька'} вибрані бізнеси, огляд без змін`;
+        }
+        const user = _getCurrentSidebarUser();
+        const state = window.CrmBusinessContext?.state?.(user);
+        const active = scope.activeContext || window.CrmBusinessContext?.current?.(user);
+        const context = state?.availableBusinesses?.find(ctx => (ctx.key || ctx.id) === active);
+        const label = context ? _sidebarBusinessFullLabel(context) : '';
+        return label ? `активний бізнес: ${label}` : 'активний бізнес';
     }
 
     function _sidebarKyivToday() {
@@ -2034,19 +2124,19 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
-            const authHeaders = typeof getAuthHeaders === 'function'
-                ? getAuthHeaders(false)
-                : { 'Authorization': 'Bearer ' + token };
-            const scopedApiUrl = window.CrmBusinessContext?.apiUrl || (url => url);
-            const [alertsR, leadsR] = await Promise.allSettled([
-                fetch(scopedApiUrl('/api/dashboard/alerts'), { headers: authHeaders }).then(r => r.json()),
-                fetch(scopedApiUrl('/api/leads/new-count'), { headers: authHeaders }).then(r => r.json()).catch(() => null),
+            const authHeaders = _sidebarAuthHeaders(token);
+            const [alertsR, countersR] = await Promise.allSettled([
+                fetch(_sidebarScopedApiUrl('/api/dashboard/alerts'), { headers: authHeaders }).then(r => r.json()),
+                _fetchBusinessLiveCounters(authHeaders),
             ]);
             const alertCount = alertsR.status === 'fulfilled' ? (alertsR.value?.count || 0) : 0;
-            const leadsNew = leadsR.status === 'fulfilled' ? (leadsR.value?.count || 0) : 0;
+            const liveCounters = countersR.status === 'fulfilled' ? countersR.value : null;
+            const leadCounters = _businessLiveCounterBucket(liveCounters).leads || {};
+            const leadsNew = _toSidebarCounterValue(leadCounters.new);
+            const scopeLabel = _businessScopeCounterLabel(_businessLiveCounterScope(liveCounters || {}));
             _setBadge('alerts', alertCount > 0 ? alertCount : null);
             if (alertsR.status === 'fulfilled') _renderSidebarAlerts(alertsR.value);
-            _setBadge('leads_new', leadsNew > 0 ? leadsNew : null);
+            _setBadge('leads_new', leadsNew > 0 ? leadsNew : null, `Нові ліди: ${leadsNew}. ${scopeLabel}.`);
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
@@ -2054,13 +2144,19 @@ const Sidebar = (() => {
         _state.badgeTimer = setTimeout(_fetchLiveBadges, 300000);
     }
 
-    function _setBadge(type, value) {
+    function _setBadge(type, value, accessibleLabel = '') {
         document.querySelectorAll(`[data-badge-type="${type}"]`).forEach(el => {
             if (value === null || value === undefined || value === 0) {
                 el.style.display = 'none';
+                el.removeAttribute('aria-label');
+                el.removeAttribute('title');
             } else {
                 el.style.display = 'inline-flex';
                 el.textContent = typeof value === 'number' && value > 99 ? '99+' : String(value);
+                if (accessibleLabel) {
+                    el.setAttribute('aria-label', accessibleLabel);
+                    el.setAttribute('title', accessibleLabel);
+                }
             }
         });
     }
@@ -3056,15 +3152,13 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
-            const [hotR, newR] = await Promise.allSettled([
-                fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : null),
-                fetch('/api/leads/new-count', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : null)
-            ]);
-            const hotLeads = hotR.status === 'fulfilled' && Array.isArray(hotR.value?.leads) ? hotR.value.leads : [];
-            const actionCount = hotLeads.length;
-            const newCount = newR.status === 'fulfilled' ? Number(newR.value?.count || 0) : 0;
+            const liveCounters = await _fetchBusinessLiveCounters(_sidebarAuthHeaders(token));
+            const scope = _businessLiveCounterScope(liveCounters || {});
+            const scopeLabel = _businessScopeCounterLabel(scope);
+            const leadCounters = _businessLiveCounterBucket(liveCounters).leads || {};
+            const actionCount = _toSidebarCounterValue(leadCounters.hot);
+            const newCount = _toSidebarCounterValue(leadCounters.new);
             const displayCount = actionCount > 0 ? actionCount : newCount;
-            const firstLead = hotLeads[0] || null;
             const countEl = document.getElementById('focusChipFunnelValue');
             const metaEl = document.getElementById('focusChipFunnelMeta');
 
@@ -3085,11 +3179,11 @@ const Sidebar = (() => {
                 : `Воронка: ${newCount} нових лідів. Натисніть, щоб відкрити повну воронку.`;
             _commandState.hotLeads = actionCount;
             _commandState.newLeads = newCount;
-            _setCommandDescription(widget, funnelTitle);
+            _setCommandDescription(widget, `${funnelTitle} ${scopeLabel}.`);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
             _setFocusChipOperationalState(widget, displayCount, { kind: 'leads', hot: actionCount > 0 || newCount > 0 });
-            widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';
+            widget.href = '/sales-funnel';
         } catch {}
         _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);
     }
@@ -3694,14 +3788,16 @@ const Sidebar = (() => {
     });
     window.addEventListener('crmBusinessContextChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (c?.id) render('#' + c.id);
+        if (c?.id) render('#' + c.id, { refreshOperational: false });
         initUserCard();
+        _refreshSidebarOperationalWidgets();
     });
     window.addEventListener('crmBusinessContextHydrated', () => {
         _state.businessSwitching = false;
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (c?.id) render('#' + c.id);
+        if (c?.id) render('#' + c.id, { refreshOperational: false });
         initUserCard();
+        _refreshSidebarOperationalWidgets();
     });
     window.addEventListener('crmBusinessProfileChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');

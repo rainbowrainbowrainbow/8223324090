@@ -41,6 +41,7 @@ const {
     isTimelineContext,
     saveBusinessCabinetSettings
 } = require('../services/businessCabinet');
+const { buildBusinessLiveCounters } = require('../services/businessLiveCounters');
 const {
     getChatSettingsBundle,
     getAIProviderDiagnostics,
@@ -552,6 +553,18 @@ router.get('/business/profile', async (req, res) => {
     }
 });
 
+router.get('/business/live-counters', async (req, res) => {
+    try {
+        const scope = resolveBusinessScope(req);
+        if (!requireBusinessScope(req, res, scope)) return;
+        const payload = await buildBusinessLiveCounters(pool, req.user, scope);
+        res.json(payload);
+    } catch (err) {
+        log.error('GET /business/live-counters error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 router.get('/business/cabinet', async (req, res) => {
     try {
         const context = businessContextFromRequest(req);
@@ -696,11 +709,23 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
             `SELECT b.id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
-                    b.group_name, b.linked_to, c.name AS customer_name
+                    b.group_name, b.linked_to, b.customer_id, b.business_context,
+                    c.name AS customer_name,
+                    bg.id AS banquet_group_id,
+                    CASE WHEN bg.id IS NOT NULL THEN bgb.role ELSE NULL END AS banquet_group_role,
+                    bg.primary_booking_id AS banquet_group_primary_booking_id,
+                    bg.customer_id AS banquet_group_customer_id
              FROM bookings b
              LEFT JOIN customers c
                ON c.id = b.customer_id
               AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+             LEFT JOIN banquet_group_bookings bgb
+               ON bgb.booking_id = b.id
+              AND COALESCE(bgb.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+             LEFT JOIN banquet_groups bg
+               ON bg.id = bgb.group_id
+              AND COALESCE(bg.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+              AND LOWER(COALESCE(NULLIF(BTRIM(bg.status), ''), 'active')) = 'active'
              WHERE b.date = $1 AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2 AND ${activeBookingStatusSql('b')}
              ${visibility.sql}`,
             params
@@ -733,7 +758,19 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
                 duration: b.duration || 0,
                 customerName,
                 label: b.label || null,
-                programName: b.program_name || null
+                programName: b.program_name || null,
+                customerId: b.customer_id ?? null,
+                room: b.room || null,
+                businessContext: b.business_context || context || DEFAULT_TIMELINE_CONTEXT,
+                banquetGroupId: b.banquet_group_id || null,
+                banquetGroupRole: b.banquet_group_role || null,
+                banquetGroupPrimaryBookingId: b.banquet_group_primary_booking_id || null,
+                banquetGroupCustomerId: b.banquet_group_customer_id ?? null,
+                isBanquetGroupMember: Boolean(b.banquet_group_id),
+                isBanquetPrimary: Boolean(
+                    b.banquet_group_primary_booking_id
+                    && String(b.banquet_group_primary_booking_id) === String(b.id)
+                )
             });
         }
         Object.values(dayBookingsByRoom).forEach(roomBookings => {

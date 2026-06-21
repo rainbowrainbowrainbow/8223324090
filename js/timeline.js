@@ -16,6 +16,11 @@ const TIMELINE_BANQUET_SERVICE_LINE_LABEL = 'Банкет / кімната';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
 const TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set(['primary', 'root', 'banquet']);
 const TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual']);
+const TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES = new Set([
+    'banquet_group_not_found',
+    'legacy_banquet_links_fallback',
+    'banquet_group_schema_unavailable'
+]);
 const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
     byBooking: new Map(),
     byGroup: new Map()
@@ -157,6 +162,7 @@ async function setTimelineView(view, options = {}) {
     updateTimelineViewControls();
     if (next !== current) {
         clearTimelineBanquetRoomPreviews();
+        markTimelineNavigationScrollReset('view-switch-before-render');
         if (options.render !== false) {
             if (typeof resetTimelineVerticalScroll === 'function') {
                 resetTimelineVerticalScroll('view-switch-before-render');
@@ -224,6 +230,85 @@ function timelineDateKey(date) {
 function timelineCacheKeyForDate(date) {
     return `${timelineCacheScopeKey()}|${timelineDateKey(date)}`;
 }
+
+let _timelineHorizontalScrollResetGeneration = 0;
+let _timelineLastHorizontalScrollResetReason = '';
+
+function timelineHorizontalScrollPeriodKey() {
+    if (typeof normalizeTimelineModeState === 'function') {
+        normalizeTimelineModeState(AppState);
+    }
+    return AppState.multiDayMode ? 'week' : 'day';
+}
+
+function timelineHorizontalScrollZoomKey() {
+    const rawZoom = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES;
+    if (typeof normalizeTimelineZoomLevel === 'function') {
+        return normalizeTimelineZoomLevel(rawZoom);
+    }
+    const parsed = Number.parseInt(rawZoom, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+}
+
+function timelineHorizontalScrollStateKey(date = AppState.selectedDate) {
+    const period = timelineHorizontalScrollPeriodKey();
+    const zoom = timelineHorizontalScrollZoomKey();
+    const compact = AppState.compactMode ? 'compact' : 'regular';
+    return `${timelineCacheScopeKey()}|${timelineDateKey(date)}|${period}|zoom:${zoom}|${compact}`;
+}
+
+function resetTimelineHorizontalScroll(reason = 'manual') {
+    const scroll = document.getElementById('timelineScroll');
+    const safeReason = String(reason || 'manual');
+    if (!scroll) return false;
+    scroll.scrollLeft = 0;
+    try {
+        scroll.scrollTo({ left: 0, top: scroll.scrollTop || 0, behavior: 'auto' });
+    } catch (_) {
+        scroll.scrollLeft = 0;
+    }
+    scroll.dataset.timelineHorizontalScrollReset = safeReason;
+    const container = document.querySelector('.timeline-container');
+    if (container) container.dataset.timelineHorizontalScrollReset = safeReason;
+    return true;
+}
+
+function markTimelineNavigationScrollReset(reason = 'navigation') {
+    _timelineHorizontalScrollResetGeneration += 1;
+    _timelineLastHorizontalScrollResetReason = String(reason || 'navigation');
+    resetTimelineHorizontalScroll(_timelineLastHorizontalScrollResetReason);
+    return _timelineHorizontalScrollResetGeneration;
+}
+
+function captureTimelineHorizontalScrollState(scroll = document.getElementById('timelineScroll'), date = AppState.selectedDate) {
+    return {
+        key: timelineHorizontalScrollStateKey(date),
+        left: scroll ? Math.max(0, Number(scroll.scrollLeft || 0)) : 0,
+        resetGeneration: _timelineHorizontalScrollResetGeneration,
+        reason: _timelineLastHorizontalScrollResetReason
+    };
+}
+
+function restoreTimelineHorizontalScrollState(snapshot, scroll = document.getElementById('timelineScroll'), date = AppState.selectedDate) {
+    if (!scroll || !snapshot || typeof snapshot !== 'object') return false;
+    const currentKey = timelineHorizontalScrollStateKey(date);
+    if (
+        snapshot.key !== currentKey
+        || snapshot.resetGeneration !== _timelineHorizontalScrollResetGeneration
+    ) {
+        return resetTimelineHorizontalScroll(snapshot.reason || 'timeline-context-change');
+    }
+    const left = Math.max(0, Number(snapshot.left || 0));
+    if (left <= 0) return false;
+    scroll.scrollLeft = left;
+    return true;
+}
+
+window.timelineHorizontalScrollStateKey = timelineHorizontalScrollStateKey;
+window.captureTimelineHorizontalScrollState = captureTimelineHorizontalScrollState;
+window.restoreTimelineHorizontalScrollState = restoreTimelineHorizontalScrollState;
+window.resetTimelineHorizontalScroll = resetTimelineHorizontalScroll;
+window.markTimelineNavigationScrollReset = markTimelineNavigationScrollReset;
 
 function getTimelineCacheEntry(cache, date) {
     if (!cache) return null;
@@ -470,20 +555,6 @@ function getTimeRange(date) {
     };
 }
 
-function getLineSubtitle(line) {
-    const presentation = window.TimelineBusinessContext?.presentation?.();
-    if (presentation?.mode === 'education') {
-        const count = Number(line?.bookingCount || 0);
-        return count > 0 ? `${count} зайнятих слотів` : 'вільний кабінет';
-    }
-    if (line && line.shiftStart && line.shiftEnd) {
-        return `${String(line.shiftStart).slice(0, 5)}-${String(line.shiftEnd).slice(0, 5)} · зі зміни`;
-    }
-    if (line && line.source === 'staff_schedule') return 'зі зміни';
-    if (presentation?.lineTypeLabel) return `редагувати ${presentation.lineTypeLabel}`;
-    return 'редагувати';
-}
-
 function getTimelineCellWidth(anchor) {
     const localCell = anchor?.querySelector?.('.grid-cell') || anchor?.closest?.('.line-grid')?.querySelector?.('.grid-cell');
     const measured = localCell?.getBoundingClientRect?.().width;
@@ -504,6 +575,213 @@ function timelineMinutesToPixels(minutes, anchor) {
 
 function timelineDurationWidth(duration, anchor) {
     return timelineMinutesToPixels(duration, anchor) - 4;
+}
+
+const TIMELINE_TIME_MARK_LABEL_GAP = 3;
+const TIMELINE_TIME_MARK_LABEL_WIDTH = 30;
+const TIMELINE_TIME_MARK_HOUR_LABEL_WIDTH = 38;
+
+function timelineDisplayTimeLabel(totalMinutes) {
+    const minutesInDay = 24 * 60;
+    const normalized = ((Math.round(totalMinutes) % minutesInDay) + minutesInDay) % minutesInDay;
+    const hours = Math.floor(normalized / 60);
+    const minutes = normalized % 60;
+    return `${hours}:${String(minutes).padStart(2, '0')}`;
+}
+
+function timelineMarkToPixel(markMinutes, startMinutes, anchor) {
+    return timelineMinutesToPixels(markMinutes - startMinutes, anchor);
+}
+
+function timelineTimeToPixel(time, date, anchor) {
+    const { start, end } = getTimeRange(date);
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+    let markMinutes = timelineRangeBoundMinutes(time);
+    if (markMinutes < startMinutes && endMinutes > 24 * 60) markMinutes += 24 * 60;
+    return timelineMarkToPixel(markMinutes, startMinutes, anchor);
+}
+
+function timelineIsEdgeMark(markMinutes, startMinutes, endMinutes) {
+    const rounded = Math.round(markMinutes);
+    return rounded === Math.round(startMinutes) || rounded === Math.round(endMinutes);
+}
+
+function timelineTimeMarkLabelWidth(label, isHour = false) {
+    const raw = String(label || '');
+    const base = isHour ? TIMELINE_TIME_MARK_HOUR_LABEL_WIDTH : TIMELINE_TIME_MARK_LABEL_WIDTH;
+    return Math.max(base, Math.ceil(raw.length * (isHour ? 7.2 : 6.2)) + 4);
+}
+
+function timelineLabelPlacement(markX, labelWidth, gridWidth, options = {}) {
+    const safeWidth = Math.max(1, Number(labelWidth) || TIMELINE_TIME_MARK_LABEL_WIDTH);
+    const safeGridWidth = Math.max(safeWidth, Number(gridWidth) || safeWidth);
+    const minLeft = options.edge === 'start' ? -(safeWidth / 2) : 0;
+    const maxLeft = Math.max(0, safeGridWidth - safeWidth);
+    const gap = Math.max(0, Number(options.gap) || 0);
+    let left = Number(markX) - (safeWidth / 2);
+
+    if (options.edge === 'start') left = minLeft;
+    if (options.edge === 'end') left = maxLeft;
+    if (Number.isFinite(options.nextLeft)) left = Math.min(left, options.nextLeft - gap - safeWidth);
+    if (Number.isFinite(options.previousRight)) left = Math.max(left, options.previousRight + gap);
+
+    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, left));
+    return {
+        left: clampedLeft,
+        right: clampedLeft + safeWidth,
+        width: safeWidth,
+        edgeClamped: Math.abs(clampedLeft - left) > 0.5 || options.edge === 'start' || options.edge === 'end'
+    };
+}
+
+function timelineConstrainLabelPlacement(placement, left, gridWidth) {
+    if (!placement) return placement;
+    const safeWidth = Math.max(1, Number(placement.width) || TIMELINE_TIME_MARK_LABEL_WIDTH);
+    const safeGridWidth = Math.max(safeWidth, Number(gridWidth) || safeWidth);
+    const minLeft = placement.edge === 'start' ? -(safeWidth / 2) : 0;
+    const maxLeft = Math.max(0, safeGridWidth - safeWidth);
+    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, Number(left) || 0));
+    if (Math.abs(clampedLeft - placement.left) > 0.5) {
+        placement.left = clampedLeft;
+        placement.right = clampedLeft + safeWidth;
+        placement.edgeClamped = true;
+    }
+    return placement;
+}
+
+function timelineResolveTimeMarkCollisions(placements, gridWidth, gap = TIMELINE_TIME_MARK_LABEL_GAP) {
+    if (!Array.isArray(placements) || placements.length <= 1) return placements;
+    const safeGap = Math.max(0, Number(gap) || 0);
+
+    const pushFromStart = () => {
+        for (let index = 1; index < placements.length; index++) {
+            const previous = placements[index - 1];
+            const current = placements[index];
+            const minLeft = previous.right + safeGap;
+            if (current.left < minLeft) {
+                timelineConstrainLabelPlacement(current, minLeft, gridWidth);
+            }
+        }
+    };
+
+    const pullFromEnd = () => {
+        for (let index = placements.length - 2; index >= 0; index--) {
+            const current = placements[index];
+            const next = placements[index + 1];
+            const maxRight = next.left - safeGap;
+            if (current.right > maxRight) {
+                timelineConstrainLabelPlacement(current, maxRight - current.width, gridWidth);
+            }
+        }
+    };
+
+    pushFromStart();
+    pullFromEnd();
+    return placements;
+}
+
+function timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth, gap = TIMELINE_TIME_MARK_LABEL_GAP) {
+    if (timelineIsEdgeMark(markMinutes, startMinutes, endMinutes)) return true;
+
+    const displayMinutes = ((Math.round(markMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+    if (displayMinutes % 60 === 0) return true;
+
+    const safeCellMinutes = Math.max(1, Number(cellMinutes) || 30);
+    const safeCellWidth = Math.max(1, Number(cellWidth) || CONFIG.TIMELINE.CELL_WIDTH || TIMELINE_TIME_MARK_LABEL_WIDTH);
+    const minimumReadableStep = timelineTimeMarkLabelWidth('00:00', true);
+    const halfHourStep = (30 / safeCellMinutes) * safeCellWidth;
+
+    if (displayMinutes % 30 === 0) return halfHourStep >= minimumReadableStep;
+    return safeCellWidth >= minimumReadableStep;
+}
+
+function timelineTimeMarkPlacements(date, anchor, geometry = null) {
+    const { start, end } = getTimeRange(date);
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+    const cellMinutes = Math.max(1, Number(CONFIG.TIMELINE.CELL_MINUTES) || 30);
+    const cellWidth = getTimelineCellWidth(anchor);
+    const gridWidth = Math.ceil(geometry?.gridWidth || (timelineRangeCellCount(date) * getTimelineCellWidth(anchor)));
+    const entries = [];
+
+    for (let markMinutes = startMinutes; markMinutes < endMinutes; markMinutes += cellMinutes) {
+        if (!timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth)) continue;
+        const label = timelineDisplayTimeLabel(markMinutes);
+        const displayMinutes = ((Math.round(markMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+        const isHour = displayMinutes % 60 === 0;
+        entries.push({
+            label,
+            markMinutes,
+            x: timelineMarkToPixel(markMinutes, startMinutes, anchor),
+            labelWidth: timelineTimeMarkLabelWidth(label, isHour),
+            className: `time-mark ${isHour ? 'hour' : 'half'}${timelineIsEdgeMark(markMinutes, startMinutes, endMinutes) ? ' start-mark' : ''}`,
+            edge: Math.round(markMinutes) === Math.round(startMinutes) ? 'start' : ''
+        });
+    }
+
+    const endLabel = timelineDisplayTimeLabel(endMinutes);
+    entries.push({
+        label: endLabel,
+        markMinutes: endMinutes,
+        x: gridWidth,
+        labelWidth: timelineTimeMarkLabelWidth(endLabel, true),
+        className: 'time-mark hour end-mark',
+        edge: 'end'
+    });
+
+    const placements = entries.map(entry => ({
+        ...entry,
+        ...timelineLabelPlacement(entry.x, entry.labelWidth, gridWidth, { edge: entry.edge, gap: TIMELINE_TIME_MARK_LABEL_GAP })
+    }));
+
+    return timelineResolveTimeMarkCollisions(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP);
+}
+
+function timelineMiniTimeMarkPlacements(start, end, hourWidth) {
+    const startMinutes = timelineRangeBoundMinutes(start);
+    let endMinutes = timelineRangeBoundMinutes(end);
+    if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+
+    const safeHourWidth = Math.max(1, Number(hourWidth) || 120);
+    const gridWidth = Math.max(safeHourWidth, ((endMinutes - startMinutes) / 60) * safeHourWidth);
+    const entries = [];
+
+    for (let markMinutes = startMinutes; markMinutes <= endMinutes; markMinutes += 60) {
+        const label = timelineDisplayTimeLabel(markMinutes);
+        const isStart = Math.round(markMinutes) === Math.round(startMinutes);
+        const isEnd = Math.round(markMinutes) === Math.round(endMinutes);
+        entries.push({
+            label,
+            markMinutes,
+            x: ((markMinutes - startMinutes) / 60) * safeHourWidth,
+            labelWidth: timelineTimeMarkLabelWidth(label, true),
+            className: `mini-time-mark${isStart ? ' start' : ''}${isEnd ? ' end' : ''}`,
+            edge: isStart ? 'start' : (isEnd ? 'end' : '')
+        });
+    }
+
+    const placements = entries.map(entry => ({
+        ...entry,
+        ...timelineLabelPlacement(entry.x, entry.labelWidth, gridWidth, { edge: entry.edge, gap: TIMELINE_TIME_MARK_LABEL_GAP })
+    }));
+
+    return timelineResolveTimeMarkCollisions(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP);
+}
+
+function renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth) {
+    const marks = timelineMiniTimeMarkPlacements(start, end, hourWidth);
+    let html = `<div class="mini-time-scale" style="--mini-hour-width: ${hourWidth}px; --mini-grid-width: ${gridWidth}px;">`;
+    marks.forEach(mark => {
+        const className = `${mark.className}${mark.edgeClamped ? ' edge-clamped' : ''}`;
+        html += `<div class="${escapeHtml(className)}" data-mark-minutes="${escapeHtml(String(mark.markMinutes))}" data-mark-x="${escapeHtml(String(Math.round(mark.x)))}" style="--mini-time-mark-left: ${Math.round(mark.left)}px; --mini-time-mark-width: ${Math.round(mark.width)}px;">${escapeHtml(mark.label)}</div>`;
+    });
+    html += '</div>';
+    return html;
 }
 
 let _timelineAddLineCtaPositioningBound = false;
@@ -563,7 +841,7 @@ function syncTimelineContentWidth(date, anchor) {
     const addLineBtn = document.getElementById('addLineBtn');
     const widthAnchor = anchor || document.querySelector('.line-grid[data-line-id]') || timeScale || scroll;
     const cellWidth = getTimelineCellWidth(widthAnchor);
-    const gridWidth = Math.ceil(timelineRangeMarkCount(date) * cellWidth);
+    const gridWidth = Math.ceil(timelineRangeCellCount(date) * cellWidth);
     const headerWidth = Math.ceil(getTimelineLineHeaderWidth());
     const contentWidth = Math.ceil(headerWidth + gridWidth);
     const targets = [container, scroll, lines, timeScale, addLineBtn].filter(Boolean);
@@ -789,21 +1067,19 @@ function renderTimeScale(date) {
     const container = document.getElementById('timeScale');
     container.innerHTML = '';
 
-    const { start, end } = getTimeRange(date);
+    const geometry = syncTimelineContentWidth(date, container);
+    const marks = timelineTimeMarkPlacements(date, container, geometry);
 
-    for (let h = start; h < end; h++) {
-        for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
-            const mark = document.createElement('div');
-            mark.className = 'time-mark' + (m === 0 ? ' hour' : ' half');
-            mark.textContent = `${h}:${String(m).padStart(2, '0')}`;
-            container.appendChild(mark);
-        }
-    }
-    const endMark = document.createElement('div');
-    endMark.className = 'time-mark hour end-mark';
-    endMark.textContent = `${end}:00`;
-    container.appendChild(endMark);
-    syncTimelineContentWidth(date, container);
+    marks.forEach(entry => {
+        const mark = document.createElement('div');
+        mark.className = `${entry.className}${entry.edgeClamped ? ' edge-clamped' : ''}`;
+        mark.textContent = entry.label;
+        mark.dataset.markMinutes = String(entry.markMinutes);
+        mark.dataset.markX = String(Math.round(entry.x));
+        mark.style.setProperty('--time-mark-label-left', `${Math.round(entry.left)}px`);
+        mark.style.setProperty('--time-mark-label-width', `${Math.round(entry.width)}px`);
+        container.appendChild(mark);
+    });
 }
 
 function timelineShouldRenderAfisha() {
@@ -995,8 +1271,64 @@ function timelineBanquetMenuItemTitle(item = {}, index = 0) {
     ).trim();
 }
 
+const TIMELINE_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+
+function timelineMenuQuantityNumber(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace('.', ',');
+}
+
+function timelineMenuPortionWord(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    if (!Number.isInteger(rounded)) return 'порції';
+    const absolute = Math.abs(rounded);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (lastTwo >= 11 && lastTwo <= 14) return 'порцій';
+    if (last === 1) return 'порція';
+    if (last >= 2 && last <= 4) return 'порції';
+    return 'порцій';
+}
+
+function normalizeTimelineMenuServingUnitDisplay(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.replace(/^(\d+(?:[,.]\d+)?)\s*(кг|г|гр|мг|л|мл)$/iu, '$1 $2');
+}
+
+function isTimelineMenuPortionServingUnit(value) {
+    const unit = normalizeTimelineMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+    return !unit || TIMELINE_MENU_PORTION_UNITS.has(unit);
+}
+
+function isTimelineMenuPackServingUnit(value) {
+    return /^\d+(?:[,.]\d+)?\s*(кг|г|гр|мг|л|мл)$/iu.test(normalizeTimelineMenuServingUnitDisplay(value));
+}
+
+function timelineMenuQuantityLabel(item = {}) {
+    const quantity = Number(item?.quantity || item?.qty || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return '';
+    const unit = normalizeTimelineMenuServingUnitDisplay(
+        item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit
+    );
+    const quantityLabel = timelineMenuQuantityNumber(quantity);
+    if (isTimelineMenuPortionServingUnit(unit)) return `${quantityLabel} ${timelineMenuPortionWord(quantity)}`;
+    if (isTimelineMenuPackServingUnit(unit)) return `${quantityLabel} ${timelineMenuPortionWord(quantity)} по ${unit}`;
+    return `${quantityLabel} ${unit}`.trim();
+}
+
 function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
     const items = [];
+    const noteText = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const noteParts = item => {
+        const parts = [
+            noteText(item?.servingNote || item?.serving_note),
+            noteText(item?.note || item?.notes)
+        ].filter(Boolean);
+        return [...new Set(parts)].join(' · ') || null;
+    };
     kitchenBookings.forEach(booking => {
         const positions = timelineBanquetMenuPositions(booking);
         if (!positions.length) {
@@ -1005,6 +1337,8 @@ function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
                 items.push({
                     title: fallbackTitle,
                     quantity: null,
+                    servingUnit: null,
+                    unitPrice: null,
                     servingTime: '',
                     note: null
                 });
@@ -1013,11 +1347,14 @@ function timelineBanquetMenuPreviewItems(kitchenBookings = []) {
         }
         positions.forEach((item, index) => {
             const quantity = Number(item?.quantity || item?.qty || 0);
+            const unitPrice = Number(item?.unitPrice ?? item?.unit_price ?? item?.price);
             items.push({
                 title: timelineBanquetMenuItemTitle(item, index),
                 quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+                servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null,
+                unitPrice: Number.isFinite(unitPrice) && unitPrice >= 0 ? unitPrice : null,
                 servingTime: normalizeTimelineBanquetServingTime(item?.servingTime || item?.serving_time),
-                note: item?.servingNote || item?.serving_note || item?.note || null
+                note: noteParts(item)
             });
         });
     });
@@ -1030,6 +1367,91 @@ function timelineBanquetActivityPreviewItems(activityBookings = []) {
         time: normalizeTimelineBanquetServingTime(booking?.time),
         room: String(booking?.room || '').trim()
     })).filter(item => item.title);
+}
+
+function timelineBanquetBookingActivityTitle(booking = {}) {
+    return String(booking?.label || booking?.programName || booking?.program_name || booking?.programCode || booking?.program_code || 'Активність').trim();
+}
+
+function timelineBanquetCleanComment(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text ? text.slice(0, 500) : '';
+}
+
+function timelineBanquetWorkspaceComments(booking = {}) {
+    const extra = timelineExtraData(booking);
+    const workspace = extra?.bookingWorkspace || extra?.booking_workspace || {};
+    const comments = workspace?.comments || {};
+    return comments && typeof comments === 'object' ? comments : {};
+}
+
+function timelineBanquetCommentSources(summary = {}) {
+    const sources = [];
+    const seen = new Set();
+    const add = (booking, role = 'manual') => {
+        const id = String(booking?.id || booking?.bookingId || '').trim();
+        const key = id || `${role}:${sources.length}`;
+        if (!booking || seen.has(key)) return;
+        seen.add(key);
+        sources.push({ booking, role: String(role || 'manual').trim().toLowerCase() });
+    };
+
+    (summary.kitchenBookings || []).forEach(booking => add(booking, 'kitchen'));
+    (summary.activityBookings || []).forEach(booking => add(booking, 'activity'));
+    add(summary.primaryBooking, 'primary');
+    (summary.snapshot?.members || []).forEach(member => add(member?.booking, member?.isPrimary ? 'primary' : member?.role));
+    (summary.allBookings || []).forEach(booking => add(booking, 'manual'));
+
+    return sources;
+}
+
+function timelineBanquetCommentItems(summary = {}) {
+    const result = [];
+    const seenComments = new Set();
+    const addComment = (label, value) => {
+        const text = timelineBanquetCleanComment(value);
+        if (!text) return;
+        const key = text.toLocaleLowerCase('uk-UA');
+        if (seenComments.has(key)) return;
+        seenComments.add(key);
+        result.push({ label, text });
+    };
+
+    timelineBanquetCommentSources(summary).forEach(({ booking, role }) => {
+        const comments = timelineBanquetWorkspaceComments(booking);
+        const kitchenComment = timelineBanquetCleanComment(comments.kitchen);
+        const activityComment = timelineBanquetCleanComment(comments.activity);
+        const internalComment = timelineBanquetCleanComment(comments.internal);
+        const legacyComment = timelineBanquetCleanComment(booking?.notes);
+
+        if (kitchenComment) {
+            addComment('Кухня', kitchenComment);
+        }
+        if (activityComment) {
+            addComment(`Активність — ${timelineBanquetBookingActivityTitle(booking)}`, activityComment);
+        }
+        if (internalComment) {
+            addComment('Внутрішній коментар', internalComment);
+        }
+        if (!kitchenComment && !activityComment && !internalComment && legacyComment) {
+            if (role === 'kitchen' || role === 'service' || timelineBanquetBookingHasMenu(booking) || timelineBanquetServiceEvents(booking).length > 0) {
+                addComment('Кухня', legacyComment);
+            } else if (role === 'activity') {
+                addComment(`Активність — ${timelineBanquetBookingActivityTitle(booking)}`, legacyComment);
+            } else {
+                addComment('Внутрішній коментар', legacyComment);
+            }
+        }
+    });
+
+    return result;
+}
+
+function timelineBanquetActivityStartsText(summary = {}) {
+    const items = (summary.activityPreviewItems || [])
+        .filter(item => item?.time)
+        .map(item => `${item.time} — ${item.title || 'Активність'}`);
+    return items.join(' · ');
 }
 
 function normalizeTimelineBanquetServingTime(value) {
@@ -1106,6 +1528,20 @@ function firstTimelineBanquetValue(bookings = [], getter) {
     return null;
 }
 
+function timelineBanquetSnapshotWarningText(warning) {
+    const code = String(warning?.code || '').trim();
+    const text = String(warning?.message || warning?.text || warning || '').trim();
+    if (code && TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES.has(code)) return '';
+    const normalized = text.toLowerCase();
+    const looksTechnicalBanquetWarning = (
+        (normalized.includes('attached') && normalized.includes('banquet group'))
+        || (normalized.includes('legacy') && normalized.includes('booking_banquet_links'))
+        || (normalized.includes('schema') && normalized.includes('banquet group'))
+    );
+    if (looksTechnicalBanquetWarning) return '';
+    return text;
+}
+
 function timelineBanquetOwnerName(source = {}) {
     return String(source?.createdBy || source?.created_by || '').trim();
 }
@@ -1130,12 +1566,13 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
     const menuCount = kitchenBookings.reduce((sum, booking) => sum + timelineBanquetMenuCount(booking), 0);
     const sourceForCounts = [primaryBooking, ...kitchenBookings, ...activityBookings, ...allBookings].filter(Boolean);
     const warnings = (snapshot.warnings || [])
-        .map(warning => warning?.message || warning?.code || String(warning || '').trim())
+        .map(timelineBanquetSnapshotWarningText)
         .filter(Boolean);
     const carrierBooking = null;
     const date = snapshot?.group?.date || firstTimelineBanquetValue(sourceForCounts, booking => booking.date);
     const time = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.time);
     const duration = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.duration);
+    const activityPreviewItems = timelineBanquetActivityPreviewItems(activityBookings);
     return {
         snapshot,
         groupId: timelineBanquetSnapshotGroupId(snapshot),
@@ -1148,7 +1585,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         menuCount,
         activityCount: activityBookings.length,
         menuPreviewItems: timelineBanquetMenuPreviewItems(kitchenBookings),
-        activityPreviewItems: timelineBanquetActivityPreviewItems(activityBookings),
+        activityPreviewItems,
         summaryAvailable: true,
         customerName: firstTimelineBanquetValue(sourceForCounts, booking => booking.customerName || booking.customer_name || booking.groupName || booking.group_name),
         room: snapshot?.group?.room || firstTimelineBanquetValue(sourceForCounts, booking => booking.room),
@@ -1187,10 +1624,13 @@ function timelineBanquetServingInfo(summary = {}) {
             };
             if (bookingOwnerName && !group.createdBy) group.createdBy = bookingOwnerName;
             const quantity = Number(item?.quantity || item?.qty || 0);
+            const unitPrice = Number(item?.unitPrice ?? item?.unit_price ?? item?.price);
             group.count += 1;
             group.items.push({
                 title,
                 quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
+                servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null,
+                unitPrice: Number.isFinite(unitPrice) && unitPrice >= 0 ? unitPrice : null,
                 note: item?.servingNote || item?.serving_note || item?.note || null
             });
             servingGroups.set(servingTime, group);
@@ -1573,13 +2013,15 @@ function timelineBanquetMenuPreviewHtml(summary = {}) {
     const hiddenCount = Math.max(0, allItems.length - items.length);
     const rows = items.map(item => {
         const meta = [
-            item.quantity ? `× ${item.quantity}` : '',
+            timelineMenuQuantityLabel(item),
             item.servingTime ? `Видача ${item.servingTime}` : 'Без часу'
         ].filter(Boolean).join(' · ');
+        const note = String(item.note || '').trim();
         return `
             <li>
                 <span>${escapeHtml(item.title || 'Позиція меню')}</span>
                 <small>${escapeHtml(meta)}</small>
+                ${note ? `<small class="timeline-banquet-inspector-menu-note">${escapeHtml(note)}</small>` : ''}
             </li>
         `;
     }).join('');
@@ -1611,6 +2053,28 @@ function timelineBanquetActivityPreviewHtml(summary = {}) {
     return `<ul class="timeline-banquet-inspector-list timeline-banquet-inspector-activities">${rows}${more}</ul>`;
 }
 
+function timelineBanquetCommentsHtml(summary = {}) {
+    const allItems = timelineBanquetCommentItems(summary);
+    if (!allItems.length) return '';
+    const items = allItems.slice(0, 6);
+    const hiddenCount = Math.max(0, allItems.length - items.length);
+    const rows = items.map(item => `
+        <li>
+            <small class="timeline-banquet-inspector-note-label">${escapeHtml(item.label)}</small>
+            <span class="timeline-banquet-inspector-note-text">${escapeHtml(item.text)}</span>
+        </li>
+    `).join('');
+    const more = hiddenCount
+        ? `<li><span class="timeline-banquet-inspector-note-text">Ще приміток: ${escapeHtml(String(hiddenCount))}</span></li>`
+        : '';
+    return `
+        <div class="timeline-banquet-inspector-section timeline-banquet-inspector-section--notes">
+            <div class="timeline-banquet-inspector-subtitle">Примітки</div>
+            <ul class="timeline-banquet-inspector-list timeline-banquet-inspector-notes">${rows}${more}</ul>
+        </div>
+    `;
+}
+
 function showTimelineBanquetInspector(event, summary, trigger) {
     if (!summary) return;
     if (typeof hideTooltip === 'function') hideTooltip();
@@ -1625,6 +2089,8 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         .join(' · ');
     const menuLabel = `${summary.menuCount || 0} ${timelineBanquetPlural(summary.menuCount, 'позиція', 'позиції', 'позицій')}`;
     const activityLabel = `${summary.activityCount || 0} ${timelineBanquetPlural(summary.activityCount, 'активність', 'активності', 'активностей')}`;
+    const activityStartsText = timelineBanquetActivityStartsText(summary);
+    const commentsHtml = timelineBanquetCommentsHtml(summary);
     inspector.innerHTML = `
         <div class="timeline-banquet-inspector-head">
             <div>
@@ -1637,14 +2103,16 @@ function showTimelineBanquetInspector(event, summary, trigger) {
             <div class="timeline-banquet-inspector-grid">
                 <span>Клієнт</span><strong>${escapeHtml(summary.customerName || 'Не вказано')}</strong>
                 <span>Кімната</span><strong>${escapeHtml(summary.room || 'Не вказано')}</strong>
-                <span>Дата/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>
+                <span>Прихід гостей</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>
                 <span>Діти</span><strong>${escapeHtml(String(summary.kidsCount || '—'))}</strong>
                 <span>Дорослі</span><strong>${escapeHtml(String(summary.banquetAdults || '—'))}</strong>
                 <span>Меню</span><strong>${escapeHtml(menuLabel)}</strong>
                 <span>Видача</span><strong>${escapeHtml(servingText || '—')}</strong>
+                ${activityStartsText ? `<span>Початок активностей</span><strong>${escapeHtml(activityStartsText)}</strong>` : ''}
                 <span>Активності</span><strong>${escapeHtml(activityLabel)}</strong>
             </div>
             ${warnings}
+            ${commentsHtml}
             <div class="timeline-banquet-inspector-section">
                 <div class="timeline-banquet-inspector-subtitle">Меню</div>
                 ${timelineBanquetMenuPreviewHtml(summary)}
@@ -1656,7 +2124,7 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         </div>
         <div class="timeline-banquet-inspector-actions">
             <button type="button" class="timeline-banquet-inspector-btn" data-banquet-inspector-details>Деталі</button>
-            <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Вижимка</a>
+            <a class="timeline-banquet-inspector-btn timeline-banquet-inspector-btn--primary" href="${escapeHtml(timelineBanquetSummaryHref(summary))}">Банкетний лист</a>
         </div>
     `;
     inspector.querySelector('[data-banquet-inspector-close]')?.addEventListener('click', clickEvent => {
@@ -1722,13 +2190,13 @@ function timelineBanquetGlanceRows(summary = {}, signalText = '') {
     return [
         ['Кімната', summary.room || 'Не вказано'],
         ['Клієнт', summary.customerName || 'Не вказано'],
-        ['Час', timelineBanquetDateTimeText(summary)],
+        ['Прихід гостей', timelineBanquetDateTimeText(summary)],
         ['Сигнали', signalText || '—']
     ];
 }
 
 function renderTimelineBanquetRoomCard(header, summary = {}) {
-    if (!isRoomTimelineView() || !header || !summary) return;
+    if (!isRoomTimelineView() || !header || !summary) return false;
     const signals = timelineBanquetRoomCardSignals(summary);
     if (!signals.length && timelineBanquetSummaryHasPersistentRoot(summary)) {
         const activityCount = Number(summary.activityCount || 0);
@@ -1737,7 +2205,7 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
             label: `${activityCount} ${timelineBanquetPlural(activityCount, 'активність', 'активності', 'активностей')}`
         });
     }
-    if (!signals.length) return;
+    if (!signals.length) return false;
     let card = header.querySelector('[data-banquet-room-card]');
     if (!card) {
         card = document.createElement('button');
@@ -1755,7 +2223,8 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
         return `<span class="timeline-banquet-room-card-signal timeline-banquet-room-card-signal--${escapeHtml(key)}${markerClass}"${markerAttrs}>${escapeHtml(signal.label)}</span>`;
     }).join('');
     card.className = `timeline-banquet-room-card timeline-banquet-room-card--${tone}`;
-    card.setAttribute('aria-label', `Банкет: ${[summary.room, summary.customerName, timelineBanquetDateTimeText(summary), label].filter(Boolean).join(' · ')}`);
+    const arrivalText = timelineBanquetDateTimeText(summary);
+    card.setAttribute('aria-label', `Банкет: ${[summary.room, summary.customerName, arrivalText ? `Прихід гостей: ${arrivalText}` : '', label].filter(Boolean).join(' · ')}`);
     card.removeAttribute('title');
     card.innerHTML = `
         <span class="timeline-banquet-room-card-main">
@@ -1782,6 +2251,7 @@ function renderTimelineBanquetRoomCard(header, summary = {}) {
         event.stopPropagation();
         showTimelineBanquetInspector(event, summary, card);
     };
+    return true;
 }
 
 function timelineRoomServiceMarkerGroupId(summary = {}, fallback = '') {
@@ -1825,7 +2295,7 @@ function clearTimelineRoomServiceMarkers(lineGrid = null, groupId = '') {
 function timelineRoomServiceMarkerDetail(marker = {}) {
     const items = Array.isArray(marker.items) ? marker.items : [];
     const itemText = items
-        .map(item => [item?.title, item?.quantity ? `x${item.quantity}` : '', item?.note].filter(Boolean).join(' '))
+        .map(item => [item?.title, timelineMenuQuantityLabel(item), item?.note].filter(Boolean).join(' '))
         .filter(Boolean)
         .slice(0, 3);
     return [timelineBanquetMarkerLabel(marker), ...itemText].filter(Boolean).join('\n');
@@ -2205,10 +2675,15 @@ function clearTimelineBanquetRoomPreviews() {
         clearTimelineBanquetPreviewVisuals(block);
     });
     document.querySelectorAll('.line-header.has-timeline-banquet-room-preview').forEach(header => {
-        header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
-        header.querySelector('[data-banquet-room-card]')?.remove();
-        delete header.dataset.timelineBanquetRoomPreview;
+        clearTimelineBanquetRoomHeaderPreviewState(header);
     });
+}
+
+function clearTimelineBanquetRoomHeaderPreviewState(header) {
+    if (!header) return;
+    header.classList.remove('has-timeline-banquet-room-preview', 'is-timeline-banquet-room-preview-highlighted');
+    header.querySelector('[data-banquet-room-card]')?.remove();
+    delete header.dataset.timelineBanquetRoomPreview;
 }
 
 function timelineBanquetSummarySortValue(summary = {}) {
@@ -2230,9 +2705,13 @@ function registerTimelineBanquetRoomPreview(summary = {}) {
             header.querySelector('.line-name')?.textContent
         ].map(timelineBanquetRoomKey);
         if (!headerKeys.includes(key)) return;
-        header.dataset.timelineBanquetRoomPreview = key;
-        header.classList.add('has-timeline-banquet-room-preview');
-        renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));
+        const rendered = renderTimelineBanquetRoomCard(header, TIMELINE_BANQUET_ROOM_PREVIEWS.get(key));
+        if (rendered) {
+            header.dataset.timelineBanquetRoomPreview = key;
+            header.classList.add('has-timeline-banquet-room-preview');
+        } else {
+            clearTimelineBanquetRoomHeaderPreviewState(header);
+        }
     });
 }
 
@@ -2566,6 +3045,7 @@ async function handleTimelineBusinessContextChanged(event) {
     AppState.cachedLines = {};
     AppState.linesByDate = {};
     AppState.lines = [];
+    markTimelineNavigationScrollReset('business-context-change');
     updateTimelineViewControls();
     if (typeof closeBookingPanel === 'function') {
         closeBookingPanel(true).catch?.(() => {});
@@ -2640,9 +3120,8 @@ async function renderTimeline() {
 
     renderTimeScale(selectedDate);
 
-    // v7.8.6: Preserve horizontal scroll position across date changes
     const timelineScroll = document.getElementById('timelineScroll');
-    const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
+    const horizontalScrollSnapshot = captureTimelineHorizontalScrollState(timelineScroll, selectedDate);
 
     const container = document.getElementById('timelineLines');
     const showAfisha = timelineShouldRenderAfisha();
@@ -2771,15 +3250,13 @@ async function renderTimeline() {
     lines.forEach(line => {
         try {
         const lineBookings = lineBookingsById.get(String(line.id)) || [];
-        const lineForHeader = { ...line, bookingCount: lineBookings.length };
         const lineEl = document.createElement('div');
         lineEl.className = `timeline-line${window.TimelineBusinessContext?.presentation?.().mode === 'education' ? ' timeline-line--education' : ''}`;
         lineEl.dataset.lineType = line.resourceType || window.TimelineBusinessContext?.presentation?.().lineTypeLabel || 'line';
 
         lineEl.innerHTML = `
-            <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
+            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
-                <span class="line-sub">${escapeHtml(getLineSubtitle(lineForHeader))}</span>
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id, selectedDate)}
@@ -2832,10 +3309,7 @@ async function renderTimeline() {
     renderNowLine();
     renderMinimap(selectedDate);
 
-    // v7.8.6: Restore horizontal scroll position after render
-    if (timelineScroll && savedScrollLeft > 0) {
-        timelineScroll.scrollLeft = savedScrollLeft;
-    }
+    restoreTimelineHorizontalScrollState(horizontalScrollSnapshot, timelineScroll, selectedDate);
 
     // v5.15: Apply status filter after render
     applyStatusFilter();
@@ -3433,12 +3907,36 @@ function ensureBanquetLinkLayer() {
         layer.setAttribute('aria-hidden', 'true');
         scroll.insertBefore(layer, document.getElementById('timelineLines'));
     }
-    const width = Math.max(scroll.scrollWidth, scroll.clientWidth);
+    const width = Math.max(timelineBanquetLinkLayerSurfaceWidth(scroll), scroll.clientWidth);
     const height = Math.max(scroll.scrollHeight, scroll.clientHeight);
     layer.setAttribute('width', String(width));
     layer.setAttribute('height', String(height));
+    layer.style.width = `${width}px`;
+    layer.style.height = `${height}px`;
     layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
     return layer;
+}
+
+function timelineBanquetLinkLayerSurfaceWidth(scroll) {
+    const candidates = [
+        scroll,
+        document.getElementById('timelineLines'),
+        document.querySelector('.timeline-line'),
+        document.getElementById('addLineBtn'),
+        scroll?.closest?.('.timeline-container')
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        const cssWidth = parseFloat(window.getComputedStyle(candidate).getPropertyValue('--timeline-content-width'));
+        if (Number.isFinite(cssWidth) && cssWidth > 0) return Math.ceil(cssWidth);
+    }
+
+    for (const candidate of candidates) {
+        const rectWidth = candidate.getBoundingClientRect?.().width;
+        if (Number.isFinite(rectWidth) && rectWidth > 0) return Math.ceil(rectWidth);
+    }
+
+    return 0;
 }
 
 function clearBanquetLinkLayer() {
@@ -5617,11 +6115,7 @@ async function renderDaySectionHtml(date) {
     AppState.linesByDate = AppState.linesByDate || {};
     AppState.linesByDate[dateStr] = lines;
 
-    let timeScaleHtml = `<div class="mini-time-scale" style="--mini-hour-width: ${hourWidth}px; --mini-grid-width: ${gridWidth}px;">`;
-    for (let h = start; h <= end; h++) {
-        timeScaleHtml += `<div class="mini-time-mark${h === end ? ' end' : ''}">${h}:00</div>`;
-    }
-    timeScaleHtml += '</div>';
+    const timeScaleHtml = renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth);
 
     let html = `
         <div class="day-section" data-date="${dateStr}">
@@ -5828,6 +6322,7 @@ async function changeDate(days) {
     // when an in-progress render still references the old Date via snapshot
     const newDate = new Date(AppState.selectedDate);
     newDate.setDate(newDate.getDate() + days);
+    markTimelineNavigationScrollReset('date-change');
     AppState.selectedDate = newDate;
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     setTimelineDateInUrl(AppState.selectedDate);

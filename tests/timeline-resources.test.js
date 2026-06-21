@@ -46,6 +46,20 @@ function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+function roomConflictPolicyClient(rows, sourceGroups = []) {
+    const queries = [];
+    return {
+        queries,
+        query: async (sql, params) => {
+            queries.push({ sql, params });
+            if (/FROM banquet_group_bookings/i.test(sql) && /booking_id = \$1/i.test(sql)) {
+                return { rows: sourceGroups.map(group_id => ({ group_id })) };
+            }
+            return { rows };
+        }
+    };
+}
+
 function cssRule(css, selector) {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\}`));
@@ -178,10 +192,7 @@ function createTimelineBanquetMarkerScenario(bookingPackage, options = {}) {
         hasMenu: true,
         menuCount: (bookingPackage.menuPositions || []).length,
         activityCount: 0,
-        menuPreviewItems: (bookingPackage.menuPositions || []).map(item => ({
-            title: item.title,
-            servingTime: item.servingTime
-        })),
+        menuPreviewItems: ctx.timelineBanquetMenuPreviewItems([kitchenBooking]),
         warnings: []
     };
     const servingInfo = ctx.timelineBanquetServingInfo(summary);
@@ -720,6 +731,211 @@ test('room conflict checks can exclude same-banquet source ids without hiding un
     assert.match(queries[0].sql, /id != ALL\(\$4::text\[\]\)/);
 });
 
+test('room conflict policy keeps legacy room conflicts strict without allow flag', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Kitchen',
+        program_code: 'KITCHEN',
+        category: 'kitchen',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        60,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation' }
+        }
+    );
+
+    assert.equal(conflict.id, 'BK-KITCHEN');
+    assert.equal(client.queries.length, 1);
+    assert.doesNotMatch(client.queries[0].sql, /LEFT JOIN banquet_group_bookings/);
+});
+
+test('room conflict policy allows same-banquet kitchen and activity overlap', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Kitchen',
+        program_code: 'KITCHEN',
+        program_name: 'Kitchen',
+        category: 'kitchen',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        60,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'quest', programCode: 'QUEST' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+    assert.equal(client.queries.length, 1);
+    assert.match(client.queries[0].sql, /LEFT JOIN banquet_group_bookings/);
+});
+
+test('room conflict policy allows same-banquet kitchen candidate over activity booking', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-ACTIVITY',
+        time: '11:30',
+        duration: 60,
+        label: 'Activity',
+        program_code: 'AN',
+        program_name: 'Animation',
+        category: 'animation',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'activity',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'kitchen', programCode: 'KITCHEN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+});
+
+test('room conflict policy still blocks same-banquet activity over activity booking', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-ACTIVITY',
+        time: '11:30',
+        duration: 60,
+        label: 'Activity',
+        program_code: 'AN',
+        program_name: 'Animation',
+        category: 'animation',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'activity',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation', programCode: 'MAFIA' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict.id, 'BK-ACTIVITY');
+});
+
+test('room conflict policy keeps cancelled bookings out of policy conflict rows', async () => {
+    const client = roomConflictPolicyClient([]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        60,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation', programCode: 'AN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+    assert.match(client.queries[0].sql, /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/);
+});
+
+test('room conflict policy still blocks unrelated banquet room bookings', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-OTHER-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Other kitchen',
+        program_code: 'KITCHEN',
+        program_name: 'Kitchen',
+        category: 'kitchen',
+        banquet_group_id: 'BG-OTHER',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }]);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            banquetGroupId: 'BG-1',
+            candidateBooking: { category: 'animation', programCode: 'AN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict.id, 'BK-OTHER-KITCHEN');
+});
+
+test('room conflict policy can resolve same-banquet context from source booking membership', async () => {
+    const client = roomConflictPolicyClient([{
+        id: 'BK-KITCHEN',
+        time: '11:30',
+        duration: 60,
+        label: 'Kitchen',
+        program_code: 'KITCHEN',
+        program_name: 'Kitchen',
+        category: 'kitchen',
+        banquet_group_id: 'BG-1',
+        banquet_group_role: 'kitchen',
+        extra_data: {}
+    }], ['BG-1']);
+
+    const conflict = await checkRoomConflict(
+        client,
+        '2099-06-01',
+        'Room A',
+        '11:30',
+        30,
+        {
+            sourceBookingId: 'BK-SOURCE',
+            candidateBooking: { category: 'animation', programCode: 'AN' },
+            allowSameBanquetOperationalOverlap: true
+        }
+    );
+
+    assert.equal(conflict, null);
+    assert.deepEqual(client.queries[0].params[3], ['BK-SOURCE']);
+    assert.match(client.queries[1].sql, /FROM banquet_group_bookings/);
+    assert.deepEqual(client.queries[1].params, ['BK-SOURCE', 'event_genix']);
+});
+
 test('free-room path becomes business-aware resource availability for cabinet modes', () => {
     const settings = read('routes/settings.js');
     const booking = read('js/booking.js');
@@ -731,6 +947,28 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     assert.match(settings, /req\.query\.capacity \|\| req\.query\.attendees \|\| req\.query\.kidsCount/);
     assert.match(booking, /capacity=\$\{encodeURIComponent\(String\(requestedCapacity\)\)\}/);
     assert.match(booking, /data-free-room/);
+});
+
+test('free-room route exposes structured room day booking banquet metadata', () => {
+    const settings = read('routes/settings.js');
+    assert.match(settings, /b\.customer_id, b\.business_context/);
+    assert.match(settings, /LEFT JOIN banquet_group_bookings bgb/);
+    assert.match(settings, /LEFT JOIN banquet_groups bg/);
+    assert.match(settings, /LOWER\(COALESCE\(NULLIF\(BTRIM\(bg\.status\), ''\), 'active'\)\) = 'active'/);
+    assert.match(settings, /bg\.id AS banquet_group_id/);
+    assert.match(settings, /CASE WHEN bg\.id IS NOT NULL THEN bgb\.role ELSE NULL END AS banquet_group_role/);
+    assert.match(settings, /bg\.primary_booking_id AS banquet_group_primary_booking_id/);
+    assert.match(settings, /bg\.customer_id AS banquet_group_customer_id/);
+    assert.match(settings, /id: b\.id[\s\S]*time: b\.time[\s\S]*duration: b\.duration \|\| 0[\s\S]*customerName[\s\S]*label: b\.label \|\| null[\s\S]*programName: b\.program_name \|\| null/);
+    assert.match(settings, /customerId: b\.customer_id \?\? null/);
+    assert.match(settings, /room: b\.room \|\| null/);
+    assert.match(settings, /businessContext: b\.business_context \|\| context \|\| DEFAULT_TIMELINE_CONTEXT/);
+    assert.match(settings, /banquetGroupId: b\.banquet_group_id \|\| null/);
+    assert.match(settings, /banquetGroupRole: b\.banquet_group_role \|\| null/);
+    assert.match(settings, /banquetGroupPrimaryBookingId: b\.banquet_group_primary_booking_id \|\| null/);
+    assert.match(settings, /banquetGroupCustomerId: b\.banquet_group_customer_id \?\? null/);
+    assert.match(settings, /isBanquetGroupMember: Boolean\(b\.banquet_group_id\)/);
+    assert.match(settings, /isBanquetPrimary: Boolean\(/);
 });
 
 test('resource availability keeps day booking metadata separate from selected-time conflicts', async () => {
@@ -763,7 +1001,13 @@ test('resource availability keeps day booking metadata separate from selected-ti
         group_name: null,
         linked_to: null,
         extra_data: {},
-        customer_name: 'Ушакова Ірина'
+        customer_name: 'Ушакова Ірина',
+        customer_id: 101,
+        business_context: 'event_genix',
+        banquet_group_id: 'BQ-ROOT',
+        banquet_group_role: 'kitchen',
+        banquet_group_primary_booking_id: 'BK-2099-0101',
+        banquet_group_customer_id: 101
     }, {
         id: 'BK-2099-0102',
         line_id: 'cabinet-a',
@@ -778,7 +1022,13 @@ test('resource availability keeps day booking metadata separate from selected-ti
         group_name: 'Група B',
         linked_to: null,
         extra_data: {},
-        customer_name: null
+        customer_name: null,
+        customer_id: null,
+        business_context: 'event_genix',
+        banquet_group_id: null,
+        banquet_group_role: null,
+        banquet_group_primary_booking_id: null,
+        banquet_group_customer_id: null
     }];
     const fakeDb = {
         async query(sql, params) {
@@ -812,7 +1062,42 @@ test('resource availability keeps day booking metadata separate from selected-ti
     assert.equal(availability.resources[0].dayBookings.length, 2);
     assert.equal(availability.resources[0].dayBookings[0].customerName, 'Ушакова Ірина');
     assert.equal(availability.resources[0].dayBookings[1].customerName, 'Група B');
-    assert.match(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
+    assert.deepEqual(
+        {
+            id: availability.resources[0].dayBookings[0].id,
+            time: availability.resources[0].dayBookings[0].time,
+            duration: availability.resources[0].dayBookings[0].duration,
+            label: availability.resources[0].dayBookings[0].label,
+            programName: availability.resources[0].dayBookings[0].programName
+        },
+        {
+            id: 'BK-2099-0101',
+            time: '10:00',
+            duration: 60,
+            label: 'Lesson A',
+            programName: 'Lesson'
+        }
+    );
+    assert.equal(availability.resources[0].dayBookings[0].customerId, 101);
+    assert.equal(availability.resources[0].dayBookings[0].room, 'Cabinet A');
+    assert.equal(availability.resources[0].dayBookings[0].businessContext, 'event_genix');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupId, 'BQ-ROOT');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupRole, 'kitchen');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupPrimaryBookingId, 'BK-2099-0101');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupCustomerId, 101);
+    assert.equal(availability.resources[0].dayBookings[0].isBanquetGroupMember, true);
+    assert.equal(availability.resources[0].dayBookings[0].isBanquetPrimary, true);
+    assert.equal(availability.resources[0].dayBookings[1].customerId, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupId, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupRole, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupPrimaryBookingId, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupCustomerId, null);
+    assert.equal(availability.resources[0].dayBookings[1].isBanquetGroupMember, false);
+    assert.equal(availability.resources[0].dayBookings[1].isBanquetPrimary, false);
+    const bookingQuery = queries.find(query => /FROM bookings b/i.test(query.sql));
+    assert.match(bookingQuery.sql, /c\.name AS customer_name/);
+    assert.match(bookingQuery.sql, /LEFT JOIN banquet_group_bookings bgb/);
+    assert.match(bookingQuery.sql, /LEFT JOIN banquet_groups bg/);
 });
 
 test('education resources support capacity guard and quick slot closure', () => {
@@ -967,6 +1252,36 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function applyTimelineBanquetPreview/);
     assert.match(timeline, /function renderTimelineBanquetRoomCard/);
     assert.match(timeline, /function showTimelineBanquetInspector/);
+    assert.match(timeline, /function timelineBanquetCommentItems/);
+    assert.match(timeline, /function timelineBanquetCommentsHtml/);
+    assert.match(timeline, /function timelineBanquetActivityStartsText/);
+    assert.match(timeline, /TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES/);
+    assert.match(timeline, /'banquet_group_not_found'/);
+    assert.match(timeline, /'legacy_banquet_links_fallback'/);
+    assert.match(timeline, /'banquet_group_schema_unavailable'/);
+    assert.match(timeline, /function timelineBanquetSnapshotWarningText/);
+    assert.match(timeline, /\.map\(timelineBanquetSnapshotWarningText\)/);
+    assert.doesNotMatch(timeline, /Booking is not attached to a banquet group\./);
+    assert.doesNotMatch(timeline, /Loaded from legacy booking_banquet_links because no banquet group exists yet\./);
+    assert.doesNotMatch(timeline, /Banquet group schema is not available\./);
+    assert.match(timeline, /bookingWorkspace/);
+    assert.match(timeline, /comments\.kitchen/);
+    assert.match(timeline, /comments\.activity/);
+    assert.match(timeline, /comments\.internal/);
+    assert.match(timeline, /item\?\.servingNote \|\| item\?\.serving_note/);
+    assert.match(timeline, /item\?\.note \|\| item\?\.notes/);
+    assert.match(timeline, /timeline-banquet-inspector-menu-note/);
+    assert.match(timeline, /Початок активностей/);
+    assert.match(timeline, /<span>Прихід гостей<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
+    assert.match(timeline, /\['Прихід гостей', timelineBanquetDateTimeText\(summary\)\]/);
+    assert.match(timeline, /Прихід гостей: \$\{arrivalText\}/);
+    assert.doesNotMatch(timeline, /<span>Дата\/час<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
+    assert.doesNotMatch(timeline, /\['Час', timelineBanquetDateTimeText\(summary\)\]/);
+    assert.match(timeline, /Примітки/);
+    assert.match(timeline, /Активність —/);
+    assert.match(timeline, /Внутрішній коментар/);
+    assert.match(timeline, />Банкетний лист<\/a>/);
+    assert.doesNotMatch(timeline, />Вижимка<\/a>/);
     assert.match(timeline, /function timelineBanquetPreviewRolesByBookingId/);
     assert.match(timeline, /function timelineBanquetBlockCanOpenInspector/);
     assert.match(timeline, /function timelineBanquetPreviewRoleUsesOccupancyBand/);
@@ -1014,6 +1329,10 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(css, /\.timeline-banquet-room-card-signal--room-setup/);
     assert.match(css, /\.timeline-banquet-room-card-glance/);
     assert.match(css, /\.timeline-banquet-inspector/);
+    assert.match(css, /\.timeline-banquet-inspector-section--notes/);
+    assert.match(css, /\.timeline-banquet-inspector-notes/);
+    assert.match(css, /\.timeline-banquet-inspector-menu-note/);
+    assert.match(css, /\.timeline-banquet-inspector-note-text/);
     assert.match(css, /\.timeline-room-service-marker-main/);
     assert.match(css, /\.timeline-room-service-marker-detail/);
     assert.match(css, /\.booking-block\.is-timeline-banquet-occupancy-band/);
@@ -1034,6 +1353,19 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /\.timeline-banquet-chip/);
     assert.doesNotMatch(css, /\.timeline-banquet-service-marker/);
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
+});
+
+test('room timeline banquet preview state only top-aligns headers with rendered cards', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+
+    assert.match(timeline, /function clearTimelineBanquetRoomHeaderPreviewState\(header\)/);
+    assert.match(timeline, /function renderTimelineBanquetRoomCard\(header, summary = \{\}\)[\s\S]*return false;/);
+    assert.match(timeline, /function renderTimelineBanquetRoomCard\(header, summary = \{\}\)[\s\S]*card\.onclick[\s\S]*return true;/);
+    assert.match(timeline, /const rendered = renderTimelineBanquetRoomCard\(header, TIMELINE_BANQUET_ROOM_PREVIEWS\.get\(key\)\);/);
+    assert.match(timeline, /if \(rendered\) \{[\s\S]*header\.classList\.add\('has-timeline-banquet-room-preview'\)/);
+    assert.match(timeline, /else \{[\s\S]*clearTimelineBanquetRoomHeaderPreviewState\(header\);/);
+    assert.match(css, /\.line-header\.has-timeline-banquet-room-preview\s*\{[\s\S]*justify-content:\s*flex-start/);
 });
 
 test('room timeline service markers keep readable event-block dimensions and structured content', () => {
@@ -1447,6 +1779,43 @@ test('room timeline renders multiple menu serving markers inside the room grid',
     assert.equal(layout.hasLineOperationalLaneClass, true);
 });
 
+test('room timeline banquet inspector and service markers use clear menu quantity wording', () => {
+    const { ctx, inspectorSummary, markers } = renderTimelineBanquetRoomGridMarkers({
+        menuPositions: [
+            {
+                id: 'cake-nutella',
+                title: 'Нутелла',
+                quantity: 5,
+                servingUnit: '100г',
+                unitPrice: 90,
+                subtotal: 450,
+                servingTime: '14:30',
+                servingNote: 'без горіхів'
+            },
+            {
+                id: 'burger-child',
+                title: 'Бургер дитячий',
+                quantity: 3,
+                servingUnit: 'порція',
+                unitPrice: 260,
+                subtotal: 780,
+                servingTime: '16:30'
+            }
+        ],
+        serviceEvents: []
+    });
+
+    const inspectorHtml = ctx.timelineBanquetMenuPreviewHtml(inspectorSummary);
+    assert.match(inspectorHtml, /5 порцій по 100 г/);
+    assert.match(inspectorHtml, /3 порції/);
+    assert.match(inspectorHtml, /без горіхів/);
+    assert.doesNotMatch(inspectorHtml, /× 5|5 100г|5 100 г|x5/);
+
+    assert.match(markers[0].titleAttr, /Нутелла 5 порцій по 100 г без горіхів/);
+    assert.match(markers[1].titleAttr, /Бургер дитячий 3 порції/);
+    assert.doesNotMatch(markers.map(marker => marker.titleAttr).join('\n'), /x5|5 100г|5 100 г/);
+});
+
 test('room timeline renders room_setup service event as a separate room-grid marker', () => {
     const { ctx, markers, layout } = renderTimelineBanquetRoomGridMarkers({
         menuPositions: [],
@@ -1794,18 +2163,20 @@ test('timeline dynamic width contract derives surfaces from range and cell geome
 
     const geometry = context.syncTimelineContentWidth(new Date('2026-06-19T00:00:00'), grid);
     assert.equal(geometry.cellWidth, 40);
-    assert.equal(geometry.gridWidth, 400);
+    assert.equal(geometry.gridWidth, 360);
     assert.equal(geometry.headerWidth, 96);
-    assert.equal(geometry.contentWidth, 496);
+    assert.equal(geometry.contentWidth, 456);
     for (const target of [container, scroll, lines, timeScale, addLineBtn]) {
-        assert.equal(target.vars.get('--timeline-grid-width'), '400px');
-        assert.equal(target.vars.get('--timeline-content-width'), '496px');
+        assert.equal(target.vars.get('--timeline-grid-width'), '360px');
+        assert.equal(target.vars.get('--timeline-content-width'), '456px');
     }
 
     const helperContractEnd = timeline.indexOf('function visibleTimelineAddLineParts');
     assert.ok(helperContractEnd > helperStart, 'timeline width contract block is locatable');
     const helperBlock = timeline.slice(timeline.indexOf('function timelineRangeBoundMinutes'), helperContractEnd);
     assert.match(helperBlock, /if \(endMinutes <= startMinutes\) endMinutes \+= 24 \* 60/);
+    assert.match(helperBlock, /timelineRangeCellCount\(date\) \* cellWidth/);
+    assert.doesNotMatch(helperBlock, /timelineRangeMarkCount\(date\) \* cellWidth/);
     assert.doesNotMatch(helperBlock, /17:45|20:00|clientWidth|innerWidth|viewport/i);
 
     assert.equal(cssDeclaration(cssRule(css, '.timeline-scroll'), '--timeline-content-width'), '100%');
@@ -1846,6 +2217,186 @@ test('timeline dynamic width contract derives surfaces from range and cell geome
         cssDeclaration(cssRuleIncludingSelector(responsiveWithoutComments, 'body.timeline-dashboard-page .btn-add-line-big'), 'min-width'),
         'var(--timeline-content-width, 100%) !important'
     );
+});
+
+test('timeline time marker placement clamps start label without overlapping the first interval mark', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const grid = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        getTimeRange: () => ({ start: '10:00', end: '20:00' }),
+        document: {
+            querySelector() {
+                return null;
+            }
+        },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    [
+        { level: 15, cellWidth: 40, nextLabel: '10:15' },
+        { level: 30, cellWidth: 54, nextLabel: '10:30' },
+        { level: 60, cellWidth: 84, nextLabel: '11:00' }
+    ].forEach(({ level, cellWidth, nextLabel }) => {
+        context.CONFIG.TIMELINE.CELL_MINUTES = level;
+        context.CONFIG.TIMELINE.CELL_WIDTH = cellWidth;
+        cell.getBoundingClientRect = () => ({ width: cellWidth });
+
+        const gridWidth = context.timelineRangeCellCount(new Date('2026-06-19T00:00:00')) * cellWidth;
+        const placements = context.timelineTimeMarkPlacements(new Date('2026-06-19T00:00:00'), grid, { gridWidth, cellWidth });
+        const startMark = placements[0];
+        const firstIntervalMark = placements[1];
+        const endMark = placements.at(-1);
+
+        assert.equal(startMark.label, '10:00');
+        assert.equal(firstIntervalMark.label, nextLabel);
+        assert.equal(startMark.x, 0);
+        assert.ok(startMark.left <= 0);
+        assert.ok(startMark.left >= -(startMark.width / 2));
+        assert.ok(startMark.right >= 0);
+        assert.ok(startMark.right <= firstIntervalMark.left, `${startMark.label} overlaps ${firstIntervalMark.label}`);
+        assert.ok(firstIntervalMark.left >= 0);
+        assert.equal(endMark.right, gridWidth);
+        assert.equal(
+            context.timelineTimeToPixel(firstIntervalMark.label, new Date('2026-06-19T00:00:00'), grid),
+            firstIntervalMark.x
+        );
+    });
+});
+
+test('timeline time marker placement thins minor labels when compact density cannot fit every interval', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const cell = { getBoundingClientRect: () => ({ width: 28 }) };
+    const grid = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 28 } },
+        getTimeRange: () => ({ start: '10:00', end: '20:00' }),
+        document: {
+            querySelector() {
+                return null;
+            }
+        },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    const date = new Date('2026-06-19T00:00:00');
+    [28, 38].forEach(cellWidth => {
+        context.CONFIG.TIMELINE.CELL_WIDTH = cellWidth;
+        cell.getBoundingClientRect = () => ({ width: cellWidth });
+
+        const gridWidth = context.timelineRangeCellCount(date) * cellWidth;
+        const placements = context.timelineTimeMarkPlacements(date, grid, { gridWidth, cellWidth });
+        const labels = placements.map(mark => mark.label);
+
+        assert.equal(labels[0], '10:00');
+        assert.equal(labels[1], '10:30');
+        assert.ok(!labels.includes('10:15'), 'quarter-hour label should be hidden when compact density cannot fit it');
+        assert.ok(labels.includes('20:00'));
+        assert.equal(placements.at(-1).right, gridWidth);
+
+        for (let index = 1; index < placements.length; index += 1) {
+            const previous = placements[index - 1];
+            const current = placements[index];
+            assert.ok(previous.right <= current.left, `${previous.label} overlaps ${current.label}`);
+        }
+    });
+});
+
+test('timeline time marker placement clamps end label without overlapping the previous mark', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const grid = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        getTimeRange: () => ({ start: '13:00', end: '20:00' }),
+        document: {
+            querySelector() {
+                return null;
+            }
+        },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    [
+        { level: 15, cellWidth: 40, previousLabel: '19:45' },
+        { level: 30, cellWidth: 54, previousLabel: '19:30' },
+        { level: 60, cellWidth: 84, previousLabel: '19:00' }
+    ].forEach(({ level, cellWidth, previousLabel }) => {
+        context.CONFIG.TIMELINE.CELL_MINUTES = level;
+        context.CONFIG.TIMELINE.CELL_WIDTH = cellWidth;
+        cell.getBoundingClientRect = () => ({ width: cellWidth });
+
+        const gridWidth = context.timelineRangeCellCount(new Date('2026-06-19T00:00:00')) * cellWidth;
+        const placements = context.timelineTimeMarkPlacements(new Date('2026-06-19T00:00:00'), grid, { gridWidth, cellWidth });
+        const endMark = placements.at(-1);
+        const previousMark = placements.at(-2);
+
+        assert.equal(endMark.label, '20:00');
+        assert.equal(previousMark.label, previousLabel);
+        assert.equal(endMark.x, gridWidth);
+        assert.equal(endMark.right, gridWidth);
+        assert.ok(endMark.left >= 0);
+        assert.ok(previousMark.right <= endMark.left, `${previousMark.label} overlaps ${endMark.label}`);
+        assert.equal(
+            context.timelineTimeToPixel(previousMark.label, new Date('2026-06-19T00:00:00'), grid),
+            previousMark.x
+        );
+    });
 });
 
 test('timeline visual settings keep park animator and room views isolated', () => {

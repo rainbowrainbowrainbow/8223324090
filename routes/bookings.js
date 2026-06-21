@@ -24,8 +24,9 @@ const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
-const { applyBookingPackage, bookingPackageAudit } = require('../services/bookingPackage');
+const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
 const { buildBanquetSummary } = require('../services/banquetSummary');
+const { loadBanquetTermsDefaults, snapshotBanquetTermsForBooking } = require('../services/banquetTerms');
 const {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
@@ -621,6 +622,55 @@ function hasAnyBanquetGroupPayload(...payloadGroups) {
     return payloadGroups.flat().filter(Boolean).some(hasBanquetGroupPayload);
 }
 
+function cleanRoomConflictPolicyValue(value) {
+    const text = String(value || '').trim();
+    return text || null;
+}
+
+function banquetGroupConflictContextFromPayload(payload = {}) {
+    const extra = getBookingExtraDataObject(payload);
+    const group = extra.banquetGroup || extra.banquet_group || payload.banquetGroup || payload.banquet_group || {};
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const workspaceGroup = workspace.banquetGroup || workspace.banquet_group || {};
+    return {
+        groupId: cleanRoomConflictPolicyValue(
+            group.groupId
+            || group.group_id
+            || group.id
+            || workspace.banquetGroupId
+            || workspace.banquet_group_id
+            || workspaceGroup.groupId
+            || workspaceGroup.group_id
+            || workspaceGroup.id
+            || payload.banquetGroupId
+            || payload.banquet_group_id
+        ),
+        sourceBookingId: cleanRoomConflictPolicyValue(
+            group.sourceBookingId
+            || group.source_booking_id
+            || workspace.sourceBookingId
+            || workspace.source_booking_id
+            || payload.sourceBookingId
+            || payload.source_booking_id
+        )
+    };
+}
+
+function bookingRoomConflictPolicyOptions(booking = {}, options = {}) {
+    const base = options && typeof options === 'object' && !Array.isArray(options) ? { ...options } : {};
+    const context = banquetGroupConflictContextFromPayload(booking);
+    const groupId = cleanRoomConflictPolicyValue(base.banquetGroupId || base.banquet_group_id || context.groupId);
+    const sourceBookingId = cleanRoomConflictPolicyValue(base.sourceBookingId || base.source_booking_id || context.sourceBookingId);
+    if (!groupId && !sourceBookingId) return Object.keys(base).length ? base : null;
+    return {
+        ...base,
+        banquetGroupId: groupId || undefined,
+        sourceBookingId: sourceBookingId || undefined,
+        candidateBooking: booking,
+        allowSameBanquetOperationalOverlap: true
+    };
+}
+
 function bookingSecondAnimatorName(booking = {}) {
     return String(booking.secondAnimator ?? booking.second_animator ?? '').trim();
 }
@@ -829,6 +879,25 @@ async function insertBookingConfirmationHistory(client, { booking, actor, source
     );
 }
 
+async function insertBookingMarkedPreliminaryHistory(client, { booking, actor, source, note, previousStatus, changedAt }) {
+    await insertScopedHistory(client, 'booking_marked_preliminary', actor?.username, {
+            entity_type: 'booking',
+            entity_id: booking.id,
+            business_context: booking.business_context || DEFAULT_TIMELINE_CONTEXT,
+            action_type: 'booking_marked_preliminary',
+            actor_user_id: actorUserId(actor),
+            meta: {
+                from_status: previousStatus || 'confirmed',
+                to_status: 'preliminary',
+                source,
+                note,
+                marked_preliminary_at: changedAt || booking.updated_at || null
+            }
+        },
+        booking.business_context || DEFAULT_TIMELINE_CONTEXT
+    );
+}
+
 function bookingNotificationPayload(row) {
     const mapped = mapBookingRow(row);
     return {
@@ -877,6 +946,31 @@ function runBookingConfirmationSideEffects(row, actor, source, updatedRows = [])
         updated_by: username,
         confirmation_source: source
     }, `booking_confirmed_${booking.id}_${Date.now()}`);
+}
+
+function runBookingPreliminarySideEffects(row, actor, source, updatedRows = [], previousStatus = 'confirmed') {
+    const booking = mapBookingRow(row);
+    const username = actor?.username;
+
+    const broadcastRows = updatedRows.length ? updatedRows : [row];
+    for (const updatedRow of broadcastRows) {
+        const updatedBooking = mapBookingRow(updatedRow);
+        broadcast('booking:updated', updatedBooking, actor?.id?.toString(), updatedBooking.date);
+    }
+    _alertPush();
+
+    publishEvent('booking.status_changed', {
+        booking_id: booking.id,
+        business_context: booking.businessContext || DEFAULT_TIMELINE_CONTEXT,
+        date: booking.date,
+        time: booking.time,
+        room: booking.room,
+        program_code: booking.programCode,
+        old_status: previousStatus || 'confirmed',
+        new_status: 'preliminary',
+        updated_by: username,
+        status_source: source
+    }, `booking_preliminary_${booking.id}_${Date.now()}`);
 }
 
 const ATOMIC_LINKED_FIELDS = new Map([
@@ -1114,6 +1208,9 @@ function buildAtomicLinkedCandidate(row, patch = {}) {
         hosts: row.hosts,
         label: row.label,
         program_code: row.program_code,
+        program_name: row.program_name,
+        category: row.category,
+        extra_data: row.extra_data,
         linked_to: row.linked_to,
         status: row.status
     };
@@ -1614,20 +1711,15 @@ async function findAtomicLineConflict(client, candidate, excludeIds) {
 async function findAtomicRoomConflict(client, candidate, excludeIds) {
     if (!isRealRoom(candidate.room)) return null;
     if (!isRoomConflictBlockingRoom(candidate.room)) return null;
-    const result = await client.query(
-        `SELECT id, time, duration, label, program_code
-         FROM bookings
-         WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND ${bookingActiveStatusSql()}
-           AND id != ALL($4::text[])`,
-        [candidate.date, candidate.room, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
+    return checkRoomConflict(
+        client,
+        candidate.date,
+        candidate.room,
+        candidate.time,
+        candidate.duration || 0,
+        bookingRoomConflictPolicyOptions(candidate, { excludeIds }),
+        candidate.business_context || DEFAULT_TIMELINE_CONTEXT
     );
-    const start = timeToMinutes(candidate.time);
-    const end = start + (parseInt(candidate.duration, 10) || 0);
-    return result.rows.find(other => {
-        const otherStart = timeToMinutes(other.time);
-        const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
-        return start < otherEnd && end > otherStart;
-    }) || null;
 }
 
 async function updateAtomicLinkedBookingFields(client, id, patch, businessContext) {
@@ -1896,13 +1988,15 @@ router.get('/:id/banquet-summary', async (req, res) => {
             }
         }
 
+        const banquetTermsDefaults = await loadBanquetTermsDefaults(pool);
         const summary = buildBanquetSummary({
             mainBooking: summaryPrimaryBooking,
             customer,
             linkedBookings,
             businessContext,
             generatedBy: req.user,
-            resolvedGroup
+            resolvedGroup,
+            banquetTermsDefaults
         });
         res.json(summary);
     } catch (err) {
@@ -2131,6 +2225,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             return res.status(400).json({ success: false, error: pinataFields.error });
         }
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        await applyBookingPackageEntryCharge(client, b, { businessContext });
+        await snapshotBanquetTermsForBooking(client, b);
         normalizeBookingSecondAnimatorFields(b);
         if (applyBookingStatusForCreate(b) === 'invalid') {
             await client.query('ROLLBACK');
@@ -2188,7 +2284,15 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
             }
 
-            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0, null, businessContext);
+            const roomConflict = await checkRoomConflict(
+                client,
+                b.date,
+                b.room,
+                b.time,
+                b.duration || 0,
+                bookingRoomConflictPolicyOptions(b),
+                businessContext
+            );
             if (roomConflict) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({
@@ -2734,7 +2838,15 @@ router.post('/education-series', requireAction('create_booking'), async (req, re
                 return res.status(409).json({ success: false, conflictBookingId: duplicate.id, error: `Ця програма вже є ${candidate.date} о ${candidate.time}` });
             }
 
-            const roomConflict = await checkRoomConflict(client, candidate.date, candidate.room, candidate.time, candidate.duration || 0, null, businessContext);
+            const roomConflict = await checkRoomConflict(
+                client,
+                candidate.date,
+                candidate.room,
+                candidate.time,
+                candidate.duration || 0,
+                bookingRoomConflictPolicyOptions(candidate),
+                businessContext
+            );
             if (roomConflict) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({
@@ -2940,10 +3052,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         await client.query('BEGIN');
 
         await applyEffectiveBookingPrice(client, main, { businessContext });
+        await applyBookingPackageEntryCharge(client, main, { businessContext });
         for (const activity of banquetActivities) {
             await applyEffectiveBookingPrice(client, activity, { businessContext });
+            await applyBookingPackageEntryCharge(client, activity, { businessContext });
         }
         refreshMultiActivityPriceTotals([main, ...banquetActivities]);
+        await snapshotBanquetTermsForBooking(client, main);
+        for (const activity of banquetActivities) {
+            await snapshotBanquetTermsForBooking(client, activity);
+        }
 
         const ensuredMainLine = await ensureBookingTimelineLine(client, main, businessContext, {
             name: main.lineName || main.animatorName || null
@@ -3062,7 +3180,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
         }
 
-        const roomConflict = await checkRoomConflict(client, main.date, main.room, main.time, main.duration || 0, null, businessContext);
+        const roomConflict = await checkRoomConflict(
+            client,
+            main.date,
+            main.room,
+            main.time,
+            main.duration || 0,
+            bookingRoomConflictPolicyOptions(main),
+            businessContext
+        );
         if (roomConflict) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -3180,9 +3306,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 return res.status(409).json({ success: false, conflictBookingId: activityDuplicate.id, error: `Активність вже є ${activity.date} о ${activity.time}` });
             }
 
-            const activityRoomConflict = await checkRoomConflict(client, activity.date, activity.room, activity.time, activity.duration || 0, {
-                excludeIds: [main.id]
-            }, businessContext);
+            const activityRoomConflict = await checkRoomConflict(
+                client,
+                activity.date,
+                activity.room,
+                activity.time,
+                activity.duration || 0,
+                bookingRoomConflictPolicyOptions(activity, { excludeIds: [main.id] }),
+                businessContext
+            );
             if (activityRoomConflict) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({
@@ -3867,6 +3999,129 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
     });
 });
 
+router.post('/:id/preliminary', requireAction('edit_booking'), async (req, res) => {
+    const { id } = req.params;
+    if (!validateId(id)) return res.status(400).json({ success: false, error: 'Invalid booking id' });
+
+    const source = normalizeConfirmationSource(req.body?.source);
+    const note = normalizeConfirmationNote(req.body?.note);
+    const actor = req.user || {};
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+    const client = await pool.connect();
+    let preliminaryRow = null;
+    let preliminaryRows = [];
+    let previousStatus = 'confirmed';
+
+    try {
+        await client.query('BEGIN');
+
+        const current = await getScopedBookingById(client, id, businessContext, { forUpdate: true });
+        if (!current) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Booking not found' });
+        }
+        if (!canEditBooking(req.user, current)) {
+            await client.query('ROLLBACK');
+            return sendBookingDenied(req, res, current);
+        }
+
+        let rootBooking = current;
+        if (current.linked_to) {
+            rootBooking = await getScopedBookingById(client, current.linked_to, businessContext, { forUpdate: true });
+            if (!rootBooking) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Root booking not found' });
+            }
+            if (!canEditBooking(req.user, rootBooking)) {
+                await client.query('ROLLBACK');
+                return sendBookingDenied(req, res, rootBooking);
+            }
+        }
+
+        const currentStatus = normalizeBookingStatus(current.status, 'confirmed');
+        const rootStatus = normalizeBookingStatus(rootBooking.status, 'confirmed');
+        previousStatus = rootStatus || currentStatus || 'confirmed';
+
+        if (currentStatus === 'cancelled' || rootStatus === 'cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'Cancelled bookings cannot be marked preliminary',
+                currentStatus: currentStatus === 'cancelled' ? currentStatus : rootStatus || null
+            });
+        }
+
+        const rootId = rootBooking.id;
+        const updateResult = await client.query(
+            `UPDATE bookings
+             SET status = 'preliminary',
+                 confirmed_at = NULL,
+                 confirmed_by = NULL,
+                 confirmation_note = NULL,
+                 confirmation_source = NULL,
+                 updated_at = NOW()
+             WHERE (id = $1 OR linked_to = $1)
+               AND ${bookingContextSql('', '$2')}
+               AND ${bookingActiveStatusSql()}
+               AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) != 'preliminary'
+             RETURNING *`,
+            [rootId, businessContext]
+        );
+
+        preliminaryRows = updateResult.rows;
+        preliminaryRow = updateResult.rows.find(row => row.id === rootId)
+            || {
+                ...rootBooking,
+                status: 'preliminary',
+                confirmed_at: null,
+                confirmed_by: null,
+                confirmation_note: null,
+                confirmation_source: null
+            };
+
+        if (!preliminaryRows.length) {
+            await client.query('COMMIT');
+            return res.json({
+                success: true,
+                ok: true,
+                booking: mapBookingRow(preliminaryRow),
+                action: { type: 'booking_marked_preliminary', source, idempotent: true, durableMutation: false },
+                cascade: { markedPreliminaryCount: 0 }
+            });
+        }
+
+        await insertBookingMarkedPreliminaryHistory(client, {
+            booking: preliminaryRow,
+            actor,
+            source,
+            note,
+            previousStatus,
+            changedAt: preliminaryRows[0]?.updated_at || preliminaryRow.updated_at
+        });
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (preliminary)', rbErr));
+        log.error('Error marking booking preliminary', err);
+        return res.status(500).json({ success: false, error: 'Failed to mark booking preliminary' });
+    } finally {
+        client.release();
+    }
+
+    if (sideEffectsAllowedForContext(preliminaryRow.business_context || DEFAULT_TIMELINE_CONTEXT)) {
+        runBookingPreliminarySideEffects(preliminaryRow, actor, source, preliminaryRows, previousStatus);
+    }
+    res.json({
+        success: true,
+        ok: true,
+        booking: mapBookingRow(preliminaryRow),
+        action: { type: 'booking_marked_preliminary', source, durableMutation: true },
+        cascade: { markedPreliminaryCount: preliminaryRows.length }
+    });
+});
+
 router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const { id } = req.params;
     const b = req.body;
@@ -3969,23 +4224,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                     [id, businessContext]
                 );
                 const excludeIds = [id, ...linkedIds.rows.map(r => r.id)];
-                let roomConflict = null;
-                const roomResult = await client.query(
-                    `SELECT id, time, duration, label, program_code
-                     FROM bookings
-                      WHERE date = $1 AND room = $2 AND ${bookingContextSql('', '$3')} AND ${bookingActiveStatusSql()} AND id != ALL($4::text[])`,
-                    [b.date, b.room, businessContext, excludeIds]
+                const roomConflict = await checkRoomConflict(
+                    client,
+                    b.date,
+                    b.room,
+                    b.time,
+                    b.duration || 0,
+                    bookingRoomConflictPolicyOptions(b, { excludeIds }),
+                    businessContext
                 );
-                const newStart = timeToMinutes(b.time);
-                const newEnd = newStart + (b.duration || 0);
-                for (const rc of roomResult.rows) {
-                    const rcStart = timeToMinutes(rc.time);
-                    const rcEnd = rcStart + (rc.duration || 0);
-                    if (newStart < rcEnd && newEnd > rcStart) {
-                        roomConflict = rc;
-                        break;
-                    }
-                }
                 if (roomConflict) {
                     await client.query('ROLLBACK');
                     return res.status(409).json({
@@ -4088,6 +4335,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         b.customerId = updateCustomerId;
 
         await applyEffectiveBookingPrice(client, b, { businessContext });
+        await applyBookingPackageEntryCharge(client, b, { businessContext });
+        await snapshotBanquetTermsForBooking(client, b);
         const updateExtraDataSql = bookingExtraDataSqlValue(b);
 
         let ensuredSecondAnimatorLineForUpdate = null;

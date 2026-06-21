@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -32,6 +33,91 @@ test('week timeline uses the same canonical resource identity as day timeline', 
     assert.ok(lineBookingMatches.length >= 2, 'day and week renderers must both use timelineBookingsForLine');
     assert.match(timeline, /data-resource-id="\$\{escapeHtml\(bookingIdentity\.resourceId\)\}"/);
     assert.match(timeline, /data-resource-type="\$\{escapeHtml\(bookingIdentity\.resourceType\)\}"/);
+});
+
+test('day/week period switch resets outer horizontal scroll and keeps week shell isolated', () => {
+    const app = read('js/app.js');
+    const timeline = read('js/timeline.js');
+    const renderTimelineBlock = timeline.slice(
+        timeline.indexOf('async function renderTimeline'),
+        timeline.indexOf('function getBookingDragGroup')
+    );
+    const renderMultiDayBlock = timeline.slice(
+        timeline.indexOf('async function renderMultiDayTimeline'),
+        timeline.indexOf('async function changeDate')
+    );
+
+    assert.match(app, /function applyTimelinePeriod\(period[\s\S]*const previousPeriod = AppState\.multiDayMode \? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY/);
+    assert.match(app, /previousPeriod !== normalizedPeriod[\s\S]*markTimelineNavigationScrollReset\('period-change'\)[\s\S]*renderTimeline\(\)/);
+    assert.match(renderTimelineBlock, /if \(AppState\.multiDayMode\) \{[\s\S]*await renderMultiDayTimeline\(\);[\s\S]*return;[\s\S]*renderTimeScale\(selectedDate\);/);
+    assert.doesNotMatch(renderMultiDayBlock, /captureTimelineHorizontalScrollState|restoreTimelineHorizontalScrollState|scrollLeft =/);
+    assert.match(read('css/timeline.css'), /\.day-section-content\s*\{[\s\S]*overflow-x: auto/);
+});
+
+test('week mini timeline width is based on range duration without an extra end-label cell', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+    const responsiveCss = read('css/responsive.css');
+    const helperBlock = timeline.slice(
+        timeline.indexOf('function timelineMiniTimeMarkPlacements'),
+        timeline.indexOf('let _timelineAddLineCtaPositioningBound')
+    );
+    const renderDaySectionBlock = timeline.slice(
+        timeline.indexOf('async function renderDaySectionHtml'),
+        timeline.indexOf('function renderMiniLineHtml')
+    );
+    const renderMiniLineBlock = timeline.slice(
+        timeline.indexOf('function renderMiniLineHtml'),
+        timeline.indexOf('async function renderMultiDayTimeline')
+    );
+
+    assert.match(renderDaySectionBlock, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
+    assert.match(renderMiniLineBlock, /const gridWidth = Math\.max\(hourWidth, \(end - start\) \* hourWidth\)/);
+    assert.match(renderDaySectionBlock, /const timeScaleHtml = renderMiniTimeScaleHtml\(start, end, hourWidth, gridWidth\)/);
+    assert.match(helperBlock, /timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
+    assert.match(helperBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
+    assert.match(helperBlock, /timelineResolveTimeMarkCollisions\(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP\)/);
+    assert.match(helperBlock, /--mini-grid-width: \$\{gridWidth\}px/);
+    assert.match(renderMiniLineBlock, /--mini-grid-width: \$\{gridWidth\}px/);
+    assert.doesNotMatch(renderDaySectionBlock + renderMiniLineBlock, /\(end - start \+ 1\)|timelineRangeMarkCount|scrollWidth/);
+    assert.match(css, /\.mini-time-scale\s*\{[\s\S]*width:\s*var\(--mini-grid-width, max-content\)/);
+    assert.match(css, /\.mini-time-mark\s*\{[\s\S]*position:\s*absolute/);
+    assert.match(css, /\.mini-time-mark\.end\s*\{[\s\S]*text-align:\s*right/);
+    assert.match(responsiveCss, /body\.timeline-dashboard-page \.mini-time-scale\s*\{[\s\S]*width:\s*var\(--mini-grid-width, max-content\) !important/);
+    assert.doesNotMatch(responsiveCss, /body\.timeline-dashboard-page \.mini-time-mark\s*\{[\s\S]*width:\s*var\(--mini-hour-width/);
+});
+
+test('week mini timeline start and end labels use shared collision geometry', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        document: { querySelector() { return null; } },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(timeline.slice(helperStart, helperEnd), context);
+
+    const marks = context.timelineMiniTimeMarkPlacements('10:00', '20:00', 120);
+    const startMark = marks[0];
+    const nextMark = marks[1];
+    const previousMark = marks.at(-2);
+    const endMark = marks.at(-1);
+
+    assert.equal(startMark.label, '10:00');
+    assert.equal(nextMark.label, '11:00');
+    assert.ok(startMark.left < 0);
+    assert.ok(startMark.right <= nextMark.left);
+    assert.equal(endMark.label, '20:00');
+    assert.ok(previousMark.right <= endMark.left);
+    assert.equal(endMark.right, 1200);
 });
 
 test('created booking reveal can find day blocks and week mini-blocks', () => {

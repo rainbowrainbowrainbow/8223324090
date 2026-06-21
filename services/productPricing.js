@@ -210,11 +210,13 @@ async function applyEffectiveBookingPrice(queryable, booking, options = {}) {
         ? extra.bookingPackage
         : null;
     const positionsSubtotal = bookingPackage ? toMoney(bookingPackage.positionsSubtotal) : 0;
-    const finalPrice = toMoney(programBasePrice + positionsSubtotal);
+    const entrySubtotal = bookingPackage ? toMoney(bookingPackage.entrySubtotal) : 0;
+    const finalPrice = toMoney(programBasePrice + positionsSubtotal + entrySubtotal);
 
     if (bookingPackage) {
         bookingPackage.programBasePrice = programBasePrice;
         bookingPackage.positionsSubtotal = positionsSubtotal;
+        bookingPackage.entrySubtotal = entrySubtotal;
         bookingPackage.finalTotal = finalPrice;
         bookingPackage.priceDate = priceDate;
     }

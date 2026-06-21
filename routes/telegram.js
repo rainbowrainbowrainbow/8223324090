@@ -304,7 +304,13 @@ router.get('/digest/:date', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (err) {
         log.error('Digest error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({
+            success: false,
+            code: 'DIGEST_INTERNAL_ERROR',
+            reason: 'digest_internal_error',
+            message: 'Не вдалося сформувати або відправити дайджест',
+            error: 'Internal server error'
+        });
     }
 });
 

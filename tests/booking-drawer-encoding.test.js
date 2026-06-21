@@ -31,6 +31,60 @@ test('booking drawer frontend sources do not contain mojibake markers', () => {
     assertCleanEncoding('index.html booking panel', html.slice(start, end + '</aside>'.length));
 });
 
+test('booking detail scenario row is hidden only for kitchen bookings', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function shouldHideBookingWorkspaceScenarioDetail');
+    const helperEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail', helperStart);
+    assert.ok(helperStart >= 0, 'kitchen scenario visibility helper exists');
+    assert.ok(helperEnd > helperStart, 'helper block has a stable end');
+    const helperBlock = bookingJs.slice(helperStart, helperEnd);
+    assert.match(helperBlock, /scenario === 'kitchen_only'/);
+    assert.match(helperBlock, /programCode === 'KITCHEN'/);
+    assert.match(helperBlock, /programName === 'kitchen' \|\| programName === 'кухня'/);
+
+    const renderEnd = bookingJs.indexOf('function initBookingPackageWorkspace', helperEnd);
+    assert.ok(renderEnd > helperEnd, 'workspace detail block has a stable end');
+    const renderBlock = bookingJs.slice(helperEnd, renderEnd);
+    assert.match(renderBlock, /const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail\(booking\)\s*\?\s*''\s*:/);
+    assert.match(renderBlock, /<span class="label">Сценарій:<\/span><span class="value">\$\{escapeHtml\(meta\.label\)\}<\/span>/);
+    assert.match(renderBlock, /\$\{scenarioRowHtml\}/);
+});
+
+test('booking detail title removes redundant kitchen prefix only for kitchen bookings', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function bookingDetailIsKitchenTitleToken');
+    const helperEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail', helperStart);
+    assert.ok(helperStart >= 0, 'kitchen title token helper exists');
+    assert.ok(helperEnd > helperStart, 'title helper block has a stable end');
+    const helperBlock = bookingJs.slice(helperStart, helperEnd);
+    assert.match(helperBlock, /text\.toUpperCase\(\) === 'KITCHEN' \|\| text\.toLowerCase\(\) === 'кухня'/);
+    assert.match(helperBlock, /function bookingDetailModalTitle\(booking = \{\}, fallback = 'Бронювання'\)/);
+    assert.match(helperBlock, /if \(shouldHideBookingWorkspaceScenarioDetail\(booking\)\)/);
+    assert.match(helperBlock, /\[programName, label, booking\.room, booking\.id\]/);
+    assert.match(helperBlock, /!bookingDetailIsKitchenTitleToken\(value\)/);
+    assert.match(helperBlock, /return \[label \|\| programCode, programName\]\.filter\(Boolean\)\.join\(': '\) \|\| fallback;/);
+
+    const modalStart = bookingJs.indexOf('async function showBookingDetails');
+    const modalEnd = bookingJs.indexOf('const bookingChildrenCount', modalStart);
+    assert.ok(modalStart >= 0 && modalEnd > modalStart, 'booking detail modal title block exists');
+    const modalBlock = bookingJs.slice(modalStart, modalEnd);
+    assert.match(modalBlock, /const bookingDetailTitle = bookingDetailModalTitle\(booking, roomFirstServiceBooking \? 'Кімнатна бронь' : 'Бронювання'\);/);
+    assert.doesNotMatch(modalBlock, /const bookingDetailTitle = \[booking\.label \|\| booking\.programCode, booking\.programName\]/);
+});
+
+test('booking detail summary action is labeled banquet sheet without changing preview route', () => {
+    const bookingJs = read('js', 'booking.js');
+    const actionStart = bookingJs.indexOf('const editControls = isViewer() ?');
+    const actionEnd = bookingJs.indexOf('const bookingDetailIdLabel', actionStart);
+    assert.ok(actionStart >= 0 && actionEnd > actionStart, 'booking detail action block exists');
+    const actionBlock = bookingJs.slice(actionStart, actionEnd);
+    assert.match(actionBlock, /summaryPreviewHref/);
+    assert.match(actionBlock, /class="booking-detail-action booking-detail-action--secondary booking-summary-action">Банкетний лист<\/a>/);
+    assert.doesNotMatch(actionBlock, /booking-summary-action">Вижимка<\/a>/);
+    assert.match(bookingJs, /function bookingSummaryPreviewUrl/);
+    assert.match(bookingJs, /\/booking-summary\.html\?/);
+});
+
 test('booking drawer controls keep reliable hit targets and footer spacing', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
@@ -283,11 +337,21 @@ test('timeline caches are scoped by business and display mode before booking vis
 test('booking lifecycle actions force fresh day snapshots before mutating the server', () => {
     const bookingJs = read('js', 'booking.js');
     const uiJs = read('js', 'ui.js');
+    const apiJs = read('js', 'api.js');
+    const changeStatusStart = uiJs.indexOf('async function changeBookingStatus');
+    const changeStatusEnd = uiJs.indexOf('// ==========================================', changeStatusStart + 1);
+    const changeStatusSource = changeStatusStart >= 0 && changeStatusEnd > changeStatusStart
+        ? uiJs.slice(changeStatusStart, changeStatusEnd)
+        : '';
 
     assert.match(bookingJs, /async function deleteBooking\(bookingId\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /async function shiftBookingTime\(bookingId, minutes\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /async function switchBookingLine\(bookingId, targetLineId\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(uiJs, /async function changeBookingStatus\(bookingId, newStatus\)[\s\S]*getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(apiJs, /async function apiMarkBookingPreliminary\(id, payload = \{\}\)[\s\S]*\/preliminary/);
+    assert.match(changeStatusSource, /apiConfirmBooking\(bookingId, \{ source: 'booking_panel' \}\)/);
+    assert.match(changeStatusSource, /apiMarkBookingPreliminary\(bookingId, \{ source: 'booking_panel' \}\)/);
+    assert.doesNotMatch(changeStatusSource, /apiUpdateBooking/);
     assert.match(bookingJs, /invalidateBookingTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
     assert.match(uiJs, /invalidateTimelineDateCache\(AppState\.selectedDate, \{ lines: false \}\)/);
 });
@@ -300,7 +364,8 @@ test('booking drawer keeps readable Ukrainian labels for manager-facing controls
     assert.match(bookingJs, /label: 'Анімація'/);
     assert.match(bookingJs, /label: 'Квести'/);
     assert.match(bookingJs, /label: 'Піньяти'/);
-    assert.match(bookingJs, /Скопіювати всю інформацію/);
+    assert.doesNotMatch(bookingJs, /detail-copy-summary-btn/);
+    assert.doesNotMatch(bookingJs, /Скопіювати всю інформацію/);
     assert.match(bookingJs, /Редагувати бронювання/);
     assert.match(bookingJs, /Не вдалося скопіювати/);
 

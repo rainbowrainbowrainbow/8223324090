@@ -26,10 +26,14 @@
     --timeline-line-header-w: 130px;
 }
 
-.time-mark,
 .grid-cell {
     width: var(--timeline-cell-w, 50px) !important;
     min-width: var(--timeline-cell-w, 50px) !important;
+}
+
+.time-mark {
+    width: var(--time-mark-label-width, max-content) !important;
+    min-width: 0 !important;
 }
 
 .line-header {
@@ -1241,8 +1245,8 @@
 
     /* v7.8.8: Mini-timeline responsive */
     .mini-time-mark {
-        width: 80px;
-        min-width: 80px;
+        width: var(--mini-time-mark-width, max-content);
+        min-width: 0;
     }
 
     .mini-time-scale {
@@ -1451,7 +1455,7 @@
     .period-btn { font-size: 10px; min-height: 38px; }
     .zoom-controls .zoom-btn { font-size: 10px; min-height: 38px; }
 
-    .mini-time-mark { width: 60px; min-width: 60px; }
+    .mini-time-mark { width: var(--mini-time-mark-width, max-content); min-width: 0; }
     .mini-time-scale { margin-left: 50px; }
     .mini-line-header { width: 50px; min-width: 50px; }
 }
@@ -2063,23 +2067,22 @@
     }
 
     body.timeline-dashboard-page .mini-time-scale {
-        width: max-content !important;
-        min-width: max-content !important;
+        width: var(--mini-grid-width, max-content) !important;
+        min-width: var(--mini-grid-width, max-content) !important;
         margin-left: var(--mini-line-header-w, 72px) !important;
         margin-bottom: 8px !important;
     }
 
     body.timeline-dashboard-page .mini-time-mark {
-        width: var(--mini-hour-width, 120px) !important;
-        min-width: var(--mini-hour-width, 120px) !important;
+        width: var(--mini-time-mark-width, max-content) !important;
+        min-width: 0 !important;
         font-size: 10px !important;
         line-height: 1.1 !important;
         letter-spacing: 0 !important;
     }
 
     body.timeline-dashboard-page .mini-time-mark.end {
-        width: auto !important;
-        min-width: auto !important;
+        text-align: right !important;
     }
 
     body.timeline-dashboard-page .mini-timeline-lines,

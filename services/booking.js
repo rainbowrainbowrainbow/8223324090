@@ -129,30 +129,208 @@ function roomConflictExcludeIds(excludeId = null) {
     return Array.from(new Set(raw.map(value => String(value || '').trim()).filter(Boolean)));
 }
 
-async function checkRoomConflict(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
-    if (!isRoomConflictBlockingRoom(room)) return null;
-    const context = normalizeTimelineContext(businessContext);
-    const excludeIds = roomConflictExcludeIds(excludeId);
+function safeBookingExtraData(value) {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function normalizeRoomConflictPolicyOptions(excludeId = null) {
+    if (excludeId && typeof excludeId === 'object' && !Array.isArray(excludeId)) {
+        return {
+            ...excludeId,
+            excludeIds: roomConflictExcludeIds(excludeId),
+            allowSameBanquetOperationalOverlap: Boolean(excludeId.allowSameBanquetOperationalOverlap)
+        };
+    }
+    return {
+        excludeIds: roomConflictExcludeIds(excludeId),
+        allowSameBanquetOperationalOverlap: false
+    };
+}
+
+function addCleanSetValue(target, value) {
+    const text = String(value || '').trim();
+    if (text) target.add(text);
+}
+
+function bookingRoomConflictGroupIds(booking = {}) {
+    const ids = new Set();
+    addCleanSetValue(ids, booking.banquetGroupId || booking.banquet_group_id || booking.groupId || booking.group_id);
+    const extra = safeBookingExtraData(booking.extraData || booking.extra_data);
+    const banquetGroup = extra.banquetGroup || extra.banquet_group || {};
+    addCleanSetValue(ids, banquetGroup.groupId || banquetGroup.group_id || banquetGroup.id);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    addCleanSetValue(ids, workspace.banquetGroupId || workspace.banquet_group_id);
+    const workspaceGroup = workspace.banquetGroup || workspace.banquet_group || {};
+    addCleanSetValue(ids, workspaceGroup.groupId || workspaceGroup.group_id || workspaceGroup.id);
+    return ids;
+}
+
+function bookingPackageHasOperationalData(extra = {}) {
+    const pkg = extra.bookingPackage || extra.booking_package || {};
+    const positions = pkg.menuPositions || pkg.menu_positions || [];
+    const serviceEvents = pkg.serviceEvents || pkg.service_events || [];
+    return (Array.isArray(positions) && positions.length > 0)
+        || (Array.isArray(serviceEvents) && serviceEvents.length > 0);
+}
+
+function normalizedRoomConflictRole(value) {
+    const role = String(value || '').trim().toLowerCase();
+    if (['activity', 'kitchen', 'service', 'manual', 'primary'].includes(role)) return role;
+    return '';
+}
+
+function bookingRoomConflictRole(booking = {}, explicitRole = '') {
+    const extra = safeBookingExtraData(booking.extraData || booking.extra_data);
+    const banquetGroup = extra.banquetGroup || extra.banquet_group || {};
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const role = normalizedRoomConflictRole(
+        explicitRole
+        || booking.banquetGroupRole
+        || booking.banquet_group_role
+        || booking.role
+        || banquetGroup.role
+        || workspace.banquetRole
+        || workspace.banquet_role
+    );
+    if (role) return role;
+
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+    const scenario = String(workspace.scenario || booking.scenario || '').trim().toLowerCase();
+    const lineId = String(booking.lineId || booking.line_id || '').trim();
+    if (programCode === 'KITCHEN' || scenario === 'kitchen_only' || category === 'kitchen') return 'kitchen';
+    if (lineId === BANQUET_SERVICE_LINE_ID) return 'service';
+    if (category === 'banquet' && bookingPackageHasOperationalData(extra)) return 'service';
+    if (['animation', 'activity', 'custom', 'quest', 'show', 'masterclass', 'workshop'].includes(category)) return 'activity';
+    return 'generic';
+}
+
+function bookingRoomConflictIsActivity(role) {
+    return role === 'activity';
+}
+
+function bookingRoomConflictIsOperational(role, booking = {}) {
+    if (['kitchen', 'service', 'manual'].includes(role)) return true;
+    if (role !== 'primary') return false;
+    const extra = safeBookingExtraData(booking.extraData || booking.extra_data);
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+    const lineId = String(booking.lineId || booking.line_id || '').trim();
+    return programCode === 'KITCHEN'
+        || category === 'kitchen'
+        || category === 'banquet'
+        || lineId === BANQUET_SERVICE_LINE_ID
+        || bookingPackageHasOperationalData(extra);
+}
+
+async function roomConflictPolicyGroupIds(client, options, businessContext) {
+    const ids = new Set();
+    addCleanSetValue(ids, options.banquetGroupId || options.banquet_group_id);
+    for (const id of bookingRoomConflictGroupIds(options.candidateBooking || {})) ids.add(id);
+    const sourceBookingId = String(options.sourceBookingId || options.source_booking_id || '').trim();
+    if (sourceBookingId) {
+        const result = await client.query(
+            `SELECT group_id
+             FROM banquet_group_bookings
+             WHERE booking_id = $1
+               AND COALESCE(business_context, 'event_genix') = $2`,
+            [sourceBookingId, normalizeTimelineContext(businessContext)]
+        );
+        for (const row of result.rows || []) addCleanSetValue(ids, row.group_id);
+    }
+    return ids;
+}
+
+function roomConflictPolicyAllowsOverlap(candidate, conflict, candidateGroupIds) {
+    const conflictGroupIds = bookingRoomConflictGroupIds(conflict);
+    const sameGroup = Array.from(conflictGroupIds).some(id => candidateGroupIds.has(id));
+    if (!sameGroup) return false;
+
+    const candidateRole = bookingRoomConflictRole(candidate);
+    const conflictRole = bookingRoomConflictRole(conflict);
+    const candidateActivity = bookingRoomConflictIsActivity(candidateRole);
+    const conflictActivity = bookingRoomConflictIsActivity(conflictRole);
+    const candidateOperational = bookingRoomConflictIsOperational(candidateRole, candidate);
+    const conflictOperational = bookingRoomConflictIsOperational(conflictRole, conflict);
+
+    if (candidateActivity && conflictOperational) return true;
+    if (candidateOperational && conflictActivity) return true;
+    return false;
+}
+
+async function queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata) {
     const params = [date, room, context];
     const excludeSql = excludeIds.length
-        ? ` AND id != ALL($${params.push(excludeIds)}::text[])`
+        ? ` AND ${includePolicyMetadata ? 'b.' : ''}id != ALL($${params.push(excludeIds)}::text[])`
         : '';
-    const result = await client.query(
-        `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
+    if (!includePolicyMetadata) {
+        return client.query(
+            `SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND COALESCE(business_context, 'event_genix') = $3 AND ${activeBookingStatusSql()}` +
+            excludeSql,
+            params
+        );
+    }
+    return client.query(
+        `SELECT b.id, b.time, b.duration, b.label, b.program_code, b.program_name, b.category, b.extra_data, b.line_id,
+                bgb.group_id AS banquet_group_id, bgb.role AS banquet_group_role
+         FROM bookings b
+         LEFT JOIN banquet_group_bookings bgb
+           ON bgb.booking_id = b.id
+          AND COALESCE(bgb.business_context, 'event_genix') = $3
+         WHERE b.date = $1
+           AND b.room = $2
+           AND COALESCE(b.business_context, 'event_genix') = $3
+           AND ${activeBookingStatusSql('b.status')}` +
         excludeSql,
         params
     );
+}
+
+async function checkRoomConflictWithPolicy(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    if (!isRoomConflictBlockingRoom(room)) return null;
+    const context = normalizeTimelineContext(businessContext);
+    const options = normalizeRoomConflictPolicyOptions(excludeId);
+    const excludeIds = options.excludeIds || [];
+    const includePolicyMetadata = Boolean(options.allowSameBanquetOperationalOverlap);
+    const result = await queryRoomConflictRows(client, date, room, context, excludeIds, includePolicyMetadata);
+    const candidateGroupIds = includePolicyMetadata
+        ? await roomConflictPolicyGroupIds(client, options, context)
+        : new Set();
+    const candidateBooking = options.candidateBooking || {};
     const newStart = timeToMinutes(time);
-    const newEnd = newStart + duration;
+    const newEnd = newStart + (parseInt(duration, 10) || 0);
     for (const b of result.rows) {
         if (excludeIds.includes(String(b.id || '').trim())) continue;
         const bStart = timeToMinutes(b.time);
         const bEnd = bStart + (b.duration || 0);
         if (newStart < bEnd && newEnd > bStart) {
+            if (
+                includePolicyMetadata
+                && roomConflictPolicyAllowsOverlap(
+                    { ...candidateBooking, date, room, time, duration },
+                    b,
+                    candidateGroupIds
+                )
+            ) {
+                continue;
+            }
             return b;
         }
     }
     return null;
+}
+
+async function checkRoomConflict(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    return checkRoomConflictWithPolicy(client, date, room, time, duration, excludeId, businessContext);
 }
 
 async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
@@ -453,7 +631,7 @@ module.exports = {
     timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS, VALID_BOOKING_STATUSES,
     BANQUET_SERVICE_LINE_ID, TAKEAWAY_ROOM_ID, TAKEAWAY_ROOM_LABEL,
     normalizeBookingStatus, isTakeawayRoomValue, isRoomConflictBlockingRoom, isLineConflictBlockingLine, lockBookingConflictResources,
-    checkRoomConflict, checkServerConflicts, checkServerDuplicate,
+    checkRoomConflict, checkRoomConflictWithPolicy, checkServerConflicts, checkServerDuplicate,
     mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines, cleanupLegacyDefaultAnimatorLines,
     getKyivDate, getKyivDateStr, getKyivTimeStr
 };

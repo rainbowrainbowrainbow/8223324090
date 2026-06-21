@@ -189,6 +189,47 @@ function bookingLeadStatus(stage) {
   return LEAD_STAGE_TO_STATUS[stage] || 'new';
 }
 
+function bookingHasBanquetSignal(booking) {
+  if (!booking || typeof booking !== 'object') return false;
+  const category = cleanText(
+    booking.category
+    || booking.bookingCategory
+    || booking.booking_category,
+    50
+  );
+  if (category && category.toLowerCase() === 'banquet') return true;
+
+  const extra = parseJsonObject(booking.extraData || booking.extra_data);
+  const packageData = parseJsonObject(
+    booking.bookingPackage
+    || booking.booking_package
+    || extra.bookingPackage
+    || extra.booking_package
+  );
+  return Boolean(
+    booking.banquetGuests || booking.banquet_guests
+    || booking.banquetAdults || booking.banquet_adults
+    || booking.banquetTables || booking.banquet_tables
+    || booking.banquetMenu || booking.banquet_menu
+    || packageData.banquetGuests || packageData.guestCount
+    || packageData.adults || packageData.tables
+    || packageData.menuPositions || packageData.serviceEvents
+  );
+}
+
+function bookingLeadDateTimeNotes(booking) {
+  const hasDate = Boolean(booking?.date);
+  const hasTime = Boolean(booking?.time);
+  if (!hasDate && !hasTime) return null;
+  if (!bookingHasBanquetSignal(booking)) {
+    return `Дата/час: ${[booking.date, booking.time].filter(Boolean).join(' ')}`;
+  }
+  return [
+    hasDate ? `Дата банкету: ${booking.date}` : null,
+    hasTime ? `Прихід гостей: ${booking.time}` : null,
+  ].filter(Boolean).join('\n');
+}
+
 function bookingLeadClientName(booking) {
   return cleanText(
     booking?.customer?.name
@@ -223,7 +264,7 @@ function bookingLeadNotes(booking, meta = {}) {
     booking?.programName || booking?.programCode || booking?.label
       ? `Бронювання: ${booking.programName || booking.programCode || booking.label}`
       : null,
-    booking?.date || booking?.time ? `Дата/час: ${[booking.date, booking.time].filter(Boolean).join(' ')}` : null,
+    bookingLeadDateTimeNotes(booking),
     booking?.room ? `Кімната: ${booking.room}` : null,
     booking?.notes ? `Нотатки: ${booking.notes}` : null,
   ].filter(Boolean);

@@ -6,19 +6,19 @@
     (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event Genix | Вижимка банкету</title>
-    <meta name="description" content="Preview і друк банкетної вижимки Event Genix">
+    <title>Event Genix | Банкетний лист</title>
+    <meta name="description" content="Preview і друк банкетного листа Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.76.70">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.70">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.70">
-    <link rel="stylesheet" href="css/booking-summary.css?v=0.76.70">
+    <link rel="stylesheet" href="css/base.css?v=0.76.103">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.103">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.103">
+    <link rel="stylesheet" href="css/booking-summary.css?v=0.76.103">
 </head>
 <body class="booking-summary-page">
-    <header class="booking-summary-toolbar" aria-label="Дії з вижимкою">
+    <header class="booking-summary-toolbar" aria-label="Дії з банкетним листом">
         <div>
             <p class="booking-summary-kicker">Event Genix</p>
-            <h1>Вижимка банкету</h1>
+            <h1>Банкетний лист</h1>
         </div>
         <div class="booking-summary-actions">
             <a id="bookingSummaryBack" class="booking-summary-btn booking-summary-btn-secondary" href="/">Повернутись</a>
@@ -29,13 +29,15 @@
 
     <main class="booking-summary-shell" id="bookingSummaryRoot">
         <section id="bookingSummaryState" class="booking-summary-state" role="status">
-            Завантаження вижимки...
+            Завантаження банкетного листа...
         </section>
         <section id="bookingSummaryWarnings" class="booking-summary-warnings" hidden></section>
-        <article id="bookingSummaryDocument" class="booking-summary-document" aria-label="Документ вижимки банкету" hidden></article>
+        <div id="bookingSummaryPrintRoot" class="booking-summary-print-root" hidden>
+            <article id="bookingSummaryDocument" class="booking-summary-document booking-summary-a4-page" aria-label="Документ банкетного листа" hidden></article>
+        </div>
     </main>
 
-    <script src="js/auth.js?v=0.76.70" defer></script>
-    <script src="js/booking-summary-page.js?v=0.76.70" defer></script>
+    <script src="js/auth.js?v=0.76.103" defer></script>
+    <script src="js/booking-summary-page.js?v=0.76.103" defer></script>
 </body>
 </html>

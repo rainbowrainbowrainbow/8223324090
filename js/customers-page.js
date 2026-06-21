@@ -419,6 +419,22 @@ function customerBookingStatusLabel(status) {
     return normalized ? normalized.replace(/_/g, ' ') : '';
 }
 
+function customerBookingIsBanquet(booking = {}) {
+    const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
+    return category === 'banquet'
+        || Boolean(booking.banquetGuests || booking.banquet_guests)
+        || Boolean(booking.banquetAdults || booking.banquet_adults)
+        || Boolean(booking.banquetTables || booking.banquet_tables)
+        || Boolean(booking.banquetMenu || booking.banquet_menu);
+}
+
+function customerBookingDateTimeText(booking = {}) {
+    const dateText = formatDate(booking.date);
+    const timeText = booking.time || '';
+    const arrivalText = customerBookingIsBanquet(booking) && timeText ? `Прихід гостей: ${timeText}` : timeText;
+    return [dateText, arrivalText].filter(Boolean).join(' · ');
+}
+
 function customerHeaderBookingDetails(booking, maysternyaMode = false) {
     if (!booking) {
         return {
@@ -427,7 +443,7 @@ function customerHeaderBookingDetails(booking, maysternyaMode = false) {
             muted: true
         };
     }
-    const dateText = [formatDate(booking.date), booking.time || ''].filter(Boolean).join(' · ');
+    const dateText = customerBookingDateTimeText(booking);
     const roomText = booking.room || booking.resourceName || booking.lineName || (maysternyaMode ? 'Кабінет не вказано' : 'Кімната не вказана');
     const programText = booking.label || booking.programName || '';
     const statusText = customerBookingStatusLabel(booking.status);
@@ -717,7 +733,7 @@ function renderCustomerCommunicationHub(context) {
                 : 'Omni недоступний';
     const booking = context.primaryBooking || null;
     const bookingText = booking
-        ? `${formatDate(booking.date)} ${customerHubText(booking.time, '')} · ${customerHubText(booking.programName || booking.label || booking.id)}`
+        ? [customerBookingDateTimeText(booking), customerHubText(booking.programName || booking.label || booking.id)].filter(Boolean).join(' · ')
         : 'Пов’язаних бронювань не знайдено';
 
     return `<div class="customer-comm-hub" data-comm-confidence="${escapeHtml(status)}">
@@ -1329,10 +1345,10 @@ async function showCustomerDetail(id) {
                 <div class="detail-bookings">`;
             for (const b of customer.bookings) {
                 const statusIcon = b.status === 'confirmed' ? '✅' : b.status === 'cancelled' ? '❌' : '⏳';
+                const dateTimeText = customerBookingDateTimeText(b);
                 html += `<div class="detail-booking-row">
                     <span>${statusIcon}</span>
-                    <span style="font-weight:700">${formatDate(b.date)}</span>
-                    <span>${escapeHtml(b.time || '')}</span>
+                    <span style="font-weight:700">${escapeHtml(dateTimeText || 'Дата не вказана')}</span>
                     <span>${escapeHtml(b.label || b.programName || '')}</span>
                     <span style="color:var(--gray-400);margin-left:auto">${b.price ? formatMoney(b.price) : ''}</span>
                 </div>`;

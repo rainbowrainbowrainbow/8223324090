@@ -86,6 +86,7 @@ describe('Service Worker cache safety policy', () => {
     });
 
     it('does not cache sensitive CRM API GET responses', () => {
+        const hotLeadsPath = ['/api/leads', 'hot'].join('/');
         for (const pathPrefix of [
             '/api/finance/summary',
             '/api/chat/channels',
@@ -93,7 +94,7 @@ describe('Service Worker cache safety policy', () => {
             '/api/customers',
             '/api/reports/monthly',
             '/api/dashboard/alerts',
-            '/api/leads/hot',
+            hotLeadsPath,
             '/api/bookings/2099-01-01',
             '/api/tasks',
             '/api/warehouse',

@@ -7,9 +7,17 @@ const { JSDOM } = require('jsdom');
 
 const {
     BOOKING_PACKAGE_SCHEMA_VERSION,
+    BANQUET_ENTRY_PRICE_RULE_CODES,
+    BANQUET_ENTRY_SOURCE,
     normalizeMenuPositions,
     normalizeServiceEvents,
     menuPositionsSubtotal,
+    banquetEntryDateType,
+    buildBanquetEntryCharge,
+    applyBookingPackageEntryCharge,
+    normalizeMenuServingUnitDisplay,
+    formatMenuQuantityWithServingUnit,
+    formatMenuPositionQuantity,
     buildLegacyBanquetMenu,
     applyBookingPackage,
     bookingPackageAudit
@@ -120,7 +128,7 @@ function createBookingMenuCatalogHarness() {
                     name: 'Cake',
                     price: 120,
                     menuSection: 'Торти',
-                    servingUnit: 'шт',
+                    servingUnit: '100г',
                     sortOrder: 3,
                     isActive: true
                 }
@@ -128,7 +136,20 @@ function createBookingMenuCatalogHarness() {
             selectedDate: '2026-06-12',
             productsBusinessContext: 'event_genix',
             productsPriceDate: '2026-06-12',
-            productsLoadedAt: Date.now()
+            productsLoadedAt: Date.now(),
+            priceRules: []
+        },
+        BOOKING_ENTRY_PRICE_RULE_CODES: Object.freeze({
+            weekday: 'banquet_entry_weekday_child',
+            weekend: 'banquet_entry_weekend_child'
+        }),
+        BOOKING_ENTRY_PRICE_RULE_SOURCE: 'banquet_entry_price_rules',
+        BookingDrawerState: {
+            entryPriceRules: [],
+            entryPriceRulesLoaded: false,
+            entryPriceRulesLoading: false,
+            entryPriceRulesPromise: null,
+            entryPriceRulesError: null
         },
         BookingForm: { _dirty: false },
         timelineKitchenEnabled: () => true,
@@ -190,6 +211,7 @@ function createBookingMenuCatalogHarness() {
                 approvedBlocks: payload.approvedBlocks || {}
             };
         },
+        apiGetCenterPriceRule: async () => ({ success: false, error: 'not configured' }),
         showNotification: () => {}
     };
     context.window.KITCHEN_MENU_IMAGES = Object.freeze({
@@ -218,10 +240,13 @@ function createBookingMenuCatalogHarness() {
 
 function createBanquetModalDetailHarness() {
     const bookingJs = read('js', 'booking.js');
+    const quantityHelperStart = bookingJs.indexOf('const BOOKING_MENU_PORTION_UNITS');
+    const quantityHelperEnd = bookingJs.indexOf('function isBookingMenuCatalogProduct');
     const packageStart = bookingJs.indexOf('function bookingServingTimeLabel(');
     const packageEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail(');
     const banquetStart = bookingJs.indexOf('function bookingDetailId(');
     const banquetEnd = bookingJs.indexOf('function renderEducationLessonDetail(');
+    assert.ok(quantityHelperStart >= 0 && quantityHelperEnd > quantityHelperStart, 'booking menu quantity helper slice exists');
     assert.ok(packageStart >= 0 && packageEnd > packageStart, 'booking package detail render slice exists');
     assert.ok(banquetStart >= 0 && banquetEnd > banquetStart, 'banquet modal detail render slice exists');
 
@@ -256,7 +281,7 @@ function createBanquetModalDetailHarness() {
         isViewer: () => true
     };
     vm.createContext(context);
-    vm.runInContext(`${bookingJs.slice(packageStart, packageEnd)}\n${bookingJs.slice(banquetStart, banquetEnd)}`, context, { filename: 'js/booking.js' });
+    vm.runInContext(`${bookingJs.slice(quantityHelperStart, quantityHelperEnd)}\n${bookingJs.slice(packageStart, packageEnd)}\n${bookingJs.slice(banquetStart, banquetEnd)}`, context, { filename: 'js/booking.js' });
     return context;
 }
 
@@ -276,9 +301,10 @@ function renderBookingDetailHeaderForTest(context, booking, banquetSnapshot = nu
     const headerScheduleHtml = context.bookingDetailHeaderScheduleSummary(headerPackageBooking);
     const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
         && context.bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const isBanquetArrivalMode = context.bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml);
     const endTime = addMinutesForBookingDetailHeaderTest(booking.time, booking.duration);
     const bookingDetailTimeRange = `${booking.time} - ${endTime}`;
-    const headerTimeMetaHtml = useBanquetHeaderSchedule
+    const headerTimeMetaHtml = useBanquetHeaderSchedule || isBanquetArrivalMode
         ? ''
         : `<span class="booking-detail-meta-item">${context.escapeHtml(bookingDetailTimeRange)}</span>`;
 
@@ -332,9 +358,31 @@ test('booking package normalizes menu positions with price and subtotal', () => 
     assert.equal(positions[0].servingBatchId, 'wave-1');
     assert.equal(positions[1].servingTime, null);
     assert.equal(menuPositionsSubtotal(positions), 1210);
-    assert.match(buildLegacyBanquetMenu(positions), /Піца - 3 x 250 грн/);
-    assert.match(buildLegacyBanquetMenu(positions), /Сік - 2 x 80 грн \(яблуко\)/);
-    assert.match(buildLegacyBanquetMenu(positions), /Cake - 2,5 x 120 .* \(no nuts\)/);
+    assert.match(buildLegacyBanquetMenu(positions), /Піца - 3 порції × 250 грн/);
+    assert.match(buildLegacyBanquetMenu(positions), /Сік - 2 порції × 80 грн \(яблуко\)/);
+    assert.match(buildLegacyBanquetMenu(positions), /Cake - 2,5 порції × 120 .* \(no nuts\)/);
+});
+
+test('booking package quantity display separates portion count from packed serving unit', () => {
+    const cake = { productId: 'cake_custom', title: 'Нутелла', quantity: 5, servingUnit: '100г', unitPrice: 90, subtotal: 450 };
+    const normalized = normalizeMenuPositions([cake])[0];
+
+    assert.equal(normalizeMenuServingUnitDisplay('100г'), '100 г');
+    assert.equal(normalizeMenuServingUnitDisplay('0.5кг'), '0.5 кг');
+    assert.equal(formatMenuPositionQuantity(cake), '5 порцій по 100 г');
+    assert.equal(formatMenuQuantityWithServingUnit(5, '100 г'), '5 порцій по 100 г');
+    assert.equal(formatMenuQuantityWithServingUnit(5, '0.5кг'), '5 порцій по 0.5 кг');
+    assert.equal(formatMenuQuantityWithServingUnit(3, 'порція'), '3 порції');
+    assert.equal(formatMenuQuantityWithServingUnit(1, ''), '1 порція');
+    assert.equal(formatMenuQuantityWithServingUnit(2.5, ''), '2,5 порції');
+    assert.equal(formatMenuQuantityWithServingUnit(5, 'шт'), '5 шт');
+    assert.equal(normalized.quantity, 5);
+    assert.equal(normalized.servingUnit, '100г');
+    assert.equal(normalized.unitPrice, 90);
+    assert.equal(normalized.subtotal, 450);
+    assert.doesNotMatch(formatMenuPositionQuantity(cake), /5 100г|5 100 г/);
+    assert.match(buildLegacyBanquetMenu([cake]), /Нутелла - 5 порцій по 100 г × 90 грн/);
+    assert.doesNotMatch(buildLegacyBanquetMenu([cake]), /5 100г|5 100 г|5 100г x 90/);
 });
 
 test('booking package normalizes banquet service events without schema changes', () => {
@@ -356,6 +404,51 @@ test('booking package normalizes banquet service events without schema changes',
     assert.equal(events[2].type, 'custom');
     assert.equal(events[2].title, 'Custom reminder');
     assert.equal(events[2].durationMinutes, 15);
+});
+
+test('booking frontend quantity display helper matches menu package wording contract', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const cake = { quantity: 5, servingUnit: '100г', unitPrice: 90, subtotal: 450 };
+
+    assert.equal(ctx.normalizeBookingMenuServingUnitDisplay('100г'), '100 г');
+    assert.equal(ctx.normalizeBookingMenuServingUnitDisplay('0.5кг'), '0.5 кг');
+    assert.equal(ctx.formatBookingMenuPositionQuantity(cake), '5 порцій по 100 г');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(5, '100 г'), '5 порцій по 100 г');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(3, 'порція'), '3 порції');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(1, ''), '1 порція');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(2.5, ''), '2,5 порції');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(5, 'шт'), '5 шт');
+    assert.doesNotMatch(ctx.formatBookingMenuPositionQuantity(cake), /5 100г|5 100 г/);
+});
+
+test('booking form menu position rows use clear quantity wording', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+
+    ctx.setBookingMenuPositions([{
+        title: 'Нутелла',
+        quantity: 5,
+        servingUnit: '100г',
+        unitPrice: 90,
+        subtotal: 450,
+        kitchenType: 'cake',
+        note: 'без горіхів'
+    }]);
+    const cakeText = doc.getElementById('bookingMenuPositionsList').textContent;
+    assert.match(cakeText, /5 порцій по 100 г × 90 грн = 450 грн/);
+    assert.match(doc.getElementById('banquetMenu').value, /Нутелла - 5 порцій по 100 г × 90 грн \(без горіхів\)/);
+    assert.doesNotMatch(cakeText, /5 100г|5 100 г|5 100г x 90/);
+
+    ctx.setBookingMenuPositions([{
+        title: 'Бургер дитячий',
+        quantity: 3,
+        servingUnit: 'порція',
+        unitPrice: 260,
+        subtotal: 780,
+        kitchenType: 'menu'
+    }]);
+    const menuText = doc.getElementById('bookingMenuPositionsList').textContent;
+    assert.match(menuText, /3 порції × 260 грн = 780 грн/);
 });
 
 test('booking menu catalog inline edits keep menuPositions, legacy text, and reset state in sync', async () => {
@@ -398,8 +491,16 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-cart-item/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').innerHTML, /booking-menu-catalog-thumb--cart/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /120 грн\s*\/\s*100 г/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /1 порція по 100 г/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').textContent, /100г/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartList').textContent, /100г|1 100 г/);
     assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
-    assert.match(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /140|120|грн/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogSummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.match(doc.getElementById('bookingMenuCatalogEntrySummary').textContent, /120|140|РіСЂРЅ|грн|₴/);
+    assert.match(doc.getElementById('bookingMenuCatalogFooterTotal').textContent, /120|140|РіСЂРЅ|грн|₴/);
     assert.match(doc.getElementById('bookingMenuPositionsJson').value, /cake_custom/);
 
     ctx.setBookingMenuCatalogEditing('cake_custom', 'quantity');
@@ -409,6 +510,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     ctx.commitBookingMenuCatalogInlineInput(quantityInput);
     assert.equal(ctx.getBookingMenuPositions()[0].quantity, 2.5);
     assert.equal(ctx.getBookingMenuPositions()[0].subtotal, 300);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /2,5 порції по 100 г/);
 
     ctx.setBookingMenuCatalogEditing('cake_custom', 'price');
     const priceInput = doc.querySelector('[data-menu-catalog-price-input="cake_custom"]');
@@ -424,7 +526,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     noteInput.value = 'без горіхів';
     ctx.commitBookingMenuCatalogInlineInput(noteInput);
     assert.equal(ctx.getBookingMenuPositions()[0].note, 'без горіхів');
-    assert.match(doc.getElementById('banquetMenu').value, /Cake - 2,5 шт x 140 грн \(без горіхів\)/);
+    assert.match(doc.getElementById('banquetMenu').value, /Cake - 2,5 порції по 100 г × 140 грн \(без горіхів\)/);
     assert.equal(ctx.BookingForm._dirty, true);
 
     ctx.setBookingMenuCatalogInsight('cake_custom', 'allergens');
@@ -581,6 +683,8 @@ test('booking menu catalog mobile list add does not auto-open cart sheet', () =>
     assert.equal(doc.querySelector('#bookingMenuPositionsList [data-menu-serving-time="0"]').value, '15:30');
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /1/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartSummary').textContent, /250|РіСЂРЅ|грн|₴/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogMobileCartBtn').textContent, /250|РіСЂРЅ|грн|₴/);
     assert.equal(panel.classList.contains('booking-menu-catalog-cart-open'), false);
     assert.equal(doc.getElementById('bookingMenuCatalogMobileCartBtn').getAttribute('aria-expanded'), 'false');
 
@@ -689,7 +793,7 @@ test('booking menu catalog restores saved quantity, manual price, and note when 
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /booking-menu-catalog-item selected/);
     assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /95/);
     assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /подати о 16:30/);
-    assert.match(doc.getElementById('banquetMenu').value, /Сік яблучний - 2,5 л x 95 грн \(подати о 16:30\)/);
+    assert.match(doc.getElementById('banquetMenu').value, /Сік яблучний - 2,5 л × 95 грн \(подати о 16:30\)/);
 });
 
 test('booking menu catalog reloads products when the timeline cache cannot provide kitchen positions', async () => {
@@ -735,6 +839,60 @@ test('booking menu catalog reloads products when the timeline cache cannot provi
     assert.equal(ctx.BookingPackageState.catalogProductsLastLoadKey, 'event_genix|2026-06-12');
 });
 
+test('booking entry preview loads center price rules before save', async () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('banquetGuests').value = '12';
+
+    assert.equal(ctx.getBookingEntryChargeEstimate().entrySubtotal, 0);
+
+    const requestedCodes = [];
+    ctx.apiGetCenterPriceRule = async code => {
+        requestedCodes.push(code);
+        return {
+            success: true,
+            price: {
+                code,
+                value: code === 'banquet_entry_weekend_child' ? 400 : 300,
+                unit: 'грн/дитина',
+                category: 'banquet'
+            }
+        };
+    };
+
+    const loaded = await ctx.preloadBookingEntryPriceRules({ force: true, render: false });
+    const estimate = ctx.getBookingEntryChargeEstimate();
+
+    assert.equal(loaded, true);
+    assert.deepEqual(requestedCodes, ['banquet_entry_weekday_child', 'banquet_entry_weekend_child']);
+    assert.equal(ctx.BookingDrawerState.entryPriceRulesLoaded, true);
+    assert.equal(estimate.entryCharge.ruleCode, 'banquet_entry_weekday_child');
+    assert.equal(estimate.entryCharge.unitPrice, 300);
+    assert.equal(estimate.entrySubtotal, 3600);
+});
+
+test('booking entry preview fetch failure does not block booking package fallback', async () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('banquetGuests').value = '12';
+    ctx.apiGetCenterPriceRule = async code => ({
+        success: false,
+        code: 'preview_fetch_failed',
+        error: `missing ${code}`
+    });
+
+    const loaded = await ctx.preloadBookingEntryPriceRules({ force: true, render: false });
+    const estimate = ctx.getBookingEntryChargeEstimate();
+    const totals = ctx.getBookingPackageTotals(null);
+
+    assert.equal(loaded, false);
+    assert.equal(ctx.BookingDrawerState.entryPriceRulesLoaded, false);
+    assert.match(ctx.BookingDrawerState.entryPriceRulesError, /missing banquet_entry_weekday_child/);
+    assert.equal(estimate.entryCharge, null);
+    assert.equal(estimate.entrySubtotal, 0);
+    assert.equal(totals.finalTotal, 0);
+});
+
 test('booking package detail accepts top-level menuPositions as a compatibility source', () => {
     const ctx = createBookingMenuCatalogHarness();
     const packageData = ctx.getBookingPackageFromBooking({
@@ -777,7 +935,132 @@ test('booking package persists final total into booking price and extraData', ()
     assert.equal(booking.extraData.bookingPackage.menuPositions[0].servingTime, '15:30');
     assert.equal(booking.extraData.bookingPackage.serviceEvents[0].type, 'cake');
     assert.equal(booking.extraData.bookingPackage.serviceEvents[0].time, '16:40');
-    assert.match(booking.banquetMenu, /Піца - 2 x 300 грн/);
+    assert.match(booking.banquetMenu, /Піца - 2 порції × 300 грн/);
+});
+
+test('booking package calculates banquet entry from center price rules by weekday and weekend', async () => {
+    assert.equal(banquetEntryDateType('2026-06-23'), 'weekday');
+    assert.equal(banquetEntryDateType('2026-06-27'), 'weekend');
+
+    const priceRules = [
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 },
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekend, value: 400 }
+    ];
+    const queries = [];
+    const weekdayBooking = await applyBookingPackageEntryCharge({
+        async query(sql, params) {
+            queries.push({ sql: String(sql), params });
+            return { rows: priceRules.filter(rule => params[0].includes(rule.code)) };
+        }
+    }, applyBookingPackage({
+        date: '2026-06-23',
+        category: 'kitchen',
+        price: 1200,
+        programBasePrice: 0,
+        banquetGuests: 12,
+        menuPositions: [
+            { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 600, subtotal: 1200 }
+        ]
+    }));
+
+    assert.match(queries[0].sql, /FROM price_rules/);
+    assert.deepEqual([...queries[0].params[0]].sort(), [
+        BANQUET_ENTRY_PRICE_RULE_CODES.weekday,
+        BANQUET_ENTRY_PRICE_RULE_CODES.weekend
+    ].sort());
+    assert.deepEqual(weekdayBooking.extraData.bookingPackage.entryCharge, {
+        title: 'Вхід',
+        quantity: 12,
+        unitPrice: 300,
+        subtotal: 3600,
+        ruleCode: BANQUET_ENTRY_PRICE_RULE_CODES.weekday,
+        dateType: 'weekday',
+        source: BANQUET_ENTRY_SOURCE
+    });
+    assert.equal(weekdayBooking.extraData.bookingPackage.entrySubtotal, 3600);
+    assert.equal(weekdayBooking.extraData.bookingPackage.finalTotal, 4800);
+    assert.equal(weekdayBooking.price, 4800);
+
+    const weekendBooking = await applyBookingPackageEntryCharge({
+        async query(_sql, params) {
+            return { rows: priceRules.filter(rule => params[0].includes(rule.code)) };
+        }
+    }, applyBookingPackage({
+        date: '2026-06-27',
+        category: 'kitchen',
+        price: 1200,
+        programBasePrice: 0,
+        banquetGuests: 12,
+        menuPositions: [
+            { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 600, subtotal: 1200 }
+        ]
+    }));
+
+    assert.equal(weekendBooking.extraData.bookingPackage.entryCharge.ruleCode, BANQUET_ENTRY_PRICE_RULE_CODES.weekend);
+    assert.equal(weekendBooking.extraData.bookingPackage.entryCharge.unitPrice, 400);
+    assert.equal(weekendBooking.extraData.bookingPackage.entrySubtotal, 4800);
+    assert.equal(weekendBooking.extraData.bookingPackage.finalTotal, 6000);
+});
+
+test('booking package entry charge uses source kids count and protects manual entry rows', () => {
+    const priceRules = [
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 },
+        { code: BANQUET_ENTRY_PRICE_RULE_CODES.weekend, value: 400 }
+    ];
+    const fromSource = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        menuPositions: []
+    }, {
+        priceRules,
+        sourceBooking: { kids_count: 7 }
+    });
+
+    assert.equal(fromSource.entryCharge.quantity, 7);
+    assert.equal(fromSource.entrySubtotal, 2100);
+
+    const manualExact = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        banquetGuests: 7,
+        menuPositions: [{ title: 'Вхід', quantity: 7, unitPrice: 300 }]
+    }, { priceRules });
+    assert.equal(manualExact.entryCharge, null);
+    assert.equal(manualExact.warnings[0].code, 'manual_entry_position_present');
+
+    const conservativeTitle = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        banquetGuests: 7,
+        menuPositions: [{ title: 'Вхідний браслет', quantity: 1, unitPrice: 50 }]
+    }, { priceRules });
+    assert.equal(conservativeTitle.entryCharge.quantity, 7);
+});
+
+test('booking package entry charge warns instead of silently using zero when data is missing', () => {
+    const missingQuantity = buildBanquetEntryCharge({
+        date: '2026-06-23',
+        category: 'kitchen',
+        menuPositions: []
+    }, {
+        priceRules: [{ code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 }]
+    });
+    assert.equal(missingQuantity.entryCharge, null);
+    assert.equal(missingQuantity.entrySubtotal, 0);
+    assert.equal(missingQuantity.warnings[0].code, 'entry_quantity_missing');
+
+    const missingRule = buildBanquetEntryCharge({
+        date: '2026-06-27',
+        category: 'kitchen',
+        banquetGuests: 3,
+        menuPositions: []
+    }, {
+        priceRules: [{ code: BANQUET_ENTRY_PRICE_RULE_CODES.weekday, value: 300 }]
+    });
+    assert.equal(missingRule.entryCharge, null);
+    assert.equal(missingRule.entrySubtotal, 0);
+    assert.equal(missingRule.warnings[0].code, 'entry_price_rule_missing');
+    assert.deepEqual(missingRule.warnings[0].missingCodes, [BANQUET_ENTRY_PRICE_RULE_CODES.weekend]);
 });
 
 test('booking package audit records client and commercial package changes', () => {
@@ -882,6 +1165,58 @@ test('product effective pricing resolves current and next rule by booking date',
     });
 });
 
+test('banquet terms numeric defaults are seeded through price rules without overwriting operator edits', () => {
+    const migration = read('db', 'migrations', '267_banquet_terms_price_rules.sql');
+    const centerRoute = read('routes', 'center.js');
+    const expectedRules = [
+        ['banquet_own_cake_fee', 500, 'грн'],
+        ['banquet_cork_fee', 100, 'грн'],
+        ['banquet_menu_correction_deadline_days', 3, 'доби'],
+        ['banquet_date_change_deadline_days', 5, 'діб']
+    ];
+
+    assert.match(migration, /-- MIGRATION_KIND: seed/);
+    assert.match(migration, /INSERT INTO price_rules/);
+    assert.match(migration, /ON CONFLICT \(code\) DO NOTHING/);
+    assert.doesNotMatch(migration, /ON CONFLICT \(code\) DO UPDATE/i);
+
+    for (const [code, value, unit] of expectedRules) {
+        assert.match(migration, new RegExp(`'${code}'`));
+        assert.match(migration, new RegExp(`\\b${value}\\b`));
+        assert.match(migration, new RegExp(`'${unit}'`));
+    }
+
+    assert.match(centerRoute, /router\.get\('\/prices'/);
+    assert.match(centerRoute, /SELECT \* FROM price_rules ORDER BY category, code/);
+    assert.match(centerRoute, /router\.put\('\/prices\/:code'/);
+    assert.match(centerRoute, /UPDATE price_rules SET/);
+});
+
+test('booking routes snapshot banquet terms on create, full create, and update without frontend ownership', () => {
+    const route = read('routes', 'bookings.js');
+    const termsService = read('services', 'banquetTerms.js');
+    const summaryService = read('services', 'banquetSummary.js');
+
+    assert.match(route, /snapshotBanquetTermsForBooking/);
+    assert.match(route, /await snapshotBanquetTermsForBooking\(client, b\)/);
+    assert.match(route, /await snapshotBanquetTermsForBooking\(client, main\)/);
+    assert.match(route, /for \(const activity of banquetActivities\)[\s\S]*await snapshotBanquetTermsForBooking\(client, activity\)/);
+    assert.ok(
+        route.lastIndexOf('await snapshotBanquetTermsForBooking(client, b);') > route.indexOf('mergeExistingExtraDataForBookingUpdate(b, oldBooking);'),
+        'update route snapshots after existing extra_data is merged so old/manual terms survive'
+    );
+    assert.match(termsService, /function bookingNeedsBanquetTermsSnapshot/);
+    assert.match(termsService, /function snapshotBanquetTermsForBooking/);
+    assert.match(termsService, /hasSnapshotTerms\(extra\)/);
+    assert.match(termsService, /extra\.banquetTerms = defaults\.items/);
+    assert.match(summaryService, /function termsSnapshotSourceOf/);
+    assert.match(summaryService, /function isPriceRuleTermsSnapshot/);
+    assert.match(summaryService, /priceRuleSnapshot[\s\S]*defaults\.items/);
+    assert.match(summaryService, /source:\s*'snapshot_fallback'/);
+    assert.match(summaryService, /source:\s*'manual'/);
+    assert.doesNotMatch(read('js', 'booking.js'), /banquetTermsSnapshot/);
+});
+
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
@@ -917,6 +1252,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /bookingMenuCatalogList/);
     assert.match(html, /bookingMenuCatalogCart/);
     assert.match(html, /bookingMenuCatalogCartList/);
+    assert.match(html, /booking-menu-catalog-footer-count/);
+    assert.match(html, /booking-menu-catalog-footer-total" aria-live="polite"/);
+    assert.match(html, /<span>Разом<\/span>/);
+    assert.doesNotMatch(html, /id="bookingMenuCatalogSummary">[^<]*₴/);
+    assert.doesNotMatch(html, /id="bookingMenuCatalogCartSummary">[^<]*₴/);
     assert.match(html, /bookingMenuInsightPanel/);
     assert.match(html, /Кількість дітей/);
     assert.doesNotMatch(bookingPanelHtml, /<label>Гостей<\/label>/);
@@ -950,6 +1290,14 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /findBookingProductById/);
     assert.match(bookingJs, /function renderBookingMenuCatalog/);
     assert.match(bookingJs, /function renderBookingMenuCatalogCart/);
+    assert.match(bookingJs, /if \(inline\) inline\.textContent = summary\.combined;/);
+    assert.match(bookingJs, /if \(header\) header\.textContent = summary\.countText;/);
+    assert.match(bookingJs, /if \(cartSummary\) cartSummary\.textContent = summary\.countText;/);
+    assert.match(bookingJs, /if \(footerTotal\) footerTotal\.textContent = summary\.subtotalText;/);
+    assert.match(bookingJs, /if \(mobileCart\) mobileCart\.textContent = `Вибрано · \$\{summary\.countText\}`;/);
+    assert.doesNotMatch(bookingJs, /if \(header\) header\.textContent = summary\.combined;/);
+    assert.doesNotMatch(bookingJs, /if \(cartSummary\) cartSummary\.textContent = summary\.combined;/);
+    assert.doesNotMatch(bookingJs, /if \(mobileCart\) mobileCart\.textContent = `Вибрано · \$\{summary\.subtotalText\}`;/);
     assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
     assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
     assert.match(bookingJs, /bookingMenuCatalogHandleImageError/);
@@ -1108,9 +1456,29 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /function hasBanquetGroupPayload/);
     assert.match(route, /BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT/);
     assert.match(route, /\/api\/banquets\/:groupId\/activity-booking/);
-    assert.match(read('services/banquetGroups.js'), /checkRoomConflict\(db, booking\.date, booking\.room, booking\.time, booking\.duration \|\| 0, \{ sourceBookingId \}, businessContext\)/);
+    assert.match(read('routes/banquets.js'), /router\.get\('\/candidates'/);
+    assert.match(read('routes/banquets.js'), /loadBanquetGroupCandidates\(\{ date, customerId, businessContext \}\)/);
+    assert.match(read('routes/banquets.js'), /router\.post\('\/:groupId\/member-booking'/);
+    assert.match(read('routes/banquets.js'), /createMemberBookingInBanquetGroup\(\{/);
+    assert.match(read('services/banquetGroups.js'), /async function loadBanquetGroupCandidates/);
+    assert.match(read('services/banquetGroups.js'), /fallbackCandidates: mapped\.filter\(candidate => candidate\.candidateKind !== 'customer'\)/);
+    assert.match(read('services/banquetGroups.js'), /const ATOMIC_MEMBER_BOOKING_ROLES = new Set\(\['kitchen', 'service', 'manual'\]\)/);
+    assert.match(read('services/banquetGroups.js'), /async function createMemberBookingInBanquetGroup/);
+    assert.match(read('services/banquetGroups.js'), /groupName: null/);
+    assert.match(read('services/banquetGroups.js'), /function normalizeRootActivityBooking[\s\S]*notes: normalizeActivityText\(input\.notes, 2000\)[\s\S]*groupName: null/);
+    assert.match(read('services/banquetGroups.js'), /function normalizeLinkedActivityBooking[\s\S]*notes: normalizeActivityText\(input\.notes, 2000\)[\s\S]*groupName: null/);
+    assert.match(route, /activity\.groupName \|\| main\.groupName \|\| null/);
+    assert.doesNotMatch(read('services/banquetGroups.js'), /groupName: normalizeActivityText\(input\.groupName \|\| input\.group_name \|\| group\?\.group_name/);
+    assert.doesNotMatch(read('services/banquetGroups.js'), /groupName: normalizeActivityText\(input\.groupName \|\| input\.group_name \|\| rootBooking\.groupName/);
+    assert.match(read('services/banquetGroups.js'), /async function assertMemberRoomSlotAvailable/);
+    assert.match(read('services/banquetGroups.js'), /MEMBER_BOOKING_ROOM_CONFLICT/);
+    assert.match(read('services/banquetGroups.js'), /allowSameBanquetOperationalOverlap:\s*true/);
+    assert.match(read('services/banquetGroups.js'), /candidateBooking:\s*booking/);
+    assert.match(read('services/banquetGroups.js'), /groupId:\s*cleanGroupId/);
     assert.match(route, /const activityRows = \[\]/);
-    assert.match(route, /checkRoomConflict\(client, activity\.date, activity\.room, activity\.time, activity\.duration \|\| 0, \{\s*excludeIds: \[main\.id\]\s*\}, businessContext\)/);
+    assert.match(route, /function bookingRoomConflictPolicyOptions/);
+    assert.match(route, /allowSameBanquetOperationalOverlap:\s*true/);
+    assert.match(route, /checkRoomConflict\(\s*client,\s*activity\.date,\s*activity\.room,\s*activity\.time,\s*activity\.duration \|\| 0,\s*bookingRoomConflictPolicyOptions\(activity, \{ excludeIds: \[main\.id\] \}\),\s*businessContext\s*\)/);
     assert.match(route, /upsertBanquetLink\(client, businessContext, main\.id, activity\.id/);
     assert.match(route, /activityRows\.map\(row => row\.id\)/);
     assert.match(route, /const activityBookings = activityRows\.map/);
@@ -1143,6 +1511,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*z-index:\s*var\(--z-modal,\s*30000\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;/);
     assert.match(panelCss, /\.booking-menu-catalog-panel > \.booking-menu-catalog-header,\s*\.booking-menu-catalog-panel > \.booking-menu-catalog-body,\s*\.booking-menu-catalog-panel > \.booking-menu-catalog-footer\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
+    assert.match(panelCss, /\.booking-menu-catalog-footer\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto auto auto;[\s\S]*gap:\s*12px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-footer-total\s*\{[\s\S]*justify-content:\s*flex-end;[\s\S]*min-width:\s*max-content;/);
+    assert.match(panelCss, /\.booking-menu-catalog-footer-total strong\s*\{[\s\S]*font-size:\s*22px;[\s\S]*font-weight:\s*1000;/);
+    assert.match(panelCss, /@media \(max-width:\s*900px\)[\s\S]*grid-template-areas:\s*"count done"[\s\S]*"total done"[\s\S]*"cart cart";/);
+    assert.match(panelCss, /@media \(max-width:\s*900px\)[\s\S]*\.booking-menu-catalog-footer-total\s*\{[\s\S]*grid-area:\s*total;[\s\S]*justify-content:\s*flex-start;/);
     assert.match(panelCss, /\.booking-menu-catalog-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*330px\)[\s\S]*overflow:\s*hidden;/);
     assert.match(panelCss, /\.booking-menu-catalog-browser,\s*\.booking-menu-catalog-cart\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;/);
     assert.match(panelCss, /\.booking-menu-catalog-browser\s*\{[\s\S]*isolation:\s*isolate;[\s\S]*contain:\s*paint;[\s\S]*transform:\s*translateZ\(0\);/);
@@ -1207,6 +1580,175 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
         true,
         'missing kitchen fallback image asset'
     );
+});
+
+test('booking create flow bridges room-source kitchen without an existing banquet group', () => {
+    const bookingJs = read('js', 'booking.js');
+    const apiJs = read('js', 'api.js');
+    const bridgeStart = bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge');
+    const bridgeCall = bookingJs.indexOf('apiCreateBanquetMemberBookingFromSource', bridgeStart);
+    const normalCreate = bookingJs.indexOf('createResult = await apiCreateBooking(booking)', bridgeStart);
+    const roomAvailabilityRefresh = bookingJs.indexOf('await refreshBookingRoomAvailabilityForSelectedDate();');
+    const roomSourceContextInit = bookingJs.indexOf('await initializeRoomFirstBookingSourceContext();', roomAvailabilityRefresh);
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+
+    assert.match(apiJs, /async function apiCreateBanquetMemberBookingFromSource\(payload = \{\}\)/);
+    assert.match(apiJs, /\/banquets\/from-source\/member-booking/);
+    assert.match(bookingJs, /function validateActivityFirstKitchenBridge\(/);
+    assert.match(bookingJs, /function hasUsableSelectedBanquetGroup\(/);
+    assert.match(bookingJs, /function activityFirstKitchenSourceContext\(/);
+    assert.match(bookingJs, /autoFilledBanquetGuestsFromRoom: null/);
+    assert.match(bookingJs, /async function initializeRoomFirstBookingSourceContext\(\)[\s\S]*handleBookingRoomSelectionContextChange\(\)/);
+    assert.match(bookingJs, /async function initializeRoomFirstBookingSourceContext\(\)[\s\S]*BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*!roomContext\?\.sourceBookingId \|\| roomContext\.groupId/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorOptionLabel\(context = \{\}\)[\s\S]*Створити банкет з активності/);
+    assert.match(bookingJs, /const showActivityFirstBanquetCreateOption = Boolean\(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates\.length\)/);
+    assert.match(bookingJs, /const unlinkedOptionLabel = showActivityFirstBanquetCreateOption[\s\S]*activityFirstKitchenSelectorOptionLabel\(sourceOnlyRoomContext\)[\s\S]*'Без прив’язки'/);
+    assert.match(bookingJs, /<option value="">\$\{escapeHtml\(unlinkedOptionLabel\)\}<\/option>/);
+    assert.match(bookingJs, /Банкет буде створено автоматично з активності/);
+    assert.match(bookingJs, /source: groupId \? 'room_selection' : 'activity_first_kitchen_bridge'/);
+    assert.match(bookingJs, /BookingDrawerState\.roomSelectionBanquetContext = banquetContext;[\s\S]*else \{\s*renderBookingBanquetGroupSelector\(\);/);
+    assert.doesNotMatch(bookingJs, /__activity_first/);
+    assert.match(bookingJs, /function roomBookingKidsCount\(/);
+    assert.match(bookingJs, /function syncAutoFilledBanquetGuestsFromRoom\(/);
+    assert.match(bookingJs, /function markBanquetGuestsManualOverride\(/);
+    assert.match(bookingJs, /const BOOKING_ENTRY_PRICE_RULE_CODES = Object\.freeze/);
+    assert.match(bookingJs, /function getBookingEntryChargeEstimate\(/);
+    assert.match(bookingJs, /entryPriceRules: \[\]/);
+    assert.match(bookingJs, /function preloadBookingEntryPriceRules\(/);
+    assert.match(bookingJs, /function requestBookingEntryPriceRulesPreview\(/);
+    assert.match(bookingJs, /apiGetCenterPriceRule\(code\)/);
+    assert.match(bookingJs, /if \(loadedRules\.length && options\.render !== false && shouldRenderBookingEntryPreviewAfterLoad\(\)\)/);
+    assert.match(bookingJs, /function bookingMenuPositionIsEntry\(/);
+    assert.match(bookingJs, /function bookingPackageEntryChargeFromPackage\(/);
+    assert.match(bookingJs, /function formatBookingPackageEntryAmount\(/);
+    assert.match(bookingJs, /function renderBookingPackageEntryRow\(/);
+    assert.match(bookingJs, /booking-summary-row--subtotal/);
+    assert.match(bookingJs, /booking-detail-package-entry-row/);
+    assert.match(bookingJs, /entrySubtotal: kitchenEnabled \? \(packageTotals\.entrySubtotal \|\| 0\) : 0/);
+    assert.match(bookingJs, /entryCharge: formData\.entryCharge \|\| null/);
+    assert.match(bookingJs, /finalTotal: toBookingMoney\(programBasePrice \+ positionsSubtotal \+ entryEstimate\.entrySubtotal\)/);
+    assert.match(bookingJs, /Вхід/);
+    assert.match(bookingJs, /guests\.value = String\(sourceKidsCount\)/);
+    assert.match(bookingJs, /BookingDrawerState\.autoFilledBanquetGuestsFromRoom = \{[\s\S]*sourceBookingId,[\s\S]*value: String\(sourceKidsCount\)/);
+    assert.match(bookingJs, /if \(id === 'banquetGuests' && typeof markBanquetGuestsManualOverride === 'function'\) markBanquetGuestsManualOverride\(\)/);
+    assert.match(bookingJs, /function clearAutoFilledBanquetFromRoomSelection\(\)[\s\S]*BookingDrawerState\.roomSelectionBanquetContext = null;[\s\S]*clearAutoFilledBanquetGuestsFromRoom\(\);/);
+    assert.match(bookingJs, /syncAutoFilledBanquetGuestsFromRoom\(sourceBooking\)/);
+    assert.match(bookingJs, /BookingDrawerState\.roomSelectionBanquetContext = banquetContext;\s*if \(banquetContext\.groupId\)/);
+    assert.match(bookingJs, /if \(!booking \|\| \(!context\.groupId && !context\.sourceBookingId\)\) return booking;/);
+    assert.match(bookingJs, /groupId: context\.groupId \|\| null/);
+    assert.match(bookingJs, /attachBanquetGroupContextToBooking\(booking, sourceContext, 'kitchen', 'activity_first_kitchen_bridge'\)/);
+    assert.match(bookingJs, /sourceBookingId: sourceContext\.sourceBookingId/);
+    assert.match(bookingJs, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)/);
+    assert.match(bookingJs, /if \(createResult && createResult\.success === false\) \{\s*if \(createResult\.conflictBookingId\) revealHiddenBooking\(createResult\.conflictBookingId\);/);
+    assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
+    assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
+    assert.doesNotMatch(validateBridgeBlock, /sourceBookingToBanquetContext/);
+    assert.ok(roomAvailabilityRefresh >= 0, 'room availability is refreshed before room-first source context init');
+    assert.ok(roomSourceContextInit > roomAvailabilityRefresh, 'programmatic room-first open initializes source context after room availability refresh');
+    assert.ok(bridgeStart >= 0, 'activity-first kitchen bridge is evaluated in create flow');
+    assert.ok(bridgeCall > bridgeStart, 'source-member API is called from create flow');
+    assert.ok(normalCreate > bridgeCall, 'source-member API branch runs before normal booking fallback');
+    assert.match(apiJs, /async function apiGetCenterPriceRule\(code\)/);
+    assert.match(apiJs, /\/center\/prices\/\$\{encodeURIComponent\(safeCode\)\}/);
+});
+
+test('activity-first kitchen room open initializes source context after programmatic room selection', () => {
+    const bookingJs = read('js', 'booking.js');
+    const openPanelBlock = bookingJs.slice(
+        bookingJs.indexOf('async function openBookingPanel'),
+        bookingJs.indexOf('// ==========================================\n// CRM: CUSTOMER DATA')
+    );
+    const initBlock = bookingJs.slice(
+        bookingJs.indexOf('async function initializeRoomFirstBookingSourceContext'),
+        bookingJs.indexOf('async function openBookingPanel')
+    );
+
+    assert.match(openPanelBlock, /ensureTimelineRoomOption\(line\.name\);\s*document\.getElementById\('roomSelect'\)\.value = line\.name;/);
+    assert.match(openPanelBlock, /await refreshBookingRoomAvailabilityForSelectedDate\(\);\s*await initializeRoomFirstBookingSourceContext\(\);/);
+    assert.match(initBlock, /handleBookingRoomSelectionContextChange\(\)/);
+    assert.match(initBlock, /BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
+    assert.doesNotMatch(initBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBooking/);
+});
+
+test('activity-first kitchen selector renders virtual create state without fake group id', () => {
+    const bookingJs = read('js', 'booking.js');
+    const selectorBlock = bookingJs.slice(
+        bookingJs.indexOf('function renderBookingBanquetGroupSelector'),
+        bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates')
+    );
+    const sourceOnlyBlock = bookingJs.slice(
+        bookingJs.indexOf('function activityFirstKitchenSelectorContext'),
+        bookingJs.indexOf('function clearSelectedBanquetGroupIfCustomerMismatch')
+    );
+
+    assert.match(sourceOnlyBlock, /if \(!roomContext\?\.sourceBookingId \|\| roomContext\.groupId\) return null;/);
+    assert.match(sourceOnlyBlock, /if \(!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)\) return null;/);
+    assert.match(sourceOnlyBlock, /String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
+    assert.match(selectorBlock, /const showActivityFirstBanquetCreateOption = Boolean\(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates\.length\);/);
+    assert.match(selectorBlock, /const unlinkedOptionLabel = showActivityFirstBanquetCreateOption[\s\S]*activityFirstKitchenSelectorOptionLabel\(sourceOnlyRoomContext\)[\s\S]*'Без прив’язки'/);
+    assert.match(selectorBlock, /<option value="">\$\{escapeHtml\(unlinkedOptionLabel\)\}<\/option>/);
+    assert.match(selectorBlock, /Банкет буде створено автоматично з активності/);
+    assert.doesNotMatch(selectorBlock, /__activity_first|virtualGroupId|fakeGroupId/);
+});
+
+test('activity-first kitchen source-only save uses source bridge before normal create', () => {
+    const bookingJs = read('js', 'booking.js');
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+    const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
+    const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId');
+    const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
+
+    assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
+    assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
+    assert.doesNotMatch(validateBridgeBlock, /sourceBookingToBanquetContext/);
+    assert.match(createFlowBlock, /else if \(activityFirstKitchenBridge\.shouldUse\)[\s\S]*apiCreateBanquetMemberBookingFromSource\(\{[\s\S]*sourceBookingId: sourceContext\.sourceBookingId,[\s\S]*role: 'kitchen'/);
+    assert.ok(sourceBridgeCall >= 0, 'source-only kitchen save calls from-source member endpoint');
+    assert.ok(realGroupCall > sourceBridgeCall, 'real group member endpoint remains after source-only bridge');
+    assert.ok(normalCreateCall > sourceBridgeCall, 'normal booking create remains fallback after source-only bridge');
+});
+
+test('activity-first kitchen existing banquet group still uses group member endpoint', () => {
+    const bookingJs = read('js', 'booking.js');
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+
+    assert.match(createFlowBlock, /else if \(selectedBanquetContext\.groupId && isSelectedBanquetKitchenCreate\(formData\)\)[\s\S]*attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\);[\s\S]*apiCreateBanquetMemberBooking\(selectedBanquetContext\.groupId/);
+    assert.match(createFlowBlock, /sourceBookingId: selectedBanquetContext\.sourceBookingId \|\| null/);
+    assert.match(createFlowBlock, /role: 'kitchen'/);
+});
+
+test('activity-first kitchen customer mismatch is blocked before source bridge API call', () => {
+    const bookingJs = read('js', 'booking.js');
+    const validateBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const mismatchCheck = validateBridgeBlock.indexOf('if (!selectedMatchesSource && !autoFilledMatchesSource)');
+    const apiCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
+
+    assert.ok(mismatchCheck >= 0, 'source/customer mismatch guard exists');
+    assert.match(validateBridgeBlock, /error: 'Клієнт кухні не збігається з клієнтом бронювання в кімнаті/);
+    assert.match(createFlowBlock, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)[\s\S]*unlockSubmitBtn\(\);\s*return;/);
+    assert.ok(apiCall > createFlowBlock.indexOf('if (activityFirstKitchenBridge.shouldUse && activityFirstKitchenBridge.error)'), 'source API call is after mismatch/error guard');
 });
 
 test('banquet group repair script is dry-run by default and reuses backend reconciliation', () => {
@@ -1471,6 +2013,12 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
                     { id: 'setup-1', type: 'room_setup', title: 'Підготувати кімнату', time: '12:00' },
                     { id: 'drinks-1', type: 'drinks', title: 'Напої', time: '15:45' }
                 ]
+            },
+            bookingWorkspace: {
+                comments: {
+                    kitchen: 'Підготувати дитячий стіл',
+                    internal: 'Перевірити оплату перед листом'
+                }
             }
         }
     };
@@ -1496,7 +2044,8 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
                     room: 'Марвел',
                     label: 'АН(60)',
                     status: 'confirmed',
-                    price: 1500
+                    price: 1500,
+                    notes: 'Попросити аніматора прийти раніше'
                 }
             },
             {
@@ -1527,6 +2076,14 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.equal(document.querySelectorAll('.booking-banquet-section--service .booking-banquet-service-row--checklist').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /12:00\s*·\s*Підготувати кімнату/);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /15:45\s*·\s*Напої/);
+    const commentsSection = document.querySelector('.booking-banquet-section--comments');
+    assert.ok(commentsSection, 'full banquet detail renders comments section');
+    assert.match(commentsSection?.textContent || '', /Кухня/);
+    assert.match(commentsSection?.textContent || '', /Підготувати дитячий стіл/);
+    assert.match(commentsSection?.textContent || '', /Активність\s*—\s*АН\(60\)/);
+    assert.match(commentsSection?.textContent || '', /Попросити аніматора прийти раніше/);
+    assert.match(commentsSection?.textContent || '', /Внутрішній коментар/);
+    assert.match(commentsSection?.textContent || '', /Перевірити оплату перед листом/);
     assert.equal(document.querySelectorAll('.booking-banquet-section--activities .booking-banquet-member--activity').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--activities')?.textContent || '', /АН\(60\)/);
     assert.match(document.querySelector('.booking-banquet-section--activities')?.textContent || '', /Бульбашкове шоу/);
@@ -1659,7 +2216,7 @@ test('booking modal banquet root header shows planned schedule instead of techni
     });
     const emptyDocument = new JSDOM(`<main>${emptyHeader}</main>`).window.document;
     assert.equal(emptyDocument.querySelector('.booking-detail-header-schedule'), null);
-    assert.match(emptyDocument.querySelector('.booking-detail-meta')?.textContent || '', /10:00 - 10:30/);
+    assert.equal((emptyDocument.querySelector('.booking-detail-meta')?.textContent || '').includes('10:00 - 10:30'), false);
 });
 
 test('booking modal banquet overview separates work summary from technical metadata', () => {
@@ -1668,6 +2225,14 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.match(bookingJs, /function bookingDetailHasMenuOverview\(/);
     assert.match(bookingJs, /function bookingDetailHasServiceOverview\(/);
     assert.match(bookingJs, /function bookingDetailCanOwnBanquetPackage\(/);
+    assert.match(bookingJs, /function bookingDetailIsBanquetArrivalMode\(/);
+    assert.match(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата банкету' : 'Дата';/);
+    assert.match(bookingJs, /const bookingDetailTimeLabel = isBanquetArrivalMode \? 'Прихід гостей' : 'Час';/);
+    assert.match(bookingJs, /const bookingDetailTimeValue = isBanquetArrivalMode \? \(booking\.time \|\| '-'\) : bookingDetailTimeRange;/);
+    assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailDateLabel\)\}:<\/span>/);
+    assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailTimeLabel\)\}:<\/span>/);
+    assert.doesNotMatch(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата\/час'/);
+    assert.doesNotMatch(bookingJs, /const bookingDetailTimeLabel = isBanquetArrivalMode \? 'Час'/);
     assert.match(bookingJs, /bookingDetailIsRoot\(booking\)[\s\S]*bookingDetailHasMenuOverview\(booking\)[\s\S]*bookingDetailHasServiceOverview\(booking\)/);
     assert.match(bookingJs, /candidates\.find\(booking => booking && bookingDetailCanOwnBanquetPackage\(booking\)\)/);
     assert.match(bookingJs, /if \(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) return '';/);

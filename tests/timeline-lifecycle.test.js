@@ -140,9 +140,22 @@ function createHarness() {
             initBookingDrag,
             initBookingResize,
             renderTimeline,
+            changeDate,
+            setTimelineView,
+            handleTimelineBusinessContextChanged,
             cancelActiveTimelineInteractions,
             getLinesForDate,
             getBookingsForDate,
+            timelineHorizontalScrollStateKey,
+            captureTimelineHorizontalScrollState,
+            restoreTimelineHorizontalScrollState,
+            resetTimelineHorizontalScroll,
+            markTimelineNavigationScrollReset,
+            syncTimelineContentWidth,
+            timelineRangeCellCount,
+            timelineTimeMarkPlacements,
+            timelineMiniTimeMarkPlacements,
+            timelineTimeToPixel,
             hasActiveTimelineInteractionState,
             setSaveInFlight(value) { _timelineInteractionSaveInFlight = Boolean(value); },
             getSaveInFlight() { return _timelineInteractionSaveInFlight; },
@@ -179,6 +192,247 @@ test('timeline date cache helpers accept ISO date keys without breaking strict f
     assert.deepEqual(bookings, []);
     assert.ok(window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31']);
     assert.ok(window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31']);
+});
+
+test('timeline horizontal scroll state key separates date, period, zoom, compact mode, context and view', () => {
+    const { window, api } = createHarness();
+
+    window.AppState.zoomLevel = 30;
+    window.AppState.compactMode = false;
+    const initialKey = api.timelineHorizontalScrollStateKey();
+
+    assert.match(initialKey, /event_genix\|park\|line\|animators\|2026-05-26\|day\|zoom:30\|regular$/);
+    assert.notEqual(api.timelineHorizontalScrollStateKey(new Date('2026-05-27T00:00:00')), initialKey);
+
+    window.AppState.multiDayMode = true;
+    window.AppState.daysToShow = 7;
+    assert.notEqual(api.timelineHorizontalScrollStateKey(), initialKey);
+
+    window.AppState.multiDayMode = false;
+    window.AppState.daysToShow = 1;
+    window.AppState.zoomLevel = 60;
+    assert.notEqual(api.timelineHorizontalScrollStateKey(), initialKey);
+
+    window.AppState.zoomLevel = 30;
+    window.AppState.compactMode = true;
+    assert.notEqual(api.timelineHorizontalScrollStateKey(), initialKey);
+
+    window.AppState.compactMode = false;
+    window.TimelineBusinessContext = {
+        current: () => ({ apiValue: 'event_genix', key: 'event_genix' }),
+        state: () => ({ activeBusinessContext: 'event_genix' }),
+        presentation: () => ({ mode: 'park', resourceType: 'room', roomTimelineEnabled: true }),
+        storageKey: name => `test_${name}`
+    };
+    window.localStorage.setItem('test_timeline_view', 'rooms');
+    window.localStorage.setItem('test_timeline_view_choice', 'standard-default-v1');
+    const roomKey = api.timelineHorizontalScrollStateKey();
+    assert.match(roomKey, /event_genix\|park\|room\|rooms\|2026-05-26\|day\|zoom:30\|regular$/);
+    assert.notEqual(roomKey, initialKey);
+
+    window.TimelineBusinessContext = {
+        current: () => ({ apiValue: 'maysternya_doli', key: 'maysternya_doli' }),
+        state: () => ({ activeBusinessContext: 'maysternya_doli' }),
+        presentation: () => ({ mode: 'simple', resourceType: 'teacher', roomTimelineEnabled: false }),
+        storageKey: name => `md_${name}`
+    };
+    const businessKey = api.timelineHorizontalScrollStateKey();
+    assert.match(businessKey, /maysternya_doli\|simple\|teacher\|animators\|2026-05-26\|day\|zoom:30\|regular$/);
+    assert.notEqual(businessKey, initialKey);
+});
+
+test('renderTimeline preserves horizontal scroll inside the same timeline state key', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    scroll.scrollLeft = 320;
+
+    await api.renderTimeline();
+
+    assert.equal(scroll.scrollLeft, 320);
+});
+
+test('date navigation resets stale horizontal scroll before rendering the next day', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    scroll.scrollLeft = 650;
+
+    await api.changeDate(1);
+
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-05-27');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'date-change');
+});
+
+test('date navigation keeps day timeline width on canonical range cells', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    window.CONFIG.TIMELINE.CELL_MINUTES = 15;
+    window.CONFIG.TIMELINE.CELL_WIDTH = 40;
+    window.AppState.selectedDate = new Date('2026-06-21T00:00:00');
+
+    await api.renderTimeline();
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-06-21');
+    assert.equal(scroll.style.getPropertyValue('--timeline-grid-width'), '1600px');
+
+    scroll.scrollLeft = 1200;
+    await api.changeDate(1);
+
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-06-22');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.style.getPropertyValue('--timeline-grid-width'), '1280px');
+    assert.equal(scroll.style.getPropertyValue('--timeline-content-width'), '1410px');
+    assert.equal(
+        Number.parseFloat(scroll.style.getPropertyValue('--timeline-grid-width')),
+        api.timelineRangeCellCount(window.AppState.selectedDate) * window.CONFIG.TIMELINE.CELL_WIDTH
+    );
+});
+
+test('date navigation keeps start marker geometry readable after scroll reset', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    window.CONFIG.TIMELINE.CELL_MINUTES = 15;
+    window.CONFIG.TIMELINE.CELL_WIDTH = 40;
+    window.AppState.selectedDate = new Date('2026-06-21T00:00:00');
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const anchor = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const placementsFor = (date) => {
+        const gridWidth = api.timelineRangeCellCount(date) * window.CONFIG.TIMELINE.CELL_WIDTH;
+        return api.timelineTimeMarkPlacements(date, anchor, { gridWidth, cellWidth: 40 });
+    };
+
+    const sundayMarks = placementsFor(window.AppState.selectedDate);
+    assert.equal(sundayMarks[0].label, '10:00');
+    assert.equal(sundayMarks[1].label, '10:15');
+    assert.ok(sundayMarks[0].left < 0);
+    assert.ok(sundayMarks[0].right <= sundayMarks[1].left);
+
+    scroll.scrollLeft = 740;
+    await api.changeDate(1);
+
+    const mondayMarks = placementsFor(window.AppState.selectedDate);
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-06-22');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'date-change');
+    assert.equal(mondayMarks[0].label, '12:00');
+    assert.equal(mondayMarks[1].label, '12:15');
+    assert.ok(mondayMarks[0].left < 0);
+    assert.ok(mondayMarks[0].right <= mondayMarks[1].left);
+    assert.equal(api.timelineTimeToPixel(mondayMarks[1].label, window.AppState.selectedDate, anchor), mondayMarks[1].x);
+});
+
+test('timeline view switch resets horizontal scroll between animator and room timelines', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    scroll.scrollLeft = 710;
+    scroll.scrollTop = 44;
+    window.TimelineBusinessContext = {
+        current: () => ({ apiValue: 'event_genix', key: 'event_genix' }),
+        state: () => ({ activeBusinessContext: 'event_genix' }),
+        presentation: () => ({ mode: 'park', resourceType: 'room', roomTimelineEnabled: true }),
+        storageKey: name => `view_${name}`
+    };
+    window.localStorage.setItem('view_timeline_view', 'animators');
+    window.localStorage.setItem('view_timeline_view_choice', 'standard-default-v1');
+
+    const next = await api.setTimelineView('rooms', { render: false });
+
+    assert.equal(next, 'rooms');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.scrollTop, 44);
+    assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'view-switch-before-render');
+    assert.match(api.timelineHorizontalScrollStateKey(), /event_genix\|park\|room\|rooms\|2026-05-26\|day\|zoom:30\|regular$/);
+
+    scroll.scrollLeft = 640;
+    const back = await api.setTimelineView('animators', { render: false });
+
+    assert.equal(back, 'animators');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.scrollTop, 44);
+    assert.match(api.timelineHorizontalScrollStateKey(), /event_genix\|park\|room\|animators\|2026-05-26\|day\|zoom:30\|regular$/);
+});
+
+test('zoom, compact, and day/week state changes do not restore stale horizontal pixels', async (t) => {
+    await t.test('zoom key change resets stale scroll snapshot', () => {
+        const { window, api } = createHarness();
+        const scroll = window.document.getElementById('timelineScroll');
+        scroll.scrollLeft = 500;
+        const snapshot = api.captureTimelineHorizontalScrollState(scroll);
+
+        scroll.scrollLeft = 540;
+        window.AppState.zoomLevel = 15;
+        window.CONFIG.TIMELINE.CELL_MINUTES = 15;
+        api.restoreTimelineHorizontalScrollState(snapshot, scroll);
+
+        assert.equal(scroll.scrollLeft, 0);
+    });
+
+    await t.test('compact key change resets stale scroll snapshot', () => {
+        const { window, api } = createHarness();
+        const scroll = window.document.getElementById('timelineScroll');
+        scroll.scrollLeft = 500;
+        const snapshot = api.captureTimelineHorizontalScrollState(scroll);
+
+        scroll.scrollLeft = 540;
+        window.AppState.compactMode = true;
+        api.restoreTimelineHorizontalScrollState(snapshot, scroll);
+
+        assert.equal(scroll.scrollLeft, 0);
+    });
+
+    await t.test('day/week period key change resets stale scroll snapshot', () => {
+        const { window, api } = createHarness();
+        const scroll = window.document.getElementById('timelineScroll');
+        scroll.scrollLeft = 500;
+        const snapshot = api.captureTimelineHorizontalScrollState(scroll);
+
+        scroll.scrollLeft = 540;
+        window.AppState.multiDayMode = true;
+        window.AppState.daysToShow = 7;
+        api.restoreTimelineHorizontalScrollState(snapshot, scroll);
+
+        assert.equal(scroll.scrollLeft, 0);
+    });
+});
+
+test('business context change resets horizontal scroll and scopes the next key', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    scroll.scrollLeft = 560;
+    window.TimelineBusinessContext = {
+        current: () => ({ apiValue: 'maysternya_doli', key: 'maysternya_doli' }),
+        state: () => ({ activeBusinessContext: 'maysternya_doli' }),
+        presentation: () => ({ mode: 'simple', resourceType: 'teacher', roomTimelineEnabled: false }),
+        storageKey: name => `business_${name}`
+    };
+
+    await api.handleTimelineBusinessContextChanged({
+        detail: { previous: 'event_genix', current: 'maysternya_doli' }
+    });
+
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'business-context-change');
+    assert.match(api.timelineHorizontalScrollStateKey(), /maysternya_doli\|simple\|teacher\|animators\|2026-05-26\|day\|zoom:30\|regular$/);
+});
+
+test('horizontal scroll restore resets when the timeline state key changes', () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    scroll.scrollLeft = 480;
+    const snapshot = api.captureTimelineHorizontalScrollState(scroll);
+
+    scroll.scrollLeft = 520;
+    window.AppState.selectedDate = new Date('2026-05-27T00:00:00');
+    api.restoreTimelineHorizontalScrollState(snapshot, scroll);
+
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'timeline-context-change');
 });
 
 test('pointercancel during booking drag rolls back visuals and clears transient state', () => {

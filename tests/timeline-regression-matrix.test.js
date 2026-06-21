@@ -400,6 +400,65 @@ test('timeline view switch isolation keeps room rows out of animator render and 
     assert.match(api, /function timelineApiUrlWithView[\s\S]*timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
 });
 
+test('timeline view isolation matrix includes horizontal scroll scope and reset', () => {
+    const timeline = readProjectFile('js/timeline.js');
+    const setViewBlock = timeline.slice(
+        timeline.indexOf('async function setTimelineView'),
+        timeline.indexOf('window.TimelineView =')
+    );
+    const scrollKeyBlock = timeline.slice(
+        timeline.indexOf('function timelineHorizontalScrollStateKey'),
+        timeline.indexOf('function getTimelineCacheEntry')
+    );
+
+    assert.match(scrollKeyBlock, /timelineCacheScopeKey\(\)/);
+    assert.match(scrollKeyBlock, /timelineDateKey\(date\)/);
+    assert.match(scrollKeyBlock, /const period = timelineHorizontalScrollPeriodKey\(\)/);
+    assert.match(scrollKeyBlock, /const zoom = timelineHorizontalScrollZoomKey\(\)/);
+    assert.match(scrollKeyBlock, /const compact = AppState\.compactMode \? 'compact' : 'regular'/);
+    assert.match(setViewBlock, /if \(next !== current\) \{[\s\S]*clearTimelineBanquetRoomPreviews\(\);[\s\S]*markTimelineNavigationScrollReset\('view-switch-before-render'\);[\s\S]*if \(options\.render !== false\) \{/);
+    assert.match(timeline, /async function handleTimelineBusinessContextChanged[\s\S]*markTimelineNavigationScrollReset\('business-context-change'\);[\s\S]*updateTimelineViewControls\(\)/);
+});
+
+test('timeline width contract is shared by animator and room surfaces without service-marker inflation', () => {
+    const timeline = readProjectFile('js/timeline.js');
+    const css = readProjectFile('css/timeline.css');
+    const syncWidthBlock = timeline.slice(
+        timeline.indexOf('function syncTimelineContentWidth'),
+        timeline.indexOf('function visibleTimelineAddLineParts')
+    );
+    const renderTimelineBlock = timeline.slice(
+        timeline.indexOf('async function renderTimeline'),
+        timeline.indexOf('function getBookingDragGroup')
+    );
+    const roomServiceMarkerBlock = timeline.slice(
+        timeline.indexOf('function renderTimelineRoomServiceMarkers'),
+        timeline.indexOf('function clearTimelineBanquetRoomPreviews')
+    );
+    const markerGeometryBlock = timeline.slice(
+        timeline.indexOf('function timelineTimeToPixel'),
+        timeline.indexOf('let _timelineAddLineCtaPositioningBound')
+    );
+
+    assert.match(syncWidthBlock, /const gridWidth = Math\.ceil\(timelineRangeCellCount\(date\) \* cellWidth\)/);
+    assert.doesNotMatch(syncWidthBlock, /timelineRangeMarkCount\(date\) \* cellWidth/);
+    assert.match(markerGeometryBlock, /function timelineTimeMarkPlacements\(date, anchor, geometry = null\)/);
+    assert.match(markerGeometryBlock, /function timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
+    assert.match(markerGeometryBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
+    assert.match(markerGeometryBlock, /function timelineResolveTimeMarkCollisions\(placements, gridWidth/);
+    assert.match(markerGeometryBlock, /pushFromStart\(\);[\s\S]*pullFromEnd\(\);/);
+    assert.match(markerGeometryBlock, /options\.edge === 'start' \? -\(safeWidth \/ 2\) : 0/);
+    assert.match(renderTimelineBlock, /syncTimelineContentWidth\(selectedDate, container\.querySelector\('\.line-grid\[data-line-id\]'\)\)/);
+    assert.match(renderTimelineBlock, /renderTimeScale\(selectedDate\)/);
+    assert.doesNotMatch(renderTimelineBlock, /isRoomTimelineView\(\)[\s\S]*renderTimeScale\(selectedDate\)[\s\S]*else[\s\S]*renderTimeScale\(selectedDate\)/);
+    assert.match(renderTimelineBlock, /if \(isRoomTimelineView\(\)\) \{[\s\S]*syncTimelineRoomOperationalLayout\(lineGrid\);[\s\S]*\}/);
+    assert.match(roomServiceMarkerBlock, /const gridWidth = lineGrid\.scrollWidth \|\| lineGrid\.getBoundingClientRect\?\.\(\)\.width \|\| 0/);
+    assert.match(roomServiceMarkerBlock, /const maxLeft = gridWidth > baseWidth \? gridWidth - baseWidth : leftRaw/);
+    assert.match(roomServiceMarkerBlock, /const left = Math\.max\(0, Math\.min\(leftRaw, maxLeft\)\)/);
+    assert.doesNotMatch(roomServiceMarkerBlock, /lineGrid\.style\.(?:width|setProperty\(['"]--timeline-grid-width)/);
+    assert.match(css, /\.line-grid\.has-timeline-room-service-markers,[\s\S]*overflow: visible/);
+});
+
 test('phase 4 matrix is wired into unit and UI proof stack', () => {
     const packageJson = readProjectFile('package.json');
     const lifecycleTest = readProjectFile('tests/timeline-lifecycle.test.js');

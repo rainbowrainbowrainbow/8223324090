@@ -174,8 +174,8 @@
             programSearchPlaceholder: 'Пошук програми...',
             roomLabel: 'Кімната',
             roomOptionLabel: 'Кімната',
-            groupLabel: 'Група / банкет',
-            notesLabel: 'Примітки',
+            groupLabel: 'Назва заявки / група (legacy)',
+            notesLabel: 'Внутрішній коментар',
             customerNameLabel: 'Імʼя клієнта',
             phoneLabel: 'Телефон',
             emptyLineName: 'Аніматор',
@@ -795,6 +795,9 @@
         if (selectedLineLabel) selectedLineLabel.textContent = view.selectedLineLabel;
         setFieldLabel('#bookingNotes', view.notesLabel);
         setFieldLabel('#bookingGroupName', view.groupLabel);
+        if (typeof window.syncBookingCommentFieldPresentation === 'function') {
+            window.syncBookingCommentFieldPresentation();
+        }
         setFieldLabel('#customerName', view.customerNameLabel, true);
         setFieldLabel('#customerPhone', view.phoneLabel);
         setFieldLabel('#programsIcons', view.programLabel);

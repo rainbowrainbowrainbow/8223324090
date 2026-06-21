@@ -697,6 +697,10 @@ describe('work queue endpoint', () => {
         const manager = await request('/api/work-queue', 'manager');
         assert.equal(manager.status, 200, JSON.stringify(manager.data));
         assert.equal(manager.data.success, true);
+
+        const deniedContext = await request('/api/work-queue?businessContext=dar', 'manager');
+        assert.equal(deniedContext.status, 403);
+        assert.equal(deniedContext.data.code, 'business_context_unavailable');
     });
 
     it('exposes manager-safe assignable reply owner picker data', async () => {
@@ -785,16 +789,26 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.funnelInsights.salesLeadType, 'quality');
         assert.equal(res.data.queue.meta.funnelInsights.classificationStats.collaboration, 3);
         assert.equal(res.data.queue.meta.funnelInsights.operationalQueueStats.spam, 5);
+        assert.equal(res.data.queue.meta.businessScope.mode, 'single');
+        assert.equal(res.data.queue.meta.businessScope.activeContext, 'event_genix');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
         const callbackQuery = queries.find(q => /FROM lead_interactions li/i.test(q.text));
         assert.match(callbackQuery.text, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/i);
+        assert.match(callbackQuery.text, /COALESCE\(l\.business_context, 'event_genix'\) = \$\d+/i);
         const eventSoonQuery = queries.find(q => /FROM leads l/i.test(q.text) && /l\.event_date IS NOT NULL/i.test(q.text));
         assert.match(eventSoonQuery.text, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/i);
+        assert.match(eventSoonQuery.text, /COALESCE\(l\.business_context, 'event_genix'\) = \$\d+/i);
         const funnelQuery = queries.find(q => /FROM leads l/i.test(q.text) && /INTERVAL '48 hours'/i.test(q.text));
         assert.match(funnelQuery.text, /COALESCE\(l\.lead_type, 'quality'\) = 'quality'/i);
+        assert.match(funnelQuery.text, /COALESCE\(l\.business_context, 'event_genix'\) = \$\d+/i);
+        const funnelTypeQuery = queries.find(q => /FROM leads l/i.test(q.text) && /GROUP BY COALESCE\(NULLIF\(l\.lead_type, ''\), 'quality'\)/i.test(q.text));
+        assert.match(funnelTypeQuery.text, /COALESCE\(l\.business_context, 'event_genix'\) = \$\d+/i);
+        const taskQueueQuery = queries.find(q => /FROM tasks t/i.test(q.text) && /LEFT\(COALESCE\(t\.date, ''\), 10\) < \$1/i.test(q.text));
+        assert.match(taskQueueQuery.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/i);
         const waitingQuery = latestWaitingQuery();
         assert.ok(waitingQuery, 'waiting_reply must come from conversations.reply_expected');
+        assert.match(waitingQuery.text, /COALESCE\(c\.business_context, 'event_genix'\) = \$\d+/i);
         assert.match(waitingQuery.text, /awaiting_reply_since IS NOT NULL/i);
         assert.match(waitingQuery.text, /last_inbound_at IS NULL OR c\.last_inbound_at <= c\.awaiting_reply_since/i);
         assert.match(waitingQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
@@ -814,6 +828,20 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.bookingVisibility.visibleScopeOnly, true);
         assert.match(res.data.queue.meta.bookingVisibility.scopeSource, /booking-operational|full-role/);
         assert.equal(res.data.queue.meta.bookingVisibility.missingDurableScopes.includes('line'), true);
+    });
+
+    it('preserves aggregate business scope in funnel links', async () => {
+        const res = await request('/api/work-queue?businessScope=multi&businessContexts=event_genix,maysternya_doli&limit=5', 'creator');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.queue.meta.businessScope.mode, 'multi');
+        assert.deepEqual(res.data.queue.meta.businessScope.selectedContexts, ['event_genix', 'maysternya_doli']);
+
+        const href = res.data.queue.meta.funnelInsights.stages[0].href;
+        const url = new URL(href, 'http://localhost');
+        assert.equal(url.pathname, '/sales-funnel');
+        assert.equal(url.searchParams.get('businessScope'), 'multi');
+        assert.equal(url.searchParams.get('businessContext'), 'event_genix');
+        assert.equal(url.searchParams.get('businessContexts'), 'event_genix,maysternya_doli');
     });
 
     it('adds bucket-aware intelligence without a fake global score', async () => {

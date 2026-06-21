@@ -1009,6 +1009,24 @@ function normalizeActivityInteger(value, fallback = null) {
     return Number.isFinite(number) ? number : fallback;
 }
 
+function resolveAtomicBanquetCustomerId(input = {}, { sourceBooking, group } = {}) {
+    const requestedCustomerId = normalizeActivityInteger(input.customerId ?? input.customer_id, null);
+    const authorityCustomerId = normalizeActivityInteger(group?.customer_id ?? group?.customerId ?? sourceBooking?.customer_id ?? sourceBooking?.customerId, null);
+    if (requestedCustomerId && authorityCustomerId && requestedCustomerId !== authorityCustomerId) {
+        throw new BanquetGroupError('Клієнт бронювання не збігається з клієнтом банкету.', {
+            status: 409,
+            code: 'CUSTOMER_BANQUET_MISMATCH',
+            details: {
+                customerId: requestedCustomerId,
+                banquetCustomerId: authorityCustomerId,
+                groupId: group?.id || null,
+                sourceBookingId: sourceBooking?.id || null
+            }
+        });
+    }
+    return authorityCustomerId ?? requestedCustomerId ?? null;
+}
+
 function normalizeActivityText(value, maxLength = 2000) {
     const text = String(value || '').trim();
     return text ? text.slice(0, maxLength) : null;
@@ -1057,6 +1075,7 @@ function normalizeRootActivityBooking(input = {}, { sourceBooking, group, busine
         banquetMenu: null,
         businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT
     };
+    booking.customerId = resolveAtomicBanquetCustomerId(input, { sourceBooking, group });
     if (!booking.extraData || typeof booking.extraData !== 'object' || Array.isArray(booking.extraData)) booking.extraData = {};
     booking.extraData.banquetGroup = {
         ...(booking.extraData.banquetGroup || {}),
@@ -1113,6 +1132,7 @@ function normalizeRootMemberBooking(input = {}, { sourceBooking, group, business
         banquetMenu: normalizeActivityText(input.banquetMenu || input.banquet_menu, 4000),
         businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT
     };
+    booking.customerId = resolveAtomicBanquetCustomerId(input, { sourceBooking, group });
     if (!booking.extraData || typeof booking.extraData !== 'object' || Array.isArray(booking.extraData)) booking.extraData = {};
     booking.extraData.banquetGroup = {
         ...(booking.extraData.banquetGroup || {}),

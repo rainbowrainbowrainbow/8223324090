@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.92 - Banquet room auto-link
+
+### Banquet room auto-link / Booking drawer / Atomic banquet save / Mismatch guard / Browser QA / (Клешня, 21.06.2026) [codex]
+- **Кімната з існуючим банкетом тепер підтягує клієнта автоматично** - коли менеджер обирає варіант на кшталт `Ніндзя — 11:30 Юрій`, CRM знаходить source booking і заповнює картку клієнта.
+- **Активність і кухня прив’язуються до існуючого банкета** - вибраний `banquet group` preselect-иться у формі, а створення йде через наявні atomic banquet endpoints без дублювання груп.
+- **Менеджеру більше не треба повторно шукати того самого клієнта** - бронювання активності після кухні бере контекст з кімнати і показує зрозумілу підказку у формі.
+- **Додано захист від mismatch клієнта і банкета** - якщо після auto-link вручну вибрати іншого клієнта, прив’язка з кімнати скидається; backend також блокує чужий `customerId` у banquet atomic create.
+- **Room availability metadata структуровано** - `/api/rooms/free/:date/:time/:duration` і resource-backed availability повертають `customerId`, `banquetGroupId`, role і primary/customer metadata без зміни DB schema.
+- **Regression guardrails посилено** - focused route tests, durability test, timeline resources test, UI smoke і browser QA покривають metadata, auto-fill, atomic save routing, mismatch і responsive layout.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.92`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.91 - Timeline line header cleanup
 
 ### Timeline line headers / Animator view / Room view / Responsive layout / Regression tests / (Клешня, 20.06.2026) [codex]

@@ -885,6 +885,7 @@ test('POST banquet member-booking creates kitchen booking, membership, and compa
 
         const created = state.rows.find(row => row.id === 'BK-2099-9999');
         assert.ok(created, 'member booking should be inserted');
+        assert.equal(created.customer_id, 101);
         assert.equal(created.group_name, null);
         assert.equal(created.banquet_guests, 18);
         assert.equal(created.banquet_menu, 'Pizza x 4');
@@ -896,6 +897,68 @@ test('POST banquet member-booking creates kitchen booking, membership, and compa
         assert.ok(state.banquetMemberships.some(row => row.group_id === 'BQ-ROOT' && row.booking_id === 'BK-2099-9999' && row.role === 'kitchen'));
         assert.equal(state.links.length, 1);
         assert.ok(state.tx.includes('COMMIT'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('POST banquet member-booking rejects customer mismatch before creating booking', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/member-booking?businessContext=event_genix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceBookingId: 'BK-ROOT',
+                role: 'kitchen',
+                booking: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'banquet-service',
+                    room: 'Room A',
+                    programCode: 'KITCHEN',
+                    label: 'Kitchen order',
+                    programName: 'Kitchen order',
+                    category: 'kitchen',
+                    duration: 60,
+                    price: 1340,
+                    hosts: 0,
+                    customerId: 202
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'CUSTOMER_BANQUET_MISMATCH');
+        assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        assert.ok(state.tx.includes('ROLLBACK'));
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',
@@ -972,6 +1035,7 @@ test('POST banquet activity-booking allows activity over same-banquet kitchen ro
         assert.equal(data.success, true);
         assert.equal(data.booking.id, 'BK-2099-9999');
         assert.equal(data.membership.role, 'activity');
+        assert.equal(state.rows.find(row => row.id === 'BK-2099-9999')?.customer_id, 101);
         assert.ok(state.banquetMemberships.some(row => row.group_id === 'BQ-ROOT' && row.booking_id === 'BK-2099-9999' && row.role === 'activity'));
         assert.ok(state.tx.includes('COMMIT'));
         assert.ok(state.queries.some(query => /LEFT JOIN banquet_group_bookings bgb/i.test(query.sql)));
@@ -1002,6 +1066,68 @@ test('POST banquet activity-booking allows activity over same-banquet kitchen ro
             booking_id: 'BK-KITCHEN',
             role: 'kitchen',
             sort_order: 30
+        }]
+    });
+});
+
+test('POST banquet activity-booking rejects customer mismatch before creating booking', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        })
+    ], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/banquets/BQ-ROOT/activity-booking?businessContext=event_genix`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceBookingId: 'BK-ROOT',
+                booking: {
+                    date: '2099-06-01',
+                    time: '12:00',
+                    lineId: 'line-activity-new',
+                    room: 'Room A',
+                    programId: 'program-mafia',
+                    programCode: 'MAFIA',
+                    label: 'Mafia',
+                    programName: 'Mafia',
+                    category: 'animation',
+                    duration: 60,
+                    price: 3000,
+                    hosts: 1,
+                    customerId: 202
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'CUSTOMER_BANQUET_MISMATCH');
+        assert.equal(state.rows.some(row => row.id === 'BK-2099-9999'), false);
+        assert.ok(state.tx.includes('ROLLBACK'));
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
         }]
     });
 });

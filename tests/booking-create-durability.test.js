@@ -2091,6 +2091,8 @@ test('banquet member booking keeps booking insert and membership insert in one r
     assert.match(slice, /await client\.query\('ROLLBACK'\)\.catch\(\(\) => \{\}\)/);
     assert.match(service, /groupName: null/);
     assert.match(service, /const ATOMIC_MEMBER_BOOKING_ROLES = new Set\(\['kitchen', 'service', 'manual'\]\)/);
+    assert.match(service, /function resolveAtomicBanquetCustomerId/);
+    assert.match(service, /CUSTOMER_BANQUET_MISMATCH/);
     assert.doesNotMatch(service, /normalizeShortText\(primary\.group_name/);
 });
 

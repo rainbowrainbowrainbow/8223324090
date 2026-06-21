@@ -949,6 +949,28 @@ test('free-room path becomes business-aware resource availability for cabinet mo
     assert.match(booking, /data-free-room/);
 });
 
+test('free-room route exposes structured room day booking banquet metadata', () => {
+    const settings = read('routes/settings.js');
+    assert.match(settings, /b\.customer_id, b\.business_context/);
+    assert.match(settings, /LEFT JOIN banquet_group_bookings bgb/);
+    assert.match(settings, /LEFT JOIN banquet_groups bg/);
+    assert.match(settings, /LOWER\(COALESCE\(NULLIF\(BTRIM\(bg\.status\), ''\), 'active'\)\) = 'active'/);
+    assert.match(settings, /bg\.id AS banquet_group_id/);
+    assert.match(settings, /CASE WHEN bg\.id IS NOT NULL THEN bgb\.role ELSE NULL END AS banquet_group_role/);
+    assert.match(settings, /bg\.primary_booking_id AS banquet_group_primary_booking_id/);
+    assert.match(settings, /bg\.customer_id AS banquet_group_customer_id/);
+    assert.match(settings, /id: b\.id[\s\S]*time: b\.time[\s\S]*duration: b\.duration \|\| 0[\s\S]*customerName[\s\S]*label: b\.label \|\| null[\s\S]*programName: b\.program_name \|\| null/);
+    assert.match(settings, /customerId: b\.customer_id \?\? null/);
+    assert.match(settings, /room: b\.room \|\| null/);
+    assert.match(settings, /businessContext: b\.business_context \|\| context \|\| DEFAULT_TIMELINE_CONTEXT/);
+    assert.match(settings, /banquetGroupId: b\.banquet_group_id \|\| null/);
+    assert.match(settings, /banquetGroupRole: b\.banquet_group_role \|\| null/);
+    assert.match(settings, /banquetGroupPrimaryBookingId: b\.banquet_group_primary_booking_id \|\| null/);
+    assert.match(settings, /banquetGroupCustomerId: b\.banquet_group_customer_id \?\? null/);
+    assert.match(settings, /isBanquetGroupMember: Boolean\(b\.banquet_group_id\)/);
+    assert.match(settings, /isBanquetPrimary: Boolean\(/);
+});
+
 test('resource availability keeps day booking metadata separate from selected-time conflicts', async () => {
     const queries = [];
     const resources = [{
@@ -979,7 +1001,13 @@ test('resource availability keeps day booking metadata separate from selected-ti
         group_name: null,
         linked_to: null,
         extra_data: {},
-        customer_name: 'Ушакова Ірина'
+        customer_name: 'Ушакова Ірина',
+        customer_id: 101,
+        business_context: 'event_genix',
+        banquet_group_id: 'BQ-ROOT',
+        banquet_group_role: 'kitchen',
+        banquet_group_primary_booking_id: 'BK-2099-0101',
+        banquet_group_customer_id: 101
     }, {
         id: 'BK-2099-0102',
         line_id: 'cabinet-a',
@@ -994,7 +1022,13 @@ test('resource availability keeps day booking metadata separate from selected-ti
         group_name: 'Група B',
         linked_to: null,
         extra_data: {},
-        customer_name: null
+        customer_name: null,
+        customer_id: null,
+        business_context: 'event_genix',
+        banquet_group_id: null,
+        banquet_group_role: null,
+        banquet_group_primary_booking_id: null,
+        banquet_group_customer_id: null
     }];
     const fakeDb = {
         async query(sql, params) {
@@ -1028,7 +1062,42 @@ test('resource availability keeps day booking metadata separate from selected-ti
     assert.equal(availability.resources[0].dayBookings.length, 2);
     assert.equal(availability.resources[0].dayBookings[0].customerName, 'Ушакова Ірина');
     assert.equal(availability.resources[0].dayBookings[1].customerName, 'Група B');
-    assert.match(queries.find(query => /FROM bookings b/i.test(query.sql)).sql, /c\.name AS customer_name/);
+    assert.deepEqual(
+        {
+            id: availability.resources[0].dayBookings[0].id,
+            time: availability.resources[0].dayBookings[0].time,
+            duration: availability.resources[0].dayBookings[0].duration,
+            label: availability.resources[0].dayBookings[0].label,
+            programName: availability.resources[0].dayBookings[0].programName
+        },
+        {
+            id: 'BK-2099-0101',
+            time: '10:00',
+            duration: 60,
+            label: 'Lesson A',
+            programName: 'Lesson'
+        }
+    );
+    assert.equal(availability.resources[0].dayBookings[0].customerId, 101);
+    assert.equal(availability.resources[0].dayBookings[0].room, 'Cabinet A');
+    assert.equal(availability.resources[0].dayBookings[0].businessContext, 'event_genix');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupId, 'BQ-ROOT');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupRole, 'kitchen');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupPrimaryBookingId, 'BK-2099-0101');
+    assert.equal(availability.resources[0].dayBookings[0].banquetGroupCustomerId, 101);
+    assert.equal(availability.resources[0].dayBookings[0].isBanquetGroupMember, true);
+    assert.equal(availability.resources[0].dayBookings[0].isBanquetPrimary, true);
+    assert.equal(availability.resources[0].dayBookings[1].customerId, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupId, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupRole, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupPrimaryBookingId, null);
+    assert.equal(availability.resources[0].dayBookings[1].banquetGroupCustomerId, null);
+    assert.equal(availability.resources[0].dayBookings[1].isBanquetGroupMember, false);
+    assert.equal(availability.resources[0].dayBookings[1].isBanquetPrimary, false);
+    const bookingQuery = queries.find(query => /FROM bookings b/i.test(query.sql));
+    assert.match(bookingQuery.sql, /c\.name AS customer_name/);
+    assert.match(bookingQuery.sql, /LEFT JOIN banquet_group_bookings bgb/);
+    assert.match(bookingQuery.sql, /LEFT JOIN banquet_groups bg/);
 });
 
 test('education resources support capacity guard and quick slot closure', () => {

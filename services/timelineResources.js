@@ -593,11 +593,23 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
     }
     const bookings = await db.query(
         `SELECT b.id, b.line_id, b.room, b.time, b.duration, b.label, b.program_code, b.program_name,
-                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, c.name AS customer_name
+                b.status, b.kids_count, b.group_name, b.linked_to, b.extra_data, b.customer_id, b.business_context,
+                c.name AS customer_name,
+                bg.id AS banquet_group_id,
+                CASE WHEN bg.id IS NOT NULL THEN bgb.role ELSE NULL END AS banquet_group_role,
+                bg.primary_booking_id AS banquet_group_primary_booking_id,
+                bg.customer_id AS banquet_group_customer_id
            FROM bookings b
            LEFT JOIN customers c
              ON c.id = b.customer_id
             AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+           LEFT JOIN banquet_group_bookings bgb
+             ON bgb.booking_id = b.id
+            AND COALESCE(bgb.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+           LEFT JOIN banquet_groups bg
+             ON bg.id = bgb.group_id
+            AND COALESCE(bg.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+            AND LOWER(COALESCE(NULLIF(BTRIM(bg.status), ''), 'active')) = 'active'
           WHERE b.date = $1
             AND COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
             AND ${activeBookingStatusSql('b')}
@@ -621,7 +633,19 @@ async function timelineResourceAvailability(db = defaultPool, options = {}) {
                 duration: booking.duration || 0,
                 customerName,
                 label: booking.label || null,
-                programName: booking.program_name || null
+                programName: booking.program_name || null,
+                customerId: booking.customer_id ?? null,
+                room: booking.room || null,
+                businessContext: booking.business_context || context || DEFAULT_TIMELINE_CONTEXT,
+                banquetGroupId: booking.banquet_group_id || null,
+                banquetGroupRole: booking.banquet_group_role || null,
+                banquetGroupPrimaryBookingId: booking.banquet_group_primary_booking_id || null,
+                banquetGroupCustomerId: booking.banquet_group_customer_id ?? null,
+                isBanquetGroupMember: Boolean(booking.banquet_group_id),
+                isBanquetPrimary: Boolean(
+                    booking.banquet_group_primary_booking_id
+                    && String(booking.banquet_group_primary_booking_id) === String(booking.id)
+                )
             });
         }
         const bookingStart = timeToMinutes(booking.time);

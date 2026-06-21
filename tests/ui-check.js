@@ -2204,6 +2204,56 @@ check('Booking room dropdown keeps same-day booked rooms selectable with day boo
     && bookingCode.includes('зайнята зараз')
     && !bookingCode.includes('return !occupiedRooms.has(value) || value === selectedRoom')
     && !bookingCode.includes('Ця кімната вже має бронювання на цей день'));
+check('Room availability day bookings expose structured customer and banquet metadata',
+    htmlContains('routes/settings.js', 'LEFT JOIN banquet_group_bookings bgb')
+    && htmlContains('routes/settings.js', 'LEFT JOIN banquet_groups bg')
+    && htmlContains('routes/settings.js', 'customerId: b.customer_id ?? null')
+    && htmlContains('routes/settings.js', 'banquetGroupId: b.banquet_group_id || null')
+    && htmlContains('routes/settings.js', 'banquetGroupRole: b.banquet_group_role || null')
+    && htmlContains('routes/settings.js', 'isBanquetGroupMember: Boolean(b.banquet_group_id)')
+    && htmlContains('routes/settings.js', 'isBanquetPrimary: Boolean(')
+    && htmlContains('services/timelineResources.js', 'customerId: booking.customer_id ?? null')
+    && htmlContains('services/timelineResources.js', 'banquetGroupId: booking.banquet_group_id || null')
+    && htmlContains('services/timelineResources.js', 'banquetGroupRole: booking.banquet_group_role || null')
+    && htmlContains('services/timelineResources.js', 'isBanquetGroupMember: Boolean(booking.banquet_group_id)')
+    && htmlContains('services/timelineResources.js', 'isBanquetPrimary: Boolean('));
+const bookingRoomSelectionContextBlock = bookingCode.slice(
+    bookingCode.indexOf('function selectedRoomDayBookings'),
+    bookingCode.indexOf('function clearSelectedCustomerLink')
+);
+check('Booking room selection auto-fills customer and preselects banquet context without creating groups',
+    bookingCode.includes('const customerId = booking.customerId ?? booking.customer_id ?? null')
+    && bookingCode.includes('const banquetGroupId = booking.banquetGroupId || booking.banquet_group_id || null')
+    && bookingCode.includes('const banquetGroupPrimaryBookingId = booking.banquetGroupPrimaryBookingId || booking.banquet_group_primary_booking_id || null')
+    && bookingCode.includes('customerId,')
+    && bookingCode.includes('banquetGroupId,')
+    && bookingCode.includes('function selectedRoomDayBookings')
+    && bookingCode.includes('function pickRoomBanquetSourceBooking')
+    && bookingCode.includes('function roomBookingHasBanquetContext')
+    && bookingCode.includes('function sourceBookingToBanquetContext')
+    && bookingCode.includes('async function handleBookingRoomSelectionContextChange')
+    && bookingCode.includes('roomSelectionContextRequestToken')
+    && bookingCode.includes('autoFilledCustomerFromRoom')
+    && bookingCode.includes('autoFilledBanquetFromRoom')
+    && bookingCode.includes('markBookingCustomerSelectionManual({ render: false })')
+    && bookingCode.includes("document.getElementById('bookingBanquetGroupSelect')?.addEventListener('change'")
+    && /async function handleBookingRoomSelectionContextChange[\s\S]*pickRoomBanquetSourceBooking[\s\S]*hydrateBookingCustomerSelection\(sourceBooking[\s\S]*resolveRoomSelectionBanquetContext[\s\S]*BookingDrawerState\.selectedBanquetGroupId = banquetContext\.groupId[\s\S]*refreshBookingBanquetGroupCandidates/.test(bookingCode)
+    && /async function resolveRoomSelectionBanquetContext[\s\S]*apiGetBanquetByBooking\(sourceBookingId\)/.test(bookingCode)
+    && /function selectedBookingBanquetGroupContext[\s\S]*roomSelectionBanquetContext[\s\S]*roomContext\?\.sourceBookingId/.test(bookingCode)
+    && !/async function handleBookingRoomSelectionContextChange[\s\S]*apiCreateBanquetGroup/.test(bookingRoomSelectionContextBlock));
+check('Booking room auto-linked banquet context is cleared safely on customer mismatch',
+    bookingCode.includes("const ROOM_SELECTION_CUSTOMER_CHANGED_MESSAGE = 'Клієнта змінено, прив’язку до банкета з кімнати скинуто. Оберіть банкет вручну, якщо потрібно.'")
+    && bookingCode.includes('manualBanquetGroupSelection')
+    && bookingCode.includes('function selectedBookingBanquetGroupCustomerMismatch')
+    && bookingCode.includes('function clearRoomSelectionBanquetContextAfterCustomerChange')
+    && /function selectCustomerFromSearch[\s\S]*markBookingCustomerSelectionManual\(\{ render: false \}\)[\s\S]*clearSelectedBanquetGroupIfCustomerMismatch\(\)[\s\S]*ROOM_SELECTION_CUSTOMER_CHANGED_MESSAGE/.test(bookingCode)
+    && /bookingBanquetGroupSelect'\)\?\.addEventListener\('change'[\s\S]*manualBanquetGroupSelection = Boolean\(BookingDrawerState\.selectedBanquetGroupId\)/.test(bookingCode)
+    && bookingCode.includes("source: roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector'")
+    && /selectedBanquetContext\.groupId && selectedBookingBanquetGroupCustomerMismatch\(selectedBanquetContext\)[\s\S]*Клієнт бронювання не збігається з вибраним банкетом/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\)/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'activity', selectedBanquetContextSource\)/.test(bookingCode)
+    && htmlContains('services/banquetGroups.js', 'function resolveAtomicBanquetCustomerId')
+    && htmlContains('services/banquetGroups.js', "code: 'CUSTOMER_BANQUET_MISMATCH'"));
 check('Booking panel header shows client and child count live context',
     htmlContains('index.html', 'selectedCustomerDisplay')
     && htmlContains('index.html', 'selectedChildDisplay')

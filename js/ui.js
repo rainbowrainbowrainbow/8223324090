@@ -2505,6 +2505,7 @@ function initTimelineResponsiveResize() {
 
 function toggleCompactMode(event) {
     const toggle = document.getElementById('compactModeToggle');
+    const previousCompactMode = Boolean(AppState.compactMode);
     AppState.compactMode = typeof event?.target?.checked === 'boolean'
         ? event.target.checked
         : toggle
@@ -2514,6 +2515,9 @@ function toggleCompactMode(event) {
     localStorage.setItem(key, AppState.compactMode);
     applyTimelineResponsiveDensity();
     if (toggle) toggle.checked = AppState.compactMode;
+    if (previousCompactMode !== Boolean(AppState.compactMode) && typeof markTimelineNavigationScrollReset === 'function') {
+        markTimelineNavigationScrollReset('compact-change');
+    }
     renderTimeline();
 }
 
@@ -2522,6 +2526,7 @@ function toggleCompactMode(event) {
 // ==========================================
 
 function changeZoom(level) {
+    const previousLevel = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES;
     const nextLevel = typeof normalizeTimelineZoomLevel === 'function'
         ? normalizeTimelineZoomLevel(level)
         : (parseInt(level, 10) || 30);
@@ -2531,6 +2536,9 @@ function changeZoom(level) {
     localStorage.setItem(key, nextLevel);
     applyTimelineResponsiveDensity();
     updateZoomButtons();
+    if (previousLevel !== nextLevel && typeof markTimelineNavigationScrollReset === 'function') {
+        markTimelineNavigationScrollReset('zoom-change');
+    }
     renderTimeline();
 }
 

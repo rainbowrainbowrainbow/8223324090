@@ -2064,6 +2064,35 @@ check('Timeline Android density reads lexical CONFIG and visual viewport', uiCod
 check('Timeline iOS and iPad viewport hardening is explicit', uiCode.includes('function syncTimelineViewportMetrics') && uiCode.includes('--eg-viewport-height') && uiCode.includes('--eg-viewport-width') && uiCode.includes('timeline-dashboard-root') && htmlContains('css/timeline.css', 'var(--eg-viewport-height') && responsiveCss.includes('v0.63.5: iPad/tablet timeline shell') && responsiveCss.includes('html.timeline-dashboard-root') && responsiveCss.includes('body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header'));
 check('Timeline compact mode fits desktop while phones keep readable horizontal scroll', uiCode.includes('function _timelineFitCellWidth') && uiCode.includes('phones must scroll horizontally instead of crushing readable time cells') && uiCode.includes("container.dataset.fitScreen = compact && viewportWidth > 768 ? 'true' : 'scroll'") && uiCode.includes('event?.target?.checked') && uiCode.includes('timeline-compact-mode') && htmlContains('js/app.js', 'compactToggle.checked = AppState.compactMode') && htmlContains('css/timeline.css', 'v0.56.5: timeline compact fit-screen density') && htmlContains('css/controls.css', 'keep compact zoom modes genuinely compact') && darkModeCss.includes('v0.63.55: operational compact timeline density') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .control-panel') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .booking-block'));
 check('Timeline phone layout has tidy toolbar rows and readable day/week scroll grids', responsiveCss.includes('v0.69.20: phone timeline toolbar and readable horizontal grid') && responsiveCss.includes('"prev date next"') && responsiveCss.includes('"today day day"') && responsiveCss.includes('.timeline-container[data-fit-screen="scroll"] .timeline-scroll') && responsiveCss.includes('width: max-content !important') && responsiveCss.includes('body.timeline-dashboard-page .multi-day-container') && responsiveCss.includes('body.timeline-dashboard-page .mini-line-grid') && responsiveCss.includes('--mini-grid-width') && responsiveCss.includes('body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn)'));
+check('Timeline horizontal scroll restore is scoped and reset on navigation context changes',
+    timelineCode.includes('function timelineHorizontalScrollStateKey')
+    && timelineCode.includes('function captureTimelineHorizontalScrollState')
+    && timelineCode.includes('function restoreTimelineHorizontalScrollState')
+    && timelineCode.includes('function resetTimelineHorizontalScroll')
+    && timelineCode.includes('function markTimelineNavigationScrollReset')
+    && timelineCode.includes('timelineCacheScopeKey()')
+    && timelineCode.includes('const timelineView = timelineCurrentView();')
+    && timelineCode.includes('timelineDateKey(date)')
+    && timelineCode.includes("AppState.multiDayMode ? 'week' : 'day'")
+    && timelineCode.includes('timelineHorizontalScrollZoomKey()')
+    && timelineCode.includes("AppState.compactMode ? 'compact' : 'regular'")
+    && timelineCode.includes("markTimelineNavigationScrollReset('date-change')")
+    && timelineCode.includes("markTimelineNavigationScrollReset('view-switch-before-render')")
+    && timelineCode.includes("markTimelineNavigationScrollReset('business-context-change')")
+    && appCode.includes('const previousPeriod = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY')
+    && appCode.includes('previousPeriod !== normalizedPeriod')
+    && appCode.includes("markTimelineNavigationScrollReset('date-input-change')")
+    && appCode.includes("markTimelineNavigationScrollReset('today')")
+    && appCode.includes("markTimelineNavigationScrollReset('period-change')")
+    && uiCode.includes('const previousCompactMode = Boolean(AppState.compactMode)')
+    && uiCode.includes('previousCompactMode !== Boolean(AppState.compactMode)')
+    && uiCode.includes('const previousLevel = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES')
+    && uiCode.includes('previousLevel !== nextLevel')
+    && uiCode.includes("markTimelineNavigationScrollReset('zoom-change')")
+    && uiCode.includes("markTimelineNavigationScrollReset('compact-change')")
+    && !timelineCode.includes('Preserve horizontal scroll position across date changes')
+    && !timelineCode.includes('Restore horizontal scroll position after render')
+    && !timelineCode.includes('const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0'));
 check('Timeline room-to-animator switch reconciles vertical shell height without removing iPhone guards',
     uiCode.includes('function syncTimelineViewHeight')
     && uiCode.includes('function resetTimelineVerticalScroll')

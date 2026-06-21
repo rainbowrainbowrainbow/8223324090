@@ -4,6 +4,20 @@
 
 ---
 
+## v0.76.93 - Timeline date scroll fix
+
+### Timeline date navigation / Horizontal scroll state / Animator view / Room view / Regression tests / (Клешня, 21.06.2026) [codex]
+- **Після зміни дати таймлайн більше не переносить старий горизонтальний scroll** - новий день відкривається з власного старту, а не з позиції, де менеджер був на попередній даті.
+- **Сценарій `21.06.2026` -> `22.06.2026` відкриває день з початку робочого діапазону** - для понеділка `22.06.2026` поверхня стартує з `12:00-20:00`, без випадкового показу `15:15`.
+- **Fix працює для animator і room timeline** - перемикання між лініями свят і кімнатами не переносить pixel offset між різними поверхнями.
+- **Scroll state тепер scoped by date/view/zoom/period/business context** - stale `scrollLeft` скидається при зміні дати, режиму, масштабу `15/30/60`, compact mode, day/week period і business context.
+- **Regression tests додано для date/view/zoom/period scroll behavior** - lifecycle, week parity, regression matrix і UI smoke перевіряють, що старий horizontal offset не повертається після навігації.
+- **Browser QA підтвердив desktop і mobile сценарії** - Playwright harness перевірив animator/room timeline, date navigation, zoom, compact, day/week і mobile swipe reset.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей і без інфраструктурних правок.
+- **Релізні маркери піднято до `0.76.93`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.92 - Banquet room auto-link
 
 ### Banquet room auto-link / Booking drawer / Atomic banquet save / Mismatch guard / Browser QA / (Клешня, 21.06.2026) [codex]

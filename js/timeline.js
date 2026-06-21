@@ -162,6 +162,7 @@ async function setTimelineView(view, options = {}) {
     updateTimelineViewControls();
     if (next !== current) {
         clearTimelineBanquetRoomPreviews();
+        markTimelineNavigationScrollReset('view-switch-before-render');
         if (options.render !== false) {
             if (typeof resetTimelineVerticalScroll === 'function') {
                 resetTimelineVerticalScroll('view-switch-before-render');
@@ -229,6 +230,85 @@ function timelineDateKey(date) {
 function timelineCacheKeyForDate(date) {
     return `${timelineCacheScopeKey()}|${timelineDateKey(date)}`;
 }
+
+let _timelineHorizontalScrollResetGeneration = 0;
+let _timelineLastHorizontalScrollResetReason = '';
+
+function timelineHorizontalScrollPeriodKey() {
+    if (typeof normalizeTimelineModeState === 'function') {
+        normalizeTimelineModeState(AppState);
+    }
+    return AppState.multiDayMode ? 'week' : 'day';
+}
+
+function timelineHorizontalScrollZoomKey() {
+    const rawZoom = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES;
+    if (typeof normalizeTimelineZoomLevel === 'function') {
+        return normalizeTimelineZoomLevel(rawZoom);
+    }
+    const parsed = Number.parseInt(rawZoom, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+}
+
+function timelineHorizontalScrollStateKey(date = AppState.selectedDate) {
+    const period = timelineHorizontalScrollPeriodKey();
+    const zoom = timelineHorizontalScrollZoomKey();
+    const compact = AppState.compactMode ? 'compact' : 'regular';
+    return `${timelineCacheScopeKey()}|${timelineDateKey(date)}|${period}|zoom:${zoom}|${compact}`;
+}
+
+function resetTimelineHorizontalScroll(reason = 'manual') {
+    const scroll = document.getElementById('timelineScroll');
+    const safeReason = String(reason || 'manual');
+    if (!scroll) return false;
+    scroll.scrollLeft = 0;
+    try {
+        scroll.scrollTo({ left: 0, top: scroll.scrollTop || 0, behavior: 'auto' });
+    } catch (_) {
+        scroll.scrollLeft = 0;
+    }
+    scroll.dataset.timelineHorizontalScrollReset = safeReason;
+    const container = document.querySelector('.timeline-container');
+    if (container) container.dataset.timelineHorizontalScrollReset = safeReason;
+    return true;
+}
+
+function markTimelineNavigationScrollReset(reason = 'navigation') {
+    _timelineHorizontalScrollResetGeneration += 1;
+    _timelineLastHorizontalScrollResetReason = String(reason || 'navigation');
+    resetTimelineHorizontalScroll(_timelineLastHorizontalScrollResetReason);
+    return _timelineHorizontalScrollResetGeneration;
+}
+
+function captureTimelineHorizontalScrollState(scroll = document.getElementById('timelineScroll'), date = AppState.selectedDate) {
+    return {
+        key: timelineHorizontalScrollStateKey(date),
+        left: scroll ? Math.max(0, Number(scroll.scrollLeft || 0)) : 0,
+        resetGeneration: _timelineHorizontalScrollResetGeneration,
+        reason: _timelineLastHorizontalScrollResetReason
+    };
+}
+
+function restoreTimelineHorizontalScrollState(snapshot, scroll = document.getElementById('timelineScroll'), date = AppState.selectedDate) {
+    if (!scroll || !snapshot || typeof snapshot !== 'object') return false;
+    const currentKey = timelineHorizontalScrollStateKey(date);
+    if (
+        snapshot.key !== currentKey
+        || snapshot.resetGeneration !== _timelineHorizontalScrollResetGeneration
+    ) {
+        return resetTimelineHorizontalScroll(snapshot.reason || 'timeline-context-change');
+    }
+    const left = Math.max(0, Number(snapshot.left || 0));
+    if (left <= 0) return false;
+    scroll.scrollLeft = left;
+    return true;
+}
+
+window.timelineHorizontalScrollStateKey = timelineHorizontalScrollStateKey;
+window.captureTimelineHorizontalScrollState = captureTimelineHorizontalScrollState;
+window.restoreTimelineHorizontalScrollState = restoreTimelineHorizontalScrollState;
+window.resetTimelineHorizontalScroll = resetTimelineHorizontalScroll;
+window.markTimelineNavigationScrollReset = markTimelineNavigationScrollReset;
 
 function getTimelineCacheEntry(cache, date) {
     if (!cache) return null;
@@ -2750,6 +2830,7 @@ async function handleTimelineBusinessContextChanged(event) {
     AppState.cachedLines = {};
     AppState.linesByDate = {};
     AppState.lines = [];
+    markTimelineNavigationScrollReset('business-context-change');
     updateTimelineViewControls();
     if (typeof closeBookingPanel === 'function') {
         closeBookingPanel(true).catch?.(() => {});
@@ -2824,9 +2905,8 @@ async function renderTimeline() {
 
     renderTimeScale(selectedDate);
 
-    // v7.8.6: Preserve horizontal scroll position across date changes
     const timelineScroll = document.getElementById('timelineScroll');
-    const savedScrollLeft = timelineScroll ? timelineScroll.scrollLeft : 0;
+    const horizontalScrollSnapshot = captureTimelineHorizontalScrollState(timelineScroll, selectedDate);
 
     const container = document.getElementById('timelineLines');
     const showAfisha = timelineShouldRenderAfisha();
@@ -3014,10 +3094,7 @@ async function renderTimeline() {
     renderNowLine();
     renderMinimap(selectedDate);
 
-    // v7.8.6: Restore horizontal scroll position after render
-    if (timelineScroll && savedScrollLeft > 0) {
-        timelineScroll.scrollLeft = savedScrollLeft;
-    }
+    restoreTimelineHorizontalScrollState(horizontalScrollSnapshot, timelineScroll, selectedDate);
 
     // v5.15: Apply status filter after render
     applyStatusFilter();
@@ -6010,6 +6087,7 @@ async function changeDate(days) {
     // when an in-progress render still references the old Date via snapshot
     const newDate = new Date(AppState.selectedDate);
     newDate.setDate(newDate.getDate() + days);
+    markTimelineNavigationScrollReset('date-change');
     AppState.selectedDate = newDate;
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     setTimelineDateInUrl(AppState.selectedDate);

@@ -400,6 +400,26 @@ test('timeline view switch isolation keeps room rows out of animator render and 
     assert.match(api, /function timelineApiUrlWithView[\s\S]*timelineView=\$\{encodeURIComponent\(String\(view\)\)\}/);
 });
 
+test('timeline view isolation matrix includes horizontal scroll scope and reset', () => {
+    const timeline = readProjectFile('js/timeline.js');
+    const setViewBlock = timeline.slice(
+        timeline.indexOf('async function setTimelineView'),
+        timeline.indexOf('window.TimelineView =')
+    );
+    const scrollKeyBlock = timeline.slice(
+        timeline.indexOf('function timelineHorizontalScrollStateKey'),
+        timeline.indexOf('function getTimelineCacheEntry')
+    );
+
+    assert.match(scrollKeyBlock, /timelineCacheScopeKey\(\)/);
+    assert.match(scrollKeyBlock, /timelineDateKey\(date\)/);
+    assert.match(scrollKeyBlock, /const period = timelineHorizontalScrollPeriodKey\(\)/);
+    assert.match(scrollKeyBlock, /const zoom = timelineHorizontalScrollZoomKey\(\)/);
+    assert.match(scrollKeyBlock, /const compact = AppState\.compactMode \? 'compact' : 'regular'/);
+    assert.match(setViewBlock, /if \(next !== current\) \{[\s\S]*clearTimelineBanquetRoomPreviews\(\);[\s\S]*markTimelineNavigationScrollReset\('view-switch-before-render'\);[\s\S]*if \(options\.render !== false\) \{/);
+    assert.match(timeline, /async function handleTimelineBusinessContextChanged[\s\S]*markTimelineNavigationScrollReset\('business-context-change'\);[\s\S]*updateTimelineViewControls\(\)/);
+});
+
 test('phase 4 matrix is wired into unit and UI proof stack', () => {
     const packageJson = readProjectFile('package.json');
     const lifecycleTest = readProjectFile('tests/timeline-lifecycle.test.js');

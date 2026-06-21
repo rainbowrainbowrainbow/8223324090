@@ -108,11 +108,15 @@ function syncTimelinePeriodSelector(root = document.getElementById('periodSelect
 }
 
 function applyTimelinePeriod(period, root = document.getElementById('periodSelector')) {
+    const previousPeriod = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
     const normalizedPeriod = Number.parseInt(period, 10) === TIMELINE_PERIOD_WEEK
         ? TIMELINE_PERIOD_WEEK
         : TIMELINE_PERIOD_DAY;
     AppState.multiDayMode = normalizedPeriod === TIMELINE_PERIOD_WEEK;
     AppState.daysToShow = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
+    if (previousPeriod !== normalizedPeriod && typeof markTimelineNavigationScrollReset === 'function') {
+        markTimelineNavigationScrollReset('period-change');
+    }
     syncTimelinePeriodSelector(root);
     renderTimeline();
 }
@@ -332,6 +336,9 @@ function initTimelineListeners() {
             e.target.value = formatDate(AppState.selectedDate);
             return;
         }
+        if (typeof markTimelineNavigationScrollReset === 'function') {
+            markTimelineNavigationScrollReset('date-input-change');
+        }
         AppState.selectedDate = newDate;
         if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(AppState.selectedDate);
         renderTimeline();
@@ -350,6 +357,9 @@ function initTimelineListeners() {
     if (todayBtn) {
         todayBtn.addEventListener('click', async () => {
             if (!await closeBookingPanel(false)) return;
+            if (typeof markTimelineNavigationScrollReset === 'function') {
+                markTimelineNavigationScrollReset('today');
+            }
             AppState.selectedDate = new Date();
             document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
             if (typeof setTimelineDateInUrl === 'function') setTimelineDateInUrl(AppState.selectedDate);

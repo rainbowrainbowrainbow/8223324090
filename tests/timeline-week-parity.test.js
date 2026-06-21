@@ -34,6 +34,25 @@ test('week timeline uses the same canonical resource identity as day timeline', 
     assert.match(timeline, /data-resource-type="\$\{escapeHtml\(bookingIdentity\.resourceType\)\}"/);
 });
 
+test('day/week period switch resets outer horizontal scroll and keeps week shell isolated', () => {
+    const app = read('js/app.js');
+    const timeline = read('js/timeline.js');
+    const renderTimelineBlock = timeline.slice(
+        timeline.indexOf('async function renderTimeline'),
+        timeline.indexOf('function getBookingDragGroup')
+    );
+    const renderMultiDayBlock = timeline.slice(
+        timeline.indexOf('async function renderMultiDayTimeline'),
+        timeline.indexOf('async function changeDate')
+    );
+
+    assert.match(app, /function applyTimelinePeriod\(period[\s\S]*const previousPeriod = AppState\.multiDayMode \? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY/);
+    assert.match(app, /previousPeriod !== normalizedPeriod[\s\S]*markTimelineNavigationScrollReset\('period-change'\)[\s\S]*renderTimeline\(\)/);
+    assert.match(renderTimelineBlock, /if \(AppState\.multiDayMode\) \{[\s\S]*await renderMultiDayTimeline\(\);[\s\S]*return;[\s\S]*renderTimeScale\(selectedDate\);/);
+    assert.doesNotMatch(renderMultiDayBlock, /captureTimelineHorizontalScrollState|restoreTimelineHorizontalScrollState|scrollLeft =/);
+    assert.match(read('css/timeline.css'), /\.day-section-content\s*\{[\s\S]*overflow-x: auto/);
+});
+
 test('created booking reveal can find day blocks and week mini-blocks', () => {
     const booking = read('js/booking.js');
     const css = read('css/timeline.css');

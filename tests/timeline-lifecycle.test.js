@@ -153,6 +153,9 @@ function createHarness() {
             markTimelineNavigationScrollReset,
             syncTimelineContentWidth,
             timelineRangeCellCount,
+            timelineTimeMarkPlacements,
+            timelineMiniTimeMarkPlacements,
+            timelineTimeToPixel,
             hasActiveTimelineInteractionState,
             setSaveInFlight(value) { _timelineInteractionSaveInFlight = Boolean(value); },
             getSaveInFlight() { return _timelineInteractionSaveInFlight; },
@@ -282,6 +285,46 @@ test('date navigation keeps day timeline width on canonical range cells', async 
         Number.parseFloat(scroll.style.getPropertyValue('--timeline-grid-width')),
         api.timelineRangeCellCount(window.AppState.selectedDate) * window.CONFIG.TIMELINE.CELL_WIDTH
     );
+});
+
+test('date navigation keeps start marker geometry readable after scroll reset', async () => {
+    const { window, api } = createHarness();
+    const scroll = window.document.getElementById('timelineScroll');
+    window.CONFIG.TIMELINE.CELL_MINUTES = 15;
+    window.CONFIG.TIMELINE.CELL_WIDTH = 40;
+    window.AppState.selectedDate = new Date('2026-06-21T00:00:00');
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const anchor = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const placementsFor = (date) => {
+        const gridWidth = api.timelineRangeCellCount(date) * window.CONFIG.TIMELINE.CELL_WIDTH;
+        return api.timelineTimeMarkPlacements(date, anchor, { gridWidth, cellWidth: 40 });
+    };
+
+    const sundayMarks = placementsFor(window.AppState.selectedDate);
+    assert.equal(sundayMarks[0].label, '10:00');
+    assert.equal(sundayMarks[1].label, '10:15');
+    assert.ok(sundayMarks[0].left < 0);
+    assert.ok(sundayMarks[0].right <= sundayMarks[1].left);
+
+    scroll.scrollLeft = 740;
+    await api.changeDate(1);
+
+    const mondayMarks = placementsFor(window.AppState.selectedDate);
+    assert.equal(formatDate(window.AppState.selectedDate), '2026-06-22');
+    assert.equal(scroll.scrollLeft, 0);
+    assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'date-change');
+    assert.equal(mondayMarks[0].label, '12:00');
+    assert.equal(mondayMarks[1].label, '12:15');
+    assert.ok(mondayMarks[0].left < 0);
+    assert.ok(mondayMarks[0].right <= mondayMarks[1].left);
+    assert.equal(api.timelineTimeToPixel(mondayMarks[1].label, window.AppState.selectedDate, anchor), mondayMarks[1].x);
 });
 
 test('timeline view switch resets horizontal scroll between animator and room timelines', async () => {

@@ -445,7 +445,12 @@ test('timeline width contract is shared by animator and room surfaces without se
     assert.match(markerGeometryBlock, /function timelineTimeMarkPlacements\(date, anchor, geometry = null\)/);
     assert.match(markerGeometryBlock, /function timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
     assert.match(markerGeometryBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
+    assert.match(markerGeometryBlock, /function timelineResolveTimeMarkCollisions\(placements, gridWidth/);
+    assert.match(markerGeometryBlock, /pushFromStart\(\);[\s\S]*pullFromEnd\(\);/);
+    assert.match(markerGeometryBlock, /options\.edge === 'start' \? -\(safeWidth \/ 2\) : 0/);
     assert.match(renderTimelineBlock, /syncTimelineContentWidth\(selectedDate, container\.querySelector\('\.line-grid\[data-line-id\]'\)\)/);
+    assert.match(renderTimelineBlock, /renderTimeScale\(selectedDate\)/);
+    assert.doesNotMatch(renderTimelineBlock, /isRoomTimelineView\(\)[\s\S]*renderTimeScale\(selectedDate\)[\s\S]*else[\s\S]*renderTimeScale\(selectedDate\)/);
     assert.match(renderTimelineBlock, /if \(isRoomTimelineView\(\)\) \{[\s\S]*syncTimelineRoomOperationalLayout\(lineGrid\);[\s\S]*\}/);
     assert.match(roomServiceMarkerBlock, /const gridWidth = lineGrid\.scrollWidth \|\| lineGrid\.getBoundingClientRect\?\.\(\)\.width \|\| 0/);
     assert.match(roomServiceMarkerBlock, /const maxLeft = gridWidth > baseWidth \? gridWidth - baseWidth : leftRaw/);

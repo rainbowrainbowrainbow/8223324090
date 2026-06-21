@@ -109,3 +109,21 @@ test('timeline release guardrails are documented and exposed as a repo command',
     assert.match(docs, /git revert <bad-release-commit>/);
     assert.doesNotMatch(docs, /HEAD:deployed/);
 });
+
+test('timeline release proof stack covers start and end marker alignment regressions', () => {
+    const timeline = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
+    const resourcesTest = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-resources.test.js'), 'utf8');
+    const lifecycleTest = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-lifecycle.test.js'), 'utf8');
+    const weekParityTest = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-week-parity.test.js'), 'utf8');
+    const regressionMatrixTest = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-regression-matrix.test.js'), 'utf8');
+    const uiCheck = fs.readFileSync(path.join(ROOT, 'tests', 'ui-check.js'), 'utf8');
+
+    assert.match(timeline, /function timelineResolveTimeMarkCollisions\(placements, gridWidth/);
+    assert.match(resourcesTest, /clamps start label without overlapping the first interval mark/);
+    assert.match(resourcesTest, /clamps end label without overlapping the previous mark/);
+    assert.match(lifecycleTest, /date navigation keeps start marker geometry readable after scroll reset/);
+    assert.match(weekParityTest, /week mini timeline start and end labels use shared collision geometry/);
+    assert.match(timeline, /pushFromStart\(\);[\s\S]*pullFromEnd\(\);/);
+    assert.ok(regressionMatrixTest.includes("options\\.edge === 'start' \\? -\\(safeWidth \\/ 2\\) : 0"));
+    assert.match(uiCheck, /Timeline time marker collision resolver handles start and end edges/);
+});

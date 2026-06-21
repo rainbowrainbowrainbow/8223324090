@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -75,7 +76,7 @@ test('week mini timeline width is based on range duration without an extra end-l
     assert.match(renderDaySectionBlock, /const timeScaleHtml = renderMiniTimeScaleHtml\(start, end, hourWidth, gridWidth\)/);
     assert.match(helperBlock, /timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
     assert.match(helperBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
-    assert.match(helperBlock, /nextLeft: next\.left/);
+    assert.match(helperBlock, /timelineResolveTimeMarkCollisions\(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP\)/);
     assert.match(helperBlock, /--mini-grid-width: \$\{gridWidth\}px/);
     assert.match(renderMiniLineBlock, /--mini-grid-width: \$\{gridWidth\}px/);
     assert.doesNotMatch(renderDaySectionBlock + renderMiniLineBlock, /\(end - start \+ 1\)|timelineRangeMarkCount|scrollWidth/);
@@ -84,6 +85,39 @@ test('week mini timeline width is based on range duration without an extra end-l
     assert.match(css, /\.mini-time-mark\.end\s*\{[\s\S]*text-align:\s*right/);
     assert.match(responsiveCss, /body\.timeline-dashboard-page \.mini-time-scale\s*\{[\s\S]*width:\s*var\(--mini-grid-width, max-content\) !important/);
     assert.doesNotMatch(responsiveCss, /body\.timeline-dashboard-page \.mini-time-mark\s*\{[\s\S]*width:\s*var\(--mini-hour-width/);
+});
+
+test('week mini timeline start and end labels use shared collision geometry', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        document: { querySelector() { return null; } },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(timeline.slice(helperStart, helperEnd), context);
+
+    const marks = context.timelineMiniTimeMarkPlacements('10:00', '20:00', 120);
+    const startMark = marks[0];
+    const nextMark = marks[1];
+    const previousMark = marks.at(-2);
+    const endMark = marks.at(-1);
+
+    assert.equal(startMark.label, '10:00');
+    assert.equal(nextMark.label, '11:00');
+    assert.ok(startMark.left < 0);
+    assert.ok(startMark.right <= nextMark.left);
+    assert.equal(endMark.label, '20:00');
+    assert.ok(previousMark.right <= endMark.left);
+    assert.equal(endMark.right, 1200);
 });
 
 test('created booking reveal can find day blocks and week mini-blocks', () => {

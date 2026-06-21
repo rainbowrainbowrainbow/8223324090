@@ -4,6 +4,23 @@
 
 ---
 
+## v0.76.98 - Timeline start marker alignment fix
+
+### Timeline marker alignment / Start labels / Compact density / Animator view / Room view / Browser QA / (Клешня, 21.06.2026) [codex]
+- **Виправлено накладання time labels на початку timeline** - стартові мітки на лівому краї більше не зʼїжджають одна на одну після edge-marker fixes.
+- **`10:00` і `10:15` більше не перекриваються у звичайному 15-хв режимі** - перша й друга мітки залишаються читабельними та привʼязаними до правильних ticks.
+- **Start label коректно використовує лівий gutter** - мітка старту може візуально зайти в службову зону, але не створює зайву scroll width і не зсуває grid, booking blocks або now-line.
+- **Compact/mobile density більше не ламає початок шкали** - якщо 15-хв labels фізично не влазять у вузьку cell, другорядні мітки проріджуються до читабельного кроку без overlap.
+- **Start/end labels використовують спільну canonical geometry** - початковий і кінцевий край таймлайну рахуються одним механізмом, збережено попередній fix для `19:45` / `20:00`.
+- **Fix працює для animator і room timeline** - перевірено day surface, room surface, zoom `15/30/60`, compact mode, mobile viewport і week mini timeline.
+- **Browser QA виконано через static harness** - локальний `npm start` заблокований відсутнім `DATABASE_URL` або `PGHOST/PGUSER/PGDATABASE`, тому Chromium перевірив реальну DOM/CSS geometry на generated harness без зміни env/Railway config.
+- **Regression tests додано для start-edge marker alignment** - resources, lifecycle, week parity, regression matrix, release proof і UI smoke фіксують, що start labels не перекриваються й щільні режими безпечно проріджують labels.
+- **Попередні fixes збережено** - date scroll reset, range width overflow, end marker alignment і resource header alignment не регреснули.
+- **Schema/auth/roles/deploy config не змінювались** - реліз без DB migration, без зміни ролей, secrets, Railway config або нових залежностей.
+- **Релізні маркери піднято до `0.76.98`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.97 - Timeline resource header alignment fix
 
 ### Timeline headers / Room rows / Banquet preview state / Regression tests / (Клешня, 21.06.2026) [codex]

@@ -77,7 +77,7 @@
 }
 
 .mini-time-mark.start {
-    text-align: left;
+    text-align: center;
 }
 
 .mini-time-mark.end {
@@ -288,7 +288,7 @@
 }
 
 .time-scale .time-mark.start-mark {
-    text-align: left;
+    text-align: center;
 }
 
 .time-scale .time-mark.end-mark {

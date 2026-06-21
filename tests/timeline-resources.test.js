@@ -2219,6 +2219,126 @@ test('timeline dynamic width contract derives surfaces from range and cell geome
     );
 });
 
+test('timeline time marker placement clamps start label without overlapping the first interval mark', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const cell = { getBoundingClientRect: () => ({ width: 40 }) };
+    const grid = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 40 } },
+        getTimeRange: () => ({ start: '10:00', end: '20:00' }),
+        document: {
+            querySelector() {
+                return null;
+            }
+        },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    [
+        { level: 15, cellWidth: 40, nextLabel: '10:15' },
+        { level: 30, cellWidth: 54, nextLabel: '10:30' },
+        { level: 60, cellWidth: 84, nextLabel: '11:00' }
+    ].forEach(({ level, cellWidth, nextLabel }) => {
+        context.CONFIG.TIMELINE.CELL_MINUTES = level;
+        context.CONFIG.TIMELINE.CELL_WIDTH = cellWidth;
+        cell.getBoundingClientRect = () => ({ width: cellWidth });
+
+        const gridWidth = context.timelineRangeCellCount(new Date('2026-06-19T00:00:00')) * cellWidth;
+        const placements = context.timelineTimeMarkPlacements(new Date('2026-06-19T00:00:00'), grid, { gridWidth, cellWidth });
+        const startMark = placements[0];
+        const firstIntervalMark = placements[1];
+        const endMark = placements.at(-1);
+
+        assert.equal(startMark.label, '10:00');
+        assert.equal(firstIntervalMark.label, nextLabel);
+        assert.equal(startMark.x, 0);
+        assert.ok(startMark.left <= 0);
+        assert.ok(startMark.left >= -(startMark.width / 2));
+        assert.ok(startMark.right >= 0);
+        assert.ok(startMark.right <= firstIntervalMark.left, `${startMark.label} overlaps ${firstIntervalMark.label}`);
+        assert.ok(firstIntervalMark.left >= 0);
+        assert.equal(endMark.right, gridWidth);
+        assert.equal(
+            context.timelineTimeToPixel(firstIntervalMark.label, new Date('2026-06-19T00:00:00'), grid),
+            firstIntervalMark.x
+        );
+    });
+});
+
+test('timeline time marker placement thins minor labels when compact density cannot fit every interval', () => {
+    const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function getTimelineCellWidth');
+    const helperEnd = timeline.indexOf('function timelineBookingBlockDensity');
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'timeline geometry helpers are locatable');
+
+    const helperSource = timeline.slice(helperStart, helperEnd);
+    const cell = { getBoundingClientRect: () => ({ width: 28 }) };
+    const grid = {
+        querySelector(selector) {
+            return selector === '.grid-cell' ? cell : null;
+        },
+        closest() {
+            return null;
+        }
+    };
+    const context = {
+        CONFIG: { TIMELINE: { CELL_MINUTES: 15, CELL_WIDTH: 28 } },
+        getTimeRange: () => ({ start: '10:00', end: '20:00' }),
+        document: {
+            querySelector() {
+                return null;
+            }
+        },
+        window: {
+            getComputedStyle: () => ({ getPropertyValue: () => '' }),
+            addEventListener() {},
+            visualViewport: { addEventListener() {} }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+
+    const date = new Date('2026-06-19T00:00:00');
+    [28, 38].forEach(cellWidth => {
+        context.CONFIG.TIMELINE.CELL_WIDTH = cellWidth;
+        cell.getBoundingClientRect = () => ({ width: cellWidth });
+
+        const gridWidth = context.timelineRangeCellCount(date) * cellWidth;
+        const placements = context.timelineTimeMarkPlacements(date, grid, { gridWidth, cellWidth });
+        const labels = placements.map(mark => mark.label);
+
+        assert.equal(labels[0], '10:00');
+        assert.equal(labels[1], '10:30');
+        assert.ok(!labels.includes('10:15'), 'quarter-hour label should be hidden when compact density cannot fit it');
+        assert.ok(labels.includes('20:00'));
+        assert.equal(placements.at(-1).right, gridWidth);
+
+        for (let index = 1; index < placements.length; index += 1) {
+            const previous = placements[index - 1];
+            const current = placements[index];
+            assert.ok(previous.right <= current.left, `${previous.label} overlaps ${current.label}`);
+        }
+    });
+});
+
 test('timeline time marker placement clamps end label without overlapping the previous mark', () => {
     const timeline = read('js/timeline.js');
     const helperStart = timeline.indexOf('function getTimelineCellWidth');

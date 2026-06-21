@@ -1624,6 +1624,24 @@ check('Timeline scale rows and add zone share a dynamic width contract',
     && timelineBanquetLinkLayerBlock.includes('timelineBanquetLinkLayerSurfaceWidth(scroll)')
     && !timelineBanquetLinkLayerBlock.includes('scroll.scrollWidth')
     && timelineResourcesTestCode.includes('timeline dynamic width contract derives surfaces from range and cell geometry'));
+check('Timeline time marker collision resolver handles start and end edges',
+    timelineCode.includes('function timelineResolveTimeMarkCollisions(placements, gridWidth')
+    && timelineCode.includes('function timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth')
+    && timelineCode.includes('timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth)')
+    && timelineCode.includes('pushFromStart();')
+    && timelineCode.includes('pullFromEnd();')
+    && timelineCode.includes('timelineResolveTimeMarkCollisions(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP)')
+    && timelineResourcesTestCode.includes('timeline time marker placement clamps start label without overlapping the first interval mark')
+    && timelineResourcesTestCode.includes('timeline time marker placement thins minor labels when compact density cannot fit every interval')
+    && timelineResourcesTestCode.includes('timeline time marker placement clamps end label without overlapping the previous mark')
+    && cssRuleText(timelineConstructorCss, '.time-scale .time-mark.start-mark').includes('text-align: center')
+    && cssRuleText(timelineConstructorCss, '.mini-time-mark.start').includes('text-align: center')
+    && !cssRuleText(timelineConstructorCss, '.time-scale .time-mark.start-mark').includes('left: 0')
+    && !/time-mark\.start-mark[^{]*\{[^}]*text-align:\s*left/.test(timelineConstructorCss + responsiveCss)
+    && !/mini-time-mark\.start[^{]*\{[^}]*text-align:\s*left/.test(timelineConstructorCss + responsiveCss)
+    && htmlContains('tests/timeline-lifecycle.test.js', 'date navigation keeps start marker geometry readable after scroll reset')
+    && htmlContains('tests/timeline-week-parity.test.js', 'week mini timeline start and end labels use shared collision geometry')
+    && htmlContains('tests/timeline-release-proof.test.js', 'timeline release proof stack covers start and end marker alignment regressions'));
 check('Timeline compact fit-screen width uses interval cells without adding the end label as a cell',
     uiCode.includes('function _timelineRangeBoundMinutes(value)')
     && uiCode.includes('function _timelineRangeCellCount(range, level)')

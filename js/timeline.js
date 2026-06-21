@@ -578,7 +578,7 @@ function timelineDurationWidth(duration, anchor) {
 }
 
 const TIMELINE_TIME_MARK_LABEL_GAP = 3;
-const TIMELINE_TIME_MARK_LABEL_WIDTH = 34;
+const TIMELINE_TIME_MARK_LABEL_WIDTH = 30;
 const TIMELINE_TIME_MARK_HOUR_LABEL_WIDTH = 38;
 
 function timelineDisplayTimeLabel(totalMinutes) {
@@ -618,22 +618,84 @@ function timelineTimeMarkLabelWidth(label, isHour = false) {
 function timelineLabelPlacement(markX, labelWidth, gridWidth, options = {}) {
     const safeWidth = Math.max(1, Number(labelWidth) || TIMELINE_TIME_MARK_LABEL_WIDTH);
     const safeGridWidth = Math.max(safeWidth, Number(gridWidth) || safeWidth);
+    const minLeft = options.edge === 'start' ? -(safeWidth / 2) : 0;
     const maxLeft = Math.max(0, safeGridWidth - safeWidth);
     const gap = Math.max(0, Number(options.gap) || 0);
     let left = Number(markX) - (safeWidth / 2);
 
-    if (options.edge === 'start') left = 0;
+    if (options.edge === 'start') left = minLeft;
     if (options.edge === 'end') left = maxLeft;
     if (Number.isFinite(options.nextLeft)) left = Math.min(left, options.nextLeft - gap - safeWidth);
     if (Number.isFinite(options.previousRight)) left = Math.max(left, options.previousRight + gap);
 
-    const clampedLeft = Math.max(0, Math.min(maxLeft, left));
+    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, left));
     return {
         left: clampedLeft,
         right: clampedLeft + safeWidth,
         width: safeWidth,
         edgeClamped: Math.abs(clampedLeft - left) > 0.5 || options.edge === 'start' || options.edge === 'end'
     };
+}
+
+function timelineConstrainLabelPlacement(placement, left, gridWidth) {
+    if (!placement) return placement;
+    const safeWidth = Math.max(1, Number(placement.width) || TIMELINE_TIME_MARK_LABEL_WIDTH);
+    const safeGridWidth = Math.max(safeWidth, Number(gridWidth) || safeWidth);
+    const minLeft = placement.edge === 'start' ? -(safeWidth / 2) : 0;
+    const maxLeft = Math.max(0, safeGridWidth - safeWidth);
+    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, Number(left) || 0));
+    if (Math.abs(clampedLeft - placement.left) > 0.5) {
+        placement.left = clampedLeft;
+        placement.right = clampedLeft + safeWidth;
+        placement.edgeClamped = true;
+    }
+    return placement;
+}
+
+function timelineResolveTimeMarkCollisions(placements, gridWidth, gap = TIMELINE_TIME_MARK_LABEL_GAP) {
+    if (!Array.isArray(placements) || placements.length <= 1) return placements;
+    const safeGap = Math.max(0, Number(gap) || 0);
+
+    const pushFromStart = () => {
+        for (let index = 1; index < placements.length; index++) {
+            const previous = placements[index - 1];
+            const current = placements[index];
+            const minLeft = previous.right + safeGap;
+            if (current.left < minLeft) {
+                timelineConstrainLabelPlacement(current, minLeft, gridWidth);
+            }
+        }
+    };
+
+    const pullFromEnd = () => {
+        for (let index = placements.length - 2; index >= 0; index--) {
+            const current = placements[index];
+            const next = placements[index + 1];
+            const maxRight = next.left - safeGap;
+            if (current.right > maxRight) {
+                timelineConstrainLabelPlacement(current, maxRight - current.width, gridWidth);
+            }
+        }
+    };
+
+    pushFromStart();
+    pullFromEnd();
+    return placements;
+}
+
+function timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth, gap = TIMELINE_TIME_MARK_LABEL_GAP) {
+    if (timelineIsEdgeMark(markMinutes, startMinutes, endMinutes)) return true;
+
+    const displayMinutes = ((Math.round(markMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+    if (displayMinutes % 60 === 0) return true;
+
+    const safeCellMinutes = Math.max(1, Number(cellMinutes) || 30);
+    const safeCellWidth = Math.max(1, Number(cellWidth) || CONFIG.TIMELINE.CELL_WIDTH || TIMELINE_TIME_MARK_LABEL_WIDTH);
+    const minimumReadableStep = timelineTimeMarkLabelWidth('00:00', true);
+    const halfHourStep = (30 / safeCellMinutes) * safeCellWidth;
+
+    if (displayMinutes % 30 === 0) return halfHourStep >= minimumReadableStep;
+    return safeCellWidth >= minimumReadableStep;
 }
 
 function timelineTimeMarkPlacements(date, anchor, geometry = null) {
@@ -643,10 +705,12 @@ function timelineTimeMarkPlacements(date, anchor, geometry = null) {
     if (endMinutes <= startMinutes) endMinutes += 24 * 60;
 
     const cellMinutes = Math.max(1, Number(CONFIG.TIMELINE.CELL_MINUTES) || 30);
+    const cellWidth = getTimelineCellWidth(anchor);
     const gridWidth = Math.ceil(geometry?.gridWidth || (timelineRangeCellCount(date) * getTimelineCellWidth(anchor)));
     const entries = [];
 
     for (let markMinutes = startMinutes; markMinutes < endMinutes; markMinutes += cellMinutes) {
+        if (!timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth)) continue;
         const label = timelineDisplayTimeLabel(markMinutes);
         const displayMinutes = ((Math.round(markMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
         const isHour = displayMinutes % 60 === 0;
@@ -675,22 +739,7 @@ function timelineTimeMarkPlacements(date, anchor, geometry = null) {
         ...timelineLabelPlacement(entry.x, entry.labelWidth, gridWidth, { edge: entry.edge, gap: TIMELINE_TIME_MARK_LABEL_GAP })
     }));
 
-    for (let index = placements.length - 2; index >= 0; index--) {
-        const current = placements[index];
-        const next = placements[index + 1];
-        const constrained = timelineLabelPlacement(current.x, current.labelWidth, gridWidth, {
-            edge: current.edge,
-            nextLeft: next.left,
-            gap: TIMELINE_TIME_MARK_LABEL_GAP
-        });
-        if (constrained.left < current.left || constrained.edgeClamped) {
-            current.left = constrained.left;
-            current.right = constrained.right;
-            current.edgeClamped = true;
-        }
-    }
-
-    return placements;
+    return timelineResolveTimeMarkCollisions(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP);
 }
 
 function timelineMiniTimeMarkPlacements(start, end, hourWidth) {
@@ -721,22 +770,7 @@ function timelineMiniTimeMarkPlacements(start, end, hourWidth) {
         ...timelineLabelPlacement(entry.x, entry.labelWidth, gridWidth, { edge: entry.edge, gap: TIMELINE_TIME_MARK_LABEL_GAP })
     }));
 
-    for (let index = placements.length - 2; index >= 0; index--) {
-        const current = placements[index];
-        const next = placements[index + 1];
-        const constrained = timelineLabelPlacement(current.x, current.labelWidth, gridWidth, {
-            edge: current.edge,
-            nextLeft: next.left,
-            gap: TIMELINE_TIME_MARK_LABEL_GAP
-        });
-        if (constrained.left < current.left || constrained.edgeClamped) {
-            current.left = constrained.left;
-            current.right = constrained.right;
-            current.edgeClamped = true;
-        }
-    }
-
-    return placements;
+    return timelineResolveTimeMarkCollisions(placements, gridWidth, TIMELINE_TIME_MARK_LABEL_GAP);
 }
 
 function renderMiniTimeScaleHtml(start, end, hourWidth, gridWidth) {

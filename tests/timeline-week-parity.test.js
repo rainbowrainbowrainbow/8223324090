@@ -12,10 +12,11 @@ function read(rel) {
 
 test('week timeline uses the same canonical resource identity as day timeline', () => {
     const timeline = read('js/timeline.js');
+    const timelineResourceIdentity = read('js/timeline-resource-identity.js');
 
-    assert.match(timeline, /function timelineLineResourceIdentity/);
-    assert.match(timeline, /function timelineBookingResourceIdentity/);
-    assert.match(timeline, /function timelineBookingsForLine/);
+    assert.match(timelineResourceIdentity, /function timelineLineResourceIdentity/);
+    assert.match(timelineResourceIdentity, /function timelineBookingResourceIdentity/);
+    assert.match(timelineResourceIdentity, /function timelineBookingsForLine/);
     assert.match(timeline, /function normalizeTimelineBookingsForContext/);
     assert.match(timeline, /lines = normalizeTimelineLinesForContext\(Array\.isArray\(linesResult\) \? linesResult : \[\]\)/);
     assert.match(timeline, /bookings = normalizeTimelineBookingsForContext\(Array\.isArray\(bookingsResult\) \? bookingsResult : \[\]\)/);
@@ -133,14 +134,14 @@ test('created booking reveal can find day blocks and week mini-blocks', () => {
 test('booking rows and frontend payloads carry resource identity while keeping lineId compatibility', () => {
     const service = read('services/booking.js');
     const booking = read('js/booking.js');
-    const timeline = read('js/timeline.js');
+    const timelineResourceIdentity = read('js/timeline-resource-identity.js');
 
     assert.match(service, /const timelineIdentity = \{/);
     assert.match(service, /resourceId:\s*row\.resource_id\s*\|\|\s*row\.line_id\s*\|\|\s*extraData\?\.timelineIdentity\?\.resourceId/s);
     assert.match(service, /resourceId: timelineIdentity\.resourceId/);
     assert.match(service, /resourceType: timelineIdentity\.resourceType/);
     assert.match(service, /timelineIdentity,/);
-    assert.match(timeline, /booking\?\.lineId\s*\|\|\s*booking\?\.line_id\s*\|\|\s*booking\?\.resourceId/s);
+    assert.match(timelineResourceIdentity, /booking\?\.lineId\s*\|\|\s*booking\?\.line_id\s*\|\|\s*booking\?\.resourceId/s);
     assert.match(booking, /obj\.extraData\.timelineIdentity = \{/);
     assert.match(booking, /obj\.resourceId = timelineIdentity\.resourceId/);
     assert.match(booking, /lineId: formData\.lineId/);

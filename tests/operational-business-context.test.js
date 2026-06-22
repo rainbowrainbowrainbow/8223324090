@@ -298,6 +298,8 @@ test('timeline booking and line mutations stay inside the active timeline busine
     const api = read('js/api.js');
     const timelineContext = read('js/timeline-context.js');
     const timeline = read('js/timeline.js');
+    const timelineCache = read('js/timeline-cache.js');
+    const timelineResourceIdentity = read('js/timeline-resource-identity.js');
     const ws = read('js/ws.js');
 
     assert.match(bookings, /function bookingContextSql/);
@@ -328,10 +330,10 @@ test('timeline booking and line mutations stay inside the active timeline busine
     assert.match(timelineContext, /state: contextState/);
     assert.match(timelineContext, /timeline:business-context-changed/);
     assert.match(timelineContext, /crmBusinessContextChanged/);
-    assert.match(timeline, /contextState\?\.activeBusinessContext/);
+    assert.match(timelineCache, /contextState\?\.activeBusinessContext/);
     assert.match(timeline, /function handleTimelineBusinessContextChanged/);
     assert.match(timeline, /AppState\.cachedBookings = \{\}/);
-    assert.match(timeline, /businessContext: line\?\.businessContext/);
+    assert.match(timelineResourceIdentity, /businessContext: line\?\.businessContext/);
     assert.match(ws, /function _payloadMatchesCurrentTimelineBusiness/);
     assert.match(ws, /Ignoring booking event for another business context/);
     assert.match(ws, /Ignoring line event for another business context/);

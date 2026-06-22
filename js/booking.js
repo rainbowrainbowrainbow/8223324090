@@ -372,31 +372,7 @@ const BookingPackageState = {
     catalogProductsLastLoadKey: null
 };
 
-const BookingDrawerState = {
-    clientMode: 'search',
-    selectedProgramCategory: 'all',
-    selectedActivityProgramIds: [],
-    validationAttempted: false,
-    roomBookingAnimationBridge: null,
-    legacyNotesFallback: false,
-    legacyGroupNameFallback: false,
-    banquetGroupCandidates: [],
-    banquetGroupFallbackCandidates: [],
-    banquetGroupCandidatesLoading: false,
-    banquetGroupCandidatesKey: '',
-    selectedBanquetGroupId: '',
-    manualBanquetGroupSelection: false,
-    roomSelectionContextRequestToken: 0,
-    roomSelectionBanquetContext: null,
-    autoFilledCustomerFromRoom: null,
-    autoFilledBanquetFromRoom: null,
-    autoFilledBanquetGuestsFromRoom: null,
-    entryPriceRules: [],
-    entryPriceRulesLoaded: false,
-    entryPriceRulesLoading: false,
-    entryPriceRulesPromise: null,
-    entryPriceRulesError: null
-};
+// Booking drawer state lives in js/booking-drawer-state.js.
 
 const BOOKING_ENTRY_PRICE_RULE_CODES = Object.freeze({
     weekday: 'banquet_entry_weekday_child',
@@ -439,8 +415,64 @@ function invalidateBookingTimelineDateCache(date, options) {
         return;
     }
     const key = formatDate(date);
-    if (options?.bookings !== false) delete AppState.cachedBookings[key];
-    if (options?.lines !== false) delete AppState.cachedLines[key];
+    const clearFrom = cache => {
+        if (!cache) return;
+        Object.keys(cache).forEach(cacheKey => {
+            if (cacheKey === key || cacheKey.endsWith(`|${key}`)) {
+                delete cache[cacheKey];
+            }
+        });
+    };
+    if (options?.bookings !== false) clearFrom(AppState.cachedBookings);
+    if (options?.lines !== false) clearFrom(AppState.cachedLines);
+}
+
+function bookingMutationBookingIds(result = null, fallbackIds = []) {
+    const ids = new Set((Array.isArray(fallbackIds) ? fallbackIds : [fallbackIds])
+        .map(value => String(value || '').trim())
+        .filter(Boolean));
+    const add = item => {
+        const id = String(item?.id || item?.bookingId || item?.booking_id || '').trim();
+        if (id) ids.add(id);
+    };
+    [
+        result?.booking,
+        result?.mainBooking,
+        result?.updatedBooking
+    ].forEach(add);
+    [
+        result?.bookings,
+        result?.allBookings,
+        result?.linkedBookings,
+        result?.updatedBookings
+    ].forEach(list => {
+        if (Array.isArray(list)) list.forEach(add);
+    });
+    return [...ids];
+}
+
+function invalidateBookingBanquetPreviewFreshness(options = {}) {
+    const bookingIds = bookingMutationBookingIds(null, [
+        options.bookingId,
+        ...(Array.isArray(options.bookingIds) ? options.bookingIds : [])
+    ]);
+    const groupIds = [
+        options.groupId,
+        ...(Array.isArray(options.groupIds) ? options.groupIds : [])
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    if (typeof window.invalidateTimelineBanquetPreviewFreshness === 'function') {
+        window.invalidateTimelineBanquetPreviewFreshness({
+            bookingIds,
+            groupIds,
+            clearAll: options.clearAll === true
+        });
+    } else if (typeof window.invalidateTimelineBanquetSnapshotCache === 'function' && (bookingIds.length || groupIds.length || options.clearAll === true)) {
+        window.invalidateTimelineBanquetSnapshotCache({
+            bookingIds,
+            groupIds,
+            clearAll: options.clearAll === true
+        });
+    }
 }
 
 function isParkTimelineBookingMode() {
@@ -675,415 +707,9 @@ function bookingBanquetGroupSelectedCustomerId() {
     return String(document.getElementById('selectedCustomerId')?.value || '').trim();
 }
 
-function normalizeBookingBanquetGroupCandidate(candidate = {}) {
-    const primary = candidate.primaryBooking || candidate.primary_booking || {};
-    const groupId = candidate.groupId || candidate.group_id || candidate.id || '';
-    if (!groupId) return null;
-    return {
-        groupId: String(groupId),
-        groupName: candidate.groupName || candidate.group_name || candidate.name || null,
-        primaryBookingId: candidate.primaryBookingId || candidate.primary_booking_id || primary.id || null,
-        room: candidate.room || primary.room || null,
-        date: String(candidate.date || primary.date || '').slice(0, 10),
-        customerId: candidate.customerId ?? candidate.customer_id ?? primary.customerId ?? primary.customer_id ?? null,
-        roles: Array.isArray(candidate.roles) ? candidate.roles : [],
-        memberCount: Number(candidate.memberCount || candidate.member_count || 0) || 0,
-        primaryBooking: primary && typeof primary === 'object' ? primary : null,
-        candidateKind: candidate.candidateKind || candidate.candidate_kind || 'customer'
-    };
-}
+// Banquet selector state helpers live in js/booking-banquet-selector.js.
 
-function allBookingBanquetGroupCandidates() {
-    return [
-        ...(BookingDrawerState.banquetGroupCandidates || []),
-        ...(BookingDrawerState.banquetGroupFallbackCandidates || [])
-    ].filter(Boolean);
-}
-
-function bookingBanquetGroupCandidateLabel(candidate = {}) {
-    const primary = candidate.primaryBooking || {};
-    const name = candidate.groupName || primary.label || primary.programName || 'Банкет';
-    const room = candidate.room || primary.room || 'кімната не вказана';
-    const date = candidate.date || primary.date || bookingBanquetGroupDateValue();
-    const time = primary.time || '';
-    return [name, room, [date, time].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
-}
-
-function getSelectedBookingBanquetGroupId() {
-    const select = document.getElementById('bookingBanquetGroupSelect');
-    if (select) return String(select.value || '').trim();
-    return String(BookingDrawerState.selectedBanquetGroupId || '').trim();
-}
-
-function getSelectedBookingBanquetGroupCandidate(groupId = getSelectedBookingBanquetGroupId()) {
-    const cleanGroupId = String(groupId || '').trim();
-    if (!cleanGroupId) return null;
-    return allBookingBanquetGroupCandidates().find(candidate => String(candidate.groupId) === cleanGroupId) || null;
-}
-
-function selectedBookingBanquetGroupContext() {
-    const groupId = getSelectedBookingBanquetGroupId();
-    const candidate = getSelectedBookingBanquetGroupCandidate(groupId);
-    const roomContext = BookingDrawerState.roomSelectionBanquetContext
-        && String(BookingDrawerState.roomSelectionBanquetContext.groupId || '') === String(groupId || '')
-        ? BookingDrawerState.roomSelectionBanquetContext
-        : null;
-    return {
-        groupId,
-        candidate,
-        sourceBookingId: candidate?.primaryBookingId || candidate?.primaryBooking?.id || roomContext?.sourceBookingId || null,
-        groupName: candidate?.groupName || roomContext?.groupName || null,
-        customerId: candidate?.customerId ?? candidate?.primaryBooking?.customerId ?? roomContext?.banquetGroupCustomerId ?? roomContext?.sourceCustomerId ?? null,
-        sourceCustomerId: roomContext?.sourceCustomerId ?? null,
-        banquetGroupCustomerId: roomContext?.banquetGroupCustomerId ?? candidate?.customerId ?? null,
-        source: roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector',
-        isRoomSelectionAuto: Boolean(roomContext)
-    };
-}
-
-function selectedBanquetGroupContextCustomerId(context = {}) {
-    const candidate = context.candidate || {};
-    return context.customerId
-        ?? context.banquetGroupCustomerId
-        ?? context.sourceCustomerId
-        ?? candidate.customerId
-        ?? candidate.primaryBooking?.customerId
-        ?? null;
-}
-
-function selectedBookingBanquetGroupCustomerMismatch(context = selectedBookingBanquetGroupContext()) {
-    if (!context?.groupId) return false;
-    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
-    const banquetCustomerId = selectedBanquetGroupContextCustomerId(context);
-    return Boolean(selectedCustomerId && banquetCustomerId && String(selectedCustomerId) !== String(banquetCustomerId));
-}
-
-function activityFirstKitchenSelectorContext() {
-    const roomContext = BookingDrawerState.roomSelectionBanquetContext;
-    if (!roomContext?.sourceBookingId || roomContext.groupId) return null;
-    if (!isParkTimelineBookingMode() || !isBookingKitchenEnabled()) return null;
-    const sourceBooking = roomContext.sourceBooking || {};
-    if (roomBookingIsCancelled(sourceBooking) || roomBookingIsLinkedChild(sourceBooking)) return null;
-    const sourceCustomerId = roomContext.sourceCustomerId ?? roomBookingCustomerId(sourceBooking);
-    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
-    if (!sourceCustomerId || !selectedCustomerId || String(sourceCustomerId) !== String(selectedCustomerId)) return null;
-    return roomContext;
-}
-
-function activityFirstKitchenSelectorOptionLabel(context = {}) {
-    const sourceBooking = context.sourceBooking || {};
-    const time = bookingRoomDayBookingTime({ time: context.sourceTime || sourceBooking.time });
-    return `Створити банкет з активності${time ? ` ${time}` : ''}`;
-}
-
-function kitchenFirstActivitySelectorContext() {
-    const bridgeContext = BookingDrawerState.roomBookingAnimationBridge;
-    if (!bridgeContext?.sourceBookingId || bridgeContext.groupId) return null;
-    if (!isParkTimelineBookingMode()) return null;
-    const sourceBooking = bridgeContext.sourceBooking || {};
-    if (!roomBookingLooksLikeKitchen(sourceBooking)) return null;
-    if (roomBookingIsCancelled(sourceBooking) || roomBookingIsLinkedChild(sourceBooking)) return null;
-    const sourceCustomerId = bridgeContext.sourceCustomerId ?? roomBookingCustomerId(sourceBooking);
-    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
-    if (!sourceCustomerId || !selectedCustomerId || String(sourceCustomerId) !== String(selectedCustomerId)) return null;
-    return {
-        ...bridgeContext,
-        sourceBooking,
-        sourceCustomerId,
-        source: 'kitchen_first_activity_bridge'
-    };
-}
-
-function kitchenFirstActivitySelectorOptionLabel(context = {}) {
-    const sourceBooking = context.sourceBooking || {};
-    const time = bookingRoomDayBookingTime({ time: context.sourceTime || sourceBooking.time });
-    return `Створити банкет з кухні${time ? ` ${time}` : ''}`;
-}
-
-function clearSelectedBanquetGroupIfCustomerMismatch() {
-    const context = selectedBookingBanquetGroupContext();
-    if (!selectedBookingBanquetGroupCustomerMismatch(context)) return false;
-    BookingDrawerState.selectedBanquetGroupId = '';
-    BookingDrawerState.manualBanquetGroupSelection = false;
-    renderBookingBanquetGroupSelector();
-    return true;
-}
-
-function resetBookingBanquetGroupSelector() {
-    BookingDrawerState.banquetGroupCandidates = [];
-    BookingDrawerState.banquetGroupFallbackCandidates = [];
-    BookingDrawerState.banquetGroupCandidatesLoading = false;
-    BookingDrawerState.banquetGroupCandidatesKey = '';
-    BookingDrawerState.selectedBanquetGroupId = '';
-    BookingDrawerState.manualBanquetGroupSelection = false;
-    renderBookingBanquetGroupSelector();
-}
-
-function renderBookingBanquetGroupSelector(options = {}) {
-    const section = document.getElementById('bookingBanquetGroupSection');
-    const select = document.getElementById('bookingBanquetGroupSelect');
-    const hint = document.getElementById('bookingBanquetGroupHint');
-    if (!section || !select) return;
-
-    const customerId = bookingBanquetGroupSelectedCustomerId();
-    const date = bookingBanquetGroupDateValue();
-    const visible = isParkTimelineBookingMode() && Boolean(customerId && date);
-    section.classList.toggle('hidden', !visible);
-    section.hidden = !visible;
-    section.setAttribute('aria-hidden', visible ? 'false' : 'true');
-    if (!visible) {
-        select.innerHTML = '<option value="">Без прив’язки</option>';
-        select.value = '';
-        if (hint) hint.textContent = 'Оберіть клієнта, щоб побачити його банкети на дату.';
-        return;
-    }
-
-    const selectedGroupId = String(BookingDrawerState.selectedBanquetGroupId || '').trim();
-    const candidates = BookingDrawerState.banquetGroupCandidates || [];
-    const fallbackCandidates = BookingDrawerState.banquetGroupFallbackCandidates || [];
-    const visibleCandidates = candidates.filter(candidate => candidate.candidateKind === 'customer');
-    const selectedKnown = allBookingBanquetGroupCandidates().some(candidate => String(candidate.groupId) === selectedGroupId);
-    const sourceOnlyRoomContext = activityFirstKitchenSelectorContext();
-    const sourceOnlyKitchenContext = kitchenFirstActivitySelectorContext();
-    const sourceOnlyCreateContext = sourceOnlyRoomContext || sourceOnlyKitchenContext;
-    const showActivityFirstBanquetCreateOption = Boolean(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates.length);
-    const showKitchenFirstBanquetCreateOption = Boolean(sourceOnlyKitchenContext && !selectedGroupId && !visibleCandidates.length);
-    const unlinkedOptionLabel = showActivityFirstBanquetCreateOption
-        ? activityFirstKitchenSelectorOptionLabel(sourceOnlyRoomContext)
-        : (showKitchenFirstBanquetCreateOption
-            ? kitchenFirstActivitySelectorOptionLabel(sourceOnlyKitchenContext)
-            : 'Без прив’язки');
-    const optionRows = [
-        `<option value="">${escapeHtml(unlinkedOptionLabel)}</option>`,
-        ...visibleCandidates.map(candidate => `<option value="${escapeHtml(candidate.groupId)}">${escapeHtml(bookingBanquetGroupCandidateLabel(candidate))}</option>`)
-    ];
-    if (selectedGroupId && !selectedKnown) {
-        optionRows.push(`<option value="${escapeHtml(selectedGroupId)}">Вибраний банкет · ${escapeHtml(selectedGroupId)}</option>`);
-    }
-    select.innerHTML = optionRows.join('');
-    select.value = selectedGroupId && optionRows.some(row => row.includes(`value="${escapeHtml(selectedGroupId)}"`)) ? selectedGroupId : '';
-    select.disabled = Boolean(BookingDrawerState.banquetGroupCandidatesLoading);
-
-    const selected = getSelectedBookingBanquetGroupCandidate();
-    if (hint) {
-        const roomContext = BookingDrawerState.autoFilledBanquetFromRoom
-            && String(BookingDrawerState.autoFilledBanquetFromRoom.groupId || '') === String(selectedGroupId || '')
-            ? BookingDrawerState.autoFilledBanquetFromRoom
-            : null;
-        if (options.error) {
-            hint.textContent = 'Не вдалося завантажити банкети клієнта. Можна залишити без прив’язки.';
-        } else if (BookingDrawerState.banquetGroupCandidatesLoading) {
-            hint.textContent = 'Завантажуємо банкети клієнта на дату...';
-        } else if (roomContext) {
-            hint.textContent = `Банкет підтягнуто з кімнати: ${roomSelectionBanquetContextLabel(roomContext)}.`;
-        } else if (showActivityFirstBanquetCreateOption) {
-            hint.textContent = `Банкет буде створено автоматично з активності ${roomSelectionBanquetContextLabel(sourceOnlyRoomContext)} під час збереження кухні.`;
-        } else if (showKitchenFirstBanquetCreateOption) {
-            hint.textContent = `Банкет буде створено автоматично з кухні ${roomSelectionBanquetContextLabel(sourceOnlyCreateContext)} під час збереження активності.`;
-        } else if (selected) {
-            hint.textContent = `Вибрано: ${bookingBanquetGroupCandidateLabel(selected)}`;
-        } else if (visibleCandidates.length) {
-            hint.textContent = 'Оберіть банкет цього клієнта або залиште без прив’язки.';
-        } else if (fallbackCandidates.length) {
-            hint.textContent = 'Для цього клієнта банкетів на дату не знайдено. Є групи без клієнта, але вони не підставляються автоматично.';
-        } else {
-            hint.textContent = 'Банкетів цього клієнта на дату не знайдено.';
-        }
-    }
-}
-
-async function refreshBookingBanquetGroupCandidates(options = {}) {
-    const customerId = bookingBanquetGroupSelectedCustomerId();
-    const date = bookingBanquetGroupDateValue();
-    const preselectGroupId = String(options.preselectGroupId || '').trim();
-    if (!isParkTimelineBookingMode() || !customerId || !date || typeof apiGetBanquetCandidates !== 'function') {
-        resetBookingBanquetGroupSelector();
-        return;
-    }
-
-    const key = `${date}:${customerId}`;
-    const currentSelected = preselectGroupId || (options.preserveSelection === false ? '' : getSelectedBookingBanquetGroupId());
-    BookingDrawerState.selectedBanquetGroupId = currentSelected;
-    BookingDrawerState.banquetGroupCandidatesKey = key;
-    BookingDrawerState.banquetGroupCandidatesLoading = true;
-    renderBookingBanquetGroupSelector();
-
-    const result = await apiGetBanquetCandidates({ date, customerId });
-    if (BookingDrawerState.banquetGroupCandidatesKey !== key) return;
-    BookingDrawerState.banquetGroupCandidatesLoading = false;
-    if (result?.success === false) {
-        BookingDrawerState.banquetGroupCandidates = [];
-        BookingDrawerState.banquetGroupFallbackCandidates = [];
-        renderBookingBanquetGroupSelector({ error: result.error || 'load_failed' });
-        return;
-    }
-    BookingDrawerState.banquetGroupCandidates = (result?.candidates || [])
-        .map(normalizeBookingBanquetGroupCandidate)
-        .filter(Boolean);
-    BookingDrawerState.banquetGroupFallbackCandidates = (result?.fallbackCandidates || [])
-        .map(normalizeBookingBanquetGroupCandidate)
-        .filter(Boolean);
-    const all = allBookingBanquetGroupCandidates();
-    const selectedStillExists = all.some(candidate => String(candidate.groupId) === String(BookingDrawerState.selectedBanquetGroupId));
-    if (BookingDrawerState.selectedBanquetGroupId && !selectedStillExists) {
-        BookingDrawerState.selectedBanquetGroupId = '';
-    }
-    renderBookingBanquetGroupSelector();
-}
-
-function scheduleBookingBanquetGroupCandidatesRefresh(options = {}) {
-    refreshBookingBanquetGroupCandidates(options).catch(error => {
-        console.warn('[Booking] Не вдалося завантажити банкети клієнта', error);
-        BookingDrawerState.banquetGroupCandidatesLoading = false;
-        BookingDrawerState.banquetGroupCandidates = [];
-        BookingDrawerState.banquetGroupFallbackCandidates = [];
-        renderBookingBanquetGroupSelector({ error: true });
-    });
-}
-
-function attachBanquetGroupContextToBooking(booking, context = {}, role = 'activity', source = 'booking_banquet_group_selector') {
-    if (!booking || (!context.groupId && !context.sourceBookingId)) return booking;
-    if (!booking.extraData) booking.extraData = {};
-    booking.extraData.banquetGroup = {
-        ...(booking.extraData.banquetGroup || {}),
-        groupId: context.groupId || null,
-        sourceBookingId: context.sourceBookingId || null,
-        role,
-        source
-    };
-    return booking;
-}
-
-function isSelectedBanquetKitchenCreate(formData = {}) {
-    return formData.scenario === 'kitchen_only' || (formData.kitchenEnabled && !formData.hasEvent);
-}
-
-function isSelectedBanquetActivityCreate(formData = {}) {
-    return Boolean(formData.hasEvent && !formData.kitchenEnabled);
-}
-
-function selectedBanquetUnsupportedCreateMessage() {
-    return 'Прив’язка до банкету працює для кухні або однієї активності. Зніміть прив’язку або створіть бронювання окремо.';
-}
-
-function hasUsableSelectedBanquetGroup(context = selectedBookingBanquetGroupContext()) {
-    if (!context?.groupId) return false;
-    if (context.candidate) return true;
-    const roomContext = BookingDrawerState.roomSelectionBanquetContext;
-    return Boolean(roomContext?.groupId && String(roomContext.groupId) === String(context.groupId));
-}
-
-function activityFirstKitchenSourceContext(context = selectedBookingBanquetGroupContext()) {
-    const roomContext = BookingDrawerState.roomSelectionBanquetContext;
-    if (roomContext?.sourceBookingId && !roomContext.groupId) return roomContext;
-    if (context?.sourceBookingId && !context.groupId) return context;
-    return null;
-}
-
-function validateActivityFirstKitchenBridge(formData = {}, context = selectedBookingBanquetGroupContext()) {
-    if (!isParkTimelineBookingMode() || !isSelectedBanquetKitchenCreate(formData)) return { shouldUse: false };
-    if (hasUsableSelectedBanquetGroup(context)) return { shouldUse: false };
-
-    const sourceContext = activityFirstKitchenSourceContext(context);
-    if (!sourceContext?.sourceBookingId) return { shouldUse: false };
-
-    const sourceBooking = sourceContext?.sourceBooking || null;
-    if (!sourceBooking || !sourceContext.sourceBookingId) {
-        return {
-            shouldUse: true,
-            error: 'Джерело кімнати застаріло. Оберіть кімнату ще раз перед збереженням кухні.'
-        };
-    }
-    if (roomBookingIsCancelled(sourceBooking)) {
-        return {
-            shouldUse: true,
-            error: 'Бронювання-джерело в цій кімнаті вже скасоване. Оберіть кімнату ще раз.'
-        };
-    }
-    if (roomBookingIsLinkedChild(sourceBooking)) {
-        return {
-            shouldUse: true,
-            error: 'Кухню можна прив’язати тільки до основного бронювання, не до технічного дубля. Оберіть кімнату ще раз.'
-        };
-    }
-
-    const sourceCustomerId = sourceContext.sourceCustomerId ?? roomBookingCustomerId(sourceBooking);
-    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
-    const auto = BookingDrawerState.autoFilledCustomerFromRoom;
-    const selectedMatchesSource = Boolean(sourceCustomerId && selectedCustomerId && String(sourceCustomerId) === String(selectedCustomerId));
-    const autoFilledMatchesSource = Boolean(
-        auto?.customerId &&
-        selectedCustomerId &&
-        String(auto.customerId) === String(selectedCustomerId) &&
-        String(auto.customerId) === String(sourceCustomerId || '') &&
-        (!auto.sourceBookingId || String(auto.sourceBookingId) === String(sourceContext.sourceBookingId))
-    );
-    if (!selectedMatchesSource && !autoFilledMatchesSource) {
-        return {
-            shouldUse: true,
-            error: 'Клієнт кухні не збігається з клієнтом бронювання в кімнаті. Очистіть клієнта або оберіть кімнату ще раз.'
-        };
-    }
-
-    return {
-        shouldUse: true,
-        context: sourceContext
-    };
-}
-
-function validateKitchenFirstActivityBridge(formData = {}, context = selectedBookingBanquetGroupContext()) {
-    if (!isParkTimelineBookingMode() || !isSelectedBanquetActivityCreate(formData)) return { shouldUse: false };
-    if (hasUsableSelectedBanquetGroup(context)) return { shouldUse: false };
-
-    const bridgeContext = BookingDrawerState.roomBookingAnimationBridge;
-    if (!bridgeContext?.sourceBookingId || bridgeContext.groupId) return { shouldUse: false };
-
-    const sourceBooking = bridgeContext.sourceBooking || null;
-    if (!sourceBooking || !bridgeContext.sourceBookingId) {
-        return {
-            shouldUse: true,
-            error: 'Джерело кухні застаріло. Відкрийте активність з кімнатної броні ще раз.'
-        };
-    }
-    if (!roomBookingLooksLikeKitchen(sourceBooking)) {
-        return {
-            shouldUse: true,
-            error: 'Бронювання-джерело не схоже на кухню або банкетне замовлення. Оберіть кухонну бронь ще раз.'
-        };
-    }
-    if (roomBookingIsCancelled(sourceBooking)) {
-        return {
-            shouldUse: true,
-            error: 'Кухонне бронювання-джерело вже скасоване. Оберіть іншу бронь.'
-        };
-    }
-    if (roomBookingIsLinkedChild(sourceBooking)) {
-        return {
-            shouldUse: true,
-            error: 'Активність можна прив’язати тільки до основної кухонної броні, не до технічного дубля.'
-        };
-    }
-
-    const sourceCustomerId = bridgeContext.sourceCustomerId ?? roomBookingCustomerId(sourceBooking);
-    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
-    const selectedMatchesSource = Boolean(sourceCustomerId && selectedCustomerId && String(sourceCustomerId) === String(selectedCustomerId));
-    if (!selectedMatchesSource) {
-        return {
-            shouldUse: true,
-            error: 'Клієнт активності не збігається з клієнтом кухонної броні. Оберіть правильного клієнта або відкрийте бронь ще раз.'
-        };
-    }
-
-    return {
-        shouldUse: true,
-        context: {
-            ...bridgeContext,
-            sourceBooking,
-            sourceCustomerId,
-            source: 'kitchen_first_activity_bridge'
-        }
-    };
-}
+// Booking save path resolver lives in js/booking-save-path.js.
 
 if (typeof window !== 'undefined') {
     window.syncBookingCommentFieldPresentation = syncBookingCommentFieldPresentation;
@@ -1193,6 +819,7 @@ function normalizeRoomDayBookingEntry(booking = {}) {
     const banquetGroupCustomerId = booking.banquetGroupCustomerId ?? booking.banquet_group_customer_id ?? null;
     return {
         id,
+        date: String(booking.date || booking.bookingDate || booking.booking_date || '').slice(0, 10),
         time: booking.time || '',
         duration: parseInt(booking.duration, 10) || 0,
         customerId,
@@ -5273,7 +4900,7 @@ async function initializeRoomFirstBookingSourceContext() {
     }
 }
 
-async function openBookingPanel(time, lineId) {
+async function openBookingPanel(time, lineId, options = {}) {
     const existingPanel = document.getElementById('bookingPanel');
     if (existingPanel && !existingPanel.classList.contains('hidden')) {
         const closed = await closeBookingPanel(false);
@@ -5305,6 +4932,7 @@ async function openBookingPanel(time, lineId) {
         showNotification('Лінію для бронювання не знайдено. Оновіть таймлайн або оберіть активну лінію аніматора.', 'error');
         return false;
     }
+    resetBookingDrawerStateForOpen(options.drawerMode || inferBookingDrawerModeForOpen());
 
     // C1: Show date in panel
     const dateDisplay = document.getElementById('selectedDateDisplay');
@@ -5334,13 +4962,6 @@ async function openBookingPanel(time, lineId) {
     // v5.49: Reset program search
     const programSearch = document.getElementById('programSearch');
     if (programSearch) { programSearch.value = ''; filterPrograms(); }
-    BookingDrawerState.selectedProgramCategory = 'all';
-    BookingDrawerState.selectedActivityProgramIds = [];
-    BookingDrawerState.validationAttempted = false;
-    BookingDrawerState.legacyNotesFallback = false;
-    BookingDrawerState.legacyGroupNameFallback = false;
-    BookingDrawerState.roomBookingAnimationBridge = null;
-    resetBookingRoomSelectionContext();
     renderProgramCategoryChips();
     renderSelectedProgramSummary(null);
     document.getElementById('hostsWarning')?.classList.add('hidden');
@@ -5626,6 +5247,103 @@ function isLatestBookingRoomSelectionContextRequest(token) {
     return Number(token) === Number(BookingDrawerState.roomSelectionContextRequestToken || 0);
 }
 
+function buildBookingRoomSourceContext(sourceBooking = {}, options = {}) {
+    const source = normalizeRoomDayBookingEntry(sourceBooking);
+    const sourceBookingId = String(source.id || options.sourceBookingId || '').trim();
+    if (!sourceBookingId) return null;
+    const sourceRole = options.sourceRole || (roomBookingLooksLikeKitchen(source) ? 'kitchen' : 'activity');
+    const sourceMarker = options.source || (sourceRole === 'kitchen' ? 'kitchen_first_activity_bridge' : 'activity_first_kitchen_bridge');
+    return {
+        generationId: Number(options.generationId ?? BookingDrawerState.roomSelectionContextRequestToken ?? 0) || 0,
+        drawerGenerationId: Number(BookingDrawerState.drawerGenerationId || 0) || 0,
+        sourceBookingId,
+        sourceRole,
+        customerId: roomBookingCustomerId(source) ?? null,
+        date: String(source.date || bookingBanquetGroupDateValue() || '').slice(0, 10),
+        room: source.room || document.getElementById('roomSelect')?.value || null,
+        time: source.time || document.getElementById('bookingTime')?.value || '',
+        groupId: source.banquetGroupId || options.groupId || null,
+        source: sourceMarker
+    };
+}
+
+function setBookingRoomSourceContext(sourceBooking = {}, options = {}) {
+    const context = buildBookingRoomSourceContext(sourceBooking, options);
+    BookingDrawerState.roomSourceContext = context;
+    return context;
+}
+
+function attachBookingRoomSourceContext(context = {}, sourceContext = BookingDrawerState.roomSourceContext) {
+    if (!context || !sourceContext) return context;
+    return {
+        ...context,
+        roomSourceContext: sourceContext,
+        generationId: sourceContext.generationId,
+        sourceRole: sourceContext.sourceRole,
+        date: sourceContext.date,
+        room: sourceContext.room,
+        time: sourceContext.time
+    };
+}
+
+function bookingRoomSourceContextForValidation(context = {}) {
+    return context?.roomSourceContext || BookingDrawerState.roomSourceContext || null;
+}
+
+function bookingRoomSourceContextStaleReason(context = {}) {
+    const sourceContext = bookingRoomSourceContextForValidation(context);
+    if (!sourceContext?.sourceBookingId) return 'missing_source_context';
+    if (sourceContext.staleReason || context?.staleReason) return sourceContext.staleReason || context.staleReason;
+    if (Number(sourceContext.drawerGenerationId || 0) !== Number(BookingDrawerState.drawerGenerationId || 0)) {
+        return 'stale_drawer_generation';
+    }
+    const currentSourceContext = BookingDrawerState.roomSourceContext;
+    if (
+        currentSourceContext?.sourceBookingId
+        && String(currentSourceContext.sourceBookingId) !== String(sourceContext.sourceBookingId)
+    ) {
+        return 'stale_source_booking';
+    }
+    if (
+        currentSourceContext?.generationId
+        && sourceContext.generationId
+        && Number(currentSourceContext.generationId) !== Number(sourceContext.generationId)
+    ) {
+        return 'stale_source_generation';
+    }
+    const currentDate = bookingBanquetGroupDateValue();
+    if (sourceContext.date && currentDate && String(sourceContext.date).slice(0, 10) !== String(currentDate).slice(0, 10)) {
+        return 'stale_source_date';
+    }
+    const currentRoom = String(document.getElementById('roomSelect')?.value || '').trim();
+    if (sourceContext.room && currentRoom && !sameBookingRoom(sourceContext.room, currentRoom)) {
+        return 'stale_source_room';
+    }
+    const selectedCustomerId = bookingBanquetGroupSelectedCustomerId();
+    if (sourceContext.customerId && selectedCustomerId && String(sourceContext.customerId) !== String(selectedCustomerId)) {
+        return 'stale_source_customer';
+    }
+    return '';
+}
+
+function bookingRoomSourceContextStaleMessage(reason) {
+    switch (reason) {
+        case 'customer_changed':
+        case 'stale_source_customer':
+            return 'Клієнт змінився після вибору кімнати. Оберіть кімнату або банкет ще раз.';
+        case 'stale_source_room':
+            return 'Кімната змінилася після підтягування бронювання. Оберіть кімнату ще раз.';
+        case 'stale_source_date':
+            return 'Дата змінилася після підтягування бронювання. Закрийте форму й відкрийте бронювання ще раз.';
+        case 'stale_drawer_generation':
+        case 'stale_source_generation':
+        case 'stale_source_booking':
+        case 'missing_source_context':
+        default:
+            return 'Контекст бронювання застарів. Закрийте форму й відкрийте сценарій ще раз.';
+    }
+}
+
 function clearAutoFilledBanquetFromRoomSelection() {
     const auto = BookingDrawerState.autoFilledBanquetFromRoom;
     if (auto?.groupId && String(BookingDrawerState.selectedBanquetGroupId || '') === String(auto.groupId)) {
@@ -5633,21 +5351,35 @@ function clearAutoFilledBanquetFromRoomSelection() {
         BookingDrawerState.manualBanquetGroupSelection = false;
     }
     BookingDrawerState.autoFilledBanquetFromRoom = null;
+    BookingDrawerState.roomSourceContext = null;
     BookingDrawerState.roomSelectionBanquetContext = null;
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
     renderBookingBanquetGroupSelector();
 }
 
-function resetBookingRoomSelectionContext(options = {}) {
+function resetBookingRoomSourceContext(options = {}) {
     if (options.invalidate !== false) nextBookingRoomSelectionContextToken();
+    BookingDrawerState.roomSourceContext = null;
     BookingDrawerState.roomSelectionBanquetContext = null;
     BookingDrawerState.autoFilledCustomerFromRoom = null;
     BookingDrawerState.autoFilledBanquetFromRoom = null;
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
+    if (options.render === true) renderBookingBanquetGroupSelector();
+}
+
+function resetBookingRoomSelectionContext(options = {}) {
+    resetBookingRoomSourceContext(options);
 }
 
 function clearRoomSelectionBanquetContextAfterCustomerChange(options = {}) {
     if (options.invalidate !== false) nextBookingRoomSelectionContextToken();
+    const previousRoomContext = BookingDrawerState.roomSelectionBanquetContext;
+    const previousSourceContext = BookingDrawerState.roomSourceContext;
+    const preserveSourceOnlyMismatchGuard = Boolean(
+        previousRoomContext?.sourceBookingId
+        && !previousRoomContext.groupId
+        && previousSourceContext?.sourceBookingId
+    );
     const autoGroupId = BookingDrawerState.autoFilledBanquetFromRoom?.groupId
         || BookingDrawerState.roomSelectionBanquetContext?.groupId
         || '';
@@ -5660,7 +5392,19 @@ function clearRoomSelectionBanquetContextAfterCustomerChange(options = {}) {
         BookingDrawerState.selectedBanquetGroupId = '';
         BookingDrawerState.manualBanquetGroupSelection = false;
     }
-    BookingDrawerState.roomSelectionBanquetContext = null;
+    BookingDrawerState.roomSourceContext = preserveSourceOnlyMismatchGuard
+        ? {
+            ...previousSourceContext,
+            staleReason: 'customer_changed'
+        }
+        : null;
+    BookingDrawerState.roomSelectionBanquetContext = preserveSourceOnlyMismatchGuard
+        ? {
+            ...previousRoomContext,
+            roomSourceContext: BookingDrawerState.roomSourceContext,
+            staleReason: 'customer_changed'
+        }
+        : null;
     BookingDrawerState.autoFilledCustomerFromRoom = null;
     BookingDrawerState.autoFilledBanquetFromRoom = null;
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
@@ -5692,13 +5436,22 @@ function roomSelectionBanquetContextFromSnapshot(snapshot = {}, sourceBooking = 
 
 async function resolveRoomSelectionBanquetContext(sourceBooking = {}, token = BookingDrawerState.roomSelectionContextRequestToken) {
     const baseContext = sourceBookingToBanquetContext(sourceBooking);
-    if (baseContext.groupId) return baseContext;
+    if (baseContext.groupId) {
+        const sourceContext = BookingDrawerState.roomSourceContext;
+        if (sourceContext) sourceContext.groupId = baseContext.groupId;
+        return attachBookingRoomSourceContext(baseContext, sourceContext);
+    }
     const sourceBookingId = String(sourceBooking.id || '').trim();
-    if (!sourceBookingId || typeof apiGetBanquetByBooking !== 'function') return baseContext;
+    if (!sourceBookingId || typeof apiGetBanquetByBooking !== 'function') {
+        return attachBookingRoomSourceContext(baseContext);
+    }
     const snapshot = await apiGetBanquetByBooking(sourceBookingId);
     if (!isLatestBookingRoomSelectionContextRequest(token)) return null;
-    if (snapshot?.success === false) return baseContext;
-    return roomSelectionBanquetContextFromSnapshot(snapshot, sourceBooking);
+    if (snapshot?.success === false) return attachBookingRoomSourceContext(baseContext);
+    const context = roomSelectionBanquetContextFromSnapshot(snapshot, sourceBooking);
+    const sourceContext = BookingDrawerState.roomSourceContext;
+    if (sourceContext && context?.groupId) sourceContext.groupId = context.groupId;
+    return attachBookingRoomSourceContext(context, sourceContext);
 }
 
 function canAutoFillCustomerFromRoom(sourceBooking = {}) {
@@ -5740,13 +5493,18 @@ async function handleBookingRoomSelectionContextChange() {
     }
 
     clearAutoFilledBanquetFromRoomSelection();
+    const roomSourceContext = setBookingRoomSourceContext(sourceBooking, {
+        generationId: token,
+        sourceRole: roomBookingLooksLikeKitchen(sourceBooking) ? 'kitchen' : 'activity',
+        source: roomBookingLooksLikeKitchen(sourceBooking) ? 'kitchen_first_activity_bridge' : 'activity_first_kitchen_bridge'
+    });
     if (hasManualCustomerConflictWithRoom(sourceBooking)) {
         renderBookingCustomerSearchState('Кімната має пов’язане бронювання, але клієнта вже вибрано вручну. Щоб підтягнути клієнта з кімнати, спочатку очистіть вибір.');
         renderBookingPackageSummary();
         return;
     }
     syncAutoFilledBanquetGuestsFromRoom(sourceBooking);
-    const immediateBanquetContext = sourceBookingToBanquetContext(sourceBooking);
+    const immediateBanquetContext = attachBookingRoomSourceContext(sourceBookingToBanquetContext(sourceBooking), roomSourceContext);
     if (immediateBanquetContext.groupId) {
         BookingDrawerState.roomSelectionBanquetContext = immediateBanquetContext;
         BookingDrawerState.selectedBanquetGroupId = immediateBanquetContext.groupId;
@@ -8340,6 +8098,9 @@ async function handleBookingSubmit(e) {
             AppState.editingBookingId = null;
 
             restoreTimelineDateAfterBookingSave(selectedDateBeforeSave || booking.date);
+            invalidateBookingBanquetPreviewFreshness({
+                bookingIds: bookingMutationBookingIds(updateResult, [booking.id, oldBooking?.id])
+            });
             invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
             closeBookingPanel(true);
             unlockSubmitBtn();
@@ -8362,100 +8123,67 @@ async function handleBookingSubmit(e) {
             const selectedActivityPrograms = (formData.activityPrograms || []).filter(Boolean);
             const activityFirstKitchenBridge = validateActivityFirstKitchenBridge(formData, selectedBanquetContext);
             const kitchenFirstActivityBridge = validateKitchenFirstActivityBridge(formData, selectedBanquetContext);
+            const createPath = resolveBookingCreatePath({
+                formData,
+                selectedBanquetContext,
+                selectedActivityPrograms,
+                activityFirstKitchenBridge,
+                kitchenFirstActivityBridge
+            }, BookingDrawerState);
 
-            if (selectedBanquetContext.groupId && selectedBookingBanquetGroupCustomerMismatch(selectedBanquetContext)) {
-                showNotification('Клієнт бронювання не збігається з вибраним банкетом. Оберіть правильного клієнта або скиньте прив’язку до банкета.', 'error');
-                unlockSubmitBtn();
-                return;
-            }
-            if (activityFirstKitchenBridge.shouldUse && activityFirstKitchenBridge.error) {
-                showNotification(activityFirstKitchenBridge.error, 'error');
-                unlockSubmitBtn();
-                return;
-            }
-            if (kitchenFirstActivityBridge.shouldUse && kitchenFirstActivityBridge.error) {
-                showNotification(kitchenFirstActivityBridge.error, 'error');
+            if (createPath.blocked) {
+                showNotification(createPath.error || 'Не вдалося визначити шлях створення бронювання. Перевірте клієнта, кімнату і прив’язку до банкету.', 'error');
                 unlockSubmitBtn();
                 return;
             }
 
-            if (bridgeContext && selectedBanquetContext.groupId) {
-                if (selectedActivityPrograms.length > 1) {
-                    showNotification('Для додавання активної програми з кімнатної броні оберіть одну програму. Додаткові програми додавайте окремо.', 'error');
-                    unlockSubmitBtn();
-                    return;
-                }
-                const bridgeGroupId = selectedBanquetContext.groupId;
-                const bridgeSourceBookingId = selectedBanquetContext.sourceBookingId || bridgeContext.sourceBookingId;
-                if (!bridgeGroupId || !bridgeSourceBookingId) {
-                    showNotification('Не знайдено банкетну групу для цієї активної програми. Закрийте форму й спробуйте ще раз.', 'error');
-                    unlockSubmitBtn();
-                    return;
-                }
+            if (createPath.kind === 'existing_group_activity') {
+                setBookingDrawerMode(BOOKING_DRAWER_MODES.EXISTING_GROUP_ACTIVITY);
+                const bridgeGroupId = createPath.groupId;
+                const bridgeSourceBookingId = createPath.sourceBookingId;
+                const existingActivityContextSource = createPath.reason === 'real_group_activity_from_room_bridge'
+                    ? 'room_booking_animation_bridge'
+                    : selectedBanquetContextSource;
                 attachBanquetGroupContextToBooking(booking, {
                     ...selectedBanquetContext,
                     groupId: bridgeGroupId,
                     sourceBookingId: bridgeSourceBookingId
-                }, 'activity', 'room_booking_animation_bridge');
+                }, 'activity', existingActivityContextSource);
                 const linked = await buildLinkedBookings(booking, formData.program);
                 createResult = await apiCreateBanquetActivityBooking(bridgeGroupId, {
                     sourceBookingId: bridgeSourceBookingId,
                     booking,
                     linkedBookings: linked
                 });
-            } else if (kitchenFirstActivityBridge.shouldUse) {
-                if (selectedActivityPrograms.length > 1) {
-                    showNotification('Для додавання активної програми з кухні оберіть одну програму. Додаткові програми додавайте окремо.', 'error');
-                    unlockSubmitBtn();
-                    return;
-                }
-                const sourceContext = kitchenFirstActivityBridge.context;
+            } else if (createPath.kind === 'source_kitchen_to_activity') {
+                setBookingDrawerMode(BOOKING_DRAWER_MODES.KITCHEN_FIRST_ACTIVITY_BRIDGE);
+                const sourceContext = createPath.context || kitchenFirstActivityBridge.context;
                 attachBanquetGroupContextToBooking(booking, sourceContext, 'activity', 'kitchen_first_activity_bridge');
                 const linked = await buildLinkedBookings(booking, formData.program);
                 createResult = await apiCreateBanquetActivityBookingFromSource({
-                    sourceBookingId: sourceContext.sourceBookingId,
+                    sourceBookingId: createPath.sourceBookingId,
                     booking,
                     linkedBookings: linked
                 });
-            } else if (activityFirstKitchenBridge.shouldUse) {
-                const sourceContext = activityFirstKitchenBridge.context;
+            } else if (createPath.kind === 'source_activity_to_kitchen') {
+                setBookingDrawerMode(BOOKING_DRAWER_MODES.ACTIVITY_FIRST_KITCHEN_BRIDGE);
+                const sourceContext = createPath.context || activityFirstKitchenBridge.context;
                 attachBanquetGroupContextToBooking(booking, sourceContext, 'kitchen', 'activity_first_kitchen_bridge');
                 createResult = await apiCreateBanquetMemberBookingFromSource({
-                    sourceBookingId: sourceContext.sourceBookingId,
+                    sourceBookingId: createPath.sourceBookingId,
                     role: 'kitchen',
                     booking
                 });
             } else if (shouldCreateEducationLessonSeries(booking)) {
                 createResult = await apiCreateEducationLessonSeries(booking);
-            } else if (selectedBanquetContext.groupId && isSelectedBanquetKitchenCreate(formData)) {
+            } else if (createPath.kind === 'existing_group_member') {
+                setBookingDrawerMode(BOOKING_DRAWER_MODES.EXISTING_GROUP_MEMBER);
                 attachBanquetGroupContextToBooking(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource);
-                createResult = await apiCreateBanquetMemberBooking(selectedBanquetContext.groupId, {
-                    sourceBookingId: selectedBanquetContext.sourceBookingId || null,
+                createResult = await apiCreateBanquetMemberBooking(createPath.groupId, {
+                    sourceBookingId: createPath.sourceBookingId || null,
                     role: 'kitchen',
                     booking
                 });
-            } else if (selectedBanquetContext.groupId && isSelectedBanquetActivityCreate(formData)) {
-                if (selectedActivityPrograms.length > 1) {
-                    showNotification('Для прив’язки до банкету оберіть одну активність. Додаткові активності додавайте окремо.', 'error');
-                    unlockSubmitBtn();
-                    return;
-                }
-                if (!selectedBanquetContext.sourceBookingId) {
-                    showNotification('У вибраного банкету немає основної броні для прив’язки активності.', 'error');
-                    unlockSubmitBtn();
-                    return;
-                }
-                attachBanquetGroupContextToBooking(booking, selectedBanquetContext, 'activity', selectedBanquetContextSource);
-                const linked = await buildLinkedBookings(booking, formData.program);
-                createResult = await apiCreateBanquetActivityBooking(selectedBanquetContext.groupId, {
-                    sourceBookingId: selectedBanquetContext.sourceBookingId,
-                    booking,
-                    linkedBookings: linked
-                });
-            } else if (selectedBanquetContext.groupId) {
-                showNotification(selectedBanquetUnsupportedCreateMessage(), 'error');
-                unlockSubmitBtn();
-                return;
             } else {
                 const additionalMultiHostActivity = selectedActivityPrograms
                     .slice(1)
@@ -8467,7 +8195,15 @@ async function handleBookingSubmit(e) {
                 }
                 const linked = await buildLinkedBookings(booking, formData.program);
                 const banquetActivities = buildMultiActivityBookings(booking, formData);
-                if (linked.length > 0 || banquetActivities.length > 0) {
+                const finalCreatePath = resolveBookingCreatePath({
+                    formData,
+                    selectedBanquetContext,
+                    selectedActivityPrograms,
+                    activityFirstKitchenBridge,
+                    kitchenFirstActivityBridge,
+                    fullBookingRequired: linked.length > 0 || banquetActivities.length > 0
+                }, BookingDrawerState);
+                if (finalCreatePath.kind === 'full_booking') {
                     createResult = await apiCreateBookingFull(booking, linked, { banquetActivities });
                 } else {
                     createResult = await apiCreateBooking(booking);
@@ -8499,6 +8235,9 @@ async function handleBookingSubmit(e) {
                 ? createdRecords.map(item => ({ ...booking, ...item }))
                 : [booking];
             pushUndo('create', createdBookings);
+            invalidateBookingBanquetPreviewFreshness({
+                bookingIds: bookingMutationBookingIds(createResult, createdBookings.map(item => item?.id || item?.bookingId))
+            });
 
             restoreTimelineDateAfterBookingSave(selectedDateBeforeSave || booking.date);
             const changedDates = new Set(createdBookings.map(item => normalizeBookingDateKey(item.date) || formatDate(AppState.selectedDate)));
@@ -8592,6 +8331,9 @@ async function handleOptimisticLockConflict(result, localBooking) {
         localBooking.updatedAt = serverData.updatedAt;
         const retryResult = await apiUpdateBooking(localBooking.id, localBooking);
         if (retryResult && retryResult.success) {
+            invalidateBookingBanquetPreviewFreshness({
+                bookingIds: bookingMutationBookingIds(retryResult, [localBooking.id])
+            });
             invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
             closeBookingPanel(true);
             await renderTimeline();
@@ -8672,46 +8414,6 @@ function banquetGroupIdFromSnapshot(snapshot = {}) {
         || null;
 }
 
-async function findOrCreateBanquetGroupForSourceBooking(sourceBooking = {}) {
-    const sourceBookingId = String(sourceBooking.id || '').trim();
-    if (!sourceBookingId) {
-        return { success: false, error: 'Немає ID бронювання-джерела для банкетної групи.' };
-    }
-    const current = typeof apiGetBanquetByBooking === 'function'
-        ? await apiGetBanquetByBooking(sourceBookingId)
-        : { success: false, error: 'Banquet API недоступний у клієнті.' };
-    const existingGroupId = banquetGroupIdFromSnapshot(current);
-    if (current?.success !== false && existingGroupId) {
-        return { success: true, groupId: existingGroupId, snapshot: current, created: false };
-    }
-
-    const created = typeof apiCreateBanquetGroup === 'function'
-        ? await apiCreateBanquetGroup(sourceBookingId, {
-            groupName: sourceBooking.label || sourceBooking.programName || sourceBooking.programCode || sourceBooking.room || null,
-            source: 'room_booking_animation_bridge',
-            meta: {
-                sourceBookingId,
-                source: 'room_booking_animation_bridge'
-            }
-        })
-        : { success: false, error: 'Banquet create API недоступний у клієнті.' };
-    if (created?.success === false && created.code === 'BOOKING_ALREADY_IN_GROUP') {
-        const refreshed = await apiGetBanquetByBooking(sourceBookingId);
-        const refreshedGroupId = banquetGroupIdFromSnapshot(refreshed);
-        if (refreshedGroupId) {
-            return { success: true, groupId: refreshedGroupId, snapshot: refreshed, created: false };
-        }
-    }
-    if (created?.success === false) {
-        return { success: false, error: created.error || 'Не вдалось створити банкетну групу.' };
-    }
-    const groupId = created.group?.id || created.groupId || null;
-    if (!groupId) {
-        return { success: false, error: 'Сервер створив банкетну групу без groupId.' };
-    }
-    return { success: true, groupId, snapshot: created, created: true };
-}
-
 async function openAnimationBookingInAnimatorView(bookingId, action = 'details') {
     showNotification('Перемикаю у «Свята», бо анімація редагується там.', 'info');
     closeAllModals();
@@ -8758,8 +8460,16 @@ async function openRoomBookingAnimationBridge(bookingId) {
     }
 
     AppState.editingBookingId = null;
-    const opened = await openBookingPanel(sourceBooking.time, targetLine.id);
+    const opened = await openBookingPanel(sourceBooking.time, targetLine.id, {
+        drawerMode: BOOKING_DRAWER_MODES.KITCHEN_FIRST_ACTIVITY_BRIDGE
+    });
     if (!opened) return;
+    setBookingDrawerMode(BOOKING_DRAWER_MODES.KITCHEN_FIRST_ACTIVITY_BRIDGE);
+    const bridgeSourceContext = setBookingRoomSourceContext(sourceBooking, {
+        sourceRole: 'kitchen',
+        source: 'kitchen_first_activity_bridge',
+        groupId: existingGroupId || sourceBooking.banquetGroupId || sourceBooking.banquet_group_id || null
+    });
     BookingDrawerState.roomBookingAnimationBridge = {
         groupId: existingGroupId || sourceBooking.banquetGroupId || sourceBooking.banquet_group_id || null,
         sourceBookingId: sourceBooking.id,
@@ -8767,7 +8477,14 @@ async function openRoomBookingAnimationBridge(bookingId) {
         sourceTime: sourceBooking.time || '',
         sourceRoom: sourceBooking.room || null,
         sourceCustomerId: roomBookingCustomerId(sourceBooking),
-        sourceCustomerName: sourceBooking.customerName || sourceBooking.customer_name || null
+        sourceCustomerName: sourceBooking.customerName || sourceBooking.customer_name || null,
+        roomSourceContext: bridgeSourceContext,
+        generationId: bridgeSourceContext?.generationId || null,
+        sourceRole: 'kitchen',
+        date: bridgeSourceContext?.date || bookingBanquetGroupDateValue(),
+        room: bridgeSourceContext?.room || sourceBooking.room || null,
+        time: bridgeSourceContext?.time || sourceBooking.time || '',
+        source: 'kitchen_first_activity_bridge'
     };
     BookingDrawerState.selectedBanquetGroupId = BookingDrawerState.roomBookingAnimationBridge.groupId || '';
 
@@ -8814,6 +8531,106 @@ function revealHiddenBooking(bookingId) {
         setTimeout(() => block.classList.remove('conflict-flash'), 1500);
     }
 }
+
+function findRoomServiceMarkerForBooking(bookingId, groupId = '') {
+    const selectorId = bookingBlockSelectorId(bookingId);
+    if (!selectorId) return null;
+    const directMarker = document.querySelector(`.timeline-room-service-marker[data-booking-id="${selectorId}"]`);
+    if (directMarker) return directMarker;
+    const bookingIdText = String(bookingId || '').trim();
+    const markerByList = Array.from(document.querySelectorAll('.timeline-room-service-marker[data-booking-ids]')).find(marker => {
+        const ids = String(marker.dataset.bookingIds || '').split(/\s+/).filter(Boolean);
+        return ids.includes(bookingIdText);
+    });
+    if (markerByList) return markerByList;
+    const selectorGroupId = bookingBlockSelectorId(groupId);
+    return selectorGroupId
+        ? document.querySelector(`.timeline-room-service-marker[data-banquet-room-marker-group="${selectorGroupId}"]`)
+        : null;
+}
+
+function focusTimelineRevealElement(element) {
+    if (!element) return false;
+    element.classList.add('booking-block--just-created', 'conflict-flash');
+    window.setTimeout(() => element.classList.remove('booking-block--just-created', 'conflict-flash'), 3000);
+    if (element.scrollIntoView) {
+        element.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    }
+    if (typeof element.focus === 'function') {
+        try {
+            element.focus({ preventScroll: true });
+        } catch {
+            element.focus();
+        }
+    }
+    return true;
+}
+
+function setTimelineDateForBookingReveal(dateKey) {
+    const normalizedDate = normalizeBookingDateKey(dateKey);
+    if (!normalizedDate || typeof AppState === 'undefined') return '';
+    AppState.selectedDate = new Date(`${normalizedDate}T00:00:00`);
+    const timelineDateInput = document.getElementById('timelineDate');
+    if (timelineDateInput) timelineDateInput.value = normalizedDate;
+    if (typeof setTimelineDateInUrl === 'function') {
+        setTimelineDateInUrl(normalizedDate);
+    } else if (typeof window !== 'undefined' && typeof window.setTimelineDateInUrl === 'function') {
+        window.setTimelineDateInUrl(normalizedDate);
+    }
+    return normalizedDate;
+}
+
+async function showBookingInRoomTimeline(bookingId, dateKey = '') {
+    const bookingIdText = String(bookingId || '').trim();
+    if (!bookingIdText) return false;
+    const normalizedDate = setTimelineDateForBookingReveal(dateKey || (typeof AppState !== 'undefined' ? AppState.selectedDate : ''));
+    if (typeof closeAllModals === 'function') {
+        await closeAllModals();
+    } else {
+        document.getElementById('bookingModal')?.classList.add('hidden');
+    }
+
+    if (window.TimelineView?.set) {
+        await window.TimelineView.set('rooms', { render: typeof renderTimeline === 'function' ? false : true });
+    }
+    if (typeof renderTimeline === 'function') {
+        await renderTimeline();
+    }
+
+    await new Promise(resolve => window.setTimeout(resolve, 0));
+    let groupId = '';
+    if (typeof apiGetBanquetByBooking === 'function') {
+        try {
+            const snapshot = await apiGetBanquetByBooking(bookingIdText);
+            groupId = banquetGroupIdFromSnapshot(snapshot || {}) || '';
+        } catch (err) {
+            console.warn('Banquet reveal snapshot unavailable:', err);
+        }
+    }
+
+    const block = findCreatedBookingBlock({ id: bookingIdText });
+    if (block) {
+        revealHiddenBooking(bookingIdText);
+        focusTimelineRevealElement(block);
+        if (typeof showNotification === 'function') showNotification('Показую бронювання у вкладці «Кімнати».', 'info');
+        return true;
+    }
+
+    const marker = findRoomServiceMarkerForBooking(bookingIdText, groupId);
+    if (focusTimelineRevealElement(marker)) {
+        if (typeof showNotification === 'function') showNotification('Показую сервісний маркер у вкладці «Кімнати».', 'info');
+        return true;
+    }
+
+    if (typeof showNotification === 'function') {
+        showNotification(normalizedDate
+            ? 'Перемкнув у «Кімнати», але маркер цієї броні не знайдено. Оновіть таймлайн або перевірте фільтри.'
+            : 'Не вдалося визначити дату для показу бронювання в кімнатах.', 'warning');
+    }
+    return false;
+}
+
+window.showBookingInRoomTimeline = showBookingInRoomTimeline;
 
 // ==========================================
 // ДЕТАЛІ БРОНЮВАННЯ
@@ -8981,6 +8798,136 @@ function bookingDetailDefaultAttachRole(booking = {}) {
     if (bookingDetailIsKitchenCandidate(booking)) return 'kitchen';
     if (booking.programId || booking.program_id || booking.programName || booking.program_name || Number(booking.price || 0) > 0) return 'activity';
     return 'manual';
+}
+
+function bookingDetailTimelineProjection(booking = {}) {
+    const projection = booking.timelineProjection || booking.timeline_projection || {};
+    return projection && typeof projection === 'object' && !Array.isArray(projection) ? projection : {};
+}
+
+function bookingDetailTimelineExtraData(booking = {}) {
+    const raw = booking.extraData || booking.extra_data || {};
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+function bookingDetailRoomName(booking = {}) {
+    const projection = bookingDetailTimelineProjection(booking);
+    return String(
+        booking.room
+        || booking.roomName
+        || booking.room_name
+        || projection.resourceName
+        || projection.resource_name
+        || ''
+    ).trim();
+}
+
+function bookingDetailBanquetGroupId(booking = {}, banquetSnapshot = null) {
+    const extra = bookingDetailTimelineExtraData(booking);
+    const banquetGroup = extra.banquetGroup || extra.banquet_group || {};
+    return String(
+        booking.banquetGroupId
+        || booking.banquet_group_id
+        || banquetGroup.groupId
+        || banquetGroup.group_id
+        || banquetSnapshot?.groupId
+        || banquetSnapshot?.group?.id
+        || banquetSnapshot?.banquetGroup?.groupId
+        || banquetSnapshot?.banquetGroup?.group?.id
+        || ''
+    ).trim();
+}
+
+function bookingDetailBanquetGroupLabel(booking = {}, banquetSnapshot = null) {
+    const group = banquetSnapshot?.group || banquetSnapshot?.banquetGroup?.group || {};
+    const label = String(
+        group.groupName
+        || group.group_name
+        || group.name
+        || booking.groupName
+        || booking.group_name
+        || ''
+    ).trim();
+    if (label) return label;
+    const groupId = bookingDetailBanquetGroupId(booking, banquetSnapshot);
+    return groupId ? `#${groupId}` : '';
+}
+
+function bookingDetailIsServiceTimelineBooking(booking = {}) {
+    const projection = bookingDetailTimelineProjection(booking);
+    const displaySurface = String(projection.displaySurface || projection.display_surface || '').trim();
+    const serviceLineId = typeof ROOM_FIRST_BANQUET_SERVICE_LINE_ID !== 'undefined'
+        ? ROOM_FIRST_BANQUET_SERVICE_LINE_ID
+        : 'banquet-service';
+    return bookingDetailHasServiceOverview(booking)
+        || displaySurface === 'service_marker'
+        || displaySurface === 'banquet_preview'
+        || String(booking.lineId || booking.line_id || '').trim() === serviceLineId;
+}
+
+function bookingDetailIsRoomVisibleKitchenOrService(booking = {}) {
+    return bookingDetailIsKitchenCandidate(booking) || bookingDetailIsServiceTimelineBooking(booking);
+}
+
+function bookingDetailIsActivityWithRoomContext(booking = {}) {
+    if (!bookingDetailRoomName(booking)) return false;
+    if (bookingDetailIsRoomVisibleKitchenOrService(booking)) return false;
+    return Boolean(
+        booking.programId
+        || booking.program_id
+        || booking.programName
+        || booking.program_name
+        || booking.programCode
+        || booking.program_code
+        || booking.label
+    );
+}
+
+function renderBookingTimelineVisibilityNotice(booking = {}, banquetSnapshot = null) {
+    const room = bookingDetailRoomName(booking);
+    if (!room) return '';
+    const bookingId = bookingDetailId(booking);
+    const rawDate = booking.date || booking.dateKey || (typeof AppState !== 'undefined' ? AppState.selectedDate : '');
+    const date = typeof normalizeBookingDateKey === 'function'
+        ? normalizeBookingDateKey(rawDate)
+        : String(rawDate || '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] || '';
+    const time = String(booking.time || '').trim();
+    const groupLabel = bookingDetailBanquetGroupLabel(booking, banquetSnapshot);
+    const isKitchenOrService = bookingDetailIsRoomVisibleKitchenOrService(booking);
+    const isActivityWithRoom = bookingDetailIsActivityWithRoomContext(booking);
+    if (!isKitchenOrService && !isActivityWithRoom) return '';
+
+    const title = isKitchenOrService
+        ? 'Відображається у вкладці «Кімнати»'
+        : 'Може відображатися у «Свята» і «Кімнати»';
+    const metaParts = [
+        `Кімната: ${room}`,
+        time ? `Час: ${time}` : '',
+        groupLabel ? `Банкет: ${groupLabel}` : ''
+    ].filter(Boolean);
+    const action = bookingId && date ? `
+        <button type="button"
+                class="booking-detail-visibility__action"
+                onclick="showBookingInRoomTimeline('${escapeHtml(bookingId)}', '${escapeHtml(date)}')">
+            Показати в кімнатах
+        </button>` : '';
+
+    return `
+        <div class="booking-detail-visibility booking-detail-visibility--${isKitchenOrService ? 'room-only' : 'room-context'}">
+            <div class="booking-detail-visibility__main">
+                <div class="booking-detail-visibility__title">${escapeHtml(title)}</div>
+                <div class="booking-detail-visibility__meta">${metaParts.map(part => `<span>${escapeHtml(part)}</span>`).join('')}</div>
+            </div>
+            ${action}
+        </div>`;
 }
 
 function banquetSnapshotHasGroup(snapshot) {
@@ -9806,6 +9753,7 @@ async function showBookingDetails(bookingId) {
     const priorityCustomerBlockHtml = hasBanquetOverview ? customerBlockHtml : '';
     const standardCustomerBlockHtml = hasBanquetOverview ? '' : customerBlockHtml;
     const packageDetailHtml = hasBanquetOverview ? '' : renderBookingPackageDetail(booking);
+    const timelineVisibilityHtml = renderBookingTimelineVisibilityNotice(booking, banquetSnapshot);
 
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header booking-detail-header--compact">
@@ -9841,6 +9789,7 @@ async function showBookingDetails(bookingId) {
         ${renderEducationLessonDetail(booking)}
         ${renderBookingWorkspaceDetail(booking)}
         ${packageDetailHtml}
+        ${timelineVisibilityHtml}
         ${bookingChildrenCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(bookingChildrenCount))}</span></div>` : ''}
         ${booking.banquetAdults ? `<div class="booking-detail-row"><span class="label">Дорослих:</span><span class="value">${escapeHtml(String(booking.banquetAdults))}</span></div>` : ''}
         <div class="booking-detail-row">
@@ -10419,11 +10368,9 @@ async function deleteBooking(bookingId) {
             return;
         }
 
-        if (typeof window.invalidateTimelineBanquetSnapshotCache === 'function') {
-            window.invalidateTimelineBanquetSnapshotCache({
-                bookingIds: allToDelete.map(item => item?.id).filter(Boolean)
-            });
-        }
+        invalidateBookingBanquetPreviewFreshness({
+            bookingIds: allToDelete.map(item => item?.id).filter(Boolean)
+        });
         invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
         closeAllModals();
         await renderTimeline();

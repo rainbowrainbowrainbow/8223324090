@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.76.104">
-    <link rel="stylesheet" href="css/auth.css?v=0.76.104">
-    <link rel="stylesheet" href="css/layout.css?v=0.76.104">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.104">
-    <link rel="stylesheet" href="css/timeline.css?v=0.76.104">
-    <link rel="stylesheet" href="css/panel.css?v=0.76.104">
-    <link rel="stylesheet" href="css/modals.css?v=0.76.104">
-    <link rel="stylesheet" href="css/controls.css?v=0.76.104">
-    <link rel="stylesheet" href="css/features.css?v=0.76.104">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.104">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.104">
-    <link rel="stylesheet" href="css/pages.css?v=0.76.104">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.104">
+    <link rel="stylesheet" href="css/base.css?v=0.76.105">
+    <link rel="stylesheet" href="css/auth.css?v=0.76.105">
+    <link rel="stylesheet" href="css/layout.css?v=0.76.105">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.76.105">
+    <link rel="stylesheet" href="css/timeline.css?v=0.76.105">
+    <link rel="stylesheet" href="css/panel.css?v=0.76.105">
+    <link rel="stylesheet" href="css/modals.css?v=0.76.105">
+    <link rel="stylesheet" href="css/controls.css?v=0.76.105">
+    <link rel="stylesheet" href="css/features.css?v=0.76.105">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.105">
+    <link rel="stylesheet" href="css/responsive.css?v=0.76.105">
+    <link rel="stylesheet" href="css/pages.css?v=0.76.105">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.76.105">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.76.104">✨ 0.76.104</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.76.105">✨ 0.76.105</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.76.104 — Two-way banquet bridge fix</p>
+                <p class="tagline">AI First CRM v0.76.105 — Timeline reliability hardening</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.104</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.76.105</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1740,10 +1740,21 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.76.105 — Timeline reliability hardening</h4>
+                    <ul>
+                        <li><b>Стабільніша прив'язка бронювань до кімнат і таймлайна</b> — backend повертає явний <code>timelineProjection</code>, а frontend використовує його як основний контракт відображення.</li>
+                        <li><b>Менше ризику, що бронь існує, але її не видно</b> — room dropdown, room timeline і animator timeline працюють з однаковою resource identity та зрозумілими hidden reasons.</li>
+                        <li><b>Надійніший селект <code>Прив'язати до банкету</code></b> — real banquet groups і virtual bridge state розділені без fake ids для activity-first і kitchen-first сценаріїв.</li>
+                        <li><b>Save path для банкетів став deterministic</b> — frontend заздалегідь вибирає правильний endpoint і блокує customer/source mismatch до API call.</li>
+                        <li><b>Кухня і сервісні банкетні події зрозуміліше показані у кімнатах</b> — drawer/details пояснюють, де їх шукати, і дають reveal у room timeline.</li>
+                        <li><b>Посилено regression tests</b> — покрито двосторонній banquet bridge, visibility, cache scope, selector states і stale async preview guards.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.76.104 — Two-way banquet bridge fix</h4>
                     <ul>
                         <li><b>Працює зворотний сценарій <code>кухня перша → активність після</code></b> — активну програму можна додати з кухонної/банкетної броні в кімнаті без ручного створення банкетної групи.</li>
-                        <li><b>Банкет створюється або використовується при збереженні активності</b> — новий безпечний bridge endpoint створює групу з kitchen source або перевикористовує існуючу групу.</li>
+                        <li><b>Банкет створюється або використовується при збереженні активності</b> — безпечний bridge endpoint створює групу з kitchen source або перевикористовує існуючу групу.</li>
                         <li><b>Селект <code>Прив'язати до банкету</code> показує майбутню прив'язку</b> — якщо групи ще немає, але є валідна кухня-джерело, UI не лишає менеджера тільки з <code>Без прив'язки</code>.</li>
                         <li><b>Save path став двостороннім і deterministic</b> — existing group, activity-first kitchen і kitchen-first activity мають окремі атомарні маршрути без випадкового fallback у звичайне створення броні.</li>
                         <li><b>Customer mismatch і невалідні source bookings блокуються до insert</b> — frontend показує зрозумілу помилку, а backend повторно перевіряє root/active/customer/date/room у транзакції.</li>
@@ -14373,30 +14384,35 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.76.104"></script>
-    <script src="js/timeline-visibility.js?v=0.76.104"></script>
-    <script src="js/kitchen-menu-images.js?v=0.76.104"></script>
-    <script src="js/config.js?v=0.76.104"></script>
-    <script src="js/api.js?v=0.76.104"></script>
-    <script src="js/ui.js?v=0.76.104"></script>
-    <script src="js/auth.js?v=0.76.104"></script>
-    <script src="js/timeline-interaction-model.js?v=0.76.104"></script>
-    <script src="js/timeline.js?v=0.76.104"></script>
-    <script src="js/booking.js?v=0.76.104"></script>
-    <script src="js/settings.js?v=0.76.104"></script>
-    <script src="js/booking-form.js?v=0.76.104"></script>
-    <script src="js/booking-linked.js?v=0.76.104"></script>
-    <script src="js/settings-dashboard.js?v=0.76.104"></script>
-    <script src="js/settings-history.js?v=0.76.104"></script>
-    <script src="js/settings-afisha.js?v=0.76.104"></script>
-    <script src="js/settings-certificates.js?v=0.76.104"></script>
-    <script src="js/offline.js?v=0.76.104"></script>
-    <script src="js/crm-feature-registry.js?v=0.76.104"></script>
-    <script src="js/search.js?v=0.76.104"></script>
-    <script src="js/ws.js?v=0.76.104"></script>
-    <script src="js/app.js?v=0.76.104"></script>
-    <script src="js/kleshnya-widget.js?v=0.76.104"></script>
-    <script src="js/components/sidebar.js?v=0.76.104"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.104"></script>
+    <script src="js/timeline-context.js?v=0.76.105"></script>
+    <script src="js/timeline-visibility.js?v=0.76.105"></script>
+    <script src="js/kitchen-menu-images.js?v=0.76.105"></script>
+    <script src="js/config.js?v=0.76.105"></script>
+    <script src="js/api.js?v=0.76.105"></script>
+    <script src="js/ui.js?v=0.76.105"></script>
+    <script src="js/auth.js?v=0.76.105"></script>
+    <script src="js/timeline-interaction-model.js?v=0.76.105"></script>
+    <script src="js/timeline-cache.js?v=0.76.105"></script>
+    <script src="js/timeline-resource-identity.js?v=0.76.105"></script>
+    <script src="js/timeline.js?v=0.76.105"></script>
+    <script src="js/booking-drawer-state.js?v=0.76.105"></script>
+    <script src="js/booking-banquet-selector.js?v=0.76.105"></script>
+    <script src="js/booking-save-path.js?v=0.76.105"></script>
+    <script src="js/booking.js?v=0.76.105"></script>
+    <script src="js/settings.js?v=0.76.105"></script>
+    <script src="js/booking-form.js?v=0.76.105"></script>
+    <script src="js/booking-linked.js?v=0.76.105"></script>
+    <script src="js/settings-dashboard.js?v=0.76.105"></script>
+    <script src="js/settings-history.js?v=0.76.105"></script>
+    <script src="js/settings-afisha.js?v=0.76.105"></script>
+    <script src="js/settings-certificates.js?v=0.76.105"></script>
+    <script src="js/offline.js?v=0.76.105"></script>
+    <script src="js/crm-feature-registry.js?v=0.76.105"></script>
+    <script src="js/search.js?v=0.76.105"></script>
+    <script src="js/ws.js?v=0.76.105"></script>
+    <script src="js/app.js?v=0.76.105"></script>
+    <script src="js/kleshnya-widget.js?v=0.76.105"></script>
+    <script src="js/components/sidebar.js?v=0.76.105"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.76.105"></script>
 </body>
 </html>

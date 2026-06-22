@@ -1495,6 +1495,10 @@ async function apiGetBanquetCandidates(options = {}) {
         const params = new URLSearchParams();
         if (options.date) params.set('date', options.date);
         if (options.customerId) params.set('customerId', options.customerId);
+        if (options.room) params.set('room', options.room);
+        if (options.sourceBookingId) params.set('sourceBookingId', options.sourceBookingId);
+        if (options.drawerMode) params.set('drawerMode', options.drawerMode);
+        if (options.contextGeneration) params.set('contextGeneration', options.contextGeneration);
         const query = params.toString();
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/candidates${query ? `?${query}` : ''}`)}`, {
             headers: getTimelineAuthHeaders(false)

@@ -376,6 +376,7 @@ test('timeline view isolation matrix keeps polluted room rows out of animator st
 
 test('timeline view switch isolation keeps room rows out of animator render and cache scope', () => {
     const timeline = readProjectFile('js/timeline.js');
+    const timelineCache = readProjectFile('js/timeline-cache.js');
     const api = readProjectFile('js/api.js');
     const linesRoute = readProjectFile('routes/lines.js');
 
@@ -385,13 +386,14 @@ test('timeline view switch isolation keeps room rows out of animator render and 
     assert.match(linesRoute, /const quarantinedRoomRows = result\.rows\.filter\(isLegacyRoomTimelineLineRow\)/);
     assert.match(linesRoute, /const lines = filteredRows/);
 
-    assert.match(timeline, /function timelineCacheScopeKey\(\)[\s\S]*const timelineView = timelineCurrentView\(\);[\s\S]*return `\$\{context\}\|\$\{mode\}\|\$\{resourceType\}\|\$\{timelineView\}`/);
+    assert.match(timelineCache, /function timelineCacheScopeKey\(\)[\s\S]*const timelineView = timelineCurrentView\(\);[\s\S]*return `\$\{context\}\|\$\{mode\}\|\$\{resourceType\}\|\$\{timelineView\}`/);
+    assert.doesNotMatch(timelineCache, /cache\[key\]\s*\|\|\s*cache\[legacyKey\]/);
+    assert.match(timelineCache, /function getTimelineCacheEntry\(cache, date, options = \{\}\)[\s\S]*options\.allowLegacy === true[\s\S]*markTimelineCacheEntryRejected/);
     const setViewBlock = timeline.slice(
         timeline.indexOf('async function setTimelineView'),
         timeline.indexOf('window.TimelineView =')
     );
-    assert.match(setViewBlock, /if \(next !== current\) \{[\s\S]*clearTimelineBanquetRoomPreviews\(\);[\s\S]*if \(options\.render !== false\) \{/);
-    assert.match(setViewBlock, /if \(options\.render !== false\) \{[\s\S]*AppState\.cachedBookings = \{\};[\s\S]*AppState\.cachedLines = \{\};[\s\S]*AppState\.lines = \[\];[\s\S]*AppState\.linesByDate = \{\};/);
+    assert.match(setViewBlock, /if \(next !== current\) \{[\s\S]*clearTimelineBanquetRoomPreviews\(\);[\s\S]*AppState\.cachedBookings = \{\};[\s\S]*AppState\.cachedLines = \{\};[\s\S]*AppState\.lines = \[\];[\s\S]*AppState\.linesByDate = \{\};[\s\S]*if \(options\.render !== false\) \{/);
     assert.match(timeline, /function isTimelineRoomOnlyLine/);
     assert.match(timeline, /function normalizeTimelineLinesForContext[\s\S]*!isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)/);
     assert.match(timeline, /lineHeader\?\.addEventListener\('click', event => \{[\s\S]*if \(isRoomTimelineView\(\)\) return;[\s\S]*editLineModal\(line\.id\)/);
@@ -402,13 +404,15 @@ test('timeline view switch isolation keeps room rows out of animator render and 
 
 test('timeline view isolation matrix includes horizontal scroll scope and reset', () => {
     const timeline = readProjectFile('js/timeline.js');
+    const timelineCache = readProjectFile('js/timeline-cache.js');
+    const booking = readProjectFile('js/booking.js');
     const setViewBlock = timeline.slice(
         timeline.indexOf('async function setTimelineView'),
         timeline.indexOf('window.TimelineView =')
     );
-    const scrollKeyBlock = timeline.slice(
-        timeline.indexOf('function timelineHorizontalScrollStateKey'),
-        timeline.indexOf('function getTimelineCacheEntry')
+    const scrollKeyBlock = timelineCache.slice(
+        timelineCache.indexOf('function timelineHorizontalScrollStateKey'),
+        timelineCache.indexOf('function getTimelineCacheEntry')
     );
 
     assert.match(scrollKeyBlock, /timelineCacheScopeKey\(\)/);
@@ -416,8 +420,10 @@ test('timeline view isolation matrix includes horizontal scroll scope and reset'
     assert.match(scrollKeyBlock, /const period = timelineHorizontalScrollPeriodKey\(\)/);
     assert.match(scrollKeyBlock, /const zoom = timelineHorizontalScrollZoomKey\(\)/);
     assert.match(scrollKeyBlock, /const compact = AppState\.compactMode \? 'compact' : 'regular'/);
-    assert.match(setViewBlock, /if \(next !== current\) \{[\s\S]*clearTimelineBanquetRoomPreviews\(\);[\s\S]*markTimelineNavigationScrollReset\('view-switch-before-render'\);[\s\S]*if \(options\.render !== false\) \{/);
+    assert.match(setViewBlock, /if \(next !== current\) \{[\s\S]*clearTimelineBanquetRoomPreviews\(\);[\s\S]*markTimelineNavigationScrollReset\('view-switch-before-render'\);[\s\S]*AppState\.cachedBookings = \{\};[\s\S]*if \(options\.render !== false\) \{/);
     assert.match(timeline, /async function handleTimelineBusinessContextChanged[\s\S]*markTimelineNavigationScrollReset\('business-context-change'\);[\s\S]*updateTimelineViewControls\(\)/);
+    assert.match(booking, /function invalidateBookingTimelineDateCache\(date, options\)[\s\S]*const clearFrom = cache =>/);
+    assert.match(booking, /cacheKey === key \|\| cacheKey\.endsWith\(`\|\$\{key\}`\)/);
 });
 
 test('timeline width contract is shared by animator and room surfaces without service-marker inflation', () => {

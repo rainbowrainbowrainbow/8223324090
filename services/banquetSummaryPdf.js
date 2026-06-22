@@ -18,6 +18,18 @@ const PDF_FONT_BOLD = path.join(FONT_DIR, 'Nunito-Bold.ttf');
 const PDF_FONT_BLACK = path.join(FONT_DIR, 'Nunito-Black.ttf');
 const PDF_SERIF_REGULAR = path.join(FONT_DIR, 'NotoSerif-Regular.ttf');
 const PDF_SERIF_BOLD = path.join(FONT_DIR, 'NotoSerif-Bold.ttf');
+const BANQUET_HERO_IMAGE = path.join(ROOT_DIR, 'images', 'banquet-sheet-hero.png');
+const BANQUET_HERO_LOGO = path.join(ROOT_DIR, 'images', 'park-logo.png');
+const PDF_COLORS = Object.freeze({
+    navy: '#071d35',
+    gold: '#e5bd63',
+    cream: '#f7efe1',
+    muted: '#c9d7e6',
+    card: '#122b48',
+    ink: '#071d35',
+    border: '#d8dee9',
+    soft: '#f7efe1'
+});
 
 const PDF_VALIDATION_ERROR_CODE = 'banquet_summary_pdf_validation_failed';
 const ENTRY_BLOCKING_WARNING_CODES = new Set([
@@ -56,6 +68,18 @@ function formatDateTime(value) {
     if (Number.isNaN(date.getTime())) return String(value);
     return date.toLocaleString('uk-UA', {
         year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatGeneratedAtShort(value) {
+    const date = value instanceof Date ? value : new Date(value || Date.now());
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('uk-UA', {
+        year: '2-digit',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -709,29 +733,171 @@ function drawResponsible(doc, rows = []) {
     ], rows.map(row => [row.label, row.name || '—']));
 }
 
+function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
+    doc.save();
+    doc.roundedRect(x, y, width, height, radius).clip();
+    doc.rect(x, y, width, height).fill(PDF_COLORS.navy);
+    if (fs.existsSync(BANQUET_HERO_IMAGE)) {
+        doc.image(BANQUET_HERO_IMAGE, x, y, {
+            cover: [width, height],
+            align: 'center',
+            valign: 'center'
+        });
+    }
+    doc.fillOpacity(0.72)
+        .rect(x, y, width, height)
+        .fill(PDF_COLORS.navy);
+    doc.restore();
+
+    doc.roundedRect(x, y, width, height, radius)
+        .lineWidth(0.9)
+        .strokeColor(PDF_COLORS.gold)
+        .stroke();
+}
+
+function drawHeroLogo(doc, x, y, size, venueName) {
+    doc.save();
+    doc.roundedRect(x, y, size, size, 18)
+        .fillColor('#ffffff')
+        .fill();
+    if (fs.existsSync(BANQUET_HERO_LOGO)) {
+        doc.image(BANQUET_HERO_LOGO, x + 7, y + 7, {
+            fit: [size - 14, size - 14],
+            align: 'center',
+            valign: 'center'
+        });
+    } else {
+        doc.font('SummaryBold')
+            .fontSize(16)
+            .fillColor(PDF_COLORS.ink)
+            .text(pdfText(venueName, 'EG').slice(0, 2).toUpperCase(), x, y + size / 2 - 8, {
+                width: size,
+                align: 'center'
+            });
+    }
+    doc.restore();
+}
+
+function drawHeroPill(doc, text, x, y, width) {
+    const label = pdfText(text);
+    const textWidth = Math.min(width, Math.max(70, doc.widthOfString(label) + 16));
+    doc.save();
+    doc.fillOpacity(0.44)
+        .roundedRect(x, y, textWidth, 17, 8.5)
+        .fill(PDF_COLORS.navy);
+    doc.restore();
+    doc.roundedRect(x, y, textWidth, 17, 8.5)
+        .lineWidth(0.45)
+        .strokeColor(PDF_COLORS.gold)
+        .stroke();
+    doc.font('SummaryBold')
+        .fontSize(8.2)
+        .fillColor(PDF_COLORS.cream)
+        .text(label, x + 8, y + 4.5, { width: textWidth - 16, lineGap: 0 });
+}
+
+function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, manager) {
+    doc.save();
+    doc.fillOpacity(0.82)
+        .roundedRect(x, y, width, height, 20)
+        .fill(PDF_COLORS.card);
+    doc.restore();
+    doc.roundedRect(x, y, width, height, 20)
+        .lineWidth(0.65)
+        .strokeColor(PDF_COLORS.gold)
+        .stroke();
+
+    const innerX = x + 14;
+    const innerW = width - 28;
+    doc.font('SummaryBold')
+        .fontSize(14.5)
+        .fillColor('#ffffff')
+        .text(pdfText(summary.document?.title, 'БАНКЕТНИЙ ЛИСТ').toUpperCase(), innerX, y + 17, {
+            width: innerW,
+            lineGap: 0.4
+        });
+
+    const bookingId = pdfText(summary.bookingId);
+    const bookingY = y + 52;
+    const bookingW = Math.min(innerW, Math.max(92, doc.widthOfString(bookingId) + 18));
+    doc.save();
+    doc.fillOpacity(0.18)
+        .roundedRect(innerX, bookingY, bookingW, 20, 10)
+        .fill(PDF_COLORS.gold);
+    doc.restore();
+    doc.roundedRect(innerX, bookingY, bookingW, 20, 10)
+        .lineWidth(0.45)
+        .strokeColor(PDF_COLORS.gold)
+        .stroke();
+    doc.font('SummaryBold')
+        .fontSize(8.8)
+        .fillColor(PDF_COLORS.gold)
+        .text(bookingId, innerX + 9, bookingY + 5.4, { width: bookingW - 18 });
+
+    const rows = [
+        ['Сформовано:', formatDateTime(renderedAt)],
+        ['Менеджер:', pdfText(manager)]
+    ];
+    let rowY = y + 84;
+    rows.forEach(([label, value]) => {
+        doc.font('SummaryRegular')
+            .fontSize(7.8)
+            .fillColor(PDF_COLORS.muted)
+            .text(label, innerX, rowY, { width: 58, lineGap: 0 });
+        doc.font('SummaryBold')
+            .fontSize(7.8)
+            .fillColor('#ffffff')
+            .text(value, innerX + 61, rowY, { width: innerW - 61, lineGap: 0.4 });
+        rowY += 17;
+    });
+}
+
 function drawHeader(doc, summary, view) {
     const venue = summary.venue || {};
-    doc.font('SummaryBold').fontSize(14).fillColor('#111827').text(pdfText(venue.name, 'Event Genix'), { width: 360 });
-    doc.font('SummaryRegular').fontSize(8.5).fillColor('#64748b')
-        .text([venue.addressLine1, venue.addressLine2, venue.phone].map(item => cleanText(item)).filter(Boolean).join(' · '));
-
-    const rightX = doc.page.width - doc.page.margins.right - 170;
-    const topY = doc.page.margins.top;
+    const left = doc.page.margins.left;
+    const top = doc.page.margins.top;
+    const width = pageContentWidth(doc);
+    const height = 168;
+    const padding = 22;
+    const logoSize = 60;
+    const cardWidth = 170;
+    const cardHeight = height - padding * 2;
+    const cardX = left + width - padding - cardWidth;
+    const cardY = top + padding;
+    const logoX = left + padding;
+    const logoY = top + Math.round((height - logoSize) / 2);
+    const brandX = logoX + logoSize + 16;
+    const brandWidth = Math.max(160, cardX - brandX - 18);
+    const renderedAt = new Date();
     const manager = summary.document?.generatedBy || summary.event?.manager || null;
-    doc.font('SummaryRegular').fontSize(8.5).fillColor('#111827')
-        .text(`Booking ID: ${pdfText(summary.bookingId)}`, rightX, topY, { width: 170, align: 'right' })
-        .text(`Менеджер: ${pdfText(manager)}`, rightX, topY + 14, { width: 170, align: 'right' })
-        .text(view.modeLabel, rightX, topY + 28, { width: 170, align: 'right' });
 
-    doc.moveDown(0.8);
-    doc.moveTo(doc.page.margins.left, doc.y)
-        .lineTo(doc.page.width - doc.page.margins.right, doc.y)
-        .strokeColor('#111827')
-        .lineWidth(1.2)
-        .stroke();
-    doc.moveDown(0.8);
-    doc.font('SummaryBold').fontSize(18).fillColor('#111827').text('БАНКЕТНИЙ ЛИСТ', { align: 'center' });
-    doc.moveDown(0.45);
+    drawRoundedHeroBackground(doc, left, top, width, height, 28);
+    drawHeroLogo(doc, logoX, logoY, logoSize, venue.name);
+    drawHeroPill(doc, formatGeneratedAtShort(renderedAt), brandX, top + 39, brandWidth);
+
+    doc.font('SummaryBold')
+        .fontSize(13.4)
+        .fillColor('#ffffff')
+        .text(pdfText(venue.name, 'Event Genix'), brandX, top + 63, {
+            width: brandWidth,
+            lineGap: 0.6
+        });
+
+    const addressY = Math.min(top + 108, doc.y + 5);
+    doc.font('SummaryRegular')
+        .fontSize(8.4)
+        .fillColor(PDF_COLORS.muted)
+        .text(pdfText(venue.addressLine1), brandX, addressY, { width: brandWidth, lineGap: 1 })
+        .text(pdfText(venue.addressLine2), brandX, addressY + 12, { width: brandWidth, lineGap: 1 });
+    doc.font('SummaryBold')
+        .fontSize(9.8)
+        .fillColor(PDF_COLORS.gold)
+        .text(pdfText(venue.phone), brandX, addressY + 27, { width: brandWidth, lineGap: 0 });
+
+    drawHeroBookingCard(doc, summary, cardX, cardY, cardWidth, cardHeight, renderedAt, manager);
+
+    doc.x = left;
+    doc.y = top + height + 14;
 }
 
 function buildBriefItems(summary = {}, view) {

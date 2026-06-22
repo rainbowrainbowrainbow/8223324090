@@ -1263,9 +1263,15 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(pageCode, /Array\.isArray\(data\.details\)/);
     assert.match(pageCode, /details\.join\('\\n- '\)/);
     assert.doesNotMatch(pageCode, /summary\.document\?\.generatedAt/);
-    assert.doesNotMatch(pageCode, /Сформовано/);
+    assert.match(pageCode, /formatGeneratedAtShort\(renderedAt\)/);
+    assert.match(pageCode, /<span>Сформовано:<\/span>/);
     assert.doesNotMatch(pageCode, /Оформлено/);
     assert.match(pageCode, /Бронь створено/);
+    assert.match(pageCode, /class="banquet-hero"/);
+    assert.match(pageCode, /class="brand-logo"/);
+    assert.match(pageCode, /class="booking-card"/);
+    assert.match(pageCode, /class="booking-id"/);
+    assert.doesNotMatch(pageCode, /<span>Booking ID:/);
     assert.match(pageCode, /function summaryModeContract\(summary = currentSummary, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /function summaryScheduleRows\(summary, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /function renderSchedule\(summary, mode = summaryMode\(summary\)\)/);
@@ -1295,6 +1301,12 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pdfService, /Таймінг/);
     assert.match(pdfService, /function responsibleRowsForMode\(summary = \{\}, mode = 'client'\)/);
     assert.match(pdfService, /drawSectionTitle\(doc, 'Відповідальні'\)/);
+    assert.match(pdfService, /BANQUET_HERO_IMAGE/);
+    assert.match(pdfService, /BANQUET_HERO_LOGO/);
+    assert.match(pdfService, /function drawRoundedHeroBackground/);
+    assert.match(pdfService, /function drawHeroBookingCard/);
+    assert.match(pdfService, /\['Сформовано:', formatDateTime\(renderedAt\)\]/);
+    assert.doesNotMatch(pdfService, /Booking ID: \$\{pdfText\(summary\.bookingId\)\}/);
     assert.match(summaryService, /function buildBanquetSchedule/);
     assert.match(summaryService, /function buildResponsiblePeople/);
     assert.match(summaryService, /function banquetSummaryModeContract/);
@@ -1312,7 +1324,7 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pdfService, /displayHeaderFooter/);
     assert.doesNotMatch(pdfService, /puppeteer/i);
     assert.doesNotMatch(pdfService, /playwright/i);
-    assert.match(pdfService, /Менеджер: \$\{pdfText\(manager\)\}/);
+    assert.match(pdfService, /\['Менеджер:', pdfText\(manager\)\]/);
     assert.match(pdfService, /Бронь створено/);
     assert.doesNotMatch(pdfService, /generatedAt/);
     assert.doesNotMatch(summaryService, /generatedAt: new Date\(\)\.toISOString\(\)/);

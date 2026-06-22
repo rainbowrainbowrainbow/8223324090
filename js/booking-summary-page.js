@@ -2,6 +2,7 @@
 
 (function () {
     const API_BASE = '/api';
+    const BANQUET_HERO_LOGO_SRC = 'images/park-logo.png';
     let currentSummary = null;
     let currentSummaryRequest = {
         id: '',
@@ -608,6 +609,18 @@
         });
     }
 
+    function formatGeneratedAtShort(value) {
+        const date = value instanceof Date ? value : new Date(value || Date.now());
+        if (Number.isNaN(date.getTime())) return '—';
+        return date.toLocaleString('uk-UA', {
+            year: '2-digit',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
     function fallbackSummaryFinanceRows(summary) {
         const totals = summary?.totals || {};
         const deposit = summary?.deposit || {};
@@ -690,28 +703,37 @@
         const scheduleRows = sections.schedule ? summaryScheduleRows(summary, mode) : [];
         const responsibleRows = sections.responsible ? summaryResponsibleRows(summary, mode) : [];
         const commentRows = sections.comments ? summaryCommentRows(summary, mode) : [];
+        const renderedAt = new Date();
+        const manager = summary.document?.generatedBy || event.manager;
+        const documentTitle = summary.document?.title || 'БАНКЕТНИЙ ЛИСТ';
 
         if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
         doc.innerHTML = `
-            <header class="summary-doc-header">
-                <div class="summary-doc-heading">
-                    <h2 class="summary-venue-name">${escapeHtml(venue.name || 'Заклад')}</h2>
+            <header class="banquet-hero" aria-label="Шапка банкетного листа">
+                <img class="brand-logo" src="${BANQUET_HERO_LOGO_SRC}" alt="${escapeHtml(venue.name || 'Event Genix')}">
+                <div class="brand-copy">
+                    <div class="generated-at">${escapeHtml(formatGeneratedAtShort(renderedAt))}</div>
+                    <h1>${escapeHtml(venue.name || 'Заклад')}</h1>
+                    <p>${escapeHtml(formatValue(venue.addressLine1))}</p>
+                    <p>${escapeHtml(formatValue(venue.addressLine2))}</p>
+                    <strong>${escapeHtml(formatValue(venue.phone))}</strong>
                 </div>
-                <div class="summary-doc-meta-grid">
-                    <div class="summary-venue-lines">
-                        <span>${escapeHtml(formatValue(venue.addressLine1))}</span>
-                        <span>${escapeHtml(formatValue(venue.addressLine2))}</span>
-                        <span>${escapeHtml(formatValue(venue.phone))}</span>
+                <aside class="booking-card" aria-label="Дані банкетного листа">
+                    <h2>${escapeHtml(documentTitle)}</h2>
+                    <div class="booking-id">${escapeHtml(summary.bookingId || '—')}</div>
+                    <div class="booking-meta">
+                        <div class="meta-row">
+                            <span>Сформовано:</span>
+                            <b>${escapeHtml(formatDateTime(renderedAt))}</b>
+                        </div>
+                        <div class="meta-row">
+                            <span>Менеджер:</span>
+                            <b>${escapeHtml(formatValue(manager))}</b>
+                        </div>
                     </div>
-                    <div class="summary-doc-meta">
-                        <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
-                        <span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
-                    </div>
-                </div>
+                </aside>
             </header>
-
-            <h1 class="summary-title">${escapeHtml(summary.document?.title || 'БАНКЕТНИЙ ЛИСТ')}</h1>
 
             ${sections.brief ? `<section class="summary-brief" aria-label="Коротка інформація по банкету">
                 <div class="summary-brief-grid">

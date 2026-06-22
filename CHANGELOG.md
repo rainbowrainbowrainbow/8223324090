@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.2 - Banquet sheet premium design
+
+### Banquet sheet / Premium hero header / PDF layout / (Клешня, 22.06.2026) [codex]
+- **Банкетний лист отримав premium hero-шапку** - замість однотонної синьої шапки використовується окремий фоновий asset з темним overlay для читабельності.
+- **Додано реальний логотип у шапку** - logo лишається окремим зображенням, а всі змінні дані документа залишаються HTML/PDF-текстом.
+- **Перебудовано ієрархію шапки** - зліва показуються дата формування, назва центру, адреса, ТРЦ і телефон, справа окрема glass-card з даними банкетного листа.
+- **Прибрано візуальне дублювання Booking ID / BK ID** - у шапці лишився один booking chip, а copy text продовжує мати службовий рядок `Booking ID`.
+- **PDF-експорт використовує той самий premium header** - серверний renderer малює hero background, logo, overlay і праву інформаційну плашку без browser artifacts.
+- **Документ приведено до єдиної дизайн-системи** - картки, таблиці, pill-labels, shadows, border-radius і золотий акцент стали послідовними по всій банкетці.
+- **Додано regression guards для нової шапки** - UI/static і contract checks фіксують background asset, logo, glass-card, відсутність дубльованого Booking ID і PDF helper-и.
+- **Релізні маркери піднято до `0.77.2`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.1 - Remove deprecated room load popover
 
 ### Timeline toolbar / Room mode / Visual settings cleanup / (Клешня, 22.06.2026) [codex]

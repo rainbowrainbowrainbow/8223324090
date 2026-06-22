@@ -667,16 +667,19 @@ checkPage('booking-summary.html', (doc, html) => {
     const printCommentsRule = cssRuleIncludingSelectorText(printCss, '.summary-comments');
     const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
     const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
-    const summaryHeaderRule = cssRuleText(pageCss, '.summary-doc-header');
-    const summaryMetaGridRule = cssRuleText(pageCss, '.summary-doc-meta-grid');
+    const banquetHeroRule = cssRuleText(pageCss, '.banquet-hero');
+    const brandLogoRule = cssRuleText(pageCss, '.brand-logo');
+    const bookingCardRule = cssRuleText(pageCss, '.booking-card');
+    const bookingIdRule = cssRuleText(pageCss, '.booking-id');
+    const metaRowRule = cssRuleText(pageCss, '.meta-row');
     const termsSectionRule = cssRuleText(pageCss, '.summary-section--terms');
     const printTermsSpacingRule = cssRuleText(printCss, '.summary-section--terms');
     const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
     const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
     const summaryBriefItemRule = cssRuleText(pageCss, '.summary-brief-item');
-    const mobileMetaGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-doc-meta-grid');
+    const mobileHeroRule = cssRuleIncludingSelectorText(mobileCss, '.banquet-hero');
     const mobileBriefGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-brief-grid');
-    const printMetaGridRule = cssRuleIncludingSelectorText(printCss, '.summary-doc-meta-grid');
+    const printHeroRule = cssRuleIncludingSelectorText(printCss, '.banquet-hero');
     const printBriefGridRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-grid');
     const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
     const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
@@ -684,10 +687,6 @@ checkPage('booking-summary.html', (doc, html) => {
     const renderTermsBody = pageCode.match(/function renderTerms\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function renderDocument/)?.[1] || '';
     const renderDocumentBody = pageCode.match(/function renderDocument\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function summaryText/)?.[1] || '';
     const summaryTextBody = pageCode.match(/function summaryText\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    async function copyText/)?.[1] || '';
-    const summaryVenueLinesTemplate = renderDocumentBody.match(/<div class="summary-venue-lines">([\s\S]*?)<\/div>/)?.[1] || '';
-    const summaryDocMetaTemplate = renderDocumentBody.match(/<div class="summary-doc-meta">([\s\S]*?)<\/div>/)?.[1] || '';
-    const summaryVenueLineCount = (summaryVenueLinesTemplate.match(/<span>/g) || []).length;
-    const summaryDocMetaLineCount = (summaryDocMetaTemplate.match(/<span>/g) || []).length;
     const pdfExportButtons = Array.from(doc.querySelectorAll('[data-booking-summary-pdf-mode]'));
     const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('Booking summary page exposes preview shell and actions',
@@ -805,7 +804,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && printStateRule.includes('display: none !important')
         && printToastRule.includes('display: none !important')
         && printDocumentRule.includes('border-radius: 0 !important')
-        && printDocumentRule.includes('background: #fff !important')
+        && printDocumentRule.includes('background: var(--summary-panel) !important')
         && printDocumentRule.includes('box-shadow: none !important')
         && printDocumentRule.includes('color: #000 !important'));
     check('Booking summary print pagination keeps dense summaries on A4 and protects row breaks',
@@ -826,7 +825,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && printTableRowRule.includes('break-inside: avoid')
         && printTermsItemRule.includes('page-break-inside: avoid')
         && printServiceEventRule.includes('break-inside: avoid')
-        && termsSectionRule.includes('margin-top: 18px')
+        && termsSectionRule.includes('margin-top: 12px')
         && printTermsSpacingRule.includes('margin-top: 12px')
         && printA4PageRule.includes('aspect-ratio: auto')
         && !pageCss.includes('height: 297mm'));
@@ -899,43 +898,51 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCode.includes('jsPDF')
         && !pageCode.includes('html2pdf'));
     check('Booking summary header labels generated account as manager, not author',
-        pageCode.includes('<span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
+        pageCode.includes('<span>Менеджер:</span>')
+        && pageCode.includes('<b>${escapeHtml(formatValue(manager))}</b>')
         && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
         && !pageCode.includes('Автор:')
         && !pageCode.includes("compactFact('Менеджер', event.manager)"));
-    check('Booking summary hides generation timestamp and labels booking creation clearly',
+    check('Booking summary uses render-time generated label and keeps booking creation clear',
         !banquetSummaryServiceCode.includes('generatedAt: new Date().toISOString()')
         && !renderDocumentBody.includes('summary.document?.generatedAt')
-        && !renderDocumentBody.includes('Сформовано')
+        && renderDocumentBody.includes('const renderedAt = new Date()')
+        && renderDocumentBody.includes('formatGeneratedAtShort(renderedAt)')
+        && renderDocumentBody.includes('<span>Сформовано:</span>')
         && !summaryTextBody.includes('Сформовано')
         && !renderDocumentBody.includes("briefItem('Оформлено'")
         && !summaryTextBody.includes('Дата оформлення')
         && renderDocumentBody.includes("briefItem('Бронь створено', formatDateTime(event.createdAt))")
         && summaryTextBody.includes('`Бронь створено: ${formatDateTime(event.createdAt)}`'));
-    check('Booking summary keeps Booking ID in header metadata only',
-        pageCode.includes('<span>Booking ID: ${escapeHtml(summary.bookingId ||')
+    check('Booking summary keeps booking id as one visual hero chip and copy-text line',
+        renderDocumentBody.includes('<div class="booking-id">${escapeHtml(summary.bookingId ||')
         && pageCode.includes('`Booking ID: ${summary.bookingId ||')
+        && !renderDocumentBody.includes('Booking ID:')
         && !pageCode.includes("briefItem('Booking ID'"));
-    check('Booking summary header metadata keeps venue rows and two booking meta rows',
-        renderDocumentBody.includes('<div class="summary-doc-heading">')
-        && renderDocumentBody.includes('<div class="summary-doc-meta-grid">')
-        && summaryVenueLineCount === 3
-        && summaryDocMetaLineCount === 2
-        && summaryHeaderRule.includes('display: grid')
-        && summaryHeaderRule.includes('border-bottom: 2px solid var(--summary-ink)')
-        && summaryMetaGridRule.includes('grid-template-columns')
-        && summaryMetaGridRule.includes('grid-template-rows: repeat(3, auto)')
-        && pageCss.includes('.summary-venue-lines > span:nth-child(1)')
-        && pageCss.includes('.summary-doc-meta > span:nth-child(1)')
-        && pageCss.includes('display: contents')
-        && mobileMetaGridRule.includes('grid-template-columns: 1fr')
-        && printMetaGridRule.includes('grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr)')
-        && printMetaGridRule.includes('grid-template-rows: repeat(3, auto)')
-        && printMetaGridRule.includes('column-gap: 10px')
-        && printCss.includes('.summary-venue-lines > span')
-        && printCss.includes('.summary-doc-meta > span')
-        && printCss.includes('grid-column: 2')
-        && printCss.includes('text-align: right')
+    check('Booking summary hero header uses image background, real logo, and glass booking card',
+        renderDocumentBody.includes('<header class="banquet-hero"')
+        && renderDocumentBody.includes('<img class="brand-logo"')
+        && renderDocumentBody.includes('BANQUET_HERO_LOGO_SRC')
+        && renderDocumentBody.includes('<aside class="booking-card"')
+        && renderDocumentBody.includes('<div class="brand-copy">')
+        && renderDocumentBody.includes('venue.addressLine1')
+        && renderDocumentBody.includes('venue.addressLine2')
+        && renderDocumentBody.includes('venue.phone')
+        && fs.existsSync(path.join(ROOT, 'images', 'banquet-sheet-hero.png'))
+        && pageCss.includes('--navy: #071d35')
+        && pageCss.includes('--gold: #e5bd63')
+        && banquetHeroRule.includes('background: var(--navy) url("../images/banquet-sheet-hero.png") center / cover no-repeat')
+        && banquetHeroRule.includes('border-radius: var(--summary-radius-lg)')
+        && banquetHeroRule.includes('grid-template-columns: 92px minmax(0, 1fr) minmax(228px, 0.52fr)')
+        && pageCss.includes('.banquet-hero::before')
+        && brandLogoRule.includes('object-fit: contain')
+        && brandLogoRule.includes('background: rgba(255, 255, 255, 0.94)')
+        && bookingCardRule.includes('background: var(--card)')
+        && bookingCardRule.includes('backdrop-filter: blur(14px)')
+        && bookingIdRule.includes('border-radius: 999px')
+        && metaRowRule.includes('grid-template-columns')
+        && mobileHeroRule.includes('grid-template-columns: 1fr')
+        && printCss.includes('grid-template-columns: 62px minmax(0, 1fr) minmax(150px, 0.48fr)')
         && !pageCss.includes('--summary-doc-meta-offset')
         && !pageCss.includes('padding-top: var(--summary-doc-meta-offset)')
         && !printCss.includes('--summary-doc-meta-offset')

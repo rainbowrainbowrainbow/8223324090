@@ -498,6 +498,28 @@ function mapContextLead(row) {
   };
 }
 
+function buildInboundMessageMeta(normalized) {
+  const base = normalized && typeof normalized.meta === 'object' && normalized.meta !== null
+    ? { ...normalized.meta }
+    : {};
+  if (normalized && normalized.rawEvent !== undefined) {
+    base.rawEvent = normalized.rawEvent;
+  }
+  return base;
+}
+
+function buildBotMilestoneMessageMeta(normalized) {
+  const base = normalized && typeof normalized.meta === 'object' && normalized.meta !== null
+    ? { ...normalized.meta }
+    : {};
+  base.botEvent = true;
+  base.direction = 'bot_outbound';
+  if (normalized && normalized.rawEvent !== undefined) {
+    base.rawEvent = normalized.rawEvent;
+  }
+  return base;
+}
+
 function mapContextBooking(row) {
   if (!row) return null;
   return {
@@ -784,9 +806,37 @@ async function findOrCreateConversation(channel, externalId, senderName, phone, 
 async function saveInboundMessage(conversationId, normalized) {
   let client;
   let clearedReplyMessageId = null;
+  const externalMessageId = normalized.externalMessageId
+    ? String(normalized.externalMessageId)
+    : null;
   try {
     client = await pool.connect();
     await client.query('BEGIN');
+
+    if (externalMessageId) {
+      const duplicate = await client.query(
+        `SELECT *
+           FROM conversation_messages
+          WHERE conversation_id = $1
+            AND direction = 'inbound'
+            AND external_message_id = $2
+          LIMIT 1`,
+        [conversationId, externalMessageId]
+      );
+      if (duplicate.rows.length > 0) {
+        await client.query('COMMIT');
+        if (normalized.channel === 'telegram') {
+          logger.info('omni.telegram.message.duplicate', {
+            conversationId,
+            externalId: normalized.externalId || null,
+            externalMessageId,
+            direction: 'inbound',
+          });
+        }
+        logger.info('Duplicate inbound message skipped', { conversationId, externalMessageId });
+        return mapMessageRow(duplicate.rows[0]);
+      }
+    }
 
     const activeReply = await client.query(
       `SELECT reply_expected_message_id
@@ -811,8 +861,8 @@ async function saveInboundMessage(conversationId, normalized) {
         normalized.content || '',
         normalized.contentType || 'text',
         normalized.mediaUrl || null,
-        normalized.externalMessageId || null,
-        normalized.meta ? JSON.stringify(normalized.meta) : '{}',
+        externalMessageId,
+        JSON.stringify(buildInboundMessageMeta(normalized)),
       ]
     );
 
@@ -874,10 +924,91 @@ async function saveInboundMessage(conversationId, normalized) {
       await closeReplyEscalationForMessage(clearedReplyMessageId, { pool, reason: 'inbound_reply' })
         .catch(err => logger.warn(`Reply escalation close after inbound skipped: ${err.message}`));
     }
+    if (normalized.channel === 'telegram') {
+      logger.info('omni.telegram.message.created', {
+        conversationId,
+        messageId: msg.rows[0]?.id || null,
+        externalId: normalized.externalId || null,
+        externalMessageId,
+        contentType: normalized.contentType || 'text',
+        direction: 'inbound',
+      });
+    }
     return mapMessageRow(msg.rows[0]);
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('saveInboundMessage error', e);
+    throw e;
+  } finally {
+    if (client) client.release();
+  }
+}
+
+async function saveBotMilestoneMessage(conversationId, normalized) {
+  let client;
+  const externalMessageId = normalized.externalMessageId
+    ? String(normalized.externalMessageId)
+    : null;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    if (externalMessageId) {
+      const duplicate = await client.query(
+        `SELECT *
+           FROM conversation_messages
+          WHERE conversation_id = $1
+            AND direction = 'outbound'
+            AND external_message_id = $2
+          LIMIT 1`,
+        [conversationId, externalMessageId]
+      );
+      if (duplicate.rows.length > 0) {
+        await client.query('COMMIT');
+        if (normalized.channel === 'telegram') {
+          logger.info('omni.telegram.message.duplicate', {
+            conversationId,
+            externalId: normalized.externalId || null,
+            externalMessageId,
+            direction: 'bot_outbound',
+          });
+        }
+        logger.info('Duplicate bot milestone skipped', { conversationId, externalMessageId });
+        return mapMessageRow(duplicate.rows[0]);
+      }
+    }
+
+    const msg = await client.query(
+      `INSERT INTO conversation_messages
+         (conversation_id, direction, sender_name, content, content_type, media_url, external_message_id, ai_generated, meta, created_at)
+       VALUES ($1, 'outbound', $2, $3, $4, $5, $6, false, $7, NOW())
+       RETURNING *`,
+      [
+        conversationId,
+        safeTruncate(normalized.senderName || 'Maysternya Bot', MAX_NAME_LEN),
+        normalized.content || '',
+        normalized.contentType || 'text',
+        normalized.mediaUrl || null,
+        externalMessageId,
+        JSON.stringify(buildBotMilestoneMessageMeta(normalized)),
+      ]
+    );
+
+    await client.query(
+      `UPDATE conversations
+         SET last_message_at = NOW(),
+             last_outbound_at = NOW(),
+             status          = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
+             updated_at      = NOW()
+       WHERE id = $1`,
+      [conversationId]
+    );
+
+    await client.query('COMMIT');
+    return mapMessageRow(msg.rows[0]);
+  } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    logger.error('saveBotMilestoneMessage error', e);
     throw e;
   } finally {
     if (client) client.release();
@@ -1399,6 +1530,25 @@ async function processInboundMessage(normalized, options = {}) {
   return { conversation: updatedConversation, message };
 }
 
+async function processBotMilestone(normalized, options = {}) {
+  const businessContext = omniBusinessContext(options);
+  const conversation = await findOrCreateConversation(
+    normalized.channel,
+    normalized.externalId,
+    normalized.senderName,
+    normalized.phone,
+    { businessContext }
+  );
+
+  const message = await saveBotMilestoneMessage(conversation.id, normalized);
+  const updatedConversation = await getConversationById(conversation.id, { businessContext }) || conversation;
+
+  notifyCRM('omni:message', { conversation: updatedConversation, message });
+  notifyCRM('omni:conversation', { conversation: updatedConversation });
+
+  return { conversation: updatedConversation, message };
+}
+
 // ---------------------------------------------------------------------------
 // 5. generateAndSendAIResponse
 // ---------------------------------------------------------------------------
@@ -1684,9 +1834,37 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
       sendTruth = normalizeProviderResult(conversation.channel, delivery);
       messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
       if (sendTruth.status === 'provider_failed_immediate' || sendTruth.status === 'provider_unknown') {
+        if (conversation.channel === 'telegram') {
+          logger.warn('omni.telegram.reply.failed', {
+            conversationId,
+            messageId: saved.id,
+            externalId: conversation.externalId,
+            status: sendTruth.status,
+            deliveryStatus: messageWithTruth.deliveryStatus || null,
+            error: sendTruth.error || null,
+          });
+        }
         logger.warn(`Manual message delivery not confirmed via ${conversation.channel}: ${sendTruth.error || sendTruth.status}`);
+      } else if (conversation.channel === 'telegram' && sendTruth.providerAccepted) {
+        logger.info('omni.telegram.reply.sent', {
+          conversationId,
+          messageId: saved.id,
+          externalId: conversation.externalId,
+          status: sendTruth.status,
+          deliveryStatus: messageWithTruth.deliveryStatus || null,
+          providerReference: sendTruth.providerReference || null,
+        });
       }
     } catch (err) {
+      if (conversation.channel === 'telegram') {
+        logger.warn('omni.telegram.reply.failed', {
+          conversationId,
+          messageId: saved.id,
+          externalId: conversation.externalId,
+          status: 'exception',
+          error: err.message,
+        });
+      }
       logger.error(`Failed to deliver manual message via ${conversation.channel}`, err);
       sendTruth = buildSendTruth('provider_failed_immediate', {
         channel: conversation.channel,
@@ -1895,8 +2073,10 @@ function notifyCRM(type, data) {
 module.exports = {
   findOrCreateConversation,
   saveInboundMessage,
+  saveBotMilestoneMessage,
   saveOutboundMessage,
   processInboundMessage,
+  processBotMilestone,
   generateAndSendAIResponse,
   sendToChannel,
   getConversations,

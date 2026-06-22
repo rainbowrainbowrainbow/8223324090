@@ -19,6 +19,7 @@
     --summary-card-bg: rgba(255, 255, 255, 0.82);
 }
 
+
 * {
     box-sizing: border-box;
 }
@@ -1120,5 +1121,626 @@ body.booking-summary-page {
         background-image: none !important;
         color: #000 !important;
         color-scheme: light !important;
+    }
+}
+
+/* Banquet celebration compact theme: transparent PNG assets + last-page brand footer. */
+:root {
+    --summary-bg: #eef5f2;
+    --summary-panel: #fffdf8;
+    --summary-ink: #0c3036;
+    --summary-muted: #5f7172;
+    --summary-border: rgba(12, 48, 54, 0.16);
+    --summary-soft: #eef8f5;
+    --summary-accent: #c9962e;
+    --summary-teal: #087c83;
+    --summary-gold: #c9962e;
+    --summary-card-bg: rgba(255, 255, 255, 0.82);
+    --summary-shadow: 0 18px 44px rgba(12, 48, 54, 0.16);
+    --summary-radius: 8px;
+    --summary-radius-lg: 8px;
+}
+
+body.booking-summary-page {
+    background:
+        linear-gradient(145deg, rgba(8, 124, 131, 0.16), transparent 32%),
+        linear-gradient(315deg, rgba(201, 150, 46, 0.16), transparent 34%),
+        var(--summary-bg);
+    color: #102a31;
+}
+
+.booking-summary-document {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    padding: 7mm 8mm 6mm;
+    border-radius: 12px;
+    border: 1px solid rgba(8, 124, 131, 0.16);
+    background:
+        linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(255, 253, 248, 0.98)),
+        var(--summary-panel);
+    color: var(--summary-ink);
+    box-shadow: var(--summary-shadow);
+}
+
+.booking-summary-document::after {
+    content: "";
+    position: absolute;
+    inset: 5mm;
+    z-index: 0;
+    border: 1px solid rgba(201, 150, 46, 0.26);
+    pointer-events: none;
+}
+
+.banquet-top-plate {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 0;
+    height: 49mm;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.banquet-top-plate img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    display: block;
+}
+
+.banquet-corner-art {
+    position: absolute;
+    right: -10mm;
+    bottom: 14mm;
+    z-index: 0;
+    width: min(47%, 86mm);
+    height: auto;
+    opacity: 0.56;
+    pointer-events: none;
+}
+
+.banquet-hero {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 15mm minmax(0, 1fr) minmax(48mm, 59mm);
+    align-items: start;
+    gap: 5mm;
+    min-height: 38mm;
+    margin: -1mm -1mm 3mm;
+    padding: 7mm 7mm 3mm;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: linear-gradient(90deg, rgba(255, 253, 248, 0.78), rgba(255, 253, 248, 0.34));
+    color: var(--summary-ink);
+    box-shadow: none;
+}
+
+.banquet-hero::before {
+    content: none;
+}
+
+.brand-logo {
+    width: 15mm;
+    height: 15mm;
+    padding: 2mm;
+    border-radius: 8px;
+    border: 1px solid rgba(201, 150, 46, 0.38);
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: none;
+}
+
+.brand-copy {
+    display: grid;
+    gap: 1.5mm;
+    min-width: 0;
+    padding-top: 0.8mm;
+}
+
+.generated-at {
+    width: fit-content;
+    margin: 0 0 1.8mm;
+    padding: 1.4mm 2mm;
+    border-radius: 8px;
+    border: 1px solid rgba(8, 124, 131, 0.22);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--summary-teal);
+    font-size: 8.4px;
+    font-weight: 950;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.brand-copy h1 {
+    margin: 0 0 1.4mm;
+    max-width: 96mm;
+    color: #06363c;
+    font-size: 19px;
+    font-weight: 950;
+    line-height: 1.05;
+    text-wrap: balance;
+}
+
+.brand-copy p,
+.brand-copy strong {
+    display: block;
+    margin: 0;
+    max-width: 96mm;
+    color: var(--summary-muted);
+    font-size: 10.4px;
+    font-weight: 760;
+    line-height: 1.22;
+    overflow-wrap: anywhere;
+}
+
+.brand-copy strong {
+    color: #8a6419;
+    font-size: 11.2px;
+    font-weight: 950;
+}
+
+.booking-card {
+    align-self: start;
+    display: grid;
+    gap: 2mm;
+    min-width: 0;
+    padding: 4mm;
+    border-radius: 8px;
+    border: 1px solid rgba(8, 124, 131, 0.18);
+    border-left: 2px solid var(--summary-gold);
+    background: rgba(255, 255, 255, 0.76);
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.booking-card h2 {
+    margin: 0;
+    color: #07363c;
+    font-size: 13.5px;
+    font-weight: 950;
+    line-height: 1.08;
+    text-transform: uppercase;
+}
+
+.booking-id {
+    width: fit-content;
+    max-width: 100%;
+    padding: 1.4mm 2mm;
+    border-radius: 8px;
+    border: 1px solid rgba(201, 150, 46, 0.45);
+    background: rgba(255, 248, 224, 0.78);
+    color: #8a6419;
+    font-size: 9.6px;
+    font-weight: 950;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+
+.meta-row {
+    grid-template-columns: minmax(25mm, auto) minmax(0, 1fr);
+    gap: 2mm;
+    color: var(--summary-muted);
+    font-size: 8.7px;
+}
+
+.meta-row b {
+    color: var(--summary-ink);
+}
+
+.banquet-content {
+    position: relative;
+    z-index: 1;
+}
+
+.summary-brief {
+    --summary-brief-label-width: 30mm;
+    margin: 0 0 3mm;
+    padding: 3mm;
+    border: 1px solid rgba(8, 124, 131, 0.15);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.76);
+    box-shadow: none;
+}
+
+.summary-brief-grid {
+    gap: 1.8mm 6mm;
+}
+
+.summary-brief-column {
+    gap: 1mm;
+}
+
+.summary-brief-item {
+    gap: 1.5mm;
+    font-size: 10.8px;
+    line-height: 1.18;
+}
+
+.summary-brief-label {
+    color: #08646b;
+}
+
+.summary-section {
+    margin-top: 2.4mm;
+    padding: 1.8mm 0 0 3mm;
+    border: 0;
+    border-left: 2px solid rgba(8, 124, 131, 0.62);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.summary-section--terms {
+    margin-top: 2.8mm;
+}
+
+.summary-section h2 {
+    width: auto;
+    margin: 0 0 1.6mm;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #075d64;
+    font-size: 10.8px;
+    font-weight: 950;
+    line-height: 1.12;
+    text-transform: uppercase;
+}
+
+.summary-order-table,
+.summary-responsible-list,
+.summary-schedule-list,
+.summary-finance-table,
+.summary-order-empty,
+.summary-service-event,
+.summary-comment-row {
+    border-radius: 8px;
+    border-color: rgba(8, 124, 131, 0.18);
+    background: rgba(255, 255, 255, 0.82);
+}
+
+.summary-order-table th {
+    background: #087c83;
+    color: #fffdf8;
+}
+
+.summary-order-table th,
+.summary-order-table td {
+    padding: 4px 5px;
+    border-color: rgba(8, 124, 131, 0.16);
+    font-size: 10.2px;
+    line-height: 1.16;
+}
+
+.summary-responsible-item,
+.summary-schedule-item,
+.summary-service-event,
+.summary-comment-row {
+    color: var(--summary-ink);
+    font-size: 10.2px;
+    line-height: 1.18;
+}
+
+.summary-responsible-item {
+    grid-template-columns: 27mm minmax(0, 1fr);
+    padding: 1.6mm 2mm;
+    border-color: rgba(8, 124, 131, 0.14);
+}
+
+.summary-schedule-item {
+    grid-template-columns: 15mm minmax(0, 1fr);
+    gap: 2mm;
+    padding: 1.6mm 2mm;
+    border-color: rgba(8, 124, 131, 0.14);
+}
+
+.summary-service-event,
+.summary-comment-row {
+    padding: 1.8mm 2.2mm;
+}
+
+.summary-finance-table {
+    max-width: 74mm;
+    font-size: 10.8px;
+}
+
+.summary-finance-table th,
+.summary-finance-table td {
+    padding: 1.4mm 2mm;
+    border-color: rgba(8, 124, 131, 0.14);
+}
+
+.summary-finance-row--due th,
+.summary-finance-row--due td {
+    background: rgba(234, 248, 244, 0.84);
+}
+
+.summary-note-block,
+.summary-finance-lines {
+    font-size: 10.8px;
+    line-height: 1.28;
+}
+
+.summary-terms ul {
+    padding-left: 4.5mm;
+}
+
+.banquet-final-brand {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    width: min(100%, 132mm);
+    margin: 4mm auto 0;
+    padding: 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+.banquet-final-brand img {
+    display: block;
+    width: 100%;
+    max-height: 30mm;
+    object-fit: contain;
+}
+
+@media (max-width: 760px) {
+    .booking-summary-document {
+        padding: 8mm 5mm 6mm;
+    }
+
+    .banquet-top-plate {
+        height: 42mm;
+    }
+
+    .banquet-hero {
+        grid-template-columns: 12mm minmax(0, 1fr);
+        gap: 3mm;
+        padding: 6mm 4mm 3mm;
+    }
+
+    .booking-card {
+        grid-column: 1 / -1;
+    }
+
+    .brand-logo {
+        width: 12mm;
+        height: 12mm;
+    }
+
+    .banquet-corner-art {
+        width: 70mm;
+        opacity: 0.26;
+    }
+}
+
+@media print {
+    @page {
+        size: A4;
+        margin: 7mm;
+    }
+
+    .booking-summary-document {
+        position: relative;
+        display: block !important;
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+        border: 0;
+        border-radius: 0 !important;
+        background: #fffdf8 !important;
+        box-shadow: none !important;
+        color: #000 !important;
+    }
+
+    .booking-summary-document::after {
+        inset: -1mm;
+        border-color: rgba(201, 150, 46, 0.24);
+    }
+
+    .banquet-top-plate {
+        top: -7mm;
+        right: -7mm;
+        left: -7mm;
+        height: 41mm;
+    }
+
+    .banquet-corner-art {
+        right: -6mm;
+        bottom: 8mm;
+        width: 58mm;
+        opacity: 0.28;
+    }
+
+    .banquet-hero {
+        grid-template-columns: 12mm minmax(0, 1fr) minmax(42mm, 50mm);
+        gap: 3.5mm;
+        min-height: 29mm;
+        margin: 0 0 2mm;
+        padding: 4.5mm 4mm 2mm;
+        background: linear-gradient(90deg, rgba(255, 253, 248, 0.84), rgba(255, 253, 248, 0.2));
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    .brand-logo {
+        width: 12mm;
+        height: 12mm;
+        padding: 1.4mm;
+        border-radius: 6px;
+    }
+
+    .generated-at {
+        margin-bottom: 1mm;
+        padding: 0.9mm 1.3mm;
+        font-size: 6.9px;
+        border-radius: 6px;
+    }
+
+    .brand-copy {
+        gap: 0.7mm;
+        padding-top: 0.2mm;
+    }
+
+    .brand-copy h1 {
+        margin-bottom: 0.8mm;
+        font-size: 12px;
+        line-height: 1.04;
+    }
+
+    .brand-copy p,
+    .brand-copy strong {
+        font-size: 7.2px;
+        line-height: 1.08;
+    }
+
+    .brand-copy strong {
+        font-size: 7.9px;
+    }
+
+    .booking-card {
+        gap: 1mm;
+        padding: 2.2mm;
+        border-radius: 6px;
+    }
+
+    .booking-card h2 {
+        font-size: 8.7px;
+        line-height: 1.05;
+    }
+
+    .booking-id {
+        padding: 0.8mm 1.2mm;
+        border-radius: 6px;
+        font-size: 6.8px;
+    }
+
+    .booking-meta {
+        gap: 0.8mm;
+    }
+
+    .meta-row {
+        grid-template-columns: minmax(18mm, auto) minmax(0, 1fr);
+        gap: 1mm;
+        font-size: 6.5px;
+        line-height: 1.05;
+    }
+
+    .summary-brief {
+        --summary-brief-label-width: 27mm;
+        margin-bottom: 1.8mm;
+        padding: 2mm;
+        border-radius: 6px;
+    }
+
+    .summary-brief-grid {
+        gap: 0.8mm 4mm;
+    }
+
+    .summary-brief-column {
+        gap: 0.6mm;
+    }
+
+    .summary-brief-item {
+        gap: 1mm;
+        font-size: 8.1px;
+        line-height: 1.08;
+    }
+
+    .summary-section {
+        margin-top: 1.6mm;
+        padding: 1mm 0 0 2mm;
+        border-left-width: 1.4px;
+        orphans: 2;
+        widows: 2;
+    }
+
+    .summary-section--terms {
+        margin-top: 1.8mm;
+    }
+
+    .summary-section h2 {
+        margin-bottom: 0.8mm;
+        font-size: 8.1px;
+        line-height: 1.05;
+    }
+
+    .summary-order-table,
+    .summary-responsible-list,
+    .summary-schedule-list,
+    .summary-finance-table,
+    .summary-order-empty,
+    .summary-service-event,
+    .summary-comment-row {
+        border-radius: 6px;
+    }
+
+    .summary-order-table th,
+    .summary-order-table td {
+        padding: 2px 3px;
+        font-size: 7.4px;
+        line-height: 1.05;
+    }
+
+    .summary-responsible-item {
+        grid-template-columns: 21mm minmax(0, 1fr);
+        padding: 1mm 1.3mm;
+        font-size: 7.4px;
+        line-height: 1.06;
+    }
+
+    .summary-schedule-item {
+        grid-template-columns: 12mm minmax(0, 1fr);
+        gap: 1.3mm;
+        padding: 1mm 1.3mm;
+        font-size: 7.4px;
+        line-height: 1.06;
+    }
+
+    .summary-schedule-item small {
+        margin-top: 0.4mm;
+    }
+
+    .summary-service-event,
+    .summary-comment-row {
+        padding: 1mm 1.3mm;
+        font-size: 7.4px;
+        line-height: 1.08;
+    }
+
+    .summary-finance-table {
+        max-width: 62mm;
+        font-size: 7.7px;
+    }
+
+    .summary-finance-table th,
+    .summary-finance-table td {
+        padding: 0.9mm 1.4mm;
+    }
+
+    .summary-note-block,
+    .summary-finance-lines {
+        font-size: 7.7px;
+        line-height: 1.16;
+    }
+
+    .summary-terms ul {
+        padding-left: 3.6mm;
+    }
+
+    .banquet-final-brand {
+        width: 108mm;
+        margin-top: 2.2mm;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .banquet-final-brand img {
+        max-height: 22mm;
     }
 }

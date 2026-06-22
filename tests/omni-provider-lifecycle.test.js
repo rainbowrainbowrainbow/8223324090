@@ -353,6 +353,162 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         assert.equal(calls.lifecycle[2].providerMessageId, '44');
     });
 
+    it('rejects Telegram omni webhooks with a wrong secret before processing payloads', async () => {
+        const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+        process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'omni-test-secret';
+        const calls = { inbound: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async normalized => calls.inbound.push(normalized),
+            applyProviderLifecycleReceipt: async () => {},
+        });
+
+        try {
+            const res = await postJson(router, '/webhook/telegram', {
+                update_id: 1,
+                message: {
+                    message_id: 10,
+                    text: 'Привіт',
+                    chat: { id: 123, type: 'private' },
+                    from: { id: 123, is_bot: false },
+                },
+            }, { 'x-webhook-secret': 'wrong-secret' });
+
+            assert.equal(res.status, 403);
+            assert.deepEqual(res.body, { ok: false, error: 'invalid secret' });
+            assert.equal(calls.inbound.length, 0);
+
+            const missing = await postJson(router, '/webhook/telegram', {
+                update_id: 11,
+                message: {
+                    message_id: 11,
+                    text: 'No secret',
+                    chat: { id: 123, type: 'private' },
+                    from: { id: 123, is_bot: false },
+                },
+            });
+
+            assert.equal(missing.status, 403);
+            assert.deepEqual(missing.body, { ok: false, error: 'invalid secret' });
+            assert.equal(calls.inbound.length, 0);
+        } finally {
+            if (previous === undefined) delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+            else process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = previous;
+        }
+    });
+
+    it('acknowledges invalid Telegram omni payloads without creating messages', async () => {
+        const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+        process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'omni-test-secret';
+        const calls = { inbound: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async normalized => calls.inbound.push(normalized),
+            applyProviderLifecycleReceipt: async () => {},
+        });
+
+        try {
+            const res = await postJson(router, '/webhook/telegram', {
+                update_id: 2,
+                callback_query: { id: 'cb-1', data: 'menu' },
+            }, { 'x-webhook-secret': 'omni-test-secret' });
+
+            assert.equal(res.status, 200);
+            assert.deepEqual(res.body, {
+                ok: true,
+                ignored: true,
+                reason: 'invalid_payload',
+            });
+            assert.equal(calls.inbound.length, 0);
+        } finally {
+            if (previous === undefined) delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+            else process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = previous;
+        }
+    });
+
+    it('processes valid Telegram omni messages in the Maysternya business context', async () => {
+        const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+        process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'omni-test-secret';
+        const calls = { inbound: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async (normalized, options) => calls.inbound.push({ normalized, options }),
+            applyProviderLifecycleReceipt: async () => {},
+        });
+
+        try {
+            const res = await postJson(router, '/webhook/telegram', {
+                update_id: 3,
+                message: {
+                    message_id: 30,
+                    text: 'Тест CRM inbox',
+                    chat: { id: 1530151619, type: 'private' },
+                    from: {
+                        id: 1530151619,
+                        first_name: 'User',
+                        username: 'username',
+                        is_bot: false,
+                        language_code: 'uk',
+                    },
+                },
+            }, {
+                'x-webhook-secret': 'omni-test-secret',
+                'x-business-context': 'maysternya_doli',
+            });
+
+            assert.equal(res.status, 200);
+            assert.deepEqual(res.body, { ok: true });
+            assert.equal(calls.inbound.length, 1);
+            assert.equal(calls.inbound[0].normalized.channel, 'telegram');
+            assert.equal(calls.inbound[0].normalized.externalId, '1530151619');
+            assert.equal(calls.inbound[0].normalized.text, 'Тест CRM inbox');
+            assert.equal(calls.inbound[0].options.businessContext, 'maysternya_doli');
+        } finally {
+            if (previous === undefined) delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+            else process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = previous;
+        }
+    });
+
+    it('routes Telegram bot milestone payloads as outbound Omni events', async () => {
+        const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+        process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'omni-test-secret';
+        const calls = { milestones: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async () => {
+                throw new Error('bot milestones must not use inbound processing');
+            },
+            processBotMilestone: async (normalized, options) => calls.milestones.push({ normalized, options }),
+            applyProviderLifecycleReceipt: async () => {},
+        });
+
+        try {
+            const res = await postJson(router, '/webhook/telegram', {
+                event_type: 'bot_milestone',
+                direction: 'bot_outbound',
+                event_key: 'mask_game_started',
+                telegram_user_id: '1530151619',
+                telegram_username: 'user_name',
+                title: 'Mask game started',
+                content: 'User started MASKA.',
+                external_message_id: 'bot:mask_game_started:1530151619:test',
+                occurred_at: '2026-06-22T10:00:00.000Z',
+            }, {
+                'x-webhook-secret': 'omni-test-secret',
+                'x-business-context': 'maysternya_doli',
+            });
+
+            assert.equal(res.status, 200);
+            assert.deepEqual(res.body, { ok: true, botEvent: true });
+            assert.equal(calls.milestones.length, 1);
+            assert.equal(calls.milestones[0].normalized.channel, 'telegram');
+            assert.equal(calls.milestones[0].normalized.externalId, '1530151619');
+            assert.equal(calls.milestones[0].normalized.externalMessageId, 'bot:mask_game_started:1530151619:test');
+            assert.equal(calls.milestones[0].normalized.meta.botEvent, true);
+            assert.equal(calls.milestones[0].normalized.meta.eventKey, 'mask_game_started');
+            assert.equal(calls.milestones[0].options.businessContext, 'maysternya_doli');
+        } finally {
+            if (previous === undefined) delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+            else process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = previous;
+        }
+    });
+
     it('routes TurboSMS DLRs to lifecycle updater without creating inbound SMS messages', async () => {
         const calls = { inbound: [], lifecycle: [] };
         const router = loadOmniRouter({

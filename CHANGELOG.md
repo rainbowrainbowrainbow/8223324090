@@ -4,15 +4,17 @@
 
 ---
 
-## v0.77.3 - Banquet sheet compact layout
+## v0.77.4 - Banquet sheet celebration style
 
-### Banquet sheet / Compact premium PDF / Header density / (Клешня, 22.06.2026) [codex]
-- **Банкетний лист став компактнішим** - premium hero-шапку стиснуто, щоб вона не займала надто багато місця на першій сторінці.
-- **Серверний PDF отримав компактну геометрію** - зменшено висоту hero, логотип, праву glass-card, внутрішні відступи, шрифти й проміжки.
-- **HTML/print layout синхронізовано з PDF** - web-прев’ю, browser print fallback і server PDF використовують однакову щільнішу систему відступів.
-- **Збережено premium стиль без втрати даних** - фон, логотип, overlay, Booking ID, менеджер, дата формування, brief, розклад, замовлення і фінанси лишаються на місці.
-- **Оновлено regression guards** - UI/static checks фіксують компактні розміри hero, glass-card і print-grid, щоб шапка знову не розрослась випадково.
-- **Релізні маркери піднято до `0.77.3`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+### Banquet sheet / Transparent decorative assets / Compact A4 print / Last-page brand / (Клешня, 22.06.2026) [codex]
+- **Банкетний лист отримав повністю новий святковий стиль** - темну premium hero-шапку замінено на світлий teal/gold layout з декоративною top-плашкою, кутком і фінальним лого.
+- **Нові зображення підготовлено як прозорі PNG** - `logo_down.png`, `ugol.png` і `top.png` очищені від білого фону, обрізані й оптимізовані як окремі deploy-stable assets у `images/`.
+- **Декор більше не забирає корисне місце** - top-плашка і куткова графіка винесені в абсолютні шари, а таблиці, brief, розклад, фінанси й умови ущільнені під пріоритет одного A4.
+- **Фінальна плашка з лого стоїть після тексту** - `logo_down` рендериться окремим footer-блоком у кінці документа, тому при розбитті на 2 сторінки лишається на останньому аркуші.
+- **Server PDF синхронізовано з browser print** - PDFKit тепер використовує ті самі декоративні assets, світлу палітру, компактні секції, clipped top-плашку і last-page brand footer.
+- **Перевірено visual PDF QA** - sample client PDF згенеровано й відрендерено в PNG: контент вміщується на 1 сторінку, top-плашка не перекриває текст, фінальне лого лишається внизу.
+- **Оновлено regression guards** - contract checks фіксують нові assets, `banquet-top-plate`, `banquet-corner-art`, `banquet-final-brand` і `drawFinalBrand`, щоб стиль не відкотили випадково.
+- **Релізні маркери піднято до `0.77.4`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
 
 ---
 

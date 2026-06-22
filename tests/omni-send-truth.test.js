@@ -194,16 +194,26 @@ function createInboundPool() {
         failed_at: null,
         created_at: '2099-05-13T10:00:00Z'
     };
-    const state = { inboundUpdateSeen: false, replyClearSeen: false };
+    const state = {
+        duplicateCheck: null,
+        inboundUpdateSeen: false,
+        insertMeta: null,
+        replyClearSeen: false
+    };
     const client = {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM conversation_messages/i.test(text) && /external_message_id = \$2/i.test(text)) {
+                state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
+                return { rows: [] };
+            }
             if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
                 return { rows: [] };
             }
             if (/INSERT INTO conversation_messages/i.test(text)) {
-                return { rows: [{ ...inserted, sender_name: params[1], content: params[2] }] };
+                state.insertMeta = JSON.parse(params[6]);
+                return { rows: [{ ...inserted, sender_name: params[1], content: params[2], meta: state.insertMeta }] };
             }
             if (/UPDATE conversations/i.test(text) && /last_inbound_at = NOW\(\)/i.test(text)) {
                 state.inboundUpdateSeen = true;
@@ -213,6 +223,121 @@ function createInboundPool() {
                 return { rows: [] };
             }
             throw new Error(`Unexpected inbound client query: ${text}`);
+        },
+        release: () => {}
+    };
+
+    return {
+        state,
+        query: async () => ({ rows: [] }),
+        connect: async () => client
+    };
+}
+
+function createDuplicateInboundPool() {
+    const existing = {
+        id: 779,
+        conversation_id: 901,
+        direction: 'inbound',
+        sender_name: 'Guest',
+        content: 'Already saved',
+        content_type: 'text',
+        media_url: null,
+        external_message_id: 'in-1',
+        ai_generated: false,
+        read_at: null,
+        meta: { source: 'duplicate-test' },
+        provider_message_id: null,
+        delivery_status: null,
+        delivery_error: null,
+        send_attempted_at: null,
+        provider_accepted_at: null,
+        failed_at: null,
+        created_at: '2099-05-13T10:00:00Z'
+    };
+    const state = { duplicateCheck: null, inserted: false, updatedConversation: false };
+    const client = {
+        query: async (sql, params = []) => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM conversation_messages/i.test(text) && /external_message_id = \$2/i.test(text)) {
+                state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
+                return { rows: [existing] };
+            }
+            if (/INSERT INTO conversation_messages/i.test(text)) {
+                state.inserted = true;
+                return { rows: [] };
+            }
+            if (/UPDATE conversations/i.test(text)) {
+                state.updatedConversation = true;
+                return { rows: [] };
+            }
+            throw new Error(`Unexpected duplicate inbound client query: ${text}`);
+        },
+        release: () => {}
+    };
+
+    return {
+        state,
+        query: async () => ({ rows: [] }),
+        connect: async () => client
+    };
+}
+
+function createBotMilestonePool() {
+    const inserted = {
+        id: 780,
+        conversation_id: 902,
+        direction: 'outbound',
+        sender_name: 'Maysternya Bot',
+        content: 'User started MASKA.',
+        content_type: 'text',
+        media_url: null,
+        external_message_id: 'bot:mask_game_started:1530151619:test',
+        ai_generated: false,
+        read_at: null,
+        meta: {},
+        provider_message_id: null,
+        delivery_status: null,
+        delivery_error: null,
+        send_attempted_at: null,
+        provider_accepted_at: null,
+        failed_at: null,
+        created_at: '2099-05-13T10:00:00Z'
+    };
+    const state = {
+        duplicateCheck: null,
+        insertMeta: null,
+        updatedConversationSql: null,
+        providerSendTouched: false
+    };
+    const client = {
+        query: async (sql, params = []) => {
+            const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM conversation_messages/i.test(text) && /external_message_id = \$2/i.test(text)) {
+                state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
+                return { rows: [] };
+            }
+            if (/INSERT INTO conversation_messages/i.test(text)) {
+                state.insertMeta = JSON.parse(params[6]);
+                return {
+                    rows: [{
+                        ...inserted,
+                        sender_name: params[1],
+                        content: params[2],
+                        content_type: params[3],
+                        media_url: params[4],
+                        external_message_id: params[5],
+                        meta: state.insertMeta
+                    }]
+                };
+            }
+            if (/UPDATE conversations/i.test(text) && /last_outbound_at = NOW\(\)/i.test(text)) {
+                state.updatedConversationSql = text;
+                return { rows: [] };
+            }
+            throw new Error(`Unexpected bot milestone client query: ${text}`);
         },
         release: () => {}
     };
@@ -507,7 +632,6 @@ describe('Communication Send Truth v1', () => {
             const { sendTelegramBridgeMessage } = require('../services/omni-telegram-bridge');
             const result = await sendTelegramBridgeMessage('12345', 'Привіт з CRM', {
                 businessContext: 'maysternya_doli',
-                silent: false,
             });
 
             assert.equal(result.ok, true);
@@ -588,13 +712,83 @@ describe('Communication Send Truth v1', () => {
             content: 'Hello',
             contentType: 'text',
             externalMessageId: 'in-1',
-            meta: { source: 'test' }
+            meta: { source: 'test' },
+            rawEvent: {
+                update_id: 101,
+                message: {
+                    message_id: 1,
+                    text: 'Hello',
+                    chat: { id: 901, type: 'private' }
+                }
+            }
         });
 
         assert.equal(message.direction, 'inbound');
         assert.equal(message.deliveryStatus, null);
+        assert.deepEqual(pool.state.duplicateCheck, {
+            conversationId: 901,
+            externalMessageId: 'in-1'
+        });
+        assert.equal(pool.state.insertMeta.source, 'test');
+        assert.equal(pool.state.insertMeta.rawEvent.update_id, 101);
         assert.equal(pool.state.inboundUpdateSeen, true);
         assert.equal(pool.state.replyClearSeen, true);
+    });
+
+    it('deduplicates inbound messages by conversation and external message id', async () => {
+        const pool = createDuplicateInboundPool();
+        const hub = loadHub(pool);
+
+        const message = await hub.saveInboundMessage(901, {
+            senderName: 'Guest',
+            content: 'Duplicate payload',
+            contentType: 'text',
+            externalMessageId: 'in-1',
+            meta: { source: 'test' },
+            rawEvent: { update_id: 102 }
+        });
+
+        assert.equal(message.id, 779);
+        assert.equal(message.content, 'Already saved');
+        assert.deepEqual(pool.state.duplicateCheck, {
+            conversationId: 901,
+            externalMessageId: 'in-1'
+        });
+        assert.equal(pool.state.inserted, false);
+        assert.equal(pool.state.updatedConversation, false);
+    });
+
+    it('saves bot milestones as outbound transcript events without clearing unread state', async () => {
+        const pool = createBotMilestonePool();
+        const hub = loadHub(pool);
+
+        const message = await hub.saveBotMilestoneMessage(902, {
+            senderName: 'Maysternya Bot',
+            content: 'User started MASKA.',
+            contentType: 'text',
+            externalMessageId: 'bot:mask_game_started:1530151619:test',
+            meta: {
+                eventKey: 'mask_game_started',
+                occurredAt: '2026-06-22T10:00:00.000Z'
+            },
+            rawEvent: {
+                event_type: 'bot_milestone',
+                telegram_user_id: '1530151619'
+            }
+        });
+
+        assert.equal(message.direction, 'outbound');
+        assert.equal(message.deliveryStatus, null);
+        assert.deepEqual(pool.state.duplicateCheck, {
+            conversationId: 902,
+            externalMessageId: 'bot:mask_game_started:1530151619:test'
+        });
+        assert.equal(pool.state.insertMeta.botEvent, true);
+        assert.equal(pool.state.insertMeta.direction, 'bot_outbound');
+        assert.equal(pool.state.insertMeta.eventKey, 'mask_game_started');
+        assert.equal(pool.state.insertMeta.rawEvent.event_type, 'bot_milestone');
+        assert.match(pool.state.updatedConversationSql, /last_outbound_at = NOW\(\)/);
+        assert.doesNotMatch(pool.state.updatedConversationSql, /unread_count\s*=\s*0/i);
     });
 
     it('persists send truth in message meta and durable fields after immediate provider failure', async () => {
@@ -705,6 +899,42 @@ describe('Communication Send Truth v1', () => {
         assert.deepEqual(calls[0][2], { businessContext: 'maysternya_doli' });
         assert.equal(result.sendTruth.status, 'provider_attempted');
         assert.equal(result.message.providerMessageId, '77');
+    });
+
+    it('marks Telegram bridge auth failures as failed outbound delivery', async () => {
+        const pool = createManualSendPool({
+            id: 919,
+            channel: 'telegram',
+            external_id: '12345',
+            customer_name: 'Telegram Lead',
+            status: 'open',
+            business_context: 'maysternya_doli',
+            meta: {}
+        });
+        const hub = loadHub(pool, {
+            sendTelegramBridgeMessage: async () => ({
+                ok: false,
+                description: 'Invalid EventGenix Omni send token',
+                error_code: 401,
+            }),
+            sendTelegramMessage: async () => {
+                throw new Error('direct Telegram sender should not be called');
+            }
+        });
+
+        const result = await hub.sendManualMessage(919, 'Привіт з CRM', 'Manager', {
+            businessContext: 'maysternya_doli'
+        });
+
+        assert.equal(result.sendTruth.status, 'provider_failed_immediate');
+        assert.equal(result.sendTruth.providerAccepted, false);
+        assert.equal(result.message.deliveryStatus, 'failed');
+        assert.match(result.message.deliveryError, /Invalid EventGenix Omni send token/);
+        assert.deepEqual(
+            pool.state.deliveryUpdates.map(update => update.deliveryStatus),
+            ['saved', 'attempted', 'failed']
+        );
+        assert.equal(pool.state.deliveryUpdates.at(-1).providerAccepted, false);
     });
 
     it('does not set reply expectation on ordinary outbound sends', async () => {

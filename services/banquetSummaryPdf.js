@@ -18,17 +18,20 @@ const PDF_FONT_BOLD = path.join(FONT_DIR, 'Nunito-Bold.ttf');
 const PDF_FONT_BLACK = path.join(FONT_DIR, 'Nunito-Black.ttf');
 const PDF_SERIF_REGULAR = path.join(FONT_DIR, 'NotoSerif-Regular.ttf');
 const PDF_SERIF_BOLD = path.join(FONT_DIR, 'NotoSerif-Bold.ttf');
-const BANQUET_HERO_IMAGE = path.join(ROOT_DIR, 'images', 'banquet-sheet-hero.png');
+const BANQUET_TOP_PLATE = path.join(ROOT_DIR, 'images', 'banquet-top.png');
+const BANQUET_CORNER_IMAGE = path.join(ROOT_DIR, 'images', 'banquet-corner.png');
+const BANQUET_FINAL_LOGO = path.join(ROOT_DIR, 'images', 'banquet-logo-down.png');
 const BANQUET_HERO_LOGO = path.join(ROOT_DIR, 'images', 'park-logo.png');
 const PDF_COLORS = Object.freeze({
-    navy: '#071d35',
-    gold: '#e5bd63',
-    cream: '#f7efe1',
-    muted: '#c9d7e6',
-    card: '#122b48',
-    ink: '#071d35',
-    border: '#d8dee9',
-    soft: '#f7efe1'
+    teal: '#087c83',
+    tealDark: '#06363c',
+    gold: '#c9962e',
+    cream: '#fffdf8',
+    muted: '#5f7172',
+    card: '#ffffff',
+    ink: '#0c3036',
+    border: '#c9d9d6',
+    soft: '#eef8f5'
 });
 
 const PDF_VALIDATION_ERROR_CODE = 'banquet_summary_pdf_validation_failed';
@@ -463,7 +466,9 @@ function ensureSpace(doc, height) {
     const bottom = doc.page.height - doc.page.margins.bottom;
     if (doc.y + height > bottom) {
         doc.addPage();
+        drawPageDecor(doc);
         doc.x = doc.page.margins.left;
+        doc.y = doc.page.margins.top;
     }
 }
 
@@ -475,79 +480,122 @@ function pageContentWidth(doc) {
     return doc.page.width - doc.page.margins.left - doc.page.margins.right;
 }
 
-function drawSectionTitle(doc, title) {
-    ensureSpace(doc, 34);
-    resetCursorX(doc);
-    doc.moveDown(0.75);
-    resetCursorX(doc);
-    doc.font('SummaryBold').fontSize(11).fillColor('#111827').text(title.toUpperCase(), {
-        width: pageContentWidth(doc),
-        align: 'center',
-        continued: false
-    });
-    doc.moveTo(doc.page.margins.left, doc.y + 3)
-        .lineTo(doc.page.width - doc.page.margins.right, doc.y + 3)
-        .strokeColor('#d8dee9')
-        .lineWidth(0.8)
+function drawPageDecor(doc) {
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const left = doc.page.margins.left;
+    const top = doc.page.margins.top;
+    const width = pageContentWidth(doc);
+    const borderTop = Math.max(18, top - 10);
+    const borderHeight = pageHeight - borderTop - Math.max(18, doc.page.margins.bottom - 8);
+
+    doc.save();
+    if (fs.existsSync(BANQUET_TOP_PLATE)) {
+        doc.opacity(0.94);
+        doc.rect(0, 0, pageWidth, 118).clip();
+        doc.image(BANQUET_TOP_PLATE, 0, 0, {
+            cover: [pageWidth, 118],
+            align: 'center',
+            valign: 'top'
+        });
+    }
+    doc.restore();
+
+    doc.save();
+    if (fs.existsSync(BANQUET_CORNER_IMAGE)) {
+        doc.opacity(0.24);
+        doc.image(BANQUET_CORNER_IMAGE, pageWidth - 176, pageHeight - 144, {
+            fit: [188, 128],
+            align: 'right',
+            valign: 'bottom'
+        });
+    }
+    doc.restore();
+
+    doc.save();
+    doc.roundedRect(left - 8, borderTop, width + 16, borderHeight, 8)
+        .lineWidth(0.45)
+        .strokeColor('#ead8aa')
         .stroke();
-    doc.moveDown(0.6);
+    doc.restore();
+}
+
+function drawSectionTitle(doc, title) {
+    ensureSpace(doc, 22);
+    resetCursorX(doc);
+    doc.moveDown(0.35);
+    resetCursorX(doc);
+    const left = doc.page.margins.left;
+    const y = doc.y;
+    doc.roundedRect(left, y + 1.5, 4, 11, 2).fillColor(PDF_COLORS.teal).fill();
+    doc.font('SummaryBold')
+        .fontSize(8.8)
+        .fillColor(PDF_COLORS.tealDark)
+        .text(title.toUpperCase(), left + 9, y, {
+            width: pageContentWidth(doc) - 9,
+            align: 'left',
+            lineGap: 0.2,
+            continued: false
+        });
+    doc.y = Math.max(doc.y, y + 14);
+    resetCursorX(doc);
 }
 
 function drawKeyValueGrid(doc, items = []) {
     const filtered = items.filter(item => item && cleanText(item.value));
     if (!filtered.length) return;
     const contentWidth = pageContentWidth(doc);
-    const columnWidth = (contentWidth - 18) / 2;
-    const labelWidth = 92;
+    const columnWidth = (contentWidth - 14) / 2;
+    const labelWidth = 78;
 
     for (let index = 0; index < filtered.length; index += 2) {
         const pair = filtered.slice(index, index + 2);
-        const rowHeight = Math.max(18, ...pair.map(item => {
-            doc.font('SummaryBold').fontSize(9);
+        const rowHeight = Math.max(13, ...pair.map(item => {
+            doc.font('SummaryBold').fontSize(7.8);
             const labelHeight = doc.heightOfString(`${item.label}:`, {
                 width: labelWidth,
-                lineGap: 1
+                lineGap: 0.3
             });
-            doc.font('SummaryRegular').fontSize(9);
+            doc.font('SummaryRegular').fontSize(7.8);
             const valueHeight = doc.heightOfString(pdfText(item.value), {
                 width: columnWidth - labelWidth,
-                lineGap: 1
+                lineGap: 0.3
             });
-            return Math.max(labelHeight, valueHeight) + 6;
+            return Math.max(labelHeight, valueHeight) + 4;
         }));
 
-        ensureSpace(doc, rowHeight + 2);
+        ensureSpace(doc, rowHeight + 1);
         const y = doc.y;
         pair.forEach((item, pairIndex) => {
-            const x = doc.page.margins.left + pairIndex * (columnWidth + 18);
-            doc.font('SummaryBold').fontSize(9).fillColor('#111827')
-                .text(`${item.label}:`, x, y, { width: labelWidth, lineGap: 1 });
-            doc.font('SummaryRegular').fontSize(9).fillColor('#111827')
+            const x = doc.page.margins.left + pairIndex * (columnWidth + 14);
+            doc.font('SummaryBold').fontSize(7.8).fillColor(PDF_COLORS.teal)
+                .text(`${item.label}:`, x, y, { width: labelWidth, lineGap: 0.3 });
+            doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.ink)
                 .text(pdfText(item.value), x + labelWidth, y, {
                     width: columnWidth - labelWidth,
-                    lineGap: 1
+                    lineGap: 0.3
                 });
         });
         doc.y = y + rowHeight;
         resetCursorX(doc);
     }
-    doc.moveDown(0.25);
+    doc.moveDown(0.12);
 }
 
 function drawParagraphList(doc, items = []) {
     const filtered = items.map(item => cleanText(item)).filter(Boolean);
     if (!filtered.length) {
-        doc.font('SummaryRegular').fontSize(9).fillColor('#64748b').text('Немає даних.');
+        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.muted).text('Немає даних.');
         return;
     }
     filtered.forEach(item => {
-        ensureSpace(doc, 24);
+        ensureSpace(doc, 16);
         resetCursorX(doc);
-        doc.font('SummaryRegular').fontSize(9).fillColor('#111827').text(`• ${item}`, doc.page.margins.left, doc.y, {
+        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.ink).text(`• ${item}`, doc.page.margins.left, doc.y, {
             width: pageContentWidth(doc),
-            lineGap: 1.5
+            lineGap: 0.7
         });
-        doc.moveDown(0.15);
+        doc.moveDown(0.08);
         resetCursorX(doc);
     });
 }
@@ -617,7 +665,7 @@ function financeRowsForSummary(summary = {}) {
 
 function drawTable(doc, columns = [], rows = []) {
     if (!rows.length) {
-        doc.font('SummaryRegular').fontSize(9).fillColor('#64748b').text('Позиції відсутні.');
+        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.muted).text('Позиції відсутні.');
         return;
     }
 
@@ -628,29 +676,30 @@ function drawTable(doc, columns = [], rows = []) {
     widths[widths.length - 1] += contentWidth - widths.reduce((sum, width) => sum + width, 0);
 
     const drawRow = (cells, options = {}) => {
-        const padding = 4;
-        doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular').fontSize(options.fontSize || 8.5);
+        const padding = 2.8;
+        const fontSize = options.fontSize || 7.4;
+        doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular').fontSize(fontSize);
         const heights = cells.map((cell, index) => doc.heightOfString(pdfText(cell, ''), {
             width: widths[index] - padding * 2,
-            lineGap: 1
+            lineGap: 0.3
         }));
-        const height = Math.max(options.minHeight || 20, ...heights.map(item => item + padding * 2));
-        ensureSpace(doc, height + 4);
+        const height = Math.max(options.minHeight || 16, ...heights.map(item => item + padding * 2));
+        ensureSpace(doc, height + 2);
         resetCursorX(doc);
         const y = doc.y;
         let x = left;
         cells.forEach((cell, index) => {
             if (options.fill) {
-                doc.rect(x, y, widths[index], height).fillAndStroke(options.fill, '#d8dee9');
+                doc.rect(x, y, widths[index], height).fillAndStroke(options.fill, PDF_COLORS.border);
             } else {
-                doc.rect(x, y, widths[index], height).strokeColor('#d8dee9').stroke();
+                doc.rect(x, y, widths[index], height).strokeColor(PDF_COLORS.border).stroke();
             }
             doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular')
-                .fontSize(options.fontSize || 8.5)
-                .fillColor('#111827')
+                .fontSize(fontSize)
+                .fillColor(options.textColor || PDF_COLORS.ink)
                 .text(pdfText(cell, ''), x + padding, y + padding, {
                     width: widths[index] - padding * 2,
-                    lineGap: 1
+                    lineGap: 0.3
                 });
             x += widths[index];
         });
@@ -658,8 +707,14 @@ function drawTable(doc, columns = [], rows = []) {
         resetCursorX(doc);
     };
 
-    drawRow(columns.map(col => col.label), { bold: true, fill: '#f5f7fb', minHeight: 19, fontSize: 8.5 });
-    rows.forEach(row => drawRow(row, { minHeight: 22, fontSize: 8.2 }));
+    drawRow(columns.map(col => col.label), {
+        bold: true,
+        fill: PDF_COLORS.teal,
+        textColor: PDF_COLORS.cream,
+        minHeight: 15,
+        fontSize: 7.5
+    });
+    rows.forEach(row => drawRow(row, { minHeight: 16, fontSize: 7.2 }));
 }
 
 function drawFinance(doc, summary = {}) {
@@ -736,9 +791,9 @@ function drawResponsible(doc, rows = []) {
 function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
     doc.save();
     doc.roundedRect(x, y, width, height, radius).clip();
-    doc.rect(x, y, width, height).fill(PDF_COLORS.navy);
-    if (fs.existsSync(BANQUET_HERO_IMAGE)) {
-        doc.image(BANQUET_HERO_IMAGE, x, y, {
+    doc.rect(x, y, width, height).fill(PDF_COLORS.tealDark);
+    if (fs.existsSync(BANQUET_TOP_PLATE)) {
+        doc.image(BANQUET_TOP_PLATE, x, y, {
             cover: [width, height],
             align: 'center',
             valign: 'center'
@@ -746,7 +801,7 @@ function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
     }
     doc.fillOpacity(0.72)
         .rect(x, y, width, height)
-        .fill(PDF_COLORS.navy);
+        .fill(PDF_COLORS.cream);
     doc.restore();
 
     doc.roundedRect(x, y, width, height, radius)
@@ -757,19 +812,19 @@ function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
 
 function drawHeroLogo(doc, x, y, size, venueName) {
     doc.save();
-    doc.roundedRect(x, y, size, size, 13)
+    doc.roundedRect(x, y, size, size, 8)
         .fillColor('#ffffff')
         .fill();
     if (fs.existsSync(BANQUET_HERO_LOGO)) {
-        doc.image(BANQUET_HERO_LOGO, x + 5, y + 5, {
-            fit: [size - 10, size - 10],
+        doc.image(BANQUET_HERO_LOGO, x + 4, y + 4, {
+            fit: [size - 8, size - 8],
             align: 'center',
             valign: 'center'
         });
     } else {
         doc.font('SummaryBold')
             .fontSize(16)
-            .fillColor(PDF_COLORS.ink)
+            .fillColor(PDF_COLORS.tealDark)
             .text(pdfText(venueName, 'EG').slice(0, 2).toUpperCase(), x, y + size / 2 - 8, {
                 width: size,
                 align: 'center'
@@ -784,7 +839,7 @@ function drawHeroPill(doc, text, x, y, width) {
     doc.save();
     doc.fillOpacity(0.44)
         .roundedRect(x, y, textWidth, 13, 6.5)
-        .fill(PDF_COLORS.navy);
+        .fill(PDF_COLORS.cream);
     doc.restore();
     doc.roundedRect(x, y, textWidth, 13, 6.5)
         .lineWidth(0.45)
@@ -792,53 +847,58 @@ function drawHeroPill(doc, text, x, y, width) {
         .stroke();
     doc.font('SummaryBold')
         .fontSize(6.8)
-        .fillColor(PDF_COLORS.cream)
+        .fillColor(PDF_COLORS.teal)
         .text(label, x + 6, y + 3.4, { width: textWidth - 12, lineGap: 0 });
 }
 
 function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, manager) {
     doc.save();
     doc.fillOpacity(0.82)
-        .roundedRect(x, y, width, height, 13)
+        .roundedRect(x, y, width, height, 8)
         .fill(PDF_COLORS.card);
     doc.restore();
-    doc.roundedRect(x, y, width, height, 13)
-        .lineWidth(0.65)
+    doc.roundedRect(x, y, width, height, 8)
+        .lineWidth(0.55)
+        .strokeColor('#d7e4e0')
+        .stroke();
+    doc.moveTo(x, y + 4)
+        .lineTo(x, y + height - 4)
+        .lineWidth(1.6)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
 
-    const innerX = x + 9;
+    const innerX = x + 10;
     const innerW = width - 18;
     doc.font('SummaryBold')
-        .fontSize(10.2)
-        .fillColor('#ffffff')
-        .text(pdfText(summary.document?.title, 'БАНКЕТНИЙ ЛИСТ').toUpperCase(), innerX, y + 11, {
+        .fontSize(8.8)
+        .fillColor(PDF_COLORS.tealDark)
+        .text(pdfText(summary.document?.title, '\u0411\u0410\u041d\u041a\u0415\u0422\u041d\u0418\u0419 \u041b\u0418\u0421\u0422').toUpperCase(), innerX, y + 9, {
             width: innerW,
             lineGap: 0.4
         });
 
     const bookingId = pdfText(summary.bookingId);
-    const bookingY = y + 34;
-    const bookingW = Math.min(innerW, Math.max(78, doc.widthOfString(bookingId) + 14));
+    const bookingY = y + 26;
+    const bookingW = Math.min(innerW, Math.max(66, doc.widthOfString(bookingId) + 12));
     doc.save();
-    doc.fillOpacity(0.18)
-        .roundedRect(innerX, bookingY, bookingW, 15, 7.5)
+    doc.fillOpacity(0.28)
+        .roundedRect(innerX, bookingY, bookingW, 13, 6.5)
         .fill(PDF_COLORS.gold);
     doc.restore();
-    doc.roundedRect(innerX, bookingY, bookingW, 15, 7.5)
+    doc.roundedRect(innerX, bookingY, bookingW, 13, 6.5)
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
     doc.font('SummaryBold')
-        .fontSize(7.2)
-        .fillColor(PDF_COLORS.gold)
-        .text(bookingId, innerX + 7, bookingY + 4, { width: bookingW - 14 });
+        .fontSize(6.8)
+        .fillColor('#7a5614')
+        .text(bookingId, innerX + 6, bookingY + 3.6, { width: bookingW - 12 });
 
     const rows = [
-        ['Сформовано:', formatDateTime(renderedAt)],
-        ['Менеджер:', pdfText(manager)]
+        ['\u0421\u0444\u043e\u0440\u043c\u043e\u0432\u0430\u043d\u043e:', formatDateTime(renderedAt)],
+        ['\u041c\u0435\u043d\u0435\u0434\u0436\u0435\u0440:', pdfText(manager)]
     ];
-    let rowY = y + 58;
+    let rowY = y + 45;
     rows.forEach(([label, value]) => {
         doc.font('SummaryRegular')
             .fontSize(6.5)
@@ -846,58 +906,112 @@ function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, mana
             .text(label, innerX, rowY, { width: 46, lineGap: 0 });
         doc.font('SummaryBold')
             .fontSize(6.5)
-            .fillColor('#ffffff')
+            .fillColor(PDF_COLORS.ink)
             .text(value, innerX + 49, rowY, { width: innerW - 49, lineGap: 0.2 });
-        rowY += 13;
+        rowY += 10;
     });
 }
-
 function drawHeader(doc, summary, view) {
     const venue = summary.venue || {};
     const left = doc.page.margins.left;
     const top = doc.page.margins.top;
     const width = pageContentWidth(doc);
-    const height = 112;
-    const padding = 14;
-    const logoSize = 42;
-    const cardWidth = 146;
-    const cardHeight = height - padding * 2;
-    const cardX = left + width - padding - cardWidth;
-    const cardY = top + padding;
-    const logoX = left + padding;
-    const logoY = top + Math.round((height - logoSize) / 2);
+    const height = 78;
+    const logoSize = 34;
+    const cardWidth = 140;
+    const cardHeight = 66;
+    const cardX = left + width - cardWidth - 8;
+    const cardY = top + 10;
+    const logoX = left + 10;
+    const logoY = top + 22;
     const brandX = logoX + logoSize + 11;
     const brandWidth = Math.max(150, cardX - brandX - 12);
     const renderedAt = new Date();
     const manager = summary.document?.generatedBy || summary.event?.manager || null;
 
-    drawRoundedHeroBackground(doc, left, top, width, height, 18);
+    drawPageDecor(doc);
+    doc.x = left;
+    doc.y = top;
+
+    doc.save();
+    doc.fillOpacity(0.76)
+        .roundedRect(left, top + 6, width, height - 6, 8)
+        .fill(PDF_COLORS.cream);
+    doc.restore();
+    doc.roundedRect(left, top + 6, width, height - 6, 8)
+        .lineWidth(0.45)
+        .strokeColor('#ead8aa')
+        .stroke();
+
     drawHeroLogo(doc, logoX, logoY, logoSize, venue.name);
-    drawHeroPill(doc, formatGeneratedAtShort(renderedAt), brandX, top + 23, brandWidth);
+
+    const generatedLabel = formatGeneratedAtShort(renderedAt);
+    doc.font('SummaryBold').fontSize(6.8);
+    const pillWidth = Math.min(brandWidth, Math.max(58, doc.widthOfString(generatedLabel) + 14));
+    doc.save();
+    doc.fillOpacity(0.72)
+        .roundedRect(brandX, top + 14, pillWidth, 13, 6.5)
+        .fill('#ffffff');
+    doc.restore();
+    doc.roundedRect(brandX, top + 14, pillWidth, 13, 6.5)
+        .lineWidth(0.35)
+        .strokeColor('#b8d4cf')
+        .stroke();
+    doc.font('SummaryBold')
+        .fontSize(6.8)
+        .fillColor(PDF_COLORS.teal)
+        .text(generatedLabel, brandX + 7, top + 17.1, { width: pillWidth - 14, lineGap: 0 });
 
     doc.font('SummaryBold')
-        .fontSize(10.8)
-        .fillColor('#ffffff')
-        .text(pdfText(venue.name, 'Event Genix'), brandX, top + 42, {
+        .fontSize(11.2)
+        .fillColor(PDF_COLORS.tealDark)
+        .text(pdfText(venue.name, 'Event Genix'), brandX, top + 33, {
             width: brandWidth,
             lineGap: 0.2
         });
 
-    const addressY = Math.min(top + 76, doc.y + 4);
     doc.font('SummaryRegular')
         .fontSize(6.9)
         .fillColor(PDF_COLORS.muted)
-        .text(pdfText(venue.addressLine1), brandX, addressY, { width: brandWidth, lineGap: 0.4 })
-        .text(pdfText(venue.addressLine2), brandX, addressY + 9, { width: brandWidth, lineGap: 0.4 });
+        .text(pdfText(venue.addressLine1), brandX, top + 50, { width: brandWidth, lineGap: 0.2 })
+        .text(pdfText(venue.addressLine2), brandX, top + 58, { width: brandWidth, lineGap: 0.2 });
     doc.font('SummaryBold')
-        .fontSize(7.8)
-        .fillColor(PDF_COLORS.gold)
-        .text(pdfText(venue.phone), brandX, addressY + 21, { width: brandWidth, lineGap: 0 });
+        .fontSize(7.4)
+        .fillColor('#7a5614')
+        .text(pdfText(venue.phone), brandX, top + 67, { width: brandWidth, lineGap: 0 });
 
     drawHeroBookingCard(doc, summary, cardX, cardY, cardWidth, cardHeight, renderedAt, manager);
 
     doc.x = left;
-    doc.y = top + height + 10;
+    doc.y = top + height + 7;
+}
+
+function drawFinalBrand(doc, summary = {}) {
+    const availableWidth = pageContentWidth(doc);
+    const width = Math.min(360, availableWidth * 0.72);
+    const height = 52;
+    ensureSpace(doc, height + 6);
+    resetCursorX(doc);
+    const x = doc.page.margins.left + (availableWidth - width) / 2;
+    const y = doc.y + 2;
+
+    if (fs.existsSync(BANQUET_FINAL_LOGO)) {
+        doc.image(BANQUET_FINAL_LOGO, x, y, {
+            fit: [width, height],
+            align: 'center',
+            valign: 'center'
+        });
+    } else {
+        doc.font('SummaryBold')
+            .fontSize(8)
+            .fillColor(PDF_COLORS.gold)
+            .text(pdfText(summary.venue?.name, 'Event Genix'), x, y + 20, {
+                width,
+                align: 'center'
+            });
+    }
+    doc.y = y + height + 2;
+    resetCursorX(doc);
 }
 
 function buildBriefItems(summary = {}, view) {
@@ -967,6 +1081,8 @@ function drawBanquetSummaryPdf(doc, summary = {}, view) {
         drawSectionTitle(doc, 'Службові попередження');
         drawParagraphList(doc, view.warnings.map(item => item.message || item.code || item));
     }
+
+    drawFinalBrand(doc, summary);
 }
 
 async function buildBanquetSummaryPdfBuffer(summary = {}, options = {}) {
@@ -978,7 +1094,7 @@ async function buildBanquetSummaryPdfBuffer(summary = {}, options = {}) {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({
             size: 'A4',
-            margin: 42,
+            margin: 34,
             info: {
                 Title: `Banquet sheet ${summary.bookingId || ''}`.trim(),
                 Creator: 'Event Genix CRM'

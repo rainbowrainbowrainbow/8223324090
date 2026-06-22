@@ -106,7 +106,8 @@ function pickTelegramMediaUrl(message) {
 // ---------------------------------------------------------------------------
 
 function normalizeTelegram(payload) {
-  const message = payload.message || payload.edited_message || payload.channel_post || {};
+  const rawPayload = payload && typeof payload === 'object' ? payload : {};
+  const message = rawPayload.message || rawPayload.edited_message || rawPayload.channel_post || {};
   const from = message.from || {};
 
   const contentType = detectTelegramContentType(message);
@@ -129,7 +130,7 @@ function normalizeTelegram(payload) {
     mediaUrl,
     phone: message.contact?.phone_number || null,
     externalMessageId: message.message_id ? String(message.message_id) : null,
-    rawEvent: payload,
+    rawEvent: rawPayload,
     meta: {
       chatId: message.chat?.id || null,
       messageId: message.message_id || null,
@@ -138,8 +139,74 @@ function normalizeTelegram(payload) {
     },
   });
 
+  if (!result) {
+    log.warn('Skipping Telegram payload without sender or chat id');
+    return null;
+  }
+
   log.debug('Normalized Telegram payload', { externalId: result.externalId, contentType });
   return result;
+}
+
+function normalizeTelegramBotMilestone(payload) {
+  const rawPayload = payload && typeof payload === 'object' ? payload : {};
+  const eventKey = safeString(
+    rawPayload.event_key || rawPayload.eventKey || rawPayload.type,
+    100
+  );
+  const telegramUserId = safeString(
+    rawPayload.telegram_user_id
+      || rawPayload.telegramUserId
+      || rawPayload.external_id
+      || rawPayload.externalId,
+    100
+  );
+  if (!telegramUserId || !eventKey) {
+    log.warn('Skipping Telegram bot milestone without telegram user id or event key');
+    return null;
+  }
+
+  const occurredAt = normalizeProviderTimestamp(
+    rawPayload.occurred_at || rawPayload.occurredAt || rawPayload.timestamp
+  );
+  const title = safeString(rawPayload.title, MAX_NAME_LEN);
+  const text = safeString(
+    rawPayload.content || rawPayload.text || title || eventKey,
+    MAX_TEXT_LEN
+  );
+  const telegramUsername = safeString(
+    rawPayload.telegram_username || rawPayload.telegramUsername,
+    MAX_NAME_LEN
+  );
+  const externalMessageId = safeString(
+    rawPayload.external_message_id
+      || rawPayload.externalMessageId
+      || `bot:${eventKey}:${telegramUserId}:${occurredAt || Date.now()}`,
+    255
+  );
+  const rawMeta = rawPayload.meta && typeof rawPayload.meta === 'object'
+    ? rawPayload.meta
+    : {};
+
+  return buildResult({
+    channel: 'telegram',
+    externalId: telegramUserId,
+    senderName: telegramUsername ? `@${telegramUsername.replace(/^@/, '')}` : null,
+    text,
+    contentType: 'text',
+    externalMessageId,
+    rawEvent: rawPayload,
+    meta: {
+      ...rawMeta,
+      botEvent: true,
+      direction: 'bot_outbound',
+      eventKey,
+      title: title || null,
+      occurredAt,
+      telegramUserId,
+      telegramUsername: telegramUsername || null,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +635,7 @@ function normalize(channel, payload) {
 
 module.exports = {
   normalizeTelegram,
+  normalizeTelegramBotMilestone,
   normalizeViber,
   normalizeSms,
   classifyViberWebhook,

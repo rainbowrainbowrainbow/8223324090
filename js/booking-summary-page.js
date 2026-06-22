@@ -3,6 +3,9 @@
 (function () {
     const API_BASE = '/api';
     const BANQUET_HERO_LOGO_SRC = 'images/park-logo.png';
+    const BANQUET_TOP_PLATE_SRC = 'images/banquet-top.png';
+    const BANQUET_CORNER_SRC = 'images/banquet-corner.png';
+    const BANQUET_FINAL_LOGO_SRC = 'images/banquet-logo-down.png';
     let currentSummary = null;
     let currentSummaryRequest = {
         id: '',
@@ -710,6 +713,10 @@
         if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
         doc.innerHTML = `
+            <figure class="banquet-top-plate" aria-hidden="true">
+                <img src="${BANQUET_TOP_PLATE_SRC}" alt="">
+            </figure>
+            <img class="banquet-corner-art" src="${BANQUET_CORNER_SRC}" alt="" aria-hidden="true">
             <header class="banquet-hero" aria-label="Шапка банкетного листа">
                 <img class="brand-logo" src="${BANQUET_HERO_LOGO_SRC}" alt="${escapeHtml(venue.name || 'Event Genix')}">
                 <div class="brand-copy">
@@ -735,6 +742,7 @@
                 </aside>
             </header>
 
+            <div class="banquet-content">
             ${sections.brief ? `<section class="summary-brief" aria-label="Коротка інформація по банкету">
                 <div class="summary-brief-grid">
                     ${briefColumn([
@@ -798,6 +806,11 @@
                 <h2>${escapeHtml(summary.terms?.title || 'Умови банкету')}</h2>
                 ${renderTerms(summary)}
             </section>` : ''}
+            </div>
+
+            <footer class="banquet-final-brand" aria-label="Фінальна плашка банкетного листа">
+                <img src="${BANQUET_FINAL_LOGO_SRC}" alt="${escapeHtml(venue.name || 'Event Genix')}">
+            </footer>
         `;
     }
 

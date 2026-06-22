@@ -131,16 +131,52 @@ function collectSmsWebhookPayloads(body) {
 router.post('/webhook/telegram', async (req, res) => {
     try {
         const businessContext = webhookBusinessContext(req);
+        log.info('omni.telegram.webhook.received', {
+            businessContext,
+            updateId: req.body?.update_id || null,
+            hasMessage: Boolean(req.body?.message || req.body?.edited_message),
+            botMilestone: req.body?.event_type === 'bot_milestone' || req.body?.direction === 'bot_outbound',
+        });
         if (!await verifyWebhookSecret(req, 'OMNI_TELEGRAM_WEBHOOK_SECRET', 'telegram')) {
+            log.warn('omni.telegram.webhook.ignored', {
+                businessContext,
+                reason: 'invalid_secret',
+                updateId: req.body?.update_id || null,
+            });
             log.warn('Telegram webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
         }
-        const normalized = getNormalizer().normalizeTelegram(req.body);
-        if (normalized) {
-            await getHub().processInboundMessage(normalized, { businessContext });
+        if (req.body?.event_type === 'bot_milestone' || req.body?.direction === 'bot_outbound') {
+            const normalized = getNormalizer().normalizeTelegramBotMilestone(req.body);
+            if (!normalized) {
+                log.warn('omni.telegram.webhook.ignored', {
+                    businessContext,
+                    reason: 'invalid_payload',
+                    eventType: req.body?.event_type || null,
+                });
+                log.warn('Telegram bot milestone ignored as invalid', { businessContext });
+                return res.json({ ok: true, ignored: true, reason: 'invalid_payload' });
+            }
+            await getHub().processBotMilestone(normalized, { businessContext });
+            return res.json({ ok: true, botEvent: true });
         }
+        const normalized = getNormalizer().normalizeTelegram(req.body);
+        if (!normalized) {
+            log.warn('omni.telegram.webhook.ignored', {
+                businessContext,
+                reason: 'invalid_payload',
+                updateId: req.body?.update_id || null,
+            });
+            log.warn('Telegram webhook payload ignored as invalid', { businessContext });
+            return res.json({ ok: true, ignored: true, reason: 'invalid_payload' });
+        }
+        await getHub().processInboundMessage(normalized, { businessContext });
         res.json({ ok: true });
     } catch (err) {
+        log.error('omni.telegram.webhook.ignored', {
+            reason: 'exception',
+            error: err.message,
+        });
         log.error('Telegram webhook error:', err.message);
         res.json({ ok: true }); // always 200 for webhooks
     }

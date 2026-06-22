@@ -31,7 +31,9 @@ async function sendTelegramBridgeMessage(externalId, text, options = {}) {
       body: JSON.stringify({
         chat_id: externalId,
         text,
-        disable_notification: options.silent !== false,
+        disable_notification: options.disableNotification === true
+          || options.disable_notification === true
+          || options.silent === true,
         business_context: businessContext,
       }),
       signal: controller.signal,

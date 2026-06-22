@@ -25,7 +25,11 @@ const { processBookingAutomation } = require('../services/bookingAutomation');
 const { insertHistory } = require('../services/historyLog');
 const { attachLeadBookingLink, ensureLeadForBooking } = require('../services/leadBookingLink');
 const { applyBookingPackage, applyBookingPackageEntryCharge, bookingPackageAudit } = require('../services/bookingPackage');
-const { buildBanquetSummary } = require('../services/banquetSummary');
+const { buildBanquetSummary, normalizeBanquetSummaryMode } = require('../services/banquetSummary');
+const {
+    buildBanquetSummaryPdfBuffer,
+    banquetSummaryPdfFilename
+} = require('../services/banquetSummaryPdf');
 const { loadBanquetTermsDefaults, snapshotBanquetTermsForBooking } = require('../services/banquetTerms');
 const {
     loadBanquetGroupByBookingId,
@@ -2026,135 +2030,200 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
     }
 });
 
+async function resolveBanquetSummaryForRequest(req, res) {
+    const { id } = req.params;
+    if (!validateId(id)) {
+        res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        return null;
+    }
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return null;
+    const mode = normalizeBanquetSummaryMode(req.query?.mode);
+
+    const mainResult = await pool.query(
+        `SELECT b.*
+           FROM bookings b
+          WHERE b.id = $1
+            AND ${bookingContextSql('b', '$2')}
+          LIMIT 1`,
+        [id, businessContext]
+    );
+    const mainBooking = mainResult.rows[0] || null;
+    if (!mainBooking) {
+        res.status(404).json({ success: false, error: 'Booking not found' });
+        return null;
+    }
+    if (!canViewBooking(req.user, mainBooking)) {
+        sendBookingDenied(req, res, mainBooking);
+        return null;
+    }
+
+    let resolvedGroup = null;
+    const groupId = String(req.query?.groupId || req.query?.group_id || '').trim();
+    const snapshot = groupId
+        ? await (async () => {
+            if (!validateId(groupId)) return { invalid: true };
+            return loadBanquetGroupById({ groupId, businessContext });
+        })()
+        : await loadBanquetGroupByBookingId({ bookingId: id, businessContext });
+    if (snapshot?.invalid) {
+        res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        return null;
+    }
+    if (groupId && !snapshot?.groupId) {
+        res.status(404).json({ success: false, error: 'Banquet group not found' });
+        return null;
+    }
+
+    if (snapshot?.members?.length && snapshot.source !== 'single_booking') {
+        const visibleMembers = (snapshot.members || []).filter(member => canViewBooking(req.user, member.booking));
+        const requestBookingInGroup = visibleMembers.some(member => String(member.bookingId) === String(id))
+            || visibleMembers.some(member => (member.technicalChildren || []).some(child => String(child.id) === String(id)));
+        if (!requestBookingInGroup) {
+            sendBookingDenied(req, res, mainBooking);
+            return null;
+        }
+        if (visibleMembers.length) {
+            const visibleBookingIds = new Set(visibleMembers.map(member => String(member.bookingId)));
+            resolvedGroup = {
+                ...snapshot,
+                memberships: (snapshot.memberships || []).filter(item => visibleBookingIds.has(String(item.bookingId))),
+                members: visibleMembers,
+                bookings: {
+                    ...snapshot.bookings,
+                    primary: (visibleMembers.find(member => member.isPrimary) || null)?.booking || snapshot.bookings?.primary || mainBooking,
+                    kitchen: visibleMembers
+                        .filter(member => member.role === 'kitchen' || member.isKitchenCandidate)
+                        .map(member => member.booking),
+                    activities: visibleMembers
+                        .filter(member => member.role === 'activity')
+                        .map(member => member.booking),
+                    services: visibleMembers
+                        .filter(member => member.role === 'service')
+                        .map(member => member.booking),
+                    manual: visibleMembers
+                        .filter(member => member.role === 'manual')
+                        .map(member => member.booking)
+                }
+            };
+        }
+    }
+
+    const summaryPrimaryBooking = resolvedGroup?.bookings?.primary || mainBooking;
+
+    let customer = null;
+    const customerId = summaryPrimaryBooking.customer_id || summaryPrimaryBooking.customerId || null;
+    if (customerId) {
+        const customerResult = await pool.query(
+            `SELECT id, business_context, name, phone, instagram, child_name, child_birthday, source, notes,
+                    created_at, updated_at
+               FROM customers
+              WHERE id = $1
+                AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+              LIMIT 1`,
+            [customerId, businessContext]
+        );
+        customer = customerResult.rows[0] || null;
+    }
+
+    let linkedBookings = [];
+    if (!resolvedGroup && !groupId) {
+        const linksResult = await pool.query(
+            `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
+               FROM booking_banquet_links
+              WHERE business_context = $1
+                AND relation_type = $2
+                AND ($3 = booking_a_id OR $3 = booking_b_id)
+              ORDER BY created_at ASC, id ASC`,
+            [businessContext, BANQUET_LINK_RELATION_TYPE, id]
+        );
+        const linkedIds = linksResult.rows
+            .map(link => String(link.booking_a_id) === String(id) ? link.booking_b_id : link.booking_a_id)
+            .filter(Boolean);
+        const linkByTarget = new Map(linksResult.rows.map(link => {
+            const targetId = String(link.booking_a_id) === String(id) ? link.booking_b_id : link.booking_a_id;
+            return [String(targetId), link];
+        }));
+        if (linkedIds.length) {
+            const linkedResult = await pool.query(
+                `SELECT b.*
+                   FROM bookings b
+                  WHERE b.id = ANY($1::text[])
+                    AND ${bookingContextSql('b', '$2')}
+                    AND ${bookingActiveStatusSql('b')}
+                  ORDER BY b.date ASC, b.time ASC, b.id ASC`,
+                [linkedIds, businessContext]
+            );
+            linkedBookings = linkedResult.rows
+                .filter(row => canViewBooking(req.user, row))
+                .map(row => ({
+                    ...row,
+                    _banquetLink: linkByTarget.get(String(row.id)) || null
+                }));
+        }
+    }
+
+    const banquetTermsDefaults = await loadBanquetTermsDefaults(pool);
+    return buildBanquetSummary({
+        mainBooking: summaryPrimaryBooking,
+        customer,
+        linkedBookings,
+        businessContext,
+        generatedBy: req.user,
+        resolvedGroup,
+        banquetTermsDefaults,
+        mode
+    });
+}
+
 router.get('/:id/banquet-summary', async (req, res) => {
     try {
-        const { id } = req.params;
-        if (!validateId(id)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
-        const businessContext = timelineContextFromRequest(req);
-        if (!requireTimelineContext(req, res, businessContext)) return;
-
-        const mainResult = await pool.query(
-            `SELECT b.*
-               FROM bookings b
-              WHERE b.id = $1
-                AND ${bookingContextSql('b', '$2')}
-              LIMIT 1`,
-            [id, businessContext]
-        );
-        const mainBooking = mainResult.rows[0] || null;
-        if (!mainBooking) return res.status(404).json({ success: false, error: 'Booking not found' });
-        if (!canViewBooking(req.user, mainBooking)) return sendBookingDenied(req, res, mainBooking);
-
-        let resolvedGroup = null;
-        const groupId = String(req.query?.groupId || req.query?.group_id || '').trim();
-        const snapshot = groupId
-            ? await (async () => {
-                if (!validateId(groupId)) return { invalid: true };
-                return loadBanquetGroupById({ groupId, businessContext });
-            })()
-            : await loadBanquetGroupByBookingId({ bookingId: id, businessContext });
-        if (snapshot?.invalid) return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
-        if (groupId && !snapshot?.groupId) return res.status(404).json({ success: false, error: 'Banquet group not found' });
-
-        if (snapshot?.members?.length && snapshot.source !== 'single_booking') {
-            const visibleMembers = (snapshot.members || []).filter(member => canViewBooking(req.user, member.booking));
-            const requestBookingInGroup = visibleMembers.some(member => String(member.bookingId) === String(id))
-                || visibleMembers.some(member => (member.technicalChildren || []).some(child => String(child.id) === String(id)));
-            if (!requestBookingInGroup) return sendBookingDenied(req, res, mainBooking);
-            if (visibleMembers.length) {
-                const visibleBookingIds = new Set(visibleMembers.map(member => String(member.bookingId)));
-                resolvedGroup = {
-                    ...snapshot,
-                    memberships: (snapshot.memberships || []).filter(item => visibleBookingIds.has(String(item.bookingId))),
-                    members: visibleMembers,
-                    bookings: {
-                        ...snapshot.bookings,
-                        primary: (visibleMembers.find(member => member.isPrimary) || null)?.booking || snapshot.bookings?.primary || mainBooking,
-                        kitchen: visibleMembers
-                            .filter(member => member.role === 'kitchen' || member.isKitchenCandidate)
-                            .map(member => member.booking),
-                        activities: visibleMembers
-                            .filter(member => member.role === 'activity')
-                            .map(member => member.booking),
-                        services: visibleMembers
-                            .filter(member => member.role === 'service')
-                            .map(member => member.booking),
-                        manual: visibleMembers
-                            .filter(member => member.role === 'manual')
-                            .map(member => member.booking)
-                    }
-                };
-            }
-        }
-
-        const summaryPrimaryBooking = resolvedGroup?.bookings?.primary || mainBooking;
-
-        let customer = null;
-        const customerId = summaryPrimaryBooking.customer_id || summaryPrimaryBooking.customerId || null;
-        if (customerId) {
-            const customerResult = await pool.query(
-                `SELECT id, business_context, name, phone, instagram, child_name, child_birthday, source, notes,
-                        created_at, updated_at
-                   FROM customers
-                  WHERE id = $1
-                    AND COALESCE(business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
-                  LIMIT 1`,
-                [customerId, businessContext]
-            );
-            customer = customerResult.rows[0] || null;
-        }
-
-        let linkedBookings = [];
-        if (!resolvedGroup && !groupId) {
-            const linksResult = await pool.query(
-                `SELECT id, booking_a_id, booking_b_id, relation_type, label, created_at, created_by
-                   FROM booking_banquet_links
-                  WHERE business_context = $1
-                    AND relation_type = $2
-                    AND ($3 = booking_a_id OR $3 = booking_b_id)
-                  ORDER BY created_at ASC, id ASC`,
-                [businessContext, BANQUET_LINK_RELATION_TYPE, id]
-            );
-            const linkedIds = linksResult.rows
-                .map(link => String(link.booking_a_id) === String(id) ? link.booking_b_id : link.booking_a_id)
-                .filter(Boolean);
-            const linkByTarget = new Map(linksResult.rows.map(link => {
-                const targetId = String(link.booking_a_id) === String(id) ? link.booking_b_id : link.booking_a_id;
-                return [String(targetId), link];
-            }));
-            if (linkedIds.length) {
-                const linkedResult = await pool.query(
-                    `SELECT b.*
-                       FROM bookings b
-                      WHERE b.id = ANY($1::text[])
-                        AND ${bookingContextSql('b', '$2')}
-                        AND ${bookingActiveStatusSql('b')}
-                      ORDER BY b.date ASC, b.time ASC, b.id ASC`,
-                    [linkedIds, businessContext]
-                );
-                linkedBookings = linkedResult.rows
-                    .filter(row => canViewBooking(req.user, row))
-                    .map(row => ({
-                        ...row,
-                        _banquetLink: linkByTarget.get(String(row.id)) || null
-                    }));
-            }
-        }
-
-        const banquetTermsDefaults = await loadBanquetTermsDefaults(pool);
-        const summary = buildBanquetSummary({
-            mainBooking: summaryPrimaryBooking,
-            customer,
-            linkedBookings,
-            businessContext,
-            generatedBy: req.user,
-            resolvedGroup,
-            banquetTermsDefaults
-        });
+        const summary = await resolveBanquetSummaryForRequest(req, res);
+        if (!summary || res.headersSent) return;
         res.json(summary);
     } catch (err) {
         log.error('GET /bookings/:id/banquet-summary error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.get('/:id/banquet-summary.pdf', async (req, res) => {
+    try {
+        const summary = await resolveBanquetSummaryForRequest(req, res);
+        if (!summary || res.headersSent) return;
+
+        const mode = normalizeBanquetSummaryMode(req.query?.mode);
+        const filename = banquetSummaryPdfFilename(summary, mode);
+        const buffer = await buildBanquetSummaryPdfBuffer(summary, { mode });
+
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'no-store',
+            'X-Banquet-Summary-Mode': mode
+        });
+        res.send(buffer);
+    } catch (err) {
+        if (err.code === 'banquet_summary_pdf_validation_failed') {
+            log.warn('GET /bookings/:id/banquet-summary.pdf blocked by validation', {
+                mode: err.mode,
+                details: err.details
+            });
+        } else {
+            log.error('GET /bookings/:id/banquet-summary.pdf error', err);
+        }
+        const status = Number(err.statusCode) || 500;
+        res.status(status).json({
+            success: false,
+            error: err.code === 'pdf_font_missing'
+                ? 'PDF font with Cyrillic support is not available'
+                : (err.code === 'banquet_summary_pdf_validation_failed'
+                    ? (err.publicMessage || err.message || 'Неможливо сформувати PDF')
+                    : 'Internal server error'),
+            code: err.code || undefined,
+            mode: err.mode || undefined,
+            details: Array.isArray(err.details) ? err.details : undefined
+        });
     }
 });
 

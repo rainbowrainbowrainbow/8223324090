@@ -52,6 +52,9 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
             program_id: 'birthday_90',
             program_code: 'BD90',
             category: 'birthday',
+            duration: 90,
+            lineName: 'Олена',
+            second_animator: 'Петро',
             price: 3700,
             kids_count: 8,
             banquet_adults: 4,
@@ -74,6 +77,13 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
                         { type: 'cake', title: 'Винос торта', time: '17:10' }
                     ]
                 },
+                bookingWorkspace: {
+                    responsiblePeople: {
+                        kitchenResponsible: 'Ірина',
+                        waiterResponsible: 'Денис',
+                        roomResponsible: 'Марія'
+                    }
+                },
                 banquetDeposit: {
                     amount: 1000,
                     paymentMethod: 'cash',
@@ -88,6 +98,8 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
             program_name: 'Аквагрим',
             price: 700,
             time: '15:00',
+            category: 'activity',
+            lineName: 'Максим',
             duration: 30,
             room: 'Марвел',
             _banquetLink: { relation_type: 'banquet_activity', label: 'додатково' }
@@ -111,7 +123,11 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.counts.tables, 2);
     assert.equal(summary.orderRows.length, 5);
     assert.equal(summary.orderRows[0].type, 'program');
+    assert.equal(summary.orderRows[0].durationMinutes, 90);
+    assert.equal(summary.orderRows[0].quantity, null);
     assert.equal(summary.orderRows[1].type, 'activity');
+    assert.equal(summary.orderRows[1].durationMinutes, 30);
+    assert.equal(summary.orderRows[1].quantity, null);
     assert.equal(summary.orderRows[2].type, 'menu');
     assert.equal(summary.orderRows[2].meta.servingTime, '16:30');
     assert.equal(summary.orderRows[2].meta.servingUnit, '100г');
@@ -120,6 +136,28 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.serviceEvents.length, 1);
     assert.equal(summary.serviceEvents[0].title, 'Винос торта');
     assert.equal(summary.serviceEvents[0].meta.time, '17:10');
+    assert.deepEqual(summary.schedule.map(item => `${item.time} ${item.title}`), [
+        '14:00 Прихід гостей',
+        '14:00 День народження',
+        '15:00 Аквагрим',
+        '16:30 Видача меню',
+        '16:30 Видача: Піца',
+        '17:10 Винос торта'
+    ]);
+    assert.equal(summary.schedule.filter(item => item.time === '14:00').length, 2);
+    assert.deepEqual(summary.schedule.find(item => item.title === 'Видача меню')?.modes, ['client']);
+    assert.deepEqual(summary.schedule.find(item => item.title === 'Видача: Піца')?.modes, ['kitchen', 'staff']);
+    assert.deepEqual(summary.responsible.rows.map(row => `${row.label}:${row.name || '—'}`), [
+        'Менеджер:manager',
+        'Аніматор:Олена',
+        'Другий аніматор:Петро',
+        'Аніматор активності:Максим',
+        'Кухня:Ірина',
+        'Офіціант:Денис',
+        'Кімната:Марія'
+    ]);
+    assert.deepEqual(summary.responsible.rows.find(row => row.label === 'Менеджер')?.modes, ['client', 'kitchen', 'staff']);
+    assert.deepEqual(summary.responsible.rows.find(row => row.label === 'Аніматор')?.modes, ['staff']);
     assert.equal(summary.totals.programBasePrice, 2500);
     assert.equal(summary.totals.menuSubtotal, 1200);
     assert.equal(summary.totals.orderTotal, 4400);
@@ -129,9 +167,81 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.deposit.paymentMethod, 'cash');
     assert.equal(summary.deposit.paymentStatus, 'partial');
     assert.equal(summary.deposit.source, 'extra_data.banquetDeposit');
+    assert.deepEqual(summary.finance.rows.map(row => row.label), [
+        'Програма',
+        'Меню',
+        'Додаткові активності',
+        'Бронювання',
+        'Разом',
+        'Завдаток',
+        'До сплати'
+    ]);
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 1000);
+    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 3400);
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
+});
+
+test('banquet summary builds compact finance rows without duplicate booking or zero subtotals', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: {
+            id: 'BK-FINANCE-COMPACT',
+            business_context: 'event_genix',
+            date: '2026-06-23',
+            time: '14:00',
+            room: 'Рок',
+            program_name: 'Анімація 60хв',
+            program_id: 'animation_60',
+            category: 'activity',
+            duration: 60,
+            price: 1500
+        }
+    });
+
+    assert.deepEqual(summary.finance.rows.map(row => row.label), ['Програма', 'Разом', 'До сплати']);
+    assert.equal(summary.finance.rows.find(row => row.key === 'program')?.amount, 1500);
+    assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 1500);
+    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 1500);
+    assert.equal(summary.finance.rows.some(row => row.key === 'booking'), false);
+    assert.equal(summary.finance.rows.some(row => row.key === 'entry'), false);
+    assert.equal(summary.finance.rows.some(row => row.key === 'menu'), false);
+    assert.equal(summary.finance.rows.some(row => row.key === 'activities'), false);
+    assert.equal(summary.finance.rows.some(row => row.key === 'deposit'), false);
+    assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
+});
+
+test('banquet summary adds staff warning for schedule items without time', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: {
+            id: 'BK-SCHEDULE-MISSING-TIME',
+            business_context: 'event_genix',
+            date: '2026-06-23',
+            time: '13:45',
+            room: 'Растішка',
+            program_name: 'Паперове шоу',
+            program_id: 'paper_show',
+            category: 'activity',
+            duration: 60,
+            price: 1500,
+            extra_data: {
+                bookingPackage: {
+                    serviceEvents: [
+                        { type: 'room_setup', title: 'Підготовка кімнати' }
+                    ]
+                }
+            }
+        }
+    });
+
+    assert.equal(summary.schedule.some(item => item.title === 'Підготовка кімнати'), false);
+    assert.ok(summary.warnings.some(warning => (
+        warning.code === 'schedule_time_missing'
+        && warning.staffOnly === true
+        && /Підготовка кімнати/.test(warning.message)
+    )));
 });
 
 test('banquet summary renders package entry charge as a separate order row and total', () => {
@@ -284,10 +394,10 @@ test('banquet summary exposes canonical comments from workspace and legacy notes
     });
 
     assert.deepEqual(summary.comments, [
-        { type: 'kitchen', label: 'Кухня', text: 'Підготувати дитячий стіл', bookingId: 'BK-COMMENTS-KITCHEN' },
-        { type: 'activity', label: 'Активність — Аквагрим', text: 'Попросити майстра прийти на 10 хв раніше', bookingId: 'BK-COMMENTS-ACTIVITY' },
         { type: 'internal', label: 'Внутрішній коментар', text: 'Передзвонити клієнту перед друком листа', bookingId: 'BK-COMMENTS-PRIMARY' }
     ]);
+    assert.equal(summary.orderRows.find(row => row.type === 'menu')?.comment, 'Підготувати дитячий стіл');
+    assert.equal(summary.orderRows.find(row => row.type === 'activity')?.comment, 'Попросити майстра прийти на 10 хв раніше');
     assert.equal(summary.orderRows.some(row => row.type === 'menu' && row.title === 'Pizza'), true);
     assert.equal(summary.totals.orderTotal, 4100);
 });
@@ -328,6 +438,15 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
         celebrant: { name: 'Сергій', birthday: 'Sat Oct 12 2018 00:00:00 GMT+0300' },
         counts: { children: 12, adults: 2 },
         orderRows: [
+            {
+                type: 'program',
+                title: 'Анімація 60хв',
+                durationMinutes: 60,
+                quantity: null,
+                unitPrice: 2900,
+                subtotal: 2900,
+                comment: 'Хоче більше жартів'
+            },
             {
                 type: 'menu',
                 title: 'Нутелла',
@@ -373,6 +492,13 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
             }
         ],
         serviceEvents: [],
+        responsible: {
+            rows: [
+                { role: 'manager', label: 'Менеджер', name: 'Manager', modes: ['client', 'kitchen', 'staff'], showWhenEmpty: true },
+                { role: 'animator', label: 'Аніматор', name: 'Олена', modes: ['staff'], showWhenEmpty: true },
+                { role: 'kitchen', label: 'Кухня', name: null, modes: ['kitchen', 'staff'], showWhenEmpty: true }
+            ]
+        },
         comments: [],
         totals: {
             currency: 'UAH',
@@ -383,7 +509,7 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
             entrySubtotal: 3600,
             activitySubtotal: 0
         },
-        deposit: { amount: 0, paymentMethod: null },
+        deposit: { amount: null, paymentMethod: null },
         terms: { items: [] },
         warnings: []
     };
@@ -411,6 +537,9 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     const tableText = window.document.getElementById('bookingSummaryDocument').textContent;
     assert.match(tableText, /Дата банкету/);
     assert.match(tableText, /Прихід гостей/);
+    assert.match(tableText, /Бронь створено/);
+    assert.doesNotMatch(tableText, /Сформовано/);
+    assert.doesNotMatch(tableText, /Оформлено/);
     assert.match(tableText, /Діти/);
     assert.match(tableText, /12/);
     assert.match(tableText, /Дата народження/);
@@ -419,7 +548,18 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.doesNotMatch(tableText, /Учасники/);
     assert.doesNotMatch(tableText, /Програма:\s*Юрій/);
     assert.doesNotMatch(tableText, /Дата\/час/);
+    assert.match(tableText, /Відповідальні/);
+    assert.match(tableText, /Менеджер\s*Manager/);
+    assert.doesNotMatch(tableText, /Кухня\s*—/);
+    assert.doesNotMatch(tableText, /Аніматор\s*Олена/);
+    assert.match(tableText, /Розклад/);
+    assert.match(tableText, /12:30\s*Прихід гостей/);
+    assert.match(tableText, /12:30\s*Анімація 60хв/);
+    assert.match(tableText, /14:30\s*Видача меню/);
     assert.match(tableText, /12:30/);
+    assert.match(tableText, /Тривалість/);
+    assert.match(tableText, /Анімація 60хв/);
+    assert.match(tableText, /60 хв/);
     assert.match(tableText, /5 порцій по 100 г/);
     assert.match(tableText, /3 порції/);
     assert.match(tableText, /1 порція/);
@@ -427,6 +567,11 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(tableText, /Вхід/);
     assert.match(tableText, /12 дітей/);
     assert.match(tableText, /300 ₴ = 3\s*600 ₴/);
+    assert.match(tableText, /Фінанси/);
+    assert.match(tableText, /До сплати/);
+    assert.doesNotMatch(tableText, /Сума бронювання/);
+    assert.doesNotMatch(tableText, /Бронювання/);
+    assert.doesNotMatch(tableText, /Завдаток/);
     assert.doesNotMatch(tableText, /5 100г|5 100 г|5 100г x 90/);
 
     window.document.getElementById('bookingSummaryCopy').click();
@@ -434,17 +579,33 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
 
     assert.match(copiedText, /Дата банкету: 23\.06\.2026/);
     assert.match(copiedText, /Прихід гостей: 12:30/);
+    assert.match(copiedText, /Бронь створено:/);
+    assert.doesNotMatch(copiedText, /Сформовано/);
+    assert.doesNotMatch(copiedText, /Дата оформлення/);
+    assert.doesNotMatch(copiedText, /Оформлено/);
     assert.match(copiedText, /Дата народження: 12\.10\.2018/);
     assert.match(copiedText, /Дітей: 12/);
     assert.doesNotMatch(copiedText, /Sat Oct 12/);
     assert.doesNotMatch(copiedText, /Програма: Юрій/);
     assert.doesNotMatch(copiedText, /Дата\/час/);
+    assert.match(copiedText, /Відповідальні:\nМенеджер: Manager/);
+    assert.doesNotMatch(copiedText, /Кухня: —/);
+    assert.doesNotMatch(copiedText, /Аніматор: Олена/);
+    assert.match(copiedText, /Розклад:\n12:30 — Прихід гостей/);
+    assert.match(copiedText, /12:30 — Анімація 60хв/);
+    assert.match(copiedText, /14:30 — Видача меню/);
+    assert.match(copiedText, /Анімація 60хв — 60 хв — 2\s*900 ₴ \(Хоче більше жартів\)/);
+    assert.doesNotMatch(copiedText, /Анімація 60хв.*1 порц/);
     assert.match(copiedText, /Нутелла — 14:30 — 5 порцій по 100 г × 90 ₴ = 450 ₴/);
     assert.match(copiedText, /Бургер — 16:30 — 3 порції × 260 ₴ = 780 ₴/);
     assert.match(copiedText, /Свічка — 16:35 — 1 порція × 30 ₴ = 30 ₴/);
     assert.match(copiedText, /Лимонад — 16:40 — 2,5 л × 95 ₴ = 237,5 ₴/);
     assert.match(copiedText, /Вхід — 12 дітей × 300 ₴ = 3\s*600 ₴/);
     assert.match(copiedText, /Вхід: 3\s*600 ₴/);
+    assert.match(copiedText, /Фінанси:/);
+    assert.match(copiedText, /До сплати: 5\s*097,5 ₴/);
+    assert.doesNotMatch(copiedText, /Сума бронювання/);
+    assert.doesNotMatch(copiedText, /Завдаток:/);
     assert.doesNotMatch(copiedText, /5 100г|5 100 г|5 100г x 90/);
 });
 
@@ -454,11 +615,12 @@ test('banquet terms renderer builds standard terms from price rules', () => {
     assert.equal(rendered.title, 'Умови банкету');
     assert.deepEqual(rendered.missingCodes, []);
     assert.deepEqual(rendered.items, [
-        'Заборонено приносити їжу/напої/торт.',
-        'Сума завдатку не повертається. Свій торт - 500грн. Cork Fee – 100грн.',
+        'Заборонено приносити їжу та напої. Свій торт дозволено за 500 грн. Cork Fee - 100 грн.',
         'Корегування меню здійснюється максимум за 3 доби. Зміна дати за 5 діб.',
         'Винагорода офіціантів вітається, але завжди залишається на ваш розсуд.'
     ]);
+    assert.equal(rendered.items.some(item => item.includes('їжу/напої/торт')), false);
+    assert.equal(rendered.items.some(item => item.includes('Свій торт -')), false);
 });
 
 test('banquet terms defaults load required numeric values from price_rules', async () => {
@@ -478,7 +640,7 @@ test('banquet terms defaults load required numeric values from price_rules', asy
         'banquet_menu_correction_deadline_days',
         'banquet_own_cake_fee'
     ]);
-    assert.equal(defaults.items.length, 4);
+    assert.equal(defaults.items.length, 3);
     assert.deepEqual(defaults.missingCodes, []);
 });
 
@@ -505,8 +667,9 @@ test('banquet terms snapshot is captured for new kitchen booking payloads', asyn
     assert.equal(result.applied, true);
     assert.equal(bookingNeedsBanquetTermsSnapshot(booking), false);
     assert.equal(Array.isArray(booking.extraData.banquetTerms), true);
-    assert.equal(booking.extraData.banquetTerms.length, 4);
-    assert.equal(booking.extraData.banquetTerms.some(item => item.includes('500грн') && item.includes('100грн')), true);
+    assert.equal(booking.extraData.banquetTerms.length, 3);
+    assert.equal(booking.extraData.banquetTerms.some(item => item.includes('500 грн') && item.includes('100 грн')), true);
+    assert.equal(booking.extraData.banquetTerms.some(item => item.includes('їжу/напої/торт')), false);
     assert.equal(booking.extraData.banquetTermsSnapshot.source, 'price_rules');
     assert.deepEqual([...booking.extraData.banquetTermsSnapshot.priceRuleCodes].sort(), [
         'banquet_cork_fee',
@@ -583,7 +746,7 @@ test('banquet summary refreshes auto price-rule snapshot terms from current pric
         }
     });
 
-    assert.equal(summary.terms.items.some(item => item.includes('900грн') && item.includes('300грн')), true);
+    assert.equal(summary.terms.items.some(item => item.includes('900 грн') && item.includes('300 грн')), true);
     assert.equal(summary.terms.items.some(item => item.includes('Snapshot cake fee 500грн.')), false);
     assert.equal(summary.terms.source, 'price_rules');
     assert.equal(summary.terms.snapshotSource, 'price_rules');
@@ -618,7 +781,7 @@ test('banquet summary preserves manual custom terms over current price-rule defa
     });
 
     assert.deepEqual(summary.terms.items, ['Manual custom terms stay locked.']);
-    assert.equal(summary.terms.items.some(item => item.includes('900грн') || item.includes('300грн')), false);
+    assert.equal(summary.terms.items.some(item => item.includes('900 грн') || item.includes('300 грн')), false);
     assert.equal(summary.terms.source, 'manual');
 });
 
@@ -650,7 +813,7 @@ test('banquet summary falls back to price-rule terms when booking snapshot terms
         }
     });
 
-    assert.equal(summary.terms.items.some(item => item.includes('650грн') && item.includes('120грн')), true);
+    assert.equal(summary.terms.items.some(item => item.includes('650 грн') && item.includes('120 грн')), true);
     assert.equal(summary.terms.items.some(item => item.includes('4 доби') && item.includes('6 діб')), true);
     assert.equal(summary.warnings.some(warning => warning.code === 'banquet_terms_price_rule_missing'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'terms_missing'), false);
@@ -786,9 +949,8 @@ test('banquet summary keeps kitchen-only customer identity out of order rows', (
     assert.equal(summary.orderRows.some(row => row.title === 'Живий тест форми'), false);
     assert.equal(summary.orderRows[0].type, 'menu');
     assert.deepEqual(summary.orderRows.map(row => row.title), ['Мʼясне плато', 'Ковбаски гриль', 'Паста зі шпинатом']);
-    assert.deepEqual(summary.comments, [
-        { type: 'kitchen', label: 'Кухня', text: 'тест примітка', bookingId: 'BK-2026-0489' }
-    ]);
+    assert.equal(summary.orderRows[0].comment, 'тест примітка');
+    assert.deepEqual(summary.comments, []);
 });
 
 test('banquet summary treats legacy banquet_guests as children fallback without duplicate guests', () => {

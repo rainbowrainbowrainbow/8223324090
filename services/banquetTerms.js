@@ -54,8 +54,7 @@ function renderBanquetTermsFromPriceRules(priceRules = []) {
     return {
         title: 'Умови банкету',
         items: [
-            'Заборонено приносити їжу/напої/торт.',
-            `Сума завдатку не повертається. Свій торт - ${values.ownCakeFee}грн. Cork Fee – ${values.corkFee}грн.`,
+            `Заборонено приносити їжу та напої. Свій торт дозволено за ${values.ownCakeFee} грн. Cork Fee - ${values.corkFee} грн.`,
             `Корегування меню здійснюється максимум за ${values.menuCorrectionDeadlineDays} доби. Зміна дати за ${values.dateChangeDeadlineDays} діб.`,
             'Винагорода офіціантів вітається, але завжди залишається на ваш розсуд.'
         ],

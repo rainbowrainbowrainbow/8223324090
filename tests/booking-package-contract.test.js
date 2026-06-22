@@ -27,6 +27,17 @@ const {
     mapProductPriceFields,
     applyEffectiveBookingPrice
 } = require('../services/productPricing');
+const {
+    normalizeBanquetSummaryMode,
+    banquetSummaryPdfFilename,
+    buildBanquetSummaryPdfView,
+    buildBanquetSummaryPdfBuffer,
+    validateBanquetSummaryPdf,
+    resolvePdfFonts
+} = require('../services/banquetSummaryPdf');
+const {
+    banquetSummaryModeContract
+} = require('../services/banquetSummary');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
@@ -1215,12 +1226,262 @@ test('booking routes snapshot banquet terms on create, full create, and update w
     assert.match(termsService, /function snapshotBanquetTermsForBooking/);
     assert.match(termsService, /hasSnapshotTerms\(extra\)/);
     assert.match(termsService, /extra\.banquetTerms = defaults\.items/);
+    assert.match(termsService, /Заборонено приносити їжу та напої\. Свій торт дозволено за \$\{values\.ownCakeFee\} грн\. Cork Fee - \$\{values\.corkFee\} грн\./);
+    assert.doesNotMatch(termsService, /Заборонено приносити їжу\/напої\/торт/);
+    assert.doesNotMatch(termsService, /Свій торт - \$\{values\.ownCakeFee\}грн/);
     assert.match(summaryService, /function termsSnapshotSourceOf/);
     assert.match(summaryService, /function isPriceRuleTermsSnapshot/);
     assert.match(summaryService, /priceRuleSnapshot[\s\S]*defaults\.items/);
     assert.match(summaryService, /source:\s*'snapshot_fallback'/);
     assert.match(summaryService, /source:\s*'manual'/);
     assert.doesNotMatch(read('js', 'booking.js'), /banquetTermsSnapshot/);
+});
+
+test('banquet summary PDF export has clean server endpoint and distinct modes', () => {
+    const route = read('routes', 'bookings.js');
+    const html = read('booking-summary.html');
+    const pageCode = read('js', 'booking-summary-page.js');
+    const summaryService = read('services', 'banquetSummary.js');
+    const pdfService = read('services', 'banquetSummaryPdf.js');
+
+    assert.match(route, /router\.get\('\/:id\/banquet-summary\.pdf'/);
+    assert.match(route, /buildBanquetSummaryPdfBuffer\(summary, \{ mode \}\)/);
+    assert.match(route, /'Content-Type': 'application\/pdf'/);
+    assert.match(route, /'Content-Disposition': `attachment; filename="\$\{filename\}"`/);
+    assert.match(route, /'Cache-Control': 'no-store'/);
+    assert.match(route, /err\.code === 'banquet_summary_pdf_validation_failed'/);
+    assert.match(route, /details: Array\.isArray\(err\.details\) \? err\.details : undefined/);
+
+    assert.match(html, /data-booking-summary-pdf-mode="client"/);
+    assert.match(html, /data-booking-summary-pdf-mode="kitchen"/);
+    assert.match(html, /data-booking-summary-pdf-mode="staff"/);
+    assert.match(pageCode, /function exportSummaryPdf\(mode\)/);
+    assert.match(pageCode, /Accept: 'application\/pdf'/);
+    assert.match(pageCode, /response\.blob\(\)/);
+    assert.match(pageCode, /URL\.createObjectURL\(blob\)/);
+    assert.match(pageCode, /Authorization: `Bearer \$\{token\}`/);
+    assert.match(pageCode, /Array\.isArray\(data\.details\)/);
+    assert.match(pageCode, /details\.join\('\\n- '\)/);
+    assert.doesNotMatch(pageCode, /summary\.document\?\.generatedAt/);
+    assert.doesNotMatch(pageCode, /Сформовано/);
+    assert.doesNotMatch(pageCode, /Оформлено/);
+    assert.match(pageCode, /Бронь створено/);
+    assert.match(pageCode, /function summaryModeContract\(summary = currentSummary, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /function summaryScheduleRows\(summary, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /function renderSchedule\(summary, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /summary-section--schedule/);
+    assert.match(pageCode, /Розклад/);
+    assert.match(pageCode, /function summaryResponsibleRows\(summary, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /function renderResponsible\(summary, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /summary-section--responsible/);
+    assert.match(pageCode, /const requestParams = new URLSearchParams\(\{ businessContext, mode \}\)/);
+    assert.match(pageCode, /renderWarnings\(summaryModeSection\(data, 'warnings', mode\) \? data\.warnings : \[\]\)/);
+    assert.match(pageCode, /Відповідальні/);
+
+    assert.match(pdfService, /const PDFDocument = require\('pdfkit'\)/);
+    assert.match(pdfService, /banquetSummaryModeContract/);
+    assert.doesNotMatch(pdfService, /const MODE_CONFIG/);
+    assert.match(pdfService, /function validateBanquetSummaryPdf\(summary = \{\}, mode = 'client'\)/);
+    assert.match(pdfService, /const ENTRY_BLOCKING_WARNING_CODES = new Set/);
+    assert.match(pdfService, /if \(!validation\.valid\) throw pdfValidationError\(validation\)/);
+    assert.match(pdfService, /function rowDurationLabel\(row = {}\)/);
+    assert.match(pdfService, /row\.type === 'program' \|\| row\.type === 'activity'/);
+    assert.match(pdfService, /rowDurationLabel\(row\)/);
+    assert.match(pdfService, /label: 'Тривалість'/);
+    assert.match(pdfService, /config\.scheduleSourceRowTypes\.has\(row\.type\)/);
+    assert.match(pdfService, /config\.rowTypes\.has\(row\.type\)/);
+    assert.match(pdfService, /function canonicalScheduleItems\(summary = \{\}, mode = 'client'\)/);
+    assert.match(pdfService, /drawSectionTitle\(doc, 'Розклад'\)/);
+    assert.doesNotMatch(pdfService, /Таймінг/);
+    assert.match(pdfService, /function responsibleRowsForMode\(summary = \{\}, mode = 'client'\)/);
+    assert.match(pdfService, /drawSectionTitle\(doc, 'Відповідальні'\)/);
+    assert.match(summaryService, /function buildBanquetSchedule/);
+    assert.match(summaryService, /function buildResponsiblePeople/);
+    assert.match(summaryService, /function banquetSummaryModeContract/);
+    assert.match(summaryService, /modeContract,/);
+    assert.match(summaryService, /responsible,/);
+    assert.match(summaryService, /schedule,/);
+    assert.match(summaryService, /function buildFinanceRows/);
+    assert.match(summaryService, /add\('amount_due', 'До сплати'/);
+    assert.match(summaryService, /Math\.abs\(normalizedBookingPrice - normalizedOrderTotal\) >= 0\.01/);
+    assert.match(pdfService, /function financeRowsForSummary\(summary = {}\)/);
+    assert.match(pdfService, /financeRowsForSummary\(summary\)\.map\(row =>/);
+    assert.match(pdfService, /addFinanceRow\(rows, 'amount_due', 'До сплати'/);
+    assert.doesNotMatch(pdfService, /paymentMethod/);
+    assert.doesNotMatch(pdfService, /paymentStatus/);
+    assert.doesNotMatch(pdfService, /displayHeaderFooter/);
+    assert.doesNotMatch(pdfService, /puppeteer/i);
+    assert.doesNotMatch(pdfService, /playwright/i);
+    assert.match(pdfService, /Менеджер: \$\{pdfText\(manager\)\}/);
+    assert.match(pdfService, /Бронь створено/);
+    assert.doesNotMatch(pdfService, /generatedAt/);
+    assert.doesNotMatch(summaryService, /generatedAt: new Date\(\)\.toISOString\(\)/);
+
+    const sampleSummary = {
+        bookingId: 'BK-2026/0499',
+        venue: { name: 'Парк', phone: '0 800 753 553' },
+        event: { date: '2026-06-23', time: '13:45', room: 'Рок', hasRealProgram: true, programName: 'Паперове шоу' },
+        document: { generatedBy: 'Manager' },
+        customer: { name: 'ШуткаМинутка', phone: '+380535232' },
+        celebrant: { name: 'Жартик', birthday: '2020-06-23' },
+        counts: { children: 12, adults: 2, tables: 1 },
+        orderRows: [
+            { id: 'program:1', type: 'program', title: 'Паперове шоу', durationMinutes: 60, quantity: null, subtotal: 2900, comment: 'Коментар до активності' },
+            { id: 'entry:1', type: 'entry', title: 'Вхід', quantity: 12, unitPrice: 300, subtotal: 3600 },
+            { id: 'menu:1', type: 'menu', title: 'Піца', quantity: 3, unitPrice: 250, subtotal: 750, comment: 'Без цибулі', meta: { servingTime: '15:00' } },
+            { id: 'service-event:1', type: 'service_event', title: 'Торт', quantity: 1, comment: 'Свічки', meta: { time: '15:30' } }
+        ],
+        serviceEvents: [],
+        responsible: {
+            rows: [
+                { role: 'manager', label: 'Менеджер', name: 'Сергій', modes: ['client', 'kitchen', 'staff'], showWhenEmpty: true },
+                { role: 'animator', label: 'Аніматор', name: 'Олена', modes: ['staff'], showWhenEmpty: true },
+                { role: 'kitchen', label: 'Кухня', name: null, modes: ['kitchen', 'staff'], showWhenEmpty: true },
+                { role: 'waiter', label: 'Офіціант', name: null, modes: ['staff'], showWhenEmpty: true }
+            ]
+        },
+        schedule: [
+            { time: '13:45', title: 'Прихід гостей', note: 'Кімната: Рок', modes: ['client', 'staff'], noteModes: ['client', 'staff'], sortOrder: 0 },
+            { time: '13:45', title: 'Паперове шоу', note: 'Коментар до активності', modes: ['client', 'staff'], noteModes: ['staff'], sortOrder: 20 },
+            { time: '15:00', title: 'Видача меню', modes: ['client'], sortOrder: 40 },
+            { time: '15:00', title: 'Видача: Піца', note: 'Без цибулі', modes: ['kitchen', 'staff'], noteModes: ['kitchen', 'staff'], sortOrder: 45 },
+            { time: '15:30', title: 'Торт', note: 'Свічки', modes: ['client', 'kitchen', 'staff'], noteModes: ['kitchen', 'staff'], sortOrder: 60 }
+        ],
+        comments: [
+            { type: 'kitchen', label: 'Кухня', text: 'Порізати торт' },
+            { type: 'internal', label: 'Внутрішній коментар', text: 'Передзвонити' }
+        ],
+        warnings: [{ code: 'test_warning', message: 'Тестове попередження' }],
+        totals: { programBasePrice: 2900, entrySubtotal: 3600, menuSubtotal: 750, activitySubtotal: 0, orderTotal: 7250, currency: 'UAH' },
+        deposit: { amount: 1000, paymentMethod: 'cash', paymentStatus: 'paid' },
+        terms: { title: 'Умови банкету', items: ['Заборонено приносити їжу та напої.'] }
+    };
+
+    assert.equal(normalizeBanquetSummaryMode('unknown'), 'client');
+    assert.deepEqual(banquetSummaryModeContract('kitchen').orderRowTypes, ['menu']);
+    assert.deepEqual(banquetSummaryModeContract('kitchen').commentTypes, ['kitchen']);
+    assert.equal(banquetSummaryModeContract('staff').sections.warnings, true);
+    assert.equal(banquetSummaryPdfFilename(sampleSummary, 'client'), 'banquet-sheet-BK-2026-0499-client.pdf');
+
+    const client = buildBanquetSummaryPdfView(sampleSummary, 'client');
+    assert.deepEqual(client.rows.map(row => row.type), ['program', 'entry', 'menu']);
+    assert.deepEqual(client.schedule.map(item => item.title), ['Прихід гостей', 'Паперове шоу', 'Видача меню', 'Торт']);
+    assert.equal(client.schedule.find(item => item.title === 'Паперове шоу')?.note, '');
+    assert.equal(client.schedule.find(item => item.title === 'Прихід гостей')?.note, 'Кімната: Рок');
+    assert.deepEqual(client.responsible.map(row => `${row.label}:${row.name || '—'}`), ['Менеджер:Сергій']);
+    assert.equal(client.comments.length, 0);
+    assert.equal(client.warnings.length, 0);
+    assert.equal(client.config.showFinance, true);
+    assert.equal(client.config.showTerms, true);
+    assert.deepEqual(client.modeContract.orderRowTypes, ['program', 'activity', 'entry', 'menu']);
+
+    const kitchen = buildBanquetSummaryPdfView(sampleSummary, 'kitchen');
+    assert.deepEqual(kitchen.rows.map(row => row.type), ['menu']);
+    assert.deepEqual(kitchen.schedule.map(item => item.title), ['Видача: Піца', 'Торт']);
+    assert.equal(kitchen.schedule.find(item => item.title === 'Видача: Піца')?.note, 'Без цибулі');
+    assert.deepEqual(kitchen.responsible.map(row => `${row.label}:${row.name || '—'}`), ['Менеджер:Сергій', 'Кухня:—']);
+    assert.deepEqual(kitchen.comments.map(comment => comment.type), ['kitchen']);
+    assert.equal(kitchen.config.showFinance, false);
+    assert.equal(kitchen.config.showTerms, false);
+    assert.equal(kitchen.config.showPrices, false);
+
+    const staff = buildBanquetSummaryPdfView(sampleSummary, 'staff');
+    assert.deepEqual(staff.rows.map(row => row.type), ['program', 'entry', 'menu']);
+    assert.deepEqual(staff.schedule.map(item => item.title), ['Прихід гостей', 'Паперове шоу', 'Видача: Піца', 'Торт']);
+    assert.equal(staff.schedule.find(item => item.title === 'Паперове шоу')?.note, 'Коментар до активності');
+    assert.deepEqual(staff.responsible.map(row => `${row.label}:${row.name || '—'}`), ['Менеджер:Сергій', 'Аніматор:Олена', 'Кухня:—', 'Офіціант:—']);
+    assert.deepEqual(staff.comments.map(comment => comment.type), ['kitchen', 'internal']);
+    assert.equal(staff.warnings.length, 1);
+    assert.equal(staff.config.showFinance, true);
+
+    const fonts = resolvePdfFonts();
+    assert.ok(fs.existsSync(fonts.regular), 'regular PDF font exists');
+    assert.ok(fs.existsSync(fonts.bold), 'bold PDF font exists');
+});
+
+test('banquet summary PDF validation blocks client-critical gaps and keeps staff export available', async () => {
+    const invalidClientSummary = {
+        bookingId: 'BK-PDF-GUARD',
+        venue: { name: 'Парк' },
+        event: { date: '2026-06-23', time: '13:45', room: '', createdAt: '2026-06-20T10:00:00.000Z' },
+        document: { generatedBy: 'Manager' },
+        customer: { name: 'ШуткаМинутка', phone: '' },
+        celebrant: { name: 'Жартик' },
+        counts: { children: null },
+        orderRows: [
+            { type: 'program', title: 'Анімація 60хв', durationMinutes: 60, quantity: null, subtotal: 1500 }
+        ],
+        serviceEvents: [],
+        comments: [],
+        warnings: [
+            { code: 'entry_quantity_missing', message: 'Кількість дітей для автоматичного входу не вказана, вхід не додано до суми.' }
+        ],
+        totals: { currency: 'UAH', programBasePrice: 1500, entrySubtotal: 0, menuSubtotal: 0, activitySubtotal: 0, orderTotal: 1500 },
+        deposit: { amount: null },
+        finance: {
+            currency: 'UAH',
+            amountDue: 1500,
+            rows: [
+                { key: 'program', label: 'Програма', amount: 1500, currency: 'UAH', role: 'line' },
+                { key: 'total', label: 'Разом', amount: 1500, currency: 'UAH', role: 'total' },
+                { key: 'amount_due', label: 'До сплати', amount: 1500, currency: 'UAH', role: 'due' }
+            ]
+        },
+        terms: { items: ['Умова'] }
+    };
+
+    const clientValidation = validateBanquetSummaryPdf(invalidClientSummary, 'client');
+    assert.equal(clientValidation.valid, false);
+    assert.deepEqual(clientValidation.errors.map(item => item.code), [
+        'customer_phone_missing',
+        'event_room_missing',
+        'children_count_missing',
+        'entry_quantity_missing'
+    ]);
+
+    await assert.rejects(
+        buildBanquetSummaryPdfBuffer(invalidClientSummary, { mode: 'client' }),
+        err => err.code === 'banquet_summary_pdf_validation_failed'
+            && err.statusCode === 422
+            && err.details.some(item => item.message === 'Не вказано кількість дітей.')
+            && err.details.some(item => item.message === 'Не розраховано вхід: не вказано кількість дітей.')
+    );
+
+    const staffValidation = validateBanquetSummaryPdf(invalidClientSummary, 'staff');
+    assert.equal(staffValidation.valid, true);
+    assert.ok(staffValidation.warnings.some(item => item.code === 'children_count_missing'));
+    assert.ok(staffValidation.warnings.some(item => item.code === 'entry_quantity_missing'));
+    const staffView = buildBanquetSummaryPdfView(invalidClientSummary, 'staff');
+    assert.ok(staffView.warnings.some(item => item.code === 'children_count_missing'));
+    const staffBuffer = await buildBanquetSummaryPdfBuffer(invalidClientSummary, { mode: 'staff' });
+    assert.equal(staffBuffer.subarray(0, 4).toString(), '%PDF');
+
+    const emptyKitchenValidation = validateBanquetSummaryPdf(invalidClientSummary, 'kitchen');
+    assert.equal(emptyKitchenValidation.valid, false);
+    assert.deepEqual(emptyKitchenValidation.errors.map(item => item.code), ['kitchen_rows_missing']);
+
+    const kitchenSummary = {
+        ...invalidClientSummary,
+        orderRows: [
+            { type: 'menu', title: 'Піца', quantity: 2, unitPrice: 300, subtotal: 600, meta: { servingTime: '15:00' } }
+        ]
+    };
+    assert.equal(validateBanquetSummaryPdf(kitchenSummary, 'kitchen').valid, true);
+});
+
+test('banquet summary comments are deduplicated against order row notes', () => {
+    const summaryService = read('services', 'banquetSummary.js');
+    const summaryPage = read('js', 'booking-summary-page.js');
+
+    assert.match(summaryService, /function inlineCommentKeysFromRows\(rows = \[\]\)/);
+    assert.match(summaryService, /inlineCommentKeys: inlineCommentKeysFromRows\(orderRows\)/);
+    assert.match(summaryService, /inlineKeys\.has\(key\)/);
+    assert.match(summaryService, /add\('activity', 'Коментар до активності', text, booking\)/);
+    assert.doesNotMatch(summaryService, /Активність — \$\{bookingTitle/);
+
+    assert.match(summaryPage, /comment\?\.type === 'activity' \? 'Коментар до активності'/);
+    assert.match(summaryPage, /summaryModeAllowsComment\(summary, comment\.type, mode\)/);
+    assert.doesNotMatch(summaryPage, /Активність —/);
 });
 
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {

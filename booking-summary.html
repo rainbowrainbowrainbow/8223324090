@@ -9,10 +9,10 @@
     <title>Event Genix | Банкетний лист</title>
     <meta name="description" content="Preview і друк банкетного листа Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.76.105">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.76.105">
-    <link rel="stylesheet" href="css/responsive.css?v=0.76.105">
-    <link rel="stylesheet" href="css/booking-summary.css?v=0.76.105">
+    <link rel="stylesheet" href="css/base.css?v=0.77.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.0">
+    <link rel="stylesheet" href="css/booking-summary.css?v=0.77.0">
 </head>
 <body class="booking-summary-page">
     <header class="booking-summary-toolbar" aria-label="Дії з банкетним листом">
@@ -23,6 +23,12 @@
         <div class="booking-summary-actions">
             <a id="bookingSummaryBack" class="booking-summary-btn booking-summary-btn-secondary" href="/">Повернутись</a>
             <button id="bookingSummaryCopy" type="button" class="booking-summary-btn booking-summary-btn-secondary">Скопіювати текст</button>
+            <div class="booking-summary-export" aria-label="Експорт PDF">
+                <span>Експорт PDF</span>
+                <button type="button" class="booking-summary-btn booking-summary-btn-secondary" data-booking-summary-pdf-mode="client">Для клієнта</button>
+                <button type="button" class="booking-summary-btn booking-summary-btn-secondary" data-booking-summary-pdf-mode="kitchen">Для кухні</button>
+                <button type="button" class="booking-summary-btn booking-summary-btn-secondary" data-booking-summary-pdf-mode="staff">Для персоналу</button>
+            </div>
             <button id="bookingSummaryPrint" type="button" class="booking-summary-btn booking-summary-btn-primary">Друк / PDF</button>
         </div>
     </header>
@@ -37,7 +43,7 @@
         </div>
     </main>
 
-    <script src="js/auth.js?v=0.76.105" defer></script>
-    <script src="js/booking-summary-page.js?v=0.76.105" defer></script>
+    <script src="js/auth.js?v=0.77.0" defer></script>
+    <script src="js/booking-summary-page.js?v=0.77.0" defer></script>
 </body>
 </html>

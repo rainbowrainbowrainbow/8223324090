@@ -687,11 +687,14 @@ checkPage('booking-summary.html', (doc, html) => {
     const summaryDocMetaTemplate = renderDocumentBody.match(/<div class="summary-doc-meta">([\s\S]*?)<\/div>/)?.[1] || '';
     const summaryVenueLineCount = (summaryVenueLinesTemplate.match(/<span>/g) || []).length;
     const summaryDocMetaLineCount = (summaryDocMetaTemplate.match(/<span>/g) || []).length;
+    const pdfExportButtons = Array.from(doc.querySelectorAll('[data-booking-summary-pdf-mode]'));
     const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('Booking summary page exposes preview shell and actions',
         !!doc.getElementById('bookingSummaryBack')
         && !!doc.getElementById('bookingSummaryCopy')
         && !!doc.getElementById('bookingSummaryPrint')
+        && pdfExportButtons.length === 3
+        && pdfExportButtons.map(button => button.getAttribute('data-booking-summary-pdf-mode')).join(',') === 'client,kitchen,staff'
         && !!doc.getElementById('bookingSummaryWarnings')
         && !!doc.getElementById('bookingSummaryPrintRoot')
         && !!doc.getElementById('bookingSummaryDocument'));
@@ -716,8 +719,9 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCode.includes('вижимк')
         && !banquetSummaryServiceCode.includes("title: 'Вижимка банкету'"));
     check('Booking summary page renders canonical comments section and copy text',
-        pageCode.includes('function summaryCommentRows(summary)')
-        && pageCode.includes('function renderComments(summary)')
+        pageCode.includes('function summaryCommentRows(summary, mode = summaryMode(summary))')
+        && pageCode.includes('function renderComments(summary, mode = summaryMode(summary))')
+        && pageCode.includes('function summaryModeAllowsComment(summary, type, mode = summaryMode(summary))')
         && renderDocumentBody.includes("briefItem('Дата банкету', formatDate(event.date))")
         && renderDocumentBody.includes("briefItem('Прихід гостей', event.time)")
         && !renderDocumentBody.includes("briefItem('Дата', formatDate(event.date))")
@@ -726,10 +730,10 @@ checkPage('booking-summary.html', (doc, html) => {
         && summaryTextBody.includes('`Прихід гостей: ${formatValue(event.time)}`')
         && !summaryTextBody.includes('Дата' + '/час:')
         && renderDocumentBody.includes('summary-section--comments')
-        && renderDocumentBody.includes('${renderComments(summary)}')
+        && renderDocumentBody.includes('${renderComments(summary, mode)}')
         && renderDocumentBody.indexOf('summary-section--comments') > renderDocumentBody.indexOf('summary-section--service-events')
         && renderDocumentBody.indexOf('summary-section--comments') < renderDocumentBody.indexOf('summary-section--finance')
-        && summaryTextBody.includes('const comments = summaryCommentRows(summary)')
+        && summaryTextBody.includes('const comments = sections.comments ? summaryCommentRows(summary, mode) : []')
         && summaryTextBody.includes('Примітки:')
         && summaryTextBody.includes('comments.map(comment => `- ${comment.label}: ${comment.text}`)')
         && pageCss.includes('.summary-comments')
@@ -738,9 +742,10 @@ checkPage('booking-summary.html', (doc, html) => {
         && printCommentsRule.includes('break-inside: avoid')
         && printCommentRowRule.includes('break-inside: avoid')
         && banquetSummaryServiceCode.includes('function buildSummaryComments')
+        && banquetSummaryServiceCode.includes('function inlineCommentKeysFromRows(rows = [])')
         && banquetSummaryServiceCode.includes('comments: summaryComments')
         && banquetSummaryServiceCode.includes("add('kitchen', 'Кухня'")
-        && banquetSummaryServiceCode.includes("add('activity', `Активність —")
+        && banquetSummaryServiceCode.includes("add('activity', 'Коментар до активності'")
         && banquetSummaryServiceCode.includes("add('internal', 'Внутрішній коментар'"));
     check('Booking summary sheet uses clear menu quantity wording',
         pageCode.includes('function summaryMenuQuantityLabel(row = {})')
@@ -748,15 +753,27 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes("return normalized.toUpperCase() === 'UAH' ? '₴' : normalized")
         && pageCode.includes('function normalizeSummaryMenuServingUnitDisplay')
         && pageCode.includes('function summaryOrderQuantityLabel(row = {})')
+        && pageCode.includes("['program', 'activity', 'service_event'].includes(row?.type)")
+        && pageCode.includes('function summaryDurationLabel(row = {})')
+        && pageCode.includes('<th class="duration">Тривалість</th>')
+        && pageCode.includes('<td class="duration">${escapeHtml(summaryDurationLabel(row))}</td>')
+        && pageCode.includes("function summaryOrderServingLabel(row = {})")
         && pageCode.includes('function summaryEntryFullAmountLabel(row = {}, currency = \'UAH\')')
         && pageCode.includes('по ${unit}')
+        && pageCode.includes('<col style="width:86px">')
         && pageCode.includes('<col style="width:118px">')
         && pageCode.includes('<td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>')
+        && summaryTextBody.includes('const durationLabel = summaryDurationLabel(row)')
         && summaryTextBody.includes('const quantityLabel = summaryOrderQuantityLabel(row)')
+        && summaryTextBody.includes("row?.type === 'program' || row?.type === 'activity'")
+        && summaryTextBody.includes('${durationLabel} — ${formatMoney(row.subtotal, currency)}')
         && summaryTextBody.includes('${summaryEntryFullAmountLabel(row, currency)}')
         && summaryTextBody.includes('— ${quantityLabel} × ${formatMoney(row.unitPrice, currency)}')
         && !summaryTextBody.includes('formatValue(row.quantity)} x')
         && banquetSummaryServiceCode.includes('servingUnit: item.servingUnit || null')
+        && banquetSummaryServiceCode.includes('durationMinutes: durationMinutesOfBooking(mainBooking)')
+        && banquetSummaryServiceCode.includes('durationMinutes: durationMinutesOfBooking(booking)')
+        && pageCss.includes('.summary-order-table .duration')
         && pageCss.includes('.summary-order-table .qty')
         && pageCss.includes('white-space: normal'));
     check('Booking summary page loads standalone controller and print CSS',
@@ -820,7 +837,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && renderTermsBody.includes('const items = Array.isArray(terms.items) ? terms.items.filter(Boolean) : []')
         && renderTermsBody.includes('items.map(item => `<li>${escapeHtml(item)}</li>`).join')
         && renderTermsBody.includes('Умови банкету не заповнені')
-        && summaryTextBody.includes('const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : []')
+        && summaryTextBody.includes('const terms = sections.terms && Array.isArray(summary.terms?.items) ? summary.terms.items : []')
         && summaryTextBody.includes('terms.map(item => `- ${item}`)')
         && summaryTextBody.includes("terms.length ? terms.map")
         && !frontendBanquetTermsHardcode.test(pageCode)
@@ -865,29 +882,44 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCss.includes('footerTemplate')
         && !pageCss.includes('@top-')
         && !pageCss.includes('@bottom-'));
-    check('Booking summary page consumes the banquet summary API and prints client-side only',
+    check('Booking summary page consumes the banquet summary API and exports clean server PDFs',
         pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
+        && pageCode.includes('/bookings/${encodeURIComponent(currentSummaryRequest.id)}/banquet-summary.pdf')
         && pageCode.includes("const groupId = params.get('groupId') || '';")
         && pageCode.includes("requestParams.set('groupId', groupId)")
+        && pageCode.includes("Accept: 'application/pdf'")
+        && pageCode.includes('response.blob()')
+        && pageCode.includes('URL.createObjectURL(blob)')
+        && pageCode.includes('data-booking-summary-pdf-mode')
         && pageCode.includes('totals.activitySubtotal')
         && printTriggerCount === 1
         && pageCode.includes('bookingSummaryWarnings')
         && pageCode.includes('navigator.clipboard')
-        && !pageCode.includes('pdf'));
+        && !pageCode.includes('jsPDF')
+        && !pageCode.includes('html2pdf'));
     check('Booking summary header labels generated account as manager, not author',
         pageCode.includes('<span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
         && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
         && !pageCode.includes('Автор:')
         && !pageCode.includes("compactFact('Менеджер', event.manager)"));
+    check('Booking summary hides generation timestamp and labels booking creation clearly',
+        !banquetSummaryServiceCode.includes('generatedAt: new Date().toISOString()')
+        && !renderDocumentBody.includes('summary.document?.generatedAt')
+        && !renderDocumentBody.includes('Сформовано')
+        && !summaryTextBody.includes('Сформовано')
+        && !renderDocumentBody.includes("briefItem('Оформлено'")
+        && !summaryTextBody.includes('Дата оформлення')
+        && renderDocumentBody.includes("briefItem('Бронь створено', formatDateTime(event.createdAt))")
+        && summaryTextBody.includes('`Бронь створено: ${formatDateTime(event.createdAt)}`'));
     check('Booking summary keeps Booking ID in header metadata only',
         pageCode.includes('<span>Booking ID: ${escapeHtml(summary.bookingId ||')
         && pageCode.includes('`Booking ID: ${summary.bookingId ||')
         && !pageCode.includes("briefItem('Booking ID'"));
-    check('Booking summary header metadata uses symmetric three-row grid for screen and print',
+    check('Booking summary header metadata keeps venue rows and two booking meta rows',
         renderDocumentBody.includes('<div class="summary-doc-heading">')
         && renderDocumentBody.includes('<div class="summary-doc-meta-grid">')
         && summaryVenueLineCount === 3
-        && summaryDocMetaLineCount === 3
+        && summaryDocMetaLineCount === 2
         && summaryHeaderRule.includes('display: grid')
         && summaryHeaderRule.includes('border-bottom: 2px solid var(--summary-ink)')
         && summaryMetaGridRule.includes('grid-template-columns')
@@ -914,7 +946,12 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('summary-brief-column')
         && pageCode.includes('summary-brief-label')
         && pageCode.includes('summary-brief-value')
-        && pageCode.includes('summary-finance-lines')
+        && pageCode.includes('function summaryFinanceRows(summary)')
+        && pageCode.includes('function fallbackSummaryFinanceRows(summary)')
+        && pageCode.includes('function summaryAmountDue(total, depositAmount)')
+        && pageCode.includes('<table class="summary-finance-table">')
+        && pageCode.includes('До сплати')
+        && !pageCode.includes('Сума бронювання')
         && pageCode.includes('<table class="summary-order-table">')
         && !pageCode.includes('function compactFact')
         && !pageCode.includes('function compactLine')
@@ -939,7 +976,8 @@ checkPage('booking-summary.html', (doc, html) => {
         && printBriefGridRule.includes('page-break-inside: avoid')
         && printBriefColumnRule.includes('break-inside: avoid')
         && printBriefItemRule.includes('page-break-inside: avoid')
-        && pageCss.includes('.summary-finance-lines p')
+        && pageCss.includes('.summary-finance-table')
+        && pageCss.includes('.summary-finance-row--due')
         && pageCss.includes('.summary-order-table thead')
         && pageCss.includes('break-inside: avoid')
         && !pageCss.includes('.summary-brief-line')
@@ -1633,7 +1671,11 @@ check('Banquet groups schema stays isolated from bookings and legacy visual link
     && !htmlContains('db/index.js', 'banquet_group_id'));
 check('Timeline booking API failures render an explicit error state instead of an empty day', apiCode.includes('throwOnError') && timelineCode.includes('function renderTimelineDataError') && timelineCode.includes('Не вдалося завантажити бронювання') && !timelineCode.includes("getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; })"));
 check('Timeline booking connector visual layer is non-blocking and dark-themeable', timelineConstructorCss.includes('.timeline-banquet-link-layer') && timelineConstructorCss.includes('pointer-events: none') && timelineConstructorCss.includes('.timeline-banquet-link-path') && timelineConstructorCss.includes('.timeline-booking-link-path--room') && timelineConstructorCss.includes('.timeline-booking-link-path--adjacent') && timelineConstructorCss.includes('.booking-banquet-link-handle') && timelineConstructorCss.includes('body.banquet-linking-active') && timelineConstructorCss.includes('html[data-theme="dark"] .booking-banquet-links-detail'));
-check('Room timeline suppresses banquet connector visual lines', timelineCode.includes('function clearBanquetLinkLayer') && timelineCode.includes('if (isRoomTimelineView()) {\n        clearBanquetLinkLayer();\n        return;\n    }') && timelineConstructorCss.includes('body.timeline-view-rooms .timeline-banquet-link-layer') && timelineConstructorCss.includes('display: none;'));
+check('Room timeline suppresses banquet connector visual lines',
+    timelineCode.includes('function clearBanquetLinkLayer')
+    && /if\s*\(\s*isRoomTimelineView\(\)\s*\)\s*\{\s*clearBanquetLinkLayer\(\);\s*return;\s*\}/.test(timelineCode)
+    && timelineConstructorCss.includes('body.timeline-view-rooms .timeline-banquet-link-layer')
+    && timelineConstructorCss.includes('display: none;'));
 check('Animator timeline booking blocks show room meta without room timeline duplication', timelineCode.includes('const bookingRoomName = String(renderBooking.room || \'\').trim()') && timelineCode.includes('&& isParkAnimatorTimelineView()') && timelineCode.includes("(!isRoomTimelineView() && !shouldShowBookingRoomMeta ? bookingRoomName : '')") && timelineCode.includes('class="booking-block-room"') && timelineConstructorCss.includes('.booking-block .booking-block-room') && timelineConstructorCss.includes('.booking-block.has-booking-room-meta .subtitle') && timelineConstructorCss.includes('gap: 6px') && timelineConstructorCss.includes('.booking-block.has-booking-room-meta .booking-block-room') && timelineConstructorCss.includes('margin-left: 0') && timelineConstructorCss.includes('max-width: min(96px, calc(100% - 48px))') && timelineConstructorCss.includes('.booking-block.booking-block--short.has-booking-room-meta .timeline-compact-booking-meta .booking-block-room') && timelineConstructorCss.includes('max-width: min(72px, 100%)') && timelineConstructorCss.includes('body.dark-mode .booking-block .booking-block-room') && timelineConstructorCss.includes('html[data-theme="dark"] .booking-block .booking-block-room'));
 check('Room timeline activity blocks share marker card styling', timelineCode.includes('const isRoomTimelineActivityCard = isRoomTimelineView()') && timelineCode.includes("block.classList.add('is-room-timeline-activity-card')") && timelineCode.includes('class="timeline-room-activity-main"') && timelineCode.indexOf('class="timeline-room-activity-main"') < timelineCode.indexOf('class="timeline-room-activity-title"') && timelineCode.includes('class="timeline-room-activity-detail"') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card') && timelineConstructorCss.includes('body.timeline-view-rooms .timeline-room-service-marker') && timelineConstructorCss.includes('--timeline-room-card-accent') && timelineConstructorCss.includes('border-left: 4px solid var(--timeline-room-card-accent)') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.animation') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-detail') && timelineConstructorCss.includes('-webkit-line-clamp: 2') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-banquet-link-handle'));
 check('Room timeline service marker backgrounds are solid category surfaces', timelineConstructorCss.includes('background: var(--timeline-service-card-bg)') && timelineConstructorCss.includes('--timeline-service-card-bg: #0F766E') && timelineConstructorCss.includes('--timeline-service-card-bg: #5B21B6') && timelineConstructorCss.includes('--timeline-service-card-bg: #1D4ED8') && timelineConstructorCss.includes('--timeline-service-card-bg: #BE185D') && timelineConstructorCss.includes('--timeline-service-card-bg: #334155') && timelineConstructorCss.includes('--timeline-service-card-bg: #0E7490') && !/timeline-room-service-marker--(?:food-service|room-setup|cake|drinks|custom|service)[^{]*\{[^}]*background:\s*linear-gradient/i.test(timelineConstructorCss));
@@ -1698,12 +1740,14 @@ check('Timeline scale rows and add zone share a dynamic width contract',
     && timelineCode.includes("syncTimelineContentWidth(selectedDate, container.querySelector('.line-grid[data-line-id]'))")
     && timelineConstructorCss.includes('--timeline-content-width: 100%')
     && timelineConstructorCss.includes('--timeline-grid-width: max-content')
-    && timelineConstructorCss.includes('transition:\n        background var(--speed-fast) var(--ease-smooth),')
+    && (timelineConstructorCss.includes('transition:\n        background var(--speed-fast) var(--ease-smooth),')
+        || timelineConstructorCss.includes('transition: background var(--speed-fast);'))
     && timelineConstructorCss.includes('width: var(--timeline-grid-width, max-content)')
     && timelineConstructorCss.includes('min-width: var(--timeline-grid-width, max-content)')
     && timelineConstructorCss.includes('width: var(--timeline-content-width, 100%)')
     && timelineConstructorCss.includes('min-width: var(--timeline-content-width, 100%)')
-    && timelineConstructorCss.includes('flex: 0 0 var(--timeline-grid-width, auto)')
+    && (timelineConstructorCss.includes('flex: 0 0 var(--timeline-grid-width, auto)')
+        || timelineConstructorCss.includes('flex: 0 0 var(--timeline-grid-width, max-content)'))
     && responsiveCss.includes('width: var(--timeline-grid-width, max-content) !important;')
     && responsiveCss.includes('width: var(--timeline-content-width, 100%) !important;')
     && responsiveCss.includes('body.timeline-dashboard-page .btn-add-line-big')

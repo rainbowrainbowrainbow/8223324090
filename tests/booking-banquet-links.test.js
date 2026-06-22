@@ -178,6 +178,7 @@ function makeDb(rows, links = [], options = {}) {
         links: links.map((link, index) => ({ id: index + 1, relation_type: 'banquet_activity', ...link })),
         banquetGroups: (Array.isArray(options.banquetGroups) ? options.banquetGroups : []).map(group => ({ ...group })),
         banquetMemberships: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships : []).map(row => ({ ...row })),
+        customers: (Array.isArray(options.customers) ? options.customers : []).map(row => ({ ...row })),
         histories: [],
         tx: [],
         queries: [],
@@ -615,6 +616,14 @@ function makeDb(rows, links = [], options = {}) {
                     visible.has(link.booking_b_id)
                 )
             };
+        }
+        if (/FROM customers/i.test(sql)) {
+            const [customerId, businessContext] = params;
+            const customer = state.customers.find(row =>
+                Number(row.id) === Number(customerId)
+                && normalizeContext(row.business_context || 'event_genix') === normalizeContext(businessContext)
+            );
+            return { rows: customer ? [{ ...customer }] : [], rowCount: customer ? 1 : 0 };
         }
         if (/UPDATE bookings SET status = 'cancelled', updated_at = NOW\(\)\s+WHERE \(id = \$1 OR linked_to = \$1\)/i.test(sql)) {
             const bookingId = String(params[0]);
@@ -2444,11 +2453,39 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         const res = await fetch(`${baseUrl}/api/bookings/BK-ROOT/banquet-summary?businessContext=event_genix&groupId=BQ-ROOT`);
         const data = await res.json();
         assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.mode, 'client');
+        assert.equal(data.modeContract.sections.finance, true);
+        assert.deepEqual(data.modeContract.commentTypes, []);
         const activityRows = data.orderRows.filter(row => row.type === 'activity');
         assert.deepEqual(activityRows.map(row => row.bookingId), ['BK-ACTIVE']);
         assert.equal(data.totals.activitySubtotal, 700);
         assert.ok(data.warnings.some(warning => warning.code === 'banquet_member_status_mismatch'));
         assert.equal(data.event.status, 'preliminary');
+        assert.equal(data.document.generatedAt, undefined);
+        assert.equal(data.event.createdAt, new Date('2099-01-01T00:00:00Z').toISOString());
+        assert.deepEqual(data.finance.rows.map(row => row.label), ['Програма', 'Додаткові активності', 'Бронювання', 'Разом', 'До сплати']);
+        assert.equal(data.finance.rows.find(row => row.key === 'amount_due')?.amount, 1700);
+        assert.deepEqual(data.schedule.map(item => `${item.time} ${item.title}`), [
+            '12:00 Прихід гостей',
+            '12:00 Banquet root',
+            '13:00 Foam show'
+        ]);
+        assert.equal(data.schedule.some(item => item.title === 'Neon show'), false);
+        assert.deepEqual(data.responsible.rows.map(row => `${row.label}:${row.name || '—'}`), [
+            'Менеджер:tester',
+            'Аніматор:line-1',
+            'Кухня:—',
+            'Офіціант:—',
+            'Кімната:—'
+        ]);
+
+        const staffRes = await fetch(`${baseUrl}/api/bookings/BK-ROOT/banquet-summary?businessContext=event_genix&groupId=BQ-ROOT&mode=staff`);
+        const staffData = await staffRes.json();
+        assert.equal(staffRes.status, 200, JSON.stringify(staffData));
+        assert.equal(staffData.mode, 'staff');
+        assert.equal(staffData.modeContract.sections.warnings, true);
+        assert.deepEqual(staffData.modeContract.orderRowTypes, ['program', 'activity', 'entry', 'menu']);
+        assert.ok(staffData.modeContract.commentTypes.includes('internal'));
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',
@@ -2483,6 +2520,74 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
             booking_id: 'BK-CANCELLED',
             role: 'activity',
             sort_order: 30
+        }]
+    });
+});
+
+test('GET banquet summary PDF returns clean application/pdf response', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-PDF-ROUTE',
+            time: '13:45',
+            label: 'Paper neon show',
+            program_name: 'Paper neon show',
+            program_id: 'paper_neon_show',
+            category: 'activity',
+            duration: 60,
+            room: 'Room A',
+            price: 2600,
+            kids_count: 2,
+            customer_id: 101,
+            created_at: new Date('2099-01-01T10:15:00Z').toISOString(),
+            extra_data: JSON.stringify({
+                bookingWorkspace: {
+                    comments: { activity: 'Activity comment once' }
+                },
+                banquetDeposit: { amount: 1000, paymentMethod: 'cash', paymentStatus: 'paid' },
+                bookingPackage: {
+                    programBasePrice: 1500,
+                    entrySubtotal: 600,
+                    positionsSubtotal: 500,
+                    finalTotal: 2600,
+                    entryCharge: {
+                        title: 'Вхід',
+                        quantity: 2,
+                        unitPrice: 300,
+                        subtotal: 600,
+                        ruleCode: 'banquet_entry_weekday_child',
+                        dateType: 'weekday',
+                        source: 'banquet_entry_price_rules'
+                    },
+                    menuPositions: [
+                        { id: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 250, subtotal: 500, servingTime: '15:15' }
+                    ]
+                }
+            })
+        })
+    ], [], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-PDF-ROUTE/banquet-summary.pdf?businessContext=event_genix&mode=client`);
+        const contentType = res.headers.get('content-type') || '';
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const raw = buffer.toString('latin1');
+
+        assert.equal(res.status, 200, raw.slice(0, 200));
+        assert.match(contentType, /^application\/pdf\b/);
+        assert.equal(res.headers.get('x-banquet-summary-mode'), 'client');
+        assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
+        assert.doesNotMatch(raw, /https?:\/\//i);
+        assert.doesNotMatch(raw, /localhost|127\.0\.0\.1|about:blank/i);
+        assert.doesNotMatch(raw, /\b1\s*\/\s*1\b/);
+    }, {
+        customers: [{
+            id: 101,
+            business_context: 'event_genix',
+            name: 'ШуткаМинутка',
+            phone: '+380535232',
+            child_name: 'Жартик',
+            child_birthday: '2020-06-23',
+            instagram: null,
+            source: null,
+            notes: null
         }]
     });
 });
@@ -2563,6 +2668,10 @@ test('banquet summary reads workspace comments and does not borrow booking group
     assert.equal(summary.orderRows.find(row => row.type === 'program')?.comment, 'workspace activity comment');
     assert.equal(summary.orderRows.find(row => row.type === 'menu')?.comment, 'workspace kitchen comment');
     assert.equal(summary.orderRows.find(row => row.type === 'activity')?.comment, 'workspace member activity comment');
+    assert.equal(summary.comments.some(comment => comment.text === 'workspace activity comment'), false);
+    assert.equal(summary.comments.some(comment => comment.text === 'workspace kitchen comment'), false);
+    assert.equal(summary.comments.some(comment => comment.text === 'workspace member activity comment'), false);
+    assert.deepEqual(summary.comments.map(comment => comment.label), ['Внутрішній коментар']);
 });
 
 test('banquet summary keeps legacy notes and group_name fallback when no banquet group exists', () => {

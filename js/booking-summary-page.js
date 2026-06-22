@@ -3,6 +3,12 @@
 (function () {
     const API_BASE = '/api';
     let currentSummary = null;
+    let currentSummaryRequest = {
+        id: '',
+        businessContext: 'event_genix',
+        groupId: '',
+        mode: 'client'
+    };
 
     function qs() {
         return new URLSearchParams(window.location.search || '');
@@ -93,6 +99,17 @@
         return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n)} ${formatCurrencyLabel(currency)}`;
     }
 
+    function summaryMoney(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+    }
+
+    function summaryAmountDue(total, depositAmount) {
+        const totalMoney = summaryMoney(total);
+        if (totalMoney === null) return null;
+        return summaryMoney(Math.max(0, totalMoney - (summaryMoney(depositAmount) || 0)));
+    }
+
     function formatValue(value) {
         if (value === undefined || value === null || value === '') return '—';
         return String(value);
@@ -155,7 +172,18 @@
     }
 
     function summaryOrderQuantityLabel(row = {}) {
-        return row?.type === 'entry' ? summaryEntryQuantityLabel(row) : summaryMenuQuantityLabel(row);
+        if (row?.type === 'entry') return summaryEntryQuantityLabel(row);
+        if (['program', 'activity', 'service_event'].includes(row?.type)) return '—';
+        return summaryMenuQuantityLabel(row);
+    }
+
+    function summaryDurationLabel(row = {}) {
+        if (!['program', 'activity'].includes(row?.type)) return '—';
+        const meta = row.meta || {};
+        const raw = row.durationMinutes ?? row.duration_minutes ?? meta.durationMinutes ?? meta.duration_minutes ?? meta.duration;
+        const duration = Number(raw);
+        if (!Number.isFinite(duration) || duration <= 0) return '—';
+        return `${Math.round(duration)} хв`;
     }
 
     function summaryEntryUnitAmountLabel(row = {}, currency = 'UAH') {
@@ -211,6 +239,107 @@
         `;
     }
 
+    const SUMMARY_MODES = new Set(['client', 'kitchen', 'staff']);
+    const FALLBACK_SUMMARY_MODE_CONTRACTS = Object.freeze({
+        client: Object.freeze({
+            mode: 'client',
+            sections: Object.freeze({
+                header: true,
+                brief: true,
+                orderRows: true,
+                schedule: true,
+                finance: true,
+                terms: true,
+                comments: false,
+                warnings: false,
+                responsible: true
+            }),
+            orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+            scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
+            commentTypes: Object.freeze([]),
+            showPrices: true,
+            showInternalFields: false,
+            showEmptyResponsible: false
+        }),
+        kitchen: Object.freeze({
+            mode: 'kitchen',
+            sections: Object.freeze({
+                header: true,
+                brief: true,
+                orderRows: true,
+                schedule: true,
+                finance: false,
+                terms: false,
+                comments: true,
+                warnings: false,
+                responsible: true
+            }),
+            orderRowTypes: Object.freeze(['menu']),
+            scheduleSourceRowTypes: Object.freeze(['menu', 'service_event']),
+            commentTypes: Object.freeze(['kitchen']),
+            showPrices: false,
+            showInternalFields: false,
+            showEmptyResponsible: true
+        }),
+        staff: Object.freeze({
+            mode: 'staff',
+            sections: Object.freeze({
+                header: true,
+                brief: true,
+                orderRows: true,
+                schedule: true,
+                finance: true,
+                terms: true,
+                comments: true,
+                warnings: true,
+                responsible: true
+            }),
+            orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+            scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
+            commentTypes: Object.freeze(['activity', 'kitchen', 'internal']),
+            showPrices: true,
+            showInternalFields: true,
+            showEmptyResponsible: true
+        })
+    });
+
+    function normalizeSummaryMode(mode) {
+        const normalized = String(mode || '').trim().toLowerCase();
+        return SUMMARY_MODES.has(normalized) ? normalized : 'client';
+    }
+
+    function summaryMode(summary = currentSummary) {
+        return normalizeSummaryMode(summary?.mode || qs().get('mode') || 'client');
+    }
+
+    function cloneSummaryModeContract(contract) {
+        return {
+            ...contract,
+            sections: { ...(contract.sections || {}) },
+            orderRowTypes: Array.isArray(contract.orderRowTypes) ? [...contract.orderRowTypes] : [],
+            scheduleSourceRowTypes: Array.isArray(contract.scheduleSourceRowTypes) ? [...contract.scheduleSourceRowTypes] : [],
+            commentTypes: Array.isArray(contract.commentTypes) ? [...contract.commentTypes] : []
+        };
+    }
+
+    function summaryModeContract(summary = currentSummary, mode = summaryMode(summary)) {
+        const normalizedMode = normalizeSummaryMode(mode);
+        const contract = summary?.modeContract;
+        if (contract && normalizeSummaryMode(contract.mode) === normalizedMode) {
+            return cloneSummaryModeContract(contract);
+        }
+        return cloneSummaryModeContract(FALLBACK_SUMMARY_MODE_CONTRACTS[normalizedMode]);
+    }
+
+    function summaryModeSection(summary, section, mode = summaryMode(summary)) {
+        return Boolean(summaryModeContract(summary, mode).sections?.[section]);
+    }
+
+    function summaryModeAllowsComment(summary, type, mode = summaryMode(summary)) {
+        const contract = summaryModeContract(summary, mode);
+        return Boolean(contract.sections?.comments && contract.commentTypes.includes(String(type || '').trim().toLowerCase()));
+    }
+
     function orderRowComment(row = {}) {
         const meta = row.meta || {};
         const parts = [];
@@ -219,9 +348,10 @@
         return parts.join(' · ') || null;
     }
 
-    function summaryOrderRows(summary) {
+    function summaryOrderRows(summary, mode = summaryMode(summary)) {
+        const rowTypes = new Set(summaryModeContract(summary, mode).orderRowTypes || []);
         return (Array.isArray(summary?.orderRows) ? summary.orderRows : [])
-            .filter(row => row?.type !== 'service_event');
+            .filter(row => row && rowTypes.has(row.type));
     }
 
     function summaryServiceEventRows(summary) {
@@ -231,13 +361,111 @@
         return explicit.length ? explicit : fromRows;
     }
 
-    function summaryCommentRows(summary) {
+    function summaryScheduleTimeSort(item = {}) {
+        const match = String(item.time || '').match(/^(\d{1,2}):(\d{2})/);
+        if (!match) return 99999;
+        return Number(match[1]) * 60 + Number(match[2]);
+    }
+
+    function summaryScheduleModes(item = {}) {
+        return Array.isArray(item.modes) ? item.modes.map(mode => String(mode || '').trim().toLowerCase()) : [];
+    }
+
+    function summaryScheduleNoteModes(item = {}) {
+        return Array.isArray(item.noteModes) ? item.noteModes.map(mode => String(mode || '').trim().toLowerCase()) : [];
+    }
+
+    function summaryScheduleNoteForMode(item = {}, mode = 'client') {
+        const note = item.note || '';
+        if (!note) return '';
+        const noteModes = summaryScheduleNoteModes(item);
+        return noteModes.length && !noteModes.includes(mode) ? '' : note;
+    }
+
+    function pushSummaryScheduleFallback(items, seen, time, title, note = '') {
+        if (!time || !title) return;
+        const key = `${time}|${title}|${note}`.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        items.push({ time, title, note });
+    }
+
+    function fallbackSummaryScheduleRows(summary, mode = summaryMode(summary)) {
+        const items = [];
+        const seen = new Set();
+        const event = summary?.event || {};
+        const contract = summaryModeContract(summary, mode);
+        const scheduleSourceTypes = new Set(contract.scheduleSourceRowTypes || contract.orderRowTypes || []);
+        if (mode !== 'kitchen') {
+            pushSummaryScheduleFallback(items, seen, event.time, 'Прихід гостей', event.room ? `Кімната: ${event.room}` : '');
+        }
+        (Array.isArray(summary?.orderRows) ? summary.orderRows : [])
+            .filter(row => row && scheduleSourceTypes.has(row.type))
+            .forEach(row => {
+                if (row?.type === 'program' || row?.type === 'activity') {
+                    pushSummaryScheduleFallback(items, seen, row.meta?.time || event.time, row.title || 'Активність');
+                } else if (row?.type === 'menu') {
+                    pushSummaryScheduleFallback(items, seen, row.meta?.servingTime || row.meta?.time, 'Видача меню');
+                }
+            });
+        summaryServiceEventRows(summary).filter(row => row && scheduleSourceTypes.has(row.type)).forEach(row => {
+            const meta = row.meta || {};
+            pushSummaryScheduleFallback(items, seen, meta.time || meta.servingTime, row.title || 'Подія');
+        });
+        return items.sort((a, b) => summaryScheduleTimeSort(a) - summaryScheduleTimeSort(b));
+    }
+
+    function summaryScheduleRows(summary, mode = summaryMode(summary)) {
+        const normalizedMode = normalizeSummaryMode(mode);
+        const rows = Array.isArray(summary?.schedule) ? summary.schedule : null;
+        if (!rows) return fallbackSummaryScheduleRows(summary, normalizedMode);
+        return rows
+            .map((item, index) => {
+                const modes = summaryScheduleModes(item);
+                if (modes.length && !modes.includes(normalizedMode)) return null;
+                const time = item?.time || '';
+                const title = item?.title || '';
+                if (!time || !title) return null;
+                return {
+                    time,
+                    title,
+                    note: summaryScheduleNoteForMode(item, normalizedMode),
+                    sortOrder: Number.isFinite(item?.sortOrder) ? item.sortOrder : index
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => {
+                const timeDiff = summaryScheduleTimeSort(a) - summaryScheduleTimeSort(b);
+                if (timeDiff !== 0) return timeDiff;
+                return (a.sortOrder || 0) - (b.sortOrder || 0);
+            });
+    }
+
+    function summaryResponsibleRows(summary, mode = summaryMode(summary)) {
+        const normalizedMode = normalizeSummaryMode(mode);
+        const contract = summaryModeContract(summary, normalizedMode);
+        const rows = Array.isArray(summary?.responsible?.rows) ? summary.responsible.rows : [];
+        return rows
+            .map(row => {
+                const modes = Array.isArray(row?.modes) ? row.modes.map(item => String(item || '').trim().toLowerCase()).filter(Boolean) : [];
+                if (modes.length && !modes.includes(normalizedMode)) return null;
+                const label = row?.label || '';
+                const name = row?.name || '';
+                if (!label) return null;
+                if (!name && (!contract.showEmptyResponsible || row?.showWhenEmpty !== true)) return null;
+                return { label, name };
+            })
+            .filter(Boolean);
+    }
+
+    function summaryCommentRows(summary, mode = summaryMode(summary)) {
         return (Array.isArray(summary?.comments) ? summary.comments : [])
             .map(comment => ({
-                label: comment?.label || 'Примітка',
+                type: comment?.type || '',
+                label: comment?.type === 'activity' ? 'Коментар до активності' : (comment?.label || 'Примітка'),
                 text: comment?.text || ''
             }))
-            .filter(comment => comment.text);
+            .filter(comment => comment.text && summaryModeAllowsComment(summary, comment.type, mode));
     }
 
     function summaryServingTime(row = {}) {
@@ -245,8 +473,13 @@
         return meta.servingTime || meta.time || null;
     }
 
-    function orderRowsHtml(summary) {
-        const rows = summaryOrderRows(summary);
+    function summaryOrderServingLabel(row = {}) {
+        if (['program', 'activity', 'entry'].includes(row?.type)) return '—';
+        return formatValue(summaryServingTime(row));
+    }
+
+    function orderRowsHtml(summary, mode = summaryMode(summary)) {
+        const rows = summaryOrderRows(summary, mode);
         const currency = summary?.totals?.currency || 'UAH';
         if (!rows.length) {
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
@@ -256,14 +489,16 @@
                 <colgroup>
                     <col style="width:42px">
                     <col>
+                    <col style="width:86px">
                     <col style="width:118px">
                     <col style="width:112px">
-                    <col style="width:170px">
+                    <col style="width:150px">
                 </colgroup>
                 <thead>
                     <tr>
                         <th class="num">№</th>
                         <th>Назва</th>
+                        <th class="duration">Тривалість</th>
                         <th class="qty">К-сть</th>
                         <th class="serving">Видача</th>
                         <th>Примітка</th>
@@ -280,14 +515,48 @@
                             <tr>
                                 <td class="num">${index + 1}</td>
                                 <td class="name">${escapeHtml(row.title || row.name || 'Позиція')}</td>
+                                <td class="duration">${escapeHtml(summaryDurationLabel(row))}</td>
                                 <td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>
-                                <td class="serving">${escapeHtml(isEntry ? '—' : formatValue(summaryServingTime(row)))}</td>
+                                <td class="serving">${escapeHtml(summaryOrderServingLabel(row))}</td>
                                 <td>${escapeHtml(formatValue(comment))}</td>
                             </tr>
                         `;
                     }).join('')}
                 </tbody>
             </table>
+        `;
+    }
+
+    function renderResponsible(summary, mode = summaryMode(summary)) {
+        const rows = summaryResponsibleRows(summary, mode);
+        if (!rows.length) return '';
+        return `
+            <div class="summary-responsible-list">
+                ${rows.map(row => `
+                    <div class="summary-responsible-item">
+                        <strong>${escapeHtml(row.label)}</strong>
+                        <span>${escapeHtml(formatValue(row.name))}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderSchedule(summary, mode = summaryMode(summary)) {
+        const rows = summaryScheduleRows(summary, mode);
+        if (!rows.length) return '';
+        return `
+            <div class="summary-schedule-list">
+                ${rows.map(row => `
+                    <div class="summary-schedule-item">
+                        <time>${escapeHtml(row.time)}</time>
+                        <div>
+                            <strong>${escapeHtml(row.title)}</strong>
+                            ${row.note ? `<small>${escapeHtml(row.note)}</small>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
         `;
     }
 
@@ -311,8 +580,8 @@
         `;
     }
 
-    function renderComments(summary) {
-        const comments = summaryCommentRows(summary);
+    function renderComments(summary, mode = summaryMode(summary)) {
+        const comments = summaryCommentRows(summary, mode);
         if (!comments.length) return '';
         return `
             <div class="summary-note-block summary-comments">
@@ -326,26 +595,70 @@
         `;
     }
 
-    function renderTotals(summary) {
+    function addSummaryFinanceRow(rows, key, label, amount, currency, options = {}) {
+        const value = summaryMoney(amount);
+        if (value === null) return;
+        if (options.hideZero !== false && value <= 0) return;
+        rows.push({
+            key,
+            label,
+            amount: value,
+            currency,
+            role: options.role || 'line'
+        });
+    }
+
+    function fallbackSummaryFinanceRows(summary) {
         const totals = summary?.totals || {};
         const deposit = summary?.deposit || {};
         const currency = totals.currency || 'UAH';
+        const rows = [];
+        addSummaryFinanceRow(rows, 'program', 'Програма', totals.programBasePrice, currency);
+        addSummaryFinanceRow(rows, 'entry', 'Вхід', totals.entrySubtotal, currency);
+        addSummaryFinanceRow(rows, 'menu', 'Меню', totals.menuSubtotal, currency);
+        addSummaryFinanceRow(rows, 'activities', 'Додаткові активності', totals.activitySubtotal, currency);
+        const orderTotal = summaryMoney(totals.orderTotal);
+        const bookingPrice = summaryMoney(totals.bookingPrice);
+        if (bookingPrice !== null && orderTotal !== null && Math.abs(bookingPrice - orderTotal) >= 0.01) {
+            addSummaryFinanceRow(rows, 'booking', 'Бронювання', bookingPrice, currency, { hideZero: false });
+        }
+        addSummaryFinanceRow(rows, 'total', 'Разом', orderTotal, currency, { hideZero: false, role: 'total' });
+        const depositAmount = deposit.amount === undefined || deposit.amount === null ? null : summaryMoney(deposit.amount);
+        if (depositAmount !== null) {
+            addSummaryFinanceRow(rows, 'deposit', 'Завдаток', depositAmount, currency, { hideZero: false, role: 'deposit' });
+        }
+        addSummaryFinanceRow(rows, 'amount_due', 'До сплати', summaryAmountDue(orderTotal, depositAmount), currency, { hideZero: false, role: 'due' });
+        return rows;
+    }
+
+    function summaryFinanceRows(summary) {
+        const rows = Array.isArray(summary?.finance?.rows) ? summary.finance.rows : [];
+        const normalized = rows
+            .map(row => ({
+                key: row?.key || '',
+                label: row?.label || '',
+                amount: summaryMoney(row?.amount),
+                currency: row?.currency || summary?.finance?.currency || summary?.totals?.currency || 'UAH',
+                role: row?.role || 'line'
+            }))
+            .filter(row => row.label && row.amount !== null);
+        return normalized.length ? normalized : fallbackSummaryFinanceRows(summary);
+    }
+
+    function renderTotals(summary) {
+        const rows = summaryFinanceRows(summary);
+        if (!rows.length) return '<div class="summary-order-empty">Фінансові дані відсутні.</div>';
         return `
-            <div class="summary-finance-lines">
-                <p>
-                    <strong>Сума:</strong> ${escapeHtml(formatMoney(totals.orderTotal, currency))}
-                    <span>Програма: ${escapeHtml(formatMoney(totals.programBasePrice, currency))}</span>
-                    <span>Бронювання: ${escapeHtml(formatMoney(totals.bookingPrice, currency))}</span>
-                    <span>Вхід: ${escapeHtml(formatMoney(totals.entrySubtotal, currency))}</span>
-                    <span>Меню: ${escapeHtml(formatMoney(totals.menuSubtotal, currency))}</span>
-                    <span>Активності: ${escapeHtml(formatMoney(totals.activitySubtotal, currency))}</span>
-                </p>
-                <p>
-                    <strong>Завдаток:</strong> ${escapeHtml(formatMoney(deposit.amount, currency))}
-                    <span>Спосіб: ${escapeHtml(formatValue(deposit.paymentMethod))}</span>
-                    <span>Статус: ${escapeHtml(formatValue(deposit.paymentStatus))}</span>
-                </p>
-            </div>
+            <table class="summary-finance-table">
+                <tbody>
+                    ${rows.map(row => `
+                        <tr class="summary-finance-row summary-finance-row--${escapeHtml(row.role)}" data-finance-row="${escapeHtml(row.key)}">
+                            <th scope="row">${escapeHtml(row.label)}</th>
+                            <td>${escapeHtml(formatMoney(row.amount, row.currency))}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
         `;
     }
 
@@ -371,6 +684,12 @@
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
         const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
+        const mode = summaryMode(summary);
+        const contract = summaryModeContract(summary, mode);
+        const sections = contract.sections || {};
+        const scheduleRows = sections.schedule ? summaryScheduleRows(summary, mode) : [];
+        const responsibleRows = sections.responsible ? summaryResponsibleRows(summary, mode) : [];
+        const commentRows = sections.comments ? summaryCommentRows(summary, mode) : [];
 
         if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
@@ -387,7 +706,6 @@
                     </div>
                     <div class="summary-doc-meta">
                         <span>Booking ID: ${escapeHtml(summary.bookingId || '—')}</span>
-                        <span>Сформовано: ${escapeHtml(formatDateTime(summary.document?.generatedAt))}</span>
                         <span>Менеджер: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>
                     </div>
                 </div>
@@ -395,7 +713,7 @@
 
             <h1 class="summary-title">${escapeHtml(summary.document?.title || 'БАНКЕТНИЙ ЛИСТ')}</h1>
 
-            <section class="summary-brief" aria-label="Коротка інформація по банкету">
+            ${sections.brief ? `<section class="summary-brief" aria-label="Коротка інформація по банкету">
                 <div class="summary-brief-grid">
                     ${briefColumn([
                         briefItem('Клієнт', customer.name),
@@ -409,39 +727,55 @@
                         programLabel ? briefItem('Програма', programLabel) : '',
                         briefItem('Іменинник', celebrant.name),
                         briefItem('Дата народження', formatBirthday(celebrant.birthday)),
-                        briefItem('Оформлено', formatDateTime(event.createdAt))
+                        briefItem('Бронь створено', formatDateTime(event.createdAt))
                     ])}
                 </div>
-            </section>
+            </section>` : ''}
 
-            <section class="summary-section summary-section--orders">
-                <h2>Замовлення</h2>
-                ${orderRowsHtml(summary)}
-            </section>
+            ${sections.responsible && responsibleRows.length ? `
+                <section class="summary-section summary-section--responsible">
+                    <h2>Відповідальні</h2>
+                    ${renderResponsible(summary, mode)}
+                </section>
+            ` : ''}
 
-            ${summaryServiceEventRows(summary).length ? `
+            ${sections.schedule && scheduleRows.length ? `
+                <section class="summary-section summary-section--schedule">
+                    <h2>Розклад</h2>
+                    ${renderSchedule(summary, mode)}
+                </section>
+            ` : ''}
+
+            ${sections.orderRows ? `
+                <section class="summary-section summary-section--orders">
+                    <h2>${mode === 'kitchen' ? 'Кухня / видача' : 'Замовлення'}</h2>
+                    ${orderRowsHtml(summary, mode)}
+                </section>
+            ` : ''}
+
+            ${sections.schedule && !scheduleRows.length && summaryServiceEventRows(summary).length ? `
                 <section class="summary-section summary-section--service-events">
                     <h2>Події видачі</h2>
                     ${serviceEventsHtml(summary)}
                 </section>
             ` : ''}
 
-            ${summaryCommentRows(summary).length ? `
+            ${sections.comments && commentRows.length ? `
                 <section class="summary-section summary-section--comments">
                     <h2>Примітки</h2>
-                    ${renderComments(summary)}
+                    ${renderComments(summary, mode)}
                 </section>
             ` : ''}
 
-            <section class="summary-section summary-section--finance">
-                <h2>Суми і завдаток</h2>
+            ${sections.finance ? `<section class="summary-section summary-section--finance">
+                <h2>Фінанси</h2>
                 ${renderTotals(summary)}
-            </section>
+            </section>` : ''}
 
-            <section class="summary-section summary-section--terms">
+            ${sections.terms ? `<section class="summary-section summary-section--terms">
                 <h2>${escapeHtml(summary.terms?.title || 'Умови банкету')}</h2>
                 ${renderTerms(summary)}
-            </section>
+            </section>` : ''}
         `;
     }
 
@@ -451,12 +785,17 @@
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
         const totals = summary.totals || {};
-        const deposit = summary.deposit || {};
         const currency = totals.currency || 'UAH';
-        const rows = summaryOrderRows(summary);
-        const serviceEvents = summaryServiceEventRows(summary);
-        const comments = summaryCommentRows(summary);
-        const terms = Array.isArray(summary.terms?.items) ? summary.terms.items : [];
+        const mode = summaryMode(summary);
+        const contract = summaryModeContract(summary, mode);
+        const sections = contract.sections || {};
+        const rows = sections.orderRows ? summaryOrderRows(summary, mode) : [];
+        const scheduleRows = sections.schedule ? summaryScheduleRows(summary, mode) : [];
+        const serviceEvents = sections.schedule && !scheduleRows.length ? summaryServiceEventRows(summary) : [];
+        const responsibleRows = sections.responsible ? summaryResponsibleRows(summary, mode) : [];
+        const comments = sections.comments ? summaryCommentRows(summary, mode) : [];
+        const financeRows = sections.finance ? summaryFinanceRows(summary) : [];
+        const terms = sections.terms && Array.isArray(summary.terms?.items) ? summary.terms.items : [];
         const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
 
         return [
@@ -470,23 +809,42 @@
             `Іменинник: ${formatValue(celebrant.name)}`,
             `Дата народження: ${formatBirthday(celebrant.birthday)}`,
             `Кімната: ${formatValue(event.room)}`,
-            `Дата оформлення: ${formatDateTime(event.createdAt)}`,
+            `Бронь створено: ${formatDateTime(event.createdAt)}`,
             `Менеджер: ${formatValue(event.manager)}`,
             `Дітей: ${formatValue(counts.children)}`,
             `Дорослих: ${formatValue(counts.adults)}`,
             ...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : []),
             '',
-            'Замовлення:',
-            ...(rows.length ? rows.map((row, index) => {
+            ...(responsibleRows.length ? [
+                'Відповідальні:',
+                ...responsibleRows.map(row => `${row.label}: ${formatValue(row.name)}`),
+                ''
+            ] : []),
+            ...(scheduleRows.length ? [
+                'Розклад:',
+                ...scheduleRows.map(row => `${row.time} — ${row.title}${row.note ? ` (${row.note})` : ''}`),
+                ''
+            ] : []),
+            ...(sections.orderRows ? [
+                mode === 'kitchen' ? 'Кухня / видача:' : 'Замовлення:',
+                ...(rows.length ? rows.map((row, index) => {
                 const comment = orderRowComment(row);
                 const servingTime = summaryServingTime(row);
                 const quantityLabel = summaryOrderQuantityLabel(row);
+                const durationLabel = summaryDurationLabel(row);
                 if (row?.type === 'entry') {
                     const entryComment = row.comment ? ` (${row.comment})` : '';
                     return `${index + 1}. ${row.title || 'Вхід'} — ${summaryEntryFullAmountLabel(row, currency)}${entryComment}`;
                 }
+                if (row?.type === 'program' || row?.type === 'activity') {
+                    return `${index + 1}. ${row.title || 'Активність'} — ${durationLabel} — ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
+                }
+                if (!contract.showPrices) {
+                    return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${quantityLabel}${comment ? ` (${comment})` : ''}`;
+                }
                 return `${index + 1}. ${row.title || 'Позиція'} — ${formatValue(servingTime)} — ${quantityLabel} × ${formatMoney(row.unitPrice, currency)} = ${formatMoney(row.subtotal, currency)}${comment ? ` (${comment})` : ''}`;
-            }) : ['Позиції відсутні']),
+                }) : ['Позиції відсутні'])
+            ] : []),
             ...(serviceEvents.length ? [
                 '',
                 'Події видачі:',
@@ -501,16 +859,16 @@
                 'Примітки:',
                 ...comments.map(comment => `- ${comment.label}: ${comment.text}`)
             ] : []),
-            '',
-            `Сума замовлення: ${formatMoney(totals.orderTotal, currency)}`,
-            `Вхід: ${formatMoney(totals.entrySubtotal, currency)}`,
-            `Меню: ${formatMoney(totals.menuSubtotal, currency)}`,
-            `Сума бронювання: ${formatMoney(totals.bookingPrice, currency)}`,
-            `Завдаток: ${formatMoney(deposit.amount, currency)}`,
-            `Спосіб внесення: ${formatValue(deposit.paymentMethod)}`,
-            '',
-            'Умови:',
-            ...(terms.length ? terms.map(item => `- ${item}`) : ['—'])
+            ...(sections.finance ? [
+                '',
+                'Фінанси:',
+                ...(financeRows.length ? financeRows.map(row => `${row.label}: ${formatMoney(row.amount, row.currency || currency)}`) : ['—'])
+            ] : []),
+            ...(sections.terms ? [
+                '',
+                'Умови:',
+                ...(terms.length ? terms.map(item => `- ${item}`) : ['—'])
+            ] : [])
         ].join('\n');
     }
 
@@ -550,11 +908,97 @@
         setTimeout(restoreTitle, 1000);
     }
 
+    function bookingSummaryPdfUrl(mode) {
+        const normalizedMode = normalizeSummaryMode(mode);
+        const requestParams = new URLSearchParams({
+            businessContext: currentSummaryRequest.businessContext || 'event_genix',
+            mode: normalizedMode
+        });
+        if (currentSummaryRequest.groupId) requestParams.set('groupId', currentSummaryRequest.groupId);
+        return `${API_BASE}/bookings/${encodeURIComponent(currentSummaryRequest.id)}/banquet-summary.pdf?${requestParams.toString()}`;
+    }
+
+    function filenameFromDisposition(disposition, fallback) {
+        const value = String(disposition || '');
+        const utfMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utfMatch) {
+            try {
+                return decodeURIComponent(utfMatch[1]);
+            } catch {}
+        }
+        const plainMatch = value.match(/filename="?([^";]+)"?/i);
+        return plainMatch?.[1] || fallback;
+    }
+
+    async function responseErrorMessage(response) {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const data = await response.json().catch(() => ({}));
+            const base = data.error || data.message || `Не вдалося експортувати PDF (${response.status}).`;
+            const details = Array.isArray(data.details)
+                ? data.details
+                    .map(item => item?.message || item?.code || item)
+                    .filter(Boolean)
+                : [];
+            return details.length ? `${base}:\n- ${details.join('\n- ')}` : base;
+        }
+        return `Не вдалося експортувати PDF (${response.status}).`;
+    }
+
+    async function exportSummaryPdf(mode) {
+        if (!currentSummary || !currentSummaryRequest.id) {
+            showToast('Банкетний лист ще не завантажений');
+            return;
+        }
+        const token = storedToken();
+        if (!token) {
+            showToast('Потрібно увійти в CRM, щоб експортувати PDF');
+            return;
+        }
+
+        const normalizedMode = normalizeSummaryMode(mode);
+        const button = document.querySelector(`[data-booking-summary-pdf-mode="${normalizedMode}"]`);
+        if (button) button.disabled = true;
+
+        try {
+            const response = await fetch(bookingSummaryPdfUrl(normalizedMode), {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/pdf'
+                }
+            });
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok || !contentType.includes('application/pdf')) {
+                throw new Error(await responseErrorMessage(response));
+            }
+            const blob = await response.blob();
+            const filename = filenameFromDisposition(
+                response.headers.get('content-disposition'),
+                `banquet-sheet-${currentSummary.bookingId || currentSummaryRequest.id}-${normalizedMode}.pdf`
+            );
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+            showToast('PDF експортовано');
+        } catch (err) {
+            console.error('[booking-summary] pdf export failed', err);
+            showToast(err?.message || 'Не вдалося експортувати PDF');
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+
     async function loadSummary() {
         const params = qs();
         const id = params.get('id');
         const businessContext = params.get('businessContext') || 'event_genix';
         const groupId = params.get('groupId') || '';
+        const mode = normalizeSummaryMode(params.get('mode') || 'client');
         const returnUrl = params.get('return') || '/';
         const back = el('bookingSummaryBack');
         if (back) back.href = returnUrl || '/';
@@ -564,13 +1008,15 @@
             return;
         }
 
+        currentSummaryRequest = { id, businessContext, groupId, mode };
+
         const token = storedToken();
         if (!token) {
             setState('Потрібно увійти в CRM, щоб відкрити банкетний лист.', 'error');
             return;
         }
 
-        const requestParams = new URLSearchParams({ businessContext });
+        const requestParams = new URLSearchParams({ businessContext, mode });
         if (groupId) requestParams.set('groupId', groupId);
         const url = `${API_BASE}/bookings/${encodeURIComponent(id)}/banquet-summary?${requestParams.toString()}`;
         const response = await fetch(url, {
@@ -583,13 +1029,16 @@
         }
 
         currentSummary = data;
-        renderWarnings(data.warnings);
+        renderWarnings(summaryModeSection(data, 'warnings', mode) ? data.warnings : []);
         renderDocument(data);
         setState('');
     }
 
     function bindActions() {
         el('bookingSummaryPrint')?.addEventListener('click', printSummaryDocument);
+        document.querySelectorAll('[data-booking-summary-pdf-mode]').forEach(button => {
+            button.addEventListener('click', () => exportSummaryPdf(button.dataset.bookingSummaryPdfMode));
+        });
         el('bookingSummaryCopy')?.addEventListener('click', async () => {
             if (!currentSummary) {
                 showToast('Банкетний лист ще не завантажений');

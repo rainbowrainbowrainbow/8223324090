@@ -9,6 +9,87 @@ const {
 
 const BANQUET_SUMMARY_SCHEMA_VERSION = 1;
 const CURRENCY = 'UAH';
+const BANQUET_SUMMARY_MODES = Object.freeze(['client', 'kitchen', 'staff']);
+const BANQUET_SUMMARY_VALID_MODES = new Set(BANQUET_SUMMARY_MODES);
+const BANQUET_SUMMARY_MODE_LABELS = Object.freeze({
+    client: 'Для клієнта',
+    kitchen: 'Для кухні',
+    staff: 'Для персоналу'
+});
+const BANQUET_SUMMARY_MODE_CONTRACTS = Object.freeze({
+    client: Object.freeze({
+        mode: 'client',
+        label: BANQUET_SUMMARY_MODE_LABELS.client,
+        sections: Object.freeze({
+            header: true,
+            brief: true,
+            orderRows: true,
+            schedule: true,
+            finance: true,
+            terms: true,
+            comments: false,
+            warnings: false,
+            responsible: true
+        }),
+        orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+        scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
+        commentTypes: Object.freeze([]),
+        responsibleDetail: 'manager',
+        scheduleDetail: 'client',
+        showPrices: true,
+        showInternalFields: false,
+        showEmptyResponsible: false,
+        exportBlocking: 'strict'
+    }),
+    kitchen: Object.freeze({
+        mode: 'kitchen',
+        label: BANQUET_SUMMARY_MODE_LABELS.kitchen,
+        sections: Object.freeze({
+            header: true,
+            brief: true,
+            orderRows: true,
+            schedule: true,
+            finance: false,
+            terms: false,
+            comments: true,
+            warnings: false,
+            responsible: true
+        }),
+        orderRowTypes: Object.freeze(['menu']),
+        scheduleSourceRowTypes: Object.freeze(['menu', 'service_event']),
+        commentTypes: Object.freeze(['kitchen']),
+        responsibleDetail: 'kitchen',
+        scheduleDetail: 'kitchen',
+        showPrices: false,
+        showInternalFields: false,
+        showEmptyResponsible: true,
+        exportBlocking: 'kitchen'
+    }),
+    staff: Object.freeze({
+        mode: 'staff',
+        label: BANQUET_SUMMARY_MODE_LABELS.staff,
+        sections: Object.freeze({
+            header: true,
+            brief: true,
+            orderRows: true,
+            schedule: true,
+            finance: true,
+            terms: true,
+            comments: true,
+            warnings: true,
+            responsible: true
+        }),
+        orderRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu']),
+        scheduleSourceRowTypes: Object.freeze(['program', 'activity', 'entry', 'menu', 'service_event']),
+        commentTypes: Object.freeze(['activity', 'kitchen', 'internal']),
+        responsibleDetail: 'full',
+        scheduleDetail: 'staff',
+        showPrices: true,
+        showInternalFields: true,
+        showEmptyResponsible: true,
+        exportBlocking: 'warnings_only'
+    })
+});
 
 const EVENT_GENIX_VENUE = Object.freeze({
     name: 'Розважальний центр "Парк Закревського Періоду"',
@@ -34,10 +115,45 @@ function money(value) {
     return n === null ? null : Math.round(n * 100) / 100;
 }
 
+function normalizeBanquetSummaryMode(mode) {
+    const normalized = String(mode || '').trim().toLowerCase();
+    return BANQUET_SUMMARY_VALID_MODES.has(normalized) ? normalized : 'client';
+}
+
+function cloneBanquetSummaryModeContract(contract) {
+    return {
+        ...contract,
+        sections: { ...contract.sections },
+        orderRowTypes: [...contract.orderRowTypes],
+        scheduleSourceRowTypes: [...contract.scheduleSourceRowTypes],
+        commentTypes: [...contract.commentTypes]
+    };
+}
+
+function banquetSummaryModeContract(mode = 'client') {
+    const normalized = normalizeBanquetSummaryMode(mode);
+    return cloneBanquetSummaryModeContract(BANQUET_SUMMARY_MODE_CONTRACTS[normalized]);
+}
+
+function banquetSummaryModeRowTypes(mode = 'client') {
+    return new Set(banquetSummaryModeContract(mode).orderRowTypes);
+}
+
+function banquetSummaryModeAllowsComment(mode = 'client', type = '') {
+    const contract = banquetSummaryModeContract(mode);
+    return Boolean(contract.sections.comments && contract.commentTypes.includes(String(type || '').trim().toLowerCase()));
+}
+
 function quantity(value, fallback = 1) {
     const n = nullableNumber(value);
     if (n === null || n <= 0) return fallback;
     return Math.round(n * 100) / 100;
+}
+
+function durationMinutesOfBooking(booking = {}) {
+    const n = nullableNumber(valueOf(booking, 'durationMinutes', 'duration_minutes', 'duration'));
+    if (n === null || n <= 0) return null;
+    return Math.round(n);
 }
 
 function extraDataOf(booking = {}) {
@@ -188,16 +304,18 @@ function buildProgramRow(mainBooking = {}, programBasePrice) {
         source: 'main_booking',
         bookingId: bookingIdOf(mainBooking),
         title,
-        quantity: 1,
+        durationMinutes: durationMinutesOfBooking(mainBooking),
+        quantity: null,
         unitPrice: programBasePrice,
         subtotal: programBasePrice,
-        comment: bookingSummaryComment(mainBooking, 'activity', { fallbackKeys: [] })
-            || bookingSummaryComment(mainBooking, 'internal', { fallbackKeys: ['notes'] }),
+        comment: bookingSummaryComment(mainBooking, 'activity', { fallbackKeys: ['notes'] }),
         meta: {
             programId: cleanText(valueOf(mainBooking, 'programId', 'program_id'), 120),
             programCode: cleanText(valueOf(mainBooking, 'programCode', 'program_code'), 80),
             category: cleanText(valueOf(mainBooking, 'category'), 80),
-            room: cleanText(valueOf(mainBooking, 'room'), 120)
+            room: cleanText(valueOf(mainBooking, 'room'), 120),
+            time: cleanText(valueOf(mainBooking, 'time'), 20),
+            duration: durationMinutesOfBooking(mainBooking)
         }
     };
 }
@@ -278,7 +396,8 @@ function buildLinkedActivityRows(linkedBookings = [], options = {}) {
                 source,
                 bookingId: bookingIdOf(booking),
                 title: title || `Додаткова активність ${index + 1}`,
-                quantity: 1,
+                durationMinutes: durationMinutesOfBooking(booking),
+                quantity: null,
                 unitPrice: subtotal,
                 subtotal,
                 comment: bookingSummaryComment(booking, 'activity', { fallbackKeys: ['notes', 'label'] }),
@@ -342,6 +461,328 @@ function buildServiceEventRows(serviceEvents = []) {
             status: event.status || 'planned'
         }
     }));
+}
+
+function normalizeScheduleTime(value) {
+    const text = cleanText(value, 20);
+    if (!text) return null;
+    const match = text.match(/^(\d{1,2}):([0-5]\d)/);
+    if (!match) return null;
+    return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+}
+
+function scheduleSortValue(item = {}) {
+    const match = String(item.time || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return 99999;
+    return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function normalizeScheduleModes(value, fallback = ['client', 'kitchen', 'staff']) {
+    const source = Array.isArray(value) ? value : fallback;
+    const allowed = new Set(['client', 'kitchen', 'staff']);
+    const modes = source.map(item => cleanText(item, 20)).filter(item => allowed.has(item));
+    return modes.length ? [...new Set(modes)] : [...fallback];
+}
+
+function pushScheduleWarning(warnings, code, message, extra = {}) {
+    if (!Array.isArray(warnings)) return;
+    const key = `${code}:${message}`;
+    if (warnings.some(item => `${item?.code}:${item?.message}` === key)) return;
+    warnings.push({
+        code,
+        message,
+        ...extra
+    });
+}
+
+function pushBanquetScheduleItem(items, seen, warnings, input = {}) {
+    const title = cleanText(input.title, 200);
+    const time = normalizeScheduleTime(input.time);
+    if (!title) return;
+    if (!time) {
+        if (input.warnOnMissingTime !== false) {
+            pushScheduleWarning(
+                warnings,
+                'schedule_time_missing',
+                `Не вказано час для події розкладу: ${title}.`,
+                { staffOnly: true, source: input.source || null }
+            );
+        }
+        return;
+    }
+    const note = cleanText(input.note, 500);
+    const modes = normalizeScheduleModes(input.modes);
+    const noteModes = note ? normalizeScheduleModes(input.noteModes, modes) : [];
+    const key = [
+        time,
+        cleanText(input.type, 60) || 'schedule',
+        title,
+        note || ''
+    ].join('|').toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({
+        id: cleanText(input.id, 120) || `schedule:${items.length + 1}`,
+        type: cleanText(input.type, 60) || 'schedule',
+        source: cleanText(input.source, 120) || null,
+        time,
+        title,
+        note,
+        modes,
+        noteModes,
+        sortOrder: Number.isFinite(input.sortOrder) ? input.sortOrder : items.length
+    });
+}
+
+function serviceEventScheduleModes(row = {}) {
+    const type = cleanText(row.meta?.eventType || row.eventType || row.type, 60);
+    if (type === 'room_setup' || type === 'custom') return ['staff'];
+    if (['cake', 'drinks', 'food_service'].includes(type)) return ['client', 'kitchen', 'staff'];
+    return ['staff'];
+}
+
+function buildBanquetSchedule({ event = {}, orderRows = [], serviceEvents = [], warnings = [] } = {}) {
+    const items = [];
+    const seen = new Set();
+    const rows = Array.isArray(orderRows) ? orderRows : [];
+    const menuClientServingTimes = new Set();
+
+    pushBanquetScheduleItem(items, seen, warnings, {
+        id: 'schedule:arrival',
+        type: 'arrival',
+        source: 'event',
+        time: event.time,
+        title: 'Прихід гостей',
+        note: event.room ? `Кімната: ${event.room}` : null,
+        modes: ['client', 'staff'],
+        noteModes: ['client', 'staff'],
+        sortOrder: 0
+    });
+
+    rows.forEach((row, index) => {
+        if (!row || row.type === 'entry') return;
+        if (row.type === 'program' || row.type === 'activity') {
+            pushBanquetScheduleItem(items, seen, warnings, {
+                id: `schedule:${row.id || row.bookingId || index}`,
+                type: row.type,
+                source: row.source || row.type,
+                time: row.meta?.time || event.time,
+                title: row.title || 'Активність',
+                note: row.comment || row.meta?.room || null,
+                modes: ['client', 'staff'],
+                noteModes: ['staff'],
+                sortOrder: 20 + index
+            });
+            return;
+        }
+        if (row.type === 'menu') {
+            const servingTime = row.meta?.servingTime || row.meta?.time;
+            const normalizedTime = normalizeScheduleTime(servingTime);
+            if (normalizedTime && !menuClientServingTimes.has(normalizedTime)) {
+                menuClientServingTimes.add(normalizedTime);
+                pushBanquetScheduleItem(items, seen, warnings, {
+                    id: `schedule:menu:${normalizedTime}`,
+                    type: 'menu_service',
+                    source: 'menu_positions',
+                    time: normalizedTime,
+                    title: 'Видача меню',
+                    modes: ['client'],
+                    sortOrder: 40 + index
+                });
+            }
+            pushBanquetScheduleItem(items, seen, warnings, {
+                id: `schedule:${row.id || index}`,
+                type: 'menu',
+                source: row.source || 'menu_position',
+                time: servingTime,
+                title: `Видача: ${row.title || 'Меню'}`,
+                note: row.comment || null,
+                modes: ['kitchen', 'staff'],
+                noteModes: ['kitchen', 'staff'],
+                sortOrder: 45 + index,
+                warnOnMissingTime: false
+            });
+        }
+    });
+
+    (Array.isArray(serviceEvents) ? serviceEvents : []).forEach((row, index) => {
+        pushBanquetScheduleItem(items, seen, warnings, {
+            id: `schedule:${row.id || index}`,
+            type: row.meta?.eventType || 'service_event',
+            source: row.source || 'service_event',
+            time: row.meta?.time || row.meta?.servingTime,
+            title: row.title || 'Подія',
+            note: row.comment || null,
+            modes: serviceEventScheduleModes(row),
+            noteModes: ['kitchen', 'staff'],
+            sortOrder: 60 + index
+        });
+    });
+
+    return items.sort((a, b) => {
+        const timeDiff = scheduleSortValue(a) - scheduleSortValue(b);
+        if (timeDiff !== 0) return timeDiff;
+        return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+}
+
+function responsibleSourceOf(booking = {}) {
+    const extra = extraDataOf(booking);
+    const workspace = bookingWorkspaceOf(booking);
+    const candidates = [
+        workspace.responsiblePeople,
+        workspace.responsible_people,
+        workspace.responsible,
+        workspace.staff,
+        extra.responsiblePeople,
+        extra.responsible_people,
+        extra.responsible,
+        extra.banquetResponsible,
+        extra.banquet_responsible,
+        extra.staff
+    ];
+    return candidates.find(item => item && typeof item === 'object' && !Array.isArray(item)) || {};
+}
+
+function responsibleValue(booking = {}, ...keys) {
+    const extra = extraDataOf(booking);
+    const workspace = bookingWorkspaceOf(booking);
+    const responsible = responsibleSourceOf(booking);
+    return cleanText(
+        valueOf(booking, ...keys)
+        || valueOf(workspace, ...keys)
+        || valueOf(responsible, ...keys)
+        || valueOf(extra, ...keys),
+        160
+    );
+}
+
+function actorName(value) {
+    if (!value) return null;
+    if (typeof value === 'object') {
+        return cleanText(value.name || value.fullName || value.full_name || value.username || value.email, 160);
+    }
+    return cleanText(value, 160);
+}
+
+function lineDisplayName(booking = {}, options = {}) {
+    const identity = booking.timelineIdentity || booking.timeline_identity || {};
+    const known = cleanText(
+        valueOf(booking, 'lineName', 'line_name', 'animatorName', 'animator_name', 'resourceName', 'resource_name')
+        || valueOf(identity, 'lineName', 'line_name', 'resourceName', 'resource_name', 'name'),
+        160
+    );
+    if (known) return known;
+    const lineId = cleanText(valueOf(booking, 'lineId', 'line_id'), 120);
+    if (!options.fallbackLineId || !lineId || lineId === 'banquet-service') return null;
+    return lineId;
+}
+
+function pushResponsibleRow(rows, seen, row = {}) {
+    const label = cleanText(row.label, 80);
+    if (!label) return;
+    const name = cleanText(row.name, 160);
+    if (!name && row.showWhenEmpty !== true) return;
+    const modes = Array.isArray(row.modes) && row.modes.length
+        ? [...new Set(row.modes.map(mode => cleanText(mode, 20)).filter(Boolean))]
+        : ['staff'];
+    const key = `${row.role || label}:${name || ''}:${modes.join(',')}`.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+        role: cleanText(row.role, 80) || label.toLowerCase(),
+        label,
+        name,
+        source: cleanText(row.source, 120),
+        modes,
+        showWhenEmpty: row.showWhenEmpty === true
+    });
+}
+
+function buildResponsiblePeople({ primaryBooking, kitchenBooking, activityBookings = [], serviceBookings = [], manualBookings = [], generatedBy = null, hasRealProgram = false } = {}) {
+    const rows = [];
+    const seen = new Set();
+    const manager = responsibleValue(primaryBooking, 'managerName', 'manager_name', 'manager', 'createdBy', 'created_by')
+        || actorName(generatedBy);
+    pushResponsibleRow(rows, seen, {
+        role: 'manager',
+        label: 'Менеджер',
+        name: manager,
+        source: 'booking_created_by',
+        modes: ['client', 'kitchen', 'staff'],
+        showWhenEmpty: true
+    });
+
+    const activitySources = [primaryBooking, ...(Array.isArray(activityBookings) ? activityBookings : [])]
+        .filter(Boolean)
+        .filter(booking => isRealBanquetProgram(booking));
+    const animatorNames = new Set();
+    activitySources.forEach((booking, index) => {
+        const animatorName = responsibleValue(booking, 'animatorName', 'animator_name', 'hostName', 'host_name', 'host')
+            || lineDisplayName(booking, { fallbackLineId: true });
+        const animatorKey = animatorName ? animatorName.toLowerCase() : '';
+        if (!animatorKey || !animatorNames.has(animatorKey)) {
+            if (animatorKey) animatorNames.add(animatorKey);
+            pushResponsibleRow(rows, seen, {
+                role: index === 0 ? 'animator' : 'activity_animator',
+                label: index === 0 ? 'Аніматор' : 'Аніматор активності',
+                name: animatorName,
+                source: 'booking_line',
+                modes: ['staff'],
+                showWhenEmpty: hasRealProgram && index === 0
+            });
+        }
+
+        const secondAnimator = responsibleValue(booking, 'secondAnimatorName', 'second_animator_name', 'secondAnimator', 'second_animator', 'secondHost', 'second_host');
+        pushResponsibleRow(rows, seen, {
+            role: 'second_animator',
+            label: 'Другий аніматор',
+            name: secondAnimator,
+            source: 'booking_second_animator',
+            modes: ['staff'],
+            showWhenEmpty: false
+        });
+    });
+
+    const allOperationalBookings = [kitchenBooking, primaryBooking, ...activityBookings, ...serviceBookings, ...manualBookings].filter(Boolean);
+    const firstResponsible = (...keys) => {
+        for (const booking of allOperationalBookings) {
+            const value = responsibleValue(booking, ...keys);
+            if (value) return value;
+        }
+        return null;
+    };
+
+    pushResponsibleRow(rows, seen, {
+        role: 'kitchen',
+        label: 'Кухня',
+        name: firstResponsible('kitchenResponsible', 'kitchen_responsible', 'kitchenManager', 'kitchen_manager', 'chef', 'cook'),
+        source: 'booking_workspace',
+        modes: ['kitchen', 'staff'],
+        showWhenEmpty: true
+    });
+    pushResponsibleRow(rows, seen, {
+        role: 'waiter',
+        label: 'Офіціант',
+        name: firstResponsible('waiterResponsible', 'waiter_responsible', 'waiter', 'serviceResponsible', 'service_responsible'),
+        source: 'booking_workspace',
+        modes: ['staff'],
+        showWhenEmpty: true
+    });
+    pushResponsibleRow(rows, seen, {
+        role: 'room',
+        label: 'Кімната',
+        name: firstResponsible('roomResponsible', 'room_responsible', 'roomHost', 'room_host', 'roomManager', 'room_manager'),
+        source: 'booking_workspace',
+        modes: ['staff'],
+        showWhenEmpty: true
+    });
+
+    return {
+        rows,
+        source: 'bookings_and_workspace',
+        hasKnownPeople: rows.some(row => Boolean(row.name))
+    };
 }
 
 function buildEntryChargeRow(bookingPackage = {}, warnings = []) {
@@ -443,6 +884,28 @@ function mergeSummaryComments(...comments) {
     return cleanText(unique.join(' · '), 500);
 }
 
+function summaryCommentKey(value) {
+    const clean = cleanText(value, 500);
+    return clean ? clean.toLowerCase() : null;
+}
+
+function addInlineCommentKey(keys, value) {
+    const clean = cleanText(value, 500);
+    const key = summaryCommentKey(clean);
+    if (!key) return;
+    keys.add(key);
+    clean.split(/\s+·\s+/).forEach(part => {
+        const partKey = summaryCommentKey(part);
+        if (partKey) keys.add(partKey);
+    });
+}
+
+function inlineCommentKeysFromRows(rows = []) {
+    const keys = new Set();
+    (Array.isArray(rows) ? rows : []).forEach(row => addInlineCommentKey(keys, row?.comment));
+    return keys;
+}
+
 function uniqueSummaryCommentSources(entries = []) {
     const result = [];
     const seen = new Set();
@@ -461,9 +924,10 @@ function uniqueSummaryCommentSources(entries = []) {
     return result;
 }
 
-function buildSummaryComments({ primaryBooking, kitchenBooking, activityBookings = [], serviceBookings = [], manualBookings = [] } = {}) {
+function buildSummaryComments({ primaryBooking, kitchenBooking, activityBookings = [], serviceBookings = [], manualBookings = [], inlineCommentKeys = null } = {}) {
     const comments = [];
     const seenTexts = new Set();
+    const inlineKeys = inlineCommentKeys instanceof Set ? inlineCommentKeys : new Set();
     const sources = uniqueSummaryCommentSources([
         { booking: kitchenBooking, role: 'kitchen' },
         ...(activityBookings || []).map(booking => ({ booking, role: 'activity' })),
@@ -473,8 +937,8 @@ function buildSummaryComments({ primaryBooking, kitchenBooking, activityBookings
     ]);
     const add = (type, label, text, booking) => {
         const clean = cleanText(text, 500);
-        const key = clean ? clean.toLowerCase() : null;
-        if (!clean || seenTexts.has(key)) return;
+        const key = summaryCommentKey(clean);
+        if (!clean || seenTexts.has(key) || inlineKeys.has(key)) return;
         seenTexts.add(key);
         comments.push({
             type,
@@ -495,7 +959,7 @@ function buildSummaryComments({ primaryBooking, kitchenBooking, activityBookings
         const text = role === 'activity'
             ? bookingSummaryComment(booking, 'activity', { fallbackKeys: ['notes'] })
             : bookingWorkspaceComment(booking, 'activity');
-        add('activity', `Активність — ${bookingTitle(booking) || 'Активність'}`, text, booking);
+        add('activity', 'Коментар до активності', text, booking);
     });
 
     sources.forEach(({ booking, role }) => {
@@ -529,6 +993,12 @@ function addMoney(...values) {
     const known = values.map(money).filter(value => value !== null);
     if (!known.length) return null;
     return money(known.reduce((sum, value) => sum + value, 0));
+}
+
+function subtractMoney(total, amount) {
+    const totalMoney = money(total);
+    if (totalMoney === null) return null;
+    return money(Math.max(0, totalMoney - (money(amount) || 0)));
 }
 
 function firstNonNull(...values) {
@@ -660,6 +1130,51 @@ function explicitDepositOf(mainBooking = {}) {
     };
 }
 
+function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activitySubtotal, orderTotal, bookingPrice, deposit } = {}) {
+    const rows = [];
+    const currency = CURRENCY;
+    const add = (key, label, amount, options = {}) => {
+        const value = money(amount);
+        if (value === null) return;
+        if (options.hideZero !== false && value <= 0) return;
+        rows.push({
+            key,
+            label,
+            amount: value,
+            currency,
+            role: options.role || 'line'
+        });
+    };
+
+    add('program', 'Програма', programBasePrice);
+    add('entry', 'Вхід', entrySubtotal);
+    add('menu', 'Меню', menuSubtotal);
+    add('activities', 'Додаткові активності', activitySubtotal);
+
+    const normalizedOrderTotal = money(orderTotal);
+    const normalizedBookingPrice = money(bookingPrice);
+    if (
+        normalizedBookingPrice !== null
+        && normalizedOrderTotal !== null
+        && Math.abs(normalizedBookingPrice - normalizedOrderTotal) >= 0.01
+    ) {
+        add('booking', 'Бронювання', normalizedBookingPrice, { hideZero: false });
+    }
+
+    add('total', 'Разом', normalizedOrderTotal, { hideZero: false, role: 'total' });
+    const depositAmount = deposit?.amount === null || deposit?.amount === undefined ? null : money(deposit.amount);
+    if (depositAmount !== null) {
+        add('deposit', 'Завдаток', depositAmount, { hideZero: false, role: 'deposit' });
+    }
+    add('amount_due', 'До сплати', subtractMoney(normalizedOrderTotal, depositAmount), { hideZero: false, role: 'due' });
+
+    return {
+        currency,
+        amountDue: subtractMoney(normalizedOrderTotal, depositAmount),
+        rows
+    };
+}
+
 function normalizeResolvedTerms(defaults = null) {
     if (!defaults) return { title: 'Умови банкету', items: [], missingCodes: [] };
     const source = Array.isArray(defaults) ? { items: defaults } : defaults;
@@ -766,11 +1281,13 @@ function termsOf(mainBooking = {}, warnings, options = {}) {
     };
 }
 
-function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null, banquetTermsDefaults = null } = {}) {
+function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null, banquetTermsDefaults = null, mode = 'client' } = {}) {
     if (!mainBooking || typeof mainBooking !== 'object') {
         throw new Error('mainBooking is required');
     }
 
+    const normalizedMode = normalizeBanquetSummaryMode(mode);
+    const modeContract = banquetSummaryModeContract(normalizedMode);
     const warnings = [];
     const groupState = normalizeResolvedGroup(resolvedGroup, mainBooking, linkedBookings);
     for (const warning of groupState.warnings) {
@@ -824,15 +1341,16 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         ? buildProgramRow(primaryBooking, programBasePrice)
         : null;
     const activityRows = buildLinkedActivityRows(groupState.activityBookings, { source: groupState.groupId ? 'banquet_group' : 'linked_booking' });
+    const activitySubtotal = sumKnown(activityRows);
+    const orderRows = [programRow, ...activityRows, entryRow, ...menuRows, ...serviceEventRows].filter(Boolean);
     const summaryComments = buildSummaryComments({
         primaryBooking,
         kitchenBooking,
         activityBookings: groupState.activityBookings,
         serviceBookings: groupState.serviceBookings,
-        manualBookings: groupState.manualBookings
+        manualBookings: groupState.manualBookings,
+        inlineCommentKeys: inlineCommentKeysFromRows(orderRows)
     });
-    const activitySubtotal = sumKnown(activityRows);
-    const orderRows = [programRow, ...activityRows, entryRow, ...menuRows, ...serviceEventRows].filter(Boolean);
     const rowsTotal = sumKnown(orderRows);
     const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
     const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
@@ -858,6 +1376,15 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             message: 'У бронюванні немає structured menuPositions або legacy banquet_menu.'
         });
     }
+    const finance = buildFinanceRows({
+        programBasePrice,
+        entrySubtotal,
+        menuSubtotal,
+        activitySubtotal,
+        orderTotal,
+        bookingPrice,
+        deposit
+    });
 
     const explicitChildrenCount = firstNonNull(
         valueOf(primaryBooking, 'kidsCount', 'kids_count'),
@@ -869,10 +1396,43 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     );
     const eventProgramName = cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200);
     const hasRealProgram = isRealBanquetProgram(primaryBooking);
+    const eventSummary = {
+        date: cleanText(valueOf(primaryBooking, 'date'), 40),
+        time: cleanText(valueOf(primaryBooking, 'time'), 20),
+        room: cleanText(valueOf(primaryBooking, 'room'), 120),
+        programName: eventProgramName,
+        hasRealProgram,
+        programDisplayName: hasRealProgram ? eventProgramName : null,
+        groupName: cleanText(
+            valueOf(groupState.group || {}, 'groupName', 'group_name')
+            || (!groupState.group ? valueOf(primaryBooking, 'groupName', 'group_name') : null),
+            200
+        ),
+        createdAt: cleanText(valueOf(primaryBooking, 'createdAt', 'created_at'), 80),
+        manager: cleanText(valueOf(primaryBooking, 'createdBy', 'created_by'), 160),
+        status: cleanText(valueOf(primaryBooking, 'status'), 40)
+    };
+    const schedule = buildBanquetSchedule({
+        event: eventSummary,
+        orderRows,
+        serviceEvents: serviceEventRows,
+        warnings
+    });
+    const responsible = buildResponsiblePeople({
+        primaryBooking,
+        kitchenBooking,
+        activityBookings: groupState.activityBookings,
+        serviceBookings: groupState.serviceBookings,
+        manualBookings: groupState.manualBookings,
+        generatedBy,
+        hasRealProgram
+    });
 
     return {
         success: true,
         schemaVersion: BANQUET_SUMMARY_SCHEMA_VERSION,
+        mode: normalizedMode,
+        modeContract,
         bookingId: bookingIdOf(primaryBooking),
         businessContext: context,
         group: groupState.group ? {
@@ -885,26 +1445,10 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         document: {
             type: 'banquet_summary',
             title: 'БАНКЕТНИЙ ЛИСТ',
-            generatedAt: new Date().toISOString(),
             generatedBy: cleanText(generatedBy?.name || generatedBy?.username || generatedBy, 160)
         },
         venue: venueForContext(context, warnings),
-        event: {
-            date: cleanText(valueOf(primaryBooking, 'date'), 40),
-            time: cleanText(valueOf(primaryBooking, 'time'), 20),
-            room: cleanText(valueOf(primaryBooking, 'room'), 120),
-            programName: eventProgramName,
-            hasRealProgram,
-            programDisplayName: hasRealProgram ? eventProgramName : null,
-            groupName: cleanText(
-                valueOf(groupState.group || {}, 'groupName', 'group_name')
-                || (!groupState.group ? valueOf(primaryBooking, 'groupName', 'group_name') : null),
-                200
-            ),
-            createdAt: cleanText(valueOf(primaryBooking, 'createdAt', 'created_at'), 80),
-            manager: cleanText(valueOf(primaryBooking, 'createdBy', 'created_by'), 160),
-            status: cleanText(valueOf(primaryBooking, 'status'), 40)
-        },
+        event: eventSummary,
         customer: normalizeCustomer(customer || {}),
         celebrant: normalizeCelebrant(primaryBooking, customer || {}),
         counts: {
@@ -915,6 +1459,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         },
         orderRows,
         serviceEvents: serviceEventRows,
+        schedule,
+        responsible,
         comments: summaryComments,
         totals: {
             programBasePrice,
@@ -932,6 +1478,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             note: deposit.note,
             source: deposit.source
         },
+        finance,
         terms: termsOf(primaryBooking, warnings, { banquetTermsDefaults }),
         warnings
     };
@@ -939,5 +1486,12 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
 
 module.exports = {
     BANQUET_SUMMARY_SCHEMA_VERSION,
+    BANQUET_SUMMARY_MODES,
+    BANQUET_SUMMARY_MODE_LABELS,
+    BANQUET_SUMMARY_MODE_CONTRACTS,
+    normalizeBanquetSummaryMode,
+    banquetSummaryModeContract,
+    banquetSummaryModeRowTypes,
+    banquetSummaryModeAllowsComment,
     buildBanquetSummary
 };

@@ -1744,3 +1744,329 @@ body.booking-summary-page {
         max-height: 22mm;
     }
 }
+
+/* Banquet A4 parity hardening: screen preview and Print to PDF share one page geometry. */
+:root {
+    --summary-a4-width: 210mm;
+    --summary-a4-height: 297mm;
+    --summary-a4-pad-x: 8mm;
+    --summary-a4-pad-top: 7mm;
+    --summary-a4-pad-bottom: 7mm;
+}
+
+.booking-summary-shell {
+    width: min(100%, calc(var(--summary-a4-width) + 48px));
+}
+
+.booking-summary-print-root {
+    width: min(100%, var(--summary-a4-width));
+}
+
+.booking-summary-document.booking-summary-a4-page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: var(--summary-a4-height);
+    aspect-ratio: auto;
+    padding: var(--summary-a4-pad-top) var(--summary-a4-pad-x) var(--summary-a4-pad-bottom);
+    border-radius: 8px;
+    background:
+        linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(255, 253, 248, 0.995)),
+        var(--summary-panel);
+}
+
+.booking-summary-document::after {
+    inset: 5mm;
+    border-color: rgba(201, 150, 46, 0.22);
+}
+
+.banquet-top-plate {
+    height: 36mm;
+    opacity: 0.84;
+}
+
+.banquet-corner-art {
+    right: 3mm;
+    bottom: 7mm;
+    width: min(32%, 62mm);
+    opacity: 0.22;
+}
+
+.banquet-hero {
+    grid-template-columns: 13mm minmax(0, 1fr) minmax(43mm, 52mm);
+    gap: 3.8mm;
+    min-height: 31mm;
+    margin: 0 0 3mm;
+    padding: 4mm 4.5mm 2.8mm;
+    background: linear-gradient(90deg, rgba(255, 253, 248, 0.9), rgba(255, 253, 248, 0.5) 54%, rgba(255, 253, 248, 0.18));
+}
+
+.brand-logo {
+    width: 13mm;
+    height: 13mm;
+    padding: 1.6mm;
+}
+
+.generated-at {
+    margin-bottom: 1.1mm;
+    padding: 1mm 1.6mm;
+    font-size: 7.5px;
+}
+
+.brand-copy {
+    gap: 0.9mm;
+}
+
+.brand-copy h1 {
+    max-width: 100mm;
+    margin-bottom: 0.7mm;
+    font-size: 15.8px;
+    line-height: 1.08;
+}
+
+.brand-copy p,
+.brand-copy strong {
+    max-width: 100mm;
+    font-size: 8.8px;
+    line-height: 1.15;
+}
+
+.brand-copy strong {
+    font-size: 9.6px;
+}
+
+.booking-card {
+    gap: 1.2mm;
+    padding: 2.8mm;
+}
+
+.booking-card h2 {
+    font-size: 10.4px;
+}
+
+.booking-id {
+    padding: 1mm 1.5mm;
+    font-size: 7.6px;
+}
+
+.booking-meta {
+    gap: 0.9mm;
+}
+
+.meta-row {
+    grid-template-columns: minmax(21mm, auto) minmax(0, 1fr);
+    gap: 1.2mm;
+    font-size: 7.2px;
+    line-height: 1.12;
+}
+
+.banquet-content {
+    flex: 0 0 auto;
+}
+
+.summary-brief {
+    margin-bottom: 2.2mm;
+    padding: 2.2mm;
+}
+
+.summary-brief-grid {
+    gap: 1mm 5mm;
+}
+
+.summary-brief-column {
+    gap: 0.7mm;
+}
+
+.summary-brief-item {
+    font-size: 8.9px;
+    line-height: 1.12;
+}
+
+.summary-section {
+    margin-top: 1.9mm;
+    padding: 1.2mm 0 0 2.4mm;
+}
+
+.summary-section h2 {
+    margin-bottom: 1mm;
+    font-size: 9px;
+}
+
+.summary-order-table th,
+.summary-order-table td {
+    padding: 3px 4px;
+    font-size: 8.1px;
+    line-height: 1.08;
+}
+
+.summary-responsible-item,
+.summary-schedule-item,
+.summary-service-event,
+.summary-comment-row {
+    font-size: 8.3px;
+    line-height: 1.1;
+}
+
+.summary-responsible-item {
+    padding: 1.1mm 1.5mm;
+}
+
+.summary-schedule-item {
+    padding: 1.1mm 1.5mm;
+}
+
+.summary-finance-table {
+    max-width: 66mm;
+    font-size: 8.5px;
+}
+
+.summary-finance-table th,
+.summary-finance-table td {
+    padding: 1mm 1.4mm;
+}
+
+.summary-note-block,
+.summary-finance-lines {
+    font-size: 8.5px;
+    line-height: 1.17;
+}
+
+.banquet-final-brand {
+    width: min(100%, 108mm);
+    margin: auto auto 0;
+    padding-top: 3mm;
+}
+
+.banquet-final-brand::before {
+    content: "";
+    position: absolute;
+    top: 0.8mm;
+    left: 16mm;
+    right: 16mm;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(201, 150, 46, 0.5), transparent);
+}
+
+.banquet-final-brand img {
+    max-height: 22mm;
+}
+
+@media (max-width: 760px) {
+    .booking-summary-document.booking-summary-a4-page {
+        min-height: auto;
+        padding: 7mm 5mm 6mm;
+    }
+
+    .banquet-final-brand {
+        margin-top: 5mm;
+    }
+}
+
+@media print {
+    @page {
+        size: A4;
+        margin: 0;
+    }
+
+    html,
+    html[data-theme="dark"],
+    body.booking-summary-page,
+    body.booking-summary-page.dark-mode,
+    html[data-theme="dark"] body.booking-summary-page,
+    html[data-theme="dark"] body.booking-summary-page.dark-mode {
+        width: var(--summary-a4-width);
+        min-height: var(--summary-a4-height);
+        background: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    .booking-summary-shell,
+    .booking-summary-print-root {
+        width: var(--summary-a4-width) !important;
+        max-width: var(--summary-a4-width) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    .booking-summary-document.booking-summary-a4-page {
+        display: flex !important;
+        flex-direction: column !important;
+        width: var(--summary-a4-width) !important;
+        min-height: var(--summary-a4-height) !important;
+        margin: 0 !important;
+        padding: var(--summary-a4-pad-top) var(--summary-a4-pad-x) var(--summary-a4-pad-bottom) !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: #fffdf8 !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+    }
+
+    .booking-summary-document::after {
+        inset: 5mm;
+    }
+
+    .banquet-top-plate {
+        top: 0;
+        right: 0;
+        left: 0;
+        height: 35mm;
+        opacity: 0.78;
+    }
+
+    .banquet-corner-art {
+        right: 2mm;
+        bottom: 7mm;
+        width: 54mm;
+        opacity: 0.2;
+    }
+
+    .banquet-hero {
+        grid-template-columns: 13mm minmax(0, 1fr) minmax(43mm, 52mm);
+        gap: 3.6mm;
+        min-height: 30mm;
+        margin: 0 0 2.4mm;
+        padding: 3.8mm 4.2mm 2.4mm;
+    }
+
+    .brand-logo,
+    .brand-copy,
+    .booking-card {
+        grid-column: auto !important;
+    }
+
+    .booking-card {
+        align-self: start;
+        min-width: 0;
+    }
+
+    .brand-copy h1 {
+        font-size: 15px;
+    }
+
+    .summary-brief-item,
+    .summary-responsible-item,
+    .summary-schedule-item,
+    .summary-service-event,
+    .summary-comment-row,
+    .summary-note-block,
+    .summary-finance-lines {
+        font-size: 8.2px;
+    }
+
+    .summary-order-table th,
+    .summary-order-table td {
+        font-size: 7.9px;
+    }
+
+    .banquet-final-brand {
+        width: 104mm;
+        margin: auto auto 0 !important;
+        padding-top: 3mm;
+    }
+
+    .banquet-final-brand img {
+        max-height: 21mm;
+    }
+}

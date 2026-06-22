@@ -988,12 +988,26 @@ function drawHeader(doc, summary, view) {
 
 function drawFinalBrand(doc, summary = {}) {
     const availableWidth = pageContentWidth(doc);
-    const width = Math.min(360, availableWidth * 0.72);
-    const height = 52;
-    ensureSpace(doc, height + 6);
+    const width = Math.min(330, availableWidth * 0.68);
+    const height = 48;
+    const bottomY = doc.page.height - doc.page.margins.bottom - height - 8;
+    if (doc.y > bottomY - 8) {
+        doc.addPage();
+        drawPageDecor(doc);
+        doc.x = doc.page.margins.left;
+        doc.y = doc.page.margins.top;
+    }
     resetCursorX(doc);
     const x = doc.page.margins.left + (availableWidth - width) / 2;
-    const y = doc.y + 2;
+    const y = Math.max(doc.y + 4, bottomY);
+
+    doc.save();
+    doc.moveTo(x + 36, y - 5)
+        .lineTo(x + width - 36, y - 5)
+        .lineWidth(0.45)
+        .strokeColor('#ead8aa')
+        .stroke();
+    doc.restore();
 
     if (fs.existsSync(BANQUET_FINAL_LOGO)) {
         doc.image(BANQUET_FINAL_LOGO, x, y, {

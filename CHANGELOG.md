@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.5 - Banquet print parity fix
+
+### Banquet sheet / Browser preview parity / Print To PDF / Server PDF footer / (Клешня, 22.06.2026) [codex]
+- **Виправлено головний layout-дефект банкетного листа** - browser preview і `Друк / PDF` тепер використовують одну A4-геометрію, а не різні висоти документа.
+- **Прибрано порожній нижній хвіст у Print To PDF** - друкований лист більше не займає тільки верхню частину A4 з великим білим полем знизу.
+- **Картка `Банкетний лист` лишається у правій частині шапки** - mobile grid override більше не переносить її у широкий окремий блок у PDF.
+- **Фінальна плашка з лого притиснута до низу останнього аркуша** - у browser print і server PDF вона не зависає посередині після короткого тексту.
+- **Декор став контрольованішим** - top-плашка і куткова графіка зменшені по впливу, щоб не перекривати дані й не забирати корисний простір.
+- **Server PDF вирівняно з preview-логікою** - PDFKit renderer ставить фінальне лого внизу останньої сторінки і зберігає декоративну рамку/кут.
+- **Перевірено visual QA** - `21.pdf` відрендерено в PNG для аналізу дефекту; після правки згенеровано browser Print PDF і server PDF, обидва A4/1 page.
+- **Релізні маркери піднято до `0.77.5`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.4 - Banquet sheet celebration style
 
 ### Banquet sheet / Transparent decorative assets / Compact A4 print / Last-page brand / (Клешня, 22.06.2026) [codex]

@@ -145,7 +145,12 @@ checkPage('index.html', (doc, html) => {
     const panelCss = fs.readFileSync(path.join(ROOT, 'css', 'panel.css'), 'utf8');
     const darkModeCss = fs.readFileSync(path.join(ROOT, 'css', 'dark-mode.css'), 'utf8');
     const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
-    const bookingCode = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
+    const bookingCode = [
+        fs.readFileSync(path.join(ROOT, 'js', 'booking-drawer-state.js'), 'utf8'),
+        fs.readFileSync(path.join(ROOT, 'js', 'booking-banquet-selector.js'), 'utf8'),
+        fs.readFileSync(path.join(ROOT, 'js', 'booking-save-path.js'), 'utf8'),
+        fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8')
+    ].join('\n');
     const bookingFormCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-form.js'), 'utf8');
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
     const bookingsRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
@@ -186,7 +191,9 @@ checkPage('index.html', (doc, html) => {
         && bookingsRouteCode.includes('function isBanquetServiceRootBooking')
         && bookingsRouteCode.includes('function isBanquetServiceTimelineBooking')
         && bookingsRouteCode.includes('function isRoomProjectableBanquetServiceRootBooking')
-        && bookingsRouteCode.includes('return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking))')
+        && bookingsRouteCode.includes('function buildBookingTimelineProjection')
+        && bookingsRouteCode.includes("hiddenReason = 'banquet_service_hidden_from_animator'")
+        && bookingsRouteCode.includes('return bookings.map(booking => projectBookingForTimelineView(booking, timelineView))')
         && bookingsRouteCode.includes('.filter(booking => !isBanquetServiceRootBooking(booking) || isRoomProjectableBanquetServiceRootBooking(booking))')
         && htmlContains('js/timeline.js', 'function shouldRenderBookingVisualLink')
         && htmlContains('js/timeline.js', 'relationType === SHARED_ROOM_LINK_RELATION_TYPE && !isRoomTimelineView()')
@@ -213,10 +220,13 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/timeline.js', 'function isParkAnimatorTimelineView')
         && htmlContains('js/timeline.js', 'function isTimelineBanquetServicePseudoLine')
         && htmlContains('js/timeline.js', 'function isTimelineBanquetServiceBooking')
+        && htmlContains('js/timeline-resource-identity.js', 'function timelineCanonicalProjectionForCurrentView')
+        && htmlContains('js/timeline-resource-identity.js', 'function timelineBookingRenderHiddenReason')
         && htmlContains('js/timeline.js', '.filter(line => !isTimelineBanquetServicePseudoLine(line) && !isTimelineRoomOnlyLine(line))')
-        && htmlContains('js/timeline.js', '.filter(booking => !isTimelineBanquetServiceBooking(booking))')
+        && htmlContains('js/timeline.js', '.filter(booking => !booking.timelineRenderHiddenReason)')
         && htmlContains('routes/bookings.js', 'function isBanquetServiceTimelineBooking')
-        && htmlContains('routes/bookings.js', 'return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking))'));
+        && htmlContains('routes/bookings.js', 'function buildBookingTimelineProjection')
+        && htmlContains('routes/bookings.js', "hiddenReason = 'banquet_service_hidden_from_animator'"));
     check('Timeline product sales modal exists', !!doc.getElementById('productSalesModal'));
     check('Timeline room load panel has explicit close affordance', doc.getElementById('roomLoadPanel')?.getAttribute('role') === 'dialog' && doc.getElementById('roomLoadPanel')?.getAttribute('aria-hidden') === 'true' && doc.getElementById('roomLoadClose')?.textContent.includes('Закрити'));
     check('Timeline room load uses real occupied minutes instead of whole-day busy flag',
@@ -302,9 +312,15 @@ checkPage('index.html', (doc, html) => {
     check('Booking multi-activity frontend keeps separate activity payloads', bookingCode.includes('selectedActivityProgramIds') && bookingCode.includes('function bookingMultiActivityEnabled') && bookingCode.includes('function buildMultiActivityBookings') && bookingCode.includes('apiCreateBookingFull(booking, linked, { banquetActivities })') && bookingCode.includes('additionalMultiHostActivity') && bookingCode.includes('multiActivity'));
     check('Booking reset clears multi-activity state', bookingFormCode.includes('setSelectedActivityPrograms([], { renderSummary: false, renderPackage: false, markDirty: false })') && bookingFormCode.includes("classList.remove('selected', 'is-primary-activity')"));
     check('Booking API submits banquetActivities through full create', apiCode.includes('options.banquetActivities') && apiCode.includes('payload.banquetActivities'));
-    check('Room booking animation bridge creates banquet group activity atomically',
-        bookingCode.includes('findOrCreateBanquetGroupForSourceBooking')
+    check('Room booking animation bridge defers banquet group creation until save',
+        !bookingCode.includes('findOrCreateBanquetGroupForSourceBooking')
         && bookingCode.includes('BookingDrawerState.roomBookingAnimationBridge')
+        && /apiGetBanquetByBooking\(sourceBooking\.id\)[\s\S]*BookingDrawerState\.roomBookingAnimationBridge/.test(bookingCode.slice(bookingCode.indexOf('async function openRoomBookingAnimationBridge'), bookingCode.indexOf('// v43.5.0: Reveal a booking')))
+        && !bookingCode.slice(bookingCode.indexOf('async function openRoomBookingAnimationBridge'), bookingCode.indexOf('// v43.5.0: Reveal a booking')).includes('apiCreateBanquetGroup')
+        && !bookingCode.slice(bookingCode.indexOf('async function handleBookingRoomSelectionContextChange'), bookingCode.indexOf('function clearRoomSelectionBanquetContextAfterCustomerChange')).includes('apiCreateBanquetGroup')
+        && !bookingCode.slice(bookingCode.indexOf('function renderBookingBanquetGroupSelector'), bookingCode.indexOf('async function refreshBookingBanquetGroupCandidates')).includes('apiCreateBanquetGroup')
+        && bookingCode.includes("createPath.kind === 'source_kitchen_to_activity'")
+        && bookingCode.includes("createPath.kind === 'source_activity_to_kitchen'")
         && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeGroupId')
         && bookingCode.includes("!String(booking.linkedTo || '').trim()")
         && !/function canAddAnimationFromRoomBooking[\s\S]*!booking\.programId[\s\S]*function banquetGroupIdFromSnapshot/.test(bookingCode)
@@ -1114,7 +1130,9 @@ const criticalJS = [
     'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js', 'js/timeline-settings-page.js',
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
-    'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js', 'js/timeline.js', 'js/settings.js',
+    'js/booking-drawer-state.js', 'js/booking-banquet-selector.js', 'js/booking-save-path.js',
+    'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js',
+    'js/timeline-cache.js', 'js/timeline-resource-identity.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
 
@@ -1223,6 +1241,8 @@ const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
 const apiCode = fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
+const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js/timeline-cache.js'), 'utf8');
+const timelineResourceIdentityCode = fs.readFileSync(path.join(ROOT, 'js/timeline-resource-identity.js'), 'utf8');
 const timelineInteractionModelCode = fs.readFileSync(path.join(ROOT, 'js/timeline-interaction-model.js'), 'utf8');
 const timelineResourcesTestCode = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-resources.test.js'), 'utf8');
 const timelineRegressionMatrixTestCode = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-regression-matrix.test.js'), 'utf8');
@@ -1499,8 +1519,8 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineSetViewBlock.indexOf('clearTimelineBanquetRoomPreviews()') < timelineSetViewBlock.indexOf('await renderTimeline()')
     && timelineRenderClearIndex > timelineRenderStartIndex
     && timelineRenderFetchIndex > timelineRenderClearIndex
-    && timelineCode.includes('const timelineView = timelineCurrentView();')
-    && timelineCode.includes('return `${context}|${mode}|${resourceType}|${timelineView}`;')
+    && timelineCacheCode.includes('const timelineView = timelineCurrentView();')
+    && timelineCacheCode.includes('return `${context}|${mode}|${resourceType}|${timelineView}`;')
     && timelineConstructorCss.includes('.line-grid.has-timeline-room-service-markers')
     && timelineConstructorCss.includes('.timeline-line.has-timeline-room-service-marker-lanes')
     && timelineConstructorCss.includes('--room-service-marker-row-height')
@@ -2227,17 +2247,17 @@ check('Timeline iOS and iPad viewport hardening is explicit', uiCode.includes('f
 check('Timeline compact mode fits desktop while phones keep readable horizontal scroll', uiCode.includes('function _timelineFitCellWidth') && uiCode.includes('phones must scroll horizontally instead of crushing readable time cells') && uiCode.includes("container.dataset.fitScreen = compact && viewportWidth > 768 ? 'true' : 'scroll'") && uiCode.includes('event?.target?.checked') && uiCode.includes('timeline-compact-mode') && htmlContains('js/app.js', 'compactToggle.checked = AppState.compactMode') && htmlContains('css/timeline.css', 'v0.56.5: timeline compact fit-screen density') && htmlContains('css/controls.css', 'keep compact zoom modes genuinely compact') && darkModeCss.includes('v0.63.55: operational compact timeline density') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .control-panel') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .booking-block'));
 check('Timeline phone layout has tidy toolbar rows and readable day/week scroll grids', responsiveCss.includes('v0.69.20: phone timeline toolbar and readable horizontal grid') && responsiveCss.includes('"prev date next"') && responsiveCss.includes('"today day day"') && responsiveCss.includes('.timeline-container[data-fit-screen="scroll"] .timeline-scroll') && responsiveCss.includes('width: max-content !important') && responsiveCss.includes('body.timeline-dashboard-page .multi-day-container') && responsiveCss.includes('body.timeline-dashboard-page .mini-line-grid') && responsiveCss.includes('--mini-grid-width') && responsiveCss.includes('body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn)'));
 check('Timeline horizontal scroll restore is scoped and reset on navigation context changes',
-    timelineCode.includes('function timelineHorizontalScrollStateKey')
-    && timelineCode.includes('function captureTimelineHorizontalScrollState')
-    && timelineCode.includes('function restoreTimelineHorizontalScrollState')
-    && timelineCode.includes('function resetTimelineHorizontalScroll')
-    && timelineCode.includes('function markTimelineNavigationScrollReset')
-    && timelineCode.includes('timelineCacheScopeKey()')
-    && timelineCode.includes('const timelineView = timelineCurrentView();')
-    && timelineCode.includes('timelineDateKey(date)')
-    && timelineCode.includes("AppState.multiDayMode ? 'week' : 'day'")
-    && timelineCode.includes('timelineHorizontalScrollZoomKey()')
-    && timelineCode.includes("AppState.compactMode ? 'compact' : 'regular'")
+    timelineCacheCode.includes('function timelineHorizontalScrollStateKey')
+    && timelineCacheCode.includes('function captureTimelineHorizontalScrollState')
+    && timelineCacheCode.includes('function restoreTimelineHorizontalScrollState')
+    && timelineCacheCode.includes('function resetTimelineHorizontalScroll')
+    && timelineCacheCode.includes('function markTimelineNavigationScrollReset')
+    && timelineCacheCode.includes('timelineCacheScopeKey()')
+    && timelineCacheCode.includes('const timelineView = timelineCurrentView();')
+    && timelineCacheCode.includes('timelineDateKey(date)')
+    && timelineCacheCode.includes("AppState.multiDayMode ? 'week' : 'day'")
+    && timelineCacheCode.includes('timelineHorizontalScrollZoomKey()')
+    && timelineCacheCode.includes("AppState.compactMode ? 'compact' : 'regular'")
     && timelineCode.includes("markTimelineNavigationScrollReset('date-change')")
     && timelineCode.includes("markTimelineNavigationScrollReset('view-switch-before-render')")
     && timelineCode.includes("markTimelineNavigationScrollReset('business-context-change')")
@@ -2292,7 +2312,12 @@ check('User-facing operational counters avoid raw legacy lead endpoint fetches',
 
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
-const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const bookingCode = [
+    fs.readFileSync(path.join(ROOT, 'js', 'booking-drawer-state.js'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'js', 'booking-banquet-selector.js'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'js', 'booking-save-path.js'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8')
+].join('\n');
 const bookingDetailEditControlsStart = bookingCode.indexOf('const secondaryActionHtml = [');
 const bookingDetailEditControlsEnd = bookingCode.indexOf('const bookingDetailIdLabel', bookingDetailEditControlsStart);
 const bookingDetailEditControlsBlock = bookingDetailEditControlsStart >= 0 && bookingDetailEditControlsEnd > bookingDetailEditControlsStart
@@ -2439,10 +2464,12 @@ check('Booking room auto-linked banquet context is cleared safely on customer mi
     && bookingCode.includes('function clearRoomSelectionBanquetContextAfterCustomerChange')
     && /function selectCustomerFromSearch[\s\S]*markBookingCustomerSelectionManual\(\{ render: false \}\)[\s\S]*clearSelectedBanquetGroupIfCustomerMismatch\(\)[\s\S]*ROOM_SELECTION_CUSTOMER_CHANGED_MESSAGE/.test(bookingCode)
     && /bookingBanquetGroupSelect'\)\?\.addEventListener\('change'[\s\S]*manualBanquetGroupSelection = Boolean\(BookingDrawerState\.selectedBanquetGroupId\)/.test(bookingCode)
-    && bookingCode.includes("source: roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector'")
-    && /selectedBanquetContext\.groupId && selectedBookingBanquetGroupCustomerMismatch\(selectedBanquetContext\)[\s\S]*Клієнт бронювання не збігається з вибраним банкетом/.test(bookingCode)
+    && bookingCode.includes("source: candidate ? 'booking_banquet_group_selector' : (virtualState?.bridge || (roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector'))")
+    && bookingCode.includes('isVirtualSourceBridge: Boolean(virtualState?.valid)')
+    && /function resolveBookingCreatePath[\s\S]*selectedBookingBanquetGroupCustomerMismatch\(selectedBanquetContext\)[\s\S]*reason: 'customer_mismatch'/.test(bookingCode)
+    && /if \(createPath\.blocked\)[\s\S]*showNotification\(createPath\.error/.test(bookingCode)
     && /attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\)/.test(bookingCode)
-    && /attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'activity', selectedBanquetContextSource\)/.test(bookingCode)
+    && /attachBanquetGroupContextToBooking\(booking,[\s\S]*selectedBanquetContext,[\s\S]*sourceBookingId: bridgeSourceBookingId[\s\S]*'activity'/.test(bookingCode)
     && htmlContains('services/banquetGroups.js', 'function resolveAtomicBanquetCustomerId')
     && htmlContains('services/banquetGroups.js', "code: 'CUSTOMER_BANQUET_MISMATCH'"));
 check('Booking panel header shows client and child count live context',
@@ -2915,16 +2942,24 @@ check('Booking banquet selector loads same-customer groups and routes selected k
     && bookingPanelHtml.includes('Прив’язати до банкету')
     && bookingPanelHtml.includes('Без прив’язки')
     && bookingCode.includes('function refreshBookingBanquetGroupCandidates')
-    && bookingCode.includes('apiGetBanquetCandidates({ date, customerId })')
+    && /function bookingBanquetGroupCandidatesRefreshKey\(\{ date = '', customerId = '' \} = \{\}\)[\s\S]*date:[\s\S]*customerId:[\s\S]*\.\.\.bookingBanquetSelectorSourceMeta\(\)/.test(bookingCode)
+    && /apiGetBanquetCandidates\(\{[\s\S]*date,[\s\S]*customerId,[\s\S]*room: sourceMeta\.room,[\s\S]*sourceBookingId: sourceMeta\.sourceBookingId,[\s\S]*drawerMode: sourceMeta\.drawerMode,[\s\S]*contextGeneration: sourceMeta\.contextGeneration/.test(bookingCode)
     && bookingCode.includes('function selectedBookingBanquetGroupContext')
     && bookingCode.includes('preselectGroupId: BookingDrawerState.roomBookingAnimationBridge.groupId ||')
     && bookingCode.includes('function isSelectedBanquetKitchenCreate')
     && bookingCode.includes('function isSelectedBanquetActivityCreate')
     && bookingCode.includes('function validateKitchenFirstActivityBridge')
-    && bookingCode.includes('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId')
-    && bookingCode.includes('apiCreateBanquetActivityBooking(selectedBanquetContext.groupId')
+    && bookingCode.includes('function resolveBookingCreatePath')
+    && bookingCode.includes("case 'existing_group_member'")
+    && bookingCode.includes("case 'existing_group_activity'")
+    && bookingCode.includes("case 'source_activity_to_kitchen'")
+    && bookingCode.includes("case 'source_kitchen_to_activity'")
+    && bookingCode.includes('apiCreateBanquetMemberBooking(createPath.groupId')
+    && bookingCode.includes('apiCreateBanquetActivityBooking(bridgeGroupId')
     && bookingCode.includes('apiCreateBanquetActivityBookingFromSource')
-    && /else if \(selectedBanquetContext\.groupId\) \{[\s\S]*selectedBanquetUnsupportedCreateMessage\(\)[\s\S]*unlockSubmitBtn\(\);[\s\S]*return;[\s\S]*\} else \{[\s\S]*apiCreateBooking\(booking\)/.test(bookingCode)
+    && /if \(createPath\.blocked\)[\s\S]*unlockSubmitBtn\(\);[\s\S]*return;/.test(bookingCode)
+    && /else if \(createPath\.kind === 'existing_group_member'\)[\s\S]*apiCreateBanquetMemberBooking\(createPath\.groupId/.test(bookingCode)
+    && /else \{[\s\S]*const finalCreatePath = resolveBookingCreatePath[\s\S]*apiCreateBooking\(booking\)/.test(bookingCode)
     && apiCode.includes('function apiFailureFromBody')
     && apiCode.includes('function apiGetBanquetCandidates')
     && apiCode.includes('/banquets/candidates')
@@ -3076,7 +3111,7 @@ check('Resource-backed timeline can close cabinets and show capacity-aware free 
 check('Education timeline captures lesson metadata, real series, and teacher conflicts', htmlContains('index.html', 'educationLessonSection') && htmlContains('index.html', 'educationLessonTeacher') && htmlContains('index.html', 'educationLessonRepeatEvery') && bookingCode.includes('getEducationLessonDetails') && bookingCode.includes('apiCreateEducationLessonSeries') && bookingCode.includes('extraData.educationLesson') && bookingFormJs.includes('educationLessonRepeatEvery') && timelineCode.includes('educationLessonExtra') && timelineCode.includes('lessonSeriesBadge') && htmlContains('routes/bookings.js', 'validateEducationLessonTeacherConflict') && htmlContains('routes/bookings.js', 'education-series') && htmlContains('routes/bookings.js', 'buildEducationLessonSeriesCandidates') && htmlContains('routes/bookings.js', 'seriesRootBookingId') && panelCss.includes('.education-lesson-section'));
 check('Booking UI separates park and client pinata modes', bookingCode.includes('syncPinataModeFields') && bookingCode.includes('clientPinataServicePrice') && bookingCode.includes('renderPinataDetailRows'));
 check('Booking pinata and filler use one visual picker template', bookingCode.includes('function renderPinataChoiceCard') && bookingCode.includes('function renderPinataVisualPickers') && bookingCode.includes('buildPinataDesignChoices') && bookingCode.includes('buildPinataFillerChoices') && panelCss.includes('.pinata-choice-card') && panelCss.includes('.pinata-choice-thumb'));
-check('Booking creation refreshes timeline truth and pinata detail boxes stay dark themed', bookingCode.includes('refreshCreatedBookingTimelineSnapshot') && bookingCode.includes('getSelectedProgramIdFromUi') && timelineCode.includes('function timelineBookingsForLine') && timelineCode.includes('timelineBookingsForLine(bookings, line)') && apiCode.includes('options.fresh') && darkModeCss.includes('body.dark-mode .pinata-mode-section') && darkModeCss.includes('body.dark-mode .pinata-service-section label'));
+check('Booking creation refreshes timeline truth and pinata detail boxes stay dark themed', bookingCode.includes('refreshCreatedBookingTimelineSnapshot') && bookingCode.includes('getSelectedProgramIdFromUi') && timelineResourceIdentityCode.includes('function timelineBookingsForLine') && timelineCode.includes('timelineBookingsForLine(bookings, line)') && apiCode.includes('options.fresh') && darkModeCss.includes('body.dark-mode .pinata-mode-section') && darkModeCss.includes('body.dark-mode .pinata-service-section label'));
 check('Pinata booking and Telegram templates use readable Ukrainian labels', bookingCode.includes('Клієнтська піньята (послуга)') && bookingCode.includes('Піньята парку') && bookingCode.includes('Свій наповнювач клієнта') && telegramTemplatesCode.includes('Піньята: №') && telegramTemplatesCode.includes('Наповнювач:') && telegramTemplatesCode.includes('CLIENT_PINATA_FILLER_LABEL') && (telegramTemplatesCode.match(/function appendPinataOperationalLines/g) || []).length === 1 && !telegramTemplatesCode.includes('\u0420\u045f\u0421') && !bookingCode.includes('\u0420\u045f\u0421\u2013\u0420\u0405\u0421\u040a\u0421\u040f\u0421\u201a\u0420\u00b0'));
 check('Safe new-tab helper isolates opener for simple navigation popups', uiCode.includes('function openSafeNewTab') && uiCode.includes("'noopener,noreferrer'") && uiCode.includes('win.opener = null'));
 check('Shared iPhone download helpers cover async file exports', uiCode.includes('function openTouchDownloadWindow') && uiCode.includes('function finishBlobDownload') && uiCode.includes('function openAsyncNavigationWindow') && uiCode.includes('function finishAsyncNavigationWindow') && uiCode.includes('window.finishBlobDownload = finishBlobDownload'));
@@ -3100,7 +3135,7 @@ check('Timeline resize and undo use shared truth helpers and interaction save lo
 check('Timeline Phase 4 has executable UAT regression matrix and authenticated-browser blocker documented', packageJsonText.includes('tests/timeline-regression-matrix.test.js') && timelineRegressionMatrixTestCode.includes('linked secondary cross-line') && timelineRegressionMatrixTestCode.includes('timeline context parity') && timelineRegressionMatrixTestCode.includes('interaction save lock blocks a second drag start') && timelineUatRegressionMatrixDoc.includes('/maysternya-doli') && timelineUatRegressionMatrixDoc.includes('TEST_USER') && timelineUatRegressionMatrixDoc.includes('TEST_PASS') && timelineUatRegressionMatrixDoc.includes('authenticated browser UAT') && timelineUatRegressionMatrixDoc.includes('timeline-interaction-model.js?v=<release>'));
 check('Timeline interaction lifecycle cancels stale drag/resize state on interrupted sessions', timelineCode.includes('function cancelActiveTimelineInteractions') && timelineCode.includes("cancelActiveTimelineInteractions('render')") && timelineCode.includes("window.addEventListener('blur'") && timelineCode.includes("addEventListener('lostpointercapture'") && timelineCode.includes('function _samePointerId') && timelineCode.includes('s.completing = true') && timelineCode.includes("cancelActiveTimelineInteractions('date-change')") && timelineCode.includes("cancelActiveTimelineInteractions('visibilitychange')"));
 check('Timeline lane geometry uses measured cells and pending assistant row keeps grid alignment', timelineCode.includes('function getTimelineCellWidth') && timelineCode.includes('timelineDurationWidth(effectiveDuration, anchor)') && timelineCode.includes('getTimelineCellWidth(s.grid)') && timelineCode.includes("renderGridCells('pending', selectedDate)") && timelineCss.includes('.timeline-line > .line-header') && timelineCss.includes('.pending-grid .grid-cell') && timelineCss.includes('min-height: inherit') && responsiveCss.includes('.pending-grid') && responsiveCss.includes('min-height: inherit'));
-check('Timeline renders bookings even when line/resource identity drifts', timelineCode.includes('function timelineLineMatchKeys') && timelineCode.includes('function timelineBookingMatchKeys') && timelineCode.includes('addTimelineMetadataMatchKeys') && timelineCode.includes('fallbackReason: \'unmatched_line_identity\'') && timelineCode.includes('Rendered unmatched bookings on fallback line') && timelineCode.includes('lineBookingsById.get(String(line.id))'));
+check('Timeline renders bookings even when line/resource identity drifts', timelineResourceIdentityCode.includes('function timelineLineMatchKeys') && timelineResourceIdentityCode.includes('function timelineBookingMatchKeys') && timelineResourceIdentityCode.includes('addTimelineMetadataMatchKeys') && timelineCode.includes('fallbackReason: \'unmatched_line_identity\'') && timelineCode.includes('Rendered unmatched bookings on fallback line') && timelineCode.includes('lineBookingsById.get(String(line.id))'));
 check('Room timeline cannot save or edit legacy animator lines', htmlContains('routes/lines.js', 'function isRoomTimelineLinePayload') && htmlContains('routes/lines.js', '__timelineIsolationTestHooks') && htmlContains('routes/lines.js', 'room_timeline_legacy_line_save_blocked') && htmlContains('routes/lines.js', 'Room timeline rows cannot be saved through legacy animator lines endpoint') && timelineCode.includes('Blocked legacy line save from room timeline view') && timelineCode.includes('isViewer() || isRoomTimelineView()') && timelineCode.includes('if (isRoomTimelineView()) return;') && apiCode.includes('window.TimelineView?.isRooms?.()') && apiCode.includes('timelineApiUrlWithView(`/lines/${date}`)') && settingsCode.includes('function isRoomTimelineLineEditingBlocked') && settingsCode.includes('notifyRoomTimelineLineEditingBlocked'));
 check('Animator timeline quarantines polluted room rows at read time', htmlContains('routes/lines.js', 'function isLegacyRoomTimelineLineRow') && htmlContains('routes/lines.js', 'Filtered room timeline rows from animator timeline response') && htmlContains('routes/lines.js', 'const lines = filteredRows') && timelineCode.includes('function isTimelineRoomOnlyLine') && timelineCode.includes('timelineLineValueStartsWithRoomId') && timelineCode.includes('!isTimelineBanquetServicePseudoLine(line) && !isTimelineRoomOnlyLine(line)'));
 check('Timeline view isolation regression matrix covers polluted rows and view switch cache', timelineRegressionMatrixTestCode.includes('pollutedLegacyRows') && timelineRegressionMatrixTestCode.includes("['748']") && timelineRegressionMatrixTestCode.includes("['room-takeaway', 'room-marvel']") && timelineRegressionMatrixTestCode.includes('timelineCacheScopeKey') && timelineRegressionMatrixTestCode.includes('AppState\\.cachedLines') && timelineRegressionMatrixTestCode.includes('timelineApiUrlWithView'));

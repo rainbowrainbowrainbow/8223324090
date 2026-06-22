@@ -46,6 +46,46 @@ function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+function createTimelineResourceMatchingHarness(options = {}) {
+    const timeline = read('js/timeline.js');
+    const timelineResourceIdentity = read('js/timeline-resource-identity.js');
+    const start = timeline.indexOf('function timelineExtraData');
+    const end = timeline.indexOf('async function handleTimelineBusinessContextChanged');
+    assert.ok(start >= 0 && end > start, 'timeline resource matching helper slice exists');
+    const context = {
+        console,
+        __roomView: Boolean(options.roomView),
+        TIMELINE_VIEW_ROOMS: 'rooms',
+        TIMELINE_BANQUET_SERVICE_LINE_ID: 'banquet-service',
+        TIMELINE_BANQUET_SERVICE_LINE_LABEL: 'Banquet service',
+        document: {
+            addEventListener: () => {}
+        },
+        window: {
+            TimelineBusinessContext: {
+                presentation: () => ({ mode: 'park', resourceType: options.roomView ? 'room' : 'animator' }),
+                current: () => ({ apiValue: 'event_genix' }),
+                state: () => ({ activeBusinessContext: 'event_genix' })
+            }
+        },
+        isRoomTimelineView: () => context.__roomView,
+        isParkAnimatorTimelineView: () => !context.__roomView,
+        escapeHtml: value => String(value ?? '')
+    };
+    vm.createContext(context);
+    vm.runInContext(`${timelineResourceIdentity}
+        ${timeline.slice(start, end)}
+        this.__resourceMatchingHooks = {
+            setRoomView: value => { this.__roomView = Boolean(value); },
+            timelineBookingMatchKeys,
+            timelineBookingsForLine,
+            timelineBookingRenderHiddenReason,
+            normalizeTimelineBookingsForContext
+        };
+    `, context, { filename: 'js/timeline.js' });
+    return context.__resourceMatchingHooks;
+}
+
 function roomConflictPolicyClient(rows, sourceGroups = []) {
     const queries = [];
     return {
@@ -264,6 +304,9 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
             userLetterTitle: userLetter?.getAttribute('title') || '',
             markerTitle: node.dataset.markerTitle,
             markerDetail: node.dataset.markerDetail || '',
+            bookingId: node.dataset.bookingId || '',
+            bookingIds: node.dataset.bookingIds || '',
+            groupId: node.dataset.banquetRoomMarkerGroup || '',
             time: node.dataset.markerTime,
             lane: node.dataset.markerLane,
             parentClass: node.parentElement?.className || '',
@@ -499,6 +542,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     const bookingsRoute = read('routes/bookings.js');
     const api = read('js/api.js');
     const timeline = read('js/timeline.js');
+    const timelineResourceIdentity = read('js/timeline-resource-identity.js');
     const timelineCss = read('css/timeline.css');
     const ui = read('js/ui.js');
     const timelineContext = read('js/timeline-context.js');
@@ -521,8 +565,10 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(bookingsRoute, /function isBanquetServiceTimelineBooking/);
     assert.match(bookingsRoute, /function isBanquetServiceRootBooking/);
     assert.match(bookingsRoute, /function isRoomProjectableBanquetServiceRootBooking/);
+    assert.match(bookingsRoute, /function buildBookingTimelineProjection/);
     assert.match(bookingsRoute, /BANQUET_SERVICE_LINE_ID/);
-    assert.match(bookingsRoute, /return bookings\.filter\(booking => !isBanquetServiceTimelineBooking\(booking\)\)/);
+    assert.match(bookingsRoute, /return bookings\.map\(booking => projectBookingForTimelineView\(booking, timelineView\)\)/);
+    assert.match(bookingsRoute, /hiddenReason = 'banquet_service_hidden_from_animator'/);
     assert.match(bookingsRoute, /timelineView !== 'rooms'/);
     assert.match(bookingsRoute, /\.filter\(booking => !isBanquetServiceRootBooking\(booking\) \|\| isRoomProjectableBanquetServiceRootBooking\(booking\)\)/);
     assert.match(bookingsRoute, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\) && isRealRoom\(booking\.room\)/);
@@ -547,8 +593,10 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /function isParkAnimatorTimelineView/);
     assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
     assert.match(timeline, /function isTimelineBanquetServiceBooking/);
+    assert.match(timelineResourceIdentity, /function timelineCanonicalProjectionForCurrentView/);
+    assert.match(timelineResourceIdentity, /function timelineBookingRenderHiddenReason/);
     assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)\)/);
-    assert.match(timeline, /\.filter\(booking => !isTimelineBanquetServiceBooking\(booking\)\)/);
+    assert.match(timeline, /\.filter\(booking => !booking\.timelineRenderHiddenReason\)/);
     assert.match(ui, /function getTimelineExportLineBookings/);
     assert.match(ui, /timelineBookingsForLine\(bookings,\s*line\)/);
     assert.match(ui, /normalizeTimelineExportBookings/);
@@ -577,6 +625,128 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);
     assert.match(migration, /'room-marvel', 'room', 'Марвел'/);
+});
+
+test('timeline resource matching prefers canonical projection over legacy fallback collisions', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: false });
+    const animatorLineNamedAsRoom = {
+        id: 'room-a',
+        name: 'Room A',
+        resourceId: 'Room A',
+        resourceType: 'animator'
+    };
+    const canonicalBooking = {
+        id: 'BK-CANONICAL',
+        lineId: 'stale-line',
+        resourceId: 'Room A',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: 'line-real',
+            lineId: 'line-real',
+            resourceType: 'animator',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+
+    assert.deepEqual([...hooks.timelineBookingMatchKeys(canonicalBooking)].sort(), ['line-real']);
+    assert.equal(hooks.timelineBookingsForLine([canonicalBooking], animatorLineNamedAsRoom).length, 0);
+});
+
+test('timeline resource matching keeps legacy room fallback only when projection is absent', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: true });
+    const roomLine = {
+        id: 'room-a',
+        name: 'Room A',
+        resourceId: 'room-a',
+        resourceType: 'room'
+    };
+    const legacyBooking = {
+        id: 'BK-LEGACY-ROOM',
+        lineId: 'legacy-line',
+        resourceType: 'room',
+        room: 'Room A'
+    };
+
+    assert.equal(hooks.timelineBookingsForLine([legacyBooking], roomLine).length, 1);
+});
+
+test('timeline resource matching ignores stale line ids when room projection is canonical', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: true });
+    const roomLine = {
+        id: 'room-a',
+        name: 'Room A',
+        resourceId: 'room-a',
+        resourceType: 'room'
+    };
+    const staleLine = {
+        id: 'line-stale',
+        name: 'Stale animator',
+        resourceId: 'line-stale',
+        resourceType: 'room'
+    };
+    const canonicalRoomBooking = {
+        id: 'BK-ROOM-CANONICAL',
+        lineId: 'line-stale',
+        room: 'Wrong Room',
+        timelineProjection: {
+            timelineView: 'rooms',
+            resourceId: 'Room A',
+            lineId: 'line-stale',
+            resourceType: 'room',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+
+    assert.deepEqual([...hooks.timelineBookingMatchKeys(canonicalRoomBooking)].sort(), ['room a']);
+    assert.equal(hooks.timelineBookingsForLine([canonicalRoomBooking], roomLine).length, 1);
+    assert.equal(hooks.timelineBookingsForLine([canonicalRoomBooking], staleLine).length, 0);
+});
+
+test('timeline resource matching exposes deterministic hidden reasons for canonical hidden bookings', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: false });
+    const kitchen = {
+        id: 'BK-KITCHEN-HIDDEN',
+        lineId: 'banquet-service',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: 'banquet-service',
+            lineId: 'banquet-service',
+            resourceType: 'service',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true,
+            displaySurface: 'hidden',
+            hiddenReason: 'banquet_service_hidden_from_animator'
+        }
+    };
+    const missingResource = {
+        id: 'BK-MISSING-RESOURCE',
+        lineId: 'stale-line',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: null,
+            lineId: null,
+            resourceType: 'unknown',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true,
+            displaySurface: 'hidden',
+            hiddenReason: 'missing_animator_resource'
+        }
+    };
+    const staleLine = { id: 'stale-line', name: 'Room A', resourceId: 'stale-line', resourceType: 'animator' };
+
+    assert.equal(hooks.timelineBookingRenderHiddenReason(kitchen), 'banquet_service_hidden_from_animator');
+    assert.equal(hooks.normalizeTimelineBookingsForContext([kitchen]).length, 0);
+    assert.equal(hooks.timelineBookingRenderHiddenReason(missingResource), 'missing_animator_resource');
+    assert.equal(hooks.timelineBookingsForLine([missingResource], staleLine).length, 0);
 });
 
 test('room timeline rows cannot be saved through legacy animator lines endpoint', () => {
@@ -1355,6 +1525,34 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
 });
 
+test('room timeline banquet preview hydration is guarded against stale async mutations', () => {
+    const timeline = read('js/timeline.js');
+    const booking = read('js/booking.js');
+
+    assert.match(timeline, /function invalidateTimelineBanquetPreviewFreshness\(options = \{\}\)/);
+    assert.match(timeline, /window\.invalidateTimelineBanquetPreviewFreshness = invalidateTimelineBanquetPreviewFreshness/);
+    assert.match(timeline, /function timelineBanquetPreviewHydrationContext\(block, booking = \{\}\)/);
+    assert.match(timeline, /renderGeneration: _renderGen/);
+    assert.match(timeline, /date: timelineDateKey\(booking\?\.date \|\| AppState\.selectedDate\)/);
+    assert.match(timeline, /timelineView: timelineCurrentViewKey\(\)/);
+    assert.match(timeline, /businessContext: booking\?\.businessContext \|\| booking\?\.business_context \|\| timelineBusinessContextValue\(\)/);
+    assert.match(timeline, /groupId: timelineBanquetGroupIdFromSource\(booking\)/);
+    assert.match(timeline, /function timelineBanquetPreviewHydrationIsFresh\(context = \{\}, block = null, snapshot = null\)[\s\S]*context\.renderGeneration !== _renderGen/);
+    assert.match(timeline, /function timelineBanquetPreviewHydrationIsFresh\(context = \{\}, block = null, snapshot = null\)[\s\S]*context\.timelineView !== timelineCurrentViewKey\(\)/);
+    assert.match(timeline, /function timelineBanquetPreviewHydrationIsFresh\(context = \{\}, block = null, snapshot = null\)[\s\S]*context\.date !== timelineDateKey\(AppState\.selectedDate\)/);
+    assert.match(timeline, /function timelineBanquetPreviewHydrationIsFresh\(context = \{\}, block = null, snapshot = null\)[\s\S]*timelineBanquetSnapshotContainsBooking\(snapshot, context\.bookingId\)/);
+    assert.match(timeline, /function applyTimelineBanquetPreview\(snapshot = \{\}, options = \{\}\)[\s\S]*timelineBanquetPreviewHydrationIsFresh\(options\.context, options\.block \|\| null, snapshot\)[\s\S]*return false/);
+    assert.match(timeline, /function hydrateTimelineBanquetPreview\(block, booking = \{\}\)[\s\S]*const hydrationContext = timelineBanquetPreviewHydrationContext\(block, booking\)[\s\S]*timelineBanquetPreviewHydrationIsFresh\(hydrationContext, block\)[\s\S]*applyTimelineBanquetPreview\(snapshot, \{ context: hydrationContext, block \}\)/);
+    assert.match(timeline, /apiCreateBookingBanquetLink\(sourceId, targetId, label\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
+    assert.match(timeline, /apiDeleteBookingBanquetLink\(sourceId, targetId, relationType\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
+    assert.match(timeline, /apiUpdateLinkedBookingsAtomic\(intent\.mainBooking\.id, payload\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(/);
+    assert.match(timeline, /apiUpdateLinkedBookingsAtomic\(resizeIntent\.mainBooking\.id, payload\)[\s\S]*invalidateTimelineBanquetPreviewFreshness\(/);
+    assert.match(booking, /function invalidateBookingBanquetPreviewFreshness\(options = \{\}\)/);
+    assert.match(booking, /apiUpdateBooking\(booking\.id, booking\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
+    assert.match(booking, /collectCreatedBookingRecords\(createResult\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
+    assert.match(booking, /apiDeleteBooking\(mainBookingId\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
+});
+
 test('room timeline banquet preview state only top-aligns headers with rendered cards', () => {
     const timeline = read('js/timeline.js');
     const css = read('css/timeline.css');
@@ -1387,6 +1585,7 @@ test('room timeline service markers keep readable event-block dimensions and str
     assert.equal(cssDeclaration(markerRule, 'border-left-color'), 'var(--timeline-service-card-accent)');
     const markerWithBadgeRule = cssRule(css, '.timeline-room-service-marker.has-user-letter');
     const markerBadgeRule = cssRule(css, '.timeline-room-service-marker .user-letter');
+    assert.match(css, /\.timeline-room-service-marker\.booking-block--just-created/);
     assert.equal(cssDeclaration(markerWithBadgeRule, 'padding-right'), '34px');
     assert.equal(cssDeclaration(markerBadgeRule, 'position'), 'absolute');
     assert.equal(cssDeclaration(markerBadgeRule, 'pointer-events'), 'none');
@@ -1405,6 +1604,9 @@ test('room timeline service markers keep readable event-block dimensions and str
 
     assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker').length, 3);
     assert.deepEqual(markers.map(marker => marker.type), ['food_service', 'room_setup', 'drinks']);
+    assert.ok(markers.every(marker => marker.bookingId === 'BK-KITCHEN'));
+    assert.ok(markers.every(marker => marker.bookingIds.split(/\s+/).includes('BK-KITCHEN')));
+    assert.ok(markers.every(marker => marker.groupId === 'group-regression'));
     assert.ok(markers.every(marker => marker.tagName === 'BUTTON'));
     assert.ok(markers.every(marker => marker.className.includes('timeline-room-service-marker--')));
     assert.ok(markers.every(marker => parseFloat(marker.width) >= markerMinWidth));
@@ -1977,6 +2179,7 @@ test('room-grid service markers stay isolated across room and animator timeline 
 
 test('room-grid service marker lifecycle is scoped to room view and view-aware cache keys', () => {
     const timeline = read('js/timeline.js');
+    const timelineCache = read('js/timeline-cache.js');
     const rendererBlock = timeline.slice(
         timeline.indexOf('function renderTimelineRoomServiceMarkers'),
         timeline.indexOf('function clearTimelineBanquetRoomPreviews')
@@ -1992,9 +2195,9 @@ test('room-grid service marker lifecycle is scoped to room view and view-aware c
     const renderStartIndex = timeline.indexOf('async function renderTimeline()');
     const renderClearIndex = timeline.indexOf('clearTimelineBanquetRoomPreviews()', renderStartIndex);
     const renderFetchIndex = timeline.indexOf('getLinesForDate(selectedDate)', renderStartIndex);
-    const cacheScopeBlock = timeline.slice(
-        timeline.indexOf('function timelineCacheScopeKey'),
-        timeline.indexOf('function timelineDateKey')
+    const cacheScopeBlock = timelineCache.slice(
+        timelineCache.indexOf('function timelineCacheScopeKey'),
+        timelineCache.indexOf('function timelineDateKey')
     );
 
     assert.match(rendererBlock, /if \(!isRoomTimelineView\(\) \|\| !summary\) return/);
@@ -2040,8 +2243,11 @@ test('banquet delete flow invalidates snapshot-backed room preview caches', () =
     assert.match(timeline, /TIMELINE_BANQUET_SNAPSHOT_CACHE\.byBooking\.clear\(\)/);
     assert.match(timeline, /TIMELINE_BANQUET_SNAPSHOT_CACHE\.byGroup\.clear\(\)/);
     assert.match(timeline, /window\.invalidateTimelineBanquetSnapshotCache = invalidateTimelineBanquetSnapshotCache/);
-    assert.match(timeline, /async function removeBookingBanquetLink[\s\S]*invalidateTimelineBanquetSnapshotCache\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
-    assert.match(booking, /window\.invalidateTimelineBanquetSnapshotCache\(\{\s*bookingIds: allToDelete\.map\(item => item\?\.id\)\.filter\(Boolean\)\s*\}\)/);
+    assert.match(timeline, /function invalidateTimelineBanquetPreviewFreshness\(options = \{\}\)[\s\S]*if \(hasScopedTarget\) invalidateTimelineBanquetSnapshotCache\(options\)[\s\S]*clearTimelineBanquetRoomPreviews\(\)/);
+    assert.match(timeline, /window\.invalidateTimelineBanquetPreviewFreshness = invalidateTimelineBanquetPreviewFreshness/);
+    assert.match(timeline, /async function removeBookingBanquetLink[\s\S]*invalidateTimelineBanquetPreviewFreshness\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
+    assert.match(booking, /function invalidateBookingBanquetPreviewFreshness\(options = \{\}\)[\s\S]*window\.invalidateTimelineBanquetPreviewFreshness/);
+    assert.match(booking, /apiDeleteBooking\(mainBookingId\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(\{\s*bookingIds: allToDelete\.map\(item => item\?\.id\)\.filter\(Boolean\)\s*\}\)/);
 });
 
 test('room timeline keeps banquet root teaser visible when activity count reaches zero', () => {
@@ -2055,18 +2261,43 @@ test('room timeline keeps banquet root teaser visible when activity count reache
 
 test('animator timeline keeps banquet teaser surfaces out of park animator view', () => {
     const timeline = read('js/timeline.js');
+    const timelineResourceIdentity = read('js/timeline-resource-identity.js');
 
     assert.match(timeline, /function isParkAnimatorTimelineView/);
     assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
     assert.match(timeline, /function isTimelineRoomOnlyLine/);
     assert.match(timeline, /function isTimelineBanquetServiceBooking/);
+    assert.match(timelineResourceIdentity, /function timelineCanonicalProjectionForCurrentView/);
+    assert.match(timelineResourceIdentity, /function timelineBookingRenderHiddenReason/);
     assert.match(timeline, /\.filter\(line => !isTimelineBanquetServicePseudoLine\(line\) && !isTimelineRoomOnlyLine\(line\)\)/);
-    assert.match(timeline, /\.filter\(booking => !isTimelineBanquetServiceBooking\(booking\)\)/);
+    assert.match(timeline, /\.filter\(booking => !booking\.timelineRenderHiddenReason\)/);
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
     assert.doesNotMatch(timeline, /showTimelineBanquetServiceInspector/);
     assert.doesNotMatch(timeline, /data-banquet-preview-trigger/);
     assert.doesNotMatch(timeline, /data-banquet-service-marker/);
+});
+
+test('timeline browser smoke runner covers two-way banquet bridge regressions', () => {
+    const packageJson = JSON.parse(read('package.json'));
+    const smoke = read('tests/browser/timeline-browser-smoke.js');
+
+    assert.equal(
+        packageJson.scripts['test:browser:timeline'],
+        'npx --yes --package playwright node tests/browser/timeline-browser-smoke.js'
+    );
+    assert.match(smoke, /TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION/);
+    assert.match(smoke, /refusing non-local browser smoke/);
+    assert.match(smoke, /\/api\/banquets\/from-source\/member-booking/);
+    assert.match(smoke, /\/api\/banquets\/from-source\/activity-booking/);
+    assert.match(smoke, /activity first -> kitchen/);
+    assert.match(smoke, /kitchen first -> activity/);
+    assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);
+    assert.match(smoke, /Без прив.?язки/);
+    assert.match(smoke, /Показати в кімнатах/);
+    assert.match(smoke, /\.timeline-room-service-marker\[data-booking-id/);
+    assert.match(smoke, /assertKitchenHiddenFromAnimator/);
+    assert.match(smoke, /assertRoomMarkerVisible/);
 });
 
 test('room-to-animator timeline view switch reconciles vertical shell height', () => {

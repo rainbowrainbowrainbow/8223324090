@@ -6,6 +6,8 @@ const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
+const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-cache.js'), 'utf8');
+const timelineResourceIdentityCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-resource-identity.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
 const timelineInteractionModel = require('../js/timeline-interaction-model');
 
@@ -135,7 +137,9 @@ function createHarness() {
     window.setInterval = () => 1;
     window.clearInterval = () => {};
 
-    const exposedCode = `${timelineCode}
+    const exposedCode = `${timelineCacheCode}
+        ${timelineResourceIdentityCode}
+        ${timelineCode}
         window.__timelineLifecycleTest = {
             initBookingDrag,
             initBookingResize,
@@ -146,6 +150,14 @@ function createHarness() {
             cancelActiveTimelineInteractions,
             getLinesForDate,
             getBookingsForDate,
+            timelineCacheScopeKey,
+            getTimelineCacheEntry,
+            setTimelineCacheEntry,
+            invalidateTimelineDateCache,
+            invalidateTimelineBanquetPreviewFreshness,
+            applyTimelineBanquetPreview,
+            timelineBanquetPreviewHydrationContext,
+            timelineBanquetPreviewHydrationIsFresh,
             timelineHorizontalScrollStateKey,
             captureTimelineHorizontalScrollState,
             restoreTimelineHorizontalScrollState,
@@ -170,6 +182,64 @@ function createHarness() {
     return { dom, window, api: window.__timelineLifecycleTest, consoleErrors };
 }
 
+function enableParkRoomTimeline(window) {
+    window.TimelineBusinessContext = {
+        current: () => ({ apiValue: 'event_genix', key: 'event_genix' }),
+        state: () => ({ activeBusinessContext: 'event_genix' }),
+        presentation: () => ({ mode: 'park', resourceType: 'room', roomTimelineEnabled: true }),
+        storageKey: name => `test_${name}`
+    };
+    window.localStorage.setItem('test_timeline_view', 'rooms');
+    window.localStorage.setItem('test_timeline_view_choice', 'standard-default-v1');
+}
+
+function banquetPreviewSnapshot(date = '2026-05-26') {
+    const primary = {
+        id: 'booking-1',
+        date,
+        time: '13:00',
+        duration: 60,
+        room: 'Rock',
+        customerName: 'Client',
+        status: 'confirmed'
+    };
+    const kitchen = {
+        id: 'kitchen-1',
+        date,
+        time: '13:00',
+        duration: 60,
+        room: 'Rock',
+        customerName: 'Client',
+        banquetGuests: 2,
+        status: 'confirmed',
+        bookingPackage: {
+            menuPositions: [{ title: 'Pizza', servingTime: '13:30' }]
+        }
+    };
+    return {
+        success: true,
+        groupId: 'group-1',
+        businessContext: 'event_genix',
+        group: {
+            id: 'group-1',
+            date,
+            room: 'Rock',
+            primaryBookingId: primary.id
+        },
+        bookings: {
+            primary,
+            kitchen: [kitchen],
+            activities: [],
+            services: [],
+            manual: []
+        },
+        members: [
+            { bookingId: primary.id, role: 'primary', booking: primary, isPrimary: true },
+            { bookingId: kitchen.id, role: 'kitchen', booking: kitchen }
+        ]
+    };
+}
+
 test('timeline date cache helpers accept ISO date keys without breaking strict formatDate', async () => {
     const { window, api } = createHarness();
     let lineDate = null;
@@ -192,6 +262,130 @@ test('timeline date cache helpers accept ISO date keys without breaking strict f
     assert.deepEqual(bookings, []);
     assert.ok(window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31']);
     assert.ok(window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31']);
+});
+
+test('timeline cache rejects unscoped legacy entries by default', async () => {
+    const { window, api } = createHarness();
+    const legacyEntry = { data: [{ id: 'legacy-booking' }], ts: Date.now() };
+    let fetchCount = 0;
+    window.AppState.cachedBookings['2026-05-31'] = legacyEntry;
+    window.apiGetBookings = async () => {
+        fetchCount += 1;
+        return [{ id: 'fresh-booking' }];
+    };
+
+    assert.equal(api.getTimelineCacheEntry(window.AppState.cachedBookings, '2026-05-31'), null);
+    assert.equal(legacyEntry.timelineCacheRejectedReason, 'legacy_scope_missing');
+
+    const bookings = await api.getBookingsForDate('2026-05-31');
+
+    assert.equal(fetchCount, 1);
+    assert.deepEqual(bookings.map(booking => booking.id), ['fresh-booking']);
+    assert.equal(window.AppState.cachedBookings['2026-05-31'], undefined);
+    assert.deepEqual(
+        window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31'].data.map(booking => booking.id),
+        ['fresh-booking']
+    );
+});
+
+test('timeline cache rejects same-date entries from a different scope', () => {
+    const { window, api } = createHarness();
+    const currentScope = api.timelineCacheScopeKey();
+    const key = `${currentScope}|2026-05-31`;
+    const wrongScopeEntry = {
+        data: [{ id: 'room-booking' }],
+        ts: Date.now(),
+        scopeKey: 'event_genix|park|room|rooms'
+    };
+    window.AppState.cachedBookings[key] = wrongScopeEntry;
+
+    assert.equal(api.getTimelineCacheEntry(window.AppState.cachedBookings, '2026-05-31'), null);
+    assert.equal(wrongScopeEntry.timelineCacheRejectedReason, 'scope_mismatch');
+    assert.equal(wrongScopeEntry.timelineCacheExpectedScopeKey, currentScope);
+});
+
+test('timeline cache legacy entries require explicit opt-in during safe migrations', () => {
+    const { window, api } = createHarness();
+    const legacyEntry = { data: [{ id: 'legacy-booking' }], ts: Date.now() };
+    window.AppState.cachedLines['2026-05-31'] = legacyEntry;
+
+    assert.equal(api.getTimelineCacheEntry(window.AppState.cachedLines, '2026-05-31'), null);
+    assert.equal(legacyEntry.timelineCacheRejectedReason, 'legacy_scope_missing');
+
+    const accepted = api.getTimelineCacheEntry(window.AppState.cachedLines, '2026-05-31', { allowLegacy: true });
+
+    assert.equal(accepted, legacyEntry);
+    assert.equal(legacyEntry.timelineCacheLegacyAccepted, true);
+    assert.equal(legacyEntry.timelineCacheExpectedScopeKey, api.timelineCacheScopeKey());
+});
+
+test('timeline date invalidation removes every scoped cache entry for that date only', () => {
+    const { window, api } = createHarness();
+    window.AppState.cachedBookings['2026-05-31'] = { data: ['legacy'] };
+    window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31'] = { data: ['animators'] };
+    window.AppState.cachedBookings['event_genix|park|room|rooms|2026-05-31'] = { data: ['rooms'] };
+    window.AppState.cachedBookings['event_genix|park|line|animators|2026-06-01'] = { data: ['next-day'] };
+    window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31'] = { data: ['line'] };
+
+    api.invalidateTimelineDateCache('2026-05-31', { lines: false });
+
+    assert.equal(window.AppState.cachedBookings['2026-05-31'], undefined);
+    assert.equal(window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-31'], undefined);
+    assert.equal(window.AppState.cachedBookings['event_genix|park|room|rooms|2026-05-31'], undefined);
+    assert.deepEqual(window.AppState.cachedBookings['event_genix|park|line|animators|2026-06-01'].data, ['next-day']);
+    assert.deepEqual(window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31'].data, ['line']);
+
+    api.invalidateTimelineDateCache('2026-05-31', { bookings: false });
+
+    assert.equal(window.AppState.cachedLines['event_genix|park|line|animators|2026-05-31'], undefined);
+});
+
+test('late banquet preview snapshot after date switch cannot mutate current room timeline', () => {
+    const { window, api } = createHarness();
+    enableParkRoomTimeline(window);
+    const block = window.document.createElement('div');
+    block.className = 'booking-block';
+    block.dataset.bookingId = 'booking-1';
+    window.document.body.appendChild(block);
+    const context = api.timelineBanquetPreviewHydrationContext(block, {
+        id: 'booking-1',
+        date: '2026-05-26',
+        room: 'Rock',
+        businessContext: 'event_genix'
+    });
+
+    assert.equal(api.timelineBanquetPreviewHydrationIsFresh(context, block, banquetPreviewSnapshot('2026-05-26')), true);
+
+    window.AppState.selectedDate = new Date('2026-05-27T00:00:00');
+    const applied = api.applyTimelineBanquetPreview(banquetPreviewSnapshot('2026-05-26'), { context, block });
+
+    assert.equal(api.timelineBanquetPreviewHydrationIsFresh(context, block, banquetPreviewSnapshot('2026-05-26')), false);
+    assert.equal(applied, false);
+    assert.equal(block.classList.contains('has-timeline-banquet-preview-trigger'), false);
+    assert.equal(window.document.querySelectorAll('.timeline-room-service-marker').length, 0);
+});
+
+test('late banquet preview snapshot after room to animator switch stays room-only', async () => {
+    const { window, api } = createHarness();
+    enableParkRoomTimeline(window);
+    const block = window.document.createElement('div');
+    block.className = 'booking-block';
+    block.dataset.bookingId = 'booking-1';
+    window.document.body.appendChild(block);
+    const context = api.timelineBanquetPreviewHydrationContext(block, {
+        id: 'booking-1',
+        date: '2026-05-26',
+        room: 'Rock',
+        businessContext: 'event_genix'
+    });
+
+    await api.setTimelineView('animators', { render: false });
+    const applied = api.applyTimelineBanquetPreview(banquetPreviewSnapshot('2026-05-26'), { context, block });
+
+    assert.equal(api.timelineBanquetPreviewHydrationIsFresh(context, block, banquetPreviewSnapshot('2026-05-26')), false);
+    assert.equal(applied, false);
+    assert.equal(block.classList.contains('has-timeline-banquet-preview-trigger'), false);
+    assert.equal(window.document.querySelectorAll('.timeline-room-service-marker').length, 0);
 });
 
 test('timeline horizontal scroll state key separates date, period, zoom, compact mode, context and view', () => {
@@ -340,6 +534,10 @@ test('timeline view switch resets horizontal scroll between animator and room ti
     };
     window.localStorage.setItem('view_timeline_view', 'animators');
     window.localStorage.setItem('view_timeline_view_choice', 'standard-default-v1');
+    window.AppState.cachedBookings['event_genix|park|line|animators|2026-05-26'] = { data: ['stale-booking'] };
+    window.AppState.cachedLines['event_genix|park|line|animators|2026-05-26'] = { data: ['stale-line'] };
+    window.AppState.lines = [{ id: 'stale-line' }];
+    window.AppState.linesByDate = { '2026-05-26': [{ id: 'stale-line' }] };
 
     const next = await api.setTimelineView('rooms', { render: false });
 
@@ -348,14 +546,22 @@ test('timeline view switch resets horizontal scroll between animator and room ti
     assert.equal(scroll.scrollTop, 44);
     assert.equal(scroll.dataset.timelineHorizontalScrollReset, 'view-switch-before-render');
     assert.match(api.timelineHorizontalScrollStateKey(), /event_genix\|park\|room\|rooms\|2026-05-26\|day\|zoom:30\|regular$/);
+    assert.equal(Object.keys(window.AppState.cachedBookings).length, 0);
+    assert.equal(Object.keys(window.AppState.cachedLines).length, 0);
+    assert.equal(window.AppState.lines.length, 0);
+    assert.equal(Object.keys(window.AppState.linesByDate).length, 0);
 
     scroll.scrollLeft = 640;
+    window.AppState.cachedBookings['event_genix|park|room|rooms|2026-05-26'] = { data: ['stale-room-booking'] };
+    window.AppState.cachedLines['event_genix|park|room|rooms|2026-05-26'] = { data: ['stale-room-line'] };
     const back = await api.setTimelineView('animators', { render: false });
 
     assert.equal(back, 'animators');
     assert.equal(scroll.scrollLeft, 0);
     assert.equal(scroll.scrollTop, 44);
     assert.match(api.timelineHorizontalScrollStateKey(), /event_genix\|park\|room\|animators\|2026-05-26\|day\|zoom:30\|regular$/);
+    assert.equal(Object.keys(window.AppState.cachedBookings).length, 0);
+    assert.equal(Object.keys(window.AppState.cachedLines).length, 0);
 });
 
 test('zoom, compact, and day/week state changes do not restore stale horizontal pixels', async (t) => {

@@ -75,6 +75,11 @@ test('timeline release proof validates both shared contexts, assets, and service
         assert.deepEqual(report.contexts.map(item => item.path), ['/', '/maysternya-doli']);
         assert.ok(report.assets.some(item => item.path === 'js/timeline.js'));
         assert.ok(report.assets.some(item => item.path === 'js/timeline-interaction-model.js'));
+        assert.ok(report.assets.some(item => item.path === 'js/timeline-cache.js'));
+        assert.ok(report.assets.some(item => item.path === 'js/timeline-resource-identity.js'));
+        assert.ok(report.assets.some(item => item.path === 'js/booking-drawer-state.js'));
+        assert.ok(report.assets.some(item => item.path === 'js/booking-banquet-selector.js'));
+        assert.ok(report.assets.some(item => item.path === 'js/booking-save-path.js'));
         assert.equal(report.serviceWorker.cacheName, `event-genix-v${pkg.version}`);
         assert.equal(report.rollback.deployBranch, 'codex/timeline-leads-hardening');
         assert.match(report.rollback.identifyLiveCommit, /codex\/timeline-leads-hardening/);

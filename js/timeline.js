@@ -83,6 +83,44 @@ function invalidateTimelineBanquetSnapshotCache(options = {}) {
 
 window.invalidateTimelineBanquetSnapshotCache = invalidateTimelineBanquetSnapshotCache;
 
+function invalidateTimelineBanquetPreviewFreshness(options = {}) {
+    const hasScopedTarget = Boolean(
+        options.clearAll === true
+        || options.bookingId
+        || options.groupId
+        || (Array.isArray(options.bookingIds) && options.bookingIds.length)
+        || (Array.isArray(options.groupIds) && options.groupIds.length)
+    );
+    if (hasScopedTarget) invalidateTimelineBanquetSnapshotCache(options);
+    clearTimelineBanquetRoomPreviews();
+}
+
+window.invalidateTimelineBanquetPreviewFreshness = invalidateTimelineBanquetPreviewFreshness;
+
+function timelineBanquetPreviewMutationBookingIds(result = null, fallbackIds = []) {
+    const ids = new Set((Array.isArray(fallbackIds) ? fallbackIds : [fallbackIds])
+        .map(value => String(value || '').trim())
+        .filter(Boolean));
+    const add = item => {
+        const id = String(item?.id || item?.bookingId || item?.booking_id || '').trim();
+        if (id) ids.add(id);
+    };
+    [
+        result?.booking,
+        result?.mainBooking,
+        result?.updatedBooking
+    ].forEach(add);
+    [
+        result?.bookings,
+        result?.allBookings,
+        result?.linkedBookings,
+        result?.updatedBookings
+    ].forEach(list => {
+        if (Array.isArray(list)) list.forEach(add);
+    });
+    return [...ids];
+}
+
 function normalizeTimelineViewMode(value) {
     return String(value || '').trim().toLowerCase() === TIMELINE_VIEW_ROOMS
         ? TIMELINE_VIEW_ROOMS
@@ -163,14 +201,14 @@ async function setTimelineView(view, options = {}) {
     if (next !== current) {
         clearTimelineBanquetRoomPreviews();
         markTimelineNavigationScrollReset('view-switch-before-render');
+        AppState.cachedBookings = {};
+        AppState.cachedLines = {};
+        AppState.lines = [];
+        AppState.linesByDate = {};
         if (options.render !== false) {
             if (typeof resetTimelineVerticalScroll === 'function') {
                 resetTimelineVerticalScroll('view-switch-before-render');
             }
-            AppState.cachedBookings = {};
-            AppState.cachedLines = {};
-            AppState.lines = [];
-            AppState.linesByDate = {};
             if (typeof closeBookingPanel === 'function') {
                 await closeBookingPanel(true).catch?.(() => {});
             }
@@ -194,156 +232,7 @@ window.TimelineView = {
 // v7.0.1: Render debug (console only)
 function _debugRender() {}
 
-function timelineCacheScopeKey() {
-    const contextState = window.TimelineBusinessContext?.state?.();
-    const context = contextState?.activeBusinessContext
-        || window.TimelineBusinessContext?.current?.()?.apiValue
-        || window.TimelineBusinessContext?.current?.()?.key
-        || 'event_genix';
-    const presentation = window.TimelineBusinessContext?.presentation?.();
-    const mode = presentation?.mode || 'park';
-    const resourceType = presentation?.resourceType || 'line';
-    const timelineView = timelineCurrentView();
-    return `${context}|${mode}|${resourceType}|${timelineView}`;
-}
-
-function timelineDateKey(date) {
-    if (typeof date === 'string') {
-        const trimmed = date.trim();
-        const dateMatch = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
-        if (dateMatch) return dateMatch[0];
-    }
-    if (
-        date
-        && typeof date.getTime === 'function'
-        && typeof date.getFullYear === 'function'
-        && !Number.isNaN(date.getTime())
-    ) {
-        return formatDate(date);
-    }
-    const parsed = new Date(date);
-    if (!Number.isNaN(parsed.getTime())) return formatDate(parsed);
-    console.warn('[Timeline] Invalid date passed to timeline cache helpers:', date);
-    return formatDate(new Date());
-}
-
-function timelineCacheKeyForDate(date) {
-    return `${timelineCacheScopeKey()}|${timelineDateKey(date)}`;
-}
-
-let _timelineHorizontalScrollResetGeneration = 0;
-let _timelineLastHorizontalScrollResetReason = '';
-
-function timelineHorizontalScrollPeriodKey() {
-    if (typeof normalizeTimelineModeState === 'function') {
-        normalizeTimelineModeState(AppState);
-    }
-    return AppState.multiDayMode ? 'week' : 'day';
-}
-
-function timelineHorizontalScrollZoomKey() {
-    const rawZoom = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES;
-    if (typeof normalizeTimelineZoomLevel === 'function') {
-        return normalizeTimelineZoomLevel(rawZoom);
-    }
-    const parsed = Number.parseInt(rawZoom, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
-}
-
-function timelineHorizontalScrollStateKey(date = AppState.selectedDate) {
-    const period = timelineHorizontalScrollPeriodKey();
-    const zoom = timelineHorizontalScrollZoomKey();
-    const compact = AppState.compactMode ? 'compact' : 'regular';
-    return `${timelineCacheScopeKey()}|${timelineDateKey(date)}|${period}|zoom:${zoom}|${compact}`;
-}
-
-function resetTimelineHorizontalScroll(reason = 'manual') {
-    const scroll = document.getElementById('timelineScroll');
-    const safeReason = String(reason || 'manual');
-    if (!scroll) return false;
-    scroll.scrollLeft = 0;
-    try {
-        scroll.scrollTo({ left: 0, top: scroll.scrollTop || 0, behavior: 'auto' });
-    } catch (_) {
-        scroll.scrollLeft = 0;
-    }
-    scroll.dataset.timelineHorizontalScrollReset = safeReason;
-    const container = document.querySelector('.timeline-container');
-    if (container) container.dataset.timelineHorizontalScrollReset = safeReason;
-    return true;
-}
-
-function markTimelineNavigationScrollReset(reason = 'navigation') {
-    _timelineHorizontalScrollResetGeneration += 1;
-    _timelineLastHorizontalScrollResetReason = String(reason || 'navigation');
-    resetTimelineHorizontalScroll(_timelineLastHorizontalScrollResetReason);
-    return _timelineHorizontalScrollResetGeneration;
-}
-
-function captureTimelineHorizontalScrollState(scroll = document.getElementById('timelineScroll'), date = AppState.selectedDate) {
-    return {
-        key: timelineHorizontalScrollStateKey(date),
-        left: scroll ? Math.max(0, Number(scroll.scrollLeft || 0)) : 0,
-        resetGeneration: _timelineHorizontalScrollResetGeneration,
-        reason: _timelineLastHorizontalScrollResetReason
-    };
-}
-
-function restoreTimelineHorizontalScrollState(snapshot, scroll = document.getElementById('timelineScroll'), date = AppState.selectedDate) {
-    if (!scroll || !snapshot || typeof snapshot !== 'object') return false;
-    const currentKey = timelineHorizontalScrollStateKey(date);
-    if (
-        snapshot.key !== currentKey
-        || snapshot.resetGeneration !== _timelineHorizontalScrollResetGeneration
-    ) {
-        return resetTimelineHorizontalScroll(snapshot.reason || 'timeline-context-change');
-    }
-    const left = Math.max(0, Number(snapshot.left || 0));
-    if (left <= 0) return false;
-    scroll.scrollLeft = left;
-    return true;
-}
-
-window.timelineHorizontalScrollStateKey = timelineHorizontalScrollStateKey;
-window.captureTimelineHorizontalScrollState = captureTimelineHorizontalScrollState;
-window.restoreTimelineHorizontalScrollState = restoreTimelineHorizontalScrollState;
-window.resetTimelineHorizontalScroll = resetTimelineHorizontalScroll;
-window.markTimelineNavigationScrollReset = markTimelineNavigationScrollReset;
-
-function getTimelineCacheEntry(cache, date) {
-    if (!cache) return null;
-    const legacyKey = timelineDateKey(date);
-    const key = timelineCacheKeyForDate(date);
-    const entry = cache[key] || cache[legacyKey];
-    if (entry?.scopeKey === timelineCacheScopeKey()) return entry;
-    if (entry && !entry.scopeKey) return entry;
-    return null;
-}
-
-function setTimelineCacheEntry(cache, date, data) {
-    if (!cache) return;
-    const key = timelineCacheKeyForDate(date);
-    const legacyKey = timelineDateKey(date);
-    cache[key] = { data, ts: Date.now(), scopeKey: timelineCacheScopeKey() };
-    if (legacyKey !== key) delete cache[legacyKey];
-}
-
-function invalidateTimelineDateCache(date, options = {}) {
-    const dateStr = timelineDateKey(date);
-    const clearBookings = options.bookings !== false;
-    const clearLines = options.lines !== false;
-    const clearFrom = cache => {
-        if (!cache) return;
-        Object.keys(cache).forEach(key => {
-            if (key === dateStr || key.endsWith(`|${dateStr}`)) delete cache[key];
-        });
-    };
-    if (clearBookings) clearFrom(AppState.cachedBookings);
-    if (clearLines) clearFrom(AppState.cachedLines);
-}
-
-window.invalidateTimelineDateCache = invalidateTimelineDateCache;
-window.getTimelineCacheEntry = getTimelineCacheEntry;
+// Timeline cache helpers live in js/timeline-cache.js.
 
 // v3.9: Cache with TTL
 async function getLinesForDate(date, options = {}) {
@@ -1176,6 +1065,10 @@ function isTimelineBanquetServiceBooking(booking = {}) {
     if (!isParkAnimatorTimelineView()) return false;
     const identity = timelineEmbeddedIdentity(booking);
     const projection = booking?.timelineProjection || booking?.timeline_projection || {};
+    const projectionHiddenReason = String(projection?.hiddenReason || projection?.hidden_reason || '').trim();
+    if (projectionHiddenReason === 'banquet_service_hidden_from_animator') {
+        return true;
+    }
     return [
         booking?.lineId,
         booking?.line_id,
@@ -1226,6 +1119,53 @@ function timelineBanquetGroupIdFromSource(source = {}) {
 
 function timelineBanquetSnapshotGroupId(snapshot = {}) {
     return String(snapshot?.groupId || snapshot?.group?.id || '').trim();
+}
+
+function timelineBanquetPreviewHydrationContext(block, booking = {}) {
+    return {
+        renderGeneration: _renderGen,
+        date: timelineDateKey(booking?.date || AppState.selectedDate),
+        timelineView: timelineCurrentViewKey(),
+        businessContext: booking?.businessContext || booking?.business_context || timelineBusinessContextValue(),
+        groupId: timelineBanquetGroupIdFromSource(booking),
+        bookingId: String(booking?.id || '').trim(),
+        blockId: String(block?.dataset?.bookingId || '').trim()
+    };
+}
+
+function timelineBanquetSnapshotContainsBooking(snapshot = {}, bookingId = '') {
+    const id = String(bookingId || '').trim();
+    if (!id) return false;
+    return timelineBanquetSnapshotBookings(snapshot).some(booking => String(booking?.id || '') === id)
+        || (snapshot.memberships || []).some(member => String(member?.bookingId || member?.booking_id || '') === id)
+        || (snapshot.members || []).some(member => {
+            if (String(member?.bookingId || member?.booking?.id || '') === id) return true;
+            return (member?.technicalChildren || []).some(child => String(child?.id || '') === id);
+        });
+}
+
+function timelineBanquetPreviewHydrationIsFresh(context = {}, block = null, snapshot = null) {
+    if (!context || !context.bookingId) return false;
+    if (!isRoomTimelineView()) return false;
+    if (context.renderGeneration !== _renderGen) return false;
+    if (context.timelineView !== timelineCurrentViewKey()) return false;
+    if (context.date !== timelineDateKey(AppState.selectedDate)) return false;
+    if (context.businessContext && context.businessContext !== timelineBusinessContextValue()) return false;
+    if (block) {
+        if (!block.isConnected) return false;
+        if (String(block.dataset.bookingId || '') !== context.bookingId) return false;
+    }
+    if (snapshot) {
+        if (!timelineBanquetSnapshotContainsBooking(snapshot, context.bookingId)) return false;
+        const snapshotGroupId = timelineBanquetSnapshotGroupId(snapshot);
+        if (context.groupId && snapshotGroupId && context.groupId !== snapshotGroupId) return false;
+        const snapshotSummary = timelineBanquetSnapshotSummary(snapshot);
+        const snapshotDate = snapshot?.group?.date || snapshotSummary?.date || '';
+        if (snapshotDate && timelineDateKey(snapshotDate) !== context.date) return false;
+        const snapshotContext = snapshot?.businessContext || snapshot?.business_context || snapshot?.group?.businessContext || snapshot?.group?.business_context || '';
+        if (snapshotContext && context.businessContext && snapshotContext !== context.businessContext) return false;
+    }
+    return true;
 }
 
 function timelineBanquetBookingPackage(booking = {}) {
@@ -1607,6 +1547,7 @@ function timelineBanquetServingInfo(summary = {}) {
 
     kitchenBookings.forEach(booking => {
         const bookingOwnerName = timelineBanquetOwnerName(booking);
+        const bookingId = String(booking?.id || booking?.bookingId || '').trim();
         timelineBanquetMenuPositions(booking).forEach((item, index) => {
             const servingTime = normalizeTimelineBanquetServingTime(item?.servingTime || item?.serving_time);
             const title = String(item?.title || item?.name || item?.productName || item?.product_name || `Позиція ${index + 1}`).trim();
@@ -1620,9 +1561,13 @@ function timelineBanquetServingInfo(summary = {}) {
                 title: `Видача ${servingTime}`,
                 time: servingTime,
                 count: 0,
+                bookingId: bookingId || null,
+                bookingIds: [],
                 items: []
             };
             if (bookingOwnerName && !group.createdBy) group.createdBy = bookingOwnerName;
+            if (bookingId && !group.bookingIds.includes(bookingId)) group.bookingIds.push(bookingId);
+            if (bookingId && !group.bookingId) group.bookingId = bookingId;
             const quantity = Number(item?.quantity || item?.qty || 0);
             const unitPrice = Number(item?.unitPrice ?? item?.unit_price ?? item?.price);
             group.count += 1;
@@ -1650,6 +1595,8 @@ function timelineBanquetServingInfo(summary = {}) {
                 label,
                 title,
                 time: servingTime,
+                bookingId: bookingId || null,
+                bookingIds: bookingId ? [bookingId] : [],
                 createdBy: bookingOwnerName || null,
                 count: 1,
                 items: [{
@@ -2621,6 +2568,15 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
         markerEl.dataset.markerLane = String(laneIndex);
         markerEl.dataset.markerTitle = display.title;
         if (display.detail) markerEl.dataset.markerDetail = display.detail;
+        const markerBookingIds = Array.isArray(marker.bookingIds)
+            ? marker.bookingIds.map(id => String(id || '').trim()).filter(Boolean)
+            : [];
+        const markerBookingId = String(marker.bookingId || marker.booking_id || markerBookingIds[0] || '').trim();
+        if (markerBookingId) markerEl.dataset.bookingId = markerBookingId;
+        const allMarkerBookingIds = markerBookingIds.length
+            ? markerBookingIds
+            : (markerBookingId ? [markerBookingId] : []);
+        if (allMarkerBookingIds.length) markerEl.dataset.bookingIds = allMarkerBookingIds.join(' ');
         if (groupId) markerEl.dataset.banquetRoomMarkerGroup = groupId;
         markerEl.classList.toggle('has-user-letter', Boolean(ownerLetter));
         markerEl.style.left = `${left}px`;
@@ -2777,10 +2733,16 @@ function resolveTimelineBanquetPreviewTargets(snapshot = {}, summary = {}, carri
     return targets.sort((a, b) => String(a.booking?.time || '').localeCompare(String(b.booking?.time || '')));
 }
 
-function applyTimelineBanquetPreview(snapshot = {}) {
-    if (!isRoomTimelineView()) return;
+function applyTimelineBanquetPreview(snapshot = {}, options = {}) {
+    if (!isRoomTimelineView()) return false;
+    if (
+        options.context
+        && !timelineBanquetPreviewHydrationIsFresh(options.context, options.block || null, snapshot)
+    ) {
+        return false;
+    }
     const carrier = resolveTimelineBanquetBadgeCarrier(snapshot);
-    if (!carrier?.block || !carrier.summary) return;
+    if (!carrier?.block || !carrier.summary) return false;
     const { block, summary } = carrier;
     const servingInfo = timelineBanquetServingInfo(summary);
     const summaryForInspector = timelineBanquetSummaryForInspector(summary, servingInfo, carrier.booking);
@@ -2810,6 +2772,7 @@ function applyTimelineBanquetPreview(snapshot = {}) {
     block.classList.add('has-timeline-banquet-preview-trigger');
     registerTimelineBanquetRoomPreview(summaryForInspector);
     renderTimelineRoomServiceMarkers(summaryForInspector, { groupId });
+    return true;
 }
 
 function applyTimelineBanquetBadges(snapshot = {}) {
@@ -2819,10 +2782,12 @@ function applyTimelineBanquetBadges(snapshot = {}) {
 function hydrateTimelineBanquetPreview(block, booking = {}) {
     if (!isRoomTimelineView() || !block || !booking?.id || booking.linkedTo || booking.linked_to || block.classList.contains('status-hidden')) return;
     if (!String(booking.room || '').trim()) return;
+    const hydrationContext = timelineBanquetPreviewHydrationContext(block, booking);
     const run = () => {
+        if (!timelineBanquetPreviewHydrationIsFresh(hydrationContext, block)) return;
         loadTimelineBanquetSnapshotForBooking(booking).then(snapshot => {
-            if (!snapshot || !block.isConnected) return;
-            applyTimelineBanquetPreview(snapshot);
+            if (!snapshot) return;
+            applyTimelineBanquetPreview(snapshot, { context: hydrationContext, block });
         });
     };
     if (typeof window.requestIdleCallback === 'function') {
@@ -2850,142 +2815,7 @@ document.addEventListener('keydown', event => {
     if (event.key === 'Escape') hideTimelineBanquetInspector();
 });
 
-function timelineLineResourceIdentity(line = {}, index = 0) {
-    const embedded = timelineEmbeddedIdentity(line);
-    const resourceId = String(
-        line?.resourceId
-        || line?.resource_id
-        || embedded.resourceId
-        || embedded.resource_id
-        || line?.id
-        || line?.lineId
-        || line?.line_id
-        || ''
-    ).trim() || String(index + 1);
-    return {
-        resourceId,
-        resourceType: line?.resourceType || line?.resource_type || line?.type || embedded.resourceType || embedded.resource_type || timelineDefaultResourceType(),
-        businessContext: line?.businessContext || line?.business_context || embedded.businessContext || embedded.business_context || timelineBusinessContextValue(),
-        source: line?.source || line?.resourceSource || embedded.source || (line?.resourceId || line?.resource_id ? 'timeline_resource' : 'timeline_line')
-    };
-}
-
-function timelineBookingResourceIdentity(booking = {}) {
-    const embedded = timelineEmbeddedIdentity(booking);
-    const projection = booking?.timelineProjection || booking?.timeline_projection || {};
-    const roomProjection = isRoomTimelineView() || projection?.view === TIMELINE_VIEW_ROOMS;
-    const resourceId = String(
-        roomProjection
-            ? (
-                projection?.resourceId
-                || projection?.resource_id
-                || booking?.resourceId
-                || booking?.resource_id
-                || booking?.room
-                || embedded.resourceId
-                || embedded.resource_id
-                || booking?.lineId
-                || booking?.line_id
-                || ''
-            )
-            : (
-                booking?.lineId
-                || booking?.line_id
-                || booking?.resourceId
-                || booking?.resource_id
-                || embedded.resourceId
-                || embedded.resource_id
-                || ''
-            )
-    ).trim();
-    return {
-        resourceId,
-        resourceType: roomProjection ? 'room' : (booking?.resourceType || booking?.resource_type || embedded.resourceType || embedded.resource_type || timelineDefaultResourceType()),
-        businessContext: booking?.businessContext || booking?.business_context || embedded.businessContext || embedded.business_context || timelineBusinessContextValue(),
-        source: embedded.source || booking?.resourceSource || booking?.source || 'booking_line'
-    };
-}
-
-function normalizedTimelineMatchKey(value) {
-    return String(value ?? '').trim().toLowerCase();
-}
-
-function addTimelineMatchKey(keys, value) {
-    const key = normalizedTimelineMatchKey(value);
-    if (key) keys.add(key);
-}
-
-function addTimelineMetadataMatchKeys(keys, metadata = {}) {
-    if (!metadata || typeof metadata !== 'object') return;
-    addTimelineMatchKey(keys, metadata.legacyLineId);
-    addTimelineMatchKey(keys, metadata.legacy_line_id);
-    addTimelineMatchKey(keys, metadata.lineId);
-    addTimelineMatchKey(keys, metadata.line_id);
-    addTimelineMatchKey(keys, metadata.resourceId);
-    addTimelineMatchKey(keys, metadata.resource_id);
-    const legacyIds = metadata.legacyLineIds || metadata.legacy_line_ids;
-    if (Array.isArray(legacyIds)) legacyIds.forEach(item => addTimelineMatchKey(keys, item));
-}
-
-function timelineLineMatchKeys(line = {}) {
-    const embedded = timelineEmbeddedIdentity(line);
-    const identity = timelineLineResourceIdentity(line);
-    const keys = new Set();
-    [
-        line?.id,
-        line?.lineId,
-        line?.line_id,
-        line?.resourceId,
-        line?.resource_id,
-        line?.staffId,
-        line?.staff_id,
-        identity.resourceId,
-        embedded.resourceId,
-        embedded.resource_id,
-        line?.name,
-        line?.shortName,
-        line?.short_name
-    ].forEach(value => addTimelineMatchKey(keys, value));
-    addTimelineMetadataMatchKeys(keys, line?.metadata);
-    addTimelineMetadataMatchKeys(keys, line?.extraData || line?.extra_data);
-    return keys;
-}
-
-function timelineBookingMatchKeys(booking = {}) {
-    const embedded = timelineEmbeddedIdentity(booking);
-    const identity = timelineBookingResourceIdentity(booking);
-    const keys = new Set();
-    [
-        booking?.lineId,
-        booking?.line_id,
-        booking?.resourceId,
-        booking?.resource_id,
-        identity.resourceId,
-        embedded.resourceId,
-        embedded.resource_id
-    ].forEach(value => addTimelineMatchKey(keys, value));
-    addTimelineMetadataMatchKeys(keys, booking?.metadata);
-    addTimelineMetadataMatchKeys(keys, booking?.extraData || booking?.extra_data);
-
-    // Resource-backed cabinet/room timelines historically stored the visible room
-    // name in bookings.room while lines now use durable resource ids.
-    const lineType = normalizedTimelineMatchKey(identity.resourceType);
-    if (lineType === 'cabinet' || lineType === 'room' || lineType === 'resource') {
-        addTimelineMatchKey(keys, booking?.room);
-    }
-    return keys;
-}
-
-function timelineBookingsForLine(bookings = [], line = {}) {
-    const lineKeys = timelineLineMatchKeys(line);
-    return bookings.filter(booking => {
-        const bookingKeys = timelineBookingMatchKeys(booking);
-        for (const key of bookingKeys) {
-            if (lineKeys.has(key)) return true;
-        }
-        return false;
-    });
-}
+// Timeline resource identity helpers live in js/timeline-resource-identity.js.
 
 function normalizeTimelineLinesForContext(lines = []) {
     const presentation = window.TimelineBusinessContext?.presentation?.();
@@ -3024,17 +2854,21 @@ function normalizeTimelineLinesForContext(lines = []) {
 function normalizeTimelineBookingsForContext(bookings = []) {
     return bookings.map(booking => {
         const identity = timelineBookingResourceIdentity(booking);
+        const canonicalProjection = timelineCanonicalProjectionForCurrentView(booking);
+        const hiddenReason = timelineBookingRenderHiddenReason(booking);
+        const normalizedResourceId = identity.resourceId || (canonicalProjection ? null : (booking?.lineId || booking?.line_id || null));
         return {
             ...booking,
-            resourceId: identity.resourceId || booking?.lineId || booking?.line_id || null,
+            resourceId: normalizedResourceId,
             resourceType: identity.resourceType,
             businessContext: booking?.businessContext || booking?.business_context || identity.businessContext,
+            timelineRenderHiddenReason: hiddenReason || null,
             timelineIdentity: {
                 ...identity,
-                resourceId: identity.resourceId || booking?.lineId || booking?.line_id || null
+                resourceId: normalizedResourceId
             }
         };
-    }).filter(booking => !isTimelineBanquetServiceBooking(booking));
+    }).filter(booking => !booking.timelineRenderHiddenReason);
 }
 
 async function handleTimelineBusinessContextChanged(event) {
@@ -4146,6 +3980,7 @@ async function completeBanquetLinkDraft(targetBooking) {
         showNotification(result?.error || 'Не вдалося створити банкетний звʼязок', 'error');
         return;
     }
+    invalidateTimelineBanquetPreviewFreshness({ bookingIds: [sourceId, targetId] });
     invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     showNotification('Банкетний звʼязок створено', 'success');
@@ -4157,7 +3992,7 @@ async function removeBookingBanquetLink(sourceId, targetId, relationType = 'banq
         showNotification(result?.error || 'Не вдалося прибрати банкетний звʼязок', 'error');
         return false;
     }
-    invalidateTimelineBanquetSnapshotCache({ bookingIds: [sourceId, targetId] });
+    invalidateTimelineBanquetPreviewFreshness({ bookingIds: [sourceId, targetId] });
     invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     if (typeof showBookingDetails === 'function') {
@@ -5121,6 +4956,13 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
 
         pushUndo('drag', model.buildDragUndoSnapshot(intent, atomicResult));
 
+        invalidateTimelineBanquetPreviewFreshness({
+            bookingIds: timelineBanquetPreviewMutationBookingIds(atomicResult, [
+                intent.mainBooking?.id,
+                intent.draggedBooking?.id,
+                ...(intent.linkedCandidates || []).map(candidate => candidate?.id)
+            ])
+        });
         invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
         await renderTimeline();
 
@@ -5320,6 +5162,9 @@ async function persistGraduationSegments(booking, segments, { successMessage = '
         }
         return false;
     }
+    invalidateTimelineBanquetPreviewFreshness({
+        bookingIds: timelineBanquetPreviewMutationBookingIds(result, [booking.id])
+    });
     invalidateTimelineDateCache(AppState.selectedDate, { lines: false });
     await renderTimeline();
     showNotification(successMessage, 'success');
@@ -5723,6 +5568,12 @@ async function _handleResizeEnd(e) {
         } else {
             pushUndo('resize', model.buildResizeUndoSnapshot(resizeIntent, result));
 
+            invalidateTimelineBanquetPreviewFreshness({
+                bookingIds: timelineBanquetPreviewMutationBookingIds(result, [
+                    resizeIntent.mainBooking?.id,
+                    ...(resizeIntent.linkedCandidates || []).map(candidate => candidate?.id)
+                ])
+            });
             invalidateTimelineDateCache(dateStr, { lines: false });
             await renderTimeline();
             showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
@@ -5798,6 +5649,12 @@ handleUndo = async function() {
             }
             AppState.undoStack.pop();
             showNotification('Перетягування скасовано', 'warning');
+            invalidateTimelineBanquetPreviewFreshness({
+                bookingIds: timelineBanquetPreviewMutationBookingIds(result, [
+                    bookingId,
+                    ...(lastItem.data.linked || []).map(item => item?.id || item)
+                ])
+            });
             AppState.cachedBookings = {};
             await renderTimeline();
             updateUndoButton();
@@ -5840,6 +5697,12 @@ handleUndo = async function() {
             }
             AppState.undoStack.pop();
             showNotification('Зміну тривалості скасовано', 'warning');
+            invalidateTimelineBanquetPreviewFreshness({
+                bookingIds: timelineBanquetPreviewMutationBookingIds(result, [
+                    bookingId,
+                    ...(lastItem.data.linked || [])
+                ])
+            });
             AppState.cachedBookings = {};
             await renderTimeline();
             updateUndoButton();

@@ -2119,6 +2119,38 @@ test('booking read compatibility prefers workspace comments and sanitizes recurr
     assert.match(bookingJs, /function recurringExtraDataForBooking[\s\S]*return \{ bookingWorkspace: recurringWorkspace \};/);
 });
 
+test('booking drawer source bridge cannot bypass stale context validation into normal create', () => {
+    const bookingJs = read('js', 'booking.js');
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const sourceContextBlock = bookingJs.slice(
+        bookingJs.indexOf('function buildBookingRoomSourceContext'),
+        bookingJs.indexOf('function clearAutoFilledBanquetFromRoomSelection')
+    );
+
+    assert.match(sourceContextBlock, /generationId/);
+    assert.match(sourceContextBlock, /drawerGenerationId/);
+    assert.match(sourceContextBlock, /function bookingRoomSourceContextStaleReason/);
+    assert.match(createFlowBlock, /if \(createPath\.blocked\)[\s\S]*unlockSubmitBtn\(\);\s*return;/);
+    assert.ok(
+        createFlowBlock.indexOf('if (createPath.blocked)') <
+            createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource'),
+        'activity-first source API stays behind stale-context guard'
+    );
+    assert.ok(
+        createFlowBlock.indexOf('if (createPath.blocked)') <
+            createFlowBlock.indexOf('apiCreateBanquetActivityBookingFromSource'),
+        'kitchen-first source API stays behind stale-context guard'
+    );
+    assert.ok(
+        createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource') <
+            createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)'),
+        'normal create remains only after source bridge branches'
+    );
+});
+
 test('booking conflict locks serialize line and room resources in deterministic order', async () => {
     clearModules();
     const { lockBookingConflictResources } = require('../services/booking');

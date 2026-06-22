@@ -511,7 +511,8 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 }
 
 .booking-block.booking-block--just-created,
-.mini-booking-block.booking-block--just-created {
+.mini-booking-block.booking-block--just-created,
+.timeline-room-service-marker.booking-block--just-created {
     outline: 2px solid rgba(52, 211, 153, 0.95);
     outline-offset: 2px;
     z-index: 60;

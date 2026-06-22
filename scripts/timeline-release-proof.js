@@ -24,8 +24,28 @@ const TIMELINE_ASSETS = [
         markers: ['buildDragInteractionIntent', 'buildResizeInteractionIntent', 'buildDragUndoAtomicPayload', 'buildResizeUndoAtomicPayload']
     },
     {
+        path: 'js/timeline-cache.js',
+        markers: ['timelineCacheScopeKey', 'getTimelineCacheEntry', 'invalidateTimelineDateCache']
+    },
+    {
+        path: 'js/timeline-resource-identity.js',
+        markers: ['timelineLineResourceIdentity', 'timelineBookingResourceIdentity', 'timelineBookingsForLine']
+    },
+    {
         path: 'js/timeline.js',
         markers: ['buildDragInteractionIntent', 'buildResizeInteractionIntent', 'cancelActiveTimelineInteractions']
+    },
+    {
+        path: 'js/booking-drawer-state.js',
+        markers: ['BookingDrawerState', 'BOOKING_DRAWER_MODES', 'window.BookingDrawerState']
+    },
+    {
+        path: 'js/booking-banquet-selector.js',
+        markers: ['bookingBanquetSelectorVirtualState', 'renderBookingBanquetGroupSelector', 'refreshBookingBanquetGroupCandidates']
+    },
+    {
+        path: 'js/booking-save-path.js',
+        markers: ['resolveBookingCreatePath', 'source_activity_to_kitchen', 'source_kitchen_to_activity']
     }
 ];
 

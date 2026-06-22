@@ -583,6 +583,19 @@ async function getLegacyBanquetLinks(db, businessContext) {
 async function upsertCompatibilityLink(db, businessContext, primaryBookingId, targetBookingId, label, user) {
     const pair = normalizeBanquetLinkPair(primaryBookingId, targetBookingId);
     if (!pair) return null;
+    await db.query(
+        `DELETE FROM booking_banquet_links
+          WHERE business_context = $1
+            AND booking_a_id = $3
+            AND booking_b_id = $2
+            AND relation_type = $4`,
+        [
+            businessContext || DEFAULT_TIMELINE_CONTEXT,
+            pair[0],
+            pair[1],
+            BANQUET_LINK_RELATION_TYPE
+        ]
+    );
     const result = await db.query(
         `INSERT INTO booking_banquet_links
             (business_context, booking_a_id, booking_b_id, relation_type, label, created_by_user_id, created_by)

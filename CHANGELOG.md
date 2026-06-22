@@ -4,6 +4,21 @@
 
 ---
 
+## v0.76.105 - Timeline reliability hardening
+
+### Timeline projection / Banquet selector / Two-way bridge / Room visibility / Regression checks / (Клешня, 22.06.2026) [codex]
+- **Стабільніша прив'язка бронювань до кімнат і таймлайна** - backend тепер повертає явний `timelineProjection`, а frontend використовує його як основний контракт замість набору крихких fallback-вгадувань.
+- **Зменшено ризик `бронь існує, але не відображається`** - room dropdown, room timeline і animator timeline працюють з однаковою resource identity, а приховані броні мають детерміновану причину приховування.
+- **Кеш таймлайна сильніше ізольовано між режимами** - room/animator view, дата, період і business context не змішують старі cached bookings, service markers або snapshot-backed previews.
+- **Селект `Прив'язати до банкету` став надійнішим** - real banquet groups і virtual source bridge state розділені без fake ids, тому activity-first і kitchen-first сценарії не падають у випадковий `Без прив'язки`.
+- **Save path для банкетів став перевірюваним і deterministic** - helper вибирає між normal booking, existing group, activity-first kitchen і kitchen-first activity endpoint до API call, включно з customer/source validation.
+- **Кухня і сервісні банкетні події зрозуміліше відображаються у кімнатах** - drawer/details пояснюють, що такі броні треба шукати у вкладці `Кімнати`, і дають дію для reveal у room timeline.
+- **Посилено backend і frontend regression tests для двостороннього банкетного сценарію** - покрито group reuse, rollback, customer mismatch, timeline visibility, selector virtual states, cache scope і stale async preview guards.
+- **Browser smoke підготовлено, але локально не пройдено через DB** - локальний сервер не стартує без PostgreSQL на `127.0.0.1:55432`, тому production/manual QA треба проходити після deploy із доступом до CRM.
+- **Релізні маркери піднято до `0.76.105`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.76.104 - Two-way banquet bridge fix
 
 ### Banquet two-way bridge / Kitchen-first activity / Selector state / Regression checks / (Клешня, 22.06.2026) [codex]

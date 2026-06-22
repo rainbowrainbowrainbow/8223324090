@@ -1089,6 +1089,14 @@ async function upsertBanquetLink(client, businessContext, sourceId, targetId, la
     const pair = normalizeBanquetLinkPair(sourceId, targetId);
     if (!pair) return null;
     const normalizedRelationType = normalizeBookingLinkRelationType(relationType);
+    await client.query(
+        `DELETE FROM booking_banquet_links
+          WHERE business_context = $1
+            AND booking_a_id = $3
+            AND booking_b_id = $2
+            AND relation_type = $4`,
+        [businessContext, pair[0], pair[1], normalizedRelationType]
+    );
     const insert = await client.query(
         `INSERT INTO booking_banquet_links
             (business_context, booking_a_id, booking_b_id, relation_type, label, created_by_user_id, created_by)
@@ -1247,10 +1255,158 @@ function normalizeTimelineView(value) {
     return String(value || '').trim().toLowerCase() === 'rooms' ? 'rooms' : 'animators';
 }
 
-function projectBookingForTimelineView(booking = {}, timelineView = 'animators') {
-    if (timelineView !== 'rooms') return booking;
+function bookingTimelineIdentity(booking = {}) {
+    return booking.timelineIdentity || booking.timeline_identity || {};
+}
+
+function bookingSourceLineId(booking = {}) {
+    const identity = bookingTimelineIdentity(booking);
+    return String(
+        booking.lineId
+        || booking.line_id
+        || identity.lineId
+        || identity.line_id
+        || identity.resourceId
+        || identity.resource_id
+        || booking.resourceId
+        || booking.resource_id
+        || ''
+    ).trim();
+}
+
+function bookingSourceResourceId(booking = {}) {
+    const identity = bookingTimelineIdentity(booking);
+    return String(
+        booking.resourceId
+        || booking.resource_id
+        || identity.resourceId
+        || identity.resource_id
+        || bookingSourceLineId(booking)
+        || ''
+    ).trim();
+}
+
+function bookingSourceResourceType(booking = {}, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    const identity = bookingTimelineIdentity(booking);
+    return String(
+        booking.resourceType
+        || booking.resource_type
+        || identity.resourceType
+        || identity.resource_type
+        || timelineResourceTypeForBooking(businessContext, booking)
+        || ''
+    ).trim() || null;
+}
+
+function bookingSourceResourceName(booking = {}) {
+    const identity = bookingTimelineIdentity(booking);
+    return String(
+        booking.resourceName
+        || booking.resource_name
+        || booking.lineName
+        || booking.line_name
+        || identity.resourceName
+        || identity.resource_name
+        || identity.lineName
+        || identity.line_name
+        || ''
+    ).trim() || null;
+}
+
+function bookingHasRoomServiceMarkerSurface(booking = {}) {
+    if (!isBanquetServiceRootBooking(booking)) return false;
+    const bookingPackage = bookingPackageFromPayload(booking);
+    return hasNonEmptyArray(bookingPackage.serviceEvents || bookingPackage.service_events)
+        || hasNonEmptyArray(bookingPackage.menuPositions || bookingPackage.menu_positions);
+}
+
+function buildBookingTimelineProjection(booking = {}, timelineView = 'animators') {
+    const view = normalizeTimelineView(timelineView);
+    const businessContext = booking.businessContext || booking.business_context || DEFAULT_TIMELINE_CONTEXT;
+    const status = String(booking.status || 'confirmed').trim().toLowerCase();
+    const cancelled = status === 'cancelled';
+    const linkedChild = Boolean(String(booking.linkedTo || booking.linked_to || '').trim());
+    const sourceLineId = bookingSourceLineId(booking) || null;
+    const sourceResourceId = bookingSourceResourceId(booking) || null;
+    const sourceResourceType = bookingSourceResourceType(booking, businessContext);
+    const sourceResourceName = bookingSourceResourceName(booking);
     const room = String(booking.room || '').trim();
-    if (!room) return booking;
+    const hasRoom = isRealRoom(room);
+    const banquetService = isBanquetServiceTimelineBooking(booking);
+    const banquetServiceRoot = isBanquetServiceRootBooking(booking);
+    const roomProjectableService = isRoomProjectableBanquetServiceRootBooking(booking);
+    const visibleInAnimatorTimeline = Boolean(!cancelled && !banquetService && sourceResourceId);
+    const visibleInRoomTimeline = Boolean(
+        !cancelled
+        && !linkedChild
+        && hasRoom
+        && (!banquetServiceRoot || roomProjectableService)
+    );
+    const currentVisible = view === 'rooms' ? visibleInRoomTimeline : visibleInAnimatorTimeline;
+    const resourceId = view === 'rooms' ? (hasRoom ? room : null) : sourceResourceId;
+    const resourceType = view === 'rooms' ? 'room' : (banquetService ? 'service' : (sourceResourceType || 'unknown'));
+    const resourceName = view === 'rooms' ? (hasRoom ? room : null) : sourceResourceName;
+    let displaySurface = 'hidden';
+    let hiddenReason = null;
+
+    if (currentVisible) {
+        displaySurface = view === 'rooms' && banquetServiceRoot && bookingHasRoomServiceMarkerSurface(booking)
+            ? 'service_marker'
+            : 'booking_block';
+    } else if (cancelled) {
+        hiddenReason = 'cancelled';
+    } else if (view !== 'rooms' && banquetService) {
+        hiddenReason = 'banquet_service_hidden_from_animator';
+    } else if (view !== 'rooms' && !sourceResourceId) {
+        hiddenReason = 'missing_animator_resource';
+    } else if (view === 'rooms' && linkedChild) {
+        hiddenReason = 'linked_child_hidden_from_room_timeline';
+    } else if (view === 'rooms' && !hasRoom) {
+        hiddenReason = 'missing_room_resource';
+    } else if (view === 'rooms' && banquetServiceRoot && !roomProjectableService) {
+        hiddenReason = 'banquet_service_not_room_projectable';
+    } else {
+        hiddenReason = 'not_visible_in_timeline_view';
+    }
+
+    return {
+        timelineView: view,
+        view,
+        resourceType,
+        resourceId,
+        resourceName,
+        lineId: sourceLineId,
+        sourceLineId,
+        visibleInAnimatorTimeline,
+        visibleInRoomTimeline,
+        displaySurface,
+        hiddenReason,
+        businessContext,
+        date: booking.date || null
+    };
+}
+
+function projectBookingForTimelineView(booking = {}, timelineView = 'animators') {
+    const projection = buildBookingTimelineProjection(booking, timelineView);
+    if (timelineView !== 'rooms') {
+        return {
+            ...booking,
+            timelineProjection: {
+                ...(booking.timelineProjection || {}),
+                ...projection
+            }
+        };
+    }
+    const room = String(booking.room || '').trim();
+    if (!room) {
+        return {
+            ...booking,
+            timelineProjection: {
+                ...(booking.timelineProjection || {}),
+                ...projection
+            }
+        };
+    }
     const previousIdentity = booking.timelineIdentity || {};
     return {
         ...booking,
@@ -1267,10 +1423,7 @@ function projectBookingForTimelineView(booking = {}, timelineView = 'animators')
         },
         timelineProjection: {
             ...(booking.timelineProjection || {}),
-            view: 'rooms',
-            resourceId: room,
-            resourceType: 'room',
-            sourceLineId: booking.lineId || previousIdentity.lineId || null
+            ...projection
         }
     };
 }
@@ -1428,7 +1581,7 @@ function isRoomProjectableBanquetServiceRootBooking(booking = {}) {
 
 function projectBookingsForTimelineView(bookings = [], timelineView = 'animators') {
     if (timelineView !== 'rooms') {
-        return bookings.filter(booking => !isBanquetServiceTimelineBooking(booking));
+        return bookings.map(booking => projectBookingForTimelineView(booking, timelineView));
     }
     return bookings
         .filter(booking => !isBanquetServiceRootBooking(booking) || isRoomProjectableBanquetServiceRootBooking(booking))

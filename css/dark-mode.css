@@ -1669,6 +1669,30 @@ body.dark-mode .booking-detail-danger-action {
     color: var(--danger);
 }
 
+body.dark-mode .booking-detail-visibility {
+    background: rgba(20, 184, 166, 0.12);
+    border-color: rgba(45, 212, 191, 0.28);
+}
+
+body.dark-mode .booking-detail-visibility__title {
+    color: var(--text-primary);
+}
+
+body.dark-mode .booking-detail-visibility__meta {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .booking-detail-visibility__action {
+    background: rgba(20, 184, 166, 0.18);
+    border-color: rgba(45, 212, 191, 0.32);
+    color: var(--primary);
+}
+
+body.dark-mode .booking-detail-visibility__action:hover,
+body.dark-mode .booking-detail-visibility__action:focus-visible {
+    background: rgba(20, 184, 166, 0.26);
+}
+
 /* Unified buttons in dark */
 body.dark-mode .btn-secondary {
     background: var(--gray-200);

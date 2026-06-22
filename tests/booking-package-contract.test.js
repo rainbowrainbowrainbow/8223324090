@@ -30,6 +30,12 @@ const {
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
+const readBookingSurface = () => [
+    read('js', 'booking-drawer-state.js'),
+    read('js', 'booking-banquet-selector.js'),
+    read('js', 'booking-save-path.js'),
+    read('js', 'booking.js')
+].join('\n');
 const packageJson = JSON.parse(read('package.json'));
 const escapedAssetVersion = packageJson.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -1583,7 +1589,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
 });
 
 test('booking create flow bridges room-source kitchen without an existing banquet group', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const apiJs = read('js', 'api.js');
     const bridgeStart = bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge');
     const bridgeCall = bookingJs.indexOf('apiCreateBanquetMemberBookingFromSource', bridgeStart);
@@ -1598,19 +1604,25 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(apiJs, /async function apiCreateBanquetMemberBookingFromSource\(payload = \{\}\)/);
     assert.match(apiJs, /\/banquets\/from-source\/member-booking/);
     assert.match(bookingJs, /function validateActivityFirstKitchenBridge\(/);
+    assert.match(bookingJs, /function resolveBookingCreatePath\(formState = \{\}, drawerState = BookingDrawerState\)/);
+    assert.match(bookingJs, /window\.resolveBookingCreatePath = resolveBookingCreatePath/);
     assert.match(bookingJs, /function hasUsableSelectedBanquetGroup\(/);
     assert.match(bookingJs, /function activityFirstKitchenSourceContext\(/);
     assert.match(bookingJs, /autoFilledBanquetGuestsFromRoom: null/);
     assert.match(bookingJs, /async function initializeRoomFirstBookingSourceContext\(\)[\s\S]*handleBookingRoomSelectionContextChange\(\)/);
     assert.match(bookingJs, /async function initializeRoomFirstBookingSourceContext\(\)[\s\S]*BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
-    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*!roomContext\?\.sourceBookingId \|\| roomContext\.groupId/);
-    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)/);
-    assert.match(bookingJs, /function activityFirstKitchenSelectorContext\(\)[\s\S]*String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorState\(\)[\s\S]*!roomContext\?\.sourceBookingId \|\| roomContext\.groupId/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorState\(\)[\s\S]*!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)/);
+    assert.match(bookingJs, /function activityFirstKitchenSelectorState\(\)[\s\S]*String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
+    assert.match(bookingJs, /function bookingBanquetSelectorRealState\(\)/);
+    assert.match(bookingJs, /function bookingBanquetSelectorVirtualState\(\)/);
+    assert.match(bookingJs, /function bookingBanquetSelectorCanShowVirtual\(virtualState, realState, selectedGroupId = ''\)/);
     assert.match(bookingJs, /function activityFirstKitchenSelectorOptionLabel\(context = \{\}\)[\s\S]*Створити банкет з активності/);
-    assert.match(bookingJs, /const showActivityFirstBanquetCreateOption = Boolean\(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates\.length\)/);
-    assert.match(bookingJs, /const unlinkedOptionLabel = showActivityFirstBanquetCreateOption[\s\S]*activityFirstKitchenSelectorOptionLabel\(sourceOnlyRoomContext\)[\s\S]*'Без прив’язки'/);
+    assert.match(bookingJs, /const showVirtualBanquetCreateOption = bookingBanquetSelectorCanShowVirtual\(virtualState, realState, selectedGroupId\)/);
+    assert.match(bookingJs, /const unlinkedOptionLabel = showVirtualBanquetCreateOption \? virtualState\.label : 'Без прив’язки'/);
     assert.match(bookingJs, /<option value="">\$\{escapeHtml\(unlinkedOptionLabel\)\}<\/option>/);
-    assert.match(bookingJs, /Банкет буде створено автоматично з активності/);
+    assert.match(bookingJs, /hint\.textContent = virtualState\.hint/);
+    assert.match(bookingJs, /Банкет буде створено з активності/);
     assert.match(bookingJs, /source: groupId \? 'room_selection' : 'activity_first_kitchen_bridge'/);
     assert.match(bookingJs, /BookingDrawerState\.roomSelectionBanquetContext = banquetContext;[\s\S]*else \{\s*renderBookingBanquetGroupSelector\(\);/);
     assert.doesNotMatch(bookingJs, /__activity_first/);
@@ -1643,8 +1655,9 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /if \(!booking \|\| \(!context\.groupId && !context\.sourceBookingId\)\) return booking;/);
     assert.match(bookingJs, /groupId: context\.groupId \|\| null/);
     assert.match(bookingJs, /attachBanquetGroupContextToBooking\(booking, sourceContext, 'kitchen', 'activity_first_kitchen_bridge'\)/);
-    assert.match(bookingJs, /sourceBookingId: sourceContext\.sourceBookingId/);
-    assert.match(bookingJs, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)/);
+    assert.match(bookingJs, /sourceBookingId: createPath\.sourceBookingId/);
+    assert.match(bookingJs, /const createPath = resolveBookingCreatePath\(\{[\s\S]*activityFirstKitchenBridge,[\s\S]*kitchenFirstActivityBridge[\s\S]*\}, BookingDrawerState\)/);
+    assert.match(bookingJs, /if \(createPath\.blocked\)[\s\S]*showNotification\(createPath\.error/);
     assert.match(bookingJs, /if \(createResult && createResult\.success === false\) \{\s*if \(createResult\.conflictBookingId\) revealHiddenBooking\(createResult\.conflictBookingId\);/);
     assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
     assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
@@ -1659,10 +1672,10 @@ test('booking create flow bridges room-source kitchen without an existing banque
 });
 
 test('activity-first kitchen room open initializes source context after programmatic room selection', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const openPanelBlock = bookingJs.slice(
         bookingJs.indexOf('async function openBookingPanel'),
-        bookingJs.indexOf('// ==========================================\n// CRM: CUSTOMER DATA')
+        bookingJs.indexOf('function clearCustomerFields')
     );
     const initBlock = bookingJs.slice(
         bookingJs.indexOf('async function initializeRoomFirstBookingSourceContext'),
@@ -1676,29 +1689,153 @@ test('activity-first kitchen room open initializes source context after programm
     assert.doesNotMatch(initBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBooking/);
 });
 
+test('booking details explain room timeline visibility for kitchen service and room activity bookings', () => {
+    const ctx = createBanquetModalDetailHarness();
+    const bookingJs = readBookingSurface();
+    const modalsCss = read('css', 'modals.css');
+    const timelineCss = read('css', 'timeline.css');
+    const kitchenNotice = ctx.renderBookingTimelineVisibilityNotice({
+        id: 'BK-KITCHEN',
+        date: '2026-06-23',
+        time: '13:15',
+        room: 'Растішка',
+        banquetGuests: 8,
+        extraData: {
+            bookingPackage: {
+                menuPositions: [{ title: 'Піца', servingTime: '14:00' }]
+            },
+            banquetGroup: { groupId: 'GRP-1' }
+        }
+    }, {
+        group: { id: 'GRP-1', groupName: 'Тестовий банкет' }
+    });
+    const activityNotice = ctx.renderBookingTimelineVisibilityNotice({
+        id: 'BK-ACTIVITY',
+        date: '2026-06-23',
+        time: '13:45',
+        room: 'Растішка',
+        programId: 'paper-show',
+        programName: 'Паперове шоу'
+    });
+
+    assert.match(kitchenNotice, /Відображається у вкладці «Кімнати»/);
+    assert.match(kitchenNotice, /Кімната: Растішка/);
+    assert.match(kitchenNotice, /Час: 13:15/);
+    assert.match(kitchenNotice, /Банкет: Тестовий банкет/);
+    assert.match(kitchenNotice, /showBookingInRoomTimeline\('BK-KITCHEN', '2026-06-23'\)/);
+    assert.match(kitchenNotice, /Показати в кімнатах/);
+    assert.match(activityNotice, /Може відображатися у «Свята» і «Кімнати»/);
+    assert.match(activityNotice, /showBookingInRoomTimeline\('BK-ACTIVITY', '2026-06-23'\)/);
+    assert.match(bookingJs, /const timelineVisibilityHtml = renderBookingTimelineVisibilityNotice\(booking, banquetSnapshot\)/);
+    assert.match(bookingJs, /\$\{timelineVisibilityHtml\}/);
+    assert.match(bookingJs, /async function showBookingInRoomTimeline\(bookingId, dateKey = ''\)/);
+    assert.match(bookingJs, /window\.TimelineView\.set\('rooms', \{ render: typeof renderTimeline === 'function' \? false : true \}\)/);
+    assert.match(bookingJs, /findRoomServiceMarkerForBooking\(bookingIdText, groupId\)/);
+    assert.match(modalsCss, /\.booking-detail-visibility/);
+    assert.match(modalsCss, /\.booking-detail-visibility__action/);
+    assert.match(timelineCss, /\.timeline-room-service-marker\.booking-block--just-created/);
+});
+
+test('banquet drawer preparation never creates banquet groups before save', () => {
+    const bookingJs = readBookingSurface();
+    const openPanelBlock = bookingJs.slice(
+        bookingJs.indexOf('async function openBookingPanel'),
+        bookingJs.indexOf('function clearCustomerFields')
+    );
+    const initBlock = bookingJs.slice(
+        bookingJs.indexOf('async function initializeRoomFirstBookingSourceContext'),
+        bookingJs.indexOf('async function openBookingPanel')
+    );
+    const roomSelectionBlock = bookingJs.slice(
+        bookingJs.indexOf('async function handleBookingRoomSelectionContextChange'),
+        bookingJs.indexOf('function clearRoomSelectionBanquetContextAfterCustomerChange')
+    );
+    const selectorBlock = bookingJs.slice(
+        bookingJs.indexOf('function renderBookingBanquetGroupSelector'),
+        bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates')
+    );
+    const roomAnimationBridgeBlock = bookingJs.slice(
+        bookingJs.indexOf('async function openRoomBookingAnimationBridge'),
+        bookingJs.indexOf('// v43.5.0: Reveal a booking')
+    );
+    const saveFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const createPath = resolveBookingCreatePath'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+
+    assert.doesNotMatch(bookingJs, /function findOrCreateBanquetGroupForSourceBooking/);
+    assert.doesNotMatch(openPanelBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBanquetActivityBooking|apiCreateBooking/);
+    assert.doesNotMatch(initBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBanquetActivityBooking|apiCreateBooking/);
+    assert.doesNotMatch(roomSelectionBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBanquetActivityBooking|apiCreateBooking/);
+    assert.doesNotMatch(selectorBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBanquetActivityBooking|apiCreateBooking/);
+    assert.doesNotMatch(roomAnimationBridgeBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBanquetActivityBooking(?:FromSource)?|apiCreateBooking/);
+    assert.match(roomAnimationBridgeBlock, /apiGetBanquetByBooking\(sourceBooking\.id\)/);
+    assert.match(saveFlowBlock, /apiCreateBanquetMemberBookingFromSource/);
+    assert.match(saveFlowBlock, /apiCreateBanquetActivityBookingFromSource/);
+    assert.match(bookingJs, /function createBanquetGroupFromBookingDetails\(bookingId\)[\s\S]*apiCreateBanquetGroup\(sourceId/);
+});
+
 test('activity-first kitchen selector renders virtual create state without fake group id', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const selectorBlock = bookingJs.slice(
         bookingJs.indexOf('function renderBookingBanquetGroupSelector'),
         bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates')
     );
     const sourceOnlyBlock = bookingJs.slice(
-        bookingJs.indexOf('function activityFirstKitchenSelectorContext'),
+        bookingJs.indexOf('function activityFirstKitchenSelectorState'),
         bookingJs.indexOf('function clearSelectedBanquetGroupIfCustomerMismatch')
     );
 
     assert.match(sourceOnlyBlock, /if \(!roomContext\?\.sourceBookingId \|\| roomContext\.groupId\) return null;/);
     assert.match(sourceOnlyBlock, /if \(!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)\) return null;/);
     assert.match(sourceOnlyBlock, /String\(sourceCustomerId\) !== String\(selectedCustomerId\)/);
-    assert.match(selectorBlock, /const showActivityFirstBanquetCreateOption = Boolean\(sourceOnlyRoomContext && !selectedGroupId && !visibleCandidates\.length\);/);
-    assert.match(selectorBlock, /const unlinkedOptionLabel = showActivityFirstBanquetCreateOption[\s\S]*activityFirstKitchenSelectorOptionLabel\(sourceOnlyRoomContext\)[\s\S]*'Без прив’язки'/);
+    assert.match(selectorBlock, /const showVirtualBanquetCreateOption = bookingBanquetSelectorCanShowVirtual\(virtualState, realState, selectedGroupId\);/);
+    assert.match(selectorBlock, /const unlinkedOptionLabel = showVirtualBanquetCreateOption \? virtualState\.label : 'Без прив’язки'/);
     assert.match(selectorBlock, /<option value="">\$\{escapeHtml\(unlinkedOptionLabel\)\}<\/option>/);
-    assert.match(selectorBlock, /Банкет буде створено автоматично з активності/);
+    assert.match(selectorBlock, /hint\.textContent = virtualState\.hint/);
+    assert.match(sourceOnlyBlock, /Банкет буде створено з активності/);
     assert.doesNotMatch(selectorBlock, /__activity_first|virtualGroupId|fakeGroupId/);
 });
 
+test('banquet selector separates real candidates from virtual source bridge state', () => {
+    const bookingJs = readBookingSurface();
+    const apiJs = read('js', 'api.js');
+    const selectorBlock = bookingJs.slice(
+        bookingJs.indexOf('function renderBookingBanquetGroupSelector'),
+        bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates')
+    );
+    const refreshBlock = bookingJs.slice(
+        bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates'),
+        bookingJs.indexOf('function scheduleBookingBanquetGroupCandidatesRefresh')
+    );
+    const keyBlock = bookingJs.slice(
+        bookingJs.indexOf('function bookingBanquetSelectorSourceMeta'),
+        bookingJs.indexOf('function clearSelectedBanquetGroupIfCustomerMismatch')
+    );
+
+    assert.match(bookingJs, /function bookingBanquetSelectorRealState\(\)[\s\S]*visibleCandidates[\s\S]*hasRealCandidates/);
+    assert.match(bookingJs, /function bookingBanquetSelectorVirtualState\(\)[\s\S]*activityFirstKitchenSelectorState\(\)[\s\S]*kitchenFirstActivitySelectorState\(\)/);
+    assert.match(bookingJs, /function bookingBanquetSelectorCanShowVirtual\(virtualState, realState, selectedGroupId = ''\)[\s\S]*!realState\?\.hasRealCandidates/);
+    assert.match(selectorBlock, /const realState = bookingBanquetSelectorRealState\(\);/);
+    assert.match(selectorBlock, /const virtualState = bookingBanquetSelectorVirtualState\(\);/);
+    assert.match(selectorBlock, /const virtualInvalidMessage = bookingBanquetSelectorVirtualInvalidMessage\(virtualState, realState, selectedGroupId\);/);
+    assert.match(selectorBlock, /else if \(virtualInvalidMessage\) \{\s*hint\.textContent = virtualInvalidMessage;/);
+    assert.doesNotMatch(selectorBlock, /__activity_first|virtualGroupId|fakeGroupId/);
+    assert.match(keyBlock, /room: String\(document\.getElementById\('roomSelect'\)\?\.value \|\| sourceContext\?\.room \|\| ''\)\.trim\(\)/);
+    assert.match(keyBlock, /sourceBookingId: String\(sourceBookingId \|\| ''\)\.trim\(\)/);
+    assert.match(keyBlock, /drawerMode: normalizeBookingDrawerMode\(BookingDrawerState\.drawerMode \|\| inferBookingDrawerModeForOpen\(\)\)/);
+    assert.match(keyBlock, /contextGeneration: String\(sourceContext\?\.generationId \|\| BookingDrawerState\.roomSelectionContextRequestToken \|\| 0\)/);
+    assert.match(keyBlock, /function bookingBanquetGroupCandidatesRefreshKey\(\{ date = '', customerId = '' \} = \{\}\)[\s\S]*date:[\s\S]*customerId:[\s\S]*\.\.\.bookingBanquetSelectorSourceMeta\(\)/);
+    assert.match(refreshBlock, /const sourceMeta = bookingBanquetSelectorSourceMeta\(\);[\s\S]*const key = bookingBanquetGroupCandidatesRefreshKey\(\{ date, customerId \}\)/);
+    assert.match(refreshBlock, /apiGetBanquetCandidates\(\{[\s\S]*room: sourceMeta\.room,[\s\S]*sourceBookingId: sourceMeta\.sourceBookingId,[\s\S]*drawerMode: sourceMeta\.drawerMode,[\s\S]*contextGeneration: sourceMeta\.contextGeneration/);
+    assert.match(apiJs, /if \(options\.room\) params\.set\('room', options\.room\)/);
+    assert.match(apiJs, /if \(options\.sourceBookingId\) params\.set\('sourceBookingId', options\.sourceBookingId\)/);
+    assert.match(apiJs, /if \(options\.drawerMode\) params\.set\('drawerMode', options\.drawerMode\)/);
+    assert.match(apiJs, /if \(options\.contextGeneration\) params\.set\('contextGeneration', options\.contextGeneration\)/);
+});
+
 test('activity-first kitchen source-only save uses source bridge before normal create', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const createFlowBlock = bookingJs.slice(
         bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
         bookingJs.indexOf('if (createResult && createResult.success === false)')
@@ -1707,21 +1844,27 @@ test('activity-first kitchen source-only save uses source bridge before normal c
         bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
         bookingJs.indexOf("if (typeof window !== 'undefined')")
     );
+    const resolverBlock = bookingJs.slice(
+        bookingJs.indexOf('function resolveBookingCreatePath'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
     const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
-    const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetMemberBooking(selectedBanquetContext.groupId');
+    const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetMemberBooking(createPath.groupId');
     const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
 
+    assert.match(bookingJs, /case 'source_activity_to_kitchen':[\s\S]*\/api\/banquets\/from-source\/member-booking/);
+    assert.match(resolverBlock, /if \(activityFirstKitchenBridge\?\.shouldUse\)[\s\S]*return buildBookingCreatePath\('source_activity_to_kitchen'/);
     assert.match(validateBridgeBlock, /const sourceContext = activityFirstKitchenSourceContext\(context\);\s*if \(!sourceContext\?\.sourceBookingId\) return \{ shouldUse: false \};/);
     assert.doesNotMatch(validateBridgeBlock, /pickRoomBanquetSourceBooking/);
     assert.doesNotMatch(validateBridgeBlock, /sourceBookingToBanquetContext/);
-    assert.match(createFlowBlock, /else if \(activityFirstKitchenBridge\.shouldUse\)[\s\S]*apiCreateBanquetMemberBookingFromSource\(\{[\s\S]*sourceBookingId: sourceContext\.sourceBookingId,[\s\S]*role: 'kitchen'/);
+    assert.match(createFlowBlock, /else if \(createPath\.kind === 'source_activity_to_kitchen'\)[\s\S]*apiCreateBanquetMemberBookingFromSource\(\{[\s\S]*sourceBookingId: createPath\.sourceBookingId,[\s\S]*role: 'kitchen'/);
     assert.ok(sourceBridgeCall >= 0, 'source-only kitchen save calls from-source member endpoint');
     assert.ok(realGroupCall > sourceBridgeCall, 'real group member endpoint remains after source-only bridge');
     assert.ok(normalCreateCall > sourceBridgeCall, 'normal booking create remains fallback after source-only bridge');
 });
 
 test('kitchen-first activity source-only save uses source bridge before normal create', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const apiJs = read('js', 'api.js');
     const createFlowBlock = bookingJs.slice(
         bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
@@ -1731,6 +1874,10 @@ test('kitchen-first activity source-only save uses source bridge before normal c
         bookingJs.indexOf('function validateKitchenFirstActivityBridge'),
         bookingJs.indexOf("if (typeof window !== 'undefined')")
     );
+    const resolverBlock = bookingJs.slice(
+        bookingJs.indexOf('function resolveBookingCreatePath'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
     const sourceBridgeCall = createFlowBlock.indexOf('apiCreateBanquetActivityBookingFromSource');
     const realGroupCall = createFlowBlock.indexOf('apiCreateBanquetActivityBooking(bridgeGroupId');
     const normalCreateCall = createFlowBlock.indexOf('createResult = await apiCreateBooking(booking)');
@@ -1738,36 +1885,39 @@ test('kitchen-first activity source-only save uses source bridge before normal c
     assert.match(apiJs, /async function apiCreateBanquetActivityBookingFromSource\(payload = \{\}\)/);
     assert.match(apiJs, /\/banquets\/from-source\/activity-booking/);
     assert.match(bookingJs, /function roomBookingLooksLikeKitchen\(/);
+    assert.match(bookingJs, /function kitchenFirstActivitySelectorState\(/);
     assert.match(bookingJs, /function kitchenFirstActivitySelectorContext\(/);
     assert.match(bookingJs, /function kitchenFirstActivitySelectorOptionLabel/);
-    assert.match(bookingJs, /const showKitchenFirstBanquetCreateOption = Boolean\(sourceOnlyKitchenContext && !selectedGroupId && !visibleCandidates\.length\)/);
+    assert.match(bookingJs, /function bookingBanquetSelectorVirtualState\(\)[\s\S]*kitchenFirstActivitySelectorState\(\)/);
     assert.match(bookingJs, /Створити банкет з кухні/);
-    assert.match(bookingJs, /Банкет буде створено автоматично з кухні/);
+    assert.match(bookingJs, /Банкет буде створено з кухні/);
     assert.match(validateBridgeBlock, /const bridgeContext = BookingDrawerState\.roomBookingAnimationBridge;/);
     assert.match(validateBridgeBlock, /!bridgeContext\?\.sourceBookingId \|\| bridgeContext\.groupId/);
     assert.match(validateBridgeBlock, /roomBookingLooksLikeKitchen\(sourceBooking\)/);
     assert.match(validateBridgeBlock, /String\(sourceCustomerId\) === String\(selectedCustomerId\)/);
+    assert.match(bookingJs, /case 'source_kitchen_to_activity':[\s\S]*\/api\/banquets\/from-source\/activity-booking/);
+    assert.match(resolverBlock, /if \(kitchenFirstActivityBridge\?\.shouldUse\)[\s\S]*return buildBookingCreatePath\('source_kitchen_to_activity'/);
     assert.match(createFlowBlock, /const kitchenFirstActivityBridge = validateKitchenFirstActivityBridge\(formData, selectedBanquetContext\);/);
-    assert.match(createFlowBlock, /else if \(kitchenFirstActivityBridge\.shouldUse\)[\s\S]*apiCreateBanquetActivityBookingFromSource\(\{[\s\S]*sourceBookingId: sourceContext\.sourceBookingId,[\s\S]*linkedBookings: linked/);
+    assert.match(createFlowBlock, /else if \(createPath\.kind === 'source_kitchen_to_activity'\)[\s\S]*apiCreateBanquetActivityBookingFromSource\(\{[\s\S]*sourceBookingId: createPath\.sourceBookingId,[\s\S]*linkedBookings: linked/);
     assert.ok(sourceBridgeCall >= 0, 'source-only activity save calls from-source activity endpoint');
     assert.ok(realGroupCall >= 0 && realGroupCall < sourceBridgeCall, 'existing bridge group endpoint remains before source-only activity bridge');
     assert.ok(normalCreateCall > sourceBridgeCall, 'normal booking create remains fallback after source-only activity bridge');
 });
 
 test('activity-first kitchen existing banquet group still uses group member endpoint', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const createFlowBlock = bookingJs.slice(
         bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
         bookingJs.indexOf('if (createResult && createResult.success === false)')
     );
 
-    assert.match(createFlowBlock, /else if \(selectedBanquetContext\.groupId && isSelectedBanquetKitchenCreate\(formData\)\)[\s\S]*attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\);[\s\S]*apiCreateBanquetMemberBooking\(selectedBanquetContext\.groupId/);
-    assert.match(createFlowBlock, /sourceBookingId: selectedBanquetContext\.sourceBookingId \|\| null/);
+    assert.match(createFlowBlock, /else if \(createPath\.kind === 'existing_group_member'\)[\s\S]*attachBanquetGroupContextToBooking\(booking, selectedBanquetContext, 'kitchen', selectedBanquetContextSource\);[\s\S]*apiCreateBanquetMemberBooking\(createPath\.groupId/);
+    assert.match(createFlowBlock, /sourceBookingId: createPath\.sourceBookingId \|\| null/);
     assert.match(createFlowBlock, /role: 'kitchen'/);
 });
 
 test('activity-first kitchen customer mismatch is blocked before source bridge API call', () => {
-    const bookingJs = read('js', 'booking.js');
+    const bookingJs = readBookingSurface();
     const validateBridgeBlock = bookingJs.slice(
         bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
         bookingJs.indexOf("if (typeof window !== 'undefined')")
@@ -1776,13 +1926,89 @@ test('activity-first kitchen customer mismatch is blocked before source bridge A
         bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
         bookingJs.indexOf('if (createResult && createResult.success === false)')
     );
+    const resolverBlock = bookingJs.slice(
+        bookingJs.indexOf('function resolveBookingCreatePath'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
     const mismatchCheck = validateBridgeBlock.indexOf('if (!selectedMatchesSource && !autoFilledMatchesSource)');
+    const blockedCheck = createFlowBlock.indexOf('if (createPath.blocked)');
     const apiCall = createFlowBlock.indexOf('apiCreateBanquetMemberBookingFromSource');
 
     assert.ok(mismatchCheck >= 0, 'source/customer mismatch guard exists');
     assert.match(validateBridgeBlock, /error: 'Клієнт кухні не збігається з клієнтом бронювання в кімнаті/);
-    assert.match(createFlowBlock, /if \(activityFirstKitchenBridge\.shouldUse && activityFirstKitchenBridge\.error\)[\s\S]*showNotification\(activityFirstKitchenBridge\.error, 'error'\)[\s\S]*unlockSubmitBtn\(\);\s*return;/);
-    assert.ok(apiCall > createFlowBlock.indexOf('if (activityFirstKitchenBridge.shouldUse && activityFirstKitchenBridge.error)'), 'source API call is after mismatch/error guard');
+    assert.match(resolverBlock, /selectedBookingBanquetGroupCustomerMismatch\(selectedBanquetContext\)[\s\S]*reason: 'customer_mismatch'/);
+    assert.match(resolverBlock, /activityFirstKitchenBridge\.error[\s\S]*blocked: true/);
+    assert.match(createFlowBlock, /if \(createPath\.blocked\)[\s\S]*showNotification\(createPath\.error[\s\S]*unlockSubmitBtn\(\);\s*return;/);
+    assert.ok(blockedCheck >= 0 && apiCall > blockedCheck, 'source API call is after createPath blocked guard');
+});
+
+test('booking drawer state lifecycle has centralized mode reset and source generation guards', () => {
+    const bookingJs = readBookingSurface();
+    const stateStart = bookingJs.search(/(?:const|var) BookingDrawerState =/);
+    const stateBlock = bookingJs.slice(
+        stateStart,
+        bookingJs.indexOf('const BOOKING_ENTRY_PRICE_RULE_CODES')
+    );
+    const openPanelBlock = bookingJs.slice(
+        bookingJs.indexOf('async function openBookingPanel'),
+        bookingJs.indexOf('// ==========================================\n// CRM: CUSTOMER DATA')
+    );
+    const resetBlock = bookingJs.slice(
+        bookingJs.indexOf('function normalizeBookingDrawerMode'),
+        bookingJs.indexOf('function renderBookingBanquetGroupSelector')
+    );
+    const roomSourceBlock = bookingJs.slice(
+        bookingJs.indexOf('function buildBookingRoomSourceContext'),
+        bookingJs.indexOf('function clearAutoFilledBanquetFromRoomSelection')
+    );
+    const roomChangeBlock = bookingJs.slice(
+        bookingJs.indexOf('function clearRoomSelectionBanquetContextAfterCustomerChange'),
+        bookingJs.indexOf('function markBookingCustomerSelectionManual')
+    );
+
+    assert.ok(stateStart >= 0, 'BookingDrawerState module state exists');
+    assert.match(stateBlock, /drawerMode: 'create_activity'/);
+    assert.match(stateBlock, /drawerGenerationId: 0/);
+    assert.match(stateBlock, /roomSourceContext: null/);
+    assert.match(stateBlock, /ACTIVITY_FIRST_KITCHEN_BRIDGE: 'activity_first_kitchen_bridge'/);
+    assert.match(stateBlock, /KITCHEN_FIRST_ACTIVITY_BRIDGE: 'kitchen_first_activity_bridge'/);
+    assert.match(stateBlock, /EXISTING_GROUP_MEMBER: 'existing_group_member'/);
+    assert.match(stateBlock, /EXISTING_GROUP_ACTIVITY: 'existing_group_activity'/);
+    assert.match(resetBlock, /function resetBookingDrawerStateForOpen\(mode = inferBookingDrawerModeForOpen\(\)\)/);
+    assert.match(resetBlock, /BookingDrawerState\.drawerGenerationId = \(Number\(BookingDrawerState\.drawerGenerationId\) \|\| 0\) \+ 1/);
+    assert.match(resetBlock, /resetBookingRoomSourceContext\(\{ render: false \}\)/);
+    assert.match(resetBlock, /resetBanquetSelectorContext\(\{ render: false \}\)/);
+    assert.match(openPanelBlock, /resetBookingDrawerStateForOpen\(options\.drawerMode \|\| inferBookingDrawerModeForOpen\(\)\)/);
+    assert.match(roomSourceBlock, /generationId: Number\(options\.generationId \?\? BookingDrawerState\.roomSelectionContextRequestToken/);
+    assert.match(roomSourceBlock, /drawerGenerationId: Number\(BookingDrawerState\.drawerGenerationId \|\| 0\)/);
+    assert.match(roomSourceBlock, /sourceBookingId,\s*sourceRole,[\s\S]*customerId:[\s\S]*date:[\s\S]*room:[\s\S]*time:[\s\S]*groupId:[\s\S]*source:/);
+    assert.match(roomSourceBlock, /function bookingRoomSourceContextStaleReason\(context = \{\}\)[\s\S]*stale_drawer_generation[\s\S]*stale_source_date[\s\S]*stale_source_room[\s\S]*stale_source_customer/);
+    assert.match(roomChangeBlock, /preserveSourceOnlyMismatchGuard/);
+    assert.match(roomChangeBlock, /staleReason: 'customer_changed'/);
+});
+
+test('booking drawer bridge validators reject stale generated source context before API save', () => {
+    const bookingJs = readBookingSurface();
+    const activityValidateBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('function validateKitchenFirstActivityBridge')
+    );
+    const kitchenValidateBlock = bookingJs.slice(
+        bookingJs.indexOf('function validateKitchenFirstActivityBridge'),
+        bookingJs.indexOf("if (typeof window !== 'undefined')")
+    );
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+
+    assert.match(activityValidateBlock, /const staleReason = bookingRoomSourceContextStaleReason\(sourceContext\);[\s\S]*bookingRoomSourceContextStaleMessage\(staleReason\)/);
+    assert.match(kitchenValidateBlock, /const staleReason = bookingRoomSourceContextStaleReason\(bridgeContext\);[\s\S]*bookingRoomSourceContextStaleMessage\(staleReason\)/);
+    assert.match(createFlowBlock, /if \(createPath\.blocked\)[\s\S]*return;/);
+    assert.match(createFlowBlock, /createPath\.kind === 'source_activity_to_kitchen'[\s\S]*setBookingDrawerMode\(BOOKING_DRAWER_MODES\.ACTIVITY_FIRST_KITCHEN_BRIDGE\)[\s\S]*apiCreateBanquetMemberBookingFromSource/);
+    assert.match(createFlowBlock, /createPath\.kind === 'source_kitchen_to_activity'[\s\S]*setBookingDrawerMode\(BOOKING_DRAWER_MODES\.KITCHEN_FIRST_ACTIVITY_BRIDGE\)[\s\S]*apiCreateBanquetActivityBookingFromSource/);
+    assert.match(createFlowBlock, /createPath\.kind === 'existing_group_member'[\s\S]*setBookingDrawerMode\(BOOKING_DRAWER_MODES\.EXISTING_GROUP_MEMBER\)[\s\S]*apiCreateBanquetMemberBooking\(createPath\.groupId/);
+    assert.match(createFlowBlock, /setBookingDrawerMode\(BOOKING_DRAWER_MODES\.EXISTING_GROUP_ACTIVITY\)[\s\S]*apiCreateBanquetActivityBooking/);
 });
 
 test('banquet group repair script is dry-run by default and reuses backend reconciliation', () => {

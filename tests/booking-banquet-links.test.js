@@ -564,6 +564,19 @@ function makeDb(rows, links = [], options = {}) {
             }
             return { rows: [{ ...link }], rowCount: 1 };
         }
+        if (/DELETE FROM booking_banquet_links/i.test(sql) && /booking_a_id = \$3\s+AND booking_b_id = \$2/i.test(sql) && !/\bOR\b/i.test(sql)) {
+            const [businessContext, bookingA, bookingB, relationType] = params;
+            const before = state.links.length;
+            state.links = state.links.filter(link =>
+                !(
+                    link.business_context === businessContext &&
+                    link.booking_a_id === bookingB &&
+                    link.booking_b_id === bookingA &&
+                    link.relation_type === relationType
+                )
+            );
+            return { rows: [], rowCount: before - state.links.length };
+        }
         if (/DELETE FROM booking_banquet_links/i.test(sql)) {
             const [businessContext, bookingA, bookingB, relationType] = params;
             const before = state.links.length;
@@ -788,6 +801,50 @@ async function postSourceActivityBooking(baseUrl, payload) {
     return { res, data };
 }
 
+async function getTimelineBookings(baseUrl, date = '2099-06-01', timelineView = 'animators') {
+    const suffix = timelineView ? `?timelineView=${encodeURIComponent(timelineView)}&businessContext=event_genix` : '?businessContext=event_genix';
+    const res = await fetch(`${baseUrl}/api/bookings/${date}${suffix}`);
+    const data = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(data));
+    assert.ok(Array.isArray(data), 'timeline bookings response should be an array');
+    return data;
+}
+
+function timelineBooking(rows, id) {
+    const row = rows.find(item => String(item.id) === String(id));
+    assert.ok(row, `timeline booking ${id} should be present`);
+    return row;
+}
+
+function timelineBookingAbsent(rows, id) {
+    assert.equal(rows.some(item => String(item.id) === String(id)), false, `timeline booking ${id} should be absent`);
+}
+
+function assertTimelineProjection(row, expected = {}) {
+    assert.ok(row.timelineProjection, `${row.id} should carry timelineProjection`);
+    for (const [key, value] of Object.entries(expected)) {
+        assert.equal(row.timelineProjection[key], value, `${row.id}.timelineProjection.${key}`);
+    }
+}
+
+function assertNoDuplicateBanquetReadModel(state, groupId, expectedBookingIds = []) {
+    const groups = state.banquetGroups.filter(group => String(group.id) === String(groupId));
+    assert.equal(groups.length, 1, `banquet group ${groupId} should exist once`);
+    for (const bookingId of expectedBookingIds) {
+        const memberships = state.banquetMemberships.filter(row =>
+            String(row.group_id) === String(groupId) &&
+            String(row.booking_id) === String(bookingId)
+        );
+        assert.equal(memberships.length, 1, `booking ${bookingId} should have one membership in ${groupId}`);
+    }
+    const linkKeys = state.links.map(link => [
+        link.business_context,
+        [link.booking_a_id, link.booking_b_id].map(String).sort().join('::'),
+        link.relation_type
+    ].join('|'));
+    assert.equal(new Set(linkKeys).size, linkKeys.length, 'compatibility links should not contain duplicate pairs');
+}
+
 function kitchenFirstSourceBooking(overrides = {}) {
     return bookingRow({
         id: 'BK-KITCHEN-FIRST',
@@ -887,6 +944,120 @@ test('GET bookings attaches visible banquet links symmetrically', async () => {
         assert.equal(first.sharedRoomLinks[0].targetId, 'BK-2099-0003');
         assert.deepEqual(first.bookingLinks.map(link => link.relationType).sort(), ['banquet_activity', 'shared_room_activity']);
         assert.equal(data.find(item => item.id === 'BK-2099-0002').banquetLinks[0].targetId, 'BK-2099-0001');
+    });
+});
+
+test('GET bookings returns canonical animator timelineProjection for activity, kitchen, linked, and legacy rows', async () => {
+    await withApp([
+        activityFirstSourceBooking(),
+        kitchenFirstSourceBooking(),
+        bookingRow({
+            id: 'BK-LINKED-CHILD',
+            time: '12:45',
+            line_id: 'line-child',
+            linked_to: 'BK-ACTIVITY-FIRST',
+            label: 'Linked helper animator',
+            room: 'Room A',
+            extra_data: JSON.stringify({
+                timelineIdentity: {
+                    resourceId: 'line-child',
+                    lineId: 'line-child',
+                    resourceType: 'animator',
+                    resourceName: 'Helper Animator',
+                    source: 'linked_booking_line'
+                }
+            })
+        }),
+        bookingRow({
+            id: 'BK-LEGACY-LINE',
+            time: '15:00',
+            line_id: 'legacy-line-1',
+            room: 'Room B',
+            extra_data: null
+        })
+    ], [], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/2099-06-01`);
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+
+        const activity = data.find(item => item.id === 'BK-ACTIVITY-FIRST');
+        assert.deepEqual(activity.timelineProjection, {
+            timelineView: 'animators',
+            view: 'animators',
+            resourceType: 'animator',
+            resourceId: 'line-rock',
+            resourceName: null,
+            lineId: 'line-rock',
+            sourceLineId: 'line-rock',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null,
+            businessContext: 'event_genix',
+            date: '2099-06-01'
+        });
+
+        const kitchen = data.find(item => item.id === 'BK-KITCHEN-FIRST');
+        assert.equal(kitchen.timelineProjection.timelineView, 'animators');
+        assert.equal(kitchen.timelineProjection.resourceType, 'service');
+        assert.equal(kitchen.timelineProjection.resourceId, 'banquet-service');
+        assert.equal(kitchen.timelineProjection.lineId, 'banquet-service');
+        assert.equal(kitchen.timelineProjection.visibleInAnimatorTimeline, false);
+        assert.equal(kitchen.timelineProjection.visibleInRoomTimeline, true);
+        assert.equal(kitchen.timelineProjection.displaySurface, 'hidden');
+        assert.equal(kitchen.timelineProjection.hiddenReason, 'banquet_service_hidden_from_animator');
+
+        const linked = data.find(item => item.id === 'BK-LINKED-CHILD');
+        assert.equal(linked.timelineProjection.resourceId, 'line-child');
+        assert.equal(linked.timelineProjection.lineId, 'line-child');
+        assert.equal(linked.timelineProjection.visibleInAnimatorTimeline, true);
+        assert.equal(linked.timelineProjection.visibleInRoomTimeline, false);
+
+        const legacy = data.find(item => item.id === 'BK-LEGACY-LINE');
+        assert.equal(legacy.timelineProjection.resourceId, 'legacy-line-1');
+        assert.equal(legacy.timelineProjection.resourceType, 'animator');
+        assert.equal(legacy.timelineProjection.visibleInAnimatorTimeline, true);
+    });
+});
+
+test('GET bookings room view projects activity and kitchen rows through the same room identity contract', async () => {
+    await withApp([
+        activityFirstSourceBooking(),
+        kitchenFirstSourceBooking(),
+        bookingRow({
+            id: 'BK-LINKED-ROOM-CHILD',
+            time: '12:45',
+            line_id: 'line-child',
+            linked_to: 'BK-ACTIVITY-FIRST',
+            room: 'Room A'
+        })
+    ], [], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/2099-06-01?timelineView=rooms`);
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.some(item => item.id === 'BK-LINKED-ROOM-CHILD'), false);
+
+        const activity = data.find(item => item.id === 'BK-ACTIVITY-FIRST');
+        assert.equal(activity.resourceId, 'Room A');
+        assert.equal(activity.resourceType, 'room');
+        assert.equal(activity.timelineProjection.timelineView, 'rooms');
+        assert.equal(activity.timelineProjection.resourceId, 'Room A');
+        assert.equal(activity.timelineProjection.resourceType, 'room');
+        assert.equal(activity.timelineProjection.lineId, 'line-rock');
+        assert.equal(activity.timelineProjection.visibleInAnimatorTimeline, true);
+        assert.equal(activity.timelineProjection.visibleInRoomTimeline, true);
+        assert.equal(activity.timelineProjection.displaySurface, 'booking_block');
+
+        const kitchen = data.find(item => item.id === 'BK-KITCHEN-FIRST');
+        assert.equal(kitchen.resourceId, 'Room A');
+        assert.equal(kitchen.resourceType, 'room');
+        assert.equal(kitchen.timelineProjection.timelineView, 'rooms');
+        assert.equal(kitchen.timelineProjection.resourceId, 'Room A');
+        assert.equal(kitchen.timelineProjection.resourceType, 'room');
+        assert.equal(kitchen.timelineProjection.lineId, 'banquet-service');
+        assert.equal(kitchen.timelineProjection.visibleInAnimatorTimeline, false);
+        assert.equal(kitchen.timelineProjection.visibleInRoomTimeline, true);
+        assert.equal(kitchen.timelineProjection.displaySurface, 'service_marker');
     });
 });
 
@@ -1122,6 +1293,66 @@ test('POST banquet source member-booking creates group from activity-first booki
     });
 });
 
+test('POST banquet source member-booking exposes final activity-first timeline payload', async () => {
+    await withApp([
+        activityFirstSourceBooking()
+    ], [], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceMemberBooking(baseUrl, sourceKitchenPayload());
+        assert.equal(res.status, 201, JSON.stringify(data));
+        const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-ACTIVITY-FIRST');
+        assert.ok(group, 'activity-first bridge should create a banquet group');
+        assertNoDuplicateBanquetReadModel(state, group.id, ['BK-ACTIVITY-FIRST', data.booking.id]);
+
+        const animatorRows = await getTimelineBookings(baseUrl, '2099-06-01', 'animators');
+        const animatorActivity = timelineBooking(animatorRows, 'BK-ACTIVITY-FIRST');
+        assertTimelineProjection(animatorActivity, {
+            timelineView: 'animators',
+            resourceType: 'animator',
+            resourceId: 'line-rock',
+            displaySurface: 'booking_block',
+            hiddenReason: null,
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true
+        });
+        const animatorKitchen = timelineBooking(animatorRows, data.booking.id);
+        assertTimelineProjection(animatorKitchen, {
+            timelineView: 'animators',
+            resourceType: 'service',
+            resourceId: 'banquet-service',
+            displaySurface: 'hidden',
+            hiddenReason: 'banquet_service_hidden_from_animator',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true
+        });
+
+        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
+        const roomActivity = timelineBooking(roomRows, 'BK-ACTIVITY-FIRST');
+        assert.equal(roomActivity.resourceId, 'Room A');
+        assert.equal(roomActivity.resourceType, 'room');
+        assertTimelineProjection(roomActivity, {
+            timelineView: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            displaySurface: 'booking_block',
+            hiddenReason: null,
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true
+        });
+        const roomKitchen = timelineBooking(roomRows, data.booking.id);
+        assert.equal(roomKitchen.resourceId, 'Room A');
+        assert.equal(roomKitchen.resourceType, 'room');
+        assertTimelineProjection(roomKitchen, {
+            timelineView: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            displaySurface: 'service_marker',
+            hiddenReason: null,
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true
+        });
+    });
+});
+
 test('POST banquet source member-booking reuses existing activity group without duplicates', async () => {
     await withApp([
         activityFirstSourceBooking()
@@ -1160,6 +1391,49 @@ test('POST banquet source member-booking reuses existing activity group without 
         assert.equal(extra.bookingPackage.finalTotal, 3700);
         assert.equal(state.links.length, 1);
         assert.equal(state.tx.filter(item => item === 'COMMIT').length, 1);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ACTIVITY-FIRST',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ACTIVITY-FIRST',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Paper neon show',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ACTIVITY-FIRST',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVITY-FIRST',
+            role: 'primary',
+            sort_order: 10
+        }]
+    });
+});
+
+test('POST banquet source member-booking reuses existing read model without duplicate links', async () => {
+    await withApp([
+        activityFirstSourceBooking()
+    ], [{
+        business_context: 'event_genix',
+        booking_a_id: 'BK-ACTIVITY-FIRST',
+        booking_b_id: 'BK-2099-9999',
+        relation_type: 'banquet_activity',
+        label: 'Existing compatibility link',
+        created_by: 'tester',
+        created_at: new Date('2099-01-01T00:00:00Z').toISOString()
+    }], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceMemberBooking(baseUrl, sourceKitchenPayload());
+        assert.equal(res.status, 201, JSON.stringify(data));
+        assert.equal(data.createdGroup, false);
+        assertNoDuplicateBanquetReadModel(state, 'BQ-ACTIVITY-FIRST', ['BK-ACTIVITY-FIRST', data.booking.id]);
+        assert.equal(state.banquetGroups.length, 1);
+        assert.equal(state.links.length, 1);
+        assert.deepEqual([state.links[0].booking_a_id, state.links[0].booking_b_id].sort(), ['BK-ACTIVITY-FIRST', data.booking.id].sort());
     }, {
         banquetGroups: [{
             id: 'BQ-ACTIVITY-FIRST',
@@ -1264,6 +1538,73 @@ test('POST banquet source activity-booking creates group from kitchen-first book
         );
         assert.equal(state.tx.filter(item => item === 'COMMIT').length, 1);
         assert.equal(state.tx.includes('ROLLBACK'), false);
+    });
+});
+
+test('POST banquet source activity-booking exposes final kitchen-first timeline payload', async () => {
+    await withApp([
+        kitchenFirstSourceBooking()
+    ], [], async ({ baseUrl, state }) => {
+        const { res, data } = await postSourceActivityBooking(baseUrl, sourceActivityPayload());
+        assert.equal(res.status, 201, JSON.stringify(data));
+        const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-KITCHEN-FIRST');
+        assert.ok(group, 'kitchen-first bridge should create a banquet group');
+        assert.equal(group.source, 'kitchen_first_activity_bridge');
+        assertNoDuplicateBanquetReadModel(state, group.id, ['BK-KITCHEN-FIRST', data.booking.id]);
+        assert.equal(
+            state.banquetMemberships.find(row => row.booking_id === 'BK-KITCHEN-FIRST')?.role,
+            'primary',
+            'current business rule keeps first kitchen root as primary'
+        );
+        assert.equal(
+            state.banquetMemberships.find(row => row.booking_id === data.booking.id)?.role,
+            'activity',
+            'created activity is attached as activity'
+        );
+
+        const animatorRows = await getTimelineBookings(baseUrl, '2099-06-01', 'animators');
+        const animatorKitchen = timelineBooking(animatorRows, 'BK-KITCHEN-FIRST');
+        assertTimelineProjection(animatorKitchen, {
+            timelineView: 'animators',
+            resourceType: 'service',
+            resourceId: 'banquet-service',
+            displaySurface: 'hidden',
+            hiddenReason: 'banquet_service_hidden_from_animator',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true
+        });
+        const animatorActivity = timelineBooking(animatorRows, data.booking.id);
+        assertTimelineProjection(animatorActivity, {
+            timelineView: 'animators',
+            resourceType: 'animator',
+            resourceId: 'line-activity-new',
+            displaySurface: 'booking_block',
+            hiddenReason: null,
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true
+        });
+
+        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
+        const roomKitchen = timelineBooking(roomRows, 'BK-KITCHEN-FIRST');
+        assertTimelineProjection(roomKitchen, {
+            timelineView: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            displaySurface: 'service_marker',
+            hiddenReason: null,
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true
+        });
+        const roomActivity = timelineBooking(roomRows, data.booking.id);
+        assertTimelineProjection(roomActivity, {
+            timelineView: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            displaySurface: 'booking_block',
+            hiddenReason: null,
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true
+        });
     });
 });
 
@@ -2246,11 +2587,31 @@ test('DELETE booking detaches cancelled banquet activity from group while keepin
     await withApp([
         bookingRow({ id: 'BK-ROOT', time: '12:00', label: 'Banquet root', program_name: 'Banquet root', category: 'banquet', room: 'Room A', price: 1000 }),
         bookingRow({ id: 'BK-ACTIVE', time: '13:00', label: 'Foam show', program_name: 'Foam show', category: 'activity', room: 'Room A', price: 700 }),
-        bookingRow({ id: 'BK-ACTIVE-CHILD', time: '13:00', label: 'Foam show second host', program_name: 'Foam show second host', category: 'activity', room: 'Room A', price: 0, linked_to: 'BK-ACTIVE' })
+        bookingRow({ id: 'BK-ACTIVE-CHILD', time: '13:00', label: 'Foam show second host', program_name: 'Foam show second host', category: 'activity', room: 'Room A', price: 0, linked_to: 'BK-ACTIVE' }),
+        bookingRow({
+            id: 'BK-KITCHEN',
+            time: '12:30',
+            line_id: 'banquet-service',
+            label: 'Kitchen order',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            room: 'Room A',
+            price: 0,
+            extra_data: JSON.stringify({
+                bookingPackage: {
+                    menuPositions: [{ id: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 250, subtotal: 500 }]
+                }
+            })
+        })
     ], [{
         business_context: 'event_genix',
         booking_a_id: 'BK-ROOT',
         booking_b_id: 'BK-ACTIVE',
+        relation_type: 'banquet_activity'
+    }, {
+        business_context: 'event_genix',
+        booking_a_id: 'BK-ROOT',
+        booking_b_id: 'BK-KITCHEN',
         relation_type: 'banquet_activity'
     }], async ({ baseUrl, state }) => {
         const res = await fetch(`${baseUrl}/api/bookings/BK-ACTIVE?businessContext=event_genix`, { method: 'DELETE' });
@@ -2260,10 +2621,24 @@ test('DELETE booking detaches cancelled banquet activity from group while keepin
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE').status, 'cancelled');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE-CHILD').status, 'cancelled');
         assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
-        assert.deepEqual(state.banquetMemberships.map(row => row.booking_id), ['BK-ROOT']);
-        assert.equal(state.links.length, 0);
+        assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'confirmed');
+        assert.deepEqual(state.banquetMemberships.map(row => row.booking_id).sort(), ['BK-KITCHEN', 'BK-ROOT']);
+        assert.equal(state.links.length, 1);
+        assert.deepEqual([state.links[0].booking_a_id, state.links[0].booking_b_id].sort(), ['BK-KITCHEN', 'BK-ROOT']);
         assert.equal(state.banquetGroups[0].updated_by, 'banquet-test');
         assert.ok(state.histories.some(item => item.action === 'banquet_group_booking_detached'));
+
+        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
+        timelineBookingAbsent(roomRows, 'BK-ACTIVE');
+        timelineBookingAbsent(roomRows, 'BK-ACTIVE-CHILD');
+        const kitchen = timelineBooking(roomRows, 'BK-KITCHEN');
+        assertTimelineProjection(kitchen, {
+            timelineView: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            displaySurface: 'service_marker',
+            hiddenReason: null
+        });
     }, {
         banquetGroups: [{
             id: 'BQ-ROOT',
@@ -2291,6 +2666,100 @@ test('DELETE booking detaches cancelled banquet activity from group while keepin
             booking_id: 'BK-ACTIVE',
             role: 'activity',
             sort_order: 20
+        }, {
+            id: 3,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
+test('DELETE booking removes cancelled kitchen marker while keeping source banquet activity consistent', async () => {
+    await withApp([
+        activityFirstSourceBooking(),
+        bookingRow({
+            id: 'BK-KITCHEN',
+            time: '12:45',
+            line_id: 'banquet-service',
+            label: 'Kitchen order',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            room: 'Room A',
+            price: 0,
+            customer_id: 101,
+            extra_data: JSON.stringify({
+                bookingPackage: {
+                    menuPositions: [{ id: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 250, subtotal: 500 }]
+                }
+            })
+        })
+    ], [{
+        business_context: 'event_genix',
+        booking_a_id: 'BK-ACTIVITY-FIRST',
+        booking_b_id: 'BK-KITCHEN',
+        relation_type: 'banquet_activity'
+    }], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-KITCHEN?businessContext=event_genix`, { method: 'DELETE' });
+        const data = await res.json();
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.success, true);
+        assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'cancelled');
+        assert.equal(state.rows.find(row => row.id === 'BK-ACTIVITY-FIRST').status, 'confirmed');
+        assert.deepEqual(state.banquetMemberships.map(row => row.booking_id), ['BK-ACTIVITY-FIRST']);
+        assert.equal(state.links.length, 0);
+        assertNoDuplicateBanquetReadModel(state, 'BQ-ACTIVITY-FIRST', ['BK-ACTIVITY-FIRST']);
+
+        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
+        timelineBookingAbsent(roomRows, 'BK-KITCHEN');
+        const roomActivity = timelineBooking(roomRows, 'BK-ACTIVITY-FIRST');
+        assertTimelineProjection(roomActivity, {
+            timelineView: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        });
+
+        const animatorRows = await getTimelineBookings(baseUrl, '2099-06-01', 'animators');
+        timelineBookingAbsent(animatorRows, 'BK-KITCHEN');
+        const animatorActivity = timelineBooking(animatorRows, 'BK-ACTIVITY-FIRST');
+        assertTimelineProjection(animatorActivity, {
+            timelineView: 'animators',
+            resourceType: 'animator',
+            resourceId: 'line-rock',
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        });
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ACTIVITY-FIRST',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ACTIVITY-FIRST',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Paper neon show',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ACTIVITY-FIRST',
+            business_context: 'event_genix',
+            booking_id: 'BK-ACTIVITY-FIRST',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ACTIVITY-FIRST',
+            business_context: 'event_genix',
+            booking_id: 'BK-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
         }]
     });
 });

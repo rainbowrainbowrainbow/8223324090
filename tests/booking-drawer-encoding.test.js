@@ -301,13 +301,14 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
 
 test('timeline caches are scoped by business and display mode before booking visibility checks', () => {
     const timelineJs = read('js', 'timeline.js');
+    const timelineCacheJs = read('js', 'timeline-cache.js');
     const bookingJs = read('js', 'booking.js');
 
-    assert.match(timelineJs, /function timelineCacheScopeKey/);
-    assert.match(timelineJs, /function timelineCacheKeyForDate/);
+    assert.match(timelineCacheJs, /function timelineCacheScopeKey/);
+    assert.match(timelineCacheJs, /function timelineCacheKeyForDate/);
     assert.match(timelineJs, /getTimelineCacheEntry\(AppState\.cachedLines/);
     assert.match(timelineJs, /getTimelineCacheEntry\(AppState\.cachedBookings/);
-    assert.match(timelineJs, /window\.invalidateTimelineDateCache = invalidateTimelineDateCache/);
+    assert.match(timelineCacheJs, /window\.invalidateTimelineDateCache = invalidateTimelineDateCache/);
     assert.doesNotMatch(timelineJs, /AppState\.cachedBookings\[dateStr\]/);
     assert.doesNotMatch(timelineJs, /AppState\.cachedLines\[dateStr\]/);
     assert.match(bookingJs, /createdBookingVisibilityDiagnostics/);

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.2",
+  "version": "0.77.3",
   "eventGenix": {
-    "releaseLabel": "Banquet sheet premium design"
+    "releaseLabel": "Banquet sheet compact layout"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

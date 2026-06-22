@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.3 - Banquet sheet compact layout
+
+### Banquet sheet / Compact premium PDF / Header density / (Клешня, 22.06.2026) [codex]
+- **Банкетний лист став компактнішим** - premium hero-шапку стиснуто, щоб вона не займала надто багато місця на першій сторінці.
+- **Серверний PDF отримав компактну геометрію** - зменшено висоту hero, логотип, праву glass-card, внутрішні відступи, шрифти й проміжки.
+- **HTML/print layout синхронізовано з PDF** - web-прев’ю, browser print fallback і server PDF використовують однакову щільнішу систему відступів.
+- **Збережено premium стиль без втрати даних** - фон, логотип, overlay, Booking ID, менеджер, дата формування, brief, розклад, замовлення і фінанси лишаються на місці.
+- **Оновлено regression guards** - UI/static checks фіксують компактні розміри hero, glass-card і print-grid, щоб шапка знову не розрослась випадково.
+- **Релізні маркери піднято до `0.77.3`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.2 - Banquet sheet premium design
 
 ### Banquet sheet / Premium hero header / PDF layout / (Клешня, 22.06.2026) [codex]

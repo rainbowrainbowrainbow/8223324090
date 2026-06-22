@@ -757,12 +757,12 @@ function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
 
 function drawHeroLogo(doc, x, y, size, venueName) {
     doc.save();
-    doc.roundedRect(x, y, size, size, 18)
+    doc.roundedRect(x, y, size, size, 13)
         .fillColor('#ffffff')
         .fill();
     if (fs.existsSync(BANQUET_HERO_LOGO)) {
-        doc.image(BANQUET_HERO_LOGO, x + 7, y + 7, {
-            fit: [size - 14, size - 14],
+        doc.image(BANQUET_HERO_LOGO, x + 5, y + 5, {
+            fit: [size - 10, size - 10],
             align: 'center',
             valign: 'center'
         });
@@ -780,75 +780,75 @@ function drawHeroLogo(doc, x, y, size, venueName) {
 
 function drawHeroPill(doc, text, x, y, width) {
     const label = pdfText(text);
-    const textWidth = Math.min(width, Math.max(70, doc.widthOfString(label) + 16));
+    const textWidth = Math.min(width, Math.max(56, doc.widthOfString(label) + 12));
     doc.save();
     doc.fillOpacity(0.44)
-        .roundedRect(x, y, textWidth, 17, 8.5)
+        .roundedRect(x, y, textWidth, 13, 6.5)
         .fill(PDF_COLORS.navy);
     doc.restore();
-    doc.roundedRect(x, y, textWidth, 17, 8.5)
+    doc.roundedRect(x, y, textWidth, 13, 6.5)
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
     doc.font('SummaryBold')
-        .fontSize(8.2)
+        .fontSize(6.8)
         .fillColor(PDF_COLORS.cream)
-        .text(label, x + 8, y + 4.5, { width: textWidth - 16, lineGap: 0 });
+        .text(label, x + 6, y + 3.4, { width: textWidth - 12, lineGap: 0 });
 }
 
 function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, manager) {
     doc.save();
     doc.fillOpacity(0.82)
-        .roundedRect(x, y, width, height, 20)
+        .roundedRect(x, y, width, height, 13)
         .fill(PDF_COLORS.card);
     doc.restore();
-    doc.roundedRect(x, y, width, height, 20)
+    doc.roundedRect(x, y, width, height, 13)
         .lineWidth(0.65)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
 
-    const innerX = x + 14;
-    const innerW = width - 28;
+    const innerX = x + 9;
+    const innerW = width - 18;
     doc.font('SummaryBold')
-        .fontSize(14.5)
+        .fontSize(10.2)
         .fillColor('#ffffff')
-        .text(pdfText(summary.document?.title, 'БАНКЕТНИЙ ЛИСТ').toUpperCase(), innerX, y + 17, {
+        .text(pdfText(summary.document?.title, 'БАНКЕТНИЙ ЛИСТ').toUpperCase(), innerX, y + 11, {
             width: innerW,
             lineGap: 0.4
         });
 
     const bookingId = pdfText(summary.bookingId);
-    const bookingY = y + 52;
-    const bookingW = Math.min(innerW, Math.max(92, doc.widthOfString(bookingId) + 18));
+    const bookingY = y + 34;
+    const bookingW = Math.min(innerW, Math.max(78, doc.widthOfString(bookingId) + 14));
     doc.save();
     doc.fillOpacity(0.18)
-        .roundedRect(innerX, bookingY, bookingW, 20, 10)
+        .roundedRect(innerX, bookingY, bookingW, 15, 7.5)
         .fill(PDF_COLORS.gold);
     doc.restore();
-    doc.roundedRect(innerX, bookingY, bookingW, 20, 10)
+    doc.roundedRect(innerX, bookingY, bookingW, 15, 7.5)
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
     doc.font('SummaryBold')
-        .fontSize(8.8)
+        .fontSize(7.2)
         .fillColor(PDF_COLORS.gold)
-        .text(bookingId, innerX + 9, bookingY + 5.4, { width: bookingW - 18 });
+        .text(bookingId, innerX + 7, bookingY + 4, { width: bookingW - 14 });
 
     const rows = [
         ['Сформовано:', formatDateTime(renderedAt)],
         ['Менеджер:', pdfText(manager)]
     ];
-    let rowY = y + 84;
+    let rowY = y + 58;
     rows.forEach(([label, value]) => {
         doc.font('SummaryRegular')
-            .fontSize(7.8)
+            .fontSize(6.5)
             .fillColor(PDF_COLORS.muted)
-            .text(label, innerX, rowY, { width: 58, lineGap: 0 });
+            .text(label, innerX, rowY, { width: 46, lineGap: 0 });
         doc.font('SummaryBold')
-            .fontSize(7.8)
+            .fontSize(6.5)
             .fillColor('#ffffff')
-            .text(value, innerX + 61, rowY, { width: innerW - 61, lineGap: 0.4 });
-        rowY += 17;
+            .text(value, innerX + 49, rowY, { width: innerW - 49, lineGap: 0.2 });
+        rowY += 13;
     });
 }
 
@@ -857,47 +857,47 @@ function drawHeader(doc, summary, view) {
     const left = doc.page.margins.left;
     const top = doc.page.margins.top;
     const width = pageContentWidth(doc);
-    const height = 168;
-    const padding = 22;
-    const logoSize = 60;
-    const cardWidth = 170;
+    const height = 112;
+    const padding = 14;
+    const logoSize = 42;
+    const cardWidth = 146;
     const cardHeight = height - padding * 2;
     const cardX = left + width - padding - cardWidth;
     const cardY = top + padding;
     const logoX = left + padding;
     const logoY = top + Math.round((height - logoSize) / 2);
-    const brandX = logoX + logoSize + 16;
-    const brandWidth = Math.max(160, cardX - brandX - 18);
+    const brandX = logoX + logoSize + 11;
+    const brandWidth = Math.max(150, cardX - brandX - 12);
     const renderedAt = new Date();
     const manager = summary.document?.generatedBy || summary.event?.manager || null;
 
-    drawRoundedHeroBackground(doc, left, top, width, height, 28);
+    drawRoundedHeroBackground(doc, left, top, width, height, 18);
     drawHeroLogo(doc, logoX, logoY, logoSize, venue.name);
-    drawHeroPill(doc, formatGeneratedAtShort(renderedAt), brandX, top + 39, brandWidth);
+    drawHeroPill(doc, formatGeneratedAtShort(renderedAt), brandX, top + 23, brandWidth);
 
     doc.font('SummaryBold')
-        .fontSize(13.4)
+        .fontSize(10.8)
         .fillColor('#ffffff')
-        .text(pdfText(venue.name, 'Event Genix'), brandX, top + 63, {
+        .text(pdfText(venue.name, 'Event Genix'), brandX, top + 42, {
             width: brandWidth,
-            lineGap: 0.6
+            lineGap: 0.2
         });
 
-    const addressY = Math.min(top + 108, doc.y + 5);
+    const addressY = Math.min(top + 76, doc.y + 4);
     doc.font('SummaryRegular')
-        .fontSize(8.4)
+        .fontSize(6.9)
         .fillColor(PDF_COLORS.muted)
-        .text(pdfText(venue.addressLine1), brandX, addressY, { width: brandWidth, lineGap: 1 })
-        .text(pdfText(venue.addressLine2), brandX, addressY + 12, { width: brandWidth, lineGap: 1 });
+        .text(pdfText(venue.addressLine1), brandX, addressY, { width: brandWidth, lineGap: 0.4 })
+        .text(pdfText(venue.addressLine2), brandX, addressY + 9, { width: brandWidth, lineGap: 0.4 });
     doc.font('SummaryBold')
-        .fontSize(9.8)
+        .fontSize(7.8)
         .fillColor(PDF_COLORS.gold)
-        .text(pdfText(venue.phone), brandX, addressY + 27, { width: brandWidth, lineGap: 0 });
+        .text(pdfText(venue.phone), brandX, addressY + 21, { width: brandWidth, lineGap: 0 });
 
     drawHeroBookingCard(doc, summary, cardX, cardY, cardWidth, cardHeight, renderedAt, manager);
 
     doc.x = left;
-    doc.y = top + height + 14;
+    doc.y = top + height + 10;
 }
 
 function buildBriefItems(summary = {}, view) {

@@ -13,9 +13,9 @@
     --summary-accent: #e5bd63;
     --summary-warn: #92400e;
     --summary-warn-bg: #fff7ed;
-    --summary-radius: 18px;
-    --summary-radius-lg: 36px;
-    --summary-shadow: 0 16px 34px rgba(7, 29, 53, 0.1);
+    --summary-radius: 14px;
+    --summary-radius-lg: 24px;
+    --summary-shadow: 0 10px 22px rgba(7, 29, 53, 0.08);
     --summary-card-bg: rgba(255, 255, 255, 0.82);
 }
 
@@ -172,8 +172,8 @@ body.booking-summary-page {
     width: 100%;
     min-height: auto;
     margin: 0;
-    padding: 10mm;
-    border-radius: 24px;
+    padding: 8mm;
+    border-radius: 20px;
     background: var(--summary-panel);
     color: var(--summary-ink);
     box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
@@ -185,18 +185,18 @@ body.booking-summary-page {
     position: relative;
     isolation: isolate;
     display: grid;
-    grid-template-columns: 92px minmax(0, 1fr) minmax(228px, 0.52fr);
+    grid-template-columns: 64px minmax(0, 1fr) minmax(190px, 0.44fr);
     align-items: center;
-    gap: 28px;
-    min-height: 286px;
-    margin: 0 0 14px;
-    padding: 42px 46px;
+    gap: 18px;
+    min-height: 182px;
+    margin: 0 0 10px;
+    padding: 22px 26px;
     overflow: hidden;
     border-radius: var(--summary-radius-lg);
     border: 1px solid rgba(229, 189, 99, 0.38);
     background: var(--navy) url("../images/banquet-sheet-hero.png") center / cover no-repeat;
     color: #fff;
-    box-shadow: 0 24px 54px rgba(7, 29, 53, 0.22);
+    box-shadow: 0 16px 34px rgba(7, 29, 53, 0.18);
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
 }
@@ -212,14 +212,14 @@ body.booking-summary-page {
 }
 
 .brand-logo {
-    width: 92px;
-    height: 92px;
-    border-radius: 28px;
-    padding: 10px;
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    padding: 7px;
     object-fit: contain;
     background: rgba(255, 255, 255, 0.94);
     border: 1px solid rgba(229, 189, 99, 0.7);
-    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
 }
 
 .brand-copy {
@@ -228,23 +228,23 @@ body.booking-summary-page {
 
 .generated-at {
     width: fit-content;
-    margin: 0 0 10px;
-    padding: 6px 10px;
+    margin: 0 0 7px;
+    padding: 5px 8px;
     border-radius: 999px;
     border: 1px solid rgba(229, 189, 99, 0.5);
     background: rgba(7, 29, 53, 0.42);
     color: var(--cream);
-    font-size: 11px;
+    font-size: 9.5px;
     font-weight: 900;
     line-height: 1;
     letter-spacing: 0;
 }
 
 .brand-copy h1 {
-    margin: 0 0 12px;
-    max-width: 430px;
+    margin: 0 0 7px;
+    max-width: 360px;
     color: #fff;
-    font-size: 25px;
+    font-size: 18px;
     font-weight: 950;
     line-height: 1.08;
     letter-spacing: 0;
@@ -255,18 +255,18 @@ body.booking-summary-page {
 .brand-copy strong {
     display: block;
     margin: 0;
-    max-width: 390px;
+    max-width: 340px;
     color: var(--muted);
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 780;
     line-height: 1.35;
     overflow-wrap: anywhere;
 }
 
 .brand-copy strong {
-    margin-top: 8px;
+    margin-top: 5px;
     color: var(--gold);
-    font-size: 15px;
+    font-size: 12px;
     font-weight: 950;
 }
 
@@ -274,20 +274,20 @@ body.booking-summary-page {
     align-self: stretch;
     display: grid;
     align-content: center;
-    gap: 12px;
+    gap: 7px;
     min-width: 0;
-    padding: 24px;
-    border-radius: 28px;
+    padding: 14px;
+    border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.4);
     background: var(--card);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 18px 42px rgba(0, 0, 0, 0.26);
-    backdrop-filter: blur(14px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 12px 28px rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(12px);
 }
 
 .booking-card h2 {
     margin: 0;
     color: #fff;
-    font-size: 25px;
+    font-size: 17px;
     font-weight: 950;
     line-height: 1.05;
     text-transform: uppercase;
@@ -296,12 +296,12 @@ body.booking-summary-page {
 .booking-id {
     width: fit-content;
     max-width: 100%;
-    padding: 8px 12px;
+    padding: 6px 9px;
     border-radius: 999px;
     background: rgba(229, 189, 99, 0.16);
     border: 1px solid rgba(229, 189, 99, 0.62);
     color: var(--gold);
-    font-size: 13px;
+    font-size: 10.5px;
     font-weight: 950;
     line-height: 1.1;
     overflow-wrap: anywhere;
@@ -309,19 +309,19 @@ body.booking-summary-page {
 
 .booking-meta {
     display: grid;
-    gap: 8px;
+    gap: 5px;
     min-width: 0;
 }
 
 .meta-row {
     display: grid;
-    grid-template-columns: minmax(80px, auto) minmax(0, 1fr);
+    grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
     align-items: baseline;
-    gap: 10px;
+    gap: 8px;
     min-width: 0;
     color: rgba(247, 239, 225, 0.78);
-    font-size: 11.5px;
-    line-height: 1.28;
+    font-size: 9.5px;
+    line-height: 1.2;
 }
 
 .meta-row b {
@@ -334,9 +334,9 @@ body.booking-summary-page {
 .summary-brief {
     --summary-brief-label-width: 118px;
     display: grid;
-    gap: 6px;
-    margin: 0 0 12px;
-    padding: 14px;
+    gap: 5px;
+    margin: 0 0 9px;
+    padding: 10px;
     border: 1px solid var(--summary-border);
     border-radius: var(--summary-radius);
     background: var(--summary-card-bg);
@@ -349,7 +349,7 @@ body.booking-summary-page {
 .summary-brief-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px 18px;
+    gap: 5px 14px;
     align-items: start;
     min-width: 0;
 }
@@ -382,8 +382,8 @@ body.booking-summary-page {
 }
 
 .summary-section {
-    margin-top: 12px;
-    padding: 14px;
+    margin-top: 9px;
+    padding: 10px;
     border: 1px solid var(--summary-border);
     border-radius: var(--summary-radius);
     background: var(--summary-card-bg);
@@ -399,13 +399,13 @@ body.booking-summary-page {
 .summary-section h2 {
     width: fit-content;
     max-width: 100%;
-    margin: 0 0 10px;
-    padding: 6px 10px;
+    margin: 0 0 7px;
+    padding: 5px 8px;
     border: 0;
     border-radius: 999px;
     background: rgba(229, 189, 99, 0.18);
     color: var(--summary-ink);
-    font-size: 13px;
+    font-size: 11.5px;
     font-weight: 950;
     text-transform: uppercase;
     overflow-wrap: anywhere;
@@ -773,35 +773,35 @@ body.booking-summary-page {
 
     .booking-summary-document {
         min-height: auto;
-        padding: 10mm 8mm;
+        padding: 8mm 6mm;
     }
 
     .banquet-hero {
         grid-template-columns: 1fr;
         min-height: auto;
-        gap: 18px;
-        padding: 28px;
-        border-radius: 28px;
+        gap: 12px;
+        padding: 18px;
+        border-radius: 20px;
     }
 
     .brand-logo {
-        width: 82px;
-        height: 82px;
-        border-radius: 24px;
+        width: 58px;
+        height: 58px;
+        border-radius: 16px;
     }
 
     .brand-copy h1 {
-        font-size: 21px;
+        font-size: 17px;
     }
 
     .booking-card {
         align-self: auto;
-        padding: 18px;
-        border-radius: 22px;
+        padding: 14px;
+        border-radius: 18px;
     }
 
     .booking-card h2 {
-        font-size: 20px;
+        font-size: 16px;
     }
 
     .meta-row {
@@ -901,78 +901,78 @@ body.booking-summary-page {
 
     .banquet-hero {
         display: grid;
-        grid-template-columns: 62px minmax(0, 1fr) minmax(150px, 0.48fr);
-        gap: 14px;
-        min-height: 58mm;
-        margin-bottom: 7px;
-        padding: 24px;
-        border-radius: 28px;
+        grid-template-columns: 46px minmax(0, 1fr) minmax(132px, 0.42fr);
+        gap: 9px;
+        min-height: 38mm;
+        margin-bottom: 5px;
+        padding: 13px;
+        border-radius: 18px;
         break-after: avoid;
         page-break-after: avoid;
     }
 
     .brand-logo {
-        width: 62px;
-        height: 62px;
-        border-radius: 18px;
-        padding: 7px;
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        padding: 5px;
     }
 
     .generated-at {
-        margin-bottom: 6px;
-        padding: 4px 8px;
-        font-size: 9px;
+        margin-bottom: 4px;
+        padding: 3px 6px;
+        font-size: 7.4px;
     }
 
     .brand-copy h1 {
-        margin-bottom: 7px;
-        font-size: 15px;
+        margin-bottom: 4px;
+        font-size: 11.5px;
         line-height: 1.08;
     }
 
     .brand-copy p,
     .brand-copy strong {
-        font-size: 8.8px;
-        line-height: 1.2;
+        font-size: 7.2px;
+        line-height: 1.14;
     }
 
     .brand-copy strong {
-        margin-top: 5px;
-        font-size: 10px;
+        margin-top: 3px;
+        font-size: 8.2px;
     }
 
     .booking-card {
-        gap: 7px;
-        padding: 13px;
-        border-radius: 20px;
+        gap: 4px;
+        padding: 8px;
+        border-radius: 13px;
     }
 
     .booking-card h2 {
-        font-size: 14px;
+        font-size: 10.5px;
         line-height: 1.08;
     }
 
     .booking-id {
-        padding: 5px 8px;
-        font-size: 9px;
+        padding: 4px 6px;
+        font-size: 7.3px;
     }
 
     .booking-meta {
-        gap: 5px;
+        gap: 3px;
     }
 
     .meta-row {
-        grid-template-columns: minmax(62px, auto) minmax(0, 1fr);
-        gap: 6px;
-        font-size: 8.4px;
-        line-height: 1.16;
+        grid-template-columns: minmax(50px, auto) minmax(0, 1fr);
+        gap: 4px;
+        font-size: 7px;
+        line-height: 1.1;
     }
 
     .summary-brief {
         --summary-brief-label-width: 106px;
-        gap: 4px;
-        margin-bottom: 7px;
-        padding: 9px;
+        gap: 3px;
+        margin-bottom: 5px;
+        padding: 7px;
     }
 
     .summary-brief-grid {
@@ -997,8 +997,8 @@ body.booking-summary-page {
     }
 
     .summary-section {
-        margin-top: 8px;
-        padding: 9px;
+        margin-top: 6px;
+        padding: 7px;
         orphans: 2;
         widows: 2;
     }
@@ -1008,9 +1008,9 @@ body.booking-summary-page {
     }
 
     .summary-section h2 {
-        margin-bottom: 4px;
-        padding: 4px 8px;
-        font-size: 12px;
+        margin-bottom: 3px;
+        padding: 3px 7px;
+        font-size: 10.5px;
         line-height: 1.2;
     }
 

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.1 - Remove deprecated room load popover
+
+### Timeline toolbar / Room mode / Visual settings cleanup / (Клешня, 22.06.2026) [codex]
+- **Прибрано стару дубльовану кнопку і панель `Кімнати`** - toolbar більше не показує deprecated room-load popover біля compact/undo, щоб не плутати його з актуальним кімнатним timeline.
+- **Актуальний режим timeline `Кімнати` лишився основним механізмом** - перемикач `Кімнати / Свята`, room timeline, room bookings і service markers не видалені.
+- **Drawer `Вільні кімнати` збережено** - room-first бронювання і вибір вільних кімнат у формі не залежать від старої панелі навантаження кімнат.
+- **Visual settings більше не показують deprecated room-load blocks** - старі збережені ключі `roomLoad` і `roomLoadPanel` ігноруються, не рендеряться в UI і не записуються назад при save.
+- **Зменшено плутанину між кімнатним timeline і старим popover** - у менеджера лишається один зрозумілий шлях для кімнатної логіки: вкладка timeline `Кімнати`.
+- **Релізні маркери піднято до `0.77.1`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.0 - Banquet sheet PDF cleanup
 
 ### Banquet sheet / PDF export / Client-kitchen-staff modes / Finance / Schedule / (Клешня, 22.06.2026) [codex]

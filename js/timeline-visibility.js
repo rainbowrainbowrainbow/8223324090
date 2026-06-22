@@ -51,7 +51,6 @@
         visualBlock('zoomControls', 'Верхня панель', 'Масштаб 15/30/60 хв', '.zoom-controls'),
         visualBlock('compactToggle', 'Верхня панель', 'Компактний режим', '#compactModeToggle', { targetWrapper: true }),
         visualBlock('undo', 'Верхня панель', 'Скасувати дію', '#undoBtn'),
-        visualBlock('roomLoad', 'Верхня панель', 'Кімнати / кабінети', '#roomLoadBtn'),
         visualBlock('productSales', 'Верхня панель', 'Продажі', '#productSalesBtn'),
         visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn'),
         visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),
@@ -68,7 +67,6 @@
         visualBlock('addLine', 'Таймлайн', 'Додати лінію / спеціаліста', '#addLineBtn'),
         visualBlock('legend', 'Таймлайн', 'Легенда', '.legend'),
         visualBlock('minimap', 'Таймлайн', 'Мінімапа', '#minimapContainer'),
-        visualBlock('roomLoadPanel', 'Таймлайн', 'Панель навантаження кімнат', '#roomLoadPanel'),
         visualBlock('bookingPanel', 'Форма бронювання', 'Панель бронювання', '#bookingPanel'),
         visualBlock('bookingClose', 'Форма бронювання', 'Закрити панель бронювання', '#closePanel'),
         visualBlock('bookingSelectedInfo', 'Форма бронювання', 'Обрані дата / час / лінія', '#bookingPanel .selected-info'),
@@ -109,7 +107,7 @@
             key: 'operator_daily',
             label: 'Операторський день',
             description: 'Лишає дату, статуси, сітку, створення бронювання і базові дії.',
-            hidden: ['assistantWidget', 'minimap', 'roomLoadPanel']
+            hidden: ['assistantWidget', 'minimap']
         },
         {
             key: 'compact_booking',
@@ -121,7 +119,7 @@
             key: 'clean_phone',
             label: 'Телефон / швидкий запис',
             description: 'Мінімальний режим для вузьких екранів і швидкого запису з телефону.',
-            hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export', 'roomLoadPanel']
+            hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export']
         }
     ];
 

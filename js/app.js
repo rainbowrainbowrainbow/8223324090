@@ -133,8 +133,6 @@ function initializeApp() {
     if (typeof initBookingPackageWorkspace === 'function') initBookingPackageWorkspace();
     // v20.11.0: Initialize form validation
     if (typeof BookingForm !== 'undefined' && BookingForm.init) BookingForm.init();
-    // v19.11: Room Load Panel
-    if (typeof initRoomLoadPanel === 'function') initRoomLoadPanel();
     // v30.3: Timeline search + keyboard shortcuts + redo
     if (typeof initTimelineSearch === 'function') initTimelineSearch();
     if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();

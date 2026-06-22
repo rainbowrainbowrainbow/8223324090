@@ -588,7 +588,8 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /function defaultTimelineViewMode\(\)/);
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
     assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);
-    assert.match(timeline, /function roomLoadBookingMinutes/);
+    assert.doesNotMatch(timeline, /function roomLoadBookingMinutes/);
+    assert.doesNotMatch(timeline, /roomLoadPanel/);
     assert.match(timeline, /TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
     assert.match(timeline, /function isParkAnimatorTimelineView/);
     assert.match(timeline, /function isTimelineBanquetServicePseudoLine/);
@@ -1407,6 +1408,89 @@ test('timeline visual settings v2 keeps stable block ids, metadata, and legacy o
     assert.equal(sanitized.overrides.timelineGrid, true);
     assert.equal(sanitized.overrides.bookingClose, true);
     assert.equal(sanitized.overrides.unknownBlock, undefined);
+});
+
+test('timeline visual settings ignore deprecated room-load keys from saved payloads', () => {
+    const legacyPayload = {
+        version: 2,
+        blocks: {
+            roomLoad: { visible: false, order: 15 },
+            roomLoadPanel: { visible: false, density: 'compact' },
+            dateControls: { visible: false, order: 20 }
+        },
+        overrides: {
+            roomLoad: true,
+            roomLoadPanel: true,
+            dateControls: true
+        },
+        views: {
+            rooms: {
+                blocks: {
+                    roomLoadPanel: { visible: false },
+                    legend: { visible: false, density: 'compact' }
+                },
+                overrides: {
+                    roomLoadPanel: true,
+                    legend: true
+                }
+            }
+        }
+    };
+
+    const response = timelineVisibilityResponse(legacyPayload, 'event_genix', { view: 'rooms' });
+    assert.equal(response.blocks.roomLoad, undefined);
+    assert.equal(response.blocks.roomLoadPanel, undefined);
+    assert.equal(response.overrides.roomLoad, undefined);
+    assert.equal(response.overrides.roomLoadPanel, undefined);
+    assert.equal(response.views.rooms.blocks.roomLoadPanel, undefined);
+    assert.equal(response.views.rooms.overrides.roomLoadPanel, undefined);
+    assert.equal(response.views.rooms.blocks.legend.visible, false);
+    assert.equal(response.registry.some(block => block.id === 'roomLoad' || block.id === 'roomLoadPanel'), false);
+
+    const merged = mergeTimelineVisibilityPayload(legacyPayload, {
+        timelineView: 'rooms',
+        blocks: {
+            roomLoad: { visible: false },
+            roomLoadPanel: { visible: false },
+            legend: { visible: true }
+        },
+        overrides: {
+            roomLoad: true,
+            roomLoadPanel: true
+        }
+    }, 'event_genix', {
+        view: 'rooms',
+        updatedAt: '2026-06-22T12:00:00.000Z',
+        updatedBy: 'creator'
+    });
+
+    assert.equal(merged.blocks.roomLoad, undefined);
+    assert.equal(merged.blocks.roomLoadPanel, undefined);
+    assert.equal(merged.overrides.roomLoad, undefined);
+    assert.equal(merged.overrides.roomLoadPanel, undefined);
+    assert.equal(merged.views.rooms.blocks.roomLoad, undefined);
+    assert.equal(merged.views.rooms.blocks.roomLoadPanel, undefined);
+    assert.deepEqual(merged.views.rooms.blocks.legend, { visible: true });
+    assert.equal(merged.views.rooms.overrides.roomLoad, undefined);
+    assert.equal(merged.views.rooms.overrides.roomLoadPanel, undefined);
+
+    const savePayload = sanitizeTimelineVisibilityPayload({
+        blocks: {
+            roomLoad: { visible: false },
+            roomLoadPanel: { visible: false },
+            timelineGrid: { visible: true }
+        },
+        overrides: {
+            roomLoad: true,
+            roomLoadPanel: true
+        }
+    }, 'event_genix');
+
+    assert.equal(savePayload.blocks.roomLoad, undefined);
+    assert.equal(savePayload.blocks.roomLoadPanel, undefined);
+    assert.equal(savePayload.overrides.roomLoad, undefined);
+    assert.equal(savePayload.overrides.roomLoadPanel, undefined);
+    assert.deepEqual(savePayload.blocks.timelineGrid, { visible: true });
 });
 
 test('room timeline banquet preview is room-only, frontend-only, and snapshot-backed', () => {
@@ -2649,7 +2733,7 @@ test('timeline visual settings keep park animator and room views isolated', () =
         timelineView: 'rooms',
         blocks: {
             dateControls: { visible: true, order: 90 },
-            roomLoadPanel: { visible: false, density: 'compact' }
+            legend: { visible: false, density: 'compact' }
         }
     }, 'event_genix', {
         view: 'rooms',
@@ -2666,9 +2750,9 @@ test('timeline visual settings keep park animator and room views isolated', () =
     assert.equal(animators.blocks.dateControls.order, 10);
     assert.equal(rooms.blocks.dateControls.visible, true);
     assert.equal(rooms.blocks.dateControls.order, 90);
-    assert.equal(rooms.blocks.roomLoadPanel.visible, false);
+    assert.equal(rooms.blocks.legend.visible, false);
     assert.equal(rooms.views.animators.blocks.dateControls.visible, false);
-    assert.equal(rooms.views.rooms.blocks.roomLoadPanel.density, 'compact');
+    assert.equal(rooms.views.rooms.blocks.legend.density, 'compact');
 });
 
 test('business operating profile owns shell start page and module visibility', () => {

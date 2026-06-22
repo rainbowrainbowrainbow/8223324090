@@ -153,7 +153,6 @@
                         <span class="toggle-mini-label">Компакт</span>
                     </label>
                     <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
-                    <button id="roomLoadBtn" class="btn-room-load" title="Навантаження кімнат"><span class="timeline-control-icon" aria-hidden="true">🏠</span><span>Кімнати</span></button>
                     <button type="button" id="historyBtn" class="btn-history hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span>Історія змін</span></button>
                     <div class="admin-dropdown" id="adminDropdown" data-menu-scope="timeline-actions">
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false"><span class="timeline-control-icon timeline-control-icon--dots" aria-hidden="true">⋯</span><span>Дії</span></button>
@@ -285,18 +284,6 @@
                 <canvas></canvas>
             </div>
 
-            <!-- v19.11: Room Load Panel -->
-            <div id="roomLoadPanel" class="room-load-panel hidden" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="roomLoadTitle">
-                <div class="room-load-header">
-                    <h4 id="roomLoadTitle">🏠 Кімнати</h4>
-                    <span id="roomLoadSummary" class="room-load-summary"></span>
-                    <button id="roomLoadClose" class="room-load-close" type="button" title="Закрити панель кімнат" aria-label="Закрити панель кімнат">
-                        <span aria-hidden="true">✕</span>
-                        <span class="room-load-close-label">Закрити</span>
-                    </button>
-                </div>
-                <div id="roomLoadList" class="room-load-list"></div>
-            </div>
         </main>
 
         <!-- v5.35: Backdrop overlay for tablet/mobile panel -->

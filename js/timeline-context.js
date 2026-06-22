@@ -68,8 +68,6 @@
             resourceType: null,
             showAfisha: false,
             showProductSales: false,
-            roomLoadLabel: 'Ресурси',
-            roomLoadTitle: 'Таймлайн вимкнено для цього бізнесу',
             addLineLabel: 'Ресурс',
             addLineTitle: 'Таймлайн вимкнено для цього бізнесу',
             selectedLineLabel: 'Ресурс:',
@@ -97,8 +95,6 @@
             resourceType: 'specialist',
             showAfisha: false,
             showProductSales: false,
-            roomLoadLabel: 'Кабінети',
-            roomLoadTitle: 'Навантаження кабінетів',
             addLineLabel: 'Додати спеціаліста',
             addLineTitle: 'Додати лінію спеціаліста',
             selectedLineLabel: 'Спеціаліст:',
@@ -129,8 +125,6 @@
             resourceType: 'specialist',
             showAfisha: false,
             showProductSales: false,
-            roomLoadLabel: 'Кабінети',
-            roomLoadTitle: 'Навантаження кабінетів',
             addLineLabel: 'Додати спеціаліста',
             addLineTitle: 'Додати лінію спеціаліста',
             selectedLineLabel: 'Спеціаліст:',
@@ -161,8 +155,6 @@
             resourceType: 'animator',
             showAfisha: true,
             showProductSales: true,
-            roomLoadLabel: 'Кімнати',
-            roomLoadTitle: 'Навантаження кімнат',
             addLineLabel: 'Додати аніматора',
             addLineTitle: 'Надіслати запит на додавання аніматора через Telegram',
             selectedLineLabel: 'Лінія:',
@@ -199,8 +191,6 @@
             resourceType: 'cabinet',
             showAfisha: false,
             showProductSales: false,
-            roomLoadLabel: 'Кабінети',
-            roomLoadTitle: 'Зайнятість кабінетів',
             addLineLabel: 'Додати кабінет',
             addLineTitle: 'Додати кабінет / аудиторію',
             selectedLineLabel: 'Кабінет:',
@@ -737,7 +727,6 @@
         const timelineEnabled = view?.timelineEnabled !== false && view?.mode !== 'disabled';
         return {
             addLine: canShowAddLineControl(view),
-            roomLoad: timelineEnabled && view?.enabledModules?.resources !== false,
             productSales: timelineEnabled && view?.showProductSales === true,
             export: timelineEnabled
         };
@@ -777,12 +766,6 @@
 
         const salesBtn = document.getElementById('productSalesBtn');
         setTimelineControlHidden(salesBtn, !view.controls.productSales);
-        const roomBtn = document.getElementById('roomLoadBtn');
-        setControlText(roomBtn, view.roomLoadLabel);
-        if (roomBtn) {
-            roomBtn.title = view.roomLoadTitle;
-            setTimelineControlHidden(roomBtn, !view.controls.roomLoad);
-        }
         const addLineBtn = document.getElementById('addLineBtn');
         if (addLineBtn) {
             const addLabel = addLineBtn.querySelector('span:last-child');

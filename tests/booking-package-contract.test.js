@@ -1269,20 +1269,24 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pageCode, /Оформлено/);
     assert.match(pageCode, /Бронь створено/);
     assert.match(pageCode, /class="banquet-hero"/);
-    assert.match(pageCode, /class="brand-logo"/);
+    assert.match(pageCode, /class="brand-mark"/);
     assert.match(pageCode, /class="booking-card"/);
     assert.match(pageCode, /class="booking-id"/);
-    assert.match(pageCode, /BANQUET_TOP_PLATE_SRC/);
-    assert.match(pageCode, /BANQUET_CORNER_SRC/);
-    assert.match(pageCode, /BANQUET_FINAL_LOGO_SRC/);
-    assert.match(pageCode, /class="banquet-top-plate"/);
-    assert.match(pageCode, /class="banquet-corner-art"/);
+    assert.doesNotMatch(pageCode, /BANQUET_TOP_PLATE_SRC/);
+    assert.doesNotMatch(pageCode, /BANQUET_CORNER_SRC/);
+    assert.doesNotMatch(pageCode, /BANQUET_FINAL_LOGO_SRC/);
+    assert.doesNotMatch(pageCode, /class="banquet-top-plate"/);
+    assert.doesNotMatch(pageCode, /class="banquet-corner-art"/);
+    assert.doesNotMatch(pageCode, /<img/);
     assert.match(pageCode, /class="banquet-final-brand"/);
+    assert.match(summaryCss, /--summary-official-ink/);
+    assert.match(summaryCss, /\.brand-mark/);
+    assert.match(summaryCss, /\.banquet-top-plate,\s*\.banquet-corner-art[\s\S]*display: none !important/);
     assert.match(summaryCss, /\.banquet-final-brand/);
     assert.match(summaryCss, /@media print[\s\S]*\.banquet-final-brand/);
-    assert.match(pdfService, /BANQUET_TOP_PLATE/);
-    assert.match(pdfService, /BANQUET_CORNER_IMAGE/);
-    assert.match(pdfService, /BANQUET_FINAL_LOGO/);
+    assert.doesNotMatch(pdfService, /BANQUET_TOP_PLATE/);
+    assert.doesNotMatch(pdfService, /BANQUET_CORNER_IMAGE/);
+    assert.doesNotMatch(pdfService, /BANQUET_FINAL_LOGO/);
     assert.match(pdfService, /function drawFinalBrand/);
     assert.doesNotMatch(pageCode, /<span>Booking ID:/);
     assert.match(pageCode, /function summaryModeContract\(summary = currentSummary, mode = summaryMode\(summary\)\)/);
@@ -1314,10 +1318,10 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pdfService, /Таймінг/);
     assert.match(pdfService, /function responsibleRowsForMode\(summary = \{\}, mode = 'client'\)/);
     assert.match(pdfService, /drawSectionTitle\(doc, 'Відповідальні'\)/);
-    assert.match(pdfService, /BANQUET_TOP_PLATE/);
-    assert.match(pdfService, /BANQUET_CORNER_IMAGE/);
-    assert.match(pdfService, /BANQUET_FINAL_LOGO/);
-    assert.match(pdfService, /BANQUET_HERO_LOGO/);
+    assert.doesNotMatch(pdfService, /BANQUET_TOP_PLATE/);
+    assert.doesNotMatch(pdfService, /BANQUET_CORNER_IMAGE/);
+    assert.doesNotMatch(pdfService, /BANQUET_FINAL_LOGO/);
+    assert.doesNotMatch(pdfService, /BANQUET_HERO_LOGO/);
     assert.match(pdfService, /function drawPageDecor/);
     assert.match(pdfService, /function drawFinalBrand/);
     assert.match(pdfService, /function drawHeroBookingCard/);
@@ -1330,11 +1334,14 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(summaryService, /responsible,/);
     assert.match(summaryService, /schedule,/);
     assert.match(summaryService, /function buildFinanceRows/);
-    assert.match(summaryService, /add\('amount_due', 'До сплати'/);
-    assert.match(summaryService, /Math\.abs\(normalizedBookingPrice - normalizedOrderTotal\) >= 0\.01/);
+    assert.match(summaryService, /add\('total', 'Загальна сума'/);
+    assert.doesNotMatch(summaryService, /add\('amount_due', 'До сплати'/);
+    assert.doesNotMatch(summaryService, /add\('program', 'Програма'/);
+    assert.doesNotMatch(summaryService, /Math\.abs\(normalizedBookingPrice - normalizedOrderTotal\) >= 0\.01/);
     assert.match(pdfService, /function financeRowsForSummary\(summary = {}\)/);
     assert.match(pdfService, /financeRowsForSummary\(summary\)\.map\(row =>/);
-    assert.match(pdfService, /addFinanceRow\(rows, 'amount_due', 'До сплати'/);
+    assert.match(pdfService, /addFinanceRow\(rows, 'total', 'Загальна сума'/);
+    assert.doesNotMatch(pdfService, /addFinanceRow\(rows, 'amount_due', 'До сплати'/);
     assert.doesNotMatch(pdfService, /paymentMethod/);
     assert.doesNotMatch(pdfService, /paymentStatus/);
     assert.doesNotMatch(pdfService, /displayHeaderFooter/);
@@ -1450,9 +1457,7 @@ test('banquet summary PDF validation blocks client-critical gaps and keeps staff
             currency: 'UAH',
             amountDue: 1500,
             rows: [
-                { key: 'program', label: 'Програма', amount: 1500, currency: 'UAH', role: 'line' },
-                { key: 'total', label: 'Разом', amount: 1500, currency: 'UAH', role: 'total' },
-                { key: 'amount_due', label: 'До сплати', amount: 1500, currency: 'UAH', role: 'due' }
+                { key: 'total', label: 'Загальна сума', amount: 1500, currency: 'UAH', role: 'total' }
             ]
         },
         terms: { items: ['Умова'] }

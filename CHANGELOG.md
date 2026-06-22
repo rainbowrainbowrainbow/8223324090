@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.6 - Banquet official no-image style
+
+### Banquet sheet / Official document style / Single finance total / Browser and PDF parity / (Клешня, 22.06.2026) [codex]
+- **Банкетний лист повернено в офіційний документний стиль** - святкові PNG-декорації, top-плашка, кутова графіка і нижнє image-лого більше не рендеряться у preview або PDF.
+- **Шапка стала стриманою і компактною** - замість картинки використовується текстовий `EG`-знак, офіційна рамка, адреса закладу і права картка банкетного листа.
+- **Фінанси спрощено до однієї суми** - у блоці фінансів показується тільки `Загальна сума`, без розбивки на програму, вхід, меню, завдаток або `До сплати`.
+- **Server PDF вирівняно з browser preview** - PDFKit renderer малює той самий no-image masthead, офіційні секції і текстовий фінальний brand на останній сторінці.
+- **Regression guards оновлено** - тести фіксують відсутність `<img>` у банкетному summary, відсутність `BANQUET_*` assets у PDF renderer і єдиний finance total.
+- **Релізні маркери лишаються на `0.77.6`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.5 - Banquet print parity fix
 
 ### Banquet sheet / Browser preview parity / Print To PDF / Server PDF footer / (Клешня, 22.06.2026) [codex]

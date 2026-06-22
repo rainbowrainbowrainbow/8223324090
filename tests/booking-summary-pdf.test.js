@@ -116,13 +116,9 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(programTableRow.includes('1 порція'), false);
     assert.equal(clientView.orderTableRows.flat().includes('1 порція'), false);
 
-    assert.ok(financeLabels.includes('Разом'));
-    assert.ok(financeLabels.includes('До сплати'));
-    assert.ok(financeLabels.includes('Вхід'));
-    assert.equal(financeLabels.includes('Бронювання'), false);
-    assert.equal(financeLabels.includes('Додаткові активності'), false);
+    assert.deepEqual(financeLabels, ['Загальна сума']);
     assert.equal(clientView.financeRows.find(row => row.key === 'total')?.amount, 2600);
-    assert.equal(clientView.financeRows.find(row => row.key === 'amount_due')?.amount, 1600);
+    assert.equal(clientView.financeRows.find(row => row.key === 'amount_due'), undefined);
 
     assert.match(termsText, /Заборонено приносити їжу та напої\. Свій торт дозволено за 500 грн\. Cork Fee - 100 грн\./);
     assert.doesNotMatch(termsText, /Заборонено приносити їжу\/напої\/торт/);

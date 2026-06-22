@@ -2070,3 +2070,736 @@ body.booking-summary-page {
         max-height: 21mm;
     }
 }
+
+/* Banquet graphic block refinement: stronger masthead and section markers. */
+:root {
+    --summary-graphic-teal: #0a7f86;
+    --summary-graphic-teal-dark: #06454c;
+    --summary-graphic-gold: #c9962e;
+    --summary-graphic-mint: #dff5ef;
+}
+
+.booking-summary-document.booking-summary-a4-page {
+    background:
+        radial-gradient(circle at 18mm 56mm, rgba(8, 124, 131, 0.11), transparent 22mm),
+        radial-gradient(circle at calc(100% - 25mm) 36mm, rgba(201, 150, 46, 0.11), transparent 26mm),
+        linear-gradient(180deg, rgba(255, 253, 248, 0.985), rgba(255, 253, 248, 1)),
+        var(--summary-panel);
+}
+
+.banquet-top-plate {
+    height: 30mm;
+    opacity: 0.68;
+}
+
+.banquet-top-plate::after {
+    content: "";
+    position: absolute;
+    left: 8mm;
+    right: 8mm;
+    bottom: 0;
+    height: 2.4mm;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, rgba(8, 124, 131, 0.74), rgba(201, 150, 46, 0.68), transparent);
+}
+
+.banquet-hero {
+    grid-template-columns: 15mm minmax(0, 1fr) minmax(46mm, 54mm);
+    gap: 4mm;
+    min-height: 34mm;
+    margin: 0 0 3.2mm;
+    padding: 5mm 5mm 3.4mm;
+    border: 1px solid rgba(8, 124, 131, 0.17);
+    border-left: 3.2mm solid var(--summary-graphic-teal);
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.94), rgba(255, 253, 248, 0.74) 58%, rgba(255, 253, 248, 0.24)),
+        linear-gradient(135deg, rgba(8, 124, 131, 0.08), rgba(201, 150, 46, 0.07));
+}
+
+.banquet-hero::before {
+    content: "";
+    position: absolute;
+    top: 2.8mm;
+    left: -3.2mm;
+    width: 3.2mm;
+    height: calc(100% - 5.6mm);
+    border-radius: 0 999px 999px 0;
+    background: linear-gradient(180deg, var(--summary-graphic-gold), var(--summary-graphic-teal));
+}
+
+.banquet-hero::after {
+    content: "";
+    position: absolute;
+    right: 6mm;
+    bottom: 4mm;
+    width: 20mm;
+    height: 4.2mm;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, rgba(8, 124, 131, 0.22) 0 32%, transparent 32% 40%, rgba(201, 150, 46, 0.34) 40% 65%, transparent 65% 72%, rgba(8, 124, 131, 0.18) 72% 100%);
+    opacity: 0.75;
+}
+
+.brand-logo {
+    width: 15mm;
+    height: 15mm;
+    padding: 1.7mm;
+    border-color: rgba(201, 150, 46, 0.44);
+}
+
+.generated-at {
+    background: linear-gradient(90deg, rgba(8, 124, 131, 0.12), rgba(255, 255, 255, 0.76));
+}
+
+.brand-copy h1 {
+    max-width: 108mm;
+    font-size: 16.2px;
+}
+
+.booking-card {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(8, 124, 131, 0.2);
+    border-left: 2.6mm solid var(--summary-graphic-gold);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 253, 248, 0.8)),
+        var(--summary-card-bg);
+}
+
+.booking-card::after {
+    content: "";
+    position: absolute;
+    top: 2.4mm;
+    right: 2.6mm;
+    width: 12mm;
+    height: 3.2mm;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, var(--summary-graphic-teal) 0 35%, transparent 35% 46%, var(--summary-graphic-gold) 46% 73%, transparent 73% 82%, rgba(8, 124, 131, 0.42) 82% 100%);
+    opacity: 0.82;
+}
+
+.summary-brief {
+    position: relative;
+    padding-left: 6.2mm;
+    background:
+        linear-gradient(90deg, rgba(223, 245, 239, 0.74), rgba(255, 255, 255, 0.82) 22%, rgba(255, 255, 255, 0.72)),
+        rgba(255, 255, 255, 0.82);
+}
+
+.summary-brief::before {
+    content: "";
+    position: absolute;
+    top: 2mm;
+    bottom: 2mm;
+    left: 2.1mm;
+    width: 2.4mm;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--summary-graphic-teal), var(--summary-graphic-gold));
+}
+
+.summary-brief::after {
+    content: "";
+    position: absolute;
+    top: 2mm;
+    right: 2.4mm;
+    width: 18mm;
+    height: 3mm;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, rgba(8, 124, 131, 0.18) 0 28%, transparent 28% 39%, rgba(201, 150, 46, 0.28) 39% 65%, transparent 65% 74%, rgba(8, 124, 131, 0.16) 74% 100%);
+}
+
+.summary-section {
+    position: relative;
+    padding: 1.4mm 0 0 5.4mm;
+    border-left: 0;
+}
+
+.summary-section::before {
+    content: "";
+    position: absolute;
+    top: 1.4mm;
+    left: 0;
+    width: 3.2mm;
+    height: 12mm;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--summary-graphic-teal), var(--summary-graphic-gold));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7) inset;
+}
+
+.summary-section::after {
+    content: "";
+    position: absolute;
+    top: 14.7mm;
+    left: 0.45mm;
+    width: 2.3mm;
+    height: 2.3mm;
+    border-radius: 50%;
+    background: rgba(201, 150, 46, 0.72);
+}
+
+.summary-section h2 {
+    display: inline-flex;
+    align-items: center;
+    min-height: 5.6mm;
+    margin-bottom: 1.2mm;
+    padding: 0.9mm 3mm 0.9mm 2.2mm;
+    border-radius: 0 8px 8px 0;
+    background: linear-gradient(90deg, rgba(8, 124, 131, 0.13), rgba(201, 150, 46, 0.1));
+}
+
+.summary-section h2::before {
+    content: "";
+    width: 2.4mm;
+    height: 2.4mm;
+    margin-right: 1.4mm;
+    border-radius: 2px;
+    background: var(--summary-graphic-gold);
+    box-shadow: 0 0 0 1px rgba(138, 100, 25, 0.18);
+}
+
+@media (max-width: 760px) {
+    .banquet-hero {
+        grid-template-columns: 14mm minmax(0, 1fr);
+        padding: 5mm 4mm 3.5mm;
+    }
+}
+
+@media print {
+    .banquet-top-plate {
+        height: 29mm;
+        opacity: 0.66;
+    }
+
+    .banquet-hero {
+        grid-template-columns: 14mm minmax(0, 1fr) minmax(45mm, 53mm);
+        gap: 3.6mm;
+        min-height: 32mm;
+        margin-bottom: 2.5mm;
+        padding: 4.3mm 4.4mm 3mm;
+        border-left-width: 3mm;
+    }
+
+    .brand-logo {
+        width: 14mm;
+        height: 14mm;
+        padding: 1.5mm;
+    }
+
+    .brand-copy h1 {
+        font-size: 15.2px;
+    }
+
+    .booking-card::after,
+    .summary-brief::after {
+        opacity: 0.64;
+    }
+
+    .summary-brief {
+        padding-left: 5.8mm;
+    }
+
+    .summary-section {
+        padding-left: 5mm;
+    }
+
+    .summary-section h2 {
+        min-height: 5mm;
+        padding: 0.7mm 2.5mm 0.7mm 1.9mm;
+    }
+}
+
+/* Banquet clean premium refinement: larger frameless logo, calmer masthead, lighter content blocks. */
+:root {
+    --summary-premium-ink: #053940;
+    --summary-premium-teal: #087c83;
+    --summary-premium-teal-soft: #e6f6f3;
+    --summary-premium-gold: #c9962e;
+    --summary-premium-gold-soft: #fff5d9;
+}
+
+.banquet-top-plate {
+    height: 27mm;
+    opacity: 0.56;
+}
+
+.banquet-top-plate::after {
+    left: 12mm;
+    right: 12mm;
+    bottom: 0.2mm;
+    height: 1.2mm;
+    background: linear-gradient(90deg, transparent, rgba(201, 150, 46, 0.54), rgba(8, 124, 131, 0.52), transparent);
+}
+
+.banquet-hero {
+    grid-template-columns: 22mm minmax(0, 1fr) minmax(45mm, 54mm);
+    align-items: center;
+    gap: 4.8mm;
+    min-height: 38mm;
+    margin: 0 0 3.4mm;
+    padding: 5.2mm 5.2mm 4.2mm 5.8mm;
+    border: 1px solid rgba(8, 124, 131, 0.14);
+    border-left: 0;
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(255, 253, 248, 0.82) 58%, rgba(255, 253, 248, 0.34)),
+        linear-gradient(135deg, rgba(8, 124, 131, 0.06), rgba(201, 150, 46, 0.06));
+}
+
+.banquet-hero::before {
+    top: 4mm;
+    left: 0;
+    width: 1.5mm;
+    height: calc(100% - 8mm);
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--summary-premium-teal), var(--summary-premium-gold));
+}
+
+.banquet-hero::after {
+    right: 7mm;
+    bottom: 4mm;
+    width: 28mm;
+    height: 1.5mm;
+    background: linear-gradient(90deg, transparent, rgba(201, 150, 46, 0.5), rgba(8, 124, 131, 0.44), transparent);
+}
+
+.brand-logo {
+    width: 21mm;
+    height: 21mm;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    filter: drop-shadow(0 3px 6px rgba(6, 54, 60, 0.16));
+}
+
+.generated-at {
+    margin-bottom: 1.2mm;
+    padding: 1mm 1.7mm;
+    border-color: rgba(8, 124, 131, 0.18);
+    background: rgba(255, 255, 255, 0.64);
+    font-size: 7.2px;
+}
+
+.brand-copy {
+    padding-top: 0;
+}
+
+.brand-copy h1 {
+    max-width: 104mm;
+    font-size: 17.4px;
+    line-height: 1.08;
+    color: var(--summary-premium-ink);
+}
+
+.brand-copy p,
+.brand-copy strong {
+    max-width: 104mm;
+}
+
+.booking-card {
+    padding: 3.2mm 3.4mm;
+    border-color: rgba(8, 124, 131, 0.16);
+    border-left: 1.6mm solid var(--summary-premium-gold);
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.booking-card::after {
+    top: auto;
+    right: 3mm;
+    bottom: 2.8mm;
+    width: 18mm;
+    height: 1.6mm;
+    background: linear-gradient(90deg, rgba(8, 124, 131, 0.38), rgba(201, 150, 46, 0.54), rgba(8, 124, 131, 0.16));
+}
+
+.booking-card h2 {
+    color: var(--summary-premium-ink);
+}
+
+.summary-brief {
+    padding: 2.3mm 3mm 2.3mm 5mm;
+    border-color: rgba(8, 124, 131, 0.13);
+    background:
+        linear-gradient(90deg, rgba(230, 246, 243, 0.64), rgba(255, 255, 255, 0.86) 24%, rgba(255, 255, 255, 0.76)),
+        rgba(255, 255, 255, 0.84);
+}
+
+.summary-brief::before {
+    top: 2.3mm;
+    bottom: 2.3mm;
+    left: 2mm;
+    width: 1.2mm;
+}
+
+.summary-brief::after {
+    display: none;
+}
+
+.summary-section {
+    margin-top: 2mm;
+    padding: 0.8mm 0 0 4mm;
+}
+
+.summary-section::before {
+    top: 2.1mm;
+    left: 0.2mm;
+    width: 2.6mm;
+    height: 2.6mm;
+    border-radius: 3px;
+    background: var(--summary-premium-gold);
+    transform: rotate(45deg);
+    box-shadow: 0 0 0 1px rgba(201, 150, 46, 0.18);
+}
+
+.summary-section::after {
+    top: 6.6mm;
+    left: 1.2mm;
+    width: 0.7mm;
+    height: calc(100% - 6.6mm);
+    min-height: 4mm;
+    border-radius: 999px;
+    background: rgba(8, 124, 131, 0.34);
+}
+
+.summary-section h2 {
+    min-height: auto;
+    margin-bottom: 1.2mm;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--summary-premium-ink);
+    font-size: 9.2px;
+    letter-spacing: 0;
+}
+
+.summary-section h2::before {
+    width: 8mm;
+    height: 1px;
+    margin-right: 1.6mm;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--summary-premium-teal), var(--summary-premium-gold));
+    box-shadow: none;
+}
+
+.summary-order-table th {
+    background: var(--summary-premium-teal-soft);
+    color: var(--summary-premium-ink);
+    border-bottom: 1px solid rgba(201, 150, 46, 0.46);
+}
+
+.summary-order-table td,
+.summary-responsible-item,
+.summary-schedule-item,
+.summary-service-event,
+.summary-comment-row,
+.summary-finance-table th,
+.summary-finance-table td {
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.summary-order-table th,
+.summary-order-table td {
+    border-color: rgba(8, 124, 131, 0.12);
+}
+
+.summary-finance-table th {
+    color: var(--summary-premium-ink);
+}
+
+.summary-finance-row--due th,
+.summary-finance-row--due td {
+    background: rgba(230, 246, 243, 0.78);
+}
+
+.banquet-final-brand {
+    width: min(100%, 116mm);
+}
+
+.banquet-final-brand img {
+    max-height: 24mm;
+}
+
+@media (max-width: 760px) {
+    .banquet-hero {
+        grid-template-columns: 18mm minmax(0, 1fr);
+        gap: 3.2mm;
+    }
+
+    .brand-logo {
+        width: 18mm;
+        height: 18mm;
+    }
+}
+
+@media print {
+    .banquet-top-plate {
+        height: 26mm;
+        opacity: 0.54;
+    }
+
+    .banquet-hero {
+        grid-template-columns: 20mm minmax(0, 1fr) minmax(45mm, 53mm);
+        gap: 4mm;
+        min-height: 36mm;
+        padding: 4.6mm 4.8mm 3.8mm 5.3mm;
+    }
+
+    .brand-logo {
+        width: 20mm;
+        height: 20mm;
+    }
+
+    .brand-copy h1 {
+        font-size: 16.5px;
+    }
+
+    .summary-section h2 {
+        font-size: 9px;
+    }
+
+    .summary-order-table th {
+        background: var(--summary-premium-teal-soft) !important;
+        color: var(--summary-premium-ink) !important;
+    }
+
+    .banquet-final-brand {
+        width: 112mm;
+    }
+}
+
+/* Banquet official no-image style: formal document, no decorative raster assets. */
+:root {
+    --summary-official-ink: #102a31;
+    --summary-official-muted: #607074;
+    --summary-official-line: #cfdedd;
+    --summary-official-soft: #f5faf9;
+    --summary-official-accent: #087c83;
+    --summary-official-gold: #b88925;
+}
+
+.booking-summary-document.booking-summary-a4-page {
+    background:
+        linear-gradient(180deg, #fffdf8, #fffdf8),
+        var(--summary-panel);
+}
+
+.booking-summary-document::after {
+    inset: 5.5mm;
+    border-color: rgba(184, 137, 37, 0.22);
+}
+
+.banquet-top-plate,
+.banquet-corner-art {
+    display: none !important;
+}
+
+.banquet-hero {
+    grid-template-columns: 18mm minmax(0, 1fr) minmax(44mm, 54mm);
+    min-height: 34mm;
+    margin: 0 0 4mm;
+    padding: 4.8mm 5mm 4.2mm;
+    border: 1px solid var(--summary-official-line);
+    border-left: 1.8mm solid var(--summary-official-accent);
+    background: linear-gradient(90deg, #ffffff, #fbf8ef);
+}
+
+.banquet-hero::before {
+    display: none;
+}
+
+.banquet-hero::after {
+    right: 5mm;
+    bottom: 3.6mm;
+    width: 36mm;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(184, 137, 37, 0.48), transparent);
+}
+
+.brand-mark {
+    display: grid;
+    place-items: center;
+    width: 18mm;
+    height: 18mm;
+    border: 1.4px solid var(--summary-official-gold);
+    border-radius: 50%;
+    background: #fffdf8;
+    color: var(--summary-official-ink);
+    font-size: 15px;
+    font-weight: 950;
+    letter-spacing: 0;
+    line-height: 1;
+}
+
+.brand-logo {
+    display: none !important;
+}
+
+.generated-at {
+    border-color: var(--summary-official-line);
+    background: var(--summary-official-soft);
+    color: var(--summary-official-accent);
+}
+
+.brand-copy h1 {
+    color: var(--summary-official-ink);
+}
+
+.brand-copy p,
+.brand-copy strong {
+    color: var(--summary-official-muted);
+}
+
+.brand-copy strong {
+    color: #765816;
+}
+
+.booking-card {
+    border-color: var(--summary-official-line);
+    border-left: 1.2mm solid var(--summary-official-gold);
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.booking-card::after {
+    width: 24mm;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(8, 124, 131, 0.45), rgba(184, 137, 37, 0.45));
+}
+
+.summary-brief {
+    padding: 2.4mm 3mm 2.4mm 4mm;
+    border-color: var(--summary-official-line);
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.summary-brief::before {
+    left: 1.5mm;
+    width: 0.8mm;
+    background: var(--summary-official-accent);
+}
+
+.summary-section {
+    padding-left: 3.4mm;
+}
+
+.summary-section::before {
+    top: 2.2mm;
+    left: 0;
+    width: 2mm;
+    height: 2mm;
+    border-radius: 50%;
+    background: var(--summary-official-gold);
+    transform: none;
+}
+
+.summary-section::after {
+    left: 0.85mm;
+    width: 0.35mm;
+    background: rgba(8, 124, 131, 0.24);
+}
+
+.summary-section h2 {
+    color: var(--summary-official-ink);
+    font-size: 9.4px;
+}
+
+.summary-section h2::before {
+    width: 7mm;
+    background: var(--summary-official-accent);
+}
+
+.summary-order-table th {
+    background: #f4f8f7;
+    color: var(--summary-official-ink);
+    border-bottom: 1px solid rgba(184, 137, 37, 0.36);
+}
+
+.summary-order-table td,
+.summary-responsible-item,
+.summary-schedule-item,
+.summary-service-event,
+.summary-comment-row,
+.summary-finance-table th,
+.summary-finance-table td {
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.summary-finance-table {
+    max-width: 78mm;
+}
+
+.summary-finance-row--total th,
+.summary-finance-row--total td {
+    background: #f4f8f7;
+    color: var(--summary-official-ink);
+    font-weight: 950;
+}
+
+.banquet-final-brand {
+    display: grid;
+    justify-items: center;
+    gap: 1mm;
+    width: min(100%, 120mm);
+    color: var(--summary-official-muted);
+    font-size: 8px;
+    text-align: center;
+}
+
+.banquet-final-brand::before {
+    left: 12mm;
+    right: 12mm;
+    background: linear-gradient(90deg, transparent, rgba(184, 137, 37, 0.42), transparent);
+}
+
+.banquet-final-brand span {
+    color: var(--summary-official-ink);
+    font-weight: 850;
+}
+
+.banquet-final-brand strong {
+    color: var(--summary-official-gold);
+    font-size: 7.4px;
+    font-weight: 850;
+}
+
+.banquet-final-brand img {
+    display: none !important;
+}
+
+@media (max-width: 760px) {
+    .banquet-hero {
+        grid-template-columns: 16mm minmax(0, 1fr);
+    }
+
+    .brand-mark {
+        width: 16mm;
+        height: 16mm;
+        font-size: 13px;
+    }
+}
+
+@media print {
+    .banquet-hero {
+        grid-template-columns: 17mm minmax(0, 1fr) minmax(44mm, 53mm);
+        min-height: 33mm;
+        padding: 4.4mm 4.8mm 3.8mm;
+    }
+
+    .brand-mark {
+        width: 17mm;
+        height: 17mm;
+        font-size: 13.5px;
+    }
+
+    .summary-order-table th {
+        background: #f4f8f7 !important;
+        color: var(--summary-official-ink) !important;
+    }
+
+    .banquet-final-brand {
+        width: 116mm;
+    }
+}

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.5",
+  "version": "0.77.6",
   "eventGenix": {
-    "releaseLabel": "Banquet print parity fix"
+    "releaseLabel": "Banquet official no-image style"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.5">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.5">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.5">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.5">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.5">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.5">
-    <link rel="stylesheet" href="css/features.css?v=0.77.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.5">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.5">
+    <link rel="stylesheet" href="css/base.css?v=0.77.6">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.6">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.6">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.6">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.6">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.6">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.6">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.6">
+    <link rel="stylesheet" href="css/features.css?v=0.77.6">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.6">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.6">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.6">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.5">✨ 0.77.5</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.6">✨ 0.77.6</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.5 — Banquet print parity fix</p>
+                <p class="tagline">AI First CRM v0.77.6 — Banquet official no-image style</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.5</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.6</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1727,13 +1727,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.77.5 — Banquet print parity fix</h4>
+                    <h4>v0.77.6 — Banquet official no-image style</h4>
                     <ul>
-                        <li><b>Preview і Print To PDF вирівняні</b> — банкетний лист тепер має одну A4-геометрію на екрані та в друкованому PDF.</li>
-                        <li><b>Прибрано великий порожній низ сторінки</b> — документ більше не друкується як короткий блок у верхній частині A4.</li>
-                        <li><b>Картка <code>Банкетний лист</code> лишається в шапці праворуч</b> — PDF більше не переносить її у широкий окремий ряд.</li>
-                        <li><b>Фінальна лого-плашка стала справді нижньою</b> — у browser print і server PDF вона стоїть внизу останнього аркуша.</li>
-                        <li><b>Декор став акуратнішим</b> — top-плашка і кутова графіка не перекривають текст і не забирають зайвий простір.</li>
+                        <li><b>Банкетний лист повернено до офіційного стилю</b> — preview і PDF більше не рендерять декоративні PNG, top-плашку, кутову графіку або image-лого.</li>
+                        <li><b>Шапка стала документною</b> — замість картинки використовується текстовий <code>EG</code>-знак, рамка, адреса закладу і права картка банкетного листа.</li>
+                        <li><b>Фінанси показують одну суму</b> — у блоці лишилась тільки <code>Загальна сума</code>, без розбивки на категорії, завдаток або <code>До сплати</code>.</li>
+                        <li><b>Server PDF вирівняно з preview</b> — PDF-експорт має той самий no-image masthead, офіційні секції і текстовий brand на останній сторінці.</li>
+                        <li><b>Regression guards оновлено</b> — тести фіксують відсутність <code>&lt;img&gt;</code> у банкетному summary і єдиний finance total.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -14414,35 +14414,35 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.5"></script>
-    <script src="js/timeline-visibility.js?v=0.77.5"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.5"></script>
-    <script src="js/config.js?v=0.77.5"></script>
-    <script src="js/api.js?v=0.77.5"></script>
-    <script src="js/ui.js?v=0.77.5"></script>
-    <script src="js/auth.js?v=0.77.5"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.5"></script>
-    <script src="js/timeline-cache.js?v=0.77.5"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.5"></script>
-    <script src="js/timeline.js?v=0.77.5"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.5"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.5"></script>
-    <script src="js/booking-save-path.js?v=0.77.5"></script>
-    <script src="js/booking.js?v=0.77.5"></script>
-    <script src="js/settings.js?v=0.77.5"></script>
-    <script src="js/booking-form.js?v=0.77.5"></script>
-    <script src="js/booking-linked.js?v=0.77.5"></script>
-    <script src="js/settings-dashboard.js?v=0.77.5"></script>
-    <script src="js/settings-history.js?v=0.77.5"></script>
-    <script src="js/settings-afisha.js?v=0.77.5"></script>
-    <script src="js/settings-certificates.js?v=0.77.5"></script>
-    <script src="js/offline.js?v=0.77.5"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.5"></script>
-    <script src="js/search.js?v=0.77.5"></script>
-    <script src="js/ws.js?v=0.77.5"></script>
-    <script src="js/app.js?v=0.77.5"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.5"></script>
-    <script src="js/components/sidebar.js?v=0.77.5"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.5"></script>
+    <script src="js/timeline-context.js?v=0.77.6"></script>
+    <script src="js/timeline-visibility.js?v=0.77.6"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.6"></script>
+    <script src="js/config.js?v=0.77.6"></script>
+    <script src="js/api.js?v=0.77.6"></script>
+    <script src="js/ui.js?v=0.77.6"></script>
+    <script src="js/auth.js?v=0.77.6"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.6"></script>
+    <script src="js/timeline-cache.js?v=0.77.6"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.6"></script>
+    <script src="js/timeline.js?v=0.77.6"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.6"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.6"></script>
+    <script src="js/booking-save-path.js?v=0.77.6"></script>
+    <script src="js/booking.js?v=0.77.6"></script>
+    <script src="js/settings.js?v=0.77.6"></script>
+    <script src="js/booking-form.js?v=0.77.6"></script>
+    <script src="js/booking-linked.js?v=0.77.6"></script>
+    <script src="js/settings-dashboard.js?v=0.77.6"></script>
+    <script src="js/settings-history.js?v=0.77.6"></script>
+    <script src="js/settings-afisha.js?v=0.77.6"></script>
+    <script src="js/settings-certificates.js?v=0.77.6"></script>
+    <script src="js/offline.js?v=0.77.6"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.6"></script>
+    <script src="js/search.js?v=0.77.6"></script>
+    <script src="js/ws.js?v=0.77.6"></script>
+    <script src="js/app.js?v=0.77.6"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.6"></script>
+    <script src="js/components/sidebar.js?v=0.77.6"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.6"></script>
 </body>
 </html>

@@ -2,10 +2,6 @@
 
 (function () {
     const API_BASE = '/api';
-    const BANQUET_HERO_LOGO_SRC = 'images/park-logo.png';
-    const BANQUET_TOP_PLATE_SRC = 'images/banquet-top.png';
-    const BANQUET_CORNER_SRC = 'images/banquet-corner.png';
-    const BANQUET_FINAL_LOGO_SRC = 'images/banquet-logo-down.png';
     let currentSummary = null;
     let currentSummaryRequest = {
         id: '',
@@ -106,12 +102,6 @@
     function summaryMoney(value) {
         const n = Number(value);
         return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-    }
-
-    function summaryAmountDue(total, depositAmount) {
-        const totalMoney = summaryMoney(total);
-        if (totalMoney === null) return null;
-        return summaryMoney(Math.max(0, totalMoney - (summaryMoney(depositAmount) || 0)));
     }
 
     function formatValue(value) {
@@ -626,24 +616,11 @@
 
     function fallbackSummaryFinanceRows(summary) {
         const totals = summary?.totals || {};
-        const deposit = summary?.deposit || {};
         const currency = totals.currency || 'UAH';
         const rows = [];
-        addSummaryFinanceRow(rows, 'program', 'Програма', totals.programBasePrice, currency);
-        addSummaryFinanceRow(rows, 'entry', 'Вхід', totals.entrySubtotal, currency);
-        addSummaryFinanceRow(rows, 'menu', 'Меню', totals.menuSubtotal, currency);
-        addSummaryFinanceRow(rows, 'activities', 'Додаткові активності', totals.activitySubtotal, currency);
         const orderTotal = summaryMoney(totals.orderTotal);
         const bookingPrice = summaryMoney(totals.bookingPrice);
-        if (bookingPrice !== null && orderTotal !== null && Math.abs(bookingPrice - orderTotal) >= 0.01) {
-            addSummaryFinanceRow(rows, 'booking', 'Бронювання', bookingPrice, currency, { hideZero: false });
-        }
-        addSummaryFinanceRow(rows, 'total', 'Разом', orderTotal, currency, { hideZero: false, role: 'total' });
-        const depositAmount = deposit.amount === undefined || deposit.amount === null ? null : summaryMoney(deposit.amount);
-        if (depositAmount !== null) {
-            addSummaryFinanceRow(rows, 'deposit', 'Завдаток', depositAmount, currency, { hideZero: false, role: 'deposit' });
-        }
-        addSummaryFinanceRow(rows, 'amount_due', 'До сплати', summaryAmountDue(orderTotal, depositAmount), currency, { hideZero: false, role: 'due' });
+        addSummaryFinanceRow(rows, 'total', 'Загальна сума', orderTotal ?? bookingPrice, currency, { hideZero: false, role: 'total' });
         return rows;
     }
 
@@ -658,7 +635,17 @@
                 role: row?.role || 'line'
             }))
             .filter(row => row.label && row.amount !== null);
-        return normalized.length ? normalized : fallbackSummaryFinanceRows(summary);
+        const totalRow = normalized.find(row => row.key === 'total')
+            || normalized.find(row => row.role === 'total');
+        if (totalRow) {
+            return [{
+                ...totalRow,
+                key: 'total',
+                label: 'Загальна сума',
+                role: 'total'
+            }];
+        }
+        return fallbackSummaryFinanceRows(summary);
     }
 
     function renderTotals(summary) {
@@ -713,12 +700,8 @@
         if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
         doc.innerHTML = `
-            <figure class="banquet-top-plate" aria-hidden="true">
-                <img src="${BANQUET_TOP_PLATE_SRC}" alt="">
-            </figure>
-            <img class="banquet-corner-art" src="${BANQUET_CORNER_SRC}" alt="" aria-hidden="true">
             <header class="banquet-hero" aria-label="Шапка банкетного листа">
-                <img class="brand-logo" src="${BANQUET_HERO_LOGO_SRC}" alt="${escapeHtml(venue.name || 'Event Genix')}">
+                <div class="brand-mark" aria-hidden="true">EG</div>
                 <div class="brand-copy">
                     <div class="generated-at">${escapeHtml(formatGeneratedAtShort(renderedAt))}</div>
                     <h1>${escapeHtml(venue.name || 'Заклад')}</h1>
@@ -809,7 +792,8 @@
             </div>
 
             <footer class="banquet-final-brand" aria-label="Фінальна плашка банкетного листа">
-                <img src="${BANQUET_FINAL_LOGO_SRC}" alt="${escapeHtml(venue.name || 'Event Genix')}">
+                <span>${escapeHtml(venue.name || 'Event Genix')}</span>
+                <strong>${escapeHtml(summary.bookingId || '')}</strong>
             </footer>
         `;
     }

@@ -1146,27 +1146,10 @@ function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activ
         });
     };
 
-    add('program', 'Програма', programBasePrice);
-    add('entry', 'Вхід', entrySubtotal);
-    add('menu', 'Меню', menuSubtotal);
-    add('activities', 'Додаткові активності', activitySubtotal);
-
     const normalizedOrderTotal = money(orderTotal);
     const normalizedBookingPrice = money(bookingPrice);
-    if (
-        normalizedBookingPrice !== null
-        && normalizedOrderTotal !== null
-        && Math.abs(normalizedBookingPrice - normalizedOrderTotal) >= 0.01
-    ) {
-        add('booking', 'Бронювання', normalizedBookingPrice, { hideZero: false });
-    }
-
-    add('total', 'Разом', normalizedOrderTotal, { hideZero: false, role: 'total' });
+    add('total', 'Загальна сума', normalizedOrderTotal ?? normalizedBookingPrice, { hideZero: false, role: 'total' });
     const depositAmount = deposit?.amount === null || deposit?.amount === undefined ? null : money(deposit.amount);
-    if (depositAmount !== null) {
-        add('deposit', 'Завдаток', depositAmount, { hideZero: false, role: 'deposit' });
-    }
-    add('amount_due', 'До сплати', subtractMoney(normalizedOrderTotal, depositAmount), { hideZero: false, role: 'due' });
 
     return {
         currency,

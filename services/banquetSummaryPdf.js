@@ -18,10 +18,6 @@ const PDF_FONT_BOLD = path.join(FONT_DIR, 'Nunito-Bold.ttf');
 const PDF_FONT_BLACK = path.join(FONT_DIR, 'Nunito-Black.ttf');
 const PDF_SERIF_REGULAR = path.join(FONT_DIR, 'NotoSerif-Regular.ttf');
 const PDF_SERIF_BOLD = path.join(FONT_DIR, 'NotoSerif-Bold.ttf');
-const BANQUET_TOP_PLATE = path.join(ROOT_DIR, 'images', 'banquet-top.png');
-const BANQUET_CORNER_IMAGE = path.join(ROOT_DIR, 'images', 'banquet-corner.png');
-const BANQUET_FINAL_LOGO = path.join(ROOT_DIR, 'images', 'banquet-logo-down.png');
-const BANQUET_HERO_LOGO = path.join(ROOT_DIR, 'images', 'park-logo.png');
 const PDF_COLORS = Object.freeze({
     teal: '#087c83',
     tealDark: '#06363c',
@@ -490,26 +486,16 @@ function drawPageDecor(doc) {
     const borderHeight = pageHeight - borderTop - Math.max(18, doc.page.margins.bottom - 8);
 
     doc.save();
-    if (fs.existsSync(BANQUET_TOP_PLATE)) {
-        doc.opacity(0.94);
-        doc.rect(0, 0, pageWidth, 118).clip();
-        doc.image(BANQUET_TOP_PLATE, 0, 0, {
-            cover: [pageWidth, 118],
-            align: 'center',
-            valign: 'top'
-        });
-    }
-    doc.restore();
-
-    doc.save();
-    if (fs.existsSync(BANQUET_CORNER_IMAGE)) {
-        doc.opacity(0.24);
-        doc.image(BANQUET_CORNER_IMAGE, pageWidth - 176, pageHeight - 144, {
-            fit: [188, 128],
-            align: 'right',
-            valign: 'bottom'
-        });
-    }
+    doc.moveTo(left, top + 78)
+        .lineTo(left + width, top + 78)
+        .lineWidth(1.5)
+        .strokeColor('#0a7f86')
+        .stroke();
+    doc.moveTo(left + 120, top + 79.5)
+        .lineTo(left + width - 120, top + 79.5)
+        .lineWidth(0.8)
+        .strokeColor('#c9962e')
+        .stroke();
     doc.restore();
 
     doc.save();
@@ -527,17 +513,23 @@ function drawSectionTitle(doc, title) {
     resetCursorX(doc);
     const left = doc.page.margins.left;
     const y = doc.y;
-    doc.roundedRect(left, y + 1.5, 4, 11, 2).fillColor(PDF_COLORS.teal).fill();
+    const label = title.toUpperCase();
+    doc.roundedRect(left + 1, y + 5, 6, 6, 1.2).fillColor(PDF_COLORS.gold).fill();
+    doc.moveTo(left + 14, y + 8)
+        .lineTo(left + 48, y + 8)
+        .lineWidth(0.8)
+        .strokeColor(PDF_COLORS.teal)
+        .stroke();
     doc.font('SummaryBold')
-        .fontSize(8.8)
+        .fontSize(8.9)
         .fillColor(PDF_COLORS.tealDark)
-        .text(title.toUpperCase(), left + 9, y, {
-            width: pageContentWidth(doc) - 9,
+        .text(label, left + 55, y + 2.4, {
+            width: pageContentWidth(doc) - 55,
             align: 'left',
             lineGap: 0.2,
             continued: false
         });
-    doc.y = Math.max(doc.y, y + 14);
+    doc.y = Math.max(doc.y, y + 16);
     resetCursorX(doc);
 }
 
@@ -607,12 +599,6 @@ function rowAmount(row = {}, currency) {
     return formatMoney(row.subtotal, currency);
 }
 
-function amountDue(total, depositAmount) {
-    const totalMoney = nullableNumber(total);
-    if (totalMoney === null) return null;
-    return Math.round(Math.max(0, totalMoney - (nullableNumber(depositAmount) || 0)) * 100) / 100;
-}
-
 function addFinanceRow(rows, key, label, amount, currency, options = {}) {
     const value = nullableNumber(amount);
     if (value === null) return;
@@ -631,21 +617,10 @@ function fallbackFinanceRows(summary = {}) {
     const deposit = summary.deposit || {};
     const currency = totals.currency || 'UAH';
     const rows = [];
-    addFinanceRow(rows, 'program', 'Програма', totals.programBasePrice, currency);
-    addFinanceRow(rows, 'entry', 'Вхід', totals.entrySubtotal, currency);
-    addFinanceRow(rows, 'menu', 'Меню', totals.menuSubtotal, currency);
-    addFinanceRow(rows, 'activities', 'Додаткові активності', totals.activitySubtotal, currency);
     const orderTotal = nullableNumber(totals.orderTotal);
     const bookingPrice = nullableNumber(totals.bookingPrice);
-    if (bookingPrice !== null && orderTotal !== null && Math.abs(bookingPrice - orderTotal) >= 0.01) {
-        addFinanceRow(rows, 'booking', 'Бронювання', bookingPrice, currency, { hideZero: false });
-    }
-    addFinanceRow(rows, 'total', 'Разом', orderTotal, currency, { hideZero: false, role: 'total' });
+    addFinanceRow(rows, 'total', 'Загальна сума', orderTotal ?? bookingPrice, currency, { hideZero: false, role: 'total' });
     const depositAmount = deposit.amount === undefined || deposit.amount === null ? null : nullableNumber(deposit.amount);
-    if (depositAmount !== null) {
-        addFinanceRow(rows, 'deposit', 'Завдаток', depositAmount, currency, { hideZero: false, role: 'deposit' });
-    }
-    addFinanceRow(rows, 'amount_due', 'До сплати', amountDue(orderTotal, depositAmount), currency, { hideZero: false, role: 'due' });
     return rows;
 }
 
@@ -660,7 +635,16 @@ function financeRowsForSummary(summary = {}) {
             role: row?.role || 'line'
         }))
         .filter(row => row.label && row.amount !== null);
-    return normalized.length ? normalized : fallbackFinanceRows(summary);
+    const totalRow = normalized.find(row => row.key === 'total') || normalized.find(row => row.role === 'total');
+    if (totalRow) {
+        return [{
+            ...totalRow,
+            key: 'total',
+            label: 'Загальна сума',
+            role: 'total'
+        }];
+    }
+    return fallbackFinanceRows(summary);
 }
 
 function drawTable(doc, columns = [], rows = []) {
@@ -709,8 +693,8 @@ function drawTable(doc, columns = [], rows = []) {
 
     drawRow(columns.map(col => col.label), {
         bold: true,
-        fill: PDF_COLORS.teal,
-        textColor: PDF_COLORS.cream,
+        fill: PDF_COLORS.soft,
+        textColor: PDF_COLORS.tealDark,
         minHeight: 15,
         fontSize: 7.5
     });
@@ -791,17 +775,7 @@ function drawResponsible(doc, rows = []) {
 function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
     doc.save();
     doc.roundedRect(x, y, width, height, radius).clip();
-    doc.rect(x, y, width, height).fill(PDF_COLORS.tealDark);
-    if (fs.existsSync(BANQUET_TOP_PLATE)) {
-        doc.image(BANQUET_TOP_PLATE, x, y, {
-            cover: [width, height],
-            align: 'center',
-            valign: 'center'
-        });
-    }
-    doc.fillOpacity(0.72)
-        .rect(x, y, width, height)
-        .fill(PDF_COLORS.cream);
+    doc.rect(x, y, width, height).fill(PDF_COLORS.cream);
     doc.restore();
 
     doc.roundedRect(x, y, width, height, radius)
@@ -810,26 +784,19 @@ function drawRoundedHeroBackground(doc, x, y, width, height, radius) {
         .stroke();
 }
 
-function drawHeroLogo(doc, x, y, size, venueName) {
+function drawHeroLogo(doc, x, y, size) {
     doc.save();
-    doc.roundedRect(x, y, size, size, 8)
-        .fillColor('#ffffff')
-        .fill();
-    if (fs.existsSync(BANQUET_HERO_LOGO)) {
-        doc.image(BANQUET_HERO_LOGO, x + 4, y + 4, {
-            fit: [size - 8, size - 8],
-            align: 'center',
-            valign: 'center'
+    doc.circle(x + size / 2, y + size / 2, size / 2)
+        .lineWidth(0.9)
+        .strokeColor(PDF_COLORS.gold)
+        .stroke();
+    doc.font('SummaryBold')
+        .fontSize(15)
+        .fillColor(PDF_COLORS.tealDark)
+        .text('EG', x, y + size / 2 - 8, {
+            width: size,
+            align: 'center'
         });
-    } else {
-        doc.font('SummaryBold')
-            .fontSize(16)
-            .fillColor(PDF_COLORS.tealDark)
-            .text(pdfText(venueName, 'EG').slice(0, 2).toUpperCase(), x, y + size / 2 - 8, {
-                width: size,
-                align: 'center'
-            });
-    }
     doc.restore();
 }
 
@@ -853,7 +820,7 @@ function drawHeroPill(doc, text, x, y, width) {
 
 function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, manager) {
     doc.save();
-    doc.fillOpacity(0.82)
+    doc.fillOpacity(0.88)
         .roundedRect(x, y, width, height, 8)
         .fill(PDF_COLORS.card);
     doc.restore();
@@ -863,9 +830,18 @@ function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, mana
         .stroke();
     doc.moveTo(x, y + 4)
         .lineTo(x, y + height - 4)
-        .lineWidth(1.6)
+        .lineWidth(2.4)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
+
+    doc.save();
+    doc.roundedRect(x + width - 42, y + 9, 28, 5, 2.5)
+        .fillColor(PDF_COLORS.teal)
+        .fill();
+    doc.roundedRect(x + width - 20, y + 9, 10, 5, 2.5)
+        .fillColor(PDF_COLORS.gold)
+        .fill();
+    doc.restore();
 
     const innerX = x + 10;
     const innerW = width - 18;
@@ -916,16 +892,16 @@ function drawHeader(doc, summary, view) {
     const left = doc.page.margins.left;
     const top = doc.page.margins.top;
     const width = pageContentWidth(doc);
-    const height = 78;
-    const logoSize = 34;
-    const cardWidth = 140;
-    const cardHeight = 66;
-    const cardX = left + width - cardWidth - 8;
-    const cardY = top + 10;
-    const logoX = left + 10;
-    const logoY = top + 22;
-    const brandX = logoX + logoSize + 11;
-    const brandWidth = Math.max(150, cardX - brandX - 12);
+    const height = 84;
+    const logoSize = 48;
+    const cardWidth = 144;
+    const cardHeight = 68;
+    const cardX = left + width - cardWidth - 9;
+    const cardY = top + 11;
+    const logoX = left + 14;
+    const logoY = top + 21;
+    const brandX = logoX + logoSize + 12;
+    const brandWidth = Math.max(150, cardX - brandX - 14);
     const renderedAt = new Date();
     const manager = summary.document?.generatedBy || summary.event?.manager || null;
 
@@ -934,7 +910,7 @@ function drawHeader(doc, summary, view) {
     doc.y = top;
 
     doc.save();
-    doc.fillOpacity(0.76)
+    doc.fillOpacity(0.88)
         .roundedRect(left, top + 6, width, height - 6, 8)
         .fill(PDF_COLORS.cream);
     doc.restore();
@@ -942,8 +918,22 @@ function drawHeader(doc, summary, view) {
         .lineWidth(0.45)
         .strokeColor('#ead8aa')
         .stroke();
+    doc.roundedRect(left, top + 14, 4, height - 22, 2)
+        .fillColor(PDF_COLORS.teal)
+        .fill();
+    doc.roundedRect(left + 1.2, top + 25, 1.6, height - 44, 0.8)
+        .fillColor(PDF_COLORS.gold)
+        .fill();
+    doc.save();
+    doc.fillOpacity(0.18)
+        .roundedRect(left + width - 98, top + height - 16, 72, 8, 4)
+        .fill(PDF_COLORS.teal);
+    doc.fillOpacity(0.36)
+        .roundedRect(left + width - 44, top + height - 16, 26, 8, 4)
+        .fill(PDF_COLORS.gold);
+    doc.restore();
 
-    drawHeroLogo(doc, logoX, logoY, logoSize, venue.name);
+    drawHeroLogo(doc, logoX, logoY, logoSize);
 
     const generatedLabel = formatGeneratedAtShort(renderedAt);
     doc.font('SummaryBold').fontSize(6.8);
@@ -962,23 +952,29 @@ function drawHeader(doc, summary, view) {
         .fillColor(PDF_COLORS.teal)
         .text(generatedLabel, brandX + 7, top + 17.1, { width: pillWidth - 14, lineGap: 0 });
 
-    doc.font('SummaryBold')
-        .fontSize(11.2)
-        .fillColor(PDF_COLORS.tealDark)
-        .text(pdfText(venue.name, 'Event Genix'), brandX, top + 33, {
+    const venueName = pdfText(venue.name, 'Event Genix');
+    const titleY = top + 33;
+    doc.font('SummaryBold').fontSize(10.6);
+    const titleHeight = doc.heightOfString(venueName, {
+        width: brandWidth,
+        lineGap: 0.1
+    });
+    doc.fillColor(PDF_COLORS.tealDark)
+        .text(venueName, brandX, titleY, {
             width: brandWidth,
-            lineGap: 0.2
+            lineGap: 0.1
         });
 
+    const addressY = Math.max(top + 50, titleY + Math.min(titleHeight, 27) + 3);
     doc.font('SummaryRegular')
-        .fontSize(6.9)
+        .fontSize(6.7)
         .fillColor(PDF_COLORS.muted)
-        .text(pdfText(venue.addressLine1), brandX, top + 50, { width: brandWidth, lineGap: 0.2 })
-        .text(pdfText(venue.addressLine2), brandX, top + 58, { width: brandWidth, lineGap: 0.2 });
+        .text(pdfText(venue.addressLine1), brandX, addressY, { width: brandWidth, lineGap: 0.1 })
+        .text(pdfText(venue.addressLine2), brandX, addressY + 8, { width: brandWidth, lineGap: 0.1 });
     doc.font('SummaryBold')
-        .fontSize(7.4)
+        .fontSize(7.2)
         .fillColor('#7a5614')
-        .text(pdfText(venue.phone), brandX, top + 67, { width: brandWidth, lineGap: 0 });
+        .text(pdfText(venue.phone), brandX, addressY + 17, { width: brandWidth, lineGap: 0 });
 
     drawHeroBookingCard(doc, summary, cardX, cardY, cardWidth, cardHeight, renderedAt, manager);
 
@@ -1009,21 +1005,20 @@ function drawFinalBrand(doc, summary = {}) {
         .stroke();
     doc.restore();
 
-    if (fs.existsSync(BANQUET_FINAL_LOGO)) {
-        doc.image(BANQUET_FINAL_LOGO, x, y, {
-            fit: [width, height],
-            align: 'center',
-            valign: 'center'
+    doc.font('SummaryBold')
+        .fontSize(8)
+        .fillColor(PDF_COLORS.tealDark)
+        .text(pdfText(summary.venue?.name, 'Event Genix'), x, y + 14, {
+            width,
+            align: 'center'
         });
-    } else {
-        doc.font('SummaryBold')
-            .fontSize(8)
-            .fillColor(PDF_COLORS.gold)
-            .text(pdfText(summary.venue?.name, 'Event Genix'), x, y + 20, {
-                width,
-                align: 'center'
-            });
-    }
+    doc.font('SummaryRegular')
+        .fontSize(6.6)
+        .fillColor(PDF_COLORS.muted)
+        .text(pdfText(summary.bookingId, ''), x, y + 27, {
+            width,
+            align: 'center'
+        });
     doc.y = y + height + 2;
     resetCursorX(doc);
 }

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.0">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.0">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.0">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.0">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.0">
-    <link rel="stylesheet" href="css/features.css?v=0.77.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.0">
+    <link rel="stylesheet" href="css/base.css?v=0.77.1">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.1">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.1">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.1">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.1">
+    <link rel="stylesheet" href="css/features.css?v=0.77.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.0">✨ 0.77.0</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.1">✨ 0.77.1</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.0 — Banquet sheet PDF cleanup</p>
+                <p class="tagline">AI First CRM v0.77.1 — Remove deprecated room load popover</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -153,7 +153,6 @@
                         <span class="toggle-mini-label">Компакт</span>
                     </label>
                     <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
-                    <button id="roomLoadBtn" class="btn-room-load" title="Навантаження кімнат"><span class="timeline-control-icon" aria-hidden="true">🏠</span><span>Кімнати</span></button>
                     <button type="button" id="historyBtn" class="btn-history hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span>Історія змін</span></button>
                     <div class="admin-dropdown" id="adminDropdown" data-menu-scope="timeline-actions">
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false"><span class="timeline-control-icon timeline-control-icon--dots" aria-hidden="true">⋯</span><span>Дії</span></button>
@@ -285,18 +284,6 @@
                 <canvas></canvas>
             </div>
 
-            <!-- v19.11: Room Load Panel -->
-            <div id="roomLoadPanel" class="room-load-panel hidden" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="roomLoadTitle">
-                <div class="room-load-header">
-                    <h4 id="roomLoadTitle">🏠 Кімнати</h4>
-                    <span id="roomLoadSummary" class="room-load-summary"></span>
-                    <button id="roomLoadClose" class="room-load-close" type="button" title="Закрити панель кімнат" aria-label="Закрити панель кімнат">
-                        <span aria-hidden="true">✕</span>
-                        <span class="room-load-close-label">Закрити</span>
-                    </button>
-                </div>
-                <div id="roomLoadList" class="room-load-list"></div>
-            </div>
         </main>
 
         <!-- v5.35: Backdrop overlay for tablet/mobile panel -->
@@ -1739,6 +1726,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.77.1 — Remove deprecated room load popover</h4>
+                    <ul>
+                        <li><b>Прибрано стару дубльовану кнопку і панель <code>Кімнати</code></b> — toolbar більше не показує deprecated room-load popover біля compact/undo.</li>
+                        <li><b>Актуальний режим timeline <code>Кімнати</code> лишився</b> — room timeline, room bookings, service markers і перемикач <code>Кімнати / Свята</code> працюють як основний механізм.</li>
+                        <li><b>Drawer <code>Вільні кімнати</code> збережено</b> — room-first бронювання і вибір вільних кімнат у формі не прив'язані до старого popover.</li>
+                        <li><b>Visual settings більше не показують deprecated room-load blocks</b> — старі збережені ключі <code>roomLoad</code> і <code>roomLoadPanel</code> ігноруються та не записуються назад.</li>
+                        <li><b>Менше плутанини для менеджера</b> — у CRM лишився один зрозумілий шлях для кімнат: вкладка timeline <code>Кімнати</code>, а не окрема дубльована панель.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.77.0 — Banquet sheet PDF cleanup</h4>
                     <ul>
@@ -14396,35 +14393,35 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.0"></script>
-    <script src="js/timeline-visibility.js?v=0.77.0"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.0"></script>
-    <script src="js/config.js?v=0.77.0"></script>
-    <script src="js/api.js?v=0.77.0"></script>
-    <script src="js/ui.js?v=0.77.0"></script>
-    <script src="js/auth.js?v=0.77.0"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.0"></script>
-    <script src="js/timeline-cache.js?v=0.77.0"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.0"></script>
-    <script src="js/timeline.js?v=0.77.0"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.0"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.0"></script>
-    <script src="js/booking-save-path.js?v=0.77.0"></script>
-    <script src="js/booking.js?v=0.77.0"></script>
-    <script src="js/settings.js?v=0.77.0"></script>
-    <script src="js/booking-form.js?v=0.77.0"></script>
-    <script src="js/booking-linked.js?v=0.77.0"></script>
-    <script src="js/settings-dashboard.js?v=0.77.0"></script>
-    <script src="js/settings-history.js?v=0.77.0"></script>
-    <script src="js/settings-afisha.js?v=0.77.0"></script>
-    <script src="js/settings-certificates.js?v=0.77.0"></script>
-    <script src="js/offline.js?v=0.77.0"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.0"></script>
-    <script src="js/search.js?v=0.77.0"></script>
-    <script src="js/ws.js?v=0.77.0"></script>
-    <script src="js/app.js?v=0.77.0"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.0"></script>
-    <script src="js/components/sidebar.js?v=0.77.0"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.0"></script>
+    <script src="js/timeline-context.js?v=0.77.1"></script>
+    <script src="js/timeline-visibility.js?v=0.77.1"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.1"></script>
+    <script src="js/config.js?v=0.77.1"></script>
+    <script src="js/api.js?v=0.77.1"></script>
+    <script src="js/ui.js?v=0.77.1"></script>
+    <script src="js/auth.js?v=0.77.1"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.1"></script>
+    <script src="js/timeline-cache.js?v=0.77.1"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.1"></script>
+    <script src="js/timeline.js?v=0.77.1"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.1"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.1"></script>
+    <script src="js/booking-save-path.js?v=0.77.1"></script>
+    <script src="js/booking.js?v=0.77.1"></script>
+    <script src="js/settings.js?v=0.77.1"></script>
+    <script src="js/booking-form.js?v=0.77.1"></script>
+    <script src="js/booking-linked.js?v=0.77.1"></script>
+    <script src="js/settings-dashboard.js?v=0.77.1"></script>
+    <script src="js/settings-history.js?v=0.77.1"></script>
+    <script src="js/settings-afisha.js?v=0.77.1"></script>
+    <script src="js/settings-certificates.js?v=0.77.1"></script>
+    <script src="js/offline.js?v=0.77.1"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.1"></script>
+    <script src="js/search.js?v=0.77.1"></script>
+    <script src="js/ws.js?v=0.77.1"></script>
+    <script src="js/app.js?v=0.77.1"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.1"></script>
+    <script src="js/components/sidebar.js?v=0.77.1"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.1"></script>
 </body>
 </html>

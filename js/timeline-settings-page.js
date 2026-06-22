@@ -93,7 +93,7 @@
             key: 'operator_daily',
             label: 'Операторський день',
             description: 'Лишає дату, статуси, сітку, створення бронювання і базові дії.',
-            hidden: ['assistantWidget', 'minimap', 'roomLoadPanel']
+            hidden: ['assistantWidget', 'minimap']
         },
         {
             key: 'compact_booking',
@@ -105,7 +105,7 @@
             key: 'clean_phone',
             label: 'Телефон / швидкий запис',
             description: 'Мінімальний режим для вузьких екранів і швидкого запису з телефону.',
-            hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export', 'roomLoadPanel']
+            hidden: ['quickStats', 'assistantWidget', 'legend', 'minimap', 'productSales', 'export']
         }
     ];
 

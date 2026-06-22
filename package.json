@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.0",
+  "version": "0.77.1",
   "eventGenix": {
-    "releaseLabel": "Banquet sheet PDF cleanup"
+    "releaseLabel": "Remove deprecated room load popover"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

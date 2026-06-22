@@ -127,7 +127,6 @@ test('park timeline keeps add animator control when resource manager is disabled
         };
     };
     const addLineBtn = makeElement();
-    const roomLoadBtn = makeElement();
     const sandbox = {
         console,
         URLSearchParams,
@@ -150,7 +149,7 @@ test('park timeline keeps add animator control when resource manager is disabled
                 dataset: {},
                 setAttribute() {}
             },
-            getElementById: id => ({ addLineBtn, roomLoadBtn }[id] || null),
+            getElementById: id => ({ addLineBtn }[id] || null),
             querySelector: () => null,
             querySelectorAll: () => [],
             addEventListener() {}
@@ -169,9 +168,7 @@ test('park timeline keeps add animator control when resource manager is disabled
     assert.equal(sandbox.window.TimelineBusinessContext.presentation().enabledModules.resources, false);
     assert.equal(addLineBtn.classList.contains('hidden'), false);
     assert.equal(addLineBtn.attrs.has('data-timeline-context-hidden'), false);
-    assert.equal(roomLoadBtn.classList.contains('hidden'), true);
     assert.equal(sandbox.window.TimelineBusinessContext.presentation().controls.addLine, true);
-    assert.equal(sandbox.window.TimelineBusinessContext.presentation().controls.roomLoad, false);
 });
 
 test('Maysternya timeline control contract keeps booking actions visible without Park sales controls', () => {
@@ -202,7 +199,6 @@ test('Maysternya timeline control contract keeps booking actions visible without
     };
     const productSalesBtn = makeElement();
     const addLineBtn = makeElement();
-    const roomLoadBtn = makeElement();
     const sandbox = {
         console,
         URLSearchParams,
@@ -227,8 +223,7 @@ test('Maysternya timeline control contract keeps booking actions visible without
             },
             getElementById: id => ({
                 productSalesBtn,
-                addLineBtn,
-                roomLoadBtn
+                addLineBtn
             }[id] || null),
             querySelector: () => null,
             querySelectorAll: () => [],
@@ -248,12 +243,10 @@ test('Maysternya timeline control contract keeps booking actions visible without
     assert.equal(view.mode, 'simple');
     assert.deepEqual(JSON.parse(JSON.stringify(view.controls)), {
         addLine: true,
-        roomLoad: true,
         productSales: false,
         export: true
     });
     assert.equal(addLineBtn.classList.contains('hidden'), false);
-    assert.equal(roomLoadBtn.classList.contains('hidden'), false);
     assert.equal(productSalesBtn.classList.contains('hidden'), true);
 });
 

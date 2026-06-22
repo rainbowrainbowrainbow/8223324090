@@ -40,6 +40,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkStreakUpdates` | `services/scheduler.js` | gamification | `60000` | `daily` |
 | `checkBirthdayGreetings` | `services/scheduler.js` | customers | `60000` | `daily` |
 | `checkBirthdayReminders` | `services/scheduler.js` | customers | `60000` | `daily` |
+| `checkBirthdayTagSync` | `services/scheduler.js` | customers | `60000` | `daily` |
 | `checkDormantCustomers` | `services/scheduler.js` | customers | `60000` | `daily` |
 | `checkUpcomingBookings` | `services/scheduler.js` | bookings | `60000` | `daily` |
 | `checkEventQueue` | `services/scheduler.js` | event-queue | `60000` | none |
@@ -77,6 +78,11 @@ only allowed for `checkBookingPushReminders`. Its code comment and interval look
 minute-based, but the guard currently makes it daily. Leave that visible here
 until a runtime fix is paired with notification-focused tests.
 
+`checkBirthdayTagSync` normally runs at 03:20 Kyiv, but before the
+`customer_birthday_tags_backfill_done` settings marker exists it is allowed to
+run once on the next scheduler tick after deploy. That first run backfills
+existing customer birthday tags and then writes the marker after a clean sync.
+
 ## Raw Intervals And Starters
 
 These background jobs are not tracked through `scheduler_executions`.
@@ -101,6 +107,7 @@ pause/dedup/error accounting from `guardScheduler`.
 The manifest records test files where direct coverage exists:
 
 - `tests/event-queue.test.js`
+- `tests/customer-birthday-tags.test.js`
 - `tests/reply-escalation.test.js`
 - `tests/scheduled-chat-dispatch.test.js`
 - `tests/telegram-callbacks.test.js`

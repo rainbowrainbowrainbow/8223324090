@@ -11,6 +11,7 @@ const { exportLimiter } = require('../middleware/rateLimit');
 const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
 const { getCustomerCommunicationContext } = require('../services/customerCommunicationHub');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { syncBirthdayTagsForCustomer } = require('../services/customerBirthdayTags');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
@@ -43,6 +44,26 @@ const PREDEFINED_TAGS = [
     { tag: 'Рекомендація', color: '#10B981' },
     { tag: 'Постійний', color: '#8B5CF6' }
 ];
+const CUSTOMER_TAG_MAX_LENGTH = 60;
+const CUSTOMER_TAG_MAX_COUNT = 20;
+
+function customerTagColor(tag, color) {
+    return cleanText(color) || PREDEFINED_TAGS.find(item => item.tag === tag)?.color || '#6B7280';
+}
+
+function normalizeCustomerTagsPayload(tags) {
+    if (!Array.isArray(tags)) return [];
+    const byTag = new Map();
+    tags.forEach(item => {
+        const tag = cleanText(typeof item === 'string' ? item : item?.tag)?.slice(0, CUSTOMER_TAG_MAX_LENGTH);
+        if (!tag) return;
+        byTag.set(tag, {
+            tag,
+            color: customerTagColor(tag, typeof item === 'object' ? item?.color : null)
+        });
+    });
+    return [...byTag.values()].slice(0, CUSTOMER_TAG_MAX_COUNT);
+}
 
 function cleanText(value) {
     if (value === undefined || value === null) return null;
@@ -123,6 +144,7 @@ function formatSocialIdentities(value, fallback = {}) {
 function normalizeCustomerPayload(body = {}) {
     const name = cleanText(body.name);
     const childBirthday = cleanText(body.childBirthday ?? body.child_birthday);
+    const tagsProvided = Object.prototype.hasOwnProperty.call(body, 'tags');
     if (childBirthday && !/^\d{4}-\d{2}-\d{2}$/.test(childBirthday)) {
         return { error: 'Дата народження має бути у форматі YYYY-MM-DD' };
     }
@@ -137,7 +159,9 @@ function normalizeCustomerPayload(body = {}) {
         socialIdentities: normalizeSocialIdentities(
             body.socialIdentities ?? body.social_identities,
             { instagram: body.instagram }
-        )
+        ),
+        tagsProvided,
+        tags: tagsProvided ? normalizeCustomerTagsPayload(body.tags) : []
     };
 }
 
@@ -283,7 +307,7 @@ async function canSearchCustomerSocialIdentities() {
     return await ensureCustomerSocialIdentitiesColumn();
 }
 
-async function insertCustomerPg(input) {
+async function insertCustomerPg(input, queryable = pool) {
     const params = [
         input.businessContext || DEFAULT_BUSINESS_CONTEXT,
         input.name,
@@ -298,7 +322,7 @@ async function insertCustomerPg(input) {
 
     try {
         await ensureCustomerSocialIdentitiesColumn();
-        return await pool.query(
+        return await queryable.query(
             `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source, notes, social_identities)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
             params
@@ -306,7 +330,7 @@ async function insertCustomerPg(input) {
     } catch (err) {
         if (!isCustomerSocialIdentitiesStorageError(err)) throw err;
         log.warn('customers.social_identities unavailable during create; retrying legacy customer insert', { error: err.message });
-        return pool.query(
+        return queryable.query(
             `INSERT INTO customers (business_context, name, phone, instagram, child_name, child_birthday, source, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
             params.slice(0, 8)
@@ -314,7 +338,7 @@ async function insertCustomerPg(input) {
     }
 }
 
-async function updateCustomerPg(id, input) {
+async function updateCustomerPg(id, input, queryable = pool) {
     const params = [
         input.name,
         input.phone,
@@ -330,7 +354,7 @@ async function updateCustomerPg(id, input) {
 
     try {
         await ensureCustomerSocialIdentitiesColumn();
-        return await pool.query(
+        return await queryable.query(
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
              child_birthday=$5, source=$6, notes=$7, social_identities=$8::jsonb, updated_at=NOW()
              WHERE id=$9 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $10 RETURNING *`,
@@ -339,13 +363,132 @@ async function updateCustomerPg(id, input) {
     } catch (err) {
         if (!isCustomerSocialIdentitiesStorageError(err)) throw err;
         log.warn('customers.social_identities unavailable during update; retrying legacy customer update', { error: err.message });
-        return pool.query(
+        return queryable.query(
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
              child_birthday=$5, source=$6, notes=$7, updated_at=NOW()
              WHERE id=$8 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $9 RETURNING *`,
             [...params.slice(0, 7), parseInt(id), input.businessContext || DEFAULT_BUSINESS_CONTEXT]
         );
     }
+}
+
+let customerTagColumnCapabilities = null;
+let birthdayTagSchemaWarningLogged = false;
+
+async function getCustomerTagColumnCapabilities(queryable = pool) {
+    if (customerTagColumnCapabilities) return customerTagColumnCapabilities;
+    try {
+        const result = await queryable.query(
+            `SELECT column_name
+             FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'customer_tags'
+               AND column_name IN ('source', 'system_key', 'updated_at')`
+        );
+        const columns = new Set(result.rows.map(row => row.column_name));
+        customerTagColumnCapabilities = {
+            hasSource: columns.has('source'),
+            hasSystemKey: columns.has('system_key'),
+            hasUpdatedAt: columns.has('updated_at')
+        };
+    } catch (err) {
+        log.warn('Unable to inspect customer_tags columns; treating tags as manual-only', { error: err.message });
+        customerTagColumnCapabilities = { hasSource: false, hasSystemKey: false, hasUpdatedAt: false };
+    }
+    return customerTagColumnCapabilities;
+}
+
+function manualCustomerTagCondition(caps, qualifier = '') {
+    const conditions = [];
+    const q = qualifier ? `${qualifier}.` : '';
+    if (caps?.hasSource) conditions.push(`COALESCE(${q}source, 'manual') = 'manual'`);
+    if (caps?.hasSystemKey) conditions.push(`${q}system_key IS NULL`);
+    return conditions.length ? conditions.join(' AND ') : 'TRUE';
+}
+
+async function syncManualCustomerTags(queryable, customerId, tags, userId) {
+    if (!Array.isArray(tags)) return;
+    const caps = await getCustomerTagColumnCapabilities(queryable);
+    const manualOnly = manualCustomerTagCondition(caps);
+    const normalizedTags = normalizeCustomerTagsPayload(tags);
+    const tagNames = normalizedTags.map(item => item.tag);
+    await queryable.query(
+        `DELETE FROM customer_tags
+         WHERE customer_id = $1
+           AND ${manualOnly}
+           AND NOT (tag = ANY($2::text[]))`,
+        [customerId, tagNames]
+    );
+    for (const item of normalizedTags) {
+        const columns = ['customer_id', 'tag', 'color', 'created_by'];
+        const values = ['$1', '$2', '$3', '$4'];
+        const params = [customerId, item.tag, item.color, userId || null];
+        if (caps.hasSource) {
+            columns.push('source');
+            values.push(`$${values.length + 1}`);
+            params.push('manual');
+        }
+        await queryable.query(
+            `INSERT INTO customer_tags (${columns.join(', ')})
+             VALUES (${values.join(', ')})
+             ON CONFLICT (customer_id, tag) DO UPDATE SET color = EXCLUDED.color
+             WHERE ${manualCustomerTagCondition(caps, 'customer_tags')}`,
+            params
+        );
+    }
+}
+
+async function syncBirthdayTagsAfterCustomerSave(queryable, customerId, userId) {
+    const caps = await getCustomerTagColumnCapabilities(queryable);
+    if (!caps.hasSource || !caps.hasSystemKey || !caps.hasUpdatedAt) {
+        if (!birthdayTagSchemaWarningLogged) {
+            birthdayTagSchemaWarningLogged = true;
+            log.warn('Skipping birthday system tag sync until customer_tags system columns are available', {
+                customerId,
+                hasSource: caps.hasSource,
+                hasSystemKey: caps.hasSystemKey,
+                hasUpdatedAt: caps.hasUpdatedAt
+            });
+        }
+        return { skipped: true, reason: 'customer_tags_system_columns_missing' };
+    }
+    return syncBirthdayTagsForCustomer(queryable, customerId, { userId });
+}
+
+function customerTagSelectFields(caps, qualifier = '') {
+    const q = qualifier ? `${qualifier}.` : '';
+    return [
+        `${q}id`,
+        `${q}customer_id`,
+        `${q}tag`,
+        `${q}color`,
+        caps?.hasSource ? `${q}source` : `'manual' AS source`,
+        caps?.hasSystemKey ? `${q}system_key` : `NULL AS system_key`
+    ].join(', ');
+}
+
+function mapCustomerTagRow(row) {
+    return {
+        id: row.id,
+        customer_id: row.customer_id,
+        customerId: row.customer_id,
+        tag: row.tag,
+        color: row.color,
+        source: row.source || 'manual',
+        systemKey: row.system_key || null
+    };
+}
+
+async function getCustomerTagsPg(queryable, customerId) {
+    const caps = await getCustomerTagColumnCapabilities(queryable);
+    const result = await queryable.query(
+        `SELECT ${customerTagSelectFields(caps)}
+         FROM customer_tags
+         WHERE customer_id = $1
+         ORDER BY tag ASC`,
+        [customerId]
+    );
+    return result.rows.map(mapCustomerTagRow);
 }
 
 function scopedBookingAggregateSql(user, params, alias = 'b') {
@@ -756,6 +899,7 @@ router.get('/tags', async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
+        const caps = await getCustomerTagColumnCapabilities(pool);
         const result = await pool.query(
             `SELECT tag, color, COUNT(*) AS count
              FROM customer_tags ct
@@ -765,7 +909,17 @@ router.get('/tags', async (req, res) => {
              GROUP BY tag, color ORDER BY count DESC`,
             [businessContext]
         );
-        res.json({ success: true, tags: result.rows, predefined: PREDEFINED_TAGS });
+        res.json({
+            success: true,
+            tags: result.rows,
+            predefined: PREDEFINED_TAGS,
+            capabilities: {
+                source: caps.hasSource,
+                systemKey: caps.hasSystemKey,
+                updatedAt: caps.hasUpdatedAt,
+                systemTags: caps.hasSource && caps.hasSystemKey && caps.hasUpdatedAt
+            }
+        });
     } catch (err) {
         log.error('GET /tags error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1328,13 +1482,16 @@ router.get('/', async (req, res) => {
         let tagsMap = {};
         if (customerIds.length > 0) {
             try {
+                const tagCaps = await getCustomerTagColumnCapabilities(pool);
                 const tagsResult = await pool.query(
-                    'SELECT id, customer_id, tag, color FROM customer_tags WHERE customer_id = ANY($1)',
+                    `SELECT ${customerTagSelectFields(tagCaps)}
+                     FROM customer_tags
+                     WHERE customer_id = ANY($1)`,
                     [customerIds]
                 );
                 for (const t of tagsResult.rows) {
                     if (!tagsMap[t.customer_id]) tagsMap[t.customer_id] = [];
-                    tagsMap[t.customer_id].push({ id: t.id, tag: t.tag, color: t.color });
+                    tagsMap[t.customer_id].push(mapCustomerTagRow(t));
                 }
             } catch { /* tags table may not exist yet */ }
         }
@@ -1464,8 +1621,7 @@ router.get('/:id', async (req, res) => {
 
         // v30.4: Tags
         try {
-            const tags = await pool.query('SELECT id, tag, color FROM customer_tags WHERE customer_id = $1', [numId]);
-            customer.tags = tags.rows;
+            customer.tags = await getCustomerTagsPg(pool, numId);
         } catch { customer.tags = []; }
 
         // v33.8.0 Integration 5: Reviews + average_rating
@@ -1518,8 +1674,24 @@ router.post('/', async (req, res) => {
         }
 
 
-        const result = await insertCustomerPg(input);
-        res.json(mapCustomerRow(result.rows[0]));
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const result = await insertCustomerPg(input, client);
+            if (input.tagsProvided) {
+                await syncManualCustomerTags(client, result.rows[0].id, input.tags, req.user?.id || null);
+            }
+            await syncBirthdayTagsAfterCustomerSave(client, result.rows[0].id, req.user?.id || null);
+            const customer = mapCustomerRow(result.rows[0]);
+            customer.tags = await getCustomerTagsPg(client, customer.id);
+            await client.query('COMMIT');
+            res.json(customer);
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
     } catch (err) {
         if (isCustomerDuplicateError(err)) return sendCustomerDuplicateResponse(res);
         log.error('Customer create error', err);
@@ -1542,9 +1714,28 @@ router.put('/:id', async (req, res) => {
         }
 
 
-        const result = await updateCustomerPg(id, input);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
-        res.json(mapCustomerRow(result.rows[0]));
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const result = await updateCustomerPg(id, input, client);
+            if (result.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Клієнта не знайдено' });
+            }
+            if (input.tagsProvided) {
+                await syncManualCustomerTags(client, result.rows[0].id, input.tags, req.user?.id || null);
+            }
+            await syncBirthdayTagsAfterCustomerSave(client, result.rows[0].id, req.user?.id || null);
+            const customer = mapCustomerRow(result.rows[0]);
+            customer.tags = await getCustomerTagsPg(client, customer.id);
+            await client.query('COMMIT');
+            res.json(customer);
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
     } catch (err) {
         if (isCustomerDuplicateError(err)) return sendCustomerDuplicateResponse(res);
         log.error('Customer update error', err);

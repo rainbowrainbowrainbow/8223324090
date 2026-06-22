@@ -27,7 +27,7 @@ const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT
 const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
 const { readDesignBlobByFilename } = require('./services/designStorage');
 const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAvatarStorage');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation } = require('./services/scheduler');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -42,6 +42,30 @@ const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 
 const log = createLogger('Server');
+
+function runAtKyivTime(time, fn) {
+    return async () => {
+        const { getKyivTimeStr } = require('./services/booking');
+        if (getKyivTimeStr() !== time) return;
+        await fn();
+    };
+}
+
+function runAtKyivTimeOrUntilSettingDone(time, settingKey, fn) {
+    return async () => {
+        const { getKyivTimeStr } = require('./services/booking');
+        if (getKyivTimeStr() === time) {
+            await fn();
+            return;
+        }
+        try {
+            const result = await pool.query('SELECT value FROM settings WHERE key = $1 LIMIT 1', [settingKey]);
+            if (!result.rows[0]?.value) await fn();
+        } catch (err) {
+            log.warn(`Scheduled first-run gate skipped for ${settingKey}`, { error: err.message });
+        }
+    };
+}
 
 // Validate environment variables before anything else
 validateEnv();
@@ -527,7 +551,7 @@ app.get('/catalog/:slug/:token', async (req, res) => {
             }).join('')+'</div>';
             return `<div class="cat-page" style="--cat-bg1:${t.bg1};--cat-bg2:${t.bg2};--cat-bg3:${t.bg3};--cat-accent:${t.accent};--cat-price:${t.price}"><div class="cat-hero">${p.image_url?`<img class="cat-hero-img" src="${p.image_url}" alt="${esc(p.title)}">`:''}<div class="cat-hero-content"><h1 class="cat-title">${esc(p.title||'').toUpperCase()}</h1>${p.subtitle?`<p class="cat-subtitle">${esc(p.subtitle)}</p>`:''}</div></div>${statsHtml}<div class="cat-body">${itemsHtml?`<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>`:''}${p.description?`<div class="cat-desc">${esc(p.description)}</div>`:''}</div><div class="cat-footer"><div class="cat-footer-info"><span>📍 Парк Закревського · Київ</span><span>📞 0800 75 35 53</span></div></div></div>`;
         }).join('');
-        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.77.6"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
+        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.77.7"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
     } catch (err) {
         res.status(500).send('Помилка сервера');
     }
@@ -663,6 +687,7 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayGreetings', checkBirthdayGreetings, { dedup: 'daily' }), 60000));
         // v30.4: CRM reminders — birthday 7d, dormant, upcoming bookings
         schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayReminders', checkBirthdayReminders, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(runAtKyivTimeOrUntilSettingDone('03:20', 'customer_birthday_tags_backfill_done', guardScheduler('checkBirthdayTagSync', checkBirthdayTagSync, { dedup: 'daily' })), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkDormantCustomers', checkDormantCustomers, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkUpcomingBookings', checkUpcomingBookings, { dedup: 'daily' }), 60000));
         // v19.1: Event queue processor + SLA breach + announcements

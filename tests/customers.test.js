@@ -9,6 +9,49 @@ const { authRequest } = require('./helpers');
 
 describe('Customers', () => {
     let createdCustomerId;
+    let createdTagId;
+    let birthdaySystemTagsSupported = null;
+    const smokeTagName = `Smoke Tag ${Date.now()}`;
+    const smokeTagColor = '#0F766E';
+    const createTagName = 'VIP';
+    const updateTagName = 'Постійний';
+    const BIRTHDAY_TAG_KEY = 'birthday';
+    const BIRTHDAY_MAY_TAG_KEY = 'birthday_month_05';
+    const BIRTHDAY_JULY_TAG_KEY = 'birthday_month_07';
+    const BIRTHDAY_AUGUST_TAG_KEY = 'birthday_month_08';
+
+    function tagSystemKeys(tags = []) {
+        return new Set((Array.isArray(tags) ? tags : [])
+            .map(tag => tag.systemKey || tag.system_key || null)
+            .filter(Boolean));
+    }
+
+    async function ensureBirthdaySystemTagsSupported(t) {
+        if (birthdaySystemTagsSupported === null) {
+            const res = await authRequest('GET', '/api/customers/tags');
+            assert.equal(res.status, 200);
+            birthdaySystemTagsSupported = Boolean(res.data.capabilities?.systemTags);
+        }
+        if (!birthdaySystemTagsSupported) {
+            t.skip('customer_tags system columns are missing; run TAGS-06 migration to enable birthday API lifecycle assertions');
+            return false;
+        }
+        return true;
+    }
+
+    function assertBirthdaySystemTags(tags, expectedMonthKey) {
+        const keys = tagSystemKeys(tags);
+        assert.ok(keys.has(BIRTHDAY_TAG_KEY), 'Should include base birthday system tag');
+        assert.ok(keys.has(expectedMonthKey), `Should include ${expectedMonthKey}`);
+        for (const tag of tags.filter(item => (item.systemKey || item.system_key || '').startsWith('birthday'))) {
+            assert.equal(tag.source, 'system', `Birthday tag ${tag.tag} should be marked as system`);
+        }
+    }
+
+    function assertNoBirthdaySystemTags(tags) {
+        const keys = tagSystemKeys(tags);
+        assert.ok(![...keys].some(key => key === BIRTHDAY_TAG_KEY || key.startsWith('birthday_month_')), 'Should not include birthday system tags');
+    }
 
     // ==========================================
     // CREATE
@@ -22,10 +65,13 @@ describe('Customers', () => {
             childName: 'Данило',
             childBirthday: '2019-05-20',
             source: 'instagram',
-            notes: 'smoke test customer'
+            notes: 'smoke test customer',
+            tags: [{ tag: createTagName, color: '#F59E0B' }]
         });
         assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
         assert.ok(res.data.id, 'Should return customer with id');
+        assert.ok(Array.isArray(res.data.tags), 'Should return tags array');
+        assert.ok(res.data.tags.some(tag => tag.tag === createTagName), 'Should create customer with selected tag');
         createdCustomerId = res.data.id;
     });
 
@@ -90,11 +136,95 @@ describe('Customers', () => {
         assert.ok(res.data.id, 'Should return customer');
         assert.ok(Array.isArray(res.data.bookings), 'Should include bookings');
         assert.ok(Array.isArray(res.data.certificates), 'Should include certificates');
+        assert.ok(Array.isArray(res.data.tags), 'Should include tags array');
+        assert.ok(res.data.tags.some(tag => tag.tag === createTagName), 'Should include tag saved from create questionnaire');
+    });
+
+    it('POST /api/customers — syncs birthday system tags on create', async (t) => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        if (!(await ensureBirthdaySystemTagsSupported(t))) return;
+
+        const res = await authRequest('GET', `/api/customers/${createdCustomerId}`);
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.tags), 'Should include tags array');
+        assertBirthdaySystemTags(res.data.tags, BIRTHDAY_MAY_TAG_KEY);
     });
 
     it('GET /api/customers/99999 — non-existent', async () => {
         const res = await authRequest('GET', '/api/customers/99999');
         assert.ok([404, 500].includes(res.status));
+    });
+
+    // ==========================================
+    // TAGS
+    // ==========================================
+
+    it('GET /api/customers/tags — list tag catalog', async () => {
+        const res = await authRequest('GET', '/api/customers/tags');
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.ok(Array.isArray(res.data.tags), 'Should return current tag rows');
+        assert.ok(Array.isArray(res.data.predefined), 'Should return predefined tag catalog');
+        assert.equal(typeof res.data.capabilities?.systemTags, 'boolean', 'Should expose system tag capability flag');
+        birthdaySystemTagsSupported = res.data.capabilities.systemTags;
+    });
+
+    it('POST /api/customers/:id/tags — add manual tag', async () => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        const res = await authRequest('POST', `/api/customers/${createdCustomerId}/tags`, {
+            tag: smokeTagName,
+            color: smokeTagColor
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.ok(res.data.tag?.id, 'Should return created tag id');
+        assert.equal(res.data.tag.tag, smokeTagName);
+        assert.equal(res.data.tag.color, smokeTagColor);
+        createdTagId = res.data.tag.id;
+    });
+
+    it('POST /api/customers/:id/tags — duplicate manual tag is soft success', async () => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        const res = await authRequest('POST', `/api/customers/${createdCustomerId}/tags`, {
+            tag: smokeTagName,
+            color: smokeTagColor
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.ok(typeof res.data.message === 'string' && res.data.message.length > 0, 'Should return duplicate message');
+        assert.equal(res.data.tag, undefined, 'Should not return a new tag row for duplicate');
+    });
+
+    it('GET /api/customers/:id — returns manual tags', async () => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        const res = await authRequest('GET', `/api/customers/${createdCustomerId}`);
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.tags), 'Should include tags array');
+        assert.ok(res.data.tags.some(tag => tag.id === createdTagId && tag.tag === smokeTagName), 'Should include created manual tag');
+    });
+
+    it('GET /api/customers?tag=... — filters customers by manual tag', async () => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        const res = await authRequest('GET', `/api/customers?tag=${encodeURIComponent(smokeTagName)}`);
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.customers), 'Should return customers array');
+        const taggedCustomer = res.data.customers.find(customer => customer.id === createdCustomerId);
+        assert.ok(taggedCustomer, 'Should include customer with requested tag');
+        assert.ok(Array.isArray(taggedCustomer.tags), 'Filtered list item should include tags array');
+        assert.ok(taggedCustomer.tags.some(tag => tag.tag === smokeTagName), 'Filtered list item should include requested tag');
+    });
+
+    it('DELETE /api/customers/:id/tags/:tagId — remove manual tag', async () => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        assert.ok(createdTagId, 'Need created tag id');
+        const res = await authRequest('DELETE', `/api/customers/${createdCustomerId}/tags/${createdTagId}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+
+        const details = await authRequest('GET', `/api/customers/${createdCustomerId}`);
+        assert.equal(details.status, 200);
+        assert.ok(Array.isArray(details.data.tags), 'Should include tags array after delete');
+        assert.ok(!details.data.tags.some(tag => tag.id === createdTagId || tag.tag === smokeTagName), 'Should remove deleted manual tag');
     });
 
     // ==========================================
@@ -108,10 +238,69 @@ describe('Customers', () => {
             phone: '+380997778800',
             instagram: '@test_updated',
             childName: 'Данило',
-            source: 'website'
+            childBirthday: '2019-07-20',
+            source: 'website',
+            tags: [{ tag: updateTagName, color: '#8B5CF6' }]
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.id, 'Should return updated customer');
+        assert.ok(Array.isArray(res.data.tags), 'Should return updated tags array');
+        assert.ok(res.data.tags.some(tag => tag.tag === updateTagName), 'Should add tag from edit questionnaire');
+        assert.ok(!res.data.tags.some(tag => tag.tag === createTagName), 'Should remove tag deleted in edit questionnaire');
+    });
+
+    it('PUT /api/customers/:id — updates birthday system tags when birthday month changes', async (t) => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        if (!(await ensureBirthdaySystemTagsSupported(t))) return;
+
+        const res = await authRequest('PUT', `/api/customers/${createdCustomerId}`, {
+            name: 'Smoke Birthday August',
+            phone: '+380997778800',
+            instagram: '@test_updated',
+            childName: 'Birthday Kid',
+            childBirthday: '2019-08-20',
+            source: 'website',
+            tags: [{ tag: updateTagName, color: '#8B5CF6' }]
+        });
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.tags), 'Should return updated tags array');
+        assertBirthdaySystemTags(res.data.tags, BIRTHDAY_AUGUST_TAG_KEY);
+        const keys = tagSystemKeys(res.data.tags);
+        assert.ok(!keys.has(BIRTHDAY_MAY_TAG_KEY), 'Should remove old May birthday month tag');
+        assert.ok(!keys.has(BIRTHDAY_JULY_TAG_KEY), 'Should remove old July birthday month tag');
+    });
+
+    it('PUT /api/customers/:id — clears birthday system tags when birthday is cleared', async (t) => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        if (!(await ensureBirthdaySystemTagsSupported(t))) return;
+
+        const res = await authRequest('PUT', `/api/customers/${createdCustomerId}`, {
+            name: 'Smoke Birthday Cleared',
+            phone: '+380997778800',
+            instagram: '@test_updated',
+            childName: 'Birthday Kid',
+            childBirthday: null,
+            source: 'website',
+            tags: [{ tag: updateTagName, color: '#8B5CF6' }]
+        });
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.tags), 'Should return updated tags array');
+        assertNoBirthdaySystemTags(res.data.tags);
+        assert.ok(res.data.tags.some(tag => tag.tag === updateTagName), 'Should preserve manual tag while clearing birthday tags');
+    });
+
+    it('PUT /api/customers/:id — legacy update without tags preserves manual tags', async () => {
+        assert.ok(createdCustomerId, 'Need created customer id');
+        const res = await authRequest('PUT', `/api/customers/${createdCustomerId}`, {
+            name: 'Тест Клієнт Legacy Update',
+            phone: '+380997778801',
+            instagram: '@test_legacy_update',
+            childName: 'Данило',
+            source: 'website'
+        });
+        assert.equal(res.status, 200);
+        assert.ok(Array.isArray(res.data.tags), 'Should return existing tags array');
+        assert.ok(res.data.tags.some(tag => tag.tag === updateTagName), 'Should preserve tags when tags payload is omitted');
     });
 
     // ==========================================

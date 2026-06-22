@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.7 - Customer birthday tags automation
+
+### Customer tags / Birthday automation / Scheduler backfill / Regression coverage / (Клешня, 23.06.2026) [codex]
+- **Теги клієнтів стали повноцінною частиною анкети** - create/edit customer modal зберігає manual tags разом із даними клієнта, а detail/list/filter одразу бачать оновлення.
+- **Каталог тегів став API-backed** - фільтри списку, bulk filter і dropdown-и більше не залежать від hardcoded списку, а нові теги з'являються автоматично.
+- **Додано автоматичні birthday system tags** - `Іменинник` і `Іменинники <місяця>` синхронізуються за `child_birthday`, оновлюються при зміні місяця і прибираються при очищенні дати.
+- **Manual/system tags розділено безпечно** - ручні теги не видаляються birthday sync-ом, system tags не дублюються, а UI показує автоматичні birthday tags як керовані датою народження.
+- **Додано щоденний scheduler reconciliation і first-run backfill marker** - старі клієнти отримують birthday tags через `checkBirthdayTagSync`, без зміни Railway settings.
+- **Regression coverage розширено** - додано unit/API/static guards для create/update tags, birthday lifecycle, scheduler export/registration, dynamic filters і UI tag controls.
+- **Релізні маркери піднято до `0.77.7`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.6 - Banquet official no-image style
 
 ### Banquet sheet / Official document style / Single finance total / Browser and PDF parity / (Клешня, 22.06.2026) [codex]
@@ -41,6 +54,14 @@
 - **Перевірено visual PDF QA** - sample client PDF згенеровано й відрендерено в PNG: контент вміщується на 1 сторінку, top-плашка не перекриває текст, фінальне лого лишається внизу.
 - **Оновлено regression guards** - contract checks фіксують нові assets, `banquet-top-plate`, `banquet-corner-art`, `banquet-final-brand` і `drawFinalBrand`, щоб стиль не відкотили випадково.
 - **Релізні маркери піднято до `0.77.4`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.3 - Banquet sheet continuity marker
+
+### Release train continuity / Banquet sheet handoff / (Клешня, 22.06.2026) [codex]
+- **Проміжний release train marker збережено для changelog continuity** - `0.77.3` фіксує перехід між premium design `0.77.2` і celebration style `0.77.4`, без окремого production-deploy payload.
+- **Видимий changelog не пропускає patch-версії** - login modal і `CHANGELOG.md` лишають повну верхню ланку `0.77.x`, щоб release guards не втрачали історію.
 
 ---
 

@@ -1,5 +1,225 @@
 /* Customer detail workspace hero. */
 
+.customer-toolbar-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* Customer tags. */
+.crm-tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.crm-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+}
+
+.crm-tag-pill--system {
+    border-style: solid;
+    background: rgba(236, 72, 153, 0.08) !important;
+}
+
+.crm-tag-system-marker {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(236, 72, 153, 0.14);
+    color: #BE185D;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.crm-tag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.38);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: inherit;
+    opacity: 0.72;
+}
+
+.crm-tag-remove:hover {
+    opacity: 1;
+}
+
+.crm-tag-remove:focus-visible {
+    opacity: 1;
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.crm-tags-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+}
+
+.crm-tag-add-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border: 1px dashed var(--gray-300);
+    background: transparent;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gray-500);
+    cursor: pointer;
+    font-family: inherit;
+    min-height: 28px;
+}
+
+.crm-tag-add-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.crm-tag-dropdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    margin-top: 6px;
+    width: 100%;
+}
+
+.crm-tag-option {
+    padding: 4px 10px;
+    border: 1px solid currentColor;
+    background: transparent;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.crm-tag-option:hover {
+    opacity: 0.8;
+}
+
+.crm-tag-remove:disabled,
+.crm-tag-add-btn:disabled,
+.crm-tag-option:disabled,
+.crm-tag-remove.is-loading,
+.crm-tag-add-btn.is-loading,
+.crm-tag-option.is-loading {
+    cursor: wait;
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.customer-edit-tags-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: rgba(15, 118, 110, 0.03);
+    min-width: 0;
+}
+
+.customer-edit-tags-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 28px;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.customer-edit-tags-empty {
+    color: var(--gray-400);
+    font-size: 12px;
+}
+
+.customer-edit-tag-dropdown {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--gray-100);
+}
+
+.customer-edit-tag-dropdown.is-open {
+    display: flex;
+}
+
+.customer-edit-tag-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.customer-edit-custom-tag {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.customer-edit-custom-tag input {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font: inherit;
+}
+
+.customer-edit-custom-tag .btn-page-secondary {
+    min-height: 38px;
+    white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+    .customer-edit-custom-tag {
+        grid-template-columns: 1fr;
+    }
+
+    .customer-edit-custom-tag .btn-page-secondary {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
 .customer-detail-hero {
     align-items: stretch;
     gap: 14px;

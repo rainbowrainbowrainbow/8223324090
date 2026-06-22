@@ -30,14 +30,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.6">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.6">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.6">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.6">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.6">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.77.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.6">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.6">
+    <link rel="stylesheet" href="css/base.css?v=0.77.7">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.7">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.7">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.7">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.7">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.77.7">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.7">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -535,79 +535,6 @@
         [data-theme="dark"] .customer-hub-row strong { color: var(--gray-200); }
         [data-theme="dark"] .customer-hub-preview { color: var(--gray-300); }
         [data-theme="dark"] .customer-hub-row { border-bottom-color: var(--gray-700); }
-
-        /* v30.4: Tag pills */
-        .crm-tags-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 4px;
-        }
-        .crm-tag-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-        .crm-tag-remove {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            line-height: 1;
-            padding: 0 2px;
-            color: inherit;
-            opacity: 0.6;
-        }
-        .crm-tag-remove:hover { opacity: 1; }
-        .crm-tags-detail {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            align-items: center;
-        }
-        .crm-tag-add-btn {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 10px;
-            border: 1px dashed var(--gray-300);
-            background: transparent;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 700;
-            color: var(--gray-500);
-            cursor: pointer;
-            font-family: inherit;
-            min-height: 28px;
-        }
-        .crm-tag-add-btn:hover { border-color: var(--primary); color: var(--primary); }
-        .crm-tag-dropdown {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            padding: 8px;
-            background: var(--white);
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius-sm);
-            box-shadow: var(--shadow-sm);
-            margin-top: 6px;
-            width: 100%;
-        }
-        .crm-tag-option {
-            padding: 4px 10px;
-            border: 1px solid currentColor;
-            background: transparent;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 700;
-            cursor: pointer;
-            font-family: inherit;
-        }
-        .crm-tag-option:hover { opacity: 0.8; }
 
         /* v30.4: Duplicate cards */
         .duplicates-list {
@@ -1449,7 +1376,7 @@
         <main id="main-content" class="page-container">
             <div class="page-header">
                 <h2>База клієнтів</h2>
-                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <div class="customer-toolbar-actions">
                     <button type="button" id="exportVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
                     <button type="button" id="importVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
                     <button type="button" id="exportCsvBtn" class="btn-page-secondary" style="display:none">Експорт CSV</button>
@@ -1477,11 +1404,6 @@
                     <input type="text" id="searchInput" class="crm-search" aria-label="Пошук по імені, телефону, Instagram..." placeholder="Пошук по імені, телефону, Instagram...">
                     <select id="tagFilter" class="crm-filter-select">
                         <option value="">Всі теги</option>
-                        <option value="VIP">VIP</option>
-                        <option value="Проблемний">Проблемний</option>
-                        <option value="Корпорат">Корпорат</option>
-                        <option value="Рекомендація">Рекомендація</option>
-                        <option value="Постійний">Постійний</option>
                     </select>
                     <select id="sourceFilter" class="crm-filter-select">
                         <option value="">Всі джерела</option>
@@ -1630,6 +1552,20 @@
                     </div>
                 </div>
                 <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Теги</label>
+                    <div class="customer-edit-tags-panel">
+                        <div id="editTagsChips" class="customer-edit-tags-chips" aria-live="polite"></div>
+                        <button type="button" id="editAddTagBtn" class="crm-tag-add-btn">+ Тег</button>
+                        <div id="editTagDropdown" class="customer-edit-tag-dropdown">
+                            <div id="editTagOptions" class="customer-edit-tag-options"></div>
+                            <div class="customer-edit-custom-tag">
+                                <input type="text" id="editCustomTagInput" maxlength="60" placeholder="Новий тег">
+                                <button type="button" id="editCustomTagAddBtn" class="btn-page-secondary">Додати</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div>
                     <div class="customer-edit-link-panel">
                         <div class="customer-edit-link-title">
                             <span>Зв'язування</span>
@@ -1674,13 +1610,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.77.6"></script>
-    <script src="js/notification.js?v=0.77.6"></script>
-    <script src="js/api.js?v=0.77.6"></script>
-    <script src="js/auth.js?v=0.77.6"></script>
-    <script src="js/ui.js?v=0.77.6"></script>
-    <script src="js/components/sidebar.js?v=0.77.6"></script>
+    <script src="js/config.js?v=0.77.7"></script>
+    <script src="js/notification.js?v=0.77.7"></script>
+    <script src="js/api.js?v=0.77.7"></script>
+    <script src="js/auth.js?v=0.77.7"></script>
+    <script src="js/ui.js?v=0.77.7"></script>
+    <script src="js/components/sidebar.js?v=0.77.7"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.77.6"></script><script src="js/alerts.js?v=0.77.6"></script>
+    <script src="js/customers-page.js?v=0.77.7"></script><script src="js/alerts.js?v=0.77.7"></script>
 </body>
 </html>

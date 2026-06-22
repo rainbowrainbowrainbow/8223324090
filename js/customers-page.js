@@ -14,6 +14,9 @@
 
 const CrmState = {
     customers: [],
+    tags: [],
+    predefinedTags: [],
+    editingTags: [],
     rfmData: null,
     stats: null,
     businessContext: 'event_genix',
@@ -146,6 +149,31 @@ const CUSTOMER_LIFECYCLE_SEGMENTS = [
         actionLabel: 'Показати лояльних клієнтів'
     }
 ];
+
+const BIRTHDAY_TAG_COLOR = '#EC4899';
+const BIRTHDAY_MONTH_NAMES = Object.freeze([
+    'січня',
+    'лютого',
+    'березня',
+    'квітня',
+    'травня',
+    'червня',
+    'липня',
+    'серпня',
+    'вересня',
+    'жовтня',
+    'листопада',
+    'грудня'
+]);
+const BIRTHDAY_SYSTEM_TAGS = Object.freeze([
+    { tag: 'Іменинник', color: BIRTHDAY_TAG_COLOR, system: true, systemKey: 'birthday' },
+    ...BIRTHDAY_MONTH_NAMES.map((monthName, index) => ({
+        tag: `Іменинники ${monthName}`,
+        color: BIRTHDAY_TAG_COLOR,
+        system: true,
+        systemKey: `birthday_month_${String(index + 1).padStart(2, '0')}`
+    }))
+]);
 
 // ==========================================
 // HELPERS
@@ -933,6 +961,234 @@ async function resetCustomerFilters() {
     renderPagination();
 }
 
+function normalizeCustomerTagCatalogItem(item = {}) {
+    const tag = String(item.tag || '').trim();
+    if (!tag) return null;
+    const count = Number.parseInt(item.count, 10);
+    return {
+        tag,
+        color: item.color || '#6B7280',
+        count: Number.isFinite(count) ? count : 0,
+        system: Boolean(item.system || item.source === 'system'),
+        systemKey: item.systemKey || item.system_key || null
+    };
+}
+
+function mergeCustomerTagCatalogItem(existing, normalized) {
+    return {
+        ...(existing || {}),
+        ...normalized,
+        count: Math.max(existing?.count || 0, normalized.count || 0),
+        system: Boolean(existing?.system || normalized.system),
+        systemKey: existing?.systemKey || normalized.systemKey || null
+    };
+}
+
+function currentKyivBirthdayMonthTag() {
+    let month = new Date().getMonth() + 1;
+    try {
+        const value = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv',
+            month: '2-digit'
+        }).format(new Date());
+        const parsed = Number.parseInt(value, 10);
+        if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 12) month = parsed;
+    } catch {
+        // Browser fallback keeps the UI usable even if Intl timezone data is unavailable.
+    }
+    const systemKey = `birthday_month_${String(month).padStart(2, '0')}`;
+    return BIRTHDAY_SYSTEM_TAGS.find(item => item.systemKey === systemKey)?.tag || '';
+}
+
+function getCustomerTagCatalog({ includeBirthdaySystemTags = false } = {}) {
+    const byTag = new Map();
+    [
+        ...(CrmState.predefinedTags || []),
+        ...(CrmState.tags || []),
+        ...(includeBirthdaySystemTags ? BIRTHDAY_SYSTEM_TAGS : [])
+    ].forEach(item => {
+        const normalized = normalizeCustomerTagCatalogItem(item);
+        if (!normalized) return;
+        byTag.set(normalized.tag, mergeCustomerTagCatalogItem(byTag.get(normalized.tag), normalized));
+    });
+    return [...byTag.values()].sort((a, b) => a.tag.localeCompare(b.tag, 'uk'));
+}
+
+function renderCustomerTagOptions(selectedValue = '', emptyLabel = 'Всі теги', options = {}) {
+    const selected = String(selectedValue || '').trim();
+    const catalog = getCustomerTagCatalog({
+        includeBirthdaySystemTags: Boolean(options.includeBirthdaySystemTags)
+    });
+    const currentBirthdayTag = options.includeCurrentBirthdayShortcut ? currentKyivBirthdayMonthTag() : '';
+    const hasSelected = selected && catalog.some(item => item.tag === selected);
+    const rows = [
+        `<option value="">${escapeHtml(emptyLabel)}</option>`,
+        currentBirthdayTag
+            ? `<option value="${escapeHtml(currentBirthdayTag)}"${selected === currentBirthdayTag ? ' selected' : ''}>Іменинники цього місяця</option>`
+            : '',
+        !hasSelected && selected ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` : '',
+        ...catalog.map(item => {
+            const label = item.count > 0 ? `${item.tag} (${item.count})` : item.tag;
+            const isSelected = item.tag === selected && item.tag !== currentBirthdayTag;
+            return `<option value="${escapeHtml(item.tag)}"${isSelected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        })
+    ];
+    return rows.filter(Boolean).join('');
+}
+
+function setCustomerTagSelectOptions(select, emptyLabel, selectedValue, options = {}) {
+    if (!select) return;
+    const selected = selectedValue !== undefined ? selectedValue : select.value;
+    select.innerHTML = renderCustomerTagOptions(selected, emptyLabel, options);
+    select.value = selected || '';
+}
+
+function renderCustomerTagFilters() {
+    const birthdayFilterOptions = {
+        includeBirthdaySystemTags: true,
+        includeCurrentBirthdayShortcut: true
+    };
+    setCustomerTagSelectOptions(document.getElementById('tagFilter'), 'Всі теги', CrmState.filters.tag || '', birthdayFilterOptions);
+    setCustomerTagSelectOptions(document.getElementById('bulkTagFilter'), 'Всі клієнти', undefined, birthdayFilterOptions);
+}
+
+function renderTagFilters() {
+    renderCustomerTagFilters();
+}
+
+function customerTagCatalogItem(tag) {
+    const normalized = String(tag || '').trim();
+    if (!normalized) return null;
+    return getCustomerTagCatalog().find(item => item.tag === normalized) || null;
+}
+
+function isCustomerSystemTag(item = {}) {
+    return Boolean(item.system || item.source === 'system' || item.systemKey || item.system_key);
+}
+
+function customerTagStyle(item = {}) {
+    const color = escapeHtml(item.color || '#6B7280');
+    return `background:${color}20;color:${color};border:1px solid ${color}40`;
+}
+
+function renderCustomerTagPill(item = {}, options = {}) {
+    const tag = String(item.tag || '').trim();
+    if (!tag) return '';
+    const isSystem = isCustomerSystemTag(item);
+    const classes = ['crm-tag-pill', isSystem ? 'crm-tag-pill--system' : ''].filter(Boolean).join(' ');
+    const sourceAttr = isSystem ? 'system' : 'manual';
+    const marker = isSystem
+        ? '<span class="crm-tag-system-marker" aria-label="Автоматичний тег, керується датою народження" title="Керується датою народження">авто</span>'
+        : '';
+    const remove = options.removable && !isSystem && options.customerId && item.id
+        ? `<button type="button" class="crm-tag-remove" onclick="removeTag(${options.customerId},${item.id},this)" aria-label="Прибрати тег ${escapeHtml(tag)}">×</button>`
+        : '';
+    const title = isSystem ? 'Керується датою народження' : '';
+    return `<span class="${classes}" data-tag-source="${sourceAttr}" style="${customerTagStyle(item)}"${title ? ` title="${title}"` : ''}>${escapeHtml(tag)}${marker}${remove}</span>`;
+}
+
+function normalizeCustomerEditTag(item) {
+    if (typeof item === 'object' && isCustomerSystemTag(item)) return null;
+    const tag = String(typeof item === 'string' ? item : (item?.tag || '')).trim();
+    if (!tag) return null;
+    const catalogItem = customerTagCatalogItem(tag);
+    return {
+        tag,
+        color: (typeof item === 'object' && item?.color) || catalogItem?.color || '#6B7280'
+    };
+}
+
+function setCustomerEditingTags(tags = []) {
+    const byTag = new Map();
+    (Array.isArray(tags) ? tags : []).forEach(item => {
+        const normalized = normalizeCustomerEditTag(item);
+        if (!normalized) return;
+        byTag.set(normalized.tag, {
+            ...(byTag.get(normalized.tag) || {}),
+            ...normalized
+        });
+    });
+    CrmState.editingTags = [...byTag.values()].sort((a, b) => a.tag.localeCompare(b.tag, 'uk'));
+}
+
+function serializedCustomerEditingTags() {
+    return JSON.stringify(CrmState.editingTags.map(item => ({
+        tag: item.tag,
+        color: item.color || '#6B7280'
+    })).sort((a, b) => a.tag.localeCompare(b.tag, 'uk')));
+}
+
+function renderCustomerEditTags() {
+    const chips = document.getElementById('editTagsChips');
+    const options = document.getElementById('editTagOptions');
+    if (chips) {
+        chips.innerHTML = CrmState.editingTags.length
+            ? CrmState.editingTags.map((item, index) => `
+                <span class="crm-tag-pill" style="${customerTagStyle(item)}">
+                    ${escapeHtml(item.tag)}
+                    <button type="button" class="crm-tag-remove" data-edit-tag-remove="${index}" aria-label="Прибрати тег ${escapeHtml(item.tag)}">×</button>
+                </span>
+            `).join('')
+            : '<span class="customer-edit-tags-empty">Теги не вибрані</span>';
+    }
+    if (options) {
+        const selected = new Set(CrmState.editingTags.map(item => item.tag));
+        const catalog = getCustomerTagCatalog();
+        options.innerHTML = catalog.length
+            ? catalog.map((item, index) => `<button type="button" class="crm-tag-option" data-edit-tag-option="${index}" ${selected.has(item.tag) ? 'disabled' : ''}>${escapeHtml(item.tag)}</button>`).join('')
+            : '<span class="customer-edit-tags-empty">Каталог тегів порожній. Додайте власний тег нижче.</span>';
+        options.querySelectorAll('[data-edit-tag-option]').forEach(button => {
+            const item = catalog[Number.parseInt(button.dataset.editTagOption, 10)];
+            if (!item) return;
+            button.style.color = item.color;
+            button.addEventListener('click', () => addCustomerEditTag(item));
+        });
+    }
+}
+
+function addCustomerEditTag(item) {
+    const normalized = normalizeCustomerEditTag(item);
+    if (!normalized) return;
+    setCustomerEditingTags([...CrmState.editingTags, normalized]);
+    renderCustomerEditTags();
+}
+
+function removeCustomerEditTag(index) {
+    CrmState.editingTags = CrmState.editingTags.filter((_, i) => i !== index);
+    renderCustomerEditTags();
+}
+
+function addCustomCustomerEditTag() {
+    const input = document.getElementById('editCustomTagInput');
+    const tag = input?.value.trim();
+    if (!tag) return;
+    addCustomerEditTag({ tag, color: '#6B7280' });
+    if (input) input.value = '';
+}
+
+function closeCustomerEditTagDropdown() {
+    document.getElementById('editTagDropdown')?.classList.remove('is-open');
+}
+
+function bindCustomerEditTagTools() {
+    if (bindCustomerEditTagTools.bound) return;
+    bindCustomerEditTagTools.bound = true;
+    document.getElementById('editAddTagBtn')?.addEventListener('click', () => {
+        document.getElementById('editTagDropdown')?.classList.toggle('is-open');
+    });
+    document.getElementById('editCustomTagAddBtn')?.addEventListener('click', addCustomCustomerEditTag);
+    document.getElementById('editCustomTagInput')?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        addCustomCustomerEditTag();
+    });
+    document.getElementById('editTagsChips')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-edit-tag-remove]');
+        if (!button) return;
+        removeCustomerEditTag(Number.parseInt(button.dataset.editTagRemove, 10));
+    });
+}
+
 function customerEmptyHtml() {
     const filters = getCustomerFilterSummary();
     if (window.Explainability) {
@@ -990,6 +1246,26 @@ async function fetchStats() {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     CrmState.stats = await res.json();
+}
+
+async function fetchCustomerTags() {
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch(customerApiUrl('/api/customers/tags'), {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.status === 401 || res.status === 403) {
+            window.location.href = '/';
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        CrmState.tags = Array.isArray(data.tags) ? data.tags : [];
+        CrmState.predefinedTags = Array.isArray(data.predefined) ? data.predefined : [];
+    } catch (err) {
+        console.warn('Customer tags catalog load failed', err);
+        CrmState.tags = [];
+        CrmState.predefinedTags = [];
+    }
 }
 
 async function fetchRFM() {
@@ -1106,9 +1382,7 @@ function renderCustomerTable() {
     tbody.innerHTML = CrmState.customers.map(c => {
         const sourceKey = getCustomerSourceBadgeKey(c.source);
         const sourceLabel = getCustomerSourceLabel(c.source);
-        const tagsHtml = (c.tags || []).map(t =>
-            `<span class="crm-tag-pill" style="background:${escapeHtml(t.color)}20;color:${escapeHtml(t.color)};border:1px solid ${escapeHtml(t.color)}40">${escapeHtml(t.tag)}</span>`
-        ).join('');
+        const tagsHtml = (c.tags || []).map(t => renderCustomerTagPill(t)).join('');
         const ltvBadge = c.ltv > 10000 ? ' 🔥' : '';
         return `<tr data-id="${c.id}">
             <td>
@@ -1292,9 +1566,7 @@ async function showCustomerDetail(id) {
         html += `<div class="detail-section">
             <h4>Теги</h4>
             <div class="crm-tags-detail" id="detailTags">
-                ${(customer.tags || []).map(t =>
-                    `<span class="crm-tag-pill" style="background:${t.color}20;color:${t.color};border:1px solid ${t.color}40">${escapeHtml(t.tag)} <button class="crm-tag-remove" onclick="removeTag(${customer.id},${t.id})">×</button></span>`
-                ).join('')}
+                ${(customer.tags || []).map(t => renderCustomerTagPill(t, { removable: true, customerId: customer.id })).join('')}
                 <button class="crm-tag-add-btn" onclick="showAddTagDropdown(${customer.id})">+ Тег</button>
             </div>
         </div>`;
@@ -1445,10 +1717,11 @@ let _customerEditInitialState = '';
 
 function getCustomerEditState() {
     const ids = ['editName', 'editPhone', 'editInstagram', 'editChildName', 'editChildBirthday', 'editSource', 'editSocialIdentities', 'editNotes'];
-    return ids.map(id => {
+    const fieldState = ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
     }).join('|');
+    return `${fieldState}|tags:${serializedCustomerEditingTags()}`;
 }
 
 function isCustomerEditDirty() {
@@ -1471,6 +1744,11 @@ function openEditModal(customer) {
     document.getElementById('editSource').value = source === 'unknown' ? '' : source;
     document.getElementById('editSocialIdentities').value = formatSocialIdentitiesInput(customer?.socialIdentities || []);
     document.getElementById('editNotes').value = customer?.notes || '';
+    setCustomerEditingTags(customer?.tags || []);
+    closeCustomerEditTagDropdown();
+    const customTagInput = document.getElementById('editCustomTagInput');
+    if (customTagInput) customTagInput.value = '';
+    renderCustomerEditTags();
     syncCustomerEditBusinessFields();
 
     const modal = document.getElementById('customerEditModal');
@@ -1485,6 +1763,9 @@ async function closeEditModal(force = false) {
     const closeNow = () => {
         modal?.classList.add('hidden');
         CrmState.editingId = null;
+        setCustomerEditingTags([]);
+        closeCustomerEditTagDropdown();
+        renderCustomerEditTags();
         _customerEditInitialState = getCustomerEditState();
     };
     if (window.UnsafeDismissGuard && modal) {
@@ -1523,7 +1804,8 @@ async function handleSave() {
         childBirthday: isMaysternyaCustomerContext() ? null : (document.getElementById('editChildBirthday')?.value || null),
         socialIdentities: parseSocialIdentitiesInput(document.getElementById('editSocialIdentities')?.value),
         source: document.getElementById('editSource')?.value || null,
-        notes: document.getElementById('editNotes')?.value.trim() || null
+        notes: document.getElementById('editNotes')?.value.trim() || null,
+        tags: CrmState.editingTags.map(item => ({ tag: item.tag, color: item.color }))
     };
 
     try {
@@ -1536,7 +1818,7 @@ async function handleSave() {
         await closeEditModal(true);
         showNotification(wasEditing ? 'Клієнта оновлено' : 'Клієнта створено');
         await refreshData();
-        if (!wasEditing && result?.id) {
+        if (result?.id) {
             await showCustomerDetail(result.id);
         }
     } catch (err) {
@@ -1574,52 +1856,110 @@ window.confirmDeleteCustomer = async function(id) {
 // v30.4: TAG MANAGEMENT
 // ==========================================
 
-window.removeTag = async function(customerId, tagId) {
+const pendingCustomerTagActions = new Set();
+
+function setCustomerTagActionButtonState(button, busyText) {
+    if (!button) return () => {};
+    const previous = {
+        disabled: button.disabled,
+        text: button.textContent,
+        ariaBusy: button.getAttribute('aria-busy')
+    };
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.classList.add('is-loading');
+    if (busyText) button.textContent = busyText;
+    return () => {
+        button.disabled = previous.disabled;
+        if (previous.ariaBusy === null) button.removeAttribute('aria-busy');
+        else button.setAttribute('aria-busy', previous.ariaBusy);
+        button.classList.remove('is-loading');
+        button.textContent = previous.text;
+    };
+}
+
+async function refreshCustomerTagSurfaces(customerId) {
+    await showCustomerDetail(customerId);
+    await refreshData();
+    renderCustomerTable();
+    renderPagination();
+    renderTagFilters();
+}
+
+window.removeTag = async function(customerId, tagId, button) {
     if (!guardCustomerWrite('редагувати теги клієнта')) return;
+    const actionKey = `remove:${customerId}:${tagId}`;
+    if (pendingCustomerTagActions.has(actionKey)) return;
+    pendingCustomerTagActions.add(actionKey);
+    const restoreButton = setCustomerTagActionButtonState(button, '...');
     const token = localStorage.getItem('pzp_token');
     try {
-        await fetch(customerApiUrl(`/api/customers/${customerId}/tags/${tagId}`), {
+        const res = await fetch(customerApiUrl(`/api/customers/${customerId}/tags/${tagId}`), {
             method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
         });
-        showCustomerDetail(customerId);
-        refreshData();
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(payload.error || 'Не вдалося видалити тег');
+        }
+        await refreshCustomerTagSurfaces(customerId);
     } catch (err) {
         console.error('removeTag error', err);
         if (typeof showNotification === 'function') showNotification('Помилка видалення тегу: ' + err.message, 'error');
+    } finally {
+        restoreButton();
+        pendingCustomerTagActions.delete(actionKey);
     }
 };
 
 window.showAddTagDropdown = function(customerId) {
     if (!guardCustomerWrite('редагувати теги клієнта')) return;
-    const predefined = ['VIP', 'Проблемний', 'Корпорат', 'Рекомендація', 'Постійний'];
-    const colors = { 'VIP': '#F59E0B', 'Проблемний': '#EF4444', 'Корпорат': '#3B82F6', 'Рекомендація': '#10B981', 'Постійний': '#8B5CF6' };
-    const html = predefined.map(t =>
-        `<button class="crm-tag-option" onclick="addTag(${customerId},'${t}','${colors[t]}')" style="color:${colors[t]}">${t}</button>`
-    ).join('');
     const container = document.getElementById('detailTags');
+    if (!container) return;
     // Remove existing dropdown
     const old = container.querySelector('.crm-tag-dropdown');
     if (old) { old.remove(); return; }
+    const catalog = getCustomerTagCatalog();
     const dropdown = document.createElement('div');
     dropdown.className = 'crm-tag-dropdown';
-    dropdown.innerHTML = html;
+    dropdown.innerHTML = catalog.length
+        ? catalog.map((item, index) => `<button type="button" class="crm-tag-option" data-tag-index="${index}">${escapeHtml(item.tag)}</button>`).join('')
+        : '<div class="crm-tag-option" aria-disabled="true">Немає доступних тегів</div>';
+    dropdown.querySelectorAll('[data-tag-index]').forEach(button => {
+        const item = catalog[Number.parseInt(button.dataset.tagIndex, 10)];
+        if (!item) return;
+        button.style.color = item.color;
+        button.addEventListener('click', () => window.addTag(customerId, item.tag, item.color, button));
+    });
     container.appendChild(dropdown);
 };
 
-window.addTag = async function(customerId, tag, color) {
+window.addTag = async function(customerId, tag, color, button) {
     if (!guardCustomerWrite('редагувати теги клієнта')) return;
+    const actionKey = `add:${customerId}:${String(tag || '').trim()}`;
+    if (pendingCustomerTagActions.has(actionKey)) return;
+    pendingCustomerTagActions.add(actionKey);
+    const restoreButton = setCustomerTagActionButtonState(button, 'Додаю...');
     const token = localStorage.getItem('pzp_token');
     try {
-        await fetch(customerApiUrl(`/api/customers/${customerId}/tags`), {
+        const res = await fetch(customerApiUrl(`/api/customers/${customerId}/tags`), {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag, color })
         });
-        showCustomerDetail(customerId);
-        refreshData();
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(payload.error || 'Не вдалося додати тег');
+        }
+        if (payload.message && !payload.tag && typeof showNotification === 'function') {
+            showNotification(payload.message, 'info');
+        }
+        await refreshCustomerTagSurfaces(customerId);
     } catch (err) {
         console.error('addTag error', err);
         if (typeof showNotification === 'function') showNotification('Помилка додавання тегу: ' + err.message, 'error');
+    } finally {
+        restoreButton();
+        pendingCustomerTagActions.delete(actionKey);
     }
 };
 
@@ -1788,10 +2128,7 @@ async function loadBulkTab() {
         <h4 style="margin-bottom:16px;font-size:14px;font-weight:800">Масова розсилка Telegram</h4>
         <label>Фільтр по тегу</label>
         <select id="bulkTagFilter">
-            <option value="">Всі клієнти</option>
-            <option value="VIP">VIP</option>
-            <option value="Корпорат">Корпорат</option>
-            <option value="Постійний">Постійний</option>
+            ${renderCustomerTagOptions('', 'Всі клієнти', { includeBirthdaySystemTags: true, includeCurrentBirthdayShortcut: true })}
         </select>
         <label>Мін. кількість візитів</label>
         <input type="number" id="bulkMinVisits" value="0" min="0">
@@ -1950,7 +2287,8 @@ function switchTab(tab) {
 // ==========================================
 
 async function refreshData() {
-    await Promise.all([fetchCustomers(), fetchStats()]);
+    await Promise.all([fetchCustomers(), fetchStats(), fetchCustomerTags()]);
+    renderTagFilters();
     renderStats();
     renderCustomerTable();
     renderPagination();
@@ -2118,6 +2456,7 @@ async function initPage() {
 
     // Save customer
     bindCustomerIdentityTools();
+    bindCustomerEditTagTools();
     document.getElementById('saveCustomerBtn')?.addEventListener('click', handleSave);
     document.getElementById('cancelEditBtn')?.addEventListener('click', () => closeEditModal(false));
 

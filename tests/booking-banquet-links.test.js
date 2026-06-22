@@ -2463,8 +2463,8 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         assert.equal(data.event.status, 'preliminary');
         assert.equal(data.document.generatedAt, undefined);
         assert.equal(data.event.createdAt, new Date('2099-01-01T00:00:00Z').toISOString());
-        assert.deepEqual(data.finance.rows.map(row => row.label), ['Програма', 'Додаткові активності', 'Бронювання', 'Разом', 'До сплати']);
-        assert.equal(data.finance.rows.find(row => row.key === 'amount_due')?.amount, 1700);
+        assert.deepEqual(data.finance.rows.map(row => row.label), ['Загальна сума']);
+        assert.equal(data.finance.rows.find(row => row.key === 'total')?.amount, 1700);
         assert.deepEqual(data.schedule.map(item => `${item.time} ${item.title}`), [
             '12:00 Прихід гостей',
             '12:00 Banquet root',

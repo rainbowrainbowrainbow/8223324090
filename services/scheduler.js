@@ -40,6 +40,7 @@ function getKleshnya() {
 }
 
 const log = createLogger('Scheduler');
+const CUSTOMER_BIRTHDAY_TAGS_BACKFILL_SETTING_KEY = 'customer_birthday_tags_backfill_done';
 const SYSTEM_BOOKING_NOTIFICATION_ACTOR = Object.freeze({
     id: 0,
     username: 'system-notification',
@@ -77,6 +78,23 @@ async function setLastSent(key, dateStr) {
             [`last_${key}`, dateStr]
         );
     } catch (err) { log.error(`setLastSent(${key}) error`, err); }
+}
+
+async function getSettingValue(key) {
+    try {
+        const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+        return result.rows[0]?.value || null;
+    } catch (err) {
+        log.warn(`getSettingValue(${key}) error`, { error: err.message });
+        return null;
+    }
+}
+
+async function setSettingValue(key, value) {
+    await pool.query(
+        'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+        [key, value]
+    );
 }
 
 const DIGEST_SEND_MESSAGES = {
@@ -2333,6 +2351,38 @@ async function checkGraduationOpsAutomation() {
     }
 }
 
+async function checkBirthdayTagSync() {
+    try {
+        const { syncBirthdayTagsForAllCustomers } = require('./customerBirthdayTags');
+        const backfillDone = await getSettingValue(CUSTOMER_BIRTHDAY_TAGS_BACKFILL_SETTING_KEY);
+        const result = await syncBirthdayTagsForAllCustomers({
+            pool,
+            batchSize: 500,
+            logger: log
+        });
+        if (result.skipped) {
+            log.warn('Birthday tag sync skipped', result);
+            return;
+        }
+        if (result.processed || result.updated || result.errors) {
+            log.info(`Birthday tag sync: processed=${result.processed}, updated=${result.updated}, errors=${result.errors}`);
+        }
+        if (!backfillDone && result.errors === 0) {
+            await setSettingValue(CUSTOMER_BIRTHDAY_TAGS_BACKFILL_SETTING_KEY, new Date().toISOString());
+            log.info('Birthday tag backfill marker saved', {
+                key: CUSTOMER_BIRTHDAY_TAGS_BACKFILL_SETTING_KEY,
+                processed: result.processed,
+                updated: result.updated
+            });
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkBirthdayTagSync error', err);
+            throw err;
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -2358,6 +2408,7 @@ module.exports = {
     checkNpsFollowUp,
     checkCleaningTasks,
     checkGraduationOpsAutomation,
+    checkBirthdayTagSync,
     DIGEST_SEND_MESSAGES,
     classifyDigestSendFailure,
     buildDigestSendResult

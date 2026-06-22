@@ -15,6 +15,7 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkStreakUpdates', functionName: 'checkStreakUpdates', sourceFile: 'services/scheduler.js', owner: 'gamification', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
     { name: 'checkBirthdayGreetings', functionName: 'checkBirthdayGreetings', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkBirthdayReminders', functionName: 'checkBirthdayReminders', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
+    { name: 'checkBirthdayTagSync', functionName: 'checkBirthdayTagSync', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['database', 'settings'], tests: ['tests/customer-birthday-tags.test.js'] },
     { name: 'checkDormantCustomers', functionName: 'checkDormantCustomers', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkUpcomingBookings', functionName: 'checkUpcomingBookings', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkEventQueue', functionName: 'checkEventQueue', sourceFile: 'services/scheduler.js', owner: 'event-queue', interval: '60000', dedup: null, sideEffects: ['database', 'events'], tests: ['tests/event-queue.test.js'] },

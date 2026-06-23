@@ -701,7 +701,10 @@
         doc.hidden = false;
         doc.innerHTML = `
             <header class="banquet-hero" aria-label="Шапка банкетного листа">
-                <div class="brand-mark" aria-hidden="true">EG</div>
+                <div class="brand-logo-frame" aria-hidden="true">
+                    <img class="brand-logo" src="images/banquet-logo.png" alt="${escapeHtml(venue.name || 'Event Genix')}" loading="eager">
+                    <span class="brand-mark"></span>
+                </div>
                 <div class="brand-copy">
                     <div class="generated-at">${escapeHtml(formatGeneratedAtShort(renderedAt))}</div>
                     <h1>${escapeHtml(venue.name || 'Заклад')}</h1>
@@ -796,6 +799,13 @@
                 <strong>${escapeHtml(summary.bookingId || '')}</strong>
             </footer>
         `;
+        const logo = doc.querySelector('.brand-logo');
+        if (logo) {
+            logo.addEventListener('error', () => {
+                logo.hidden = true;
+                logo.closest('.brand-logo-frame')?.classList.add('is-logo-missing');
+            }, { once: true });
+        }
     }
 
     function summaryText(summary) {

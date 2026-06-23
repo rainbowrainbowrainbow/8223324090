@@ -2803,3 +2803,364 @@ body.booking-summary-page {
         width: 116mm;
     }
 }
+
+/* Banquet official premium refinement: real logo, calmer grid, print-friendly document tone. */
+:root {
+    --summary-official-ink: #142f35;
+    --summary-official-muted: #637477;
+    --summary-official-line: #d8e3e1;
+    --summary-official-soft: #f7f8f5;
+    --summary-official-accent: #0f6668;
+    --summary-official-gold: #b68a3b;
+    --summary-official-paper: #fffdf8;
+    --summary-official-panel: #ffffff;
+}
+
+.booking-summary-document {
+    padding: 9mm;
+    border: 1px solid var(--summary-official-line);
+    border-radius: 10px;
+    background: var(--summary-official-paper);
+    box-shadow: 0 18px 48px rgba(5, 25, 30, 0.24);
+}
+
+.booking-summary-document::after {
+    inset: 6.5mm;
+    border-color: rgba(20, 47, 53, 0.08);
+}
+
+.banquet-hero {
+    grid-template-columns: 24mm minmax(0, 1fr) minmax(48mm, 58mm);
+    gap: 5mm;
+    min-height: 35mm;
+    margin: 0 0 5mm;
+    padding: 5mm;
+    border: 1px solid var(--summary-official-line);
+    border-left: 0;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #ffffff 0%, #ffffff 62%, #faf8f0 100%);
+    box-shadow: none;
+}
+
+.banquet-hero::before,
+.banquet-hero::after,
+.booking-card::after,
+.summary-brief::before,
+.summary-brief::after,
+.summary-section::before,
+.summary-section::after,
+.summary-section h2::before {
+    display: none !important;
+}
+
+.brand-logo-frame {
+    display: grid;
+    place-items: center;
+    width: 24mm;
+    height: 24mm;
+    padding: 2mm;
+    border: 1px solid var(--summary-official-line);
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.brand-logo {
+    display: block !important;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    filter: none;
+    object-fit: contain;
+}
+
+.brand-mark {
+    display: none;
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--summary-official-line);
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffffff, var(--summary-official-soft));
+}
+
+.brand-logo-frame.is-logo-missing .brand-mark {
+    display: grid;
+}
+
+.generated-at {
+    margin-bottom: 1mm;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--summary-official-muted);
+    font-size: 7.4px;
+    font-weight: 800;
+}
+
+.brand-copy h1 {
+    max-width: 102mm;
+    margin-bottom: 1mm;
+    color: var(--summary-official-ink);
+    font-size: 17px;
+    line-height: 1.14;
+    font-weight: 900;
+}
+
+.brand-copy p,
+.brand-copy strong {
+    max-width: 104mm;
+    color: var(--summary-official-muted);
+    font-size: 8.5px;
+    line-height: 1.35;
+}
+
+.brand-copy strong {
+    color: var(--summary-official-accent);
+    font-weight: 850;
+}
+
+.booking-card {
+    padding: 3.2mm 3.6mm;
+    border: 1px solid var(--summary-official-line);
+    border-left: 1px solid rgba(182, 138, 59, 0.56);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: none;
+}
+
+.booking-card h2 {
+    color: var(--summary-official-ink);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+}
+
+.booking-id {
+    border-color: rgba(182, 138, 59, 0.34);
+    background: #fbf6e9;
+    color: #6e551c;
+    font-size: 9px;
+    font-weight: 850;
+}
+
+.meta-row {
+    color: var(--summary-official-muted);
+    font-size: 8.6px;
+}
+
+.meta-row b {
+    color: var(--summary-official-ink);
+    font-weight: 850;
+}
+
+.summary-brief {
+    --summary-brief-label-width: 31mm;
+    margin-bottom: 4mm;
+    padding: 3mm;
+    border-color: var(--summary-official-line);
+    border-radius: 8px;
+    background: var(--summary-official-panel);
+    box-shadow: none;
+}
+
+.summary-brief-grid {
+    gap: 2mm 7mm;
+}
+
+.summary-brief-item {
+    padding: 1.2mm 0;
+    border-bottom: 1px solid rgba(216, 227, 225, 0.72);
+    font-size: 10.4px;
+    line-height: 1.36;
+}
+
+.summary-brief-column .summary-brief-item:last-child {
+    border-bottom: 0;
+}
+
+.summary-brief-label {
+    color: var(--summary-official-ink);
+    font-weight: 820;
+}
+
+.summary-brief-value {
+    color: #1f383d;
+}
+
+.summary-section {
+    margin-top: 4mm;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.summary-section h2 {
+    display: block;
+    width: 100%;
+    margin: 0 0 2mm;
+    padding: 0 0 1.1mm;
+    border-bottom: 1px solid var(--summary-official-line);
+    border-radius: 0;
+    background: transparent;
+    color: var(--summary-official-ink);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.045em;
+}
+
+.summary-order-table,
+.summary-responsible-list,
+.summary-schedule-list,
+.summary-service-event,
+.summary-comment-row,
+.summary-finance-table {
+    border-color: var(--summary-official-line);
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: none;
+}
+
+.summary-order-table th,
+.summary-finance-table th {
+    background: var(--summary-official-soft);
+    color: var(--summary-official-ink);
+    font-weight: 820;
+}
+
+.summary-order-table th,
+.summary-order-table td,
+.summary-finance-table th,
+.summary-finance-table td {
+    border-color: var(--summary-official-line);
+    padding: 1.7mm 2mm;
+    font-size: 9.4px;
+    line-height: 1.36;
+}
+
+.summary-order-table .name,
+.summary-schedule-item strong,
+.summary-service-event strong,
+.summary-responsible-item strong {
+    font-weight: 820;
+}
+
+.summary-responsible-item,
+.summary-schedule-item,
+.summary-service-event,
+.summary-comment-row {
+    background: #ffffff;
+    color: var(--summary-official-ink);
+    font-size: 9.6px;
+    line-height: 1.38;
+}
+
+.summary-schedule-item time {
+    color: var(--summary-official-accent);
+    font-weight: 850;
+}
+
+.summary-service-event span,
+.summary-finance-table td {
+    text-align: right;
+}
+
+.summary-finance-table {
+    max-width: 86mm;
+}
+
+.summary-finance-row--total th,
+.summary-finance-row--total td,
+.summary-finance-row--due th,
+.summary-finance-row--due td {
+    background: #fbf6e9;
+    color: var(--summary-official-ink);
+    font-weight: 880;
+}
+
+.summary-note-block {
+    color: var(--summary-official-ink);
+    font-size: 10.2px;
+    line-height: 1.48;
+}
+
+.summary-terms ul {
+    padding-left: 4.2mm;
+}
+
+.summary-terms li {
+    margin-bottom: 1.4mm;
+}
+
+.banquet-final-brand {
+    margin-top: 5mm;
+    padding-top: 3mm;
+    border-top: 1px solid var(--summary-official-line);
+    color: var(--summary-official-muted);
+}
+
+.banquet-final-brand::before {
+    display: none !important;
+}
+
+.banquet-final-brand span {
+    color: var(--summary-official-ink);
+    font-weight: 780;
+}
+
+.banquet-final-brand strong {
+    color: var(--summary-official-muted);
+    font-size: 7.2px;
+    font-weight: 780;
+}
+
+@media (max-width: 760px) {
+    .banquet-hero {
+        grid-template-columns: 21mm minmax(0, 1fr);
+        gap: 3.5mm;
+        padding: 4mm;
+    }
+
+    .brand-logo-frame {
+        width: 21mm;
+        height: 21mm;
+    }
+}
+
+@media print {
+    .booking-summary-document {
+        padding: 8.5mm;
+        border-color: var(--summary-official-line);
+        box-shadow: none !important;
+    }
+
+    .banquet-hero {
+        grid-template-columns: 22mm minmax(0, 1fr) minmax(47mm, 57mm);
+        min-height: 33mm;
+        margin-bottom: 4mm;
+        padding: 4.4mm;
+    }
+
+    .brand-logo-frame {
+        width: 22mm;
+        height: 22mm;
+    }
+
+    .brand-copy h1 {
+        font-size: 16px;
+    }
+
+    .summary-section {
+        margin-top: 3.4mm;
+    }
+
+    .summary-order-table th,
+    .summary-finance-table th {
+        background: var(--summary-official-soft) !important;
+        color: var(--summary-official-ink) !important;
+    }
+}

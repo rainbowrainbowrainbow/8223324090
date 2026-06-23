@@ -707,7 +707,6 @@ checkPage('booking-summary.html', (doc, html) => {
     const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
     const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
     const banquetHeroRule = cssRuleText(pageCss, '.banquet-hero');
-    const brandMarkRule = cssRuleText(pageCss, '.brand-mark');
     const bookingCardRule = cssRuleText(pageCss, '.booking-card');
     const bookingIdRule = cssRuleText(pageCss, '.booking-id');
     const metaRowRule = cssRuleText(pageCss, '.meta-row');
@@ -964,10 +963,11 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('`Booking ID: ${summary.bookingId ||')
         && !renderDocumentBody.includes('Booking ID:')
         && !pageCode.includes("briefItem('Booking ID'"));
-    check('Booking summary hero header uses official no-image masthead and right booking card',
+    check('Booking summary hero header uses official premium logo masthead and right booking card',
         renderDocumentBody.includes('<header class="banquet-hero"')
-        && renderDocumentBody.includes('class="brand-mark"')
-        && !renderDocumentBody.includes('<img')
+        && renderDocumentBody.includes('class="brand-logo-frame"')
+        && renderDocumentBody.includes('class="brand-logo"')
+        && renderDocumentBody.includes('images/banquet-logo.png')
         && !renderDocumentBody.includes('BANQUET_HERO_LOGO_SRC')
         && !renderDocumentBody.includes('BANQUET_TOP_PLATE_SRC')
         && !renderDocumentBody.includes('BANQUET_CORNER_SRC')
@@ -982,18 +982,22 @@ checkPage('booking-summary.html', (doc, html) => {
         && renderDocumentBody.includes('venue.phone')
         && pageCss.includes('--summary-official-ink')
         && pageCss.includes('--summary-official-accent')
+        && pageCss.includes('.brand-logo-frame')
+        && pageCss.includes('.brand-logo')
         && pageCss.includes('.banquet-top-plate,')
         && pageCss.includes('.banquet-corner-art')
         && pageCss.includes('display: none !important')
         && pageCss.includes('.banquet-final-brand')
-        && pageCss.includes('grid-template-columns: 18mm minmax(0, 1fr) minmax(44mm, 54mm)')
-        && pageCss.includes('border-left: 1.8mm solid var(--summary-official-accent)')
-        && brandMarkRule.includes('border: 1.4px solid var(--summary-official-gold)')
-        && brandMarkRule.includes('border-radius: 50%')
+        && pageCss.includes('grid-template-columns: 24mm minmax(0, 1fr) minmax(48mm, 58mm)')
+        && pageCss.includes('border-left: 0')
+        && pageCss.includes('.brand-logo-frame')
+        && pageCss.includes('width: 24mm')
+        && pageCss.includes('border: 1px solid var(--summary-official-line)')
+        && pageCss.includes('object-fit: contain')
+        && pageCss.includes('display: block !important')
         && metaRowRule.includes('grid-template-columns')
-        && pageCss.includes('grid-template-columns: 16mm minmax(0, 1fr)')
-        && pageCss.includes('grid-column: auto !important')
-        && pageCss.includes('min-height: 30mm')
+        && pageCss.includes('grid-template-columns: 21mm minmax(0, 1fr)')
+        && pageCss.includes('min-height: 33mm')
         && !pageCss.includes('--summary-doc-meta-offset')
         && !pageCss.includes('padding-top: var(--summary-doc-meta-offset)')
         && !printCss.includes('--summary-doc-meta-offset'));

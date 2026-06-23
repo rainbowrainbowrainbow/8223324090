@@ -157,6 +157,38 @@ test('durable staff primary line assignment makes animator timeline bookings vis
     assert.equal(decision.reasonCode, 'staff_host_scope');
 });
 
+test('linked animator rows stay scoped to the assigned animator without broad animator access', () => {
+    const linkedBooking = {
+        id: 'BK-LINKED-ANIMATOR',
+        linked_to: 'BK-PARENT',
+        line_id: '502',
+        second_animator: '502',
+        created_by: 'manager-user'
+    };
+    const assignedAnimator = { id: 5020, username: 'assigned-host', role: 'animator', staffIds: [502] };
+    const otherAnimator = { id: 5030, username: 'other-host', name: 'Other Host', role: 'animator', staffIds: [503] };
+
+    const assignedDecision = classifyBookingVisibility(assignedAnimator, linkedBooking);
+    assert.equal(assignedDecision.canView, true);
+    assert.equal(assignedDecision.canEdit, false);
+    assert.equal(assignedDecision.scopeSource, 'staff-host-assignment');
+    assert.equal(assignedDecision.reasonCode, 'staff_host_scope');
+    assert.equal(canViewBooking(assignedAnimator, linkedBooking), true);
+
+    const otherDecision = classifyBookingVisibility(otherAnimator, linkedBooking);
+    assert.equal(otherDecision.canView, false);
+    assert.equal(otherDecision.canEdit, false);
+    assert.equal(otherDecision.scopeSource, 'deny');
+    assert.equal(canViewBooking(otherAnimator, linkedBooking), false);
+
+    for (const role of ['manager', 'director']) {
+        const operator = { id: 900, username: `${role}-user`, role };
+        const decision = classifyBookingVisibility(operator, linkedBooking);
+        assert.equal(decision.canView, true, `${role} can view linked animator rows`);
+        assert.equal(decision.canEdit, true, `${role} keeps operational/full edit access`);
+    }
+});
+
 test('query scope adds batch-safe employee profile staff assignment condition', () => {
     const actor = { id: 77, username: 'host-user', role: 'animator' };
     const params = [];

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.12",
+  "version": "0.77.13",
   "eventGenix": {
-    "releaseLabel": "Customer Children Card Fix"
+    "releaseLabel": "Timeline Animation Visibility Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

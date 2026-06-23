@@ -407,7 +407,7 @@ function mapBookingRow(row) {
         client_pinata_service_note: row.client_pinata_service_note
     });
 
-    const extraData = row.extra_data || null;
+    const extraData = row.extra_data ? safeBookingExtraData(row.extra_data) : null;
     const timelineIdentity = {
         ...(extraData?.timelineIdentity || extraData?.timeline_identity || {}),
         resourceId: row.resource_id

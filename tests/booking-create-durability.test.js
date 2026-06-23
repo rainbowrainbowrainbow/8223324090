@@ -255,7 +255,8 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
         nextBookingSeq: 1,
         leadAttempts: 0,
         financeAttempts: 0,
-        released: 0
+        released: 0,
+        timelineLineResolveSelects: 0
     };
 
     async function query(text, params = []) {
@@ -271,6 +272,7 @@ function makeDb({ commitCommand = 'COMMIT' } = {}) {
             return { rows: [], rowCount: 0, command: commitCommand };
         }
         if (/SELECT line_id, name, color FROM lines_by_date/i.test(sql)) {
+            state.timelineLineResolveSelects += 1;
             const [date, businessContext, lineId, name] = params;
             const normalizedName = String(name || '').trim().toLowerCase();
             const rows = state.lines.filter(line =>
@@ -857,6 +859,23 @@ async function updateBooking(baseUrl, id, payload) {
     });
     const data = await res.json().catch(() => ({}));
     return { status: res.status, data };
+}
+
+function timelineProjectionSnapshot(booking = {}) {
+    const projection = booking.timelineProjection || {};
+    return {
+        timelineView: projection.timelineView || null,
+        resourceType: projection.resourceType || null,
+        resourceId: projection.resourceId || null,
+        resourceName: projection.resourceName || null,
+        lineId: projection.lineId || null,
+        visibleInAnimatorTimeline: projection.visibleInAnimatorTimeline,
+        visibleInRoomTimeline: projection.visibleInRoomTimeline,
+        displaySurface: projection.displaySurface || null,
+        hiddenReason: projection.hiddenReason || null,
+        businessContext: projection.businessContext || null,
+        date: projection.date || null
+    };
 }
 
 test('POST /api/bookings keeps booking durable when optional finance write fails', async () => {
@@ -1680,7 +1699,10 @@ test('POST /api/bookings/full keeps second animator linked booking on its own ti
         assert.equal(res.data.linkedBookings.length, 1);
         assert.equal(res.data.linkedBookings[0].lineId, 'line-second');
         assert.deepEqual(res.data.allBookings.map(item => item.id), [res.data.mainBooking.id, res.data.linkedBookings[0].id]);
+        assert.deepEqual(res.data.allBookings.map(item => item.timelineProjection.lineId), ['line-main', 'line-second']);
+        assert.deepEqual(res.data.allBookings.map(item => item.timelineProjection.hiddenReason), [null, null]);
         assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['line-main', 'line-second']);
+        assert.equal(state.timelineLineResolveSelects, 2, 'main and linked rows should each resolve their timeline line once');
 
         const linkedRow = state.rows.find(row => row.linked_to === res.data.mainBooking.id);
         assert.ok(linkedRow, 'second animator linked row must be inserted');
@@ -1694,6 +1716,28 @@ test('POST /api/bookings/full keeps second animator linked booking on its own ti
         assert.equal(linkedExtra.timelineIdentity.resourceId, 'line-second');
         assert.equal(linkedExtra.timelineIdentity.lineId, 'line-second');
         assert.notEqual(linkedExtra.timelineIdentity.resourceId, 'line-main');
+
+        const reload = await fetch(`${baseUrl}/api/bookings/2099-02-13?timelineView=animators&businessContext=event_genix`);
+        const reloadData = await reload.json();
+        assert.equal(reload.status, 200, JSON.stringify(reloadData));
+        const reloadedMain = reloadData.find(item => item.id === res.data.mainBooking.id);
+        const reloadedLinked = reloadData.find(item => item.id === res.data.linkedBookings[0].id);
+        assert.ok(reloadedMain, 'main booking must be present after date reload');
+        assert.ok(reloadedLinked, 'linked animator booking must be present after date reload');
+        assert.equal(res.data.linkedBookings[0].linkedTo, res.data.mainBooking.id);
+        assert.equal(res.data.linkedBookings[0].lineId, 'line-second');
+        assert.equal(res.data.linkedBookings[0].timelineIdentity.lineId, 'line-second');
+        assert.equal(res.data.linkedBookings[0].timelineProjection.lineId, 'line-second');
+        assert.equal(res.data.linkedBookings[0].timelineProjection.hiddenReason, null);
+        assert.equal(res.data.linkedBookings[0].timelineProjection.visibleInAnimatorTimeline, true);
+        assert.equal(res.data.linkedBookings[0].timelineVisibility.visible, true);
+        assert.equal(reloadedLinked.timelineProjection.lineId, 'line-second');
+        assert.equal(reloadedLinked.timelineProjection.resourceId, 'line-second');
+        assert.equal(reloadedLinked.timelineProjection.visibleInAnimatorTimeline, true);
+        assert.equal(reloadedLinked.timelineProjection.hiddenReason, null);
+        assert.notEqual(reloadedLinked.timelineProjection.hiddenReason, 'missing_animator_resource');
+        assert.deepEqual(timelineProjectionSnapshot(res.data.mainBooking), timelineProjectionSnapshot(reloadedMain));
+        assert.deepEqual(timelineProjectionSnapshot(res.data.linkedBookings[0]), timelineProjectionSnapshot(reloadedLinked));
     });
 });
 

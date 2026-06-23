@@ -1017,6 +1017,32 @@ test('GET bookings returns canonical animator timelineProjection for activity, k
             })
         }),
         bookingRow({
+            id: 'BK-LINKED-NESTED-IDENTITY',
+            time: '13:45',
+            line_id: null,
+            linked_to: 'BK-ACTIVITY-FIRST',
+            label: 'Linked nested identity animator',
+            room: 'Room A',
+            extra_data: JSON.stringify({
+                timelineIdentity: {
+                    resourceId: 'line-nested',
+                    lineId: 'line-nested',
+                    resourceType: 'animator',
+                    resourceName: 'Nested Animator',
+                    source: 'linked_booking_line'
+                }
+            })
+        }),
+        bookingRow({
+            id: 'BK-LINKED-ORPHAN',
+            time: '14:15',
+            line_id: null,
+            linked_to: 'BK-ACTIVITY-FIRST',
+            label: 'Linked orphan animator',
+            room: 'Room A',
+            extra_data: null
+        }),
+        bookingRow({
             id: 'BK-LEGACY-LINE',
             time: '15:00',
             line_id: 'legacy-line-1',
@@ -1060,6 +1086,22 @@ test('GET bookings returns canonical animator timelineProjection for activity, k
         assert.equal(linked.timelineProjection.lineId, 'line-child');
         assert.equal(linked.timelineProjection.visibleInAnimatorTimeline, true);
         assert.equal(linked.timelineProjection.visibleInRoomTimeline, false);
+
+        const nestedIdentity = data.find(item => item.id === 'BK-LINKED-NESTED-IDENTITY');
+        assert.equal(nestedIdentity.timelineProjection.resourceId, 'line-nested');
+        assert.equal(nestedIdentity.timelineProjection.lineId, 'line-nested');
+        assert.equal(nestedIdentity.timelineProjection.resourceName, 'Nested Animator');
+        assert.equal(nestedIdentity.timelineProjection.visibleInAnimatorTimeline, true);
+        assert.equal(nestedIdentity.timelineProjection.visibleInRoomTimeline, false);
+        assert.equal(nestedIdentity.timelineProjection.displaySurface, 'booking_block');
+        assert.equal(nestedIdentity.timelineProjection.hiddenReason, null);
+
+        const orphan = data.find(item => item.id === 'BK-LINKED-ORPHAN');
+        assert.equal(orphan.timelineProjection.resourceId, null);
+        assert.equal(orphan.timelineProjection.lineId, null);
+        assert.equal(orphan.timelineProjection.visibleInAnimatorTimeline, false);
+        assert.equal(orphan.timelineProjection.displaySurface, 'hidden');
+        assert.equal(orphan.timelineProjection.hiddenReason, 'missing_animator_resource');
 
         const legacy = data.find(item => item.id === 'BK-LEGACY-LINE');
         assert.equal(legacy.timelineProjection.resourceId, 'legacy-line-1');

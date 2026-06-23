@@ -232,17 +232,34 @@ async function bookingDayProjectionStatus(queryable, { id, date, businessContext
 
 function bookingTimelineProjectionContract(booking = {}) {
     const identity = booking.timelineIdentity || {};
+    const projection = booking.timelineProjection || {};
     return {
         id: booking.id || null,
-        resourceId: booking.resourceId || booking.lineId || identity.resourceId || identity.lineId || null,
-        resourceType: booking.resourceType || identity.resourceType || null,
-        displayName: booking.displayName || booking.lineName || identity.displayName || identity.resourceName || null,
+        resourceId: projection.resourceId || booking.resourceId || booking.lineId || identity.resourceId || identity.lineId || null,
+        resourceType: projection.resourceType || booking.resourceType || identity.resourceType || null,
+        displayName: projection.resourceName || booking.displayName || booking.lineName || identity.displayName || identity.resourceName || null,
         businessContext: booking.businessContext || identity.businessContext || DEFAULT_TIMELINE_CONTEXT,
         date: booking.date || null,
         source: identity.source || booking.source || 'booking_row',
         capacity: booking.capacity || identity.capacity || null,
-        visibility: booking.timelineProjection || null
+        visibility: booking.timelineVisibility || booking.timelineProjectionStatus || booking.timeline_projection_status || null,
+        timelineProjection: booking.timelineProjection || null
     };
+}
+
+function projectCreatedBookingsForTimelineResponse(bookings = [], timelineView = 'animators') {
+    const visibilityById = new Map((Array.isArray(bookings) ? bookings : [])
+        .map(booking => [String(booking?.id || ''), booking?.timelineProjection || null])
+        .filter(([id]) => Boolean(id)));
+    return projectBookingsForTimelineView(bookings, timelineView).map(booking => {
+        const visibility = visibilityById.get(String(booking?.id || '')) || null;
+        return {
+            ...booking,
+            timelineVisibility: visibility,
+            timelineProjectionStatus: visibility,
+            timeline_projection_status: visibility
+        };
+    });
 }
 
 async function runOptionalBookingTransactionStep(client, label, step) {
@@ -1264,7 +1281,26 @@ function normalizeTimelineView(value) {
 }
 
 function bookingTimelineIdentity(booking = {}) {
-    return booking.timelineIdentity || booking.timeline_identity || {};
+    const candidates = [
+        booking.timelineIdentity,
+        booking.timeline_identity,
+        booking.extraData?.timelineIdentity,
+        booking.extraData?.timeline_identity,
+        booking.extra_data?.timelineIdentity,
+        booking.extra_data?.timeline_identity
+    ];
+    for (const candidate of candidates) {
+        if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) return candidate;
+    }
+    for (const raw of [booking.extraData, booking.extra_data]) {
+        if (typeof raw !== 'string' || !raw.trim()) continue;
+        try {
+            const parsed = JSON.parse(raw);
+            const identity = parsed?.timelineIdentity || parsed?.timeline_identity;
+            if (identity && typeof identity === 'object' && !Array.isArray(identity)) return identity;
+        } catch {}
+    }
+    return {};
 }
 
 function bookingSourceLineId(booking = {}) {
@@ -1397,8 +1433,18 @@ function buildBookingTimelineProjection(booking = {}, timelineView = 'animators'
 function projectBookingForTimelineView(booking = {}, timelineView = 'animators') {
     const projection = buildBookingTimelineProjection(booking, timelineView);
     if (timelineView !== 'rooms') {
+        const previousIdentity = bookingTimelineIdentity(booking);
         return {
             ...booking,
+            timelineIdentity: {
+                ...previousIdentity,
+                businessContext: previousIdentity.businessContext || previousIdentity.business_context || projection.businessContext,
+                resourceId: previousIdentity.resourceId || previousIdentity.resource_id || projection.resourceId,
+                lineId: previousIdentity.lineId || previousIdentity.line_id || projection.lineId,
+                resourceType: previousIdentity.resourceType || previousIdentity.resource_type || projection.resourceType,
+                resourceName: previousIdentity.resourceName || previousIdentity.resource_name || projection.resourceName,
+                lineName: previousIdentity.lineName || previousIdentity.line_name || projection.resourceName
+            },
             timelineProjection: {
                 ...(booking.timelineProjection || {}),
                 ...projection
@@ -3445,23 +3491,6 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             attachLinkedBookingTimelineIdentity(lb, businessContext, ensuredLinkedLine);
         }
 
-        for (const lb of linked) {
-            const ensuredLinkedLine = await ensureParkAnimatorLine(client, {
-                businessContext,
-                date: lb.date || main.date,
-                lineId: lb.lineId,
-                name: lb.secondAnimator || null
-            });
-            if (ensuredLinkedLine) {
-                lb.lineId = ensuredLinkedLine.lineId;
-                if (lb.secondAnimator) lb.secondAnimator = ensuredLinkedLine.name;
-                attachLinkedBookingTimelineIdentity(lb, businessContext, {
-                    ...ensuredLinkedLine,
-                    source: 'staff_animator'
-                });
-            }
-        }
-
         if (bookingRequiresSecondAnimatorLink(main)) {
             const hasSecondLinked = linked.some(lb => lb.secondAnimator === main.secondAnimator
                 || (
@@ -3848,6 +3877,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 });
             }
         }));
+        allBookings = projectCreatedBookingsForTimelineResponse(allBookings, 'animators');
         try {
             allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
         } catch (linkErr) {

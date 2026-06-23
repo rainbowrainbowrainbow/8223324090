@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.13 - Timeline Animation Visibility Fix
+
+### Timeline / Animation visibility / Linked animator rows / Diagnostics / (Клешня, 23.06.2026) [codex]
+- **Зафіксовано canonical timeline identity contract** - animator rows тепер мають стабільне джерело правди для `line_id`, `timelineIdentity`, `resourceId`, `lineId` і `timelineProjection`.
+- **Прибрано конфлікт двох resolver-ів при створенні booking** - linked animator booking більше не проходить через повторне перезаписування лінії і не втрачає власний animator row.
+- **Valid animation rows не ховаються як `missing_animator_resource`** - projection відрізняє справді orphan/broken записи від валідних linked/legacy rows із достатнім line evidence.
+- **Create response і reload через `/api/bookings/:date` синхронізовано** - animation/linked rows повертаються з однаковою timeline identity одразу після save і після hard reload.
+- **Frontend matching отримав diagnostic reasons** - hidden/unmatched rows більше не зникають без пояснення, а debug state показує wrong view, missing line або projection-hidden причину.
+- **Role visibility перевірено без розширення доступу** - animator бачить власний linked row, чужі rows лишаються закритими, manager/director бачать дозволений scope.
+- **Підготовлено read-only inventory і repair plan** - broken/orphan timeline identity можна знайти без destructive updates і виправляти тільки після review.
+- **Manual QA покрила реальноподібні сценарії** - animation booking, second animator, linked animator row, extra animator, banquet activity, reload і перемикання rooms/animators не гублять рядки.
+- **Релізні маркери піднято до `0.77.13`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.12 - Customer Children Card Fix
 
 ### Customers / Multiple children / Birthday fields / Client card layout / Booking compatibility / (Клешня, 23.06.2026) [codex]

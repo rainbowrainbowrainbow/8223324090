@@ -93,7 +93,16 @@ test('park second-host picker uses real day lines and only keeps free linked occ
     assert.match(bookingsRoute, /allBookings\.map\(async booking/);
     assert.match(bookingsRoute, /booking\.timelineProjection = await bookingDayProjectionStatus/);
     assert.match(bookingsRoute, /booking_line_not_visible/);
-    assert.match(bookingsRoute, /ensureParkAnimatorLine\(client, \{\s*businessContext,\s*date: lb\.date \|\| main\.date/s);
+    const fullCreateRoute = bookingsRoute.slice(
+        bookingsRoute.indexOf("router.post('/full'"),
+        bookingsRoute.indexOf('router.post(\'/confirmations\'')
+    );
+    const linkedResolverBlock = fullCreateRoute.slice(
+        fullCreateRoute.indexOf('for (const lb of linked)'),
+        fullCreateRoute.indexOf('if (bookingRequiresSecondAnimatorLink(main))')
+    );
+    assert.match(linkedResolverBlock, /const ensuredLinkedLine = await ensureBookingTimelineLine\(client, lb, businessContext/s);
+    assert.doesNotMatch(linkedResolverBlock, /ensureParkAnimatorLine/);
     assert.match(bookingsRoute, /function attachLinkedBookingTimelineIdentity/);
     assert.match(bookingsRoute, /bookingExtraDataSqlValue\(lb\)/);
     assert.doesNotMatch(bookingsRoute, /lb\.extraData\s*\?\s*JSON\.stringify\(lb\.extraData\)\s*:\s*\(main\.extraData/);

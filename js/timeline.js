@@ -1001,6 +1001,67 @@ function timelineEmbeddedIdentity(source = {}) {
         || {};
 }
 
+function timelineBookingDiagnosticsStore() {
+    const root = typeof window !== 'undefined' ? window : globalThis;
+    if (!root.__timelineBookingDiagnostics || typeof root.__timelineBookingDiagnostics !== 'object') {
+        root.__timelineBookingDiagnostics = {
+            hidden: [],
+            unmatched: [],
+            scope: {},
+            updatedAt: null
+        };
+    }
+    return root.__timelineBookingDiagnostics;
+}
+
+function resetTimelineBookingDiagnostics(scope = {}) {
+    const store = timelineBookingDiagnosticsStore();
+    store.hidden = [];
+    store.unmatched = [];
+    store.scope = scope;
+    store.updatedAt = new Date().toISOString();
+    return store;
+}
+
+function timelineBookingDiagnosticEntry(booking = {}, lines = [], extra = {}) {
+    const diagnostic = typeof timelineBookingMatchDiagnostic === 'function'
+        ? timelineBookingMatchDiagnostic(booking, lines)
+        : {};
+    return {
+        id: booking?.id || booking?.bookingId || booking?.booking_id || null,
+        lineId: booking?.lineId || booking?.line_id || booking?.resourceId || booking?.resource_id || null,
+        reason: diagnostic.reason || booking.timelineRenderHiddenReason || extra.reason || 'unknown',
+        hiddenReason: diagnostic.hiddenReason || booking.timelineRenderHiddenReason || null,
+        bookingKeys: diagnostic.bookingKeys || [],
+        matchedLineIds: diagnostic.matchedLineIds || [],
+        currentView: diagnostic.currentView || (isRoomTimelineView() ? TIMELINE_VIEW_ROOMS : 'animators'),
+        projectionView: diagnostic.projectionView || null,
+        ...extra
+    };
+}
+
+function recordTimelineHiddenBookingDiagnostics(bookings = [], extra = {}) {
+    if (!Array.isArray(bookings) || !bookings.length) return;
+    const store = timelineBookingDiagnosticsStore();
+    store.hidden.push(...bookings.map(booking => timelineBookingDiagnosticEntry(booking, [], {
+        phase: 'normalize',
+        reason: booking.timelineRenderHiddenReason || 'hidden_by_projection',
+        ...extra
+    })));
+    store.updatedAt = new Date().toISOString();
+}
+
+function recordTimelineUnmatchedBookingDiagnostics(bookings = [], lines = [], extra = {}) {
+    if (!Array.isArray(bookings) || !bookings.length) return;
+    const store = timelineBookingDiagnosticsStore();
+    store.unmatched.push(...bookings.map(booking => timelineBookingDiagnosticEntry(booking, lines, {
+        phase: 'match',
+        reason: 'unmatched_line_keys',
+        ...extra
+    })));
+    store.updatedAt = new Date().toISOString();
+}
+
 function isParkAnimatorTimelineView() {
     const presentation = window.TimelineBusinessContext?.presentation?.();
     return !isRoomTimelineView() && presentation?.mode === 'park';
@@ -2852,7 +2913,7 @@ function normalizeTimelineLinesForContext(lines = []) {
 }
 
 function normalizeTimelineBookingsForContext(bookings = []) {
-    return bookings.map(booking => {
+    const normalized = bookings.map(booking => {
         const identity = timelineBookingResourceIdentity(booking);
         const canonicalProjection = timelineCanonicalProjectionForCurrentView(booking);
         const hiddenReason = timelineBookingRenderHiddenReason(booking);
@@ -2868,7 +2929,9 @@ function normalizeTimelineBookingsForContext(bookings = []) {
                 resourceId: normalizedResourceId
             }
         };
-    }).filter(booking => !booking.timelineRenderHiddenReason);
+    });
+    recordTimelineHiddenBookingDiagnostics(normalized.filter(booking => booking.timelineRenderHiddenReason));
+    return normalized.filter(booking => !booking.timelineRenderHiddenReason);
 }
 
 async function handleTimelineBusinessContextChanged(event) {
@@ -2959,6 +3022,11 @@ async function renderTimeline() {
 
     const container = document.getElementById('timelineLines');
     const showAfisha = timelineShouldRenderAfisha();
+    resetTimelineBookingDiagnostics({
+        date: formatDate(selectedDate),
+        view: isRoomTimelineView() ? TIMELINE_VIEW_ROOMS : 'animators',
+        phase: 'render'
+    });
 
     // v25.4.1: Robust data fetch — each source independently
     let lines = [], bookings = [], afishaEvents = [];
@@ -3063,6 +3131,10 @@ async function renderTimeline() {
     if (unmatchedBookings.length && lines.length) {
         const fallbackLine = lines[0];
         const fallbackKey = String(fallbackLine.id);
+        recordTimelineUnmatchedBookingDiagnostics(unmatchedBookings, lines, {
+            phase: 'render',
+            fallbackLineId: fallbackLine.id
+        });
         lineBookingsById.set(fallbackKey, [
             ...(lineBookingsById.get(fallbackKey) || []),
             ...unmatchedBookings.map(booking => ({
@@ -3076,7 +3148,9 @@ async function renderTimeline() {
         ]);
         console.warn('[Timeline] Rendered unmatched bookings on fallback line', {
             lineId: fallbackLine.id,
-            bookingIds: unmatchedBookings.map(booking => booking.id)
+            bookingIds: unmatchedBookings.map(booking => booking.id),
+            diagnostics: timelineBookingDiagnosticsStore().unmatched
+                .filter(item => unmatchedBookings.some(booking => String(booking.id) === String(item.id)))
         });
     }
 
@@ -5990,9 +6064,21 @@ async function renderDaySectionHtml(date) {
                 <div class="mini-timeline-lines">
     `;
 
+    const miniMatchedBookingIds = new Set();
     for (const line of lines) {
         const lineBookings = timelineBookingsForLine(bookings, line);
+        lineBookings.forEach(booking => miniMatchedBookingIds.add(String(booking.id)));
         html += renderMiniLineHtml(line, lineBookings, start, end, cellWidth);
+    }
+    const miniUnmatchedBookings = bookings.filter(booking => !miniMatchedBookingIds.has(String(booking.id)));
+    if (miniUnmatchedBookings.length) {
+        recordTimelineUnmatchedBookingDiagnostics(miniUnmatchedBookings, lines, { phase: 'mini-render' });
+        console.warn('[Timeline] Mini timeline skipped unmatched bookings', {
+            date: dateStr,
+            bookingIds: miniUnmatchedBookings.map(booking => booking.id),
+            diagnostics: timelineBookingDiagnosticsStore().unmatched
+                .filter(item => miniUnmatchedBookings.some(booking => String(booking.id) === String(item.id)))
+        });
     }
 
     if (lines.length === 0) {

@@ -80,7 +80,11 @@ function createTimelineResourceMatchingHarness(options = {}) {
             timelineBookingMatchKeys,
             timelineBookingsForLine,
             timelineBookingRenderHiddenReason,
-            normalizeTimelineBookingsForContext
+            timelineProjectionDiagnosticReason,
+            timelineBookingMatchDiagnostic,
+            normalizeTimelineBookingsForContext,
+            timelineBookingDiagnosticsStore,
+            resetTimelineBookingDiagnostics
         };
     `, context, { filename: 'js/timeline.js' });
     return context.__resourceMatchingHooks;
@@ -657,6 +661,43 @@ test('timeline resource matching prefers canonical projection over legacy fallba
     assert.equal(hooks.timelineBookingsForLine([canonicalBooking], animatorLineNamedAsRoom).length, 0);
 });
 
+test('timeline resource matching attaches linked animator rows to their own canonical line', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: false });
+    const parentLine = {
+        id: 'line-main',
+        name: 'Main Animator',
+        resourceId: 'line-main',
+        resourceType: 'animator'
+    };
+    const secondLine = {
+        id: 'line-second',
+        name: 'Second Animator',
+        resourceId: 'line-second',
+        resourceType: 'animator'
+    };
+    const linkedBooking = {
+        id: 'BK-LINKED-SECOND',
+        linkedTo: 'BK-MAIN',
+        lineId: 'line-main',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: 'line-second',
+            lineId: 'line-second',
+            resourceType: 'animator',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: false,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+
+    assert.deepEqual([...hooks.timelineBookingMatchKeys(linkedBooking)].sort(), ['line-second']);
+    assert.equal(hooks.timelineBookingsForLine([linkedBooking], secondLine).length, 1);
+    assert.equal(hooks.timelineBookingsForLine([linkedBooking], parentLine).length, 0);
+    assert.equal(hooks.timelineBookingRenderHiddenReason(linkedBooking), '');
+});
+
 test('timeline resource matching keeps legacy room fallback only when projection is absent', () => {
     const hooks = createTimelineResourceMatchingHarness({ roomView: true });
     const roomLine = {
@@ -748,6 +789,93 @@ test('timeline resource matching exposes deterministic hidden reasons for canoni
     assert.equal(hooks.normalizeTimelineBookingsForContext([kitchen]).length, 0);
     assert.equal(hooks.timelineBookingRenderHiddenReason(missingResource), 'missing_animator_resource');
     assert.equal(hooks.timelineBookingsForLine([missingResource], staleLine).length, 0);
+});
+
+test('timeline diagnostics preserve hidden and unmatched booking reasons without forcing render', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: false });
+    hooks.resetTimelineBookingDiagnostics({ test: 'timeline-diagnostics' });
+    const hidden = {
+        id: 'BK-HIDDEN-DIAG',
+        lineId: 'stale-line',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: null,
+            lineId: null,
+            resourceType: 'unknown',
+            visibleInAnimatorTimeline: false,
+            visibleInRoomTimeline: true,
+            displaySurface: 'hidden',
+            hiddenReason: 'missing_animator_resource'
+        }
+    };
+    const validUnmatched = {
+        id: 'BK-VALID-UNMATCHED',
+        lineId: 'line-real',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: 'line-real',
+            lineId: 'line-real',
+            resourceType: 'animator',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+    const staleLine = { id: 'line-stale', name: 'Stale Animator', resourceId: 'line-stale', resourceType: 'animator' };
+
+    assert.deepEqual(hooks.normalizeTimelineBookingsForContext([hidden]), []);
+    const store = hooks.timelineBookingDiagnosticsStore();
+    assert.equal(store.hidden.length, 1);
+    assert.equal(store.hidden[0].id, 'BK-HIDDEN-DIAG');
+    assert.equal(store.hidden[0].hiddenReason, 'missing_animator_resource');
+    assert.equal(store.hidden[0].reason, 'missing_animator_resource');
+
+    assert.equal(hooks.timelineBookingsForLine([validUnmatched], staleLine).length, 0);
+    const diagnostic = hooks.timelineBookingMatchDiagnostic(validUnmatched, [staleLine]);
+    assert.equal(diagnostic.reason, 'unmatched_line_keys');
+    assert.deepEqual(Array.from(diagnostic.bookingKeys), ['line-real']);
+    assert.deepEqual(Array.from(diagnostic.matchedLineIds), []);
+    assert.equal(diagnostic.lineDiagnostics[0].lineId, 'line-stale');
+});
+
+test('timeline diagnostics identify wrong-view and visible missing-line projections', () => {
+    const animatorHooks = createTimelineResourceMatchingHarness({ roomView: false });
+    const wrongView = {
+        id: 'BK-WRONG-VIEW',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'rooms',
+            resourceId: 'Room A',
+            lineId: 'line-a',
+            resourceType: 'room',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+    const wrongViewDiagnostic = animatorHooks.timelineProjectionDiagnosticReason(wrongView);
+    assert.equal(wrongViewDiagnostic.reason, 'wrong_timeline_view');
+    assert.equal(wrongViewDiagnostic.currentView, 'animators');
+    assert.equal(wrongViewDiagnostic.projectionView, 'rooms');
+
+    const missingLine = {
+        id: 'BK-MISSING-LINE-VISIBLE',
+        timelineProjection: {
+            timelineView: 'animators',
+            resourceId: null,
+            lineId: null,
+            resourceType: 'animator',
+            visibleInAnimatorTimeline: true,
+            visibleInRoomTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+    const missingLineDiagnostic = animatorHooks.timelineProjectionDiagnosticReason(missingLine);
+    assert.equal(missingLineDiagnostic.reason, 'missing_animator_resource');
+    assert.equal(missingLineDiagnostic.category, 'missing_line');
 });
 
 test('room timeline rows cannot be saved through legacy animator lines endpoint', () => {

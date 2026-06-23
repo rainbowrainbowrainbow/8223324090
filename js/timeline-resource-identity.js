@@ -68,6 +68,56 @@ function timelineProjectionHiddenReason(projection = {}) {
     return String(projection?.hiddenReason || projection?.hidden_reason || '').trim();
 }
 
+function timelineProjectionDiagnosticReason(booking = {}) {
+    const projection = booking?.timelineProjection || booking?.timeline_projection || null;
+    if (!projection || typeof projection !== 'object' || Array.isArray(projection)) return null;
+    const currentView = timelineCurrentViewKey();
+    const projectionView = timelineProjectionView(projection);
+    const hiddenReason = timelineProjectionHiddenReason(projection);
+    if (projectionView && projectionView !== currentView) {
+        return {
+            category: 'wrong_timeline_view',
+            reason: 'wrong_timeline_view',
+            currentView,
+            projectionView,
+            hiddenReason: hiddenReason || null
+        };
+    }
+    const canonicalProjection = timelineCanonicalProjectionForCurrentView(booking);
+    if (!canonicalProjection) return null;
+    if (timelineProjectionDisplaySurface(canonicalProjection) === 'hidden') {
+        return {
+            category: 'hidden_by_projection',
+            reason: hiddenReason || 'timeline_projection_hidden',
+            currentView,
+            projectionView: projectionView || currentView,
+            hiddenReason: hiddenReason || 'timeline_projection_hidden'
+        };
+    }
+    if (!timelineProjectionVisibleInCurrentView(canonicalProjection)) {
+        const reason = hiddenReason || (isRoomTimelineView() ? 'not_visible_in_room_timeline' : 'not_visible_in_animator_timeline');
+        return {
+            category: 'hidden_by_projection',
+            reason,
+            currentView,
+            projectionView: projectionView || currentView,
+            hiddenReason: reason
+        };
+    }
+    const resourceId = timelineProjectionResourceId(canonicalProjection);
+    const lineId = timelineProjectionLineId(canonicalProjection);
+    if (!resourceId && !lineId) {
+        return {
+            category: 'missing_line',
+            reason: isRoomTimelineView() ? 'missing_room_resource' : 'missing_animator_resource',
+            currentView,
+            projectionView: projectionView || currentView,
+            hiddenReason: null
+        };
+    }
+    return null;
+}
+
 function timelineProjectionVisibleInCurrentView(projection = {}) {
     if (isRoomTimelineView()) {
         if (Object.prototype.hasOwnProperty.call(projection, 'visibleInRoomTimeline')) return projection.visibleInRoomTimeline !== false;
@@ -224,6 +274,36 @@ function timelineBookingMatchKeys(booking = {}) {
     return keys;
 }
 
+function timelineBookingMatchDiagnostic(booking = {}, lines = []) {
+    const projectionDiagnostic = timelineProjectionDiagnosticReason(booking);
+    const hiddenReason = timelineBookingRenderHiddenReason(booking);
+    const bookingKeys = Array.from(timelineBookingMatchKeys(booking));
+    const lineDiagnostics = (Array.isArray(lines) ? lines : []).map(line => ({
+        lineId: line?.id || line?.lineId || line?.line_id || line?.resourceId || line?.resource_id || null,
+        lineName: line?.name || line?.shortName || line?.short_name || null,
+        lineKeys: Array.from(timelineLineMatchKeys(line))
+    }));
+    const matchedLineIds = lineDiagnostics
+        .filter(line => bookingKeys.some(key => line.lineKeys.includes(key)))
+        .map(line => line.lineId)
+        .filter(Boolean);
+    let reason = 'matched';
+    if (projectionDiagnostic?.category === 'wrong_timeline_view') reason = 'wrong_timeline_view';
+    else if (hiddenReason) reason = projectionDiagnostic?.category || 'hidden_by_projection';
+    else if (!bookingKeys.length) reason = 'missing_line';
+    else if (!matchedLineIds.length) reason = 'unmatched_line_keys';
+    return {
+        bookingId: booking?.id || booking?.bookingId || booking?.booking_id || null,
+        reason,
+        hiddenReason: hiddenReason || projectionDiagnostic?.hiddenReason || null,
+        currentView: timelineCurrentViewKey(),
+        projectionView: timelineProjectionView(booking?.timelineProjection || booking?.timeline_projection || {}) || null,
+        bookingKeys,
+        matchedLineIds,
+        lineDiagnostics
+    };
+}
+
 function timelineBookingsForLine(bookings = [], line = {}) {
     const lineKeys = timelineLineMatchKeys(line);
     return bookings.filter(booking => {
@@ -241,3 +321,5 @@ window.timelineLineMatchKeys = timelineLineMatchKeys;
 window.timelineBookingsForLine = timelineBookingsForLine;
 window.timelineCanonicalProjectionForCurrentView = timelineCanonicalProjectionForCurrentView;
 window.timelineBookingRenderHiddenReason = timelineBookingRenderHiddenReason;
+window.timelineProjectionDiagnosticReason = timelineProjectionDiagnosticReason;
+window.timelineBookingMatchDiagnostic = timelineBookingMatchDiagnostic;

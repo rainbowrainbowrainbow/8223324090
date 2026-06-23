@@ -30,14 +30,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.7">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.7">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.7">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.7">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.7">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.77.7">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.7">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.7">
+    <link rel="stylesheet" href="css/base.css?v=0.77.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.8">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.8">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.77.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -842,6 +842,57 @@
             grid-template-columns: 1fr 1fr;
             gap: 16px;
         }
+        .nps-explainer {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-xs);
+            margin-bottom: 16px;
+            padding: 16px;
+        }
+        .nps-explainer-title {
+            color: var(--gray-800);
+            font-size: 14px;
+            font-weight: 900;
+            margin-bottom: 6px;
+        }
+        .nps-explainer-text {
+            color: var(--gray-600);
+            font-size: 13px;
+            line-height: 1.45;
+            margin: 0;
+        }
+        .nps-explainer-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .nps-explainer-item {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+        }
+        .nps-explainer-item strong {
+            color: var(--gray-800);
+            display: block;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .nps-explainer-item span {
+            color: var(--gray-500);
+            display: block;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .nps-zero-checklist {
+            color: var(--gray-500);
+            font-size: 12px;
+            margin: 12px 0 0;
+            padding-left: 18px;
+        }
+        .nps-zero-checklist li + li { margin-top: 4px; }
         .nps-score-card {
             background: var(--white);
             border: 1px solid var(--gray-100);
@@ -862,7 +913,7 @@
             margin-bottom: 6px;
             font-size: 13px;
         }
-        .nps-bar-label { width: 30px; text-align: right; font-weight: 700; }
+        .nps-bar-label { width: 44px; text-align: right; font-weight: 700; color: var(--gray-600); }
         .nps-bar-track {
             flex: 1;
             height: 20px;
@@ -1071,9 +1122,19 @@
             border-color: var(--gray-600);
         }
         [data-theme="dark"] .nps-score-card,
+        [data-theme="dark"] .nps-explainer,
         [data-theme="dark"] .bulk-form {
             background: var(--gray-800);
             border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .nps-explainer-title,
+        [data-theme="dark"] .nps-explainer-item strong { color: var(--gray-100); }
+        [data-theme="dark"] .nps-explainer-text,
+        [data-theme="dark"] .nps-explainer-item span,
+        [data-theme="dark"] .nps-zero-checklist { color: var(--gray-300); }
+        [data-theme="dark"] .nps-explainer-item {
+            background: var(--gray-700);
+            border-color: var(--gray-600);
         }
         [data-theme="dark"] .duplicate-pair {
             background: var(--gray-800);
@@ -1312,6 +1373,9 @@
             .nps-dashboard {
                 grid-template-columns: 1fr;
             }
+            .nps-explainer-grid {
+                grid-template-columns: 1fr;
+            }
             .duplicate-pair {
                 flex-direction: column;
                 align-items: stretch;
@@ -1377,8 +1441,8 @@
             <div class="page-header">
                 <h2>База клієнтів</h2>
                 <div class="customer-toolbar-actions">
-                    <button type="button" id="exportVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
-                    <button type="button" id="importVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
+                    <button type="button" id="exportVcfBtn" class="btn-page-secondary" title="Завантажити клієнтів у файл .vcf" aria-label="Експорт клієнтів у vCard" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">Експорт vCard</button>
+                    <button type="button" id="importVcfBtn" class="btn-page-secondary" title="Імпортувати клієнтів із файлу .vcf або .vcard" aria-label="Імпорт клієнтів із vCard" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">Імпорт vCard</button>
                     <button type="button" id="exportCsvBtn" class="btn-page-secondary" style="display:none">Експорт CSV</button>
                     <button type="button" id="addCustomerBtn" class="btn-page-primary" style="display:none">+ Новий клієнт</button>
                     <input type="file" id="vcfFileInput" accept=".vcf,.vcard" style="display:none">
@@ -1393,7 +1457,7 @@
                 <button type="button" class="crm-tab active" data-tab="list">Список</button>
                 <button type="button" class="crm-tab" data-tab="rfm">RFM-аналітика</button>
                 <button type="button" class="crm-tab" data-tab="duplicates">Дублікати</button>
-                <button type="button" class="crm-tab" data-tab="nps">NPS</button>
+                <button type="button" class="crm-tab" data-tab="nps">NPS / відгуки</button>
                 <button type="button" class="crm-tab" data-tab="bulk">Розсилка</button>
             </div>
 
@@ -1610,13 +1674,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.77.7"></script>
-    <script src="js/notification.js?v=0.77.7"></script>
-    <script src="js/api.js?v=0.77.7"></script>
-    <script src="js/auth.js?v=0.77.7"></script>
-    <script src="js/ui.js?v=0.77.7"></script>
-    <script src="js/components/sidebar.js?v=0.77.7"></script>
+    <script src="js/config.js?v=0.77.8"></script>
+    <script src="js/notification.js?v=0.77.8"></script>
+    <script src="js/api.js?v=0.77.8"></script>
+    <script src="js/auth.js?v=0.77.8"></script>
+    <script src="js/ui.js?v=0.77.8"></script>
+    <script src="js/components/sidebar.js?v=0.77.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.77.7"></script><script src="js/alerts.js?v=0.77.7"></script>
+    <script src="js/customers-page.js?v=0.77.8"></script><script src="js/alerts.js?v=0.77.8"></script>
 </body>
 </html>

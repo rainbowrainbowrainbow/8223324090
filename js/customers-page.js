@@ -2066,6 +2066,34 @@ window.addCommunication = async function(customerId) {
 // v30.4: NPS DASHBOARD
 // ==========================================
 
+function renderNpsExplainer(totalReviews) {
+    const zeroChecklist = totalReviews > 0 ? '' : `
+        <ol class="nps-zero-checklist">
+            <li>Перевірте, що бронювання завершені, мають статус confirmed і Telegram ID клієнта.</li>
+            <li>Запит на оцінку надсилається автоматично після завершення події, коли працює scheduler і Telegram webhook.</li>
+            <li>Оцінка з'являється тут тільки після натискання клієнтом кнопки 1-5 у Telegram.</li>
+        </ol>`;
+    return `<div class="nps-explainer">
+        <div class="nps-explainer-title">Що показує NPS / відгуки</div>
+        <p class="nps-explainer-text">Цей блок показує післяподієві оцінки клієнтів у поточному бізнес-контексті. Дані беруться з відповідей у Telegram і записуються в таблицю відгуків після завершених бронювань.</p>
+        <div class="nps-explainer-grid">
+            <div class="nps-explainer-item">
+                <strong>Для чого</strong>
+                <span>Бачити якість подій і швидко знаходити незадоволених клієнтів.</span>
+            </div>
+            <div class="nps-explainer-item">
+                <strong>Звідки дані</strong>
+                <span>Кнопки оцінки 1-5, які CRM надсилає клієнту в Telegram після події.</span>
+            </div>
+            <div class="nps-explainer-item">
+                <strong>Чому може бути 0</strong>
+                <span>У цьому бізнес-контексті ще немає відповідей або запити на оцінку не були доставлені.</span>
+            </div>
+        </div>
+        ${zeroChecklist}
+    </div>`;
+}
+
 async function loadNps() {
     const token = localStorage.getItem('pzp_token');
     const el = document.getElementById('tabNps');
@@ -2074,17 +2102,18 @@ async function loadNps() {
         const data = await res.json();
         if (!data.success) { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Дані NPS недоступні</div></div>'; return; }
 
-        const avg = parseFloat(data.avgNps) || 0;
+        const avg = parseFloat(data.avgNps ?? data.avgScore ?? data.avgRating) || 0;
         const total = parseInt(data.totalReviews) || 0;
         const dist = data.distribution || [];
-        const recent = data.recentReviews || [];
+        const recent = data.recentReviews || data.recent || [];
 
         const scoreColor = avg >= 4 ? '#059669' : avg >= 3 ? '#D97706' : '#DC2626';
         const maxCount = Math.max(1, ...dist.map(d => parseInt(d.count) || 0));
 
         const NPS_COLORS = { 5: '#059669', 4: '#10B981', 3: '#F59E0B', 2: '#F97316', 1: '#EF4444' };
 
-        el.innerHTML = `<div class="nps-dashboard">
+        el.innerHTML = `${renderNpsExplainer(total)}
+        <div class="nps-dashboard">
             <div class="nps-score-card">
                 <div class="nps-big-score" style="color:${scoreColor}">${avg.toFixed(1)}</div>
                 <div style="font-size:14px;font-weight:700;color:var(--gray-500);margin-top:4px">Середня оцінка</div>
@@ -2097,7 +2126,7 @@ async function loadNps() {
                     const count = item ? parseInt(item.count) : 0;
                     const pct = Math.round(count / maxCount * 100);
                     return `<div class="nps-bar-row">
-                        <span class="nps-bar-label">${'⭐'.repeat(score)}</span>
+                        <span class="nps-bar-label">${score}/5</span>
                         <div class="nps-bar-track"><div class="nps-bar-fill" style="width:${pct}%;background:${NPS_COLORS[score]}"></div></div>
                         <span class="nps-bar-count">${count}</span>
                     </div>`;
@@ -2109,7 +2138,7 @@ async function loadNps() {
             <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Клієнт</th><th>Оцінка</th><th>Коментар</th><th>Дата</th></tr></thead><tbody>
             ${recent.map(r => `<tr>
                 <td class="customer-name">${escapeHtml(r.customer_name || r.customerName || '—')}</td>
-                <td>${'⭐'.repeat(parseInt(r.rating) || 0)}</td>
+                <td>${parseInt(r.rating) || 0}/5</td>
                 <td>${escapeHtml(r.comment || '—')}</td>
                 <td>${formatDate(r.created_at || r.createdAt)}</td>
             </tr>`).join('')}

@@ -1156,17 +1156,60 @@ router.get('/ltv', async (req, res) => {
 
 router.get('/nps-stats', async (req, res) => {
     try {
+        const businessScope = ensureBusinessScope(req, res);
+        if (!businessScope) return;
+        const avgParams = [];
+        const distParams = [];
+        const recentParams = [];
+        const avgScopeSql = customerScopeCondition(avgParams, businessScope, 'er');
+        const distScopeSql = customerScopeCondition(distParams, businessScope, 'er');
+        const recentScopeSql = customerScopeCondition(recentParams, businessScope, 'er');
         const [avgResult, distResult, recentResult] = await Promise.all([
-            pool.query('SELECT AVG(rating)::numeric(3,1) AS avg_score, COUNT(*) AS total FROM event_reviews'),
-            pool.query('SELECT rating, COUNT(*) AS count FROM event_reviews GROUP BY rating ORDER BY rating'),
-            pool.query('SELECT * FROM event_reviews ORDER BY created_at DESC LIMIT 20')
+            pool.query(
+                `SELECT AVG(er.rating)::numeric(3,1) AS avg_score, COUNT(er.rating) AS total
+                 FROM event_reviews er
+                 WHERE ${avgScopeSql}
+                   AND er.rating IS NOT NULL`,
+                avgParams
+            ),
+            pool.query(
+                `SELECT er.rating, COUNT(*) AS count
+                 FROM event_reviews er
+                 WHERE ${distScopeSql}
+                   AND er.rating IS NOT NULL
+                 GROUP BY er.rating
+                 ORDER BY er.rating`,
+                distParams
+            ),
+            pool.query(
+                `SELECT er.*
+                 FROM event_reviews er
+                 WHERE ${recentScopeSql}
+                   AND er.rating IS NOT NULL
+                 ORDER BY er.created_at DESC
+                 LIMIT 20`,
+                recentParams
+            )
         ]);
+        const avgScore = parseFloat(avgResult.rows[0]?.avg_score) || 0;
+        const recentReviews = recentResult.rows.map(row => ({
+            ...row,
+            customerName: row.customer_name,
+            createdAt: row.created_at
+        }));
         res.json({
             success: true,
-            avgScore: parseFloat(avgResult.rows[0]?.avg_score) || 0,
+            avgScore,
+            avgNps: avgScore,
             totalReviews: parseInt(avgResult.rows[0]?.total) || 0,
             distribution: distResult.rows.map(r => ({ rating: r.rating, count: parseInt(r.count) })),
-            recent: recentResult.rows
+            recent: recentReviews,
+            recentReviews,
+            businessScope: {
+                mode: businessScope.mode,
+                activeContext: businessScope.activeContext,
+                selectedContexts: businessScope.selectedContexts
+            }
         });
     } catch (err) {
         log.error('GET /nps-stats error', err);

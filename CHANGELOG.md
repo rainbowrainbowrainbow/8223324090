@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.8 - Customer NPS review clarity
+
+### Customers / NPS review clarity / Business-scoped review stats / vCard labels / (Клешня, 23.06.2026) [codex]
+- **Вкладку NPS уточнено як `NPS / відгуки`** - сторінка тепер прямо пояснює, що показує післяподієві оцінки 1-5 у поточному бізнес-контексті.
+- **Додано операційне пояснення для `0 відгуків`** - UI підказує, що потрібні завершені `confirmed` бронювання, Telegram ID клієнта, scheduler і Telegram webhook.
+- **Виправлено контракт NPS API ↔ frontend** - `/api/customers/nps-stats` повертає `avgNps` і `recentReviews`, а frontend також підтримує legacy `avgScore`/`recent`.
+- **NPS-статистика стала business-scoped** - запити до `event_reviews` більше не змішують відгуки різних бізнес-контекстів.
+- **Кнопки vCard стали зрозумілими** - замість двох однакових `vCard` показано `Експорт vCard` і `Імпорт vCard` з aria-label та tooltip.
+- **Regression guard оновлено** - UI smoke фіксує NPS contract, пояснення на сторінці й самопояснювальні vCard-кнопки.
+- **Релізні маркери піднято до `0.77.8`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.7 - Customer birthday tags automation
 
 ### Customer tags / Birthday automation / Scheduler backfill / Regression coverage / (Клешня, 23.06.2026) [codex]

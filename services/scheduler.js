@@ -41,6 +41,19 @@ function getKleshnya() {
 
 const log = createLogger('Scheduler');
 const CUSTOMER_BIRTHDAY_TAGS_BACKFILL_SETTING_KEY = 'customer_birthday_tags_backfill_done';
+const CUSTOMER_TELEGRAM_ID_SQL = `NULLIF(BTRIM(COALESCE(
+    customer_identity.value->>'chatId',
+    customer_identity.value->>'chat_id',
+    customer_identity.value->>'telegramChatId',
+    customer_identity.value->>'telegram_chat_id',
+    customer_identity.value->>'externalId',
+    customer_identity.value->>'external_id',
+    customer_identity.value->>'userId',
+    customer_identity.value->>'user_id',
+    customer_identity.value->>'handle',
+    customer_identity.value->>'username',
+    customer_identity.value->>'value'
+)), '')`;
 const SYSTEM_BOOKING_NOTIFICATION_ACTOR = Object.freeze({
     id: 0,
     username: 'system-notification',
@@ -50,6 +63,11 @@ const SYSTEM_BOOKING_NOTIFICATION_ACTOR = Object.freeze({
 
 function notificationActor(actor) {
     return actor || SYSTEM_BOOKING_NOTIFICATION_ACTOR;
+}
+
+function normalizeCustomerTelegramChatId(value) {
+    const text = String(value || '').trim();
+    return /^[0-9]{5,20}$/.test(text) ? text : null;
 }
 
 // Lazy require to avoid circular dependency (routes/afisha → services/scheduler → routes/afisha)
@@ -1898,23 +1916,32 @@ async function checkExpiredChatMessages() {
     }
 }
 
-// v22.18: Auto-review requests after completed events
+// v22.18: Auto NPS requests after completed events
 async function checkAutoReviewRequests() {
     try {
-        // Find bookings that ended 2+ hours ago, haven't had review requests sent
+        // Find bookings that ended 2+ hours ago and have not received a true NPS request.
         const hoursDelay = 2;
         const bookingParams = [hoursDelay];
         const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
         const bookingBusinessScope = pushDefaultTimelineBusinessContext(bookingParams, 'b');
         const result = await pool.query(`
-            SELECT b.id, b.label, b.phone, b.date, b.time, b.duration,
-                   b.program_name, b.customer_telegram_id
+            SELECT b.id, b.label, b.date, b.time, b.duration,
+                   b.program_name, tg.telegram_chat_id
             FROM bookings b
-            LEFT JOIN review_requests_sent rrs ON rrs.booking_id = b.id
+            JOIN customers c ON c.id = b.customer_id
+                AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+            LEFT JOIN LATERAL (
+                SELECT ${CUSTOMER_TELEGRAM_ID_SQL} AS telegram_chat_id
+                FROM jsonb_array_elements(COALESCE(c.social_identities, '[]'::jsonb)) AS customer_identity(value)
+                WHERE LOWER(COALESCE(customer_identity.value->>'channel', customer_identity.value->>'type', customer_identity.value->>'provider', '')) = 'telegram'
+                  AND ${CUSTOMER_TELEGRAM_ID_SQL} ~ '^[0-9]{5,20}$'
+                LIMIT 1
+            ) tg ON true
             WHERE b.status = 'confirmed'
               AND b.date::date <= CURRENT_DATE
-              AND rrs.booking_id IS NULL
-              AND b.phone IS NOT NULL
+              AND b.nps_sent_at IS NULL
+              AND b.customer_id IS NOT NULL
+              AND tg.telegram_chat_id IS NOT NULL
               AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
@@ -1923,37 +1950,43 @@ async function checkAutoReviewRequests() {
         `, bookingParams);
 
         for (const booking of result.rows) {
-            const tgChatId = booking.customer_telegram_id;
+            const tgChatId = normalizeCustomerTelegramChatId(booking.telegram_chat_id);
             if (!tgChatId) continue;
 
-            const text = `🌟 <b>Як пройшло свято?</b>\n\n`
+            const text = `🌟 <b>Наскільки ймовірно, що ви порекомендуєте нас друзям?</b>\n\n`
                 + `Програма: ${booking.program_name || booking.label}\n`
                 + `Дата: ${booking.date}\n\n`
-                + `Оцініть від 1 до 5:\n`
-                + `⭐ — Погано\n⭐⭐ — Так собі\n⭐⭐⭐ — Нормально\n⭐⭐⭐⭐ — Добре\n⭐⭐⭐⭐⭐ — Чудово!\n\n`
-                + `Натисніть кнопку нижче:`;
+                + `0 — точно ні\n`
+                + `10 — точно так\n\n`
+                + `Оберіть оцінку від 0 до 10:`;
 
             const keyboard = {
-                inline_keyboard: [[
-                    { text: '1⭐', callback_data: `review:${booking.id}:1` },
-                    { text: '2⭐', callback_data: `review:${booking.id}:2` },
-                    { text: '3⭐', callback_data: `review:${booking.id}:3` },
-                    { text: '4⭐', callback_data: `review:${booking.id}:4` },
-                    { text: '5⭐', callback_data: `review:${booking.id}:5` }
-                ]]
+                inline_keyboard: [
+                    [0, 1, 2, 3, 4, 5].map(score => ({
+                        text: String(score),
+                        callback_data: `nps:${booking.id}:${score}`
+                    })),
+                    [6, 7, 8, 9, 10].map(score => ({
+                        text: String(score),
+                        callback_data: `nps:${booking.id}:${score}`
+                    }))
+                ]
             };
 
             try {
-                await sendTelegramMessage(tgChatId, text, {
+                const sendResult = await sendTelegramMessage(tgChatId, text, {
                     reply_markup: JSON.stringify(keyboard)
                 });
+                if (!sendResult?.ok) {
+                    throw new Error(sendResult?.description || sendResult?.error || 'telegram_send_failed');
+                }
                 await pool.query(
-                    'INSERT INTO review_requests_sent (booking_id) VALUES ($1) ON CONFLICT DO NOTHING',
+                    'UPDATE bookings SET nps_sent_at = NOW() WHERE id = $1 AND nps_sent_at IS NULL',
                     [booking.id]
                 );
-                log.info(`Review request sent for booking #${booking.id}`);
+                log.info(`NPS request sent for booking #${booking.id}`);
             } catch (err) {
-                log.warn(`Failed to send review request for booking #${booking.id}: ${err.message}`);
+                log.warn(`Failed to send NPS request for booking #${booking.id}: ${err.message}`);
             }
         }
     } catch (err) {
@@ -2134,8 +2167,18 @@ async function checkEventPipeline() {
         const t24Visibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, t24Params, 'b');
         const t24BusinessScope = pushDefaultTimelineBusinessContext(t24Params, 'b');
         const t24 = await pool.query(`
-            SELECT b.id, b.label, b.time, b.program_name, b.room, b.phone, b.customer_telegram_id
+            SELECT b.id, b.label, b.time, b.program_name, b.room,
+                   c.phone AS customer_phone, tg.telegram_chat_id
             FROM bookings b
+            LEFT JOIN customers c ON c.id = b.customer_id
+                AND COALESCE(c.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
+            LEFT JOIN LATERAL (
+                SELECT ${CUSTOMER_TELEGRAM_ID_SQL} AS telegram_chat_id
+                FROM jsonb_array_elements(COALESCE(c.social_identities, '[]'::jsonb)) AS customer_identity(value)
+                WHERE LOWER(COALESCE(customer_identity.value->>'channel', customer_identity.value->>'type', customer_identity.value->>'provider', '')) = 'telegram'
+                  AND ${CUSTOMER_TELEGRAM_ID_SQL} ~ '^[0-9]{5,20}$'
+                LIMIT 1
+            ) tg ON true
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 't24_sent'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
@@ -2147,8 +2190,8 @@ async function checkEventPipeline() {
         for (const b of t24.rows) {
             await publish('booking.t24', {
                 booking_id: b.id, label: b.label, time: b.time,
-                programName: b.program_name, room: b.room, phone: b.phone,
-                customer_telegram_id: b.customer_telegram_id
+                programName: b.program_name, room: b.room, phone: b.customer_phone,
+                telegramChatId: normalizeCustomerTelegramChatId(b.telegram_chat_id)
             }, `t24_${b.id}_${tomorrowStr}`);
             await pool.query(
                 'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
@@ -2226,13 +2269,14 @@ async function checkNpsFollowUp() {
     try {
         const { publish } = require('./eventBus');
 
-        // Detractors: rating 1-2, no follow-up yet
+        // Detractors: true NPS 0-6, no follow-up yet.
         const detractors = await pool.query(`
-            SELECT er.id, er.booking_id, er.rating, er.comment, er.customer_name, er.customer_phone,
+            SELECT er.id, er.booking_id, er.nps_score, er.comment, er.customer_name, er.customer_phone,
                    b.program_name, b.date
             FROM event_reviews er
             LEFT JOIN bookings b ON b.id = er.booking_id
-            WHERE er.rating <= 2
+               AND COALESCE(b.business_context, 'event_genix') = COALESCE(er.business_context, 'event_genix')
+            WHERE er.nps_score BETWEEN 0 AND 6
               AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
               AND er.created_at > NOW() - INTERVAL '48 hours'
             LIMIT 10
@@ -2240,7 +2284,7 @@ async function checkNpsFollowUp() {
 
         for (const d of detractors.rows) {
             await publish('review.detractor', {
-                review_id: d.id, booking_id: d.booking_id, rating: d.rating,
+                review_id: d.id, booking_id: d.booking_id, nps_score: d.nps_score,
                 comment: d.comment || '', customerName: d.customer_name || 'Клієнт',
                 programName: d.program_name || '', phone: d.customer_phone
             }, `detractor_${d.id}`);
@@ -2250,25 +2294,26 @@ async function checkNpsFollowUp() {
             ).catch(() => {});
         }
 
-        // Promoters: rating 5, no follow-up yet
+        // Promoters: true NPS 9-10, no follow-up yet.
         const promoters = await pool.query(`
-            SELECT er.id, er.booking_id, er.rating, er.customer_name, er.customer_telegram_id,
+            SELECT er.id, er.booking_id, er.nps_score, er.customer_name, er.telegram_chat_id,
                    b.program_name
             FROM event_reviews er
             LEFT JOIN bookings b ON b.id = er.booking_id
-            WHERE er.rating = 5
+               AND COALESCE(b.business_context, 'event_genix') = COALESCE(er.business_context, 'event_genix')
+            WHERE er.nps_score >= 9
               AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
               AND er.created_at > NOW() - INTERVAL '48 hours'
-              AND er.customer_telegram_id IS NOT NULL
+              AND er.telegram_chat_id IS NOT NULL
             LIMIT 10
         `).catch(() => ({ rows: [] }));
 
         for (const p of promoters.rows) {
             await publish('review.promoter', {
-                review_id: p.id, booking_id: p.booking_id, rating: p.rating,
+                review_id: p.id, booking_id: p.booking_id, nps_score: p.nps_score,
                 customerName: p.customer_name || 'Клієнт',
                 programName: p.program_name || '',
-                customer_telegram_id: p.customer_telegram_id
+                telegramChatId: p.telegram_chat_id
             }, `promoter_${p.id}`);
             await pool.query(
                 "UPDATE event_reviews SET follow_up_status = 'completed', follow_up_at = NOW() WHERE id = $1",

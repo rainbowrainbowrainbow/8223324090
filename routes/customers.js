@@ -1158,53 +1158,152 @@ router.get('/nps-stats', async (req, res) => {
     try {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
-        const avgParams = [];
+        const summaryParams = [];
         const distParams = [];
         const recentParams = [];
-        const avgScopeSql = customerScopeCondition(avgParams, businessScope, 'er');
+        const sentParams = [];
+        const legacySummaryParams = [];
+        const legacyDistParams = [];
+        const legacyRecentParams = [];
+        const summaryScopeSql = customerScopeCondition(summaryParams, businessScope, 'er');
         const distScopeSql = customerScopeCondition(distParams, businessScope, 'er');
         const recentScopeSql = customerScopeCondition(recentParams, businessScope, 'er');
-        const [avgResult, distResult, recentResult] = await Promise.all([
+        const sentScopeSql = customerScopeCondition(sentParams, businessScope, 'b');
+        const legacySummaryScopeSql = customerScopeCondition(legacySummaryParams, businessScope, 'er');
+        const legacyDistScopeSql = customerScopeCondition(legacyDistParams, businessScope, 'er');
+        const legacyRecentScopeSql = customerScopeCondition(legacyRecentParams, businessScope, 'er');
+        const [summaryResult, distResult, recentResult, sentResult, legacySummaryResult, legacyDistResult, legacyRecentResult] = await Promise.all([
             pool.query(
-                `SELECT AVG(er.rating)::numeric(3,1) AS avg_score, COUNT(er.rating) AS total
+                `SELECT COUNT(*)::int AS total_responses,
+                        COUNT(*) FILTER (WHERE er.nps_score >= 9)::int AS promoters,
+                        COUNT(*) FILTER (WHERE er.nps_score BETWEEN 7 AND 8)::int AS passives,
+                        COUNT(*) FILTER (WHERE er.nps_score BETWEEN 0 AND 6)::int AS detractors
                  FROM event_reviews er
-                 WHERE ${avgScopeSql}
-                   AND er.rating IS NOT NULL`,
-                avgParams
+                 WHERE ${summaryScopeSql}
+                   AND er.nps_score IS NOT NULL`,
+                summaryParams
             ),
             pool.query(
-                `SELECT er.rating, COUNT(*) AS count
+                `SELECT er.nps_score::int AS score, COUNT(*)::int AS count
                  FROM event_reviews er
                  WHERE ${distScopeSql}
-                   AND er.rating IS NOT NULL
-                 GROUP BY er.rating
-                 ORDER BY er.rating`,
+                   AND er.nps_score IS NOT NULL
+                 GROUP BY er.nps_score
+                 ORDER BY er.nps_score`,
                 distParams
             ),
             pool.query(
-                `SELECT er.*
+                `SELECT er.id, er.booking_id, er.customer_id, er.customer_name, er.telegram_chat_id,
+                        er.nps_score, er.comment, er.created_at, b.program_name, b.date
                  FROM event_reviews er
+                 LEFT JOIN bookings b ON b.id = er.booking_id
+                    AND COALESCE(b.business_context, 'event_genix') = COALESCE(er.business_context, 'event_genix')
                  WHERE ${recentScopeSql}
-                   AND er.rating IS NOT NULL
+                   AND er.nps_score IS NOT NULL
                  ORDER BY er.created_at DESC
                  LIMIT 20`,
                 recentParams
+            ),
+            pool.query(
+                `SELECT COUNT(*)::int AS sent_count
+                 FROM bookings b
+                 WHERE ${sentScopeSql}
+                   AND b.nps_sent_at IS NOT NULL`,
+                sentParams
+            ),
+            pool.query(
+                `SELECT COUNT(er.rating)::int AS total,
+                        COALESCE(AVG(er.rating), 0)::numeric(3,1) AS avg_rating
+                 FROM event_reviews er
+                 WHERE ${legacySummaryScopeSql}
+                   AND er.rating IS NOT NULL`,
+                legacySummaryParams
+            ),
+            pool.query(
+                `SELECT er.rating::int AS rating, COUNT(*)::int AS count
+                 FROM event_reviews er
+                 WHERE ${legacyDistScopeSql}
+                   AND er.rating IS NOT NULL
+                 GROUP BY er.rating
+                 ORDER BY er.rating`,
+                legacyDistParams
+            ),
+            pool.query(
+                `SELECT er.id, er.booking_id, er.customer_id, er.customer_name, er.telegram_chat_id,
+                        er.rating, er.comment, er.created_at, b.program_name, b.date
+                 FROM event_reviews er
+                 LEFT JOIN bookings b ON b.id = er.booking_id
+                    AND COALESCE(b.business_context, 'event_genix') = COALESCE(er.business_context, 'event_genix')
+                 WHERE ${legacyRecentScopeSql}
+                   AND er.rating IS NOT NULL
+                 ORDER BY er.created_at DESC
+                 LIMIT 20`,
+                legacyRecentParams
             )
         ]);
-        const avgScore = parseFloat(avgResult.rows[0]?.avg_score) || 0;
-        const recentReviews = recentResult.rows.map(row => ({
+
+        const summary = summaryResult.rows[0] || {};
+        const totalResponses = parseInt(summary.total_responses, 10) || 0;
+        const promoters = parseInt(summary.promoters, 10) || 0;
+        const passives = parseInt(summary.passives, 10) || 0;
+        const detractors = parseInt(summary.detractors, 10) || 0;
+        const percent = value => totalResponses > 0 ? Math.round((value / totalResponses) * 1000) / 10 : 0;
+        const promoterPercent = percent(promoters);
+        const passivePercent = percent(passives);
+        const detractorPercent = percent(detractors);
+        const npsScore = totalResponses > 0 ? Math.round(promoterPercent - detractorPercent) : 0;
+        const sentCount = parseInt(sentResult.rows[0]?.sent_count, 10) || 0;
+        const responseCount = totalResponses;
+        const responseRate = sentCount > 0 ? Math.round((responseCount / sentCount) * 10000) / 10000 : 0;
+        const distByScore = new Map(distResult.rows.map(row => [parseInt(row.score, 10), parseInt(row.count, 10) || 0]));
+        const distribution = Array.from({ length: 11 }, (_, score) => ({
+            score,
+            count: distByScore.get(score) || 0
+        }));
+        const recentResponses = recentResult.rows.map(row => ({
             ...row,
             customerName: row.customer_name,
-            createdAt: row.created_at
+            npsScore: row.nps_score,
+            createdAt: row.created_at,
+            programName: row.program_name
         }));
+        const legacySummary = legacySummaryResult.rows[0] || {};
+        const legacyDistByRating = new Map(legacyDistResult.rows.map(row => [parseInt(row.rating, 10), parseInt(row.count, 10) || 0]));
+        const legacyRecent = legacyRecentResult.rows.map(row => ({
+            ...row,
+            customerName: row.customer_name,
+            createdAt: row.created_at,
+            programName: row.program_name
+        }));
+        const legacyReviews = {
+            total: parseInt(legacySummary.total, 10) || 0,
+            avgRating: parseFloat(legacySummary.avg_rating) || 0,
+            distribution: [1, 2, 3, 4, 5].map(rating => ({
+                rating,
+                count: legacyDistByRating.get(rating) || 0
+            })),
+            recent: legacyRecent
+        };
         res.json({
             success: true,
-            avgScore,
-            avgNps: avgScore,
-            totalReviews: parseInt(avgResult.rows[0]?.total) || 0,
-            distribution: distResult.rows.map(r => ({ rating: r.rating, count: parseInt(r.count) })),
-            recent: recentReviews,
-            recentReviews,
+            npsScore,
+            totalResponses,
+            promoters,
+            passives,
+            detractors,
+            promoterPercent,
+            passivePercent,
+            detractorPercent,
+            distribution,
+            recentResponses,
+            sentCount,
+            responseCount,
+            responseRate,
+            legacyReviews,
+            avgNps: npsScore,
+            totalReviews: totalResponses,
+            recent: recentResponses,
+            recentReviews: recentResponses,
             businessScope: {
                 mode: businessScope.mode,
                 activeContext: businessScope.activeContext,

@@ -4,6 +4,23 @@
 
 ---
 
+## v0.77.9 - True Customer NPS
+
+### Customers / True NPS 0-10 / Telegram NPS callbacks / Response rate / Legacy reviews split / (Клешня, 23.06.2026) [codex]
+- **Справжній NPS переведено на `event_reviews.nps_score`** - `rating` лишається legacy оцінкою 1-5 і більше не використовується як NPS.
+- **`/api/customers/nps-stats` рахує NPS за формулою** - `NPS = % promoters - % detractors`, де `9-10` це promoters, `7-8` passives, `0-6` detractors.
+- **Додано production contract для NPS API** - endpoint повертає `npsScore`, `totalResponses`, групи, відсотки, distribution `0..10`, `recentResponses`, `sentCount`, `responseCount`, `responseRate` і `businessScope`.
+- **Legacy reviews винесено окремо** - історичні `rating` 1-5 показуються в `legacyReviews`, не конвертуються і не змішуються з true NPS.
+- **Telegram flow приймає `nps:<bookingId>:<score>`** - валідні `0..10` записуються в `event_reviews.nps_score`, дублікати ігноруються, `bookings.nps_score` оновлюється як швидке booking-level дзеркало.
+- **Старі `review:*` callback-и збережено** - кнопки 1-5 з уже відправлених Telegram-повідомлень не падають і не пишуть у `nps_score`.
+- **Scheduler надсилає true NPS prompt** - запит іде клієнту через Telegram social identity, після успішної доставки ставиться `bookings.nps_sent_at`, без нового використання `review_requests_sent`.
+- **NPS follow-up перейшов на `nps_score`** - detractors це `0..6`, promoters це `9..10`, passives не запускають автоматичний follow-up.
+- **Customers UI показує реальний NPS** - головна цифра має діапазон `-100..100`, поруч є response rate, breakdown, distribution `0..10`, recent NPS-відповіді і окрема секція оцінок 1-5.
+- **Regression guards розширено** - тести фіксують true NPS API/UI contract, callback validation, duplicate handling, business-context scope і відсутність повернення до `bookings.customer_telegram_id`.
+- **Релізні маркери піднято до `0.77.9`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.8 - Customer NPS review clarity
 
 ### Customers / NPS review clarity / Business-scoped review stats / vCard labels / (Клешня, 23.06.2026) [codex]

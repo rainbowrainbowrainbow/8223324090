@@ -221,10 +221,12 @@ async function executeAction(action, payload, event) {
         case 'send_telegram': {
             const { sendTelegramMessage, getConfiguredChatId } = require('./telegram');
             const message = interpolate(action.template || action.message || '', payload);
-            const chatId = action.chat_id || await getConfiguredChatId();
+            const usesCustomerChat = action.use_customer_chat === true;
+            const customerChatId = usesCustomerChat ? customerTelegramChatIdFromPayload(payload) : null;
+            const chatId = action.chat_id || customerChatId || (!usesCustomerChat ? await getConfiguredChatId() : null);
             if (chatId && message) {
                 await sendTelegramMessage(chatId, message);
-                log.info(`Action: sent Telegram message to ${chatId}`);
+                log.info(usesCustomerChat ? 'Action: sent Telegram message to customer chat' : `Action: sent Telegram message to ${chatId}`);
             }
             break;
         }
@@ -305,9 +307,17 @@ async function executeAction(action, payload, event) {
  * Simple template interpolation: replaces {key} with payload values.
  */
 function interpolate(template, payload) {
-    return template.replace(/\{(\w+)\}/g, (_, key) => {
+    const source = payload?.nps_score !== undefined
+        ? String(template).replace(/\{rating\}\/5/g, '{nps_score}/10')
+        : String(template);
+    return source.replace(/\{(\w+)\}/g, (_, key) => {
         return payload[key] !== undefined ? String(payload[key]) : `{${key}}`;
     });
+}
+
+function customerTelegramChatIdFromPayload(payload) {
+    const text = String(payload?.telegramChatId || payload?.telegram_chat_id || '').trim();
+    return /^[0-9]{5,20}$/.test(text) ? text : null;
 }
 
 /**

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.8",
+  "version": "0.77.9",
   "eventGenix": {
-    "releaseLabel": "Customer NPS review clarity"
+    "releaseLabel": "True Customer NPS"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

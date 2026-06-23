@@ -132,6 +132,13 @@ function safeParseInt(str) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function safeParseNpsScore(str) {
+    const text = String(str ?? '').trim();
+    if (!/^\d+$/.test(text)) return null;
+    const score = Number(text);
+    return Number.isInteger(score) && score >= 0 && score <= 10 ? score : null;
+}
+
 function callbackMessageTarget(message) {
     if (!message?.chat?.id || !message?.message_id) return null;
     return { chat_id: message.chat.id, message_id: message.message_id };
@@ -813,6 +820,76 @@ router.post('/webhook', async (req, res) => {
                     await answerCallback(id, 'Помилка', { show_alert: true });
                 }
 
+            // True NPS callback (0-10), separate from legacy 1-5 review ratings.
+            } else if (data.startsWith('nps:')) {
+                const parts = data.split(':');
+                const bookingId = String(parts[1] || '').trim();
+                const score = safeParseNpsScore(parts[2]);
+                const telegramChatId = update.callback_query.from?.id;
+                if (!bookingId || score === null || !telegramChatId) {
+                    await answerCallback(id, 'Невалідний запит');
+                    return res.sendStatus(200);
+                }
+                try {
+                    const fromName = update.callback_query.from?.first_name || '';
+                    const bookingResult = await pool.query(
+                        `SELECT b.id,
+                                COALESCE(b.business_context, $2) AS business_context,
+                                b.customer_id,
+                                COALESCE(NULLIF(c.name, ''), $3) AS customer_name
+                           FROM bookings b
+                           LEFT JOIN customers c ON c.id = b.customer_id
+                            AND COALESCE(c.business_context, $2) = COALESCE(b.business_context, $2)
+                          WHERE b.id = $1::text
+                            AND COALESCE(b.business_context, $2) = $2
+                          LIMIT 1`,
+                        [bookingId, DEFAULT_TIMELINE_CONTEXT, fromName]
+                    );
+                    const booking = bookingResult.rows[0];
+                    if (!booking) {
+                        await answerCallback(id, 'Бронювання не знайдено');
+                        return res.sendStatus(200);
+                    }
+
+                    const businessContext = booking.business_context || DEFAULT_TIMELINE_CONTEXT;
+                    const customerName = booking.customer_name || fromName;
+                    const review = await pool.query(
+                        `INSERT INTO event_reviews (business_context, booking_id, customer_id, customer_name, telegram_chat_id, nps_score)
+                         SELECT $5, $1::text, $6, $2, $3, $4
+                         WHERE NOT EXISTS (
+                             SELECT 1 FROM event_reviews
+                              WHERE booking_id = $1::text
+                                AND telegram_chat_id = $3
+                                AND COALESCE(business_context, $5) = $5
+                                AND nps_score IS NOT NULL
+                         )
+                         RETURNING id`,
+                        [bookingId, customerName, telegramChatId, score, businessContext, booking.customer_id]
+                    );
+                    if (review.rows.length === 0) {
+                        await answerStaleCallback(id, message, 'NPS вже збережено');
+                        return res.sendStatus(200);
+                    }
+
+                    await pool.query(
+                        `UPDATE bookings
+                            SET nps_score = $1
+                          WHERE id = $2::text
+                            AND COALESCE(business_context, $3) = $3`,
+                        [score, bookingId, businessContext]
+                    );
+
+                    const isDetractor = score <= 6;
+                    const responseText = isDetractor
+                        ? 'Дякуємо, менеджер звʼяжеться'
+                        : 'Дякуємо за відповідь!';
+                    await answerCallback(id, responseText);
+                    await editCallbackMessageFinal(message, `✅ <b>NPS: ${score}/10</b>\n${responseText}`, 'nps callback');
+                } catch (err) {
+                    log.error('nps callback error', err);
+                    await answerCallback(id, 'Помилка', { show_alert: true });
+                }
+
             // v22.18: Review rating callback
             } else if (data.startsWith('review:')) {
                 const parts = data.split(':');
@@ -825,8 +902,8 @@ router.post('/webhook', async (req, res) => {
                 try {
                     const fromName = update.callback_query.from?.first_name || '';
                     const review = await pool.query(
-                        `INSERT INTO event_reviews (business_context, booking_id, customer_name, telegram_chat_id, rating)
-                         SELECT COALESCE(b.business_context, $5), $1::text, $2, $3, $4
+                        `INSERT INTO event_reviews (business_context, booking_id, customer_id, customer_name, telegram_chat_id, rating)
+                         SELECT COALESCE(b.business_context, $5), $1::text, b.customer_id, $2, $3, $4
                          FROM bookings b
                          WHERE b.id = $1::text
                            AND COALESCE(b.business_context, 'event_genix') = $5

@@ -2066,31 +2066,95 @@ window.addCommunication = async function(customerId) {
 // v30.4: NPS DASHBOARD
 // ==========================================
 
-function renderNpsExplainer(totalReviews) {
-    const zeroChecklist = totalReviews > 0 ? '' : `
+function npsSegment(score) {
+    const value = parseInt(score, 10);
+    if (value >= 9) return { key: 'promoter', label: 'Promoter', color: '#059669' };
+    if (value >= 7) return { key: 'passive', label: 'Passive', color: '#D97706' };
+    return { key: 'detractor', label: 'Detractor', color: '#DC2626' };
+}
+
+function renderNpsExplainer(totalResponses) {
+    const zeroChecklist = totalResponses > 0 ? '' : `
         <ol class="nps-zero-checklist">
-            <li>Перевірте, що бронювання завершені, мають статус confirmed і Telegram ID клієнта.</li>
-            <li>Запит на оцінку надсилається автоматично після завершення події, коли працює scheduler і Telegram webhook.</li>
-            <li>Оцінка з'являється тут тільки після натискання клієнтом кнопки 1-5 у Telegram.</li>
+            <li>Ще немає NPS-відповідей у цьому бізнес-контексті.</li>
+            <li>NPS з'явиться після відповіді клієнта на кнопку 0-10 у Telegram.</li>
         </ol>`;
     return `<div class="nps-explainer">
-        <div class="nps-explainer-title">Що показує NPS / відгуки</div>
-        <p class="nps-explainer-text">Цей блок показує післяподієві оцінки клієнтів у поточному бізнес-контексті. Дані беруться з відповідей у Telegram і записуються в таблицю відгуків після завершених бронювань.</p>
+        <div class="nps-explainer-title">NPS 0-10</div>
+        <p class="nps-explainer-text">NPS = % promoters - % detractors. Promoters: 9-10, passives: 7-8, detractors: 0-6.</p>
         <div class="nps-explainer-grid">
             <div class="nps-explainer-item">
-                <strong>Для чого</strong>
-                <span>Бачити якість подій і швидко знаходити незадоволених клієнтів.</span>
+                <strong>Promoters</strong>
+                <span>9-10, готові рекомендувати.</span>
             </div>
             <div class="nps-explainer-item">
-                <strong>Звідки дані</strong>
-                <span>Кнопки оцінки 1-5, які CRM надсилає клієнту в Telegram після події.</span>
+                <strong>Passives</strong>
+                <span>7-8, нейтральні відповіді.</span>
             </div>
             <div class="nps-explainer-item">
-                <strong>Чому може бути 0</strong>
-                <span>У цьому бізнес-контексті ще немає відповідей або запити на оцінку не були доставлені.</span>
+                <strong>Detractors</strong>
+                <span>0-6, потребують уваги.</span>
             </div>
         </div>
         ${zeroChecklist}
+    </div>`;
+}
+
+function renderNpsDistribution(distribution = []) {
+    const counts = new Map((distribution || []).map(item => [parseInt(item.score, 10), parseInt(item.count, 10) || 0]));
+    const maxCount = Math.max(1, ...Array.from(counts.values()));
+    return [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map(score => {
+        const count = counts.get(score) || 0;
+        const pct = Math.round(count / maxCount * 100);
+        const segment = npsSegment(score);
+        return `<div class="nps-bar-row">
+            <span class="nps-bar-label">${score}</span>
+            <div class="nps-bar-track"><div class="nps-bar-fill" style="width:${pct}%;background:${segment.color}"></div></div>
+            <span class="nps-bar-count">${count}</span>
+        </div>`;
+    }).join('');
+}
+
+function renderLegacyReviewsSection(legacyReviews = {}) {
+    const total = parseInt(legacyReviews.total, 10) || 0;
+    if (!total) return '';
+    const avg = parseFloat(legacyReviews.avgRating) || 0;
+    const distribution = legacyReviews.distribution || [];
+    const counts = new Map(distribution.map(item => [parseInt(item.rating, 10), parseInt(item.count, 10) || 0]));
+    const maxCount = Math.max(1, ...Array.from(counts.values()));
+    const recent = legacyReviews.recent || [];
+    const bars = [5, 4, 3, 2, 1].map(rating => {
+        const count = counts.get(rating) || 0;
+        const pct = Math.round(count / maxCount * 100);
+        return `<div class="nps-bar-row">
+            <span class="nps-bar-label">${rating}/5</span>
+            <div class="nps-bar-track"><div class="nps-bar-fill" style="width:${pct}%;background:#64748B"></div></div>
+            <span class="nps-bar-count">${count}</span>
+        </div>`;
+    }).join('');
+    const recentRows = recent.length ? recent.map(r => `<tr>
+        <td class="customer-name">${escapeHtml(r.customer_name || r.customerName || '—')}</td>
+        <td>${parseInt(r.rating, 10) || 0}/5</td>
+        <td>${escapeHtml(r.comment || '—')}</td>
+        <td>${formatDate(r.created_at || r.createdAt)}</td>
+    </tr>`).join('') : `<tr><td colspan="4">Немає останніх legacy оцінок</td></tr>`;
+    return `<div class="nps-legacy-section">
+        <div class="nps-section-title">Післяподієві оцінки 1-5</div>
+        <div class="nps-dashboard">
+            <div class="nps-score-card">
+                <div class="nps-big-score nps-legacy-score">${avg.toFixed(1)}</div>
+                <div class="nps-score-label">Середня legacy оцінка</div>
+                <div class="nps-score-meta">${total} відповідей 1-5</div>
+            </div>
+            <div class="nps-score-card">
+                <div class="nps-section-title nps-section-title--compact">Розподіл 1-5</div>
+                ${bars}
+            </div>
+        </div>
+        <div class="nps-table-block">
+            <div class="nps-section-title nps-section-title--compact">Останні legacy оцінки</div>
+            <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Клієнт</th><th>Оцінка</th><th>Коментар</th><th>Дата</th></tr></thead><tbody>${recentRows}</tbody></table></div>
+        </div>
     </div>`;
 }
 
@@ -2102,48 +2166,63 @@ async function loadNps() {
         const data = await res.json();
         if (!data.success) { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Дані NPS недоступні</div></div>'; return; }
 
-        const avg = parseFloat(data.avgNps ?? data.avgScore ?? data.avgRating) || 0;
-        const total = parseInt(data.totalReviews) || 0;
+        const npsScore = parseInt(data.npsScore ?? data.avgNps ?? 0, 10) || 0;
+        const total = parseInt(data.totalResponses ?? data.totalReviews, 10) || 0;
         const dist = data.distribution || [];
-        const recent = data.recentReviews || data.recent || [];
+        const recent = data.recentResponses || data.recentReviews || data.recent || [];
+        const sentCount = parseInt(data.sentCount, 10) || 0;
+        const responseRate = Number(data.responseRate || 0);
+        const responseRatePct = Math.round(responseRate * 1000) / 10;
+        const promoters = parseInt(data.promoters, 10) || 0;
+        const passives = parseInt(data.passives, 10) || 0;
+        const detractors = parseInt(data.detractors, 10) || 0;
+        const promoterPercent = Number(data.promoterPercent || 0);
+        const passivePercent = Number(data.passivePercent || 0);
+        const detractorPercent = Number(data.detractorPercent || 0);
 
-        const scoreColor = avg >= 4 ? '#059669' : avg >= 3 ? '#D97706' : '#DC2626';
-        const maxCount = Math.max(1, ...dist.map(d => parseInt(d.count) || 0));
-
-        const NPS_COLORS = { 5: '#059669', 4: '#10B981', 3: '#F59E0B', 2: '#F97316', 1: '#EF4444' };
+        const scoreColor = npsScore >= 50 ? '#059669' : npsScore >= 0 ? '#D97706' : '#DC2626';
+        const recentRows = recent.length ? recent.map(r => {
+            const score = parseInt(r.nps_score ?? r.npsScore, 10);
+            const segment = npsSegment(score);
+            return `<tr>
+                <td class="customer-name">${escapeHtml(r.customer_name || r.customerName || '—')}</td>
+                <td><span class="nps-pill" style="background:${segment.color}">${Number.isInteger(score) ? score : 0}/10</span></td>
+                <td>${segment.label}</td>
+                <td>${escapeHtml(r.comment || '—')}</td>
+                <td>${formatDate(r.created_at || r.createdAt)}</td>
+            </tr>`;
+        }).join('') : `<tr><td colspan="5">NPS-відповідей ще немає</td></tr>`;
 
         el.innerHTML = `${renderNpsExplainer(total)}
         <div class="nps-dashboard">
             <div class="nps-score-card">
-                <div class="nps-big-score" style="color:${scoreColor}">${avg.toFixed(1)}</div>
-                <div style="font-size:14px;font-weight:700;color:var(--gray-500);margin-top:4px">Середня оцінка</div>
-                <div style="font-size:12px;color:var(--gray-400);margin-top:4px">${total} відгуків</div>
+                <div class="nps-big-score" style="color:${scoreColor}">${npsScore}</div>
+                <div class="nps-score-label">NPS</div>
+                <div class="nps-score-meta">${total} відповідей · діапазон -100..100</div>
             </div>
             <div class="nps-score-card">
-                <h4 style="margin-bottom:12px;font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase">Розподіл оцінок</h4>
-                ${[5,4,3,2,1].map(score => {
-                    const item = dist.find(d => parseInt(d.rating) === score);
-                    const count = item ? parseInt(item.count) : 0;
-                    const pct = Math.round(count / maxCount * 100);
-                    return `<div class="nps-bar-row">
-                        <span class="nps-bar-label">${score}/5</span>
-                        <div class="nps-bar-track"><div class="nps-bar-fill" style="width:${pct}%;background:${NPS_COLORS[score]}"></div></div>
-                        <span class="nps-bar-count">${count}</span>
-                    </div>`;
-                }).join('')}
+                <div class="nps-big-score nps-response-rate">${responseRatePct.toFixed(1)}%</div>
+                <div class="nps-score-label">Response rate</div>
+                <div class="nps-score-meta">${total} відповідей із ${sentCount} запитів</div>
+            </div>
+            <div class="nps-score-card">
+                <div class="nps-section-title nps-section-title--compact">Breakdown</div>
+                <div class="nps-breakdown">
+                    <div><strong>${promoters}</strong><span>Promoters ${promoterPercent.toFixed(1)}%</span></div>
+                    <div><strong>${passives}</strong><span>Passives ${passivePercent.toFixed(1)}%</span></div>
+                    <div><strong>${detractors}</strong><span>Detractors ${detractorPercent.toFixed(1)}%</span></div>
+                </div>
+            </div>
+            <div class="nps-score-card">
+                <div class="nps-section-title nps-section-title--compact">Розподіл 0-10</div>
+                ${renderNpsDistribution(dist)}
             </div>
         </div>
-        ${recent.length > 0 ? `<div style="margin-top:16px">
-            <h4 style="margin-bottom:12px;font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase">Останні відгуки</h4>
-            <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Клієнт</th><th>Оцінка</th><th>Коментар</th><th>Дата</th></tr></thead><tbody>
-            ${recent.map(r => `<tr>
-                <td class="customer-name">${escapeHtml(r.customer_name || r.customerName || '—')}</td>
-                <td>${parseInt(r.rating) || 0}/5</td>
-                <td>${escapeHtml(r.comment || '—')}</td>
-                <td>${formatDate(r.created_at || r.createdAt)}</td>
-            </tr>`).join('')}
-            </tbody></table></div>
-        </div>` : ''}`;
+        <div class="nps-table-block">
+            <div class="nps-section-title">Останні NPS-відповіді</div>
+            <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>Клієнт</th><th>NPS</th><th>Група</th><th>Коментар</th><th>Дата</th></tr></thead><tbody>${recentRows}</tbody></table></div>
+        </div>
+        ${renderLegacyReviewsSection(data.legacyReviews || {})}`;
     } catch { el.innerHTML = '<div class="crm-empty"><div class="empty-icon">📊</div><div class="empty-text">Помилка завантаження NPS</div></div>'; }
 }
 

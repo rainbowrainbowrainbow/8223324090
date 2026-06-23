@@ -67,6 +67,13 @@ function installDbMock() {
         trainingMaterialInserts: 0,
         reviews: new Set(),
         reviewInserts: 0,
+        bookings: new Map([
+            ['123', { id: '123', business_context: 'event_genix', customer_id: 42, customer_name: 'Customer DB' }],
+            ['124', { id: '124', business_context: 'event_genix', customer_id: 43, customer_name: 'Promoter DB' }]
+        ]),
+        npsReviews: new Set(),
+        npsInserts: 0,
+        bookingNpsScores: new Map(),
         pulseInserts: 0,
         orders: new Map([[9, 'pending']]),
         orderLookups: 0,
@@ -136,12 +143,52 @@ function installDbMock() {
             return { rows: [{ id: state.trainingMaterialInserts }], rowCount: 1 };
         }
 
+        if (/SELECT b\.id, COALESCE\(b\.business_context, \$2\) AS business_context/i.test(text)
+            && /FROM bookings b/i.test(text)) {
+            const booking = state.bookings.get(String(params[0]));
+            if (!booking || (booking.business_context || 'event_genix') !== params[1]) {
+                return { rows: [], rowCount: 0 };
+            }
+            return {
+                rows: [{
+                    id: booking.id,
+                    business_context: booking.business_context,
+                    customer_id: booking.customer_id,
+                    customer_name: booking.customer_name || params[2]
+                }],
+                rowCount: 1
+            };
+        }
+
+        if (/INSERT INTO event_reviews/i.test(text) && /nps_score/i.test(text)) {
+            const [bookingId, , telegramId, score, businessContext, customerId] = params;
+            const key = `${bookingId}:${telegramId}:nps`;
+            if (state.npsReviews.has(key)) return { rows: [], rowCount: 0 };
+            state.npsReviews.add(key);
+            state.npsInserts += 1;
+            state.lastNpsInsert = { bookingId, telegramId, score, businessContext, customerId };
+            return { rows: [{ id: state.npsInserts }], rowCount: 1 };
+        }
+        if (/UPDATE bookings SET nps_score = \$1/i.test(text)) {
+            const [score, bookingId] = params;
+            if (!state.bookings.has(String(bookingId))) return { rows: [], rowCount: 0 };
+            state.bookingNpsScores.set(String(bookingId), score);
+            return { rows: [{ id: bookingId }], rowCount: 1 };
+        }
+
         if (/INSERT INTO event_reviews/i.test(text)) {
             const [bookingId, , telegramId] = params;
             const key = `${bookingId}:${telegramId}`;
             if (state.reviews.has(key)) return { rows: [], rowCount: 0 };
             state.reviews.add(key);
             state.reviewInserts += 1;
+            state.lastLegacyReview = {
+                bookingId,
+                telegramId,
+                customerId: state.bookings.get(String(bookingId))?.customer_id || null,
+                rating: params[3],
+                sql: text
+            };
             return { rows: [{ id: state.reviewInserts }], rowCount: 1 };
         }
         if (/INSERT INTO team_pulse/i.test(text)) {
@@ -409,6 +456,9 @@ describe('Telegram callback single-use hardening', () => {
         });
         assert.equal(first.status, 200);
         assert.equal(dbMock.state.reviewInserts, 1);
+        assert.equal(dbMock.state.lastLegacyReview.customerId, 42);
+        assert.equal(dbMock.state.lastLegacyReview.rating, 5);
+        assert.doesNotMatch(dbMock.state.lastLegacyReview.sql, /nps_score/i);
         assert.ok(hasClearedKeyboard(telegram.calls));
 
         const stale = await postWebhook(baseUrl, 'review:123:1', {
@@ -418,6 +468,53 @@ describe('Telegram callback single-use hardening', () => {
         assert.equal(stale.status, 200);
         assert.equal(dbMock.state.reviewInserts, 1);
         assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.callback_query_id, 'review-stale');
+    });
+
+    it('stores true NPS 0 and 10, updates booking score, and ignores duplicate taps', async () => {
+        const detractor = await postWebhook(baseUrl, 'nps:123:0', {
+            id: 'nps-zero',
+            from: { id: 5600, first_name: 'Detractor' }
+        });
+        assert.equal(detractor.status, 200);
+        assert.equal(dbMock.state.npsInserts, 1);
+        assert.equal(dbMock.state.lastNpsInsert.bookingId, '123');
+        assert.equal(dbMock.state.lastNpsInsert.customerId, 42);
+        assert.equal(dbMock.state.lastNpsInsert.score, 0);
+        assert.equal(dbMock.state.bookingNpsScores.get('123'), 0);
+        assert.match(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.text, /менеджер зв/);
+        assert.ok(hasClearedKeyboard(telegram.calls));
+
+        const promoter = await postWebhook(baseUrl, 'nps:124:10', {
+            id: 'nps-ten',
+            from: { id: 5601, first_name: 'Promoter' }
+        });
+        assert.equal(promoter.status, 200);
+        assert.equal(dbMock.state.npsInserts, 2);
+        assert.equal(dbMock.state.lastNpsInsert.bookingId, '124');
+        assert.equal(dbMock.state.lastNpsInsert.customerId, 43);
+        assert.equal(dbMock.state.lastNpsInsert.score, 10);
+        assert.equal(dbMock.state.bookingNpsScores.get('124'), 10);
+        assert.match(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.text, /Дякуємо/);
+
+        const stale = await postWebhook(baseUrl, 'nps:124:9', {
+            id: 'nps-stale',
+            from: { id: 5601, first_name: 'Promoter' }
+        });
+        assert.equal(stale.status, 200);
+        assert.equal(dbMock.state.npsInserts, 2);
+        assert.equal(dbMock.state.bookingNpsScores.get('124'), 10);
+        assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.callback_query_id, 'nps-stale');
+    });
+
+    it('rejects invalid NPS callback scores without writing reviews', async () => {
+        for (const callbackData of ['nps:123:11', 'nps:123:-1', 'nps:123:x', 'nps::5']) {
+            const res = await postWebhook(baseUrl, callbackData, { id: `invalid-${callbackData}` });
+            assert.equal(res.status, 200);
+            assert.equal(callsByMethod(telegram.calls, 'answerCallbackQuery').at(-1).body.text, 'Невалідний запит');
+        }
+
+        assert.equal(dbMock.state.npsInserts, 0);
+        assert.equal(dbMock.state.bookingNpsScores.size, 0);
     });
 
     it('preserves pulse as a multi-use callback and does not clear the shared keyboard', async () => {

@@ -25,6 +25,11 @@ const {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById
 } = require('../services/banquetGroups');
+const {
+    getDepositProjectionForBooking,
+    getDepositProjectionForGroup,
+    resolveDepositContextFromBooking
+} = require('../services/banquetDeposits');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Banquets');
@@ -336,6 +341,48 @@ router.get('/by-booking/:bookingId', async (req, res) => {
         return sendReadResult(req, res, snapshot);
     } catch (err) {
         log.error('GET /banquets/by-booking/:bookingId error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.get('/by-booking/:bookingId/deposit', async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        if (!validateId(bookingId)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        const context = await resolveDepositContextFromBooking({ bookingId, businessContext });
+        if (!context.booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+        if (!canViewBooking(req.user, context.booking)) {
+            return res.status(404).json(bookingAccessDeniedPayload());
+        }
+        const projection = await getDepositProjectionForBooking({ bookingId, businessContext });
+        return res.json({ success: true, ...projection });
+    } catch (err) {
+        log.error('GET /banquets/by-booking/:bookingId/deposit error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.get('/:groupId/deposit', async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        if (!validateId(groupId)) return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        const snapshot = await loadBanquetGroupById({ groupId, businessContext });
+        if (!snapshot) return res.status(404).json({ success: false, error: 'Banquet group not found' });
+        if (!anchorVisible(snapshot, req.user)) {
+            return res.status(404).json(bookingAccessDeniedPayload());
+        }
+        const visible = sanitizeSnapshotForUser(snapshot, req.user);
+        if (!visible?.members?.length) {
+            return res.status(404).json(bookingAccessDeniedPayload());
+        }
+        const projection = await getDepositProjectionForGroup({ groupId, businessContext });
+        return res.json({ success: true, ...projection });
+    } catch (err) {
+        log.error('GET /banquets/:groupId/deposit error', err);
         return res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });

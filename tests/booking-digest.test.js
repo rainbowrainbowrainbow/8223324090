@@ -167,17 +167,11 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.deposit.paymentMethod, 'cash');
     assert.equal(summary.deposit.paymentStatus, 'partial');
     assert.equal(summary.deposit.source, 'extra_data.banquetDeposit');
-    assert.deepEqual(summary.finance.rows.map(row => row.label), [
-        'Програма',
-        'Меню',
-        'Додаткові активності',
-        'Бронювання',
-        'Разом',
-        'Завдаток',
-        'До сплати'
-    ]);
-    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 1000);
-    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 3400);
+    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total']);
+    assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 4400);
+    assert.equal(summary.finance.amountDue, 3400);
+    assert.equal(summary.finance.rows.some(row => row.key === 'deposit'), false);
+    assert.equal(summary.finance.rows.some(row => row.key === 'amount_due'), false);
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
@@ -200,10 +194,11 @@ test('banquet summary builds compact finance rows without duplicate booking or z
         }
     });
 
-    assert.deepEqual(summary.finance.rows.map(row => row.label), ['Програма', 'Разом', 'До сплати']);
-    assert.equal(summary.finance.rows.find(row => row.key === 'program')?.amount, 1500);
+    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total']);
     assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 1500);
-    assert.equal(summary.finance.rows.find(row => row.key === 'amount_due')?.amount, 1500);
+    assert.equal(summary.finance.amountDue, 1500);
+    assert.equal(summary.finance.rows.some(row => row.key === 'amount_due'), false);
+    assert.equal(summary.finance.rows.some(row => row.key === 'program'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'booking'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'entry'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'menu'), false);
@@ -538,7 +533,7 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(tableText, /Дата банкету/);
     assert.match(tableText, /Прихід гостей/);
     assert.match(tableText, /Бронь створено/);
-    assert.doesNotMatch(tableText, /Сформовано/);
+    assert.match(tableText, /Сформовано/);
     assert.doesNotMatch(tableText, /Оформлено/);
     assert.match(tableText, /Діти/);
     assert.match(tableText, /12/);
@@ -568,7 +563,7 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(tableText, /12 дітей/);
     assert.match(tableText, /300 ₴ = 3\s*600 ₴/);
     assert.match(tableText, /Фінанси/);
-    assert.match(tableText, /До сплати/);
+    assert.match(tableText, /Загальна сума/);
     assert.doesNotMatch(tableText, /Сума бронювання/);
     assert.doesNotMatch(tableText, /Бронювання/);
     assert.doesNotMatch(tableText, /Завдаток/);
@@ -601,9 +596,9 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(copiedText, /Свічка — 16:35 — 1 порція × 30 ₴ = 30 ₴/);
     assert.match(copiedText, /Лимонад — 16:40 — 2,5 л × 95 ₴ = 237,5 ₴/);
     assert.match(copiedText, /Вхід — 12 дітей × 300 ₴ = 3\s*600 ₴/);
-    assert.match(copiedText, /Вхід: 3\s*600 ₴/);
+    assert.doesNotMatch(copiedText, /Вхід: 3\s*600 ₴/);
     assert.match(copiedText, /Фінанси:/);
-    assert.match(copiedText, /До сплати: 5\s*097,5 ₴/);
+    assert.match(copiedText, /Загальна сума: 5\s*097,5 ₴/);
     assert.doesNotMatch(copiedText, /Сума бронювання/);
     assert.doesNotMatch(copiedText, /Завдаток:/);
     assert.doesNotMatch(copiedText, /5 100г|5 100 г|5 100г x 90/);
@@ -1112,6 +1107,56 @@ test('banquet summary warns for neutral venue and missing deposit data', () => {
     assert.ok(summary.warnings.some(warning => warning.code === 'venue_neutral_fallback'));
     assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
     assert.ok(summary.warnings.some(warning => warning.code === 'menu_rows_missing'));
+});
+
+test('banquet summary prefers canonical deposit projection before legacy marker', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: {
+            id: 'BK-CANONICAL-DIGEST',
+            program_name: 'Банкет',
+            price: 5000,
+            extra_data: {
+                banquetDeposit: {
+                    amount: 700,
+                    paymentMethod: 'cash',
+                    paymentStatus: 'legacy'
+                }
+            }
+        },
+        canonicalDepositProjection: {
+            success: true,
+            state: 'verified',
+            status: 'accountant_verified',
+            deposit: {
+                id: 42,
+                amount: 1500,
+                paymentMethod: 'card',
+                status: 'accountant_verified',
+                sourceKind: 'accountant_confirmed',
+                sourcePayload: {
+                    accountantConfirmation: {
+                        receivedDate: '2099-06-19',
+                        note: 'Verified by accountant'
+                    }
+                },
+                verifiedAt: '2099-06-19T09:00:00.000Z',
+                accountantTaskId: 77
+            },
+            display: { amount: 1500, paymentMethod: 'card' }
+        }
+    });
+
+    assert.equal(summary.deposit.id, 42);
+    assert.equal(summary.deposit.amount, 1500);
+    assert.equal(summary.deposit.paymentMethod, 'card');
+    assert.equal(summary.deposit.paymentStatus, 'accountant_verified');
+    assert.equal(summary.deposit.source, 'canonical_banquet_deposits');
+    assert.equal(summary.deposit.sourceKind, 'accountant_confirmed');
+    assert.equal(summary.deposit.receivedDate, '2099-06-19');
+    assert.equal(summary.deposit.accountantTaskId, 77);
+    assert.equal(summary.finance.amountDue, 3500);
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
 });
 
 test('banquet summary does not treat paid_amount as deposit without explicit marker', () => {

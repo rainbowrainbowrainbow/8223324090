@@ -52,6 +52,7 @@ const {
 } = require('../services/maysternyaBookingWebhook');
 
 function getKleshnya() { return require('../services/kleshnya'); }
+function getBanquetDeposits() { return require('../services/banquetDeposits'); }
 
 const log = createLogger('Leads');
 
@@ -2028,6 +2029,7 @@ router.patch('/:id', async (req, res) => {
         let updatedLead;
         let dealCustomerLink = null;
         let previousLead = null;
+        let stageTransition = null;
         const effectivePipelineStage = stageStatus.stageProvided ? stageStatus.stage : undefined;
         const shouldEnsureDealCustomer = effectivePipelineStage === 'deal';
         const updateClient = shouldEnsureDealCustomer || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
@@ -2065,6 +2067,7 @@ router.patch('/:id', async (req, res) => {
             if (stageStatus.stageProvided) {
                 const oldStage = previousLead?.pipeline_stage || 'new';
                 const newStage = updatedLead.pipeline_stage || effectivePipelineStage || 'new';
+                stageTransition = { oldStage, newStage };
                 if (oldStage !== newStage) {
                     await logStageChange(queryable, {
                         leadId: updatedLead.id,
@@ -2148,7 +2151,13 @@ router.patch('/:id', async (req, res) => {
 
         // v29.1: Pipeline stage hooks (fire-and-forget)
         if (newStage === 'deposit_received') {
-            onDepositReceived(updatedLead, req.user).catch(e =>
+            onDepositReceived(updatedLead, req.user, {
+                businessContext,
+                oldStage: stageTransition?.oldStage || null,
+                newStage,
+                enteredDepositStage: stageTransition?.oldStage !== 'deposit_received'
+                    && stageTransition?.newStage === 'deposit_received'
+            }).catch(e =>
                 log.error('onDepositReceived error (non-blocking)', e)
             );
         }
@@ -3222,10 +3231,243 @@ function subtractDays(dateStr, days) {
     return d.toISOString().split('T')[0];
 }
 
-async function onDepositReceived(lead, user) {
+function taskActiveSql(alias = 't') {
+    return `COALESCE(${alias}.status, 'todo') NOT IN ('done','archived','cancelled')`;
+}
+
+function depositContextLabel(value, fallback) {
+    return cleanText(value) || fallback;
+}
+
+function depositTaskClientName(lead = {}, projection = {}) {
+    return depositContextLabel(
+        projection.display?.clientName
+            || projection.deposit?.clientNameSnapshot
+            || lead.client_name
+            || lead.phone
+            || lead.instagram,
+        `lead #${lead.id}`
+    );
+}
+
+function depositTaskEventDate(lead = {}, projection = {}) {
+    return depositContextLabel(
+        projection.display?.eventDate
+            || projection.deposit?.eventDate
+            || lead.event_date,
+        'not specified'
+    );
+}
+
+function depositTaskBanquetNumber(projection = {}, context = {}) {
+    return depositContextLabel(
+        projection.display?.banquetNumber
+            || projection.deposit?.banquetNumberSnapshot
+            || projection.banquetGroupId
+            || projection.bookingId
+            || context.banquetGroupId
+            || context.primaryBookingId
+            || context.bookingId,
+        projection.needsBookingLink ? 'booking link required' : 'not specified'
+    );
+}
+
+async function findActiveDepositTask(depositId, businessContext) {
+    const id = parseInt(depositId, 10);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const result = await pool.query(
+        `SELECT *
+           FROM tasks t
+          WHERE ${taskActiveSql('t')}
+            AND COALESCE(t.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+            AND (
+                (t.source_type = 'banquet_deposit' AND t.source_id = $2)
+                OR (t.source_entity_type = 'banquet_deposit' AND t.source_entity_id = $2)
+            )
+          ORDER BY t.id ASC
+          LIMIT 1`,
+        [businessContext, String(id)]
+    );
+    return result.rows[0] || null;
+}
+
+async function loadActiveTaskById(taskId, businessContext) {
+    const id = parseInt(taskId, 10);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const result = await pool.query(
+        `SELECT *
+           FROM tasks t
+          WHERE t.id = $1
+            AND ${taskActiveSql('t')}
+            AND COALESCE(t.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+          LIMIT 1`,
+        [id, businessContext]
+    );
+    return result.rows[0] || null;
+}
+
+async function findAccountantTaskOwner(businessContext) {
+    const result = await pool.query(
+        `SELECT id, username, name, role
+           FROM users
+          WHERE COALESCE(is_active, true) = true
+            AND (
+                role = 'accountant'
+                OR 'accountant' = ANY(COALESCE(extra_roles, ARRAY[]::text[]))
+            )
+            AND (
+                business_contexts IS NULL
+                OR array_length(business_contexts, 1) IS NULL
+                OR $1 = ANY(business_contexts)
+            )
+          ORDER BY CASE WHEN role = 'accountant' THEN 0 ELSE 1 END,
+                   COALESCE(NULLIF(name, ''), username),
+                   id
+          LIMIT 1`,
+        [businessContext]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+        id: row.id,
+        username: row.username,
+        name: row.name || null,
+        label: row.name || row.username || `User #${row.id}`
+    };
+}
+
+function buildDepositAccountantTaskPayload({ lead, user, businessContext, handoff, accountant }) {
+    const projection = handoff?.projection || {};
+    const context = handoff?.context || {};
+    const deposit = handoff?.deposit || projection.deposit || {};
+    const depositId = deposit.id || projection.deposit?.id;
+    const clientName = depositTaskClientName(lead, projection);
+    const eventDate = depositTaskEventDate(lead, projection);
+    const banquetNumber = depositTaskBanquetNumber(projection, context);
+    const bookingId = projection.bookingId || context.primaryBookingId || context.bookingId || lead.booking_id || null;
+    const banquetGroupId = projection.banquetGroupId || context.banquetGroupId || null;
+    const needsBookingLink = projection.needsBookingLink === true || deposit.status === 'needs_booking_link';
+    const missingBookingLine = needsBookingLink
+        ? "Booking is not linked yet: first link the lead to a booking/banquet, then confirm the deposit."
+        : `Booking: ${bookingId || 'not specified'}.`;
+
+    return {
+        title: `Завдаток: перевірити оплату - ${clientName}`,
+        description: [
+            'Перевірити, чи надійшов завдаток, і заповнити підтвердження.',
+            `Клієнт: ${clientName}.`,
+            `Дата святкування: ${eventDate}.`,
+            `Банкет: ${banquetNumber}.`,
+            missingBookingLine,
+            `Лід: #${lead.id}.`,
+            'Потрібно зафіксувати суму, спосіб внесення (cash/card) і дату отримання.'
+        ].filter(Boolean).join('\n'),
+        category: 'finance',
+        subcategory: 'banquet_deposit',
+        date: todayKyivDateString(),
+        priority: needsBookingLink ? 'high' : 'normal',
+        created_by: user?.username || user?.id || 'lead_deposit',
+        created_by_user_id: user?.id || null,
+        source_type: 'banquet_deposit',
+        source_id: String(depositId),
+        source_entity_type: 'banquet_deposit',
+        source_entity_id: String(depositId),
+        owner_user_id: accountant?.id || null,
+        assigned_to: accountant?.label || 'Бухгалтер',
+        owner: accountant?.label || 'Бухгалтер',
+        owner_role: 'accountant',
+        businessContext,
+        duplicateMode: 'skip',
+        source_module: 'leads.deposit_received',
+        control_meta: {
+            depositId,
+            leadId: lead.id,
+            bookingId,
+            banquetGroupId,
+            businessContext,
+            actionRoute: 'PATCH /api/leads/:id',
+            stage: 'deposit_received',
+            needsBookingLink,
+            clientName,
+            eventDate,
+            banquetNumber
+        }
+    };
+}
+
+async function createAccountantDepositTaskOnce(lead, user, options = {}) {
+    if (!options.enteredDepositStage) return null;
+    const businessContext = normalizeBusinessContext(options.businessContext || lead.business_context || lead.businessContext);
+    const handoff = await getBanquetDeposits().createOrLoadDepositHandoff({
+        leadId: lead.id,
+        businessContext,
+        user,
+        source: 'leads.deposit_received',
+        sourceKind: 'manager_handoff',
+        sourcePayload: {
+            route: 'PATCH /api/leads/:id',
+            oldStage: options.oldStage || null,
+            newStage: options.newStage || 'deposit_received',
+            bookingId: lead.booking_id || null
+        },
+        meta: {
+            actionRoute: 'PATCH /api/leads/:id',
+            actorUserId: user?.id || null
+        }
+    });
+    const depositId = handoff?.deposit?.id || handoff?.projection?.deposit?.id;
+    if (!depositId) {
+        log.warn(`[LeadDeposit] Handoff did not return deposit id for lead ${lead.id}`);
+        return null;
+    }
+
+    const existingStoredTask = handoff.deposit?.accountantTaskId
+        ? await loadActiveTaskById(handoff.deposit.accountantTaskId, businessContext)
+        : null;
+    const existingSourceTask = existingStoredTask || await findActiveDepositTask(depositId, businessContext);
+    if (existingSourceTask?.id) {
+        if (!handoff.deposit?.accountantTaskId || Number(handoff.deposit.accountantTaskId) !== Number(existingSourceTask.id)) {
+            await getBanquetDeposits().attachAccountantTask({
+                depositId,
+                businessContext,
+                accountantTaskId: existingSourceTask.id,
+                sourcePayload: { source: 'leads.deposit_received.reuse_active_task' },
+                meta: { reusedActiveTask: true }
+            });
+        }
+        return existingSourceTask;
+    }
+
+    const accountant = await findAccountantTaskOwner(businessContext);
+    const task = await getKleshnya().createTask(
+        buildDepositAccountantTaskPayload({ lead, user, businessContext, handoff, accountant })
+    );
+    if (task?.id) {
+        await getBanquetDeposits().attachAccountantTask({
+            depositId,
+            businessContext,
+            accountantTaskId: task.id,
+            sourcePayload: { source: 'leads.deposit_received.create_task' },
+            meta: { createdFromLeadStage: true }
+        });
+    }
+    return task;
+}
+
+async function onDepositReceived(lead, user, options = {}) {
     const isTestMode = process.env.TEST_MODE === 'true';
     const prefix = isTestMode ? '[TEST] ' : '';
+    const businessContext = normalizeBusinessContext(options.businessContext || lead.business_context || lead.businessContext);
     const tasks = [];
+
+    try {
+        await createAccountantDepositTaskOnce(lead, user, {
+            ...options,
+            businessContext
+        });
+    } catch (e) {
+        log.error('Failed to create accountant deposit task', e);
+    }
 
     // 1. Art department (poster)
     tasks.push({
@@ -3267,6 +3509,7 @@ async function onDepositReceived(lead, user) {
                 source_id: String(lead.id),
                 source_entity_type: 'lead',
                 source_entity_id: String(lead.id),
+                businessContext,
                 duplicateMode: 'skip'
             });
         } catch (e) {

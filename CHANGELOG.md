@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.10 - Banquet Deposit Verification
+
+### Banquets / Deposit verification / Accountant handoff / Safe migration / (Клешня, 23.06.2026) [codex]
+- **Додано canonical таблицю `banquet_deposits`** - завдаток банкету має окремий запис із бізнес-контекстом, бронюванням/групою, сумою, методом оплати, статусом і audit metadata.
+- **Legacy deposit JSON копіюється без втрати джерела** - явні deposit markers з `bookings.extra_data` переносяться у canonical row, а original JSON лишається в `source_payload`/`meta`.
+- **`paid_amount` не вважається завдатком** - сума оплати лишається finance context/warning і не створює deposit row та не підставляється як завдаток.
+- **Перехід ліда на `deposit_received` створює одну задачу бухгалтеру** - hook працює тільки на зміні етапу, пере використовує активну задачу і підтримує стан `needs_booking_link`.
+- **Бухгалтер підтверджує завдаток із задачі** - форма вимагає ПІБ клієнта, дату отримання, дату святкування, номер банкету, суму і метод `cash`/`card`.
+- **Запис банкету показує статус завдатку з backend projection** - UI відображає `Не вказано`, `Очікує бухгалтера`, `Потрібна прив'язка бронювання`, `Завдаток підтверджено`, `Виправлено`.
+- **Банкетний лист читає canonical deposit першим** - confirmed canonical deposit має пріоритет над legacy JSON, а відсутній explicit deposit не маскується через `paid_amount`.
+- **Regression guards розширено** - додано тести на міграцію, duplicate prevention, missing booking, validation бухгалтера, summary/PDF projection, UI smoke і відсутність finance duplication.
+- **Релізні маркери піднято до `0.77.10`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.9 - True Customer NPS
 
 ### Customers / True NPS 0-10 / Telegram NPS callbacks / Response rate / Legacy reviews split / (Клешня, 23.06.2026) [codex]

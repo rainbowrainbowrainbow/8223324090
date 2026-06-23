@@ -2030,6 +2030,127 @@ router.post('/education-series/:seriesId/cancel', requireAction('delete_booking'
     }
 });
 
+function jsonObject(value) {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function banquetSummaryDepositProjection(row = null, context = {}) {
+    if (!row) {
+        return {
+            state: 'missing',
+            status: 'missing',
+            deposit: null,
+            businessContext: context.businessContext || DEFAULT_TIMELINE_CONTEXT,
+            bookingId: context.bookingId || null,
+            banquetGroupId: context.groupId || null,
+            display: {
+                amount: null,
+                paymentMethod: null,
+                isVerified: false,
+                needsBookingLink: false
+            }
+        };
+    }
+    const sourcePayload = jsonObject(row.source_payload);
+    const meta = jsonObject(row.meta);
+    return {
+        state: ['accountant_verified', 'corrected'].includes(row.status) ? 'verified' : (row.status === 'cancelled' ? 'cancelled' : 'pending'),
+        status: row.status || 'manager_reported',
+        deposit: {
+            id: row.id || null,
+            businessContext: row.business_context || context.businessContext || DEFAULT_TIMELINE_CONTEXT,
+            banquetGroupId: row.banquet_group_id || null,
+            primaryBookingId: row.primary_booking_id || null,
+            leadId: row.lead_id || null,
+            customerId: row.customer_id || null,
+            accountantTaskId: row.accountant_task_id || null,
+            clientNameSnapshot: row.client_name_snapshot || null,
+            eventDate: row.event_date || null,
+            banquetNumberSnapshot: row.banquet_number_snapshot || null,
+            amount: row.amount ?? null,
+            paymentMethod: row.payment_method || null,
+            status: row.status || 'manager_reported',
+            sourceKind: row.source_kind || null,
+            sourcePayload,
+            verifiedAt: row.verified_at || null,
+            verifiedBy: row.verified_by || null,
+            correctedAt: row.corrected_at || null,
+            correctedBy: row.corrected_by || null,
+            meta
+        },
+        businessContext: row.business_context || context.businessContext || DEFAULT_TIMELINE_CONTEXT,
+        bookingId: row.primary_booking_id || context.bookingId || null,
+        banquetGroupId: row.banquet_group_id || context.groupId || null,
+        display: {
+            amount: row.amount ?? null,
+            paymentMethod: row.payment_method || null,
+            isVerified: ['accountant_verified', 'corrected'].includes(row.status),
+            needsBookingLink: row.status === 'needs_booking_link'
+        }
+    };
+}
+
+async function loadBanquetSummaryDepositProjection({ businessContext, groupId = null, bookingId = null } = {}) {
+    const context = {
+        businessContext: businessContext || DEFAULT_TIMELINE_CONTEXT,
+        groupId: groupId || null,
+        bookingId: bookingId || null
+    };
+    if (!groupId && !bookingId) return banquetSummaryDepositProjection(null, context);
+    if (groupId && bookingId) {
+        const result = await pool.query(
+            `SELECT *
+               FROM banquet_deposits
+              WHERE business_context = $1
+                AND (banquet_group_id = $2 OR primary_booking_id = $3)
+              ORDER BY
+                CASE WHEN banquet_group_id = $2 THEN 0 ELSE 1 END,
+                CASE status
+                    WHEN 'accountant_verified' THEN 0
+                    WHEN 'corrected' THEN 1
+                    WHEN 'manager_reported' THEN 2
+                    WHEN 'needs_booking_link' THEN 3
+                    ELSE 9
+                END,
+                updated_at DESC NULLS LAST,
+                id DESC
+              LIMIT 1`,
+            [context.businessContext, groupId, bookingId]
+        );
+        return banquetSummaryDepositProjection(result.rows[0] || null, context);
+    }
+    const identityColumn = groupId ? 'banquet_group_id' : 'primary_booking_id';
+    const identityValue = groupId || bookingId;
+    const result = await pool.query(
+        `SELECT *
+           FROM banquet_deposits
+          WHERE business_context = $1
+            AND ${identityColumn} = $2
+          ORDER BY
+            CASE status
+                WHEN 'accountant_verified' THEN 0
+                WHEN 'corrected' THEN 1
+                WHEN 'manager_reported' THEN 2
+                WHEN 'needs_booking_link' THEN 3
+                ELSE 9
+            END,
+            updated_at DESC NULLS LAST,
+            id DESC
+          LIMIT 1`,
+        [context.businessContext, identityValue]
+    );
+    return banquetSummaryDepositProjection(result.rows[0] || null, context);
+}
+
 async function resolveBanquetSummaryForRequest(req, res) {
     const { id } = req.params;
     if (!validateId(id)) {
@@ -2164,6 +2285,12 @@ async function resolveBanquetSummaryForRequest(req, res) {
     }
 
     const banquetTermsDefaults = await loadBanquetTermsDefaults(pool);
+    const summaryGroupId = resolvedGroup?.groupId || resolvedGroup?.group?.id || null;
+    const canonicalDepositProjection = await loadBanquetSummaryDepositProjection({
+        businessContext,
+        groupId: summaryGroupId,
+        bookingId: summaryPrimaryBooking.id || id
+    });
     return buildBanquetSummary({
         mainBooking: summaryPrimaryBooking,
         customer,
@@ -2172,7 +2299,8 @@ async function resolveBanquetSummaryForRequest(req, res) {
         generatedBy: req.user,
         resolvedGroup,
         banquetTermsDefaults,
-        mode
+        mode,
+        canonicalDepositProjection
     });
 }
 

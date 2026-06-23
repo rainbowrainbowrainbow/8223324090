@@ -8952,6 +8952,157 @@ function bookingDetailHasDepositMarker(booking = {}) {
     return false;
 }
 
+function bookingDetailPaidAmountValue(booking = {}) {
+    const value = booking.paidAmount ?? booking.paid_amount ?? booking.payment?.paidAmount ?? booking.payment?.paid_amount;
+    if (value === null || value === undefined || value === '') return null;
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function bookingDetailPaymentStatusValue(booking = {}) {
+    return String(booking.paymentStatus || booking.payment_status || booking.payment?.status || '').trim();
+}
+
+function bookingDetailDepositContextBookings(anchorBooking = {}, snapshot = null) {
+    const rows = [];
+    const addBooking = booking => {
+        if (!booking) return;
+        const bookingId = bookingDetailId(booking);
+        const key = bookingId || `row-${rows.length}`;
+        if (rows.some(row => row.key === key)) return;
+        rows.push({ key, booking });
+    };
+    addBooking(anchorBooking);
+    addBooking(banquetSnapshotPrimaryBooking(snapshot, anchorBooking));
+    (snapshot?.members || []).forEach(member => {
+        addBooking(member.booking || member);
+        (member.technicalChildren || []).forEach(addBooking);
+    });
+    return rows.map(row => row.booking);
+}
+
+function bookingDetailDepositHasCanonicalRecord(projection = null) {
+    if (!projection || projection.loading || projection.success === false) return false;
+    const status = String(projection.status || projection.state || '').trim();
+    return Boolean(projection.deposit || (status && !['missing', 'cancelled'].includes(status)));
+}
+
+function bookingDetailCanViewDepositMoney() {
+    if (typeof canAccess === 'function') return canAccess('view_revenue');
+    return !isViewer();
+}
+
+function bookingDetailDepositReceivedDate(deposit = {}) {
+    const confirmation = deposit.sourcePayload?.accountantConfirmation || deposit.meta?.accountantConfirmation || {};
+    return confirmation.receivedDate || (deposit.verifiedAt ? String(deposit.verifiedAt).slice(0, 10) : '');
+}
+
+function bookingDetailDepositDateLabel(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+    const parsed = Date.parse(text);
+    if (Number.isNaN(parsed)) return text;
+    return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function bookingDetailDepositPaymentLabel(method) {
+    const value = String(method || '').trim().toLowerCase();
+    if (value === 'cash') return 'Готівка';
+    if (value === 'card') return 'Карта';
+    return value;
+}
+
+function bookingDetailDepositStatusLabel(projection = {}) {
+    if (projection?.loading) return 'Завантаження...';
+    if (projection?.success === false) return 'Помилка завантаження';
+    const status = String(projection?.status || projection?.state || 'missing').trim();
+    const labels = {
+        missing: 'Не вказано',
+        manager_reported: 'Очікує бухгалтера',
+        needs_booking_link: 'Потрібна привʼязка бронювання',
+        accountant_verified: 'Завдаток підтверджено',
+        corrected: 'Виправлено',
+        cancelled: 'Не вказано'
+    };
+    return labels[status] || 'Не вказано';
+}
+
+function bookingDetailDepositTone(projection = {}) {
+    if (projection?.loading) return 'loading';
+    if (projection?.success === false) return 'error';
+    const status = String(projection?.status || projection?.state || 'missing').trim();
+    if (status === 'accountant_verified' || status === 'corrected') return 'verified';
+    if (status === 'manager_reported') return 'pending';
+    if (status === 'needs_booking_link') return 'link';
+    return 'missing';
+}
+
+function bookingDetailDepositWarnings(anchorBooking = {}, snapshot = null, projection = {}) {
+    if (projection?.loading || projection?.success === false || bookingDetailDepositHasCanonicalRecord(projection)) return [];
+    const contextBookings = bookingDetailDepositContextBookings(anchorBooking, snapshot);
+    const hasPaidAmount = contextBookings.some(booking => bookingDetailPaidAmountValue(booking) !== null || bookingDetailPaymentStatusValue(booking));
+    const hasLegacyDeposit = contextBookings.some(bookingDetailHasDepositMarker);
+    const warnings = [];
+    if (hasPaidAmount) warnings.push('paid_amount / payment_status у броні не є завдатком. Статус завдатку береться тільки з підтвердження бухгалтера.');
+    if (hasLegacyDeposit) warnings.push('Знайдено старі deposit-поля, але цей статус читається тільки з canonical запису завдатку.');
+    return warnings;
+}
+
+function renderBanquetDepositStatusSection(anchorBooking = {}, snapshot = null, projection = { loading: true }) {
+    const primaryBooking = banquetSnapshotPrimaryBooking(snapshot, anchorBooking) || anchorBooking;
+    const anchorId = bookingDetailId(anchorBooking);
+    const primaryBookingId = bookingDetailId(primaryBooking) || anchorId;
+    const groupId = bookingDetailBanquetGroupId(anchorBooking, snapshot);
+    const tone = bookingDetailDepositTone(projection);
+    const deposit = projection?.deposit || null;
+    const display = projection?.display || {};
+    const canViewMoney = bookingDetailCanViewDepositMoney();
+    const detailRows = [];
+    if (projection?.loading) {
+        detailRows.push(['Стан', 'Завантажуємо з бухгалтерського запису']);
+    } else if (projection?.success === false) {
+        detailRows.push(['Помилка', projection.error || 'Не вдалося завантажити завдаток']);
+    } else if (deposit && canViewMoney) {
+        const amount = display.amount ?? deposit.amount;
+        const receivedDate = bookingDetailDepositDateLabel(bookingDetailDepositReceivedDate(deposit));
+        const method = bookingDetailDepositPaymentLabel(display.paymentMethod || deposit.paymentMethod);
+        if (amount !== null && amount !== undefined && amount !== '') detailRows.push(['Сума', formatPrice(amount)]);
+        if (receivedDate) detailRows.push(['Дата отримання', receivedDate]);
+        if (method) detailRows.push(['Спосіб', method]);
+    } else if (deposit && !canViewMoney) {
+        detailRows.push(['Деталі', 'Фінансові дані приховані для вашої ролі']);
+    } else {
+        detailRows.push(['Стан', 'Canonical запис завдатку ще не створено']);
+    }
+    const warnings = bookingDetailDepositWarnings(anchorBooking, snapshot, projection);
+    return `
+        <div id="bookingBanquetDepositStatus"
+             class="booking-banquet-deposit booking-banquet-deposit--${escapeHtml(tone)}"
+             data-banquet-deposit-status
+             data-booking-id="${escapeHtml(primaryBookingId || '')}"
+             data-anchor-booking-id="${escapeHtml(anchorId || '')}"
+             data-group-id="${escapeHtml(groupId || '')}">
+            <div class="booking-banquet-deposit__main">
+                <div>
+                    <div class="booking-banquet-deposit__label">Завдаток</div>
+                    <div class="booking-banquet-deposit__status">${escapeHtml(bookingDetailDepositStatusLabel(projection))}</div>
+                </div>
+                <span class="booking-banquet-deposit__pill">${escapeHtml(groupId ? `Група #${groupId}` : `Бронь #${primaryBookingId || '-'}`)}</span>
+            </div>
+            <div class="booking-banquet-deposit__grid">
+                ${detailRows.map(([label, value]) => `
+                    <div class="booking-banquet-deposit__item">
+                        <span>${escapeHtml(label)}</span>
+                        <strong>${escapeHtml(String(value || '-'))}</strong>
+                    </div>
+                `).join('')}
+            </div>
+            ${warnings.length ? `<div class="booking-banquet-deposit__warnings">${warnings.map(message => `<div>${escapeHtml(message)}</div>`).join('')}</div>` : ''}
+        </div>
+    `;
+}
+
 function banquetWarningText(warning = {}) {
     const code = String(warning.code || '').trim();
     const map = {
@@ -8983,10 +9134,6 @@ function buildBanquetDetailWarnings(snapshot, anchorBooking = {}) {
             if (childStatus === 'preliminary') warnings.push(`${bookingDetailTitle(child)}: технічний linked_to запис попередній.`);
             if (childStatus === 'cancelled') warnings.push(`${bookingDetailTitle(child)}: технічний linked_to запис скасований.`);
         }
-    }
-    const primary = banquetSnapshotPrimaryBooking(snapshot, anchorBooking);
-    if (hasGroupOrLegacy && primary && !bookingDetailHasDepositMarker(primary)) {
-        warnings.push('Завдаток не вказано структурно. Перевірте оплату перед друком вижимки.');
     }
     return [...new Set(warnings)].filter(Boolean);
 }
@@ -9501,6 +9648,7 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
                 </div>
                 ${hasGroup ? `<span class="booking-banquet-group-pill">Активний</span>` : `<span class="booking-banquet-group-pill booking-banquet-group-pill--muted">${isLegacy ? 'Legacy' : 'Потребує групи'}</span>`}
             </div>
+            ${renderBanquetDepositStatusSection(anchorBooking, snapshot)}
             ${renderBanquetWorkSection('Банкет', primaryBody, 'summary')}
             ${renderBanquetMenuSection(packageBooking)}
             ${renderBanquetServiceSection(packageBooking, serviceManualMembers)}
@@ -9560,6 +9708,41 @@ function bookingSummaryPreviewUrl(booking = {}, banquetSnapshot = null) {
     const groupId = banquetSnapshot?.groupId || banquetSnapshot?.group?.id;
     if (groupId) params.set('groupId', String(groupId));
     return `/booking-summary.html?${params.toString()}`;
+}
+
+async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot = null) {
+    const container = document.getElementById('bookingBanquetDepositStatus');
+    if (!container) return;
+    const groupId = bookingDetailBanquetGroupId(booking, banquetSnapshot);
+    const primaryBooking = banquetSnapshotPrimaryBooking(banquetSnapshot, booking) || booking;
+    const primaryBookingId = bookingDetailId(primaryBooking) || bookingDetailId(booking);
+    if (!groupId && !primaryBookingId) {
+        container.outerHTML = renderBanquetDepositStatusSection(booking, banquetSnapshot, {
+            success: false,
+            error: 'Не знайдено id бронювання для перевірки завдатку'
+        });
+        return;
+    }
+    try {
+        const projection = groupId && typeof apiGetBanquetDepositByGroup === 'function'
+            ? await apiGetBanquetDepositByGroup(groupId)
+            : (typeof apiGetBanquetDepositByBooking === 'function'
+                ? await apiGetBanquetDepositByBooking(primaryBookingId)
+                : { success: false, error: 'Deposit API unavailable' });
+        const latest = document.getElementById('bookingBanquetDepositStatus');
+        if (!latest) return;
+        const sameGroup = groupId && latest.dataset.groupId === String(groupId);
+        const sameBooking = !groupId && latest.dataset.bookingId === String(primaryBookingId || '');
+        if (!sameGroup && !sameBooking) return;
+        latest.outerHTML = renderBanquetDepositStatusSection(booking, banquetSnapshot, projection || { success: false });
+    } catch (err) {
+        const latest = document.getElementById('bookingBanquetDepositStatus');
+        if (!latest) return;
+        latest.outerHTML = renderBanquetDepositStatusSection(booking, banquetSnapshot, {
+            success: false,
+            error: err?.message || 'Не вдалося завантажити завдаток'
+        });
+    }
 }
 
 async function showBookingDetails(bookingId) {
@@ -9811,6 +9994,7 @@ async function showBookingDetails(bookingId) {
     `;
 
     document.getElementById('bookingModal')?.classList.remove('hidden');
+    loadBanquetDepositStatusForDetails(booking, banquetSnapshot);
 
     // v24.3.1: Copy buttons on detail rows
     document.querySelectorAll('.detail-copy-btn').forEach(btn => {

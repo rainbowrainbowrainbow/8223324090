@@ -4,11 +4,27 @@
  */
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { authRequest } = require('./helpers');
+const fs = require('node:fs');
+const path = require('node:path');
+const { authRequest, TEST_PASS, TEST_USER } = require('./helpers');
 
 let testLeadId;
+const ROOT = path.resolve(__dirname, '..');
+const liveDescribe = TEST_USER && TEST_PASS ? describe : describe.skip;
 
-describe('Sales Funnel v29.1.0 — Lead Types & Pipeline', () => {
+describe('Sales Funnel deposit_received local regression', () => {
+    it('deposit_received stage transition is wired to the accountant banquet deposit hook', () => {
+        const leadsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'leads.js'), 'utf8');
+        assert.match(leadsRoute, /oldStage !== 'deposit_received'/);
+        assert.match(leadsRoute, /newStage === 'deposit_received'/);
+        assert.match(leadsRoute, /onDepositReceived\(updatedLead, req\.user/);
+        assert.match(leadsRoute, /createAccountantDepositTaskOnce/);
+        assert.match(leadsRoute, /source_type: 'banquet_deposit'/);
+        assert.match(leadsRoute, /duplicateMode: 'skip'/);
+    });
+});
+
+liveDescribe('Sales Funnel v29.1.0 — Lead Types & Pipeline', () => {
     before(async () => {
         const res = await authRequest('POST', '/api/leads', {
             client_name: 'Funnel Test Client',
@@ -104,7 +120,7 @@ describe('Sales Funnel v29.1.0 — Lead Types & Pipeline', () => {
     });
 });
 
-describe('Sales Funnel v29.1.0 — Customer Cards', () => {
+liveDescribe('Sales Funnel v29.1.0 — Customer Cards', () => {
     it('POST /api/leads/:id/card — saves legacy card fields into the real customer card', async () => {
         if (!testLeadId) return;
         const res = await authRequest('POST', `/api/leads/${testLeadId}/card`, {
@@ -169,7 +185,7 @@ describe('Sales Funnel v29.1.0 — Customer Cards', () => {
     });
 });
 
-describe('Sales Funnel v29.1.0 — Mailing List', () => {
+liveDescribe('Sales Funnel v29.1.0 — Mailing List', () => {
     let mailingId;
 
     it('POST /api/leads/mailing — adds to mailing list', async () => {
@@ -219,7 +235,7 @@ describe('Sales Funnel v29.1.0 — Mailing List', () => {
     });
 });
 
-describe('Sales Funnel v29.1.0 — Version & Payment', () => {
+liveDescribe('Sales Funnel v29.1.0 — Version & Payment', () => {
     it('GET /api/version — returns version info', async () => {
         const res = await authRequest('GET', '/api/version');
         assert.equal(res.status, 200);

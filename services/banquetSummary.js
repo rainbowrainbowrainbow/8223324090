@@ -1130,6 +1130,53 @@ function explicitDepositOf(mainBooking = {}) {
     };
 }
 
+function canonicalDepositProjectionOf(projection = null) {
+    if (!projection || typeof projection !== 'object' || projection.success === false) {
+        return { found: false };
+    }
+    const deposit = projection.deposit && typeof projection.deposit === 'object' ? projection.deposit : null;
+    const status = cleanText(projection.status || projection.state || deposit?.status, 80);
+    const isMissing = !deposit && (!status || status === 'missing');
+    if (isMissing) return { found: false };
+    const display = projection.display && typeof projection.display === 'object' ? projection.display : {};
+    const sourcePayload = deposit?.sourcePayload && typeof deposit.sourcePayload === 'object' ? deposit.sourcePayload : {};
+    const meta = deposit?.meta && typeof deposit.meta === 'object' ? deposit.meta : {};
+    const confirmation = sourcePayload.accountantConfirmation || meta.accountantConfirmation || {};
+    const receivedDate = cleanText(
+        confirmation.receivedDate
+        || (deposit?.verifiedAt ? String(deposit.verifiedAt).slice(0, 10) : null),
+        40
+    );
+    return {
+        found: true,
+        amount: money(deposit?.amount ?? display.amount),
+        paymentMethod: cleanText(deposit?.paymentMethod || display.paymentMethod, 80),
+        paymentStatus: status || null,
+        status: status || null,
+        note: cleanText(confirmation.note || deposit?.meta?.note, 500),
+        source: 'canonical_banquet_deposits',
+        sourceKind: cleanText(deposit?.sourceKind, 120),
+        id: deposit?.id || null,
+        receivedDate,
+        verifiedAt: cleanText(deposit?.verifiedAt, 80),
+        accountantTaskId: deposit?.accountantTaskId || null
+    };
+}
+
+function summaryDepositOf(mainBooking = {}, canonicalDepositProjection = null) {
+    const canonical = canonicalDepositProjectionOf(canonicalDepositProjection);
+    if (canonical.found) return canonical;
+    return {
+        ...explicitDepositOf(mainBooking),
+        status: null,
+        sourceKind: null,
+        id: null,
+        receivedDate: null,
+        verifiedAt: null,
+        accountantTaskId: null
+    };
+}
+
 function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activitySubtotal, orderTotal, bookingPrice, deposit } = {}) {
     const rows = [];
     const currency = CURRENCY;
@@ -1264,7 +1311,7 @@ function termsOf(mainBooking = {}, warnings, options = {}) {
     };
 }
 
-function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null, banquetTermsDefaults = null, mode = 'client' } = {}) {
+function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = [], businessContext, generatedBy = null, resolvedGroup = null, banquetTermsDefaults = null, mode = 'client', canonicalDepositProjection = null, depositProjection = null } = {}) {
     if (!mainBooking || typeof mainBooking !== 'object') {
         throw new Error('mainBooking is required');
     }
@@ -1338,7 +1385,7 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const packageTotal = samePrimaryAndKitchen ? money(valueOf(bookingPackage, 'finalTotal', 'final_total')) : null;
     const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
     const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
-    const deposit = explicitDepositOf(primaryBooking);
+    const deposit = summaryDepositOf(primaryBooking, canonicalDepositProjection || depositProjection);
     const paidAmount = money(valueOf(primaryBooking, 'paidAmount', 'paid_amount'));
     if (deposit.amount === null) {
         warnings.push({
@@ -1455,11 +1502,17 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             currency: CURRENCY
         },
         deposit: {
+            id: deposit.id || null,
             amount: deposit.amount,
             paymentMethod: deposit.paymentMethod,
             paymentStatus: deposit.paymentStatus,
+            status: deposit.status || null,
             note: deposit.note,
-            source: deposit.source
+            source: deposit.source,
+            sourceKind: deposit.sourceKind || null,
+            receivedDate: deposit.receivedDate || null,
+            verifiedAt: deposit.verifiedAt || null,
+            accountantTaskId: deposit.accountantTaskId || null
         },
         finance,
         terms: termsOf(primaryBooking, warnings, { banquetTermsDefaults }),

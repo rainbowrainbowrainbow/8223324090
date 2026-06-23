@@ -2101,6 +2101,108 @@ body.dark-mode .booking-banquet-unlink-btn {
     border: 1px solid var(--gray-200);
 }
 
+.booking-banquet-deposit {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    background: var(--white);
+}
+
+.booking-banquet-deposit__main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.booking-banquet-deposit__label,
+.booking-banquet-deposit__item span {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.booking-banquet-deposit__status {
+    margin-top: 3px;
+    color: var(--gray-900);
+    font-size: 14px;
+    font-weight: 950;
+}
+
+.booking-banquet-deposit__pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 999px;
+    color: var(--gray-600);
+    background: var(--gray-50);
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.booking-banquet-deposit__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+.booking-banquet-deposit__item {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.booking-banquet-deposit__item strong {
+    min-width: 0;
+    color: var(--gray-800);
+    font-size: 13px;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.booking-banquet-deposit__warnings {
+    display: grid;
+    gap: 6px;
+}
+
+.booking-banquet-deposit__warnings div {
+    padding: 7px 9px;
+    border: 1px solid rgba(245, 158, 11, 0.34);
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.08);
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.booking-banquet-deposit--verified {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.07);
+}
+
+.booking-banquet-deposit--pending,
+.booking-banquet-deposit--loading {
+    border-color: rgba(59, 130, 246, 0.32);
+    background: rgba(59, 130, 246, 0.06);
+}
+
+.booking-banquet-deposit--link {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.booking-banquet-deposit--error {
+    border-color: rgba(239, 68, 68, 0.36);
+    background: rgba(239, 68, 68, 0.06);
+}
+
 .booking-banquet-warnings {
     display: grid;
     gap: 6px;
@@ -2407,10 +2509,12 @@ body.dark-mode .booking-banquet-full-detail {
 }
 
 html[data-theme="dark"] .booking-banquet-full-title,
+html[data-theme="dark"] .booking-banquet-deposit__status,
 html[data-theme="dark"] .booking-banquet-member-title,
 html[data-theme="dark"] .booking-banquet-service-row strong,
 html[data-theme="dark"] .booking-banquet-candidate strong,
 body.dark-mode .booking-banquet-full-title,
+body.dark-mode .booking-banquet-deposit__status,
 body.dark-mode .booking-banquet-member-title,
 body.dark-mode .booking-banquet-service-row strong,
 body.dark-mode .booking-banquet-candidate strong {
@@ -2420,11 +2524,13 @@ body.dark-mode .booking-banquet-candidate strong {
 html[data-theme="dark"] .booking-banquet-member,
 html[data-theme="dark"] .booking-banquet-candidate,
 html[data-theme="dark"] .booking-banquet-action-row,
+html[data-theme="dark"] .booking-banquet-deposit,
 html[data-theme="dark"] .booking-banquet-section--work,
 html[data-theme="dark"] .booking-banquet-technical,
 body.dark-mode .booking-banquet-member,
 body.dark-mode .booking-banquet-candidate,
 body.dark-mode .booking-banquet-action-row,
+body.dark-mode .booking-banquet-deposit,
 body.dark-mode .booking-banquet-section--work,
 body.dark-mode .booking-banquet-technical {
     background: var(--white);
@@ -2453,6 +2559,7 @@ body.dark-mode .booking-banquet-candidate-role {
 
 @media (max-width: 640px) {
     .booking-banquet-full-header,
+    .booking-banquet-deposit__main,
     .booking-banquet-member-main,
     .booking-banquet-candidate,
     .booking-banquet-action-row {

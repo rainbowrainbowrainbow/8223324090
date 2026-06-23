@@ -309,6 +309,7 @@ function createFakePool() {
         bookings: [],
         banquetGroups: new Map(),
         banquetMemberships: [],
+        banquetDeposits: [],
         profileAvatarUrls: new Map(),
         profileAvatarBlobs: new Map(),
         banquetLinks: [{
@@ -2563,6 +2564,30 @@ function createFakePool() {
                 return {
                     rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code))
                 };
+            }
+            if (/FROM banquet_deposits/i.test(text)) {
+                const [businessContext, identityValue] = params;
+                const byGroup = /banquet_group_id = \$2/i.test(text);
+                const byGroupOrBooking = byGroup && /primary_booking_id = \$3/i.test(text);
+                const statusRank = status => ({
+                    accountant_verified: 0,
+                    corrected: 1,
+                    manager_reported: 2,
+                    needs_booking_link: 3
+                }[status] ?? 9);
+                const rows = hrState.banquetDeposits
+                    .filter(row => (row.business_context || 'event_genix') === (businessContext || 'event_genix'))
+                    .filter(row => byGroupOrBooking
+                        ? String(row.banquet_group_id) === String(params[1]) || String(row.primary_booking_id) === String(params[2])
+                        : String(byGroup ? row.banquet_group_id : row.primary_booking_id) === String(identityValue))
+                    .sort((a, b) =>
+                        (byGroupOrBooking ? Number(String(a.banquet_group_id) !== String(params[1])) - Number(String(b.banquet_group_id) !== String(params[1])) : 0)
+                        ||
+                        statusRank(a.status) - statusRank(b.status)
+                        || String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+                        || Number(b.id || 0) - Number(a.id || 0)
+                    );
+                return { rows: rows.slice(0, 1).map(row => ({ ...row })), rowCount: rows.length ? 1 : 0 };
             }
 
             throw new Error(`Unexpected route-smoke DB query: ${text}`);

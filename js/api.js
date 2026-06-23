@@ -1490,6 +1490,40 @@ async function apiGetBanquetByBooking(bookingId) {
     }
 }
 
+async function apiGetBanquetDepositByBooking(bookingId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}/deposit`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getBanquetDepositByBooking error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiGetBanquetDepositByGroup(groupId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/deposit`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API getBanquetDepositByGroup error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiGetBanquetCandidates(options = {}) {
     try {
         const params = new URLSearchParams();

@@ -178,6 +178,7 @@ function makeDb(rows, links = [], options = {}) {
         links: links.map((link, index) => ({ id: index + 1, relation_type: 'banquet_activity', ...link })),
         banquetGroups: (Array.isArray(options.banquetGroups) ? options.banquetGroups : []).map(group => ({ ...group })),
         banquetMemberships: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships : []).map(row => ({ ...row })),
+        banquetDeposits: (Array.isArray(options.banquetDeposits) ? options.banquetDeposits : []).map(row => ({ ...row })),
         customers: (Array.isArray(options.customers) ? options.customers : []).map(row => ({ ...row })),
         histories: [],
         tx: [],
@@ -202,6 +203,7 @@ function makeDb(rows, links = [], options = {}) {
                 links: cloneStateValue(state.links),
                 banquetGroups: cloneStateValue(state.banquetGroups),
                 banquetMemberships: cloneStateValue(state.banquetMemberships),
+                banquetDeposits: cloneStateValue(state.banquetDeposits),
                 histories: cloneStateValue(state.histories),
                 nextLinkId: state.nextLinkId,
                 nextBanquetMembershipId: state.nextBanquetMembershipId
@@ -220,6 +222,7 @@ function makeDb(rows, links = [], options = {}) {
                 state.links = cloneStateValue(txSnapshot.links);
                 state.banquetGroups = cloneStateValue(txSnapshot.banquetGroups);
                 state.banquetMemberships = cloneStateValue(txSnapshot.banquetMemberships);
+                state.banquetDeposits = cloneStateValue(txSnapshot.banquetDeposits);
                 state.histories = cloneStateValue(txSnapshot.histories);
                 state.nextLinkId = txSnapshot.nextLinkId;
                 state.nextBanquetMembershipId = txSnapshot.nextBanquetMembershipId;
@@ -652,6 +655,30 @@ function makeDb(rows, links = [], options = {}) {
             return {
                 rows: banquetTermsPriceRuleRows().filter(row => requested.has(row.code))
             };
+        }
+        if (/FROM banquet_deposits/i.test(sql)) {
+            const [businessContext, identityValue] = params;
+            const byGroup = /banquet_group_id = \$2/i.test(sql);
+            const byGroupOrBooking = byGroup && /primary_booking_id = \$3/i.test(sql);
+            const statusRank = status => ({
+                accountant_verified: 0,
+                corrected: 1,
+                manager_reported: 2,
+                needs_booking_link: 3
+            }[status] ?? 9);
+            const rows = state.banquetDeposits
+                .filter(row => normalizeContext(row.business_context) === normalizeContext(businessContext))
+                .filter(row => byGroupOrBooking
+                    ? String(row.banquet_group_id) === String(params[1]) || String(row.primary_booking_id) === String(params[2])
+                    : String(byGroup ? row.banquet_group_id : row.primary_booking_id) === String(identityValue))
+                .sort((a, b) =>
+                    (byGroupOrBooking ? Number(String(a.banquet_group_id) !== String(params[1])) - Number(String(b.banquet_group_id) !== String(params[1])) : 0)
+                    ||
+                    statusRank(a.status) - statusRank(b.status)
+                    || String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+                    || Number(b.id || 0) - Number(a.id || 0)
+                );
+            return { rows: rows.slice(0, 1).map(row => ({ ...row })), rowCount: rows.length ? 1 : 0 };
         }
         throw new Error(`Unexpected banquet-link query: ${sql}`);
     }
@@ -2524,6 +2551,91 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
     });
 });
 
+test('GET banquet summary reads confirmed deposit from canonical banquet_deposits before legacy JSON', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '12:00',
+            label: 'Banquet root',
+            program_name: 'Banquet root',
+            category: 'banquet',
+            room: 'Room A',
+            price: 5000,
+            extra_data: {
+                banquetDeposit: {
+                    amount: 700,
+                    paymentMethod: 'cash',
+                    paymentStatus: 'legacy'
+                }
+            }
+        })
+    ], [], async ({ baseUrl }) => {
+        const res = await fetch(`${baseUrl}/api/bookings/BK-ROOT/banquet-summary?businessContext=event_genix&groupId=BQ-DEPOSIT`);
+        const data = await res.json();
+
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.deposit.id, 42);
+        assert.equal(data.deposit.amount, 1500);
+        assert.equal(data.deposit.paymentMethod, 'card');
+        assert.equal(data.deposit.paymentStatus, 'accountant_verified');
+        assert.equal(data.deposit.status, 'accountant_verified');
+        assert.equal(data.deposit.source, 'canonical_banquet_deposits');
+        assert.equal(data.deposit.sourceKind, 'accountant_confirmed');
+        assert.equal(data.deposit.receivedDate, '2099-06-19');
+        assert.equal(data.deposit.accountantTaskId, 77);
+        assert.equal(data.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-DEPOSIT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: null,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Banquet root',
+            status: 'active',
+            source: 'test',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-DEPOSIT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }],
+        banquetDeposits: [{
+            id: 42,
+            business_context: 'event_genix',
+            banquet_group_id: null,
+            primary_booking_id: 'BK-ROOT',
+            lead_id: 501,
+            customer_id: null,
+            accountant_task_id: 77,
+            client_name_snapshot: 'Client One',
+            event_date: '2099-06-01',
+            banquet_number_snapshot: 'BK-ROOT',
+            amount: 1500,
+            payment_method: 'card',
+            status: 'accountant_verified',
+            source_kind: 'accountant_confirmed',
+            source_payload: {
+                accountantConfirmation: {
+                    receivedDate: '2099-06-19',
+                    note: 'Verified by route test'
+                }
+            },
+            verified_at: '2099-06-19T09:00:00.000Z',
+            verified_by: 12,
+            corrected_at: null,
+            corrected_by: null,
+            meta: {},
+            updated_at: '2099-06-19T09:00:00.000Z'
+        }]
+    });
+});
+
 test('GET banquet summary PDF returns clean application/pdf response', async () => {
     await withApp([
         bookingRow({
@@ -2690,6 +2802,114 @@ test('banquet summary keeps legacy notes and group_name fallback when no banquet
 
     assert.equal(summary.event.groupName, 'legacy visible group');
     assert.equal(summary.orderRows.find(row => row.type === 'program')?.comment, 'legacy visible note');
+});
+
+test('banquet summary uses canonical deposit projection before legacy extra_data deposit', () => {
+    const { buildBanquetSummary } = require('../services/banquetSummary');
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: bookingRow({
+            id: 'BK-CANONICAL-DEPOSIT',
+            price: 5000,
+            extra_data: {
+                banquetDeposit: {
+                    amount: 700,
+                    paymentMethod: 'cash',
+                    paymentStatus: 'legacy'
+                }
+            }
+        }),
+        canonicalDepositProjection: {
+            success: true,
+            state: 'verified',
+            status: 'accountant_verified',
+            deposit: {
+                id: 42,
+                amount: 1500,
+                paymentMethod: 'card',
+                status: 'accountant_verified',
+                sourceKind: 'accountant_confirmed',
+                sourcePayload: {
+                    accountantConfirmation: {
+                        receivedDate: '2099-06-19',
+                        note: 'Verified by accountant'
+                    }
+                },
+                verifiedAt: '2099-06-19T09:00:00.000Z',
+                accountantTaskId: 77
+            },
+            display: { amount: 1500, paymentMethod: 'card' }
+        }
+    });
+
+    assert.equal(summary.deposit.id, 42);
+    assert.equal(summary.deposit.amount, 1500);
+    assert.equal(summary.deposit.paymentMethod, 'card');
+    assert.equal(summary.deposit.paymentStatus, 'accountant_verified');
+    assert.equal(summary.deposit.status, 'accountant_verified');
+    assert.equal(summary.deposit.source, 'canonical_banquet_deposits');
+    assert.equal(summary.deposit.sourceKind, 'accountant_confirmed');
+    assert.equal(summary.deposit.receivedDate, '2099-06-19');
+    assert.equal(summary.deposit.accountantTaskId, 77);
+    assert.equal(summary.deposit.note, 'Verified by accountant');
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+});
+
+test('banquet summary falls back to explicit legacy deposit when canonical projection is missing', () => {
+    const { buildBanquetSummary } = require('../services/banquetSummary');
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: bookingRow({
+            id: 'BK-LEGACY-DEPOSIT',
+            price: 3000,
+            extra_data: {
+                banquetDeposit: {
+                    amount: 800,
+                    paymentMethod: 'cash',
+                    paymentStatus: 'legacy_paid',
+                    note: 'Legacy deposit marker'
+                }
+            }
+        }),
+        canonicalDepositProjection: {
+            success: true,
+            state: 'missing',
+            status: 'missing',
+            deposit: null
+        }
+    });
+
+    assert.equal(summary.deposit.amount, 800);
+    assert.equal(summary.deposit.paymentMethod, 'cash');
+    assert.equal(summary.deposit.paymentStatus, 'legacy_paid');
+    assert.equal(summary.deposit.note, 'Legacy deposit marker');
+    assert.equal(summary.deposit.source, 'extra_data.banquetDeposit');
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+});
+
+test('banquet summary warns about paid_amount without using it as deposit', () => {
+    const { buildBanquetSummary } = require('../services/banquetSummary');
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        mainBooking: bookingRow({
+            id: 'BK-PAID-NOT-DEPOSIT',
+            price: 3000,
+            paid_amount: 1200,
+            payment_status: 'partial',
+            payment_method: 'card'
+        }),
+        canonicalDepositProjection: {
+            success: true,
+            state: 'missing',
+            status: 'missing',
+            deposit: null
+        }
+    });
+
+    assert.equal(summary.deposit.amount, null);
+    assert.equal(summary.deposit.source, null);
+    assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
+    assert.ok(summary.warnings.some(warning => warning.code === 'paid_amount_not_used_as_deposit'));
 });
 
 test('DELETE booking detaches cancelled banquet activity from group while keeping primary root', async () => {

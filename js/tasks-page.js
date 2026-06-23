@@ -336,7 +336,7 @@ function guardTaskWrite(actionLabel = 'змінювати задачі') {
 
 function taskApiUrl(url) {
     const text = String(url || '');
-    if (!/\/api\/(?:tasks|task-templates)\b/.test(text)) return url;
+    if (!/\/api\/(?:tasks|task-templates|banquet-deposits)\b/.test(text)) return url;
     return window.CrmBusinessContext?.apiUrl
         ? window.CrmBusinessContext.apiUrl(url, taskBusinessContext())
         : url;
@@ -1646,6 +1646,47 @@ async function apiCompleteTask(taskId, options = {}) {
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API completeTask error:', err); return null; }
+}
+
+async function apiGetBanquetDeposit(depositId) {
+    try {
+        const response = await taskApiFetch(`${API_BASE}/banquet-deposits/${encodeURIComponent(depositId)}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false, error: 'auth' };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || body.message || 'Не вдалося завантажити завдаток', code: body.code || null };
+        }
+        return body;
+    } catch (err) {
+        console.error('API getBanquetDeposit error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiConfirmBanquetDeposit(depositId, payload) {
+    try {
+        const response = await taskApiFetch(`${API_BASE}/banquet-deposits/${encodeURIComponent(depositId)}/confirm`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false, error: 'auth' };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return {
+                success: false,
+                error: body.error || body.message || 'Не вдалося підтвердити завдаток',
+                code: body.code || null,
+                field: body.field || body.details?.field || null
+            };
+        }
+        return body;
+    } catch (err) {
+        console.error('API confirmBanquetDeposit error:', err);
+        return { success: false, error: err.message };
+    }
 }
 
 async function apiGetTaskSubtasks(taskId) {
@@ -4339,6 +4380,10 @@ function setupTaskActionDelegation() {
 
 async function cycleStatus(taskId, newStatus) {
     const currentTask = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
+    if (newStatus === 'done' && isBanquetDepositTask(currentTask)) {
+        openBanquetDepositTaskForCompletion(taskId);
+        return;
+    }
     if (newStatus === 'done' && taskCompletionBlockedBySubtasks(currentTask)) {
         expandedTaskSubtaskIds.add(Number(taskId));
         if (!taskCardSubtaskCache.has(Number(taskId))) await loadTaskCardSubtasks(taskId);
@@ -4609,8 +4654,130 @@ window.clearBulkSelection = clearBulkSelection;
 // Open task detail modal (from alerts deep-link or card click)
 let _taskDetailInitialState = null;
 
+function isBanquetDepositTask(task = {}) {
+    const meta = taskControlMeta(task);
+    const sourceType = String(task.source_type || task.sourceType || '').toLowerCase();
+    const sourceEntityType = String(task.source_entity_type || task.sourceEntityType || '').toLowerCase();
+    return sourceType === 'banquet_deposit'
+        || sourceEntityType === 'banquet_deposit'
+        || Boolean(meta.depositId || meta.deposit_id);
+}
+
+function banquetDepositTaskId(task = {}) {
+    const meta = taskControlMeta(task);
+    const value = meta.depositId
+        || meta.deposit_id
+        || (String(task.source_type || task.sourceType || '').toLowerCase() === 'banquet_deposit' ? (task.source_id || task.sourceId) : null)
+        || (String(task.source_entity_type || task.sourceEntityType || '').toLowerCase() === 'banquet_deposit' ? (task.source_entity_id || task.sourceEntityId) : null);
+    const id = Number(value);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function depositDisplayText(value, fallback = '—') {
+    const text = String(value ?? '').trim();
+    return text || fallback;
+}
+
+function depositDateValue(value) {
+    const text = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+    const parsed = Date.parse(text);
+    if (Number.isNaN(parsed)) return '';
+    return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function depositAmountValue(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const amount = Number(value);
+    return Number.isFinite(amount) ? String(Math.round(amount)) : String(value);
+}
+
+function depositStatusLabel(status) {
+    const labels = {
+        missing: 'Немає запису',
+        manager_reported: 'Очікує перевірки',
+        needs_booking_link: 'Потрібна привʼязка запису',
+        accountant_verified: 'Підтверджено бухгалтером',
+        corrected: 'Скориговано',
+        cancelled: 'Скасовано'
+    };
+    return labels[status] || status || 'Невідомо';
+}
+
+function renderDepositContextRow(label, value) {
+    return `<div><span style="font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase">${escapeHtml(label)}</span><div style="font-size:13px;color:var(--gray-800);font-weight:700;word-break:break-word">${escapeHtml(depositDisplayText(value))}</div></div>`;
+}
+
+function depositProjectionForTask(task = {}, projection = null) {
+    const meta = taskControlMeta(task);
+    const deposit = projection?.deposit || {};
+    const display = projection?.display || {};
+    const confirmation = deposit.sourcePayload?.accountantConfirmation || deposit.meta?.accountantConfirmation || {};
+    const receivedDate = confirmation.receivedDate || (deposit.verifiedAt ? depositDateValue(deposit.verifiedAt) : '');
+    return {
+        depositId: banquetDepositTaskId(task) || deposit.id || meta.depositId || null,
+        status: projection?.status || deposit.status || meta.status || 'missing',
+        clientName: display.clientName || deposit.clientNameSnapshot || meta.clientName || '',
+        receivedDate,
+        eventDate: display.eventDate || deposit.eventDate || meta.eventDate || '',
+        banquetNumber: display.banquetNumber || deposit.banquetNumberSnapshot || meta.banquetNumber || '',
+        amount: display.amount ?? deposit.amount ?? '',
+        paymentMethod: display.paymentMethod || deposit.paymentMethod || '',
+        leadId: projection?.leadId || deposit.leadId || meta.leadId || '',
+        bookingId: projection?.bookingId || deposit.primaryBookingId || meta.bookingId || '',
+        banquetGroupId: projection?.banquetGroupId || deposit.banquetGroupId || meta.banquetGroupId || '',
+        needsBookingLink: projection?.needsBookingLink === true || display.needsBookingLink === true || deposit.status === 'needs_booking_link',
+        loadError: projection?.success === false ? (projection.error || 'Не вдалося завантажити завдаток') : ''
+    };
+}
+
+function renderBanquetDepositTaskPanel(task = {}, projection = null, styles = {}) {
+    if (!isBanquetDepositTask(task)) return '';
+    const data = depositProjectionForTask(task, projection);
+    const depositId = data.depositId || '';
+    const verified = ['accountant_verified', 'corrected'].includes(data.status);
+    const loadError = data.loadError;
+    const _lbl = styles.label || 'style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:3px"';
+    const _inp = styles.input || 'style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box"';
+    return `<div id="_tdDepositPanel" data-banquet-deposit-panel data-deposit-id="${escapeHtml(depositId)}" data-deposit-status="${escapeHtml(data.status)}" style="border:1px solid rgba(14,165,233,0.28);border-radius:12px;padding:12px;background:rgba(14,165,233,0.07)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <div>
+                <strong style="font-size:13px">Підтвердження завдатку</strong>
+                <div id="_tdDepositState" style="font-size:12px;color:var(--gray-600);margin-top:3px">${escapeHtml(depositStatusLabel(data.status))}${verified ? ' · підтверджено' : ''}</div>
+            </div>
+            <span style="font-size:11px;font-weight:800;color:#0369a1;background:rgba(14,165,233,0.12);border:1px solid rgba(14,165,233,0.24);border-radius:999px;padding:4px 8px">#${escapeHtml(depositId || '—')}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px">
+            ${renderDepositContextRow('Клієнт', data.clientName)}
+            ${renderDepositContextRow('Лід', data.leadId ? `#${data.leadId}` : '')}
+            ${renderDepositContextRow('Запис', data.bookingId)}
+            ${renderDepositContextRow('Банкет', data.banquetGroupId || data.banquetNumber)}
+            ${renderDepositContextRow('Дата свята', data.eventDate)}
+            ${renderDepositContextRow('Статус', depositStatusLabel(data.status))}
+        </div>
+        ${data.needsBookingLink ? '<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.26);font-size:12px;color:#92400e">Поки немає привʼязаного запису/банкету. Дані можна перевірити, але завдаток залишиться в стані потреби привʼязки.</div>' : ''}
+        ${loadError ? `<div id="_tdDepositError" style="margin-bottom:10px;font-size:12px;color:#dc2626">${escapeHtml(loadError)}</div>` : '<div id="_tdDepositError" style="display:none;margin-bottom:10px;font-size:12px;color:#dc2626"></div>'}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+            <div><label ${_lbl}>Прізвище та імʼя клієнта</label><input id="_tdDepositClientName" value="${escapeHtml(data.clientName)}" ${_inp}></div>
+            <div><label ${_lbl}>Дата отримання</label><input id="_tdDepositReceivedDate" type="date" value="${escapeHtml(data.receivedDate || getTodayStr())}" ${_inp}></div>
+            <div><label ${_lbl}>Дата святкування</label><input id="_tdDepositEventDate" type="date" value="${escapeHtml(depositDateValue(data.eventDate))}" ${_inp}></div>
+            <div><label ${_lbl}>Номер банкету</label><input id="_tdDepositBanquetNumber" value="${escapeHtml(data.banquetNumber || data.banquetGroupId || data.bookingId)}" ${_inp}></div>
+            <div><label ${_lbl}>Сума</label><input id="_tdDepositAmount" type="number" min="1" step="1" value="${escapeHtml(depositAmountValue(data.amount))}" ${_inp}></div>
+            <div><label ${_lbl}>Спосіб внесення</label><select id="_tdDepositPaymentMethod" ${_inp}>
+                <option value="">—</option>
+                <option value="cash" ${data.paymentMethod === 'cash' ? 'selected' : ''}>Готівка</option>
+                <option value="card" ${data.paymentMethod === 'card' ? 'selected' : ''}>Карта</option>
+            </select></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+            <button type="button" id="_tdDepositConfirmBtn" onclick="verifyBanquetDepositFromTask(${Number(task.id || 0)})" style="border:1px solid rgba(14,165,233,0.34);background:#0284c7;color:#fff;border-radius:8px;padding:8px 10px;font-weight:800;cursor:pointer">Підтвердити завдаток</button>
+            <span id="_tdDepositSavedHint" style="font-size:12px;color:var(--gray-500)">${verified ? 'Дані підтверджені в системі.' : 'Після підтвердження задачу можна виконати.'}</span>
+        </div>
+    </div>`;
+}
+
 function getTaskDetailFormState() {
-    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdScheduleDate', '_tdScheduleDuration', '_tdScheduleStart', '_tdCategory', '_tdSubcategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdPackStatus', '_tdOwnerRole', '_tdSlaMinutes'];
+    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdScheduleDate', '_tdScheduleDuration', '_tdScheduleStart', '_tdCategory', '_tdSubcategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdPackStatus', '_tdOwnerRole', '_tdSlaMinutes', '_tdDepositClientName', '_tdDepositReceivedDate', '_tdDepositEventDate', '_tdDepositBanquetNumber', '_tdDepositAmount', '_tdDepositPaymentMethod'];
     const fieldState = ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
@@ -4752,6 +4919,177 @@ function bindTaskDetailSubtasks() {
     list.addEventListener('change', updateTaskDetailSubtaskProgress);
 }
 
+function taskDetailDepositPanel() {
+    return document.getElementById('_tdDepositPanel');
+}
+
+function setBanquetDepositFormError(message = '') {
+    const error = document.getElementById('_tdDepositError');
+    if (!error) return;
+    error.textContent = message || '';
+    error.style.display = message ? '' : 'none';
+}
+
+function setBanquetDepositFormBusy(busy, label = '') {
+    const button = document.getElementById('_tdDepositConfirmBtn');
+    if (!button) return;
+    if (button.dataset.defaultText === undefined) button.dataset.defaultText = button.textContent || '';
+    button.disabled = busy;
+    button.textContent = busy ? (label || 'Збереження...') : button.dataset.defaultText;
+}
+
+function readBanquetDepositForm() {
+    return {
+        clientName: document.getElementById('_tdDepositClientName')?.value.trim() || '',
+        receivedDate: document.getElementById('_tdDepositReceivedDate')?.value || '',
+        eventDate: document.getElementById('_tdDepositEventDate')?.value || '',
+        banquetNumber: document.getElementById('_tdDepositBanquetNumber')?.value.trim() || '',
+        amount: document.getElementById('_tdDepositAmount')?.value || '',
+        paymentMethod: document.getElementById('_tdDepositPaymentMethod')?.value || ''
+    };
+}
+
+function banquetDepositFormState() {
+    const data = readBanquetDepositForm();
+    return ['clientName', 'receivedDate', 'eventDate', 'banquetNumber', 'amount', 'paymentMethod']
+        .map(key => `${key}:${data[key] || ''}`)
+        .join('|');
+}
+
+function rememberBanquetDepositFormState() {
+    const panel = taskDetailDepositPanel();
+    if (panel) panel.dataset.initialDepositState = banquetDepositFormState();
+}
+
+function isBanquetDepositFormDirty() {
+    const panel = taskDetailDepositPanel();
+    return Boolean(panel) && panel.dataset.initialDepositState !== banquetDepositFormState();
+}
+
+function validateBanquetDepositForm(data = readBanquetDepositForm()) {
+    const required = [
+        ['clientName', 'Вкажіть прізвище та імʼя клієнта'],
+        ['receivedDate', 'Вкажіть дату отримання завдатку'],
+        ['eventDate', 'Вкажіть дату святкування'],
+        ['banquetNumber', 'Вкажіть номер банкету'],
+        ['amount', 'Вкажіть суму завдатку'],
+        ['paymentMethod', 'Оберіть спосіб внесення']
+    ];
+    const missing = required.find(([key]) => !String(data[key] || '').trim());
+    if (missing) return { ok: false, error: missing[1], field: missing[0] };
+    const amount = Number(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return { ok: false, error: 'Сума завдатку має бути більшою за 0', field: 'amount' };
+    }
+    if (!['cash', 'card'].includes(data.paymentMethod)) {
+        return { ok: false, error: 'Спосіб внесення має бути cash або card', field: 'paymentMethod' };
+    }
+    return { ok: true };
+}
+
+function focusBanquetDepositField(field) {
+    const ids = {
+        clientName: '_tdDepositClientName',
+        receivedDate: '_tdDepositReceivedDate',
+        eventDate: '_tdDepositEventDate',
+        banquetNumber: '_tdDepositBanquetNumber',
+        amount: '_tdDepositAmount',
+        paymentMethod: '_tdDepositPaymentMethod'
+    };
+    const el = document.getElementById(ids[field]);
+    if (el) el.focus();
+}
+
+function applyBanquetDepositProjection(projection = {}) {
+    const panel = taskDetailDepositPanel();
+    if (!panel) return;
+    const data = depositProjectionForTask({ controlMeta: { depositId: panel.dataset.depositId } }, projection);
+    panel.dataset.depositStatus = data.status || '';
+    const state = document.getElementById('_tdDepositState');
+    if (state) state.textContent = depositStatusLabel(data.status);
+    const hint = document.getElementById('_tdDepositSavedHint');
+    if (hint) hint.textContent = ['accountant_verified', 'corrected'].includes(data.status)
+        ? 'Дані підтверджені в системі.'
+        : 'Після підтвердження задачу можна виконати.';
+    const fields = {
+        _tdDepositClientName: data.clientName,
+        _tdDepositReceivedDate: data.receivedDate || document.getElementById('_tdDepositReceivedDate')?.value || getTodayStr(),
+        _tdDepositEventDate: depositDateValue(data.eventDate),
+        _tdDepositBanquetNumber: data.banquetNumber || data.banquetGroupId || data.bookingId,
+        _tdDepositAmount: depositAmountValue(data.amount),
+        _tdDepositPaymentMethod: data.paymentMethod || ''
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value || '';
+    });
+    rememberBanquetDepositFormState();
+}
+
+async function reloadBanquetDepositForm(depositId) {
+    const loaded = await apiGetBanquetDeposit(depositId);
+    if (!loaded?.success) {
+        setBanquetDepositFormError(loaded?.error || 'Не вдалося перечитати завдаток із системи');
+        return false;
+    }
+    applyBanquetDepositProjection(loaded);
+    return true;
+}
+
+async function confirmBanquetDepositFromTask(taskId) {
+    const panel = taskDetailDepositPanel();
+    if (!panel) return true;
+    const depositId = Number(panel.dataset.depositId || 0);
+    if (!depositId) {
+        setBanquetDepositFormError('У задачі немає id завдатку');
+        return false;
+    }
+    if (['accountant_verified', 'corrected'].includes(panel.dataset.depositStatus || '') && !isBanquetDepositFormDirty()) {
+        return true;
+    }
+    const data = readBanquetDepositForm();
+    const validation = validateBanquetDepositForm(data);
+    if (!validation.ok) {
+        setBanquetDepositFormError(validation.error);
+        focusBanquetDepositField(validation.field);
+        showNotification(validation.error, 'warning');
+        return false;
+    }
+    setBanquetDepositFormError('');
+    setBanquetDepositFormBusy(true, 'Підтвердження...');
+    const result = await apiConfirmBanquetDeposit(depositId, {
+        clientName: data.clientName,
+        receivedDate: data.receivedDate,
+        eventDate: data.eventDate,
+        banquetNumber: data.banquetNumber,
+        amount: data.amount,
+        paymentMethod: data.paymentMethod,
+        sourcePayload: {
+            taskId,
+            sourceSurface: 'task_detail_deposit_form'
+        }
+    });
+    setBanquetDepositFormBusy(false);
+    if (!result?.success) {
+        const message = result?.error || 'Не вдалося підтвердити завдаток';
+        setBanquetDepositFormError(message);
+        focusBanquetDepositField(result?.field);
+        showNotification(message, 'error');
+        return false;
+    }
+    const reloaded = await reloadBanquetDepositForm(depositId);
+    if (!reloaded) return false;
+    resetTaskDetailDirtyState();
+    showNotification('Завдаток підтверджено', 'success');
+    return true;
+}
+window.verifyBanquetDepositFromTask = confirmBanquetDepositFromTask;
+
+function openBanquetDepositTaskForCompletion(taskId) {
+    showNotification('Спочатку підтвердіть завдаток у задачі', 'warning');
+    openTaskDetail(taskId);
+}
+
 async function openTaskDetail(taskId) {
     try {
         const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}`, { headers: {} });
@@ -4760,6 +5098,14 @@ async function openTaskDetail(taskId) {
         const task = await res.json();
         const t = task.data || task;
         if (!t || !t.id) { showNotification('Задачу не знайдено', 'error'); return; }
+        const depositTask = isBanquetDepositTask(t);
+        const depositId = depositTask ? banquetDepositTaskId(t) : null;
+        let depositProjection = null;
+        if (depositTask && depositId) {
+            depositProjection = await apiGetBanquetDeposit(depositId);
+        } else if (depositTask) {
+            depositProjection = { success: false, error: 'У задачі немає id завдатку' };
+        }
 
         const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано' };
         const PRIORITY_LABELS = { low: 'Низький', normal: 'Звичайний', high: 'Високий', urgent: 'Терміново' };
@@ -4897,6 +5243,7 @@ async function openTaskDetail(taskId) {
                     </div>
                     ${taskWhy ? `<div style="margin-top:6px;font-size:12px;color:var(--gray-500)">${escapeHtml(taskWhy)}</div>` : ''}
                 </div>
+                ${renderBanquetDepositTaskPanel(t, depositProjection, { label: _lbl, input: _inp })}
                 <div style="border:1px solid rgba(20,184,166,0.20);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
                         <strong style="font-size:13px">Підзадачі</strong>
@@ -4955,6 +5302,7 @@ async function openTaskDetail(taskId) {
         });
         syncDetailSubcategoryVisibility();
         updateTaskDetailSubtaskProgress();
+        rememberBanquetDepositFormState();
         resetTaskDetailDirtyState();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         loadTaskHistory(t.id);
@@ -5066,6 +5414,10 @@ async function saveTaskObservers(taskId) {
 window.saveTaskObservers = saveTaskObservers;
 
 async function taskDetailComplete(taskId) {
+    if (taskDetailDepositPanel()) {
+        const confirmed = await confirmBanquetDepositFromTask(taskId);
+        if (!confirmed) return;
+    }
     let result = await apiCompleteTask(taskId, { sourceSurface: 'task_detail' });
     if (window.TaskReportGate?.responseNeedsReport?.(result)) {
         const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};

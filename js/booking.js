@@ -1419,7 +1419,8 @@ function renderSelectedCustomerCard(customer = null) {
     const name = customer.name || 'Клієнт';
     const phone = customer.phone ? `<small>${escapeHtml(customer.phone)}</small>` : '';
     const instagram = customer.instagram ? `<small>@${escapeHtml(customer.instagram)}</small>` : '';
-    const childName = customer.childName ? `<small>Дитина: ${escapeHtml(customer.childName)}</small>` : '';
+    const childDisplay = bookingCustomerChildrenDisplay(customer);
+    const childName = childDisplay ? `<small>Діти: ${escapeHtml(childDisplay)}</small>` : '';
     card.innerHTML = `
         <strong>${escapeHtml(name)}</strong>
         ${phone}
@@ -1427,6 +1428,66 @@ function renderSelectedCustomerCard(customer = null) {
         ${childName}
     `;
     card.classList.remove('hidden');
+}
+
+function bookingCustomerDateOnly(value) {
+    if (!value) return '';
+    return String(value).trim().slice(0, 10);
+}
+
+function bookingCustomerChildrenProjection(customer = {}) {
+    const explicit = Array.isArray(customer.children)
+        ? customer.children
+            .map(child => ({
+                name: String(child?.name ?? child?.childName ?? child?.child_name ?? '').trim(),
+                birthday: bookingCustomerDateOnly(child?.birthday ?? child?.birthDate ?? child?.childBirthday ?? child?.child_birthday),
+                ageSnapshot: child?.ageSnapshot ?? child?.age_snapshot ?? null,
+                note: child?.note ?? child?.notes ?? null
+            }))
+            .filter(child => child.name || child.birthday || child.ageSnapshot !== null || child.note)
+        : [];
+    if (explicit.length) return explicit;
+
+    const legacyName = String(customer.childName ?? customer.child_name ?? '').trim();
+    const legacyBirthday = bookingCustomerDateOnly(customer.childBirthday ?? customer.child_birthday);
+    if (!legacyName && !legacyBirthday) return [];
+    return [{ name: legacyName, birthday: legacyBirthday, ageSnapshot: null, note: null, legacy: true }];
+}
+
+function bookingCustomerPrimaryChild(customer = {}) {
+    return bookingCustomerChildrenProjection(customer)[0] || null;
+}
+
+function bookingCustomerChildrenDisplay(customer = {}, options = {}) {
+    const limit = Number.isInteger(Number(options.limit)) ? Math.max(1, Number(options.limit)) : 5;
+    const names = bookingCustomerChildrenProjection(customer)
+        .map(child => child.name)
+        .filter(Boolean);
+    if (!names.length) return '';
+    const visible = names.slice(0, limit);
+    return `${visible.join(', ')}${names.length > visible.length ? ` +${names.length - visible.length}` : ''}`;
+}
+
+function bookingCustomerChildAge(child = {}) {
+    const birthday = bookingCustomerDateOnly(child.birthday);
+    if (!birthday || !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return null;
+    const [year, month, day] = birthday.split('-').map(Number);
+    const today = new Date();
+    let age = today.getFullYear() - year;
+    const passedBirthday = (today.getMonth() + 1 > month)
+        || (today.getMonth() + 1 === month && today.getDate() >= day);
+    if (!passedBirthday) age -= 1;
+    return Number.isFinite(age) && age >= 0 ? age : null;
+}
+
+function bookingCustomerChildLine(child = {}) {
+    const parts = [];
+    if (child.name) parts.push(child.name);
+    const birthday = bookingCustomerDateOnly(child.birthday);
+    const age = child.ageSnapshot ?? bookingCustomerChildAge(child);
+    if (age !== null && age !== undefined && age !== '') parts.push(`${age} р.`);
+    if (birthday) parts.push(`ДН ${birthday}`);
+    return parts.join(' · ');
 }
 
 function renderBookingCustomerSearchState(message = '', options = {}) {
@@ -5063,13 +5124,14 @@ function clearCustomerFields() {
 }
 
 function rememberSelectedCustomerSnapshot(customer = {}) {
+    const primaryChild = bookingCustomerPrimaryChild(customer) || {};
     const values = {
         customerSearch: customer.name || '',
         customerName: customer.name || '',
         customerPhone: customer.phone || '',
         customerInstagram: customer.instagram || '',
-        customerChildName: customer.childName || '',
-        customerChildBirthday: customer.childBirthday ? customer.childBirthday.split('T')[0] : '',
+        customerChildName: primaryChild.name || customer.childName || '',
+        customerChildBirthday: primaryChild.birthday || (customer.childBirthday ? customer.childBirthday.split('T')[0] : ''),
         customerSource: customer.source || ''
     };
     Object.entries(values).forEach(([id, value]) => {
@@ -5082,13 +5144,18 @@ function normalizeBookingCustomerSelection(customer = {}, fallback = {}) {
     const source = customer && typeof customer === 'object' ? customer : {};
     const base = fallback && typeof fallback === 'object' ? fallback : {};
     const id = source.id ?? source.customerId ?? source.customer_id ?? base.id ?? base.customerId ?? base.customer_id ?? '';
-    const birthday = source.childBirthday ?? source.child_birthday ?? base.childBirthday ?? base.child_birthday ?? '';
+    const sourceChildren = bookingCustomerChildrenProjection(source);
+    const fallbackChildren = bookingCustomerChildrenProjection(base);
+    const children = sourceChildren.length ? sourceChildren : fallbackChildren;
+    const primaryChild = children[0] || {};
+    const birthday = primaryChild.birthday ?? source.childBirthday ?? source.child_birthday ?? base.childBirthday ?? base.child_birthday ?? '';
     return {
         id,
         name: source.name ?? source.customerName ?? source.customer_name ?? base.name ?? base.customerName ?? base.customer_name ?? '',
         phone: source.phone ?? source.customerPhone ?? source.customer_phone ?? base.phone ?? base.customerPhone ?? base.customer_phone ?? '',
         instagram: source.instagram ?? base.instagram ?? '',
-        childName: source.childName ?? source.child_name ?? base.childName ?? base.child_name ?? '',
+        children,
+        childName: primaryChild.name || source.childName || source.child_name || base.childName || base.child_name || '',
         childBirthday: birthday ? String(birthday).split('T')[0] : '',
         source: source.source ?? base.source ?? '',
         totalBookings: Number(source.totalBookings ?? source.total_bookings ?? base.totalBookings ?? base.total_bookings ?? 0) || 0
@@ -5710,16 +5777,20 @@ function renderCustomerSearchResults(customers, options = {}) {
         return;
     }
 
-    container.innerHTML = list.map(c => `
-        <div class="customer-search-item" role="button" tabindex="0" data-id="${escapeHtml(String(c.id))}">
-            <div class="customer-search-name">${escapeHtml(c.name)}</div>
-            <div class="customer-search-meta">
-                ${c.phone ? escapeHtml(c.phone) : ''}
-                ${c.instagram ? ' @' + escapeHtml(c.instagram) : ''}
-                ${c.totalBookings ? ' · ' + c.totalBookings + ' віз.' : ''}
+    container.innerHTML = list.map(c => {
+        const childDisplay = bookingCustomerChildrenDisplay(c);
+        return `
+            <div class="customer-search-item" role="button" tabindex="0" data-id="${escapeHtml(String(c.id))}">
+                <div class="customer-search-name">${escapeHtml(c.name)}</div>
+                <div class="customer-search-meta">
+                    ${c.phone ? escapeHtml(c.phone) : ''}
+                    ${c.instagram ? ' @' + escapeHtml(c.instagram) : ''}
+                    ${childDisplay ? ' · Діти: ' + escapeHtml(childDisplay) : ''}
+                    ${c.totalBookings ? ' · ' + c.totalBookings + ' віз.' : ''}
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
     container.classList.remove('hidden');
     renderBookingCustomerSearchState('');
 
@@ -10045,14 +10116,14 @@ async function showBookingDetails(bookingId) {
                     </span>
                 </div>`);
             }
-            // Child — birthday + age
-            if (customer.childName) {
-                let childText = escapeHtml(customer.childName);
-                if (customer.childBirthday) {
-                    const bd = new Date(customer.childBirthday);
-                    const age = Math.floor((new Date() - bd) / (365.25 * 24 * 60 * 60 * 1000));
-                    childText += ` <span class="customer-age">${age} р. (${bd.toLocaleDateString('uk-UA')})</span>`;
-                }
+            // Children — canonical list with legacy fallback.
+            const children = bookingCustomerChildrenProjection(customer);
+            if (children.length) {
+                const childText = children
+                    .map(child => bookingCustomerChildLine(child))
+                    .filter(Boolean)
+                    .map(escapeHtml)
+                    .join('<br>');
                 rows.push(`<div class="customer-row customer-row--child">
                     <span class="customer-row-icon">🎂</span>
                     <span>${childText}</span>

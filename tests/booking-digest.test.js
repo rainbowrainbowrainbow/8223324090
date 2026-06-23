@@ -177,6 +177,38 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.warnings.some(warning => warning.code === 'serving_time_missing'), true);
 });
 
+test('banquet summary prefers canonical customer children over legacy child fields', () => {
+    const summary = buildBanquetSummary({
+        businessContext: 'event_genix',
+        customer: {
+            id: 10,
+            name: 'Parent',
+            child_name: 'Legacy Child',
+            child_birthday: '2017-01-01',
+            children: [
+                { name: 'Canonical First', birthday: '2019-02-03', sortOrder: 0 },
+                { name: 'Canonical Second', birthday: '2020-04-05', sortOrder: 1 }
+            ]
+        },
+        mainBooking: {
+            id: 'BK-CANONICAL-CHILD',
+            business_context: 'event_genix',
+            date: '2099-06-20',
+            time: '14:00',
+            program_name: 'Birthday',
+            category: 'birthday',
+            duration: 90,
+            price: 1000,
+            kids_count: 6
+        },
+        linkedBookings: []
+    });
+
+    assert.equal(summary.success, true);
+    assert.equal(summary.celebrant.name, 'Canonical First');
+    assert.equal(summary.celebrant.birthday, '2019-02-03');
+});
+
 test('banquet summary builds compact finance rows without duplicate booking or zero subtotals', () => {
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',

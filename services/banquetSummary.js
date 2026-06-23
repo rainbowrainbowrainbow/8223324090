@@ -276,18 +276,29 @@ function normalizeCustomer(customer = {}) {
     };
 }
 
+function primaryCustomerChild(customer = {}) {
+    const children = Array.isArray(customer.children) ? customer.children : [];
+    return children.find(child => child && (
+        valueOf(child, 'name', 'childName', 'child_name')
+        || valueOf(child, 'birthday', 'birthDate', 'childBirthday', 'child_birthday')
+    )) || {};
+}
+
 function normalizeCelebrant(mainBooking = {}, customer = {}) {
     const extra = extraDataOf(mainBooking);
     const celebrant = extra.celebrant || extra.child || {};
+    const customerChild = primaryCustomerChild(customer);
     return {
         name: cleanText(
             valueOf(celebrant, 'name')
+            || valueOf(customerChild, 'name', 'childName', 'child_name')
             || valueOf(customer, 'childName', 'child_name')
             || valueOf(mainBooking, 'childName', 'child_name'),
             200
         ),
         birthday: cleanText(
             valueOf(celebrant, 'birthday', 'birthDate')
+            || valueOf(customerChild, 'birthday', 'birthDate', 'childBirthday', 'child_birthday')
             || valueOf(customer, 'childBirthday', 'child_birthday')
             || valueOf(mainBooking, 'childBirthday', 'child_birthday'),
             40

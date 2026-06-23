@@ -466,7 +466,9 @@ function ensureSpace(doc, height) {
         drawPageDecor(doc);
         doc.x = doc.page.margins.left;
         doc.y = doc.page.margins.top;
+        return true;
     }
+    return false;
 }
 
 function resetCursorX(doc) {
@@ -581,9 +583,16 @@ function drawParagraphList(doc, items = []) {
         return;
     }
     filtered.forEach(item => {
-        ensureSpace(doc, 16);
         resetCursorX(doc);
-        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.ink).text(`• ${item}`, doc.page.margins.left, doc.y, {
+        const text = `• ${item}`;
+        doc.font('SummaryRegular').fontSize(7.8);
+        const height = doc.heightOfString(pdfText(text), {
+            width: pageContentWidth(doc),
+            lineGap: 0.7
+        });
+        ensureSpace(doc, Math.max(16, height + 4));
+        resetCursorX(doc);
+        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.ink).text(text, doc.page.margins.left, doc.y, {
             width: pageContentWidth(doc),
             lineGap: 0.7
         });
@@ -658,6 +667,15 @@ function drawTable(doc, columns = [], rows = []) {
     const totalWeight = columns.reduce((sum, col) => sum + col.weight, 0);
     const widths = columns.map(col => Math.floor(contentWidth * col.weight / totalWeight));
     widths[widths.length - 1] += contentWidth - widths.reduce((sum, width) => sum + width, 0);
+    const headerCells = columns.map(col => col.label);
+    const headerOptions = {
+        bold: true,
+        fill: PDF_COLORS.soft,
+        textColor: PDF_COLORS.tealDark,
+        minHeight: 15,
+        fontSize: 7.5,
+        header: true
+    };
 
     const drawRow = (cells, options = {}) => {
         const padding = 2.8;
@@ -668,7 +686,11 @@ function drawTable(doc, columns = [], rows = []) {
             lineGap: 0.3
         }));
         const height = Math.max(options.minHeight || 16, ...heights.map(item => item + padding * 2));
-        ensureSpace(doc, height + 2);
+        const pageAdded = ensureSpace(doc, height + 2);
+        if (pageAdded && !options.header) {
+            drawRow(headerCells, headerOptions);
+            ensureSpace(doc, height + 2);
+        }
         resetCursorX(doc);
         const y = doc.y;
         let x = left;
@@ -691,13 +713,7 @@ function drawTable(doc, columns = [], rows = []) {
         resetCursorX(doc);
     };
 
-    drawRow(columns.map(col => col.label), {
-        bold: true,
-        fill: PDF_COLORS.soft,
-        textColor: PDF_COLORS.tealDark,
-        minHeight: 15,
-        fontSize: 7.5
-    });
+    drawRow(headerCells, headerOptions);
     rows.forEach(row => drawRow(row, { minHeight: 16, fontSize: 7.2 }));
 }
 

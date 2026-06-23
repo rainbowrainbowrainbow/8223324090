@@ -1,0 +1,326 @@
+{
+  "success": true,
+  "schemaVersion": 1,
+  "mode": "client",
+  "bookingId": "BK-OFFICIAL-QA",
+  "businessContext": "event_genix",
+  "group": {
+    "id": "BQ-OFFICIAL-QA",
+    "source": "banquet_group",
+    "primaryBookingId": "BK-OFFICIAL-QA",
+    "status": "active",
+    "groupName": "Official QA Banquet"
+  },
+  "document": {
+    "type": "banquet_summary",
+    "title": "BANQUET SHEET",
+    "generatedBy": "qa-manager"
+  },
+  "venue": {
+    "name": "Event Genix Official Venue",
+    "addressLine1": "Kyiv, Test Street 10",
+    "addressLine2": "Premium Hall, 3rd Floor",
+    "phone": "0 800 753 553"
+  },
+  "event": {
+    "date": "2026-07-12",
+    "time": "14:30",
+    "room": "Crystal Hall",
+    "programName": "Animation 60",
+    "hasRealProgram": true,
+    "programDisplayName": "Animation 60",
+    "groupName": "Official QA Banquet",
+    "createdAt": "2026-06-23T09:15:00.000Z",
+    "manager": "qa-manager",
+    "status": "confirmed"
+  },
+  "customer": {
+    "id": 9001,
+    "name": "QA Client",
+    "phone": "+380001112233",
+    "instagram": "@qa_client",
+    "source": "manual",
+    "notes": "Stable fixture customer"
+  },
+  "celebrant": {
+    "name": "QA Celebrant",
+    "birthday": "2020-07-12"
+  },
+  "counts": {
+    "children": 12,
+    "adults": 5,
+    "guests": null,
+    "tables": 2
+  },
+  "orderRows": [
+    {
+      "id": "program:BK-OFFICIAL-QA",
+      "type": "program",
+      "source": "main_booking",
+      "bookingId": "BK-OFFICIAL-QA",
+      "title": "Animation 60",
+      "durationMinutes": 60,
+      "quantity": null,
+      "unitPrice": 1500,
+      "subtotal": 1500,
+      "comment": "Main program",
+      "meta": {
+        "programId": "anim60",
+        "programCode": "AN60",
+        "category": "animation",
+        "room": "Crystal Hall",
+        "time": "14:30",
+        "duration": 60
+      }
+    },
+    {
+      "id": "activity:BK-OFFICIAL-QA-1",
+      "type": "activity",
+      "source": "banquet_group",
+      "bookingId": "BK-OFFICIAL-QA-1",
+      "title": "Bubble Show",
+      "durationMinutes": 30,
+      "quantity": null,
+      "unitPrice": 2400,
+      "subtotal": 2400,
+      "comment": "After cake",
+      "meta": {
+        "relationType": "banquet_activity",
+        "room": "Crystal Hall",
+        "time": "16:00",
+        "duration": 30
+      }
+    },
+    {
+      "id": "entry:weekday-child",
+      "type": "entry",
+      "source": "banquet_entry_price_rules",
+      "bookingId": null,
+      "title": "Entry",
+      "quantity": 12,
+      "unitPrice": 300,
+      "subtotal": 3600,
+      "comment": null,
+      "meta": {
+        "ruleCode": "banquet_entry_weekday_child",
+        "dateType": "weekday"
+      }
+    },
+    {
+      "id": "menu:pizza",
+      "type": "menu",
+      "source": "product",
+      "bookingId": null,
+      "title": "Pizza Set",
+      "quantity": 4,
+      "unitPrice": 450,
+      "subtotal": 1800,
+      "comment": "Serve warm; no onion",
+      "meta": {
+        "productId": "menu_qa_pizza",
+        "code": "MENU-QA-001",
+        "menuSection": "Main",
+        "servingUnit": "portion",
+        "servingTime": "15:20",
+        "servingNote": "No onion",
+        "kitchenType": "menu",
+        "weightValue": "350 g"
+      }
+    },
+    {
+      "id": "menu:cake",
+      "type": "menu",
+      "source": "product",
+      "bookingId": null,
+      "title": "Birthday Cake",
+      "quantity": 1,
+      "unitPrice": 900,
+      "subtotal": 900,
+      "comment": "Bring candles",
+      "meta": {
+        "productId": "menu_qa_cake",
+        "code": "MENU-QA-002",
+        "menuSection": "Dessert",
+        "servingUnit": "cake",
+        "servingTime": "16:30",
+        "servingNote": "Candles",
+        "kitchenType": "cake",
+        "weightValue": "1.5 kg"
+      }
+    }
+  ],
+  "serviceEvents": [
+    {
+      "id": "service:cake-cut",
+      "type": "service_event",
+      "title": "Cake Service",
+      "durationMinutes": 10,
+      "quantity": null,
+      "unitPrice": 0,
+      "subtotal": 0,
+      "comment": "Coordinate with host",
+      "meta": {
+        "time": "16:30",
+        "servingTime": "16:30"
+      }
+    }
+  ],
+  "schedule": [
+    {
+      "id": "schedule:arrival",
+      "type": "arrival",
+      "source": "event",
+      "time": "14:30",
+      "title": "Guest Arrival",
+      "note": "Room: Crystal Hall",
+      "modes": ["client", "staff"],
+      "noteModes": ["client", "staff"],
+      "sortOrder": 0
+    },
+    {
+      "id": "schedule:program",
+      "type": "program",
+      "source": "main_booking",
+      "time": "14:30",
+      "title": "Animation 60",
+      "note": "Crystal Hall",
+      "modes": ["client", "staff"],
+      "noteModes": ["staff"],
+      "sortOrder": 20
+    },
+    {
+      "id": "schedule:menu:pizza",
+      "type": "menu",
+      "source": "product",
+      "time": "15:20",
+      "title": "Serve: Pizza Set",
+      "note": "No onion",
+      "modes": ["client", "kitchen", "staff"],
+      "noteModes": ["kitchen", "staff"],
+      "sortOrder": 40
+    },
+    {
+      "id": "schedule:activity",
+      "type": "activity",
+      "source": "banquet_group",
+      "time": "16:00",
+      "title": "Bubble Show",
+      "note": "After cake",
+      "modes": ["client", "staff"],
+      "noteModes": ["staff"],
+      "sortOrder": 50
+    },
+    {
+      "id": "schedule:cake",
+      "type": "menu",
+      "source": "product",
+      "time": "16:30",
+      "title": "Serve: Birthday Cake",
+      "note": "Bring candles",
+      "modes": ["client", "kitchen", "staff"],
+      "noteModes": ["kitchen", "staff"],
+      "sortOrder": 60
+    }
+  ],
+  "responsible": {
+    "rows": [
+      {
+        "role": "manager",
+        "label": "Manager",
+        "name": "qa-manager",
+        "source": "booking_created_by",
+        "modes": ["client", "kitchen", "staff"],
+        "showWhenEmpty": true
+      },
+      {
+        "role": "animator",
+        "label": "Animator",
+        "name": "qa-animator",
+        "source": "booking_line",
+        "modes": ["staff"],
+        "showWhenEmpty": true
+      },
+      {
+        "role": "kitchen",
+        "label": "Kitchen",
+        "name": "qa-kitchen",
+        "source": "booking_workspace",
+        "modes": ["kitchen", "staff"],
+        "showWhenEmpty": true
+      }
+    ],
+    "source": "fixture",
+    "hasKnownPeople": true
+  },
+  "comments": [
+    {
+      "type": "kitchen",
+      "label": "Kitchen note",
+      "text": "Serve drinks before pizza."
+    },
+    {
+      "type": "internal",
+      "label": "Internal note",
+      "text": "Check room setup 20 minutes before arrival."
+    }
+  ],
+  "totals": {
+    "programBasePrice": 1500,
+    "menuSubtotal": 2700,
+    "entrySubtotal": 3600,
+    "activitySubtotal": 2400,
+    "orderTotal": 10200,
+    "bookingPrice": 1500,
+    "currency": "UAH"
+  },
+  "deposit": {
+    "id": "DEP-OFFICIAL-QA",
+    "amount": 2000,
+    "paymentMethod": "card",
+    "paymentStatus": "verified",
+    "status": "accountant_verified",
+    "note": "Verified test deposit",
+    "source": "canonical",
+    "sourceKind": "fixture",
+    "receivedDate": "2026-06-23",
+    "verifiedAt": "2026-06-23T10:00:00.000Z",
+    "accountantTaskId": "TASK-OFFICIAL-QA"
+  },
+  "finance": {
+    "currency": "UAH",
+    "amountDue": 8200,
+    "rows": [
+      {
+        "key": "total",
+        "label": "Total",
+        "amount": 10200,
+        "currency": "UAH",
+        "role": "total"
+      },
+      {
+        "key": "deposit",
+        "label": "Deposit",
+        "amount": 2000,
+        "currency": "UAH",
+        "role": "line"
+      }
+    ]
+  },
+  "terms": {
+    "title": "Banquet Terms",
+    "items": [
+      "Outside food and drinks are not allowed unless approved.",
+      "Menu changes are accepted no later than three days before the event.",
+      "Room setup must be confirmed before the celebration date."
+    ],
+    "source": "fixture",
+    "snapshotSource": null,
+    "missingCodes": []
+  },
+  "warnings": [
+    {
+      "code": "fixture_warning",
+      "message": "Synthetic fixture warning for staff mode."
+    }
+  ]
+}

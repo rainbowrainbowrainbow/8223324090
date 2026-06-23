@@ -2877,6 +2877,11 @@ body.booking-summary-page {
     object-fit: contain;
 }
 
+.brand-logo[hidden],
+.brand-logo-frame.is-logo-missing .brand-logo {
+    display: none !important;
+}
+
 .brand-mark {
     display: none;
     width: 100%;

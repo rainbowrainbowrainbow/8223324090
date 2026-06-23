@@ -17,6 +17,7 @@ const CrmState = {
     tags: [],
     predefinedTags: [],
     editingTags: [],
+    editingChildren: [],
     rfmData: null,
     stats: null,
     businessContext: 'event_genix',
@@ -195,6 +196,33 @@ function formatDate(d) {
     return `${dd}.${mm}.${yy}`;
 }
 
+function dateInputValue(value) {
+    if (!value) return '';
+    const text = String(value).trim();
+    return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
+}
+
+function formatDateOnly(value) {
+    const dateOnly = dateInputValue(value);
+    if (!dateOnly) return '—';
+    const [year, month, day] = dateOnly.split('-');
+    return `${day}.${month}.${year}`;
+}
+
+function customerChildAgeDisplay(child = {}) {
+    if (child.ageSnapshot !== '' && child.ageSnapshot !== null && child.ageSnapshot !== undefined) {
+        return `${escapeHtml(String(child.ageSnapshot))} р.`;
+    }
+    const dateOnly = dateInputValue(child.birthday);
+    if (!dateOnly) return '—';
+    const [year, month, day] = dateOnly.split('-').map(Number);
+    const today = new Date();
+    let age = today.getFullYear() - year;
+    const birthdayPassed = (today.getMonth() + 1) > month || ((today.getMonth() + 1) === month && today.getDate() >= day);
+    if (!birthdayPassed) age -= 1;
+    return age >= 0 && age <= 120 ? `${age} р.` : '—';
+}
+
 function formatMoney(amount) {
     if (!amount) return '0 ₴';
     return amount.toLocaleString('uk-UA') + ' ₴';
@@ -226,6 +254,152 @@ function customerPayload(payload = {}) {
     return window.CrmBusinessContext?.payload
         ? window.CrmBusinessContext.payload(payload, customerBusinessContext())
         : { ...(payload || {}), businessContext: customerBusinessContext() };
+}
+
+function normalizeCustomerChildForEdit(child = {}) {
+    const ageSnapshot = child.ageSnapshot ?? child.age_snapshot ?? child.age ?? child.childAge ?? child.child_age ?? '';
+    return {
+        name: String(child.name ?? child.childName ?? child.child_name ?? '').trim(),
+        birthday: dateInputValue(child.birthday ?? child.birthDate ?? child.birth_date ?? child.childBirthday ?? child.child_birthday),
+        ageSnapshot: ageSnapshot === null || ageSnapshot === undefined ? '' : String(ageSnapshot).trim(),
+        note: String(child.note ?? child.notes ?? '').trim()
+    };
+}
+
+function customerChildrenForEdit(customer = {}) {
+    const canonical = Array.isArray(customer?.children)
+        ? customer.children.map(normalizeCustomerChildForEdit).filter(child => child.name || child.birthday || child.ageSnapshot || child.note)
+        : [];
+    if (canonical.length) return canonical;
+    const legacy = normalizeCustomerChildForEdit({
+        name: customer?.childName ?? customer?.child_name,
+        birthday: customer?.childBirthday ?? customer?.child_birthday
+    });
+    return legacy.name || legacy.birthday ? [legacy] : [];
+}
+
+function serializedCustomerEditingChildren() {
+    return (CrmState.editingChildren || [])
+        .map(normalizeCustomerChildForEdit)
+        .filter(child => child.name || child.birthday || child.ageSnapshot || child.note);
+}
+
+function customerChildrenStateSignature() {
+    return JSON.stringify(serializedCustomerEditingChildren());
+}
+
+function renderCustomerChildrenValue(customer = {}) {
+    const children = customerChildrenForEdit(customer);
+    if (!children.length) return '<div class="customer-children-empty">Дітей не вказано</div>';
+    return `<div class="customer-children-view" role="list">${children.map((child, index) => {
+        const title = child.name || `#${index + 1}`;
+        return `<div class="customer-child-card" role="listitem">
+            <div class="customer-child-card-head">
+                <strong>${escapeHtml(title)}</strong>
+            </div>
+            <dl class="customer-child-facts">
+                <div>
+                    <dt>ДН</dt>
+                    <dd>${child.birthday ? formatDateOnly(child.birthday) : '—'}</dd>
+                </div>
+                <div>
+                    <dt>Вік</dt>
+                    <dd>${customerChildAgeDisplay(child)}</dd>
+                </div>
+                <div class="customer-child-note">
+                    <dt>Нотатка</dt>
+                    <dd>${child.note ? escapeHtml(child.note) : '—'}</dd>
+                </div>
+            </dl>
+        </div>`;
+    }).join('')}</div>`;
+}
+
+function renderCustomerChildrenSection(customer = {}) {
+    return `<div class="detail-section customer-children-section">
+        <h4>Діти</h4>
+        ${renderCustomerChildrenValue(customer)}
+    </div>`;
+}
+
+function customerChildrenInlineLabel(customer = {}) {
+    const children = customerChildrenForEdit(customer);
+    if (!children.length) return '';
+    if (children.length === 1) {
+        const child = children[0];
+        const ageSnapshot = child.ageSnapshot !== '' && child.ageSnapshot !== null && child.ageSnapshot !== undefined ? `${child.ageSnapshot} р.` : '';
+        return [child.name, ageSnapshot, child.birthday ? formatDateOnly(child.birthday) : '']
+            .filter(Boolean)
+            .join(', ');
+    }
+    const names = children.map(child => child.name).filter(Boolean).slice(0, 3).join(', ');
+    return names ? `${children.length} дітей: ${names}` : `${children.length} дітей`;
+}
+
+function setCustomerEditingChildren(children = []) {
+    CrmState.editingChildren = (Array.isArray(children) ? children : [])
+        .map(normalizeCustomerChildForEdit)
+        .filter(child => child.name || child.birthday || child.ageSnapshot || child.note);
+}
+
+function updateCustomerEditingChild(index, field, value) {
+    if (!Array.isArray(CrmState.editingChildren)) CrmState.editingChildren = [];
+    if (!CrmState.editingChildren[index]) CrmState.editingChildren[index] = normalizeCustomerChildForEdit();
+    CrmState.editingChildren[index] = normalizeCustomerChildForEdit({
+        ...CrmState.editingChildren[index],
+        [field]: value
+    });
+}
+
+function renderCustomerEditChildren() {
+    const list = document.getElementById('editChildrenList');
+    if (!list) return;
+    const rows = CrmState.editingChildren || [];
+    list.innerHTML = rows.length
+        ? rows.map((child, index) => `
+            <div class="customer-child-edit-row" data-child-index="${index}">
+                <div class="customer-child-field">
+                    <label class="customer-child-label" for="editChildName${index}">Ім'я</label>
+                    <input type="text" id="editChildName${index}" class="customer-child-input" data-child-field="name" value="${escapeHtml(child.name)}" autocomplete="off">
+                </div>
+                <div class="customer-child-field">
+                    <label class="customer-child-label" for="editChildBirthday${index}">ДН</label>
+                    <input type="date" id="editChildBirthday${index}" class="customer-child-input" data-child-field="birthday" value="${escapeHtml(child.birthday)}">
+                </div>
+                <div class="customer-child-field">
+                    <label class="customer-child-label" for="editChildAge${index}">Вік</label>
+                    <input type="number" id="editChildAge${index}" class="customer-child-input" data-child-field="ageSnapshot" value="${escapeHtml(child.ageSnapshot)}" min="0" max="120" inputmode="numeric">
+                </div>
+                <div class="customer-child-field">
+                    <label class="customer-child-label" for="editChildNote${index}">Нотатка</label>
+                    <input type="text" id="editChildNote${index}" class="customer-child-input" data-child-field="note" value="${escapeHtml(child.note)}" autocomplete="off">
+                </div>
+                <button type="button" class="customer-child-remove-btn" data-child-remove="${index}" aria-label="Прибрати дитину">×</button>
+            </div>
+        `).join('')
+        : '<div class="customer-child-empty">Дітей ще не додано.</div>';
+}
+
+function bindCustomerEditChildrenTools() {
+    if (bindCustomerEditChildrenTools.bound) return;
+    bindCustomerEditChildrenTools.bound = true;
+    document.getElementById('editAddChildBtn')?.addEventListener('click', () => {
+        CrmState.editingChildren = [...(CrmState.editingChildren || []), normalizeCustomerChildForEdit()];
+        renderCustomerEditChildren();
+    });
+    document.getElementById('editChildrenList')?.addEventListener('input', (event) => {
+        const field = event.target?.dataset?.childField;
+        const row = event.target?.closest?.('[data-child-index]');
+        if (!field || !row) return;
+        updateCustomerEditingChild(Number.parseInt(row.dataset.childIndex, 10), field, event.target.value);
+    });
+    document.getElementById('editChildrenList')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-child-remove]');
+        if (!button) return;
+        const index = Number.parseInt(button.dataset.childRemove, 10);
+        CrmState.editingChildren = (CrmState.editingChildren || []).filter((_, i) => i !== index);
+        renderCustomerEditChildren();
+    });
 }
 
 function customerBusinessScope() {
@@ -326,13 +500,11 @@ function syncCustomerPresentationUi() {
 
 function syncCustomerEditBusinessFields() {
     const maysternyaMode = isMaysternyaCustomerContext();
-    const childGrid = document.getElementById('editChildName')?.closest('div[style*="grid-template-columns"]');
-    if (childGrid) childGrid.hidden = maysternyaMode;
+    const childSection = document.getElementById('editChildrenSection');
+    if (childSection) childSection.hidden = maysternyaMode;
     if (maysternyaMode) {
-        const childName = document.getElementById('editChildName');
-        const childBirthday = document.getElementById('editChildBirthday');
-        if (childName) childName.value = '';
-        if (childBirthday) childBirthday.value = '';
+        setCustomerEditingChildren([]);
+        renderCustomerEditChildren();
     }
 }
 
@@ -520,6 +692,10 @@ function renderCustomerDetailHero(customer, communicationContext = null, mayster
     const leadLine = customer.leadId
         ? `<a href="${escapeHtml(leadCrmLinkForCustomer(customer.leadId))}">Лід #${escapeHtml(customer.leadId)}</a>`
         : '<span>Лід не привʼязано</span>';
+    const contactSummary = [
+        customer.phone ? escapeHtml(customer.phone) : 'телефон не вказано',
+        customer.instagram ? `@${escapeHtml(customer.instagram)}` : ''
+    ].filter(Boolean).map(item => `<span>${item}</span>`).join('');
     const omniButton = omni.href
         ? `<a class="btn-page-secondary entity-card-action customer-hero-omni ${escapeHtml(omni.cls)}" href="${escapeHtml(omni.href)}">${escapeHtml(omni.label)}</a>`
         : '<span class="btn-page-secondary entity-card-action customer-hero-omni disabled" aria-disabled="true">Omni недоступний</span>';
@@ -529,7 +705,7 @@ function renderCustomerDetailHero(customer, communicationContext = null, mayster
             <div class="customer-hero-avatar" aria-hidden="true">${escapeHtml(customerInitials(customer.name))}</div>
             <div class="entity-card-title-block customer-hero-title">
                 <h3>${escapeHtml(customer.name)}</h3>
-                <div class="entity-card-meta">${escapeHtml(customer.phone) || 'телефон не вказано'}${customer.instagram ? ' · @' + escapeHtml(customer.instagram) : ''}</div>
+                <div class="entity-card-meta customer-hero-contact-summary">${contactSummary}</div>
             </div>
         </div>
         <div class="customer-hero-summary" aria-label="Операційний контекст клієнта">
@@ -544,10 +720,14 @@ function renderCustomerDetailHero(customer, communicationContext = null, mayster
                 <small>${escapeHtml(bookingDetails.meta)}</small>
             </div>
         </div>
-        <div class="entity-card-actions customer-hero-actions">
-            ${omniButton}
-            <button class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>
-            <button class="btn-page-secondary entity-card-action danger" onclick="confirmDeleteCustomer(${customer.id})">🗑 Видалити</button>
+        <div class="entity-card-actions customer-hero-actions" aria-label="Дії клієнта">
+            <div class="customer-hero-action-group">
+                ${omniButton}
+                <button type="button" class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})">✏️ Редагувати</button>
+            </div>
+            <div class="customer-hero-action-group customer-hero-danger-group">
+                <button type="button" class="btn-page-secondary entity-card-action danger" onclick="confirmDeleteCustomer(${customer.id})">🗑 Видалити</button>
+            </div>
         </div>
     </div>`;
 }
@@ -1383,11 +1563,12 @@ function renderCustomerTable() {
         const sourceKey = getCustomerSourceBadgeKey(c.source);
         const sourceLabel = getCustomerSourceLabel(c.source);
         const tagsHtml = (c.tags || []).map(t => renderCustomerTagPill(t)).join('');
+        const childrenLabel = customerChildrenInlineLabel(c);
         const ltvBadge = c.ltv > 10000 ? ' 🔥' : '';
         return `<tr data-id="${c.id}">
             <td>
                 <div class="customer-name">${escapeHtml(c.name)}${ltvBadge}</div>
-                ${!maysternyaMode && c.childName ? `<div class="customer-child">👶 ${escapeHtml(c.childName)}</div>` : ''}
+                ${!maysternyaMode && childrenLabel ? `<div class="customer-child">${escapeHtml(childrenLabel)}</div>` : ''}
                 ${tagsHtml ? `<div class="crm-tags-row">${tagsHtml}</div>` : ''}
             </td>
             <td>${escapeHtml(c.phone) || '—'}</td>
@@ -1511,16 +1692,6 @@ async function showCustomerDetail(id) {
                         <div class="field-label">Соц. ідентичності</div>
                         <div class="field-value">${renderSocialIdentities(customer.socialIdentities, customer.instagram)}</div>
                     </div>
-                    ${maysternyaMode ? '' : `
-                    <div class="detail-field">
-                        <div class="field-label">Ім'я дитини</div>
-                        <div class="field-value">${escapeHtml(customer.childName) || '—'}</div>
-                    </div>
-                    <div class="detail-field">
-                        <div class="field-label">ДН дитини</div>
-                        <div class="field-value">${formatDate(customer.childBirthday)}</div>
-                    </div>
-                    `}
                     <div class="detail-field">
                         <div class="field-label">Джерело</div>
                         <div class="field-value">${escapeHtml(getCustomerSourceLabel(customer.source))}</div>
@@ -1535,6 +1706,7 @@ async function showCustomerDetail(id) {
                     </div>
                 </div>
             </div>
+            ${maysternyaMode ? '' : renderCustomerChildrenSection(customer)}
             <div class="detail-section">
                 <h4>Статистика</h4>
                 <div class="detail-grid">
@@ -1716,12 +1888,12 @@ function bindCustomerEntityEscapeClose() {
 let _customerEditInitialState = '';
 
 function getCustomerEditState() {
-    const ids = ['editName', 'editPhone', 'editInstagram', 'editChildName', 'editChildBirthday', 'editSource', 'editSocialIdentities', 'editNotes'];
+    const ids = ['editName', 'editPhone', 'editInstagram', 'editSource', 'editSocialIdentities', 'editNotes'];
     const fieldState = ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
     }).join('|');
-    return `${fieldState}|tags:${serializedCustomerEditingTags()}`;
+    return `${fieldState}|tags:${serializedCustomerEditingTags()}|children:${customerChildrenStateSignature()}`;
 }
 
 function isCustomerEditDirty() {
@@ -1738,8 +1910,8 @@ function openEditModal(customer) {
     document.getElementById('editName').value = customer?.name || '';
     document.getElementById('editPhone').value = customer?.phone || '';
     document.getElementById('editInstagram').value = customer?.instagram || '';
-    document.getElementById('editChildName').value = maysternyaMode ? '' : (customer?.childName || '');
-    document.getElementById('editChildBirthday').value = maysternyaMode ? '' : (customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '');
+    setCustomerEditingChildren(maysternyaMode ? [] : customerChildrenForEdit(customer || {}));
+    renderCustomerEditChildren();
     const source = normalizeCustomerSource(customer?.source);
     document.getElementById('editSource').value = source === 'unknown' ? '' : source;
     document.getElementById('editSocialIdentities').value = formatSocialIdentitiesInput(customer?.socialIdentities || []);
@@ -1764,8 +1936,10 @@ async function closeEditModal(force = false) {
         modal?.classList.add('hidden');
         CrmState.editingId = null;
         setCustomerEditingTags([]);
+        setCustomerEditingChildren([]);
         closeCustomerEditTagDropdown();
         renderCustomerEditTags();
+        renderCustomerEditChildren();
         _customerEditInitialState = getCustomerEditState();
     };
     if (window.UnsafeDismissGuard && modal) {
@@ -1788,6 +1962,18 @@ async function handleSave() {
         showNotification("Ім'я клієнта обов'язкове", 'error');
         return;
     }
+    const children = isMaysternyaCustomerContext() ? [] : serializedCustomerEditingChildren();
+    const incompleteChild = children.find(child => !child.name && (child.birthday || child.ageSnapshot || child.note));
+    if (incompleteChild) {
+        showNotification('Вкажіть імʼя для кожної дитини або очистіть порожній рядок', 'error');
+        return;
+    }
+    const invalidAgeChild = children.find(child => child.ageSnapshot !== '' && (!Number.isInteger(Number(child.ageSnapshot)) || Number(child.ageSnapshot) < 0 || Number(child.ageSnapshot) > 120));
+    if (invalidAgeChild) {
+        showNotification('Вік дитини має бути числом від 0 до 120', 'error');
+        return;
+    }
+    const firstChild = children[0] || null;
 
     const saveBtn = document.getElementById('saveCustomerBtn');
     const originalSaveText = saveBtn?.textContent;
@@ -1800,8 +1986,14 @@ async function handleSave() {
         name,
         phone: document.getElementById('editPhone')?.value.trim() || null,
         instagram: document.getElementById('editInstagram')?.value.trim().replace('@', '') || null,
-        childName: isMaysternyaCustomerContext() ? null : (document.getElementById('editChildName')?.value.trim() || null),
-        childBirthday: isMaysternyaCustomerContext() ? null : (document.getElementById('editChildBirthday')?.value || null),
+        childName: firstChild?.name || null,
+        childBirthday: firstChild?.birthday || null,
+        children: children.map(child => ({
+            name: child.name,
+            birthday: child.birthday || null,
+            ageSnapshot: child.ageSnapshot === '' ? null : Number(child.ageSnapshot),
+            note: child.note || null
+        })),
         socialIdentities: parseSocialIdentitiesInput(document.getElementById('editSocialIdentities')?.value),
         source: document.getElementById('editSource')?.value || null,
         notes: document.getElementById('editNotes')?.value.trim() || null,
@@ -2565,6 +2757,7 @@ async function initPage() {
     // Save customer
     bindCustomerIdentityTools();
     bindCustomerEditTagTools();
+    bindCustomerEditChildrenTools();
     document.getElementById('saveCustomerBtn')?.addEventListener('click', handleSave);
     document.getElementById('cancelEditBtn')?.addEventListener('click', () => closeEditModal(false));
 

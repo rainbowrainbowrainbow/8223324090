@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.11">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.11">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.11">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.11">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.11">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.11">
-    <link rel="stylesheet" href="css/features.css?v=0.77.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.11">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.11">
+    <link rel="stylesheet" href="css/base.css?v=0.77.12">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.12">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.12">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.12">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.12">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.12">
+    <link rel="stylesheet" href="css/features.css?v=0.77.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.12">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.11">✨ 0.77.11</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.12">✨ 0.77.12</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.11 — Banquet Sheet Official Design</p>
+                <p class="tagline">AI First CRM v0.77.12 — Customer Children Card Fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.11</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.12</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1727,14 +1727,24 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.77.12 — Customer Children Card Fix</h4>
+                    <ul>
+                        <li><b>Картка клієнта підтримує кількох дітей</b> — дані більше не обрізаються до однієї дитини, а список зберігається у canonical <code>customer_children</code>.</li>
+                        <li><b>День народження вводиться окремо для кожної дитини</b> — дата зберігається у форматі <code>YYYY-MM-DD</code>, не зміщується після reload і не вигадується з віку.</li>
+                        <li><b>Legacy дані збережено без втрат</b> — старі <code>child_name</code>/<code>child_birthday</code> та тексти на кшталт <code>Саша 4 роки</code> лишаються доступними як fallback/source.</li>
+                        <li><b>Lead -> deal більше не втрачає celebrants</b> — якщо в ліді 3 дитини, у картці клієнта з'являються всі 3, а не тільки перша.</li>
+                        <li><b>Картка клієнта стала чистішою</b> — header, status cards і action buttons переносяться без накладання, а секція <code>Діти</code> показує окремі картки.</li>
+                        <li><b>Booking і birthday flows сумісні з новою моделлю</b> — нова логіка читає <code>children[]</code>, а старі single-child поля лишаються fallback без перезапису списку.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.11 — Banquet Sheet Official Design</h4>
                     <ul>
-                        <li><b>Банкетний лист став офіційнішим</b> — прибрано зайву декоративність, яскраві акценти й візуальний шум, залишено чисту службову композицію.</li>
-                        <li><b>Реальний логотип у шапці</b> — новий <code>images/banquet-logo.png</code> замінює круглий плейсхолдер <code>EG</code> і не обрізається при друці.</li>
-                        <li><b>Шапка стала збалансованою</b> — ліворуч бренд і контакти закладу, праворуч компактний блок <code>Банкетний лист</code>, номер, дата формування і менеджер.</li>
-                        <li><b>Секції та таблиці уніфіковано</b> — відповідальні, розклад, замовлення, фінанси й умови мають однакові тонкі лінії, нейтральні фони і рівні відступи.</li>
-                        <li><b>PDF узгоджено з HTML</b> — серверний PDF також використовує новий логотип, приглушену teal/champagne палітру і без намальованого <code>EG</code>.</li>
-                        <li><b>Print QA пройдено</b> — згенеровано A4 screenshot/PDF harness для перевірки логотипу, сітки, читабельності та відсутності обрізання.</li>
+                        <li><b>Банкетний лист переведено в офіційний преміальний стиль</b> — без святкової афіші, товстих декоративних акцентів і зайвих візуальних елементів.</li>
+                        <li><b>Додано реальний логотип у шапку</b> — <code>images/banquet-logo.png</code> використовується замість круглого плейсхолдера <code>EG</code>.</li>
+                        <li><b>Шапка стала службовою і збалансованою</b> — логотип, дані закладу і картка <code>Банкетний лист</code> тримають чисту документну структуру.</li>
+                        <li><b>HTML і PDF синхронізовано</b> — секції, таблиці, фінанси, умови і PDF-рендер використовують один офіційний layout.</li>
+                        <li><b>Regression guards оновлено</b> — тести фіксують logo-based masthead і не допускають повернення старого <code>EG</code> placeholder.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -14492,35 +14502,35 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.11"></script>
-    <script src="js/timeline-visibility.js?v=0.77.11"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.11"></script>
-    <script src="js/config.js?v=0.77.11"></script>
-    <script src="js/api.js?v=0.77.11"></script>
-    <script src="js/ui.js?v=0.77.11"></script>
-    <script src="js/auth.js?v=0.77.11"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.11"></script>
-    <script src="js/timeline-cache.js?v=0.77.11"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.11"></script>
-    <script src="js/timeline.js?v=0.77.11"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.11"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.11"></script>
-    <script src="js/booking-save-path.js?v=0.77.11"></script>
-    <script src="js/booking.js?v=0.77.11"></script>
-    <script src="js/settings.js?v=0.77.11"></script>
-    <script src="js/booking-form.js?v=0.77.11"></script>
-    <script src="js/booking-linked.js?v=0.77.11"></script>
-    <script src="js/settings-dashboard.js?v=0.77.11"></script>
-    <script src="js/settings-history.js?v=0.77.11"></script>
-    <script src="js/settings-afisha.js?v=0.77.11"></script>
-    <script src="js/settings-certificates.js?v=0.77.11"></script>
-    <script src="js/offline.js?v=0.77.11"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.11"></script>
-    <script src="js/search.js?v=0.77.11"></script>
-    <script src="js/ws.js?v=0.77.11"></script>
-    <script src="js/app.js?v=0.77.11"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.11"></script>
-    <script src="js/components/sidebar.js?v=0.77.11"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.11"></script>
+    <script src="js/timeline-context.js?v=0.77.12"></script>
+    <script src="js/timeline-visibility.js?v=0.77.12"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.12"></script>
+    <script src="js/config.js?v=0.77.12"></script>
+    <script src="js/api.js?v=0.77.12"></script>
+    <script src="js/ui.js?v=0.77.12"></script>
+    <script src="js/auth.js?v=0.77.12"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.12"></script>
+    <script src="js/timeline-cache.js?v=0.77.12"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.12"></script>
+    <script src="js/timeline.js?v=0.77.12"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.12"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.12"></script>
+    <script src="js/booking-save-path.js?v=0.77.12"></script>
+    <script src="js/booking.js?v=0.77.12"></script>
+    <script src="js/settings.js?v=0.77.12"></script>
+    <script src="js/booking-form.js?v=0.77.12"></script>
+    <script src="js/booking-linked.js?v=0.77.12"></script>
+    <script src="js/settings-dashboard.js?v=0.77.12"></script>
+    <script src="js/settings-history.js?v=0.77.12"></script>
+    <script src="js/settings-afisha.js?v=0.77.12"></script>
+    <script src="js/settings-certificates.js?v=0.77.12"></script>
+    <script src="js/offline.js?v=0.77.12"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.12"></script>
+    <script src="js/search.js?v=0.77.12"></script>
+    <script src="js/ws.js?v=0.77.12"></script>
+    <script src="js/app.js?v=0.77.12"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.12"></script>
+    <script src="js/components/sidebar.js?v=0.77.12"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.12"></script>
 </body>
 </html>

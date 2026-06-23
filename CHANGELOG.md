@@ -4,6 +4,23 @@
 
 ---
 
+## v0.77.12 - Customer Children Card Fix
+
+### Customers / Multiple children / Birthday fields / Client card layout / Booking compatibility / (Клешня, 23.06.2026) [codex]
+- **Додано canonical структуру `customer_children`** - клієнт тепер може мати 0, 1 або 3+ дітей без обрізання списку до першого запису.
+- **Legacy child fields не видаляються і не перезаписуються деструктивно** - `customers.child_name` / `customers.child_birthday` лишаються fallback/source, а original text/JSON зберігається в `source_payload`.
+- **День народження введено як окреме поле для кожної дитини** - `birthday` приймає тільки валідний `YYYY-MM-DD`, не зміщується після reload і не генерується з віку.
+- **Age-only та ambiguous legacy дані обробляються без вигаданих дат** - `Саша 4 роки` зберігається як legacy текст/age snapshot path, а birthday лишається порожнім, якщо його не ввели явно.
+- **Lead -> deal синхронізує всі `celebrants` у картку клієнта** - створення/оновлення customer card більше не губить другу й третю дитину.
+- **Картка клієнта отримала нормальну секцію `Діти`** - header, status cards і actions не накладаються, довгі ім'я/телефон/social переносяться, діти показуються окремими картками.
+- **Booking/banquet/customer compatibility оновлено** - нова логіка читає canonical `children[]`, а single-child placeholders і старі форми використовують першу дитину тільки як fallback, не як storage truth.
+- **Birthday reminders, exports і bulk placeholders бачать canonical children** - `children[]` має пріоритет, але legacy дані продовжують працювати.
+- **Manual QA і regression coverage розширено** - додано migration/static checks, service tests, sales-funnel guard, customer API live scenarios, UI layout guards і browser QA artifacts.
+- **Виправлено темний контраст нотаток дитини** - `.customer-child-note` тепер читається в dark mode і має safe wrapping.
+- **Релізні маркери піднято до `0.77.12`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.11 - Banquet Sheet Official Design
 
 ### Banquet sheet / Official PDF style / Real logo / Print QA / (Клешня, 23.06.2026) [codex]

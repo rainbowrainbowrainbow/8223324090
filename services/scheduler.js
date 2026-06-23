@@ -24,6 +24,7 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     pushBusinessContextCondition
 } = require('./businessContext');
+const { isCustomerChildrenStorageMissing } = require('./customerChildren');
 const {
     DEFAULT_TASK_BUSINESS_CONTEXT,
     activeTaskBusinessContext,
@@ -1090,6 +1091,63 @@ async function checkStreakUpdates() {
 // Checks customers with child_birthday matching today (month-day) and sends Telegram notification
 let birthdaySentToday = null;
 
+async function queryCustomersByChildBirthday(month, day, options = {}) {
+    const includeSpent = options.includeSpent !== false;
+    const params = [month, day];
+    const contextSql = pushBusinessContextCondition(params, DEFAULT_BUSINESS_CONTEXT, 'c');
+    const spentSelect = includeSpent ? 'c.total_spent' : 'NULL::numeric AS total_spent';
+    const sql = `
+        WITH birthday_sources AS (
+            SELECT c.id, c.name, c.phone, cc.name AS child_name, cc.birthday AS child_birthday,
+                   c.total_bookings, ${spentSelect}
+              FROM customers c
+              JOIN customer_children cc
+                ON cc.customer_id = c.id
+               AND cc.business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+             WHERE cc.birthday IS NOT NULL
+               AND EXTRACT(MONTH FROM cc.birthday) = $1
+               AND EXTRACT(DAY FROM cc.birthday) = $2
+               AND ${contextSql}
+            UNION ALL
+            SELECT c.id, c.name, c.phone, c.child_name, c.child_birthday,
+                   c.total_bookings, ${spentSelect}
+              FROM customers c
+             WHERE c.child_birthday IS NOT NULL
+               AND EXTRACT(MONTH FROM c.child_birthday) = $1
+               AND EXTRACT(DAY FROM c.child_birthday) = $2
+               AND ${contextSql}
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM customer_children cc_existing
+                    WHERE cc_existing.customer_id = c.id
+                      AND cc_existing.business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                      AND cc_existing.birthday IS NOT NULL
+               )
+        )
+        SELECT *
+          FROM birthday_sources
+         ORDER BY name ASC, child_name ASC
+    `;
+
+    try {
+        return await pool.query(sql, params);
+    } catch (err) {
+        if (!isCustomerChildrenStorageMissing(err)) throw err;
+    }
+
+    const legacyParams = [month, day];
+    const legacyContextSql = pushBusinessContextCondition(legacyParams, DEFAULT_BUSINESS_CONTEXT, '');
+    return pool.query(
+        `SELECT id, name, phone, child_name, child_birthday, total_bookings, ${includeSpent ? 'total_spent' : 'NULL::numeric AS total_spent'}
+         FROM customers
+         WHERE child_birthday IS NOT NULL
+           AND EXTRACT(MONTH FROM child_birthday) = $1
+           AND EXTRACT(DAY FROM child_birthday) = $2
+           AND ${legacyContextSql}`,
+        legacyParams
+    );
+}
+
 async function checkBirthdayGreetings() {
     try {
         const todayStr = getKyivDateStr();
@@ -1109,18 +1167,7 @@ async function checkBirthdayGreetings() {
         const month = kyiv.getMonth() + 1;
         const day = kyiv.getDate();
 
-        const birthdayParams = [month, day];
-        const birthdayBusiness = pushBusinessContextCondition(birthdayParams, DEFAULT_BUSINESS_CONTEXT, '');
-        // certificates has no business_context yet; keep expiry global until the certificate model is scoped.
-        const result = await pool.query(
-            `SELECT id, name, phone, child_name, child_birthday, total_bookings, total_spent
-             FROM customers
-             WHERE child_birthday IS NOT NULL
-               AND EXTRACT(MONTH FROM child_birthday) = $1
-               AND EXTRACT(DAY FROM child_birthday) = $2
-               AND ${birthdayBusiness}`,
-            birthdayParams
-        );
+        const result = await queryCustomersByChildBirthday(month, day, { includeSpent: true });
 
         if (result.rows.length === 0) return;
 
@@ -1181,17 +1228,7 @@ async function checkBirthdayReminders() {
         const month = futureDate.getMonth() + 1;
         const day = futureDate.getDate();
 
-        const reminderParams = [month, day];
-        const reminderBusiness = pushBusinessContextCondition(reminderParams, DEFAULT_BUSINESS_CONTEXT, '');
-        const result = await pool.query(
-            `SELECT id, name, phone, child_name, child_birthday, total_bookings
-             FROM customers
-             WHERE child_birthday IS NOT NULL
-               AND EXTRACT(MONTH FROM child_birthday) = $1
-               AND EXTRACT(DAY FROM child_birthday) = $2
-               AND ${reminderBusiness}`,
-            reminderParams
-        );
+        const result = await queryCustomersByChildBirthday(month, day, { includeSpent: false });
 
         if (result.rows.length === 0) return;
 

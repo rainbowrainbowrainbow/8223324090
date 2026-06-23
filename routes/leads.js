@@ -50,6 +50,11 @@ const {
     createMaysternyaAvailabilityResponse,
     isMaysternyaBookingDryRun
 } = require('../services/maysternyaBookingWebhook');
+const {
+    validateChildBirthday,
+    replaceCustomerChildren,
+    buildCustomerChildrenProjection
+} = require('../services/customerChildren');
 
 function getKleshnya() { return require('../services/kleshnya'); }
 function getBanquetDeposits() { return require('../services/banquetDeposits'); }
@@ -1242,11 +1247,86 @@ function leadCustomerName(lead = {}) {
 }
 
 function leadCustomerChildName(lead = {}) {
+    const celebrants = leadCustomerChildren(lead);
+    return firstClean(...celebrants.map(item => item.name));
+}
+
+function safeLeadChildBirthday(value) {
+    try {
+        return validateChildBirthday(value, 'lead.celebrants[].birthday');
+    } catch {
+        return null;
+    }
+}
+
+function leadCustomerChildren(lead = {}) {
     const celebrants = normalizeCelebrants(lead.celebrants, {
         childrenCount: lead.children_count,
         childAge: lead.child_age
     });
-    return firstClean(...celebrants.map(item => item.name));
+    return celebrants
+        .map(item => ({
+            name: cleanText(item.name),
+            birthday: safeLeadChildBirthday(item.birthday),
+            ageSnapshot: Number.isInteger(item.age) ? item.age : null,
+            note: cleanText(item.notes)
+        }))
+        .filter(item => item.name || item.birthday || item.ageSnapshot !== null || item.note);
+}
+
+async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, customer = null, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const leadId = parseInt(lead.id, 10);
+    const customerId = parseInt(customer?.id, 10);
+    if (!Number.isInteger(leadId) || leadId <= 0 || !Number.isInteger(customerId) || customerId <= 0) {
+        return { customer, children: [] };
+    }
+
+    const normalizedBusinessContext = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+    const children = leadCustomerChildren(lead);
+    const rawCelebrants = parseJsonArray(lead.celebrants);
+    const savedChildren = await replaceCustomerChildren(
+        customerId,
+        children,
+        normalizedBusinessContext,
+        {
+            sourceKind: 'lead_celebrant',
+            source: 'leads.celebrants',
+            copyRule: rawCelebrants.length ? 'explicit_lead_celebrants' : 'legacy_lead_child_fields',
+            sourceLeadId: leadId,
+            sortOrderBase: 10,
+            sourcePayload: {
+                source_table: 'leads',
+                source_lead_id: leadId,
+                source_customer_id: customerId,
+                lead_celebrants: rawCelebrants,
+                children_count: lead.children_count ?? null,
+                child_age: lead.child_age ?? null,
+                original_lead_child_name_snapshot: leadCustomerChildName(lead)
+            }
+        },
+        { client: queryable }
+    );
+
+    const firstChildName = leadCustomerChildName(lead);
+    const updated = await queryable.query(
+        `UPDATE customers
+         SET child_name = CASE
+                 WHEN lead_id = $4 THEN $1
+                 WHEN NULLIF(child_name, '') IS NULL THEN $1
+                 ELSE child_name
+             END,
+             updated_at = CASE
+                 WHEN lead_id = $4 OR NULLIF(child_name, '') IS NULL THEN NOW()
+                 ELSE updated_at
+             END
+         WHERE id = $2
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
+         RETURNING *`,
+        [firstChildName || null, customerId, normalizedBusinessContext, leadId]
+    );
+    const nextCustomer = updated.rows[0] || customer;
+    nextCustomer.children = buildCustomerChildrenProjection(nextCustomer, savedChildren);
+    return { customer: nextCustomer, children: savedChildren };
 }
 
 function buildLeadCustomerNotes(lead = {}) {
@@ -1417,6 +1497,36 @@ async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAU
     return matched.rows[0] || null;
 }
 
+async function findDurablyLinkedCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const leadId = parseInt(lead.id, 10);
+    if (!Number.isInteger(leadId) || leadId <= 0) return null;
+
+    const normalizedBusinessContext = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+    const linkResult = await queryable.query(
+        `SELECT c.*
+         FROM lead_customer_links lcl
+         JOIN customers c ON c.id = lcl.customer_id
+         WHERE lcl.lead_id = $1
+           AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+           AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         ORDER BY lcl.updated_at DESC NULLS LAST, lcl.id DESC
+         LIMIT 1`,
+        [leadId, normalizedBusinessContext]
+    );
+    if (linkResult.rows.length) return linkResult.rows[0];
+
+    const linked = await queryable.query(
+        `SELECT *
+         FROM customers
+         WHERE lead_id = $1
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         ORDER BY updated_at DESC NULLS LAST, id DESC
+         LIMIT 1`,
+        [leadId, normalizedBusinessContext]
+    );
+    return linked.rows[0] || null;
+}
+
 async function ensureDealCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT, options = {}) {
     const leadId = parseInt(lead.id, 10);
     if (!Number.isInteger(leadId) || leadId <= 0) return null;
@@ -1459,7 +1569,7 @@ async function ensureDealCustomerForLead(queryable, lead = {}, businessContext =
                 normalizedBusinessContext
             ]
         );
-        const customer = updated.rows[0];
+        let customer = updated.rows[0];
         const link = await linkLeadCustomer(queryable, {
             businessContext: normalizedBusinessContext,
             leadId,
@@ -1469,10 +1579,13 @@ async function ensureDealCustomerForLead(queryable, lead = {}, businessContext =
             userId: options.userId || null,
             metadata: { mode: existing.lead_id ? 'updated_existing' : 'linked_existing' }
         });
+        const childSync = await syncLeadCelebrantsToCustomerChildren(queryable, lead, customer, normalizedBusinessContext);
+        customer = childSync.customer || customer;
         return {
             mode: existing.lead_id ? 'updated_existing' : 'linked_existing',
             customer,
-            link
+            link,
+            children: childSync.children
         };
     }
 
@@ -1492,7 +1605,7 @@ async function ensureDealCustomerForLead(queryable, lead = {}, businessContext =
             JSON.stringify(leadSocialIdentities(lead))
         ]
     );
-    const customer = inserted.rows[0];
+    let customer = inserted.rows[0];
     const link = await linkLeadCustomer(queryable, {
         businessContext: normalizedBusinessContext,
         leadId,
@@ -1502,10 +1615,13 @@ async function ensureDealCustomerForLead(queryable, lead = {}, businessContext =
         userId: options.userId || null,
         metadata: { mode: 'created_new' }
     });
+    const childSync = await syncLeadCelebrantsToCustomerChildren(queryable, lead, customer, normalizedBusinessContext);
+    customer = childSync.customer || customer;
     return {
         mode: 'created_new',
         customer,
-        link
+        link,
+        children: childSync.children
     };
 }
 
@@ -1582,7 +1698,7 @@ function mapWorkspaceLead(row) {
 
 function mapWorkspaceCustomer(row) {
     if (!row) return null;
-    return {
+    const customer = {
         id: row.id,
         businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         name: row.name,
@@ -1601,6 +1717,8 @@ function mapWorkspaceCustomer(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
+    if (Array.isArray(row.children)) customer.children = row.children;
+    return customer;
 }
 
 function buildCustomerCardCompat(lead = {}, customer = null) {
@@ -2032,7 +2150,8 @@ router.patch('/:id', async (req, res) => {
         let stageTransition = null;
         const effectivePipelineStage = stageStatus.stageProvided ? stageStatus.stage : undefined;
         const shouldEnsureDealCustomer = effectivePipelineStage === 'deal';
-        const updateClient = shouldEnsureDealCustomer || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
+        const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureDealCustomer;
+        const updateClient = shouldEnsureDealCustomer || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
         try {
             if (updateClient) await updateClient.query('BEGIN');
             const queryable = updateClient || pool;
@@ -2085,6 +2204,17 @@ router.patch('/:id', async (req, res) => {
                     source: 'leads.patch',
                     linkType: 'deal_customer'
                 });
+            } else if (shouldSyncLinkedCustomerChildren) {
+                const linkedCustomer = await findDurablyLinkedCustomerForLead(queryable, updatedLead, businessContext);
+                if (linkedCustomer) {
+                    const childSync = await syncLeadCelebrantsToCustomerChildren(queryable, updatedLead, linkedCustomer, businessContext);
+                    dealCustomerLink = {
+                        mode: 'synced_existing_children',
+                        customer: childSync.customer || linkedCustomer,
+                        link: null,
+                        children: childSync.children
+                    };
+                }
             }
             if (kanbanOrderIds.length) {
                 await persistLeadKanbanOrder(queryable, {
@@ -2144,6 +2274,17 @@ router.patch('/:id', async (req, res) => {
                          `Конвертований з ліду #${updatedLead.id} (${getCustomerSourceLabel(customerSource)})`,
                          custId, businessContext]
                     );
+                    const customerResult = await pool.query(
+                        `SELECT *
+                         FROM customers
+                         WHERE id = $1
+                           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                         LIMIT 1`,
+                        [custId, businessContext]
+                    );
+                    if (customerResult.rows[0]) {
+                        await syncLeadCelebrantsToCustomerChildren(pool, updatedLead, customerResult.rows[0], businessContext);
+                    }
                     log.info(`[Lead→Customer] Lead ${updatedLead.id} → customer ${custId}, source: ${updatedLead.source}`);
                 } catch (e) { log.warn('[LeadConvert] Error:', e.message); }
             });
@@ -2406,6 +2547,9 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Передайте customerId або createNew=true' });
         }
+
+        const childSync = await syncLeadCelebrantsToCustomerChildren(client, lead, customer, businessContext);
+        customer = childSync.customer || customer;
 
         const suggestionsResult = await client.query(`
             SELECT id, name, phone, instagram

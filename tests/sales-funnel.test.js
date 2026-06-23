@@ -22,6 +22,21 @@ describe('Sales Funnel deposit_received local regression', () => {
         assert.match(leadsRoute, /source_type: 'banquet_deposit'/);
         assert.match(leadsRoute, /duplicateMode: 'skip'/);
     });
+
+    it('deal customer conversion syncs every lead celebrant into customer_children', () => {
+        const leadsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'leads.js'), 'utf8');
+        const routeSmoke = fs.readFileSync(path.join(ROOT, 'tests', 'route-smoke.test.js'), 'utf8');
+
+        assert.match(leadsRoute, /function leadCustomerChildren\(lead = \{\}\)/);
+        assert.match(leadsRoute, /const children = leadCustomerChildren\(lead\);[\s\S]*replaceCustomerChildren\(\s*customerId,\s*children,/);
+        assert.match(leadsRoute, /sourceKind: 'lead_celebrant'/);
+        assert.match(leadsRoute, /sourceLeadId: leadId/);
+        assert.match(leadsRoute, /sortOrderBase: 10/);
+        assert.doesNotMatch(leadsRoute, /leadCustomerChildren\(lead\)\s*\[\s*0\s*\]/);
+        assert.match(routeSmoke, /const childInserts = queries\.filter\(q => \/INSERT INTO customer_children\/i\.test\(q\.text\)\);/);
+        assert.match(routeSmoke, /assert\.equal\(childInserts\.length, 3\)/);
+        assert.match(routeSmoke, /assert\.deepEqual\(childInserts\.map\(q => q\.params\[4\]\), \['Anna', 'Bohdan', 'Sofia'\]\)/);
+    });
 });
 
 liveDescribe('Sales Funnel v29.1.0 — Lead Types & Pipeline', () => {

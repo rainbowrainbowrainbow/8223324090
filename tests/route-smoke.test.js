@@ -307,6 +307,7 @@ function createFakePool() {
         onboardingProgress: new Map(),
         tasks: [],
         bookings: [],
+        customerChildren: [],
         banquetGroups: new Map(),
         banquetMemberships: [],
         banquetDeposits: [],
@@ -328,6 +329,7 @@ function createFakePool() {
         nextOnboardingTemplateId: 12,
         nextOnboardingProgressId: 1001,
         nextTaskId: 880,
+        nextCustomerChildId: 1,
         nextBookingSeq: 1,
         nextBanquetMembershipId: 1,
         nextBanquetLinkId: 32,
@@ -2141,6 +2143,13 @@ function createFakePool() {
                         pipeline_stage: 'new',
                         lead_type: 'quality',
                         lost_reason: null,
+                        children_count: 3,
+                        child_age: null,
+                        celebrants: [
+                            { name: 'Anna', age: 8, birthday: '2018-01-01' },
+                            { name: 'Bohdan', age: 6 },
+                            { name: 'Sofia', birthday: '2020-03-04' }
+                        ],
                         notes: 'Lead note',
                         created_at: '2099-05-01T10:00:00Z',
                         updated_at: '2099-05-02T10:00:00Z'
@@ -2168,6 +2177,13 @@ function createFakePool() {
                     pipeline_stage: 'new',
                     lead_type: 'quality',
                     lost_reason: null,
+                    children_count: 3,
+                    child_age: null,
+                    celebrants: [
+                        { name: 'Anna', age: 8, birthday: '2018-01-01' },
+                        { name: 'Bohdan', age: 6 },
+                        { name: 'Sofia', birthday: '2020-03-04' }
+                    ],
                     notes: 'Lead note',
                     created_at: '2099-05-01T10:00:00Z',
                     updated_at: '2099-05-02T10:00:00Z'
@@ -2250,6 +2266,62 @@ function createFakePool() {
                         source: params[3],
                         metadata: params[4] ? JSON.parse(params[4]) : {},
                         created_by: null,
+                        created_at: '2099-05-02T10:05:00Z',
+                        updated_at: '2099-05-02T10:05:00Z'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/DELETE FROM customer_children[\s\S]*AND source_kind = \$3[\s\S]*AND lead_id = \$4/i.test(text)) {
+                hrState.customerChildren = hrState.customerChildren.filter(row =>
+                    !(Number(row.customer_id) === Number(params[0])
+                        && (row.business_context || 'event_genix') === (params[1] || 'event_genix')
+                        && row.source_kind === params[2]
+                        && Number(row.lead_id) === Number(params[3]))
+                );
+                return { rows: [], rowCount: 1 };
+            }
+            if (/INSERT INTO customer_children/i.test(text)) {
+                const row = {
+                    id: hrState.nextCustomerChildId++,
+                    business_context: params[0],
+                    customer_id: params[1],
+                    lead_id: params[2],
+                    booking_id: params[3],
+                    name: params[4],
+                    birthday: params[5],
+                    age_snapshot: params[6],
+                    note: params[7],
+                    source_kind: params[8],
+                    source_payload: params[9] ? JSON.parse(params[9]) : {},
+                    sort_order: params[10],
+                    created_at: '2099-05-02T10:05:00Z',
+                    updated_at: '2099-05-02T10:05:00Z'
+                };
+                hrState.customerChildren.push(row);
+                return { rows: [], rowCount: 1 };
+            }
+            if (/FROM customer_children/i.test(text)) {
+                const rows = hrState.customerChildren
+                    .filter(row => Number(row.customer_id) === Number(params[0]))
+                    .filter(row => (row.business_context || 'event_genix') === (params[1] || 'event_genix'))
+                    .slice()
+                    .sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
+                return { rows, rowCount: rows.length };
+            }
+            if (/UPDATE customers\s+SET child_name = CASE/i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[1],
+                        business_context: params[2] || 'event_genix',
+                        name: 'Lead Smoke',
+                        phone: '+380000000009',
+                        instagram: 'lead_smoke',
+                        child_name: params[0],
+                        source: 'instagram',
+                        notes: 'Lead note',
+                        lead_id: params[3],
+                        social_identities: [],
                         created_at: '2099-05-02T10:05:00Z',
                         updated_at: '2099-05-02T10:05:00Z'
                     }],
@@ -4176,6 +4248,11 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
         assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(q.text)));
+        const childInserts = queries.filter(q => /INSERT INTO customer_children/i.test(q.text));
+        assert.equal(childInserts.length, 3);
+        assert.deepEqual(childInserts.map(q => q.params[4]), ['Anna', 'Bohdan', 'Sofia']);
+        assert.deepEqual(childInserts.map(q => q.params[2]), [501, 501, 501]);
+        assert.ok(queries.some(q => /DELETE FROM customer_children[\s\S]*AND source_kind = \$3[\s\S]*AND lead_id = \$4/i.test(q.text)), 'lead celebrant sync should only replace rows for this lead');
         const linkInsert = queries.find(q => /INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at\)/i.test(q.text));
         assert.ok(linkInsert, 'deal conversion should persist durable lead/customer link');
         assert.equal(linkInsert.params[1], 501);

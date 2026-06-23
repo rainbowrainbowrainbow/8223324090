@@ -51,6 +51,10 @@ const {
 } = require('../services/businessContext');
 const { normalizeCustomerSource } = require('../services/customerSource');
 const {
+    listCustomerChildren,
+    buildCustomerChildrenProjection
+} = require('../services/customerChildren');
+const {
     findTimelineResource,
     findTimelineResourceByName,
     getTimelineDisplaySettings,
@@ -2245,6 +2249,12 @@ async function resolveBanquetSummaryForRequest(req, res) {
             [customerId, businessContext]
         );
         customer = customerResult.rows[0] || null;
+        if (customer) {
+            customer.children = buildCustomerChildrenProjection(
+                customer,
+                await listCustomerChildren(customer.id, businessContext, { db: pool })
+            );
+        }
     }
 
     let linkedBookings = [];

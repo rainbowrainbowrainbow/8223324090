@@ -13,6 +13,18 @@ const { getCustomerCommunicationContext } = require('../services/customerCommuni
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { syncBirthdayTagsForCustomer } = require('../services/customerBirthdayTags');
 const {
+    CustomerChildrenError,
+    normalizeChildInput,
+    validateChildBirthday,
+    replaceCustomerChildren,
+    listCustomerChildren,
+    buildCustomerChildrenProjection,
+    customerChildrenNameDisplay,
+    customerChildrenBirthdayDisplay,
+    firstCustomerChild,
+    isCustomerChildrenStorageMissing
+} = require('../services/customerChildren');
+const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
     requireBusinessContext,
@@ -141,10 +153,48 @@ function formatSocialIdentities(value, fallback = {}) {
         .join(' | ');
 }
 
+function normalizeCustomerChildrenPayload(body = {}) {
+    const childrenProvided = Object.prototype.hasOwnProperty.call(body, 'children');
+    const legacyChildName = cleanText(body.childName ?? body.child_name);
+    const rawLegacyBirthday = cleanText(body.childBirthday ?? body.child_birthday);
+    let legacyBirthday = null;
+    let children = [];
+
+    try {
+        legacyBirthday = validateChildBirthday(rawLegacyBirthday, 'childBirthday');
+        if (childrenProvided) {
+            if (!Array.isArray(body.children)) return { error: 'children must be an array' };
+            children = body.children
+                .map((child, index) => normalizeChildInput(child, index, { requireName: true }))
+                .filter(Boolean);
+        }
+    } catch (err) {
+        if (err instanceof CustomerChildrenError) {
+            return { error: err.message, code: err.code, details: err.details };
+        }
+        throw err;
+    }
+
+    const firstChild = childrenProvided ? (children[0] || null) : null;
+    return {
+        childrenProvided,
+        children: childrenProvided
+            ? children
+            : buildCustomerChildrenProjection({
+                childName: legacyChildName,
+                childBirthday: legacyBirthday
+            }, []),
+        childNameSnapshot: childrenProvided ? (firstChild?.name || null) : legacyChildName,
+        childBirthdaySnapshot: childrenProvided ? (firstChild?.birthday || null) : legacyBirthday
+    };
+}
+
 function normalizeCustomerPayload(body = {}) {
     const name = cleanText(body.name);
     const childBirthday = cleanText(body.childBirthday ?? body.child_birthday);
     const tagsProvided = Object.prototype.hasOwnProperty.call(body, 'tags');
+    const childrenMeta = normalizeCustomerChildrenPayload(body);
+    if (childrenMeta.error) return childrenMeta;
     if (childBirthday && !/^\d{4}-\d{2}-\d{2}$/.test(childBirthday)) {
         return { error: 'Дата народження має бути у форматі YYYY-MM-DD' };
     }
@@ -152,8 +202,10 @@ function normalizeCustomerPayload(body = {}) {
         name,
         phone: cleanText(body.phone),
         instagram: cleanText(body.instagram)?.replace(/^@+/, '') || null,
-        childName: cleanText(body.childName ?? body.child_name),
-        childBirthday: childBirthday || null,
+        childName: childrenMeta.childNameSnapshot,
+        childBirthday: childrenMeta.childBirthdaySnapshot,
+        childrenProvided: childrenMeta.childrenProvided,
+        children: childrenMeta.children,
         source: normalizeCustomerSource(body.source),
         notes: cleanText(body.notes),
         socialIdentities: normalizeSocialIdentities(
@@ -163,6 +215,43 @@ function normalizeCustomerPayload(body = {}) {
         tagsProvided,
         tags: tagsProvided ? normalizeCustomerTagsPayload(body.tags) : []
     };
+}
+
+async function saveCustomerChildrenFromCustomerApi(customerId, input, businessContext, sourceAction, client) {
+    if (input.childrenProvided) {
+        return replaceCustomerChildren(
+            customerId,
+            input.children,
+            businessContext,
+            {
+                sourceKind: 'customer_api',
+                source: sourceAction,
+                copyRule: 'explicit_children_payload',
+                requireName: true,
+                replaceAllForCustomer: true
+            },
+            { client }
+        );
+    }
+
+    const existingChildren = await listCustomerChildren(customerId, businessContext, { client });
+    if (existingChildren.some(child => child.sourceKind === 'customer_api')) {
+        return existingChildren;
+    }
+
+    return replaceCustomerChildren(
+        customerId,
+        input.children,
+        businessContext,
+        {
+            sourceKind: 'legacy_customer_child',
+            source: sourceAction,
+            copyRule: 'legacy_customer_fields_payload',
+            requireName: false,
+            replaceAllForCustomer: false
+        },
+        { client }
+    );
 }
 
 function requestBusinessContext(req) {
@@ -512,6 +601,123 @@ function scopedBookingAggregateSql(user, params, alias = 'b') {
     };
 }
 
+async function loadCustomerChildrenMap(customerIds = [], businessContext = null, options = {}) {
+    const ids = Array.from(new Set((Array.isArray(customerIds) ? customerIds : [])
+        .map(id => Number.parseInt(id, 10))
+        .filter(id => Number.isInteger(id) && id > 0)));
+    if (!ids.length) return new Map();
+
+    const params = [ids];
+    const contextSql = businessContext
+        ? `AND business_context = $${params.push(businessContext)}`
+        : '';
+
+    try {
+        const result = await (options.queryable || pool).query(
+            `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
+                    age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at
+             FROM customer_children
+             WHERE customer_id = ANY($1::int[])
+               ${contextSql}
+             ORDER BY customer_id ASC, sort_order ASC, id ASC`,
+            params
+        );
+        const map = new Map();
+        for (const row of result.rows || []) {
+            const key = Number(row.customer_id);
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(row);
+        }
+        return map;
+    } catch (err) {
+        if (isCustomerChildrenStorageMissing(err)) return new Map();
+        throw err;
+    }
+}
+
+function applyCustomerChildrenProjection(customer, childRows = []) {
+    const projection = buildCustomerChildrenProjection(customer, childRows);
+    const primary = firstCustomerChild(projection);
+    customer.children = projection;
+    customer.childName = primary?.name || customer.childName || null;
+    customer.childBirthday = primary?.birthday || customer.childBirthday || null;
+    customer.childNameDisplay = customerChildrenNameDisplay(projection) || customer.childName || null;
+    customer.childBirthdayDisplay = customerChildrenBirthdayDisplay(projection) || customer.childBirthday || null;
+    return customer;
+}
+
+function customerChildrenSearchSql(patternRef, alias = 'c') {
+    return `EXISTS (
+        SELECT 1
+        FROM customer_children cc_search
+        WHERE cc_search.customer_id = ${alias}.id
+          AND cc_search.business_context = COALESCE(${alias}.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+          AND cc_search.name ILIKE ${patternRef}
+    )`;
+}
+
+async function queryUpcomingBirthdayRows(businessContext, days) {
+    const params = [];
+    const contextSql = customerContextCondition(params, businessContext, 'c');
+    const birthdaySourceSql = `
+        WITH birthday_sources AS (
+            SELECT c.id, c.name AS parent_name, c.phone,
+                   cc.name AS child_name, cc.birthday AS child_birthday
+              FROM customers c
+              JOIN customer_children cc
+                ON cc.customer_id = c.id
+               AND cc.business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+             WHERE cc.birthday IS NOT NULL
+               AND ${contextSql}
+            UNION ALL
+            SELECT c.id, c.name AS parent_name, c.phone,
+                   c.child_name, c.child_birthday
+              FROM customers c
+             WHERE c.child_birthday IS NOT NULL
+               AND ${contextSql}
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM customer_children cc_existing
+                    WHERE cc_existing.customer_id = c.id
+                      AND cc_existing.business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                      AND cc_existing.birthday IS NOT NULL
+               )
+        )
+        SELECT *,
+               CASE
+                   WHEN TO_CHAR(child_birthday, 'MM-DD') >= TO_CHAR(CURRENT_DATE, 'MM-DD')
+                   THEN (TO_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::text || '-' || TO_CHAR(child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
+                   ELSE (TO_DATE((EXTRACT(YEAR FROM CURRENT_DATE)::int + 1)::text || '-' || TO_CHAR(child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
+               END AS days_until_birthday
+          FROM birthday_sources
+         ORDER BY days_until_birthday ASC, parent_name ASC, child_name ASC
+    `;
+
+    try {
+        const result = await pool.query(birthdaySourceSql, params);
+        return result.rows;
+    } catch (err) {
+        if (!isCustomerChildrenStorageMissing(err)) throw err;
+    }
+
+    const legacyParams = [];
+    const legacyContextSql = customerContextCondition(legacyParams, businessContext, 'c');
+    const legacyResult = await pool.query(`
+        SELECT c.id, c.name AS parent_name, c.phone,
+               c.child_name, c.child_birthday,
+               CASE
+                   WHEN TO_CHAR(c.child_birthday, 'MM-DD') >= TO_CHAR(CURRENT_DATE, 'MM-DD')
+                   THEN (TO_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::text || '-' || TO_CHAR(c.child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
+                   ELSE (TO_DATE((EXTRACT(YEAR FROM CURRENT_DATE)::int + 1)::text || '-' || TO_CHAR(c.child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
+               END AS days_until_birthday
+        FROM customers c
+        WHERE c.child_birthday IS NOT NULL
+          AND ${legacyContextSql}
+        ORDER BY days_until_birthday ASC
+    `, legacyParams);
+    return legacyResult.rows;
+}
+
 // Autocomplete search (for booking form dropdown)
 router.get('/search', async (req, res) => {
     try {
@@ -536,6 +742,7 @@ router.get('/search', async (req, res) => {
         const socialIdentitySearch = await canSearchCustomerSocialIdentities()
             ? ' OR c.social_identities::text ILIKE $1'
             : '';
+        const childrenSearch = ` OR ${customerChildrenSearchSql('$1', 'c')}`;
         const contextSql = customerContextCondition(params, businessContext, 'c');
         const result = await pool.query(
             `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday,
@@ -546,12 +753,16 @@ router.get('/search', async (req, res) => {
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
              WHERE ${contextSql}
-               AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1${normalizedPhoneSql}${instagramHandleSql}${socialIdentitySearch})
+               AND (c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.child_name ILIKE $1${childrenSearch}${normalizedPhoneSql}${instagramHandleSql}${socialIdentitySearch})
              ORDER BY b_agg.real_last_visit DESC NULLS LAST
              LIMIT 20`,
             params
         );
-        res.json(result.rows.map(mapCustomerRow));
+        const childrenMap = await loadCustomerChildrenMap(result.rows.map(row => row.id), businessContext);
+        res.json(result.rows.map(row => applyCustomerChildrenProjection(
+            mapCustomerRow(row),
+            childrenMap.get(Number(row.id)) || []
+        )));
     } catch (err) {
         log.error('Customer search error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -663,25 +874,9 @@ router.get('/birthdays', async (req, res) => {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
         const days = Math.min(90, Math.max(1, parseInt(req.query.days) || 30));
-        const params = [];
-        const contextSql = customerContextCondition(params, businessContext, 'c');
+        const rows = await queryUpcomingBirthdayRows(businessContext, days);
 
-        // PostgreSQL: compare month-day to find upcoming birthdays (handles year wrap)
-        const result = await pool.query(`
-            SELECT c.id, c.name AS parent_name, c.phone,
-                   c.child_name, c.child_birthday,
-                   CASE
-                       WHEN TO_CHAR(c.child_birthday, 'MM-DD') >= TO_CHAR(CURRENT_DATE, 'MM-DD')
-                       THEN (TO_DATE(EXTRACT(YEAR FROM CURRENT_DATE)::text || '-' || TO_CHAR(c.child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
-                       ELSE (TO_DATE((EXTRACT(YEAR FROM CURRENT_DATE)::int + 1)::text || '-' || TO_CHAR(c.child_birthday, 'MM-DD'), 'YYYY-MM-DD') - CURRENT_DATE)
-                   END AS days_until_birthday
-            FROM customers c
-            WHERE c.child_birthday IS NOT NULL
-              AND ${contextSql}
-            ORDER BY days_until_birthday ASC
-        `, params);
-
-        const filtered = result.rows
+        const filtered = rows
             .filter(r => parseInt(r.days_until_birthday) >= 0 && parseInt(r.days_until_birthday) <= days)
             .map(r => ({
                 id: r.id,
@@ -709,6 +904,11 @@ router.get('/export', exportLimiter, async (req, res) => {
         const contextSql = customerContextCondition(params, businessContext);
         const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
         customerRows = result.rows;
+        const childrenMap = await loadCustomerChildrenMap(customerRows.map(row => row.id), businessContext);
+        const projectedCustomers = customerRows.map(row => applyCustomerChildrenProjection(
+            mapCustomerRow(row),
+            childrenMap.get(Number(row.id)) || []
+        ));
 
         // Get cert counts from PostgreSQL
         const certResult = await pool.query(
@@ -725,23 +925,26 @@ router.get('/export', exportLimiter, async (req, res) => {
             'Сертифікатів', 'Створено'
         ].join(';');
 
-        const rows = customerRows.map(r => [
-            r.id,
-            escapeCsv(r.name),
-            escapeCsv(r.phone || ''),
-            escapeCsv(r.instagram || ''),
-            escapeCsv(formatSocialIdentities(r.social_identities, { instagram: r.instagram })),
-            escapeCsv(r.child_name || ''),
-            r.child_birthday ? formatDate(r.child_birthday) : '',
-            escapeCsv(getCustomerSourceLabel(r.source)),
-            escapeCsv(r.notes || ''),
-            r.total_bookings || 0,
-            r.total_spent || 0,
-            r.first_visit ? formatDate(r.first_visit) : '',
-            r.last_visit ? formatDate(r.last_visit) : '',
-            certMap[r.id] || 0,
-            r.created_at ? formatDate(r.created_at) : ''
-        ].join(';'));
+        const rows = customerRows.map((r, index) => {
+            const projected = projectedCustomers[index] || {};
+            return [
+                r.id,
+                escapeCsv(r.name),
+                escapeCsv(r.phone || ''),
+                escapeCsv(r.instagram || ''),
+                escapeCsv(formatSocialIdentities(r.social_identities, { instagram: r.instagram })),
+                escapeCsv(projected.childNameDisplay || ''),
+                escapeCsv(projected.childBirthdayDisplay || ''),
+                escapeCsv(getCustomerSourceLabel(r.source)),
+                escapeCsv(r.notes || ''),
+                r.total_bookings || 0,
+                r.total_spent || 0,
+                r.first_visit ? formatDate(r.first_visit) : '',
+                r.last_visit ? formatDate(r.last_visit) : '',
+                certMap[r.id] || 0,
+                r.created_at ? formatDate(r.created_at) : ''
+            ].join(';');
+        });
 
         const csv = BOM + header + '\n' + rows.join('\n');
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -763,6 +966,11 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
         const contextSql = customerContextCondition(params, businessContext);
         const result = await pool.query(`SELECT * FROM customers WHERE ${contextSql} ORDER BY name LIMIT 5000`, params);
         customerRows = result.rows;
+        const childrenMap = await loadCustomerChildrenMap(customerRows.map(row => row.id), businessContext);
+        const projectedCustomers = customerRows.map(row => applyCustomerChildrenProjection(
+            mapCustomerRow(row),
+            childrenMap.get(Number(row.id)) || []
+        ));
 
         const certResult = await pool.query(
             'SELECT customer_id, COUNT(*) AS cnt FROM certificates GROUP BY customer_id'
@@ -795,15 +1003,16 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
         sheet.getRow(1).font = { bold: true };
         sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
 
-        for (const r of customerRows) {
+        for (const [index, r] of customerRows.entries()) {
+            const projected = projectedCustomers[index] || {};
             sheet.addRow({
                 id: r.id,
                 name: r.name || '',
                 phone: r.phone || '',
                 instagram: r.instagram || '',
                 socialIdentities: formatSocialIdentities(r.social_identities, { instagram: r.instagram }),
-                childName: r.child_name || '',
-                childBday: r.child_birthday || '',
+                childName: projected.childNameDisplay || '',
+                childBday: projected.childBirthdayDisplay || '',
                 source: getCustomerSourceLabel(r.source),
                 bookings: r.total_bookings || 0,
                 spent: r.total_spent || 0,
@@ -1040,6 +1249,13 @@ router.post('/:primaryId/merge', requireMinRole('manager'), async (req, res) => 
         await client.query('DELETE FROM customer_tags WHERE customer_id = $1 AND tag IN (SELECT tag FROM customer_tags WHERE customer_id = $2)', [dupId, primaryId]).catch(() => {});
         await client.query('UPDATE customer_tags SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
         await client.query('UPDATE communication_log SET customer_id = $1 WHERE customer_id = $2', [primaryId, dupId]).catch(() => {});
+        await client.query(
+            `UPDATE customer_children
+             SET customer_id = $1, updated_at = NOW()
+             WHERE customer_id = $2
+               AND business_context = $3`,
+            [primaryId, dupId, businessContext]
+        ).catch(() => {});
 
         // Merge missing fields
         const updates = [];
@@ -1399,7 +1615,12 @@ router.get('/export-vcf', exportLimiter, async (req, res) => {
             "SELECT * FROM customers WHERE COALESCE(business_context, 'event_genix') = $1 ORDER BY name LIMIT 5000",
             [businessContext]
         );
+        const childrenMap = await loadCustomerChildrenMap(result.rows.map(row => row.id), businessContext);
         const vcards = result.rows.map(r => {
+            const projected = applyCustomerChildrenProjection(
+                mapCustomerRow(r),
+                childrenMap.get(Number(r.id)) || []
+            );
             const lines = [
                 'BEGIN:VCARD',
                 'VERSION:3.0',
@@ -1407,10 +1628,10 @@ router.get('/export-vcf', exportLimiter, async (req, res) => {
             ];
             if (r.phone) lines.push(`TEL;TYPE=CELL:${r.phone}`);
             if (r.instagram) lines.push(`X-INSTAGRAM:${r.instagram}`);
-            if (r.child_name) lines.push(`NOTE:Дитина: ${r.child_name}${r.notes ? ' | ' + r.notes.replace(/\n/g, ' ') : ''}`);
+            if (projected.childNameDisplay) lines.push(`NOTE:Діти: ${projected.childNameDisplay}${r.notes ? ' | ' + r.notes.replace(/\n/g, ' ') : ''}`);
             else if (r.notes) lines.push(`NOTE:${r.notes.replace(/\n/g, ' ')}`);
-            if (r.child_birthday) {
-                const d = new Date(r.child_birthday);
+            if (projected.childBirthday) {
+                const d = new Date(projected.childBirthday);
                 lines.push(`BDAY:${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`);
             }
             lines.push('END:VCARD');
@@ -1517,11 +1738,17 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
             return res.json({ success: true, dryRun: true, recipientCount: result.rows.length });
         }
 
+        const childrenMap = await loadCustomerChildrenMap(result.rows.map(row => row.id), businessContext);
+        const customers = result.rows.map(row => applyCustomerChildrenProjection(
+            mapCustomerRow(row),
+            childrenMap.get(Number(row.id)) || []
+        ));
+
         // v38.4.0: Batch INSERT instead of N+1 loop
-        const rows = result.rows.map(customer => {
+        const rows = customers.map(customer => {
             const message = template
                 .replace(/\{name\}/g, customer.name || '')
-                .replace(/\{childName\}/g, customer.child_name || '')
+                .replace(/\{childName\}/g, customer.childNameDisplay || customer.childName || '')
                 .replace(/\{phone\}/g, customer.phone || '');
             return { id: customer.id, message };
         });
@@ -1571,7 +1798,8 @@ router.get('/', async (req, res) => {
             const socialIdentitySearch = await canSearchCustomerSocialIdentities()
                 ? ` OR c.social_identities::text ILIKE $${params.length}`
                 : '';
-            conditions.push(`(c.name ILIKE $${params.length} OR c.phone ILIKE $${params.length} OR c.instagram ILIKE $${params.length} OR c.child_name ILIKE $${params.length}${socialIdentitySearch})`);
+            const patternRef = `$${params.length}`;
+            conditions.push(`(c.name ILIKE ${patternRef} OR c.phone ILIKE ${patternRef} OR c.instagram ILIKE ${patternRef} OR c.child_name ILIKE ${patternRef} OR ${customerChildrenSearchSql(patternRef, 'c')}${socialIdentitySearch})`);
         }
         if (source) {
             const normalizedSource = normalizeCustomerSource(source, { unknownAsNull: false });
@@ -1638,6 +1866,7 @@ router.get('/', async (req, res) => {
             } catch { /* tags table may not exist yet */ }
         }
 
+        const childrenMap = await loadCustomerChildrenMap(result.rows.map(r => r.id));
         res.json({
             customers: result.rows.map(r => {
                 // v32.1: Override denormalized fields with real booking aggregates
@@ -1645,7 +1874,10 @@ router.get('/', async (req, res) => {
                 r.total_spent = parseInt(r.real_total_spent) || r.total_spent || 0;
                 if (r.real_last_visit) r.last_visit = r.real_last_visit;
                 if (r.real_first_visit) r.first_visit = r.real_first_visit;
-                const c = mapCustomerRow(r);
+                const c = applyCustomerChildrenProjection(
+                    mapCustomerRow(r),
+                    childrenMap.get(Number(r.id)) || []
+                );
                 c.tags = tagsMap[r.id] || [];
                 c.ltv = calculateLTV(r);
                 return c;
@@ -1673,7 +1905,10 @@ router.get('/:id', async (req, res) => {
             [numId, businessContext]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
-        customer = mapCustomerRow(result.rows[0]);
+        customer = applyCustomerChildrenProjection(
+            mapCustomerRow(result.rows[0]),
+            await listCustomerChildren(numId, businessContext)
+        );
 
         try {
             const linkedLeadsResult = await pool.query(
@@ -1820,11 +2055,18 @@ router.post('/', async (req, res) => {
         try {
             await client.query('BEGIN');
             const result = await insertCustomerPg(input, client);
+            const savedChildren = await saveCustomerChildrenFromCustomerApi(
+                result.rows[0].id,
+                input,
+                businessContext,
+                'customers.create',
+                client
+            );
             if (input.tagsProvided) {
                 await syncManualCustomerTags(client, result.rows[0].id, input.tags, req.user?.id || null);
             }
             await syncBirthdayTagsAfterCustomerSave(client, result.rows[0].id, req.user?.id || null);
-            const customer = mapCustomerRow(result.rows[0]);
+            const customer = applyCustomerChildrenProjection(mapCustomerRow(result.rows[0]), savedChildren);
             customer.tags = await getCustomerTagsPg(client, customer.id);
             await client.query('COMMIT');
             res.json(customer);
@@ -1836,6 +2078,9 @@ router.post('/', async (req, res) => {
         }
     } catch (err) {
         if (isCustomerDuplicateError(err)) return sendCustomerDuplicateResponse(res);
+        if (err instanceof CustomerChildrenError) {
+            return res.status(err.status || 400).json({ error: err.message, code: err.code, details: err.details });
+        }
         log.error('Customer create error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -1860,6 +2105,16 @@ router.put('/:id', async (req, res) => {
         try {
             await client.query('BEGIN');
             const result = await updateCustomerPg(id, input, client);
+            let savedChildren = [];
+            if (result.rows.length > 0) {
+                savedChildren = await saveCustomerChildrenFromCustomerApi(
+                    result.rows[0].id,
+                    input,
+                    businessContext,
+                    'customers.update',
+                    client
+                );
+            }
             if (result.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ error: 'Клієнта не знайдено' });
@@ -1868,7 +2123,7 @@ router.put('/:id', async (req, res) => {
                 await syncManualCustomerTags(client, result.rows[0].id, input.tags, req.user?.id || null);
             }
             await syncBirthdayTagsAfterCustomerSave(client, result.rows[0].id, req.user?.id || null);
-            const customer = mapCustomerRow(result.rows[0]);
+            const customer = applyCustomerChildrenProjection(mapCustomerRow(result.rows[0]), savedChildren);
             customer.tags = await getCustomerTagsPg(client, customer.id);
             await client.query('COMMIT');
             res.json(customer);
@@ -1880,6 +2135,9 @@ router.put('/:id', async (req, res) => {
         }
     } catch (err) {
         if (isCustomerDuplicateError(err)) return sendCustomerDuplicateResponse(res);
+        if (err instanceof CustomerChildrenError) {
+            return res.status(err.status || 400).json({ error: err.message, code: err.code, details: err.details });
+        }
         log.error('Customer update error', err);
         res.status(500).json({ error: 'Internal server error' });
     }

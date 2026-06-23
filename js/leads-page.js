@@ -1208,7 +1208,7 @@ function normalizeLeadCelebrants(lead = {}) {
         name: item.name || item.childName || item.child_name || '',
         age: item.age ?? item.childAge ?? item.child_age ?? '',
         birthday: item.birthday || item.birthDate || item.birth_date || '',
-        notes: item.notes || ''
+        notes: item.notes || item.note || ''
     }));
     if (lead.childAge || lead.child_age) {
         return [{ name: '', age: lead.childAge || lead.child_age, birthday: '', notes: '' }];
@@ -1218,24 +1218,47 @@ function normalizeLeadCelebrants(lead = {}) {
 
 function formatCelebrantsInput(celebrants = []) {
     return parseJsonArray(celebrants)
-        .map(item => [item.name || item.childName || item.child_name || '', item.age || '', item.birthday || ''].filter(Boolean).join(', '))
+        .map(item => [
+            item.name || item.childName || item.child_name || '',
+            item.birthday || item.birthDate || item.birth_date || '',
+            item.age ?? item.childAge ?? item.child_age ?? '',
+            item.notes || item.note || ''
+        ].filter(value => value !== null && value !== undefined && String(value).trim() !== '').join(' | '))
         .join('\n');
 }
 
 function parseCelebrantsInput(value) {
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const ageTokenPattern = /^(\d{1,3})(?:\s*(?:р\.?|рок(?:и|ів)?))?$/i;
+    const agePhrasePattern = /\b(\d{1,3})\s*(?:р\.?|рок(?:и|ів)?)\b/i;
     return String(value || '')
         .split(/\r?\n/)
         .map(line => line.trim())
         .filter(Boolean)
         .slice(0, 20)
         .map(line => {
-            const parts = line.split(',').map(part => part.trim()).filter(Boolean);
-            const ageMatch = line.match(/\b(\d{1,3})\b/);
-            const birthday = parts.find(part => /^\d{4}-\d{2}-\d{2}$/.test(part)) || null;
+            const parts = (line.includes('|') ? line.split('|') : line.split(','))
+                .map(part => part.trim())
+                .filter(Boolean);
+            const birthday = parts.find(part => datePattern.test(part)) || null;
+            const explicitAgePart = parts.find(part => ageTokenPattern.test(part) && !datePattern.test(part));
+            const ageMatch = explicitAgePart?.match(ageTokenPattern) || line.replace(/\d{4}-\d{2}-\d{2}/g, '').match(agePhrasePattern);
+            const namePart = parts.find(part => !datePattern.test(part) && !ageTokenPattern.test(part));
+            const name = parts.length > 1
+                ? namePart
+                : line
+                    .replace(/\d{4}-\d{2}-\d{2}/g, '')
+                    .replace(agePhrasePattern, '')
+                    .trim();
+            const notes = parts
+                .filter(part => part !== namePart && part !== birthday && part !== explicitAgePart)
+                .filter(part => !datePattern.test(part) && !ageTokenPattern.test(part))
+                .join(', ');
             return {
-                name: parts[0] && !/^\d{1,3}$/.test(parts[0]) && !/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) ? parts[0] : null,
+                name: name || null,
                 age: ageMatch ? parseInt(ageMatch[1], 10) : null,
                 birthday,
+                notes: notes || null,
                 source: 'operator'
             };
         });

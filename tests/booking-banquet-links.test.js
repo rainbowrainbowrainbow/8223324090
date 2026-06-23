@@ -180,6 +180,7 @@ function makeDb(rows, links = [], options = {}) {
         banquetMemberships: (Array.isArray(options.banquetMemberships) ? options.banquetMemberships : []).map(row => ({ ...row })),
         banquetDeposits: (Array.isArray(options.banquetDeposits) ? options.banquetDeposits : []).map(row => ({ ...row })),
         customers: (Array.isArray(options.customers) ? options.customers : []).map(row => ({ ...row })),
+        customerChildren: (Array.isArray(options.customerChildren) ? options.customerChildren : []).map(row => ({ ...row })),
         histories: [],
         tx: [],
         queries: [],
@@ -204,6 +205,7 @@ function makeDb(rows, links = [], options = {}) {
                 banquetGroups: cloneStateValue(state.banquetGroups),
                 banquetMemberships: cloneStateValue(state.banquetMemberships),
                 banquetDeposits: cloneStateValue(state.banquetDeposits),
+                customerChildren: cloneStateValue(state.customerChildren),
                 histories: cloneStateValue(state.histories),
                 nextLinkId: state.nextLinkId,
                 nextBanquetMembershipId: state.nextBanquetMembershipId
@@ -223,6 +225,7 @@ function makeDb(rows, links = [], options = {}) {
                 state.banquetGroups = cloneStateValue(txSnapshot.banquetGroups);
                 state.banquetMemberships = cloneStateValue(txSnapshot.banquetMemberships);
                 state.banquetDeposits = cloneStateValue(txSnapshot.banquetDeposits);
+                state.customerChildren = cloneStateValue(txSnapshot.customerChildren);
                 state.histories = cloneStateValue(txSnapshot.histories);
                 state.nextLinkId = txSnapshot.nextLinkId;
                 state.nextBanquetMembershipId = txSnapshot.nextBanquetMembershipId;
@@ -627,6 +630,15 @@ function makeDb(rows, links = [], options = {}) {
                 && normalizeContext(row.business_context || 'event_genix') === normalizeContext(businessContext)
             );
             return { rows: customer ? [{ ...customer }] : [], rowCount: customer ? 1 : 0 };
+        }
+        if (/FROM customer_children/i.test(sql)) {
+            const [customerId, businessContext] = params;
+            const rows = state.customerChildren
+                .filter(row => Number(row.customer_id) === Number(customerId))
+                .filter(row => normalizeContext(row.business_context || 'event_genix') === normalizeContext(businessContext))
+                .slice()
+                .sort((a, b) => (Number(a.sort_order || 0) - Number(b.sort_order || 0)) || (Number(a.id || 0) - Number(b.id || 0)));
+            return { rows: rows.map(row => ({ ...row })), rowCount: rows.length };
         }
         if (/UPDATE bookings SET status = 'cancelled', updated_at = NOW\(\)\s+WHERE \(id = \$1 OR linked_to = \$1\)/i.test(sql)) {
             const bookingId = String(params[0]);

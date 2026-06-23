@@ -5,10 +5,13 @@
 
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { authRequest } = require('./helpers');
+const { authRequest, TEST_USER, TEST_PASS } = require('./helpers');
 
-describe('Customers', () => {
+const liveDescribe = TEST_USER && TEST_PASS ? describe : describe.skip;
+
+liveDescribe('Customers', () => {
     let createdCustomerId;
+    let multiChildCustomerId;
     let createdTagId;
     let birthdaySystemTagsSupported = null;
     const smokeTagName = `Smoke Tag ${Date.now()}`;
@@ -82,6 +85,46 @@ describe('Customers', () => {
         assert.ok([400, 500].includes(res.status), `Expected 400 or 500, got ${res.status}`);
     });
 
+    it('POST /api/customers - create customer with three children', async () => {
+        const res = await authRequest('POST', '/api/customers', {
+            name: `Multi Children Smoke ${Date.now()}`,
+            phone: `+38066${String(Date.now()).slice(-7)}`,
+            source: 'manual',
+            children: [
+                { name: 'Anna', birthday: '2018-01-01', ageSnapshot: 8 },
+                { name: 'Bohdan', birthday: null, ageSnapshot: 6, note: 'note' },
+                { name: 'Sofia', birthday: '2020-03-04' }
+            ]
+        });
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        multiChildCustomerId = res.data.id;
+        assert.ok(Array.isArray(res.data.children), 'Should return children array');
+        assert.deepEqual(res.data.children.map(child => child.name), ['Anna', 'Bohdan', 'Sofia']);
+        assert.equal(res.data.childName, 'Anna', 'Legacy childName snapshot should use first child');
+        assert.equal(String(res.data.childBirthday).slice(0, 10), '2018-01-01');
+    });
+
+    it('GET /api/customers/:id - reload preserves three children and birthday dates', async () => {
+        assert.ok(multiChildCustomerId, 'Need multi-child customer id');
+        const res = await authRequest('GET', `/api/customers/${multiChildCustomerId}`);
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(Array.isArray(res.data.children), 'Should return canonical children projection array');
+        assert.deepEqual(res.data.children.map(child => child.name), ['Anna', 'Bohdan', 'Sofia']);
+        assert.deepEqual(res.data.children.map(child => child.birthday ? String(child.birthday).slice(0, 10) : null), ['2018-01-01', null, '2020-03-04']);
+        assert.equal(res.data.children[1].ageSnapshot ?? res.data.children[1].age_snapshot, 6);
+        assert.equal(res.data.children[1].birthday, null, 'Age-only child must not get a fake birthday');
+    });
+
+    it('POST /api/customers - rejects invalid child birthday', async () => {
+        const res = await authRequest('POST', '/api/customers', {
+            name: `Invalid Child Smoke ${Date.now()}`,
+            phone: `+38067${String(Date.now()).slice(-7)}`,
+            source: 'manual',
+            children: [{ name: 'Invalid Date Child', birthday: '2026-99-99' }]
+        });
+        assert.equal(res.status, 400);
+    });
+
     // ==========================================
     // LIST & SEARCH
     // ==========================================
@@ -125,6 +168,17 @@ describe('Customers', () => {
         assert.ok([200, 400].includes(res.status));
     });
 
+    it('GET /api/customers/search - finds canonical child names', async () => {
+        assert.ok(multiChildCustomerId, 'Need multi-child customer id');
+        const res = await authRequest('GET', '/api/customers/search?q=Sofia');
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.ok(Array.isArray(res.data), 'Should return quick search array');
+        const found = res.data.find(customer => customer.id === multiChildCustomerId);
+        assert.ok(found, 'Should find customer by canonical child name');
+        assert.ok(Array.isArray(found.children), 'Search result should include canonical children projection');
+        assert.deepEqual(found.children.map(child => child.name), ['Anna', 'Bohdan', 'Sofia']);
+    });
+
     // ==========================================
     // GET BY ID
     // ==========================================
@@ -136,6 +190,7 @@ describe('Customers', () => {
         assert.ok(res.data.id, 'Should return customer');
         assert.ok(Array.isArray(res.data.bookings), 'Should include bookings');
         assert.ok(Array.isArray(res.data.certificates), 'Should include certificates');
+        assert.ok(Array.isArray(res.data.children), 'Should include canonical children projection array');
         assert.ok(Array.isArray(res.data.tags), 'Should include tags array');
         assert.ok(res.data.tags.some(tag => tag.tag === createTagName), 'Should include tag saved from create questionnaire');
     });
@@ -303,6 +358,29 @@ describe('Customers', () => {
         assert.ok(res.data.tags.some(tag => tag.tag === updateTagName), 'Should preserve tags when tags payload is omitted');
     });
 
+    it('PUT /api/customers/:id - updates and reloads three children', async () => {
+        assert.ok(multiChildCustomerId, 'Need multi-child customer id');
+        const res = await authRequest('PUT', `/api/customers/${multiChildCustomerId}`, {
+            name: 'Multi Children Smoke Updated',
+            phone: '+380660000777',
+            source: 'manual',
+            children: [
+                { name: 'Anna Updated', birthday: '2018-01-01', ageSnapshot: 8 },
+                { name: 'Bohdan Updated', birthday: '2019-02-03', ageSnapshot: 7 },
+                { name: 'Sofia Updated', birthday: null, ageSnapshot: 5 }
+            ]
+        });
+        assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.deepEqual(res.data.children.map(child => child.name), ['Anna Updated', 'Bohdan Updated', 'Sofia Updated']);
+
+        const details = await authRequest('GET', `/api/customers/${multiChildCustomerId}`);
+        assert.equal(details.status, 200);
+        assert.deepEqual(details.data.children.map(child => child.name), ['Anna Updated', 'Bohdan Updated', 'Sofia Updated']);
+        assert.deepEqual(details.data.children.map(child => child.birthday ? String(child.birthday).slice(0, 10) : null), ['2018-01-01', '2019-02-03', null]);
+        assert.equal(details.data.children[2].ageSnapshot ?? details.data.children[2].age_snapshot, 5);
+        assert.equal(details.data.children[2].birthday, null, 'Updated age-only child must not get a fake birthday');
+    });
+
     // ==========================================
     // RFM ANALYSIS
     // ==========================================
@@ -334,6 +412,13 @@ describe('Customers', () => {
     it('DELETE /api/customers/:id — delete customer', async () => {
         assert.ok(createdCustomerId, 'Need created customer id');
         const res = await authRequest('DELETE', `/api/customers/${createdCustomerId}`);
+        assert.equal(res.status, 200);
+        assert.ok(res.data.success, 'Should return success');
+    });
+
+    it('DELETE /api/customers/:id - delete multi-child smoke customer', async () => {
+        if (!multiChildCustomerId) return;
+        const res = await authRequest('DELETE', `/api/customers/${multiChildCustomerId}`);
         assert.equal(res.status, 200);
         assert.ok(res.data.success, 'Should return success');
     });

@@ -41,6 +41,214 @@ const {
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
+const loadJsonFixture = (...parts) => JSON.parse(read(...parts));
+function readPngInfo(...parts) {
+    const buffer = fs.readFileSync(path.join(repoRoot, ...parts));
+    assert.equal(buffer.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(buffer.toString('ascii', 12, 16), 'IHDR');
+    return {
+        bytes: buffer.length,
+        width: buffer.readUInt32BE(16),
+        height: buffer.readUInt32BE(20),
+        bitDepth: buffer[24],
+        colorType: buffer[25]
+    };
+}
+function countPdfPages(buffer) {
+    return (buffer.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+}
+function buildBanquetSummaryPrintEdgeFixture() {
+    const base = loadJsonFixture('tests', 'fixtures', 'banquet-summary-official.fixture.json');
+    const longSentence = 'Long edge-case text with wrapping pressure for A4 print, table cells, page breaks, and PDF export verification.';
+    const menuRows = Array.from({ length: 26 }, (_, index) => {
+        const item = index + 1;
+        return {
+            id: `menu:edge:${item}`,
+            type: 'menu',
+            source: 'product',
+            bookingId: null,
+            title: `Edge Menu Position ${String(item).padStart(2, '0')} - family style platter with a long service title`,
+            quantity: (item % 5) + 1,
+            unitPrice: 185 + item * 7,
+            subtotal: ((item % 5) + 1) * (185 + item * 7),
+            comment: `${longSentence} Kitchen note ${item}: keep sauces separate, mark allergens, and confirm warm serving sequence with host before release.`,
+            meta: {
+                productId: `menu_edge_${item}`,
+                code: `EDGE-MENU-${String(item).padStart(2, '0')}`,
+                menuSection: item % 3 === 0 ? 'Dessert' : 'Main',
+                servingUnit: 'portion',
+                servingTime: `${15 + Math.floor(item / 6)}:${String((item * 7) % 60).padStart(2, '0')}`,
+                servingNote: `Long serving note ${item}: ${longSentence}`,
+                kitchenType: item % 3 === 0 ? 'cake' : 'menu'
+            }
+        };
+    });
+    const orderRows = [
+        {
+            id: 'program:edge',
+            type: 'program',
+            source: 'main_booking',
+            bookingId: 'BK-PRINT-EDGE-QA',
+            title: 'Premium Celebration Program with an intentionally long public title',
+            durationMinutes: 120,
+            quantity: null,
+            unitPrice: 3600,
+            subtotal: 3600,
+            comment: `${longSentence} Main program comment should wrap without pushing neighboring cells outside the A4 page.`,
+            meta: { time: '14:00', duration: 120, room: 'Grand Crystal Hall With Long Name' }
+        },
+        {
+            id: 'activity:edge',
+            type: 'activity',
+            source: 'banquet_group',
+            bookingId: 'BK-PRINT-EDGE-QA-A1',
+            title: 'Science Show and Bubble Finale with long operational note',
+            durationMinutes: 45,
+            quantity: null,
+            unitPrice: 2800,
+            subtotal: 2800,
+            comment: `${longSentence} Activity comment should remain readable across PDF and browser print.`,
+            meta: { time: '16:20', duration: 45, room: 'Grand Crystal Hall With Long Name' }
+        },
+        {
+            id: 'entry:edge',
+            type: 'entry',
+            source: 'banquet_entry_price_rules',
+            bookingId: null,
+            title: 'Children entry with long tariff explanation',
+            quantity: 34,
+            unitPrice: 300,
+            subtotal: 10200,
+            comment: 'Entry row keeps quantity and amount visible.',
+            meta: { ruleCode: 'banquet_entry_weekend_child', dateType: 'weekend' }
+        },
+        ...menuRows
+    ];
+    const orderTotal = orderRows.reduce((sum, row) => sum + Number(row.subtotal || 0), 0);
+    const serviceEvents = Array.from({ length: 5 }, (_, index) => ({
+        id: `service:edge:${index + 1}`,
+        type: 'service_event',
+        title: `Service checkpoint ${index + 1} with long coordination title`,
+        comment: `${longSentence} Service team checkpoint ${index + 1}.`,
+        meta: { time: `${17 + index}:10`, servingTime: `${17 + index}:10` }
+    }));
+    const schedule = [
+        {
+            id: 'schedule:arrival',
+            type: 'arrival',
+            source: 'event',
+            time: '14:00',
+            title: 'Guest arrival with very long room and host coordination note',
+            note: `${longSentence} Confirm signage, stroller parking, and table layout before guests enter.`,
+            modes: ['client', 'staff'],
+            noteModes: ['client', 'staff'],
+            sortOrder: 0
+        },
+        ...orderRows.filter(row => row.type !== 'entry').map((row, index) => ({
+            id: `schedule:order:${index + 1}`,
+            type: row.type,
+            source: row.source,
+            time: row.meta?.servingTime || row.meta?.time || '15:00',
+            title: `Schedule ${index + 1}: ${row.title}`,
+            note: `${longSentence} Schedule note ${index + 1}.`,
+            modes: row.type === 'menu' ? ['client', 'kitchen', 'staff'] : ['client', 'staff'],
+            noteModes: row.type === 'menu' ? ['kitchen', 'staff'] : ['staff'],
+            sortOrder: 10 + index
+        })),
+        ...serviceEvents.map((row, index) => ({
+            id: `schedule:service:${index + 1}`,
+            type: 'service_event',
+            source: 'service_event',
+            time: row.meta.time,
+            title: row.title,
+            note: row.comment,
+            modes: ['client', 'kitchen', 'staff'],
+            noteModes: ['kitchen', 'staff'],
+            sortOrder: 100 + index
+        }))
+    ];
+
+    return {
+        ...base,
+        bookingId: 'BK-PRINT-EDGE-QA',
+        mode: 'client',
+        group: { ...base.group, id: 'BQ-PRINT-EDGE-QA', primaryBookingId: 'BK-PRINT-EDGE-QA', groupName: 'Print Edge QA Banquet' },
+        document: { ...base.document, title: 'BANQUET SHEET PRINT EDGE CASE', generatedBy: 'qa-print-manager' },
+        venue: {
+            name: 'Event Genix Official Venue With Extended Legal Banquet Location Name',
+            addressLine1: 'Kyiv, Very Long Address Line For Print Edge Case Validation, Building 10, Entrance B, Floor 3',
+            addressLine2: 'Grand Crystal Hall, service entrance near reception, extra long address continuation for wrapping',
+            phone: '0 800 753 553'
+        },
+        event: {
+            ...base.event,
+            date: '2026-08-30',
+            time: '14:00',
+            room: 'Grand Crystal Hall With Long Name',
+            programName: 'Premium Celebration Program with an intentionally long public title',
+            programDisplayName: 'Premium Celebration Program with an intentionally long public title',
+            groupName: 'Print Edge QA Banquet',
+            manager: 'qa-print-manager'
+        },
+        customer: {
+            ...base.customer,
+            name: 'Oleksandra-Kateryna Verylongsurname-Hyphenated Family Representative For Print Wrapping QA',
+            phone: '+380001112244',
+            notes: `${longSentence} Customer note should not clip in brief or PDF export.`
+        },
+        celebrant: {
+            name: 'Maxymilian-Oleksandr Very Long Celebrant Name',
+            birthday: '2018-08-30'
+        },
+        counts: { children: 34, adults: 18, guests: 52, tables: 7 },
+        orderRows,
+        serviceEvents,
+        schedule,
+        responsible: {
+            rows: [
+                { role: 'manager', label: 'Manager', name: 'qa-print-manager with extended display name', modes: ['client', 'kitchen', 'staff'], showWhenEmpty: true },
+                { role: 'animator', label: 'Lead animator', name: 'qa-animator-long-name', modes: ['staff'], showWhenEmpty: true },
+                { role: 'kitchen', label: 'Kitchen coordinator', name: 'qa-kitchen-long-name', modes: ['kitchen', 'staff'], showWhenEmpty: true },
+                { role: 'waiter', label: 'Service coordinator', name: 'qa-service-long-name', modes: ['staff'], showWhenEmpty: true }
+            ],
+            source: 'print_edge_fixture',
+            hasKnownPeople: true
+        },
+        comments: [
+            { type: 'kitchen', label: 'Kitchen note', text: `${longSentence} Repeat across many menu rows and keep readable for kitchen PDF.` },
+            { type: 'activity', label: 'Activity note', text: `${longSentence} Staff should see activity setup details without overlap.` },
+            { type: 'internal', label: 'Internal note', text: `${longSentence} Internal note validates staff-only wrapping and page break behavior.` }
+        ],
+        totals: {
+            programBasePrice: 3600,
+            menuSubtotal: menuRows.reduce((sum, row) => sum + row.subtotal, 0),
+            entrySubtotal: 10200,
+            activitySubtotal: 2800,
+            orderTotal,
+            bookingPrice: 3600,
+            currency: 'UAH'
+        },
+        deposit: { ...base.deposit, amount: 5000, paymentMethod: 'card', status: 'accountant_verified' },
+        finance: {
+            currency: 'UAH',
+            amountDue: orderTotal - 5000,
+            rows: [
+                { key: 'total', label: 'Total', amount: orderTotal, currency: 'UAH', role: 'total' },
+                { key: 'deposit', label: 'Deposit', amount: 5000, currency: 'UAH', role: 'line' }
+            ]
+        },
+        terms: {
+            title: 'Banquet Terms With Long Wrapping Text',
+            items: Array.from({ length: 10 }, (_, index) => `Long term ${index + 1}: ${longSentence} This term is intentionally verbose to verify A4 page breaks, no clipped lines, and stable final brand placement after the terms block.`),
+            source: 'print_edge_fixture',
+            snapshotSource: null,
+            missingCodes: []
+        },
+        warnings: [
+            { code: 'print_edge_warning', message: `${longSentence} Staff mode warning should wrap safely.` }
+        ]
+    };
+}
 const readBookingSurface = () => [
     read('js', 'booking-drawer-state.js'),
     read('js', 'booking-banquet-selector.js'),
@@ -49,6 +257,49 @@ const readBookingSurface = () => [
 ].join('\n');
 const packageJson = JSON.parse(read('package.json'));
 const escapedAssetVersion = packageJson.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+async function renderBookingSummaryFixture(summary, { mode = summary?.mode || 'client' } = {}) {
+    const businessContext = summary?.businessContext || 'event_genix';
+    const groupId = summary?.group?.id || '';
+    const params = new URLSearchParams({
+        id: summary.bookingId,
+        businessContext,
+        mode
+    });
+    if (groupId) params.set('groupId', groupId);
+
+    const dom = new JSDOM(read('booking-summary.html'), {
+        url: `https://fixture.local/booking-summary.html?${params.toString()}`,
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const fetchCalls = [];
+
+    window.localStorage.setItem('pzp_token', 'fixture-token');
+    window.fetch = async input => {
+        const url = String(input?.url || input || '');
+        fetchCalls.push(url);
+        return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ...summary, mode })
+        };
+    };
+    window.URL.createObjectURL = () => 'blob:fixture';
+    window.URL.revokeObjectURL = () => {};
+    window.print = () => {};
+    window.eval(read('js', 'booking-summary-page.js'));
+    window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true }));
+
+    const documentNode = window.document;
+    for (let i = 0; i < 20; i += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 0));
+        if (documentNode.getElementById('bookingSummaryDocument')?.hidden === false) break;
+    }
+
+    return { window, document: documentNode, fetchCalls };
+}
 
 function createBookingMenuCatalogHarness() {
     const dom = new JSDOM(`
@@ -1438,6 +1689,145 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     const fonts = resolvePdfFonts();
     assert.ok(fs.existsSync(fonts.regular), 'regular PDF font exists');
     assert.ok(fs.existsSync(fonts.bold), 'bold PDF font exists');
+});
+
+test('banquet summary official fixture renders logo masthead, core sections, and PDFs', async () => {
+    const summary = loadJsonFixture('tests', 'fixtures', 'banquet-summary-official.fixture.json');
+    const logoPath = path.join(repoRoot, 'images', 'banquet-logo.png');
+
+    assert.ok(fs.existsSync(logoPath), 'real banquet logo asset exists');
+    const logoInfo = readPngInfo('images', 'banquet-logo.png');
+    assert.ok(logoInfo.bytes <= 200 * 1024, 'banquet logo stays lightweight for HTML and PDF rendering');
+    assert.equal(logoInfo.width, logoInfo.height, 'banquet logo stays square');
+    assert.ok(logoInfo.width >= 512 && logoInfo.width <= 1200, 'banquet logo keeps print-safe but bounded resolution');
+    assert.equal(logoInfo.bitDepth, 8);
+    assert.equal(logoInfo.colorType, 6, 'banquet logo keeps RGBA transparency');
+
+    const pageCode = read('js', 'booking-summary-page.js');
+    assert.doesNotMatch(pageCode, /aria-hidden="true">EG/);
+    assert.doesNotMatch(pageCode, />EG<\/(?:span|div)>/);
+
+    const { document, fetchCalls } = await renderBookingSummaryFixture(summary);
+    const expectedFetchPath = `/api/bookings/${encodeURIComponent(summary.bookingId)}/banquet-summary`;
+    assert.ok(fetchCalls.some(url => url.includes(expectedFetchPath)), 'fixture loads through the real summary API URL');
+
+    const sheet = document.getElementById('bookingSummaryDocument');
+    assert.equal(sheet.hidden, false);
+    assert.ok(sheet.classList.contains('booking-summary-a4-page'));
+    assert.ok(sheet.querySelector('.banquet-hero'), 'official masthead exists');
+    assert.ok(sheet.querySelector('.brand-copy'), 'brand copy block exists');
+    assert.ok(sheet.querySelector('.booking-card'), 'right booking card exists');
+    assert.ok(sheet.querySelector('.booking-id'), 'booking id chip exists');
+
+    const logoFrame = sheet.querySelector('.brand-logo-frame');
+    const logo = sheet.querySelector('.brand-logo');
+    assert.ok(logoFrame, 'logo frame exists');
+    assert.ok(logo, 'logo image exists');
+    assert.equal(logo.getAttribute('src'), 'images/banquet-logo.png');
+    assert.equal(logoFrame.querySelector('.brand-mark')?.textContent.trim(), '');
+    assert.equal(logoFrame.textContent.trim(), '');
+    logo.dispatchEvent(new document.defaultView.Event('error'));
+    assert.equal(logo.hidden, true);
+    assert.ok(logoFrame.classList.contains('is-logo-missing'));
+    assert.equal(logoFrame.querySelector('.brand-mark')?.textContent.trim(), '');
+    assert.doesNotMatch(logoFrame.textContent, /EG/);
+    assert.equal(sheet.querySelectorAll('.banquet-top-plate, .banquet-corner-art').length, 0);
+
+    assert.ok(sheet.querySelector('.summary-brief-grid'), 'two-column brief grid exists');
+    assert.equal(sheet.querySelectorAll('.summary-brief-column').length, 2);
+
+    const sectionSequence = Array.from(sheet.querySelectorAll('.summary-section'))
+        .map(section => Array.from(section.classList).find(className => className.startsWith('summary-section--')));
+    assert.deepEqual(sectionSequence, [
+        'summary-section--responsible',
+        'summary-section--schedule',
+        'summary-section--orders',
+        'summary-section--finance',
+        'summary-section--terms'
+    ]);
+
+    const orderTable = sheet.querySelector('.summary-order-table');
+    assert.ok(orderTable, 'order table exists');
+    assert.ok(orderTable.querySelector('thead th.num'), 'order table keeps numbered header');
+    assert.equal(orderTable.querySelectorAll('tbody tr').length, summary.orderRows.length);
+    assert.ok(sheet.querySelector('.summary-finance-table [data-finance-row="total"]'), 'finance table keeps total row');
+    assert.ok(sheet.querySelector('.summary-terms'), 'terms block exists');
+    assert.ok(sheet.querySelector('.banquet-final-brand'), 'final brand footer exists');
+
+    const clientView = buildBanquetSummaryPdfView(summary, 'client');
+    assert.equal(clientView.rows.length, summary.orderRows.length);
+    assert.equal(clientView.comments.length, 0);
+
+    const kitchenView = buildBanquetSummaryPdfView(summary, 'kitchen');
+    assert.deepEqual(kitchenView.rows.map(row => row.type), ['menu', 'menu']);
+    assert.ok(kitchenView.comments.some(comment => comment.type === 'kitchen'));
+
+    const staffView = buildBanquetSummaryPdfView(summary, 'staff');
+    assert.ok(staffView.comments.some(comment => comment.type === 'internal'));
+    assert.ok(staffView.warnings.some(warning => warning.code === 'fixture_warning'));
+
+    for (const mode of ['client', 'kitchen', 'staff']) {
+        const buffer = await buildBanquetSummaryPdfBuffer(summary, { mode });
+        assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
+        assert.ok(buffer.length > 10000, `${mode} PDF contains rendered content`);
+    }
+});
+
+test('banquet summary print edge fixture keeps long A4 output printable', async () => {
+    const summary = buildBanquetSummaryPrintEdgeFixture();
+    const pageCode = read('js', 'booking-summary-page.js');
+    const pageCss = read('css', 'booking-summary.css');
+    const pdfService = read('services', 'banquetSummaryPdf.js');
+
+    assert.equal(validateBanquetSummaryPdf(summary, 'client').valid, true);
+    assert.equal(validateBanquetSummaryPdf(summary, 'kitchen').valid, true);
+    assert.equal(validateBanquetSummaryPdf(summary, 'staff').valid, true);
+    assert.ok(summary.customer.name.length > 70, 'fixture has long client name');
+    assert.ok(summary.venue.addressLine1.length > 80, 'fixture has long address');
+    assert.ok(summary.orderRows.length >= 25, 'fixture has many order rows');
+    assert.ok(summary.schedule.length >= 30, 'fixture has many timing rows');
+    assert.ok(summary.terms.items.length >= 10, 'fixture has long terms');
+
+    assert.match(pageCode, /class="summary-order-table"/);
+    assert.match(pageCss, /\.summary-order-table thead[\s\S]*display: table-header-group/);
+    assert.match(pageCss, /\.summary-order-table tr[\s\S]*break-inside: avoid/);
+    assert.match(pageCss, /\.summary-section--terms[\s\S]*break-inside: avoid/);
+
+    assert.match(pdfService, /const pageAdded = ensureSpace\(doc, height \+ 2\)/);
+    assert.match(pdfService, /pageAdded && !options\.header/);
+    assert.match(pdfService, /drawRow\(headerCells, headerOptions\)/);
+    assert.match(pdfService, /heightOfString\(pdfText\(text\)/);
+
+    const { document } = await renderBookingSummaryFixture(summary);
+    const sheet = document.getElementById('bookingSummaryDocument');
+    assert.equal(sheet.hidden, false);
+    assert.equal(sheet.querySelectorAll('.summary-order-table tbody tr').length, summary.orderRows.length);
+    assert.equal(sheet.querySelectorAll('.summary-schedule-item').length, summary.schedule.length);
+    assert.equal(sheet.querySelectorAll('.summary-terms li').length, summary.terms.items.length);
+    assert.ok(sheet.querySelector('.summary-finance-table [data-finance-row="total"]'), 'finance total remains visible');
+    assert.ok(sheet.querySelector('.banquet-final-brand'), 'final brand remains visible after long terms');
+
+    const clientView = buildBanquetSummaryPdfView(summary, 'client');
+    assert.equal(clientView.rows.length, summary.orderRows.length);
+    assert.equal(clientView.schedule.length, summary.schedule.length);
+    assert.equal(clientView.comments.length, 0);
+
+    const kitchenView = buildBanquetSummaryPdfView(summary, 'kitchen');
+    assert.ok(kitchenView.rows.length >= 20);
+    assert.ok(kitchenView.schedule.length >= 20);
+    assert.ok(kitchenView.comments.some(comment => comment.type === 'kitchen'));
+
+    const staffView = buildBanquetSummaryPdfView(summary, 'staff');
+    assert.ok(staffView.comments.some(comment => comment.type === 'internal'));
+    assert.ok(staffView.warnings.some(warning => warning.code === 'print_edge_warning'));
+
+    for (const mode of ['client', 'kitchen', 'staff']) {
+        const buffer = await buildBanquetSummaryPdfBuffer(summary, { mode });
+        assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
+        assert.ok(buffer.includes(Buffer.from('%%EOF')), `${mode} PDF has EOF marker`);
+        assert.ok(countPdfPages(buffer) >= 2, `${mode} PDF spans multiple A4 pages`);
+        assert.ok(buffer.length > 50000, `${mode} PDF contains long rendered content`);
+    }
 });
 
 test('banquet summary PDF validation blocks client-critical gaps and keeps staff export available', async () => {

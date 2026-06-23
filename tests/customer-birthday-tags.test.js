@@ -51,6 +51,21 @@ function createFakeBirthdayTagClient(customerOverrides = {}, tagRows = []) {
                 return { rows, rowCount: rows.length };
             }
 
+            if (compactSql.startsWith('SELECT c.id, c.child_birthday, c.business_context,')) {
+                const id = params[0];
+                const row = state.customers.find(item => item.id === id) || null;
+                if (!row) {
+                    return { rows: [], rowCount: 0 };
+                }
+                return {
+                    rows: [{
+                        ...row,
+                        canonical_child_birthday: row.canonical_child_birthday || row.canonicalChildBirthday || null
+                    }],
+                    rowCount: 1
+                };
+            }
+
             if (compactSql.startsWith('SELECT id, child_birthday, business_context FROM customers')) {
                 const id = params[0];
                 const row = state.customers.find(item => item.id === id) || null;
@@ -214,6 +229,18 @@ test('syncBirthdayTagsForCustomer creates canonical birthday and month system ta
     assert.deepEqual(tags.map(tag => tag.system_key), ['birthday', 'birthday_month_07']);
     assert.deepEqual(tags.map(tag => tag.tag), ['Іменинник', 'Іменинники липня']);
     assert.ok(tags.every(tag => tag.created_by === 7));
+});
+
+test('syncBirthdayTagsForCustomer prefers canonical child birthday over legacy field', async () => {
+    const client = createFakeBirthdayTagClient({
+        child_birthday: '2019-07-20',
+        canonical_child_birthday: '2019-08-20'
+    });
+
+    const result = await syncBirthdayTagsForCustomer(client, 1);
+
+    assert.equal(result.childBirthday, '2019-08-20');
+    assert.deepEqual(systemTags(client).map(tag => tag.system_key), ['birthday', 'birthday_month_08']);
 });
 
 test('syncBirthdayTagsForCustomer is idempotent and does not duplicate system rows', async () => {

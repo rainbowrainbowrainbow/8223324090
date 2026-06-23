@@ -168,6 +168,7 @@ checkPage('index.html', (doc, html) => {
     check('sidebarLinks exists', !!doc.getElementById('sidebarLinks'));
     check('Timeline product sales button exists', !!doc.getElementById('productSalesBtn'));
     check('Timeline create booking toolbar button is absent', !doc.getElementById('newBookingBtn'));
+    check('Booking customer UI reads canonical children without writing one-child payload', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('Діти:') && bookingCode.includes('bookingCustomerChildLine') && !bookingCode.includes('obj.customer ='));
     check('Room-first timeline selector and booking animator field are wired',
         !!doc.getElementById('timelineViewSelector')
         && !!doc.querySelector('[data-timeline-view="rooms"]')
@@ -484,6 +485,15 @@ checkPage('guardian-ops.html', (doc, html) => {
 checkPage('customers.html', (doc, html) => {
     const customerPageCode = fileText('js/customers-page.js');
     const customerCss = cssTextWithImports('css/pages.css');
+    const customerHeroRule = cssRuleText(customerCss, '.customer-detail-hero');
+    const customerHeroIdentityRule = cssRuleText(customerCss, '.customer-hero-identity');
+    const customerHeroActionsRule = cssRuleText(customerCss, '.customer-hero-actions');
+    const customerHeroDangerRule = cssRuleText(customerCss, '.customer-hero-danger-group');
+    const customerHeroActionButtonRule = cssRuleText(customerCss, '.customer-hero-actions .entity-card-action');
+    const customerChildFactsRule = cssRuleText(customerCss, '.customer-child-facts');
+    const customerChildFactValueRule = cssRuleText(customerCss, '.customer-child-facts dd');
+    const customerChildNoteRule = cssRuleText(customerCss, '.customer-child-note');
+    const darkCustomerChildNoteRule = cssRuleIncludingSelectorText(customerCss, 'body.dark-mode .customer-child-note');
     const customerEditModalHtml = doc.getElementById('customerEditModal')?.outerHTML || '';
     const schedulerCode = fileText('services/scheduler.js');
     const eventBusCode = fileText('services/eventBus.js');
@@ -498,10 +508,16 @@ checkPage('customers.html', (doc, html) => {
         customerPageCode.indexOf('// v30.4: DUPLICATES')
     );
     check('Customer edit modal exists', !!doc.getElementById('customerEditModal'));
-    check('Customer child birthday date input exists', doc.getElementById('editChildBirthday')?.type === 'date');
+    check('Customer edit modal exposes dynamic children list', !!doc.getElementById('editChildrenSection') && !!doc.getElementById('editChildrenList') && !!doc.getElementById('editAddChildBtn'));
     check('Customer explainability region exists', !!doc.getElementById('customerExplainability'));
     check('Customer edit modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px'));
-    check('Customer edit date input is bounded', html.includes('id="editChildBirthday" style="width:100%;min-width:0;max-width:100%;'));
+    check('Customer children editor renders birthday age and note fields', customerPageCode.includes('data-child-field="birthday"') && customerPageCode.includes('data-child-field="ageSnapshot"') && customerPageCode.includes('data-child-field="note"') && customerPageCode.includes('type="date" id="editChildBirthday${index}"'));
+    check('Customer edit children participate in dirty state and save payload', customerPageCode.includes('editingChildren: []') && customerPageCode.includes('customerChildrenStateSignature()') && customerPageCode.includes('setCustomerEditingChildren(maysternyaMode ? [] : customerChildrenForEdit') && customerPageCode.includes('children: children.map'));
+    check('Customer detail card uses dedicated children section', customerPageCode.includes('function renderCustomerChildrenSection') && customerPageCode.includes('class="detail-section customer-children-section"') && customerPageCode.includes('class="customer-child-facts"') && customerPageCode.includes('customerChildAgeDisplay') && !customerPageCode.includes("<div class=\"field-label\">Ім'я дитини</div>") && !customerPageCode.includes('<div class="field-label">ДН дитини</div>'));
+    check('Customer children section is list-based and text-safe', customerPageCode.includes('role="list"') && customerPageCode.includes('role="listitem"') && customerChildFactsRule.includes('grid-template-columns') && customerChildFactValueRule.includes('overflow-wrap: anywhere') && customerChildNoteRule.includes('overflow-wrap: anywhere') && darkCustomerChildNoteRule.includes('#CBD5E1'));
+    check('Customer hero layout prevents action overlap', customerHeroRule.includes('display: grid') && customerHeroRule.includes('grid-template-areas') && customerHeroRule.includes('"actions actions"') && customerHeroIdentityRule.includes('min-width: 0') && customerHeroActionsRule.includes('flex-wrap: wrap') && customerHeroActionsRule.includes('grid-area: actions') && customerHeroActionButtonRule.includes('white-space: normal') && customerHeroActionButtonRule.includes('overflow-wrap: anywhere') && customerHeroDangerRule.includes('border-left'));
+    check('Customer API surfaces canonical children for list search export and bulk placeholders', customerRouteCode.includes('function loadCustomerChildrenMap') && customerRouteCode.includes('function applyCustomerChildrenProjection') && customerRouteCode.includes('function customerChildrenSearchSql') && customerRouteCode.includes('queryUpcomingBirthdayRows') && customerRouteCode.includes('customer.childNameDisplay || customer.childName') && customerRouteCode.includes('UPDATE customer_children') && customerRouteCode.includes('customerChildrenNameDisplay') && customerRouteCode.includes('customerChildrenBirthdayDisplay'));
+    check('Customer birthday scheduler reads canonical children with legacy fallback', schedulerCode.includes('function queryCustomersByChildBirthday') && schedulerCode.includes('JOIN customer_children cc') && schedulerCode.includes('UNION ALL') && schedulerCode.includes('isCustomerChildrenStorageMissing'));
     check('Customer dark mode covers body.dark-mode surfaces', html.includes('body.dark-mode .stat-card') && html.includes('body.dark-mode .crm-table-wrap'));
     check('Customer dark mode covers html data-theme surfaces', html.includes('html[data-theme="dark"] .stat-card') && html.includes('html[data-theme="dark"] .crm-table-wrap'));
     check('Customer dark empty state text is readable', html.includes('body.dark-mode .explain-empty-title') && html.includes('color: #F8FAFC !important'));
@@ -622,9 +638,11 @@ checkPage('leads.html', (doc, html) => {
     const leadWorkspace = doc.getElementById('leadWorkspace');
     const kanbanView = doc.getElementById('kanbanView');
     const kanbanSummarySlot = doc.getElementById('kanbanSummarySlot');
+    const leadPageCode = fileText('js/leads-page.js');
     check('Leads explainability region exists', !!doc.getElementById('leadsExplainability'));
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
+    check('Lead celebrants textarea supports per-child birthdays', doc.getElementById('leadCelebrants')?.getAttribute('placeholder')?.includes('2018-01-01') && doc.getElementById('ccCelebrants')?.getAttribute('placeholder')?.includes('2020-03-04') && leadPageCode.includes('const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/') && leadPageCode.includes('birthday,') && leadPageCode.includes('notes: notes || null'));
     check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
     check('Lead edit modal save button exists', saveBtn?.type === 'button');
     check('Customer card modal date input exists', customerDate?.type === 'date');
@@ -964,10 +982,13 @@ checkPage('booking-summary.html', (doc, html) => {
         && !renderDocumentBody.includes('Booking ID:')
         && !pageCode.includes("briefItem('Booking ID'"));
     check('Booking summary hero header uses official premium logo masthead and right booking card',
-        renderDocumentBody.includes('<header class="banquet-hero"')
+        fs.existsSync(path.join(ROOT, 'images', 'banquet-logo.png'))
+        && renderDocumentBody.includes('<header class="banquet-hero"')
         && renderDocumentBody.includes('class="brand-logo-frame"')
         && renderDocumentBody.includes('class="brand-logo"')
         && renderDocumentBody.includes('images/banquet-logo.png')
+        && !renderDocumentBody.includes('aria-hidden="true">EG')
+        && !renderDocumentBody.includes('>EG</')
         && !renderDocumentBody.includes('BANQUET_HERO_LOGO_SRC')
         && !renderDocumentBody.includes('BANQUET_TOP_PLATE_SRC')
         && !renderDocumentBody.includes('BANQUET_CORNER_SRC')
@@ -987,6 +1008,8 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('.banquet-top-plate,')
         && pageCss.includes('.banquet-corner-art')
         && pageCss.includes('display: none !important')
+        && pageCss.includes('.brand-logo[hidden]')
+        && pageCss.includes('.brand-logo-frame.is-logo-missing .brand-logo')
         && pageCss.includes('.banquet-final-brand')
         && pageCss.includes('grid-template-columns: 24mm minmax(0, 1fr) minmax(48mm, 58mm)')
         && pageCss.includes('border-left: 0')
@@ -2228,9 +2251,9 @@ check('Legacy leads route preserves Sales Funnel refresh state', htmlContains('s
 check('Customer card exposes communication hub context', customersCode.includes('fetchCustomerCommunicationContext') && customersCode.includes('/communication-context') && customersCode.includes('renderCustomerCommunicationHub') && customersCode.includes('customerCommHub'));
 check('Customer communication hub has exact/suggested/unavailable styling', htmlContains('customers.html', '.customer-hub-pill.exact') && htmlContains('customers.html', '.customer-hub-pill.suggested') && htmlContains('customers.html', '.customer-hub-pill.unavailable'));
 check('Customer communication hub exposes one truthful interactive dialog icon', customersCode.includes('customerHubDialogTarget') && customersCode.includes('customerHubDialogIcon(dialogTarget)') && customersCode.includes('links.omniExact') && customersCode.includes('links.omniSuggested') && customersCode.includes('links.omniSearch') && htmlContains('customers.html', '.customer-dialog-icon.exact') && htmlContains('customers.html', '.customer-dialog-icon.suggested') && htmlContains('customers.html', '.customer-dialog-icon.search'));
-check('Customer detail hero shows funnel stage, booking room, and Omni shortcut', customersCode.includes('function renderCustomerDetailHero') && customersCode.includes('customerPipelineStageMeta') && customersCode.includes('customerHeaderBookingDetails') && customersCode.includes('customerHeaderOmniTarget') && customersCode.includes('loadCommunicationHub(customer.id, communicationContext)') && customersRouteCode.includes('SELECT id, pipeline_stage, status') && customersRouteCode.includes('leadPipelineStage') && pagesCss.includes('.customer-detail-hero') && pagesCss.includes('.customer-hero-stage') && pagesCss.includes('.customer-hero-booking') && pagesCss.includes('.customer-hero-omni'));
+check('Customer detail hero shows funnel stage, booking room, and Omni shortcut', customersCode.includes('function renderCustomerDetailHero') && customersCode.includes('customerPipelineStageMeta') && customersCode.includes('customerHeaderBookingDetails') && customersCode.includes('customerHeaderOmniTarget') && customersCode.includes('customer-hero-action-group') && customersCode.includes('customer-hero-danger-group') && customersCode.includes('loadCommunicationHub(customer.id, communicationContext)') && customersRouteCode.includes('SELECT id, pipeline_stage, status') && customersRouteCode.includes('leadPipelineStage') && pagesCss.includes('.customer-detail-hero') && pagesCss.includes('grid-template-areas') && pagesCss.includes('.customer-hero-stage') && pagesCss.includes('.customer-hero-booking') && pagesCss.includes('.customer-hero-omni') && pagesCss.includes('.customer-hero-danger-group'));
 check('Customer create modal has styled source select and linking tools', htmlContains('customers.html', 'customer-edit-select-wrap') && htmlContains('customers.html', 'customer-edit-link-panel') && htmlContains('customers.html', 'data-customer-identity-add="telegram"') && customersCode.includes('bindCustomerIdentityTools'));
-check('Maysternya customer presentation hides Park-only child/certificate details under business switch', customersCode.includes('function isMaysternyaCustomerContext') && customersCode.includes('Клієнти Майстерні') && customersCode.includes('Історія сесій') && customersCode.includes('!maysternyaMode && customer.certificates') && customersCode.includes('childName: isMaysternyaCustomerContext() ? null'));
+check('Maysternya customer presentation hides Park-only child/certificate details under business switch', customersCode.includes('function isMaysternyaCustomerContext') && customersCode.includes('Клієнти Майстерні') && customersCode.includes('Історія сесій') && customersCode.includes('!maysternyaMode && customer.certificates') && customersCode.includes("document.getElementById('editChildrenSection')") && customersCode.includes('const children = isMaysternyaCustomerContext() ? [] : serializedCustomerEditingChildren()'));
 check('New customer flow opens detail hub after create', customersCode.includes('showCustomerDetail(result.id)') && customersCode.includes('saveBtn.disabled = true'));
 check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
 check('Tasks page supports assistant overdue filter deep links', tasksCode.includes('assistantTaskFilter') && tasksCode.includes('assistantFilter') && tasksCode.includes('function applyAssistantTaskFilter') && tasksCode.includes('function isOverdueTask'));

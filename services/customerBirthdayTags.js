@@ -4,6 +4,7 @@ const BIRTHDAY_TAG_KEY = 'birthday';
 const BIRTHDAY_TAG_LABEL = 'Іменинник';
 const BIRTHDAY_TAG_COLOR = '#EC4899';
 const DEFAULT_BATCH_SIZE = 500;
+const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
 
 const log = createLogger('CustomerBirthdayTags');
 
@@ -158,15 +159,42 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
     }
 
     return withBirthdayTagClient(clientOrPool, async (db) => {
-        const customerResult = await db.query(
-            `SELECT id, child_birthday, business_context
-             FROM customers
-             WHERE id = $1
-             LIMIT 1`,
-            [numericCustomerId]
-        );
+        let customerResult;
+        try {
+            customerResult = await db.query(
+                `SELECT c.id, c.child_birthday, c.business_context,
+                        cc.birthday AS canonical_child_birthday
+                 FROM customers c
+                 LEFT JOIN LATERAL (
+                     SELECT birthday
+                     FROM customer_children
+                     WHERE customer_id = c.id
+                       AND business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                       AND birthday IS NOT NULL
+                     ORDER BY sort_order ASC, id ASC
+                     LIMIT 1
+                 ) cc ON TRUE
+                 WHERE c.id = $1
+                 LIMIT 1`,
+                [numericCustomerId]
+            );
+        } catch (err) {
+            const message = String(err?.message || '');
+            if (!['42P01', '42703'].includes(String(err?.code || ''))
+                && !(/customer_children/i.test(message) && /(does not exist|undefined|column)/i.test(message))) {
+                throw err;
+            }
+            customerResult = await db.query(
+                `SELECT id, child_birthday, business_context
+                 FROM customers
+                 WHERE id = $1
+                 LIMIT 1`,
+                [numericCustomerId]
+            );
+        }
 
         const customer = customerResult.rows[0];
+        const childBirthday = customer?.canonical_child_birthday || customer?.child_birthday || null;
         if (!customer) {
             return {
                 found: false,
@@ -187,7 +215,7 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
             [numericCustomerId, BIRTHDAY_SYSTEM_TAG_KEYS]
         );
 
-        const desiredTags = birthdaySystemTagsForDate(customer.child_birthday);
+        const desiredTags = birthdaySystemTagsForDate(childBirthday);
         const desiredLabels = desiredTags.map(tag => tag.tag);
         let manualLabels = new Set();
         if (desiredLabels.length) {
@@ -228,7 +256,7 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
             synced: true,
             customerId: customer.id,
             businessContext: customer.business_context || null,
-            childBirthday: customer.child_birthday || null,
+            childBirthday,
             deletedTags: Number(deleteResult.rowCount || 0),
             upsertedTags,
             skippedManualTags,

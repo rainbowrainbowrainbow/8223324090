@@ -43,7 +43,7 @@ and focused tests in the same pack.
 | `guardian-ops.html` | `/guardian-ops` | guardian | canonical-page | Guardian operations console. |
 | `hr.html` | `/hr` | hr | canonical-page | HR operations page. |
 | `index.html` | `/` | timeline | root-shell | Main CRM shell and final non-API fallback. |
-| `invite.html` | `/invite` | invite | canonical-page | Invite/onboarding page. |
+| `invite.html` | `/invite` | invite | public-page | Invite/onboarding page. |
 | `leads.html` | `/sales-funnel` | leads | canonical-page | `/leads` redirects to `/sales-funnel`. |
 | `omni.html` | `/omni` | omnichannel | canonical-page | Omnichannel inbox page. |
 | `profile.html` | `/profile` | profile | canonical-page | Gamification profile page. |
@@ -80,6 +80,22 @@ and focused tests in the same pack.
 | `/manager-guide.html` | `/landing/manager-guide.html` | landing | Public landing legacy URL. |
 | `/sales-deck` | `/landing/sales-deck.html` | landing | Public landing legacy URL. |
 | `/sales-deck.html` | `/landing/sales-deck.html` | landing | Public landing legacy URL. |
+
+## Exposure Classification
+
+Static root files are not all equivalent:
+
+- Public root page: `invite.html` at `/invite`.
+- Root shell: `index.html` at `/`.
+- Public landing files: `landing/index.html`, `landing/manager-guide.html`,
+  and `landing/sales-deck.html`.
+- Embedded aliases: `/embed/designs`, `/embed/programs`, and
+  `/embed/graduation`.
+
+All other root HTML pages are authenticated CRM surfaces and must be protected
+through `PAGE_ACCESS` or a separate documented exception in
+`docs/ACCESS_SURFACE.md`. Do not add a new public root page by only placing an
+`.html` file in the repository root.
 
 ## Done Marker
 

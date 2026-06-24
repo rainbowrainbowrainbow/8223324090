@@ -11,6 +11,7 @@ const path = require('path');
 const {
     GUARDED_SCHEDULER_JOBS,
     RAW_SCHEDULER_INTERVALS,
+    STATIC_ONLY_SCHEDULER_JOBS,
     SCHEDULER_SURFACE_DOC
 } = require('../config/schedulerSurface');
 
@@ -96,6 +97,14 @@ function assertDocMentions(doc, value, label) {
     }
 }
 
+function extractDocSection(doc, heading) {
+    const start = doc.indexOf(heading);
+    if (start === -1) return '';
+    const rest = doc.slice(start + heading.length);
+    const next = rest.search(/\n## /);
+    return next === -1 ? rest : rest.slice(0, next);
+}
+
 function assertSourceHasFunction(job) {
     if (job.sourceFile === 'server.js:inline') {
         if (!server.includes(`function ${job.functionName}(`)) {
@@ -131,7 +140,6 @@ ensureUnique('raw scheduler intervals', RAW_SCHEDULER_INTERVALS, 'name');
 
 const actualGuardedJobs = parseGuardedJobs(server);
 const actualByName = new Map(actualGuardedJobs.map(job => [job.name, job]));
-const manifestByName = new Map(GUARDED_SCHEDULER_JOBS.map(job => [job.name, job]));
 
 compareSets(
     'server.js guardScheduler names',
@@ -206,6 +214,24 @@ for (const job of RAW_SCHEDULER_INTERVALS) {
     }
     if (job.interval && !server.includes(job.interval)) {
         fail(`${job.name}: interval ${job.interval} not found in server.js`);
+    }
+}
+
+const jobsWithoutDirectTests = [
+    ...GUARDED_SCHEDULER_JOBS,
+    ...RAW_SCHEDULER_INTERVALS
+]
+    .filter(job => !Array.isArray(job.tests) || job.tests.length === 0)
+    .map(job => job.name);
+compareSets('static-only scheduler coverage register', STATIC_ONLY_SCHEDULER_JOBS, jobsWithoutDirectTests);
+
+const staticOnlyDoc = extractDocSection(doc, '## Static-Only Coverage Debt');
+if (!staticOnlyDoc) {
+    fail(`${SCHEDULER_SURFACE_DOC}: missing Static-Only Coverage Debt section`);
+}
+for (const name of STATIC_ONLY_SCHEDULER_JOBS) {
+    if (!staticOnlyDoc.includes(`\`${name}\``)) {
+        fail(`${SCHEDULER_SURFACE_DOC}: static-only coverage section missing ${name}`);
     }
 }
 

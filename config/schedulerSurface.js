@@ -60,10 +60,59 @@ const RAW_SCHEDULER_INTERVALS = [
     { name: 'taskLifecycleDaily', kind: 'setInterval', sourceFile: 'server.js', functionName: 'runTaskLifecycle', interval: '24 * 60 * 60 * 1000', owner: 'tasks', fragment: 'setInterval(() => runTaskLifecycle().catch(() => {}), 24 * 60 * 60 * 1000)' }
 ];
 
+const STATIC_ONLY_SCHEDULER_JOBS = [
+    'checkAutoDigest',
+    'checkAutoReminder',
+    'checkAutoBackup',
+    'checkRecurringTasks',
+    'checkRecurringAfisha',
+    'checkScheduledDeletions',
+    'checkCertificateExpiry',
+    'checkTaskReminders',
+    'checkWorkDayTriggers',
+    'checkMonthlyPointsReset',
+    'checkHrAutoClose',
+    'checkHrNoShow',
+    'checkStreakUpdates',
+    'checkBirthdayGreetings',
+    'checkBirthdayReminders',
+    'checkDormantCustomers',
+    'checkUpcomingBookings',
+    'checkSLABreach',
+    'checkScheduledAnnouncements',
+    'checkTaskOverdue',
+    'checkCustomerRetention',
+    'checkAutoReport',
+    'checkHotLeads',
+    'checkExpiredChatMessages',
+    'checkAutoReviewRequests',
+    'checkTeamPulseReminder',
+    'checkBookingPushReminders',
+    'checkCertExpiryReminders',
+    'checkStaleCatalogImages',
+    'checkChatDailyDigest',
+    'checkRecurringAnnouncements',
+    'checkEventPipeline',
+    'checkNpsFollowUp',
+    'checkCleaningTasks',
+    'syncAgentActivities',
+    'cleanupRefreshTokens',
+    'openclawBridgeStaleMessages',
+    'cleanupKleshnyaMessages',
+    'telegramRetryQueue',
+    'eventBusProcessOutbox',
+    'marketingPublishScheduled',
+    'marketingWeeklyPlan',
+    'dashboardAlertBroadcaster',
+    'taskLifecycleStartup',
+    'taskLifecycleDaily'
+];
+
 const SCHEDULER_SURFACE_DOC = 'docs/SCHEDULER_SURFACE.md';
 
 module.exports = {
     GUARDED_SCHEDULER_JOBS,
     RAW_SCHEDULER_INTERVALS,
+    STATIC_ONLY_SCHEDULER_JOBS,
     SCHEDULER_SURFACE_DOC
 };

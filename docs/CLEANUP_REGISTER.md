@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-06-08
+Last refreshed: 2026-06-24
 Current product version source: `package.json`
 
 ## Operating Model
@@ -205,6 +205,26 @@ Status: existing guards present; expand per pack.
 - CSS surface guard added to prevent new, renamed, or removed CSS files from
   bypassing ownership docs and UI verification.
 
+2026-06-24 production-risk guard update:
+
+- Strengthened `npm run check:db-startup-surface` so startup data hooks must use
+  a known ownership mode, and startup data-delete hooks must expose an explicit
+  `DELETE` marker.
+- Strengthened `npm run check:scheduler-surface` with
+  `STATIC_ONLY_SCHEDULER_JOBS`, making scheduler jobs without direct behavior
+  tests a tracked cleanup debt instead of an implicit risk.
+- Strengthened `npm run check:storage-surface` with fallback policies for every
+  `/uploads/*` segment, separating local-filesystem-primary paths from
+  Postgres-blob-primary legacy fallback paths.
+- Strengthened `npm run check:service-worker-policy` and
+  `tests/service-worker-policy.test.js` so `CLEAR_PRIVATE_CACHES` must delete
+  the private API cache namespace and legacy offline DB.
+- Strengthened `npm run check:static-surface` with explicit exposure
+  classification for public root pages, root shell pages, public landing files,
+  and embedded aliases.
+- No legacy routes, static files, upload folders, DB objects, or production data
+  were deleted.
+
 ### 4. Security And Deploy-Risk Cleanup
 
 Goal: remove risks that can affect production even when product UI looks fine.
@@ -300,6 +320,13 @@ Status: governance exists; gradual migration ownership cleanup remains open.
 - Future DB work should add durable schema through `db/migrations/`; changing
   the startup surface now requires updating the manifest and docs in the same
   commit.
+
+2026-06-24 DB startup guard update:
+
+- Startup data hook modes are now validated against
+  `STARTUP_DATA_BOOTSTRAP_MODES`.
+- The existing `greetingCacheStartupDelete` hook remains documented as
+  `startup-data-delete`; no startup cleanup was executed.
 
 ### 6. Static Frontend Cleanup
 
@@ -484,6 +511,13 @@ remains open.
   scheduled every minute but currently relies on `guardScheduler` default
   `daily` dedup. Do not change it without notification-focused tests.
 
+2026-06-24 scheduler guard update:
+
+- `STATIC_ONLY_SCHEDULER_JOBS` now records the guarded and raw scheduler jobs
+  that still have only static coverage.
+- `npm run check:scheduler-surface` fails if the static-only list stops
+  matching jobs without direct test anchors.
+
 ### 9. Documentation Cleanup
 
 Goal: make active docs trustworthy and old docs clearly historical.
@@ -553,6 +587,7 @@ Status: active rule for all packs.
 | Done | Service Worker cache policy guard | Prevents stale/private CRM API data from being cached offline | `npm run check:service-worker-policy`, `tests/service-worker-policy.test.js` |
 | Done | CSS surface ownership guard | Prevents frontend cleanup from deleting or renaming live styles blindly | `npm run check:css-surface`, `npm run test:ui` |
 | Done | HR payroll-period helper extraction | Keeps salary period locks/events/reconciliation out of the HR route monolith without changing `/api/hr/salary*` contracts | `node --test tests/hr-button-contract.test.js`, `npm run test:ui` |
+| Done | Cleanup register production-risk guard pack | Makes DB startup hooks, scheduler static-only jobs, storage fallback paths, Service Worker private cache cleanup, and static page exposure explicit without destructive cleanup | `npm run check:db-startup-surface`, `npm run check:scheduler-surface`, `npm run check:storage-surface`, `npm run check:service-worker-policy`, `npm run check:static-surface`, `npm test` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |
 
 ## Open Questions To Resolve Before Destructive Cleanup

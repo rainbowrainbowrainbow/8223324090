@@ -2,7 +2,10 @@
 
 Production impact: yes.
 
-This is a safe repair plan for existing bookings that already have broken timeline identity. It must be used only after reviewing the read-only report in `docs/TIMELINE_ANIMATION_IDENTITY_INVENTORY_READONLY_2026-06-23.sql`.
+This is a safe repair plan for existing bookings that already have broken timeline identity. It must be used only after reviewing the read-only reports:
+
+- `docs/TIMELINE_ANIMATION_IDENTITY_INVENTORY_READONLY_2026-06-23.sql`
+- `docs/TIMELINE_IDENTITY_BROKEN_ROWS_READONLY_2026-06-24.sql`
 
 ## Scope
 
@@ -18,7 +21,22 @@ This is a safe repair plan for existing bookings that already have broken timeli
 - `line_id_without_lines_by_date`: restore the missing `lines_by_date` row only when the staff/resource/date match is clear. Do not create a generic line.
 - `timeline_identity_line_mismatch`: choose one canonical value using create/reload evidence. Preserve the previous identity under repair metadata before replacing it.
 - `stored_missing_animator_resource`: rerun the report after the code-level projection fix. Repair data only for rows still missing a valid resource.
+- `computed_missing_animator_resource_candidate`: do not invent a resource. Repair only when explicit source evidence confirms the exact line/resource.
 - `second_animator_missing_linked_booking`: create a linked booking only after checking time conflict, parent booking state, second animator identity, and expected zero-price linked-row behavior.
+- `banquet_activity_hidden_by_duplicate_marker_risk`: treat as a code/classification issue first. If the API returns `displaySurface: booking_block` and no hidden reason, do not repair data; keep the row valid and fix frontend duplicate-marker classification. Data repair is allowed only when the current API projection itself marks the valid activity hidden.
+
+## Safe Repair Rules By Issue Type
+
+| Issue type | Default action | Data repair allowed only when |
+| --- | --- | --- |
+| `missing_line_id` | Manual review | The exact animator/resource is confirmed from source evidence. |
+| `line_id_without_matching_resource` | Review resource/date evidence | The missing `lines_by_date` or `timeline_resources` row is known and matches the booking date/business context. |
+| `timeline_identity_line_mismatch` | Review create/reload evidence | A reviewer chooses the canonical line and preserves old JSON under repair metadata. |
+| `timeline_identity_resource_mismatch` | Review resource engine source | The booking clearly belongs to one resource model and the other value is stale. |
+| `stored_missing_animator_resource` | Rerun current API projection | The current row still lacks a valid line/resource after code fixes. |
+| `linked_missing_timeline_identity` | JSON rebuild after review | `bookings.line_id` matches a real line/resource and only `extra_data.timelineIdentity` is missing. |
+| `second_animator_missing_linked_booking` | Manual linked-row creation review | Time conflict, parent state, second animator, and zero-price linked-row semantics are confirmed. |
+| `banquet_activity_hidden_by_duplicate_marker_risk` | No data update | Only if current API projection is actually hidden; otherwise fix code, not data. |
 
 ## Future Idempotent Repair Shape
 

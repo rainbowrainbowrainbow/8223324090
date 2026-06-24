@@ -1255,7 +1255,7 @@ const criticalJS = [
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
     'js/booking-drawer-state.js', 'js/booking-banquet-selector.js', 'js/booking-save-path.js',
     'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js',
-    'js/timeline-cache.js', 'js/timeline-resource-identity.js', 'js/timeline.js', 'js/settings.js',
+    'js/timeline-cache.js', 'js/timeline-resource-identity.js', 'js/timeline-banquet-inspector-helpers.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
 
@@ -1366,6 +1366,7 @@ const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
 const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js/timeline-cache.js'), 'utf8');
 const timelineResourceIdentityCode = fs.readFileSync(path.join(ROOT, 'js/timeline-resource-identity.js'), 'utf8');
+const timelineBanquetInspectorHelpersCode = fs.readFileSync(path.join(ROOT, 'js/timeline-banquet-inspector-helpers.js'), 'utf8');
 const timelineInteractionModelCode = fs.readFileSync(path.join(ROOT, 'js/timeline-interaction-model.js'), 'utf8');
 const timelineResourcesTestCode = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-resources.test.js'), 'utf8');
 const timelineRegressionMatrixTestCode = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-regression-matrix.test.js'), 'utf8');
@@ -1525,26 +1526,26 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('function applyTimelineBanquetPreview')
     && timelineCode.includes('function renderTimelineBanquetRoomCard')
     && timelineCode.includes('function showTimelineBanquetInspector')
-    && timelineCode.includes('function timelineBanquetCommentItems')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetCommentItems')
     && timelineCode.includes('function timelineBanquetCommentsHtml')
-    && timelineCode.includes('function timelineBanquetActivityStartsText')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetActivityStartsText')
     && timelineCode.includes('TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES')
     && timelineCode.includes("'banquet_group_not_found'")
     && timelineCode.includes("'legacy_banquet_links_fallback'")
     && timelineCode.includes("'banquet_group_schema_unavailable'")
-    && timelineCode.includes('function timelineBanquetSnapshotWarningText')
-    && timelineCode.includes('.map(timelineBanquetSnapshotWarningText)')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetSnapshotWarningText')
+    && timelineBanquetInspectorHelpersCode.includes('.map(timelineBanquetSnapshotWarningText)')
     && !timelineCode.includes('Booking is not attached to a banquet group.')
     && !timelineCode.includes('Loaded from legacy booking_banquet_links because no banquet group exists yet.')
     && !timelineCode.includes('Banquet group schema is not available.')
-    && timelineCode.includes('bookingWorkspace')
-    && timelineCode.includes('comments.kitchen')
-    && timelineCode.includes('comments.activity')
-    && timelineCode.includes('comments.internal')
-    && timelineCode.includes('item?.servingNote || item?.serving_note')
-    && timelineCode.includes('item?.note || item?.notes')
+    && timelineBanquetInspectorHelpersCode.includes('bookingWorkspace')
+    && timelineBanquetInspectorHelpersCode.includes('comments.kitchen')
+    && timelineBanquetInspectorHelpersCode.includes('comments.activity')
+    && timelineBanquetInspectorHelpersCode.includes('comments.internal')
+    && timelineBanquetInspectorHelpersCode.includes('item?.servingNote || item?.serving_note')
+    && timelineBanquetInspectorHelpersCode.includes('item?.note || item?.notes')
     && timelineCode.includes('function timelineMenuQuantityLabel')
-    && timelineCode.includes('servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null')
+    && timelineBanquetInspectorHelpersCode.includes('servingUnit: item?.servingUnit || item?.serving_unit || item?.priceUnit || item?.price_unit || null')
     && timelineCode.includes('timelineMenuQuantityLabel(item)')
     && !timelineCode.includes("item?.quantity ? `x${item.quantity}` : ''")
     && !timelineCode.includes("item.quantity ? `× ${item.quantity}` : ''")
@@ -1564,8 +1565,8 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('data-banquet-room-marker')
     && timelineCode.includes('function timelineBanquetRoomServingSignals')
     && timelineCode.includes('signals.push(...timelineBanquetRoomServingSignals(servingMarkers))')
-    && timelineCode.includes("case 'room_setup':")
-    && timelineCode.includes("return 'Підготувати кімнату'")
+    && timelineBanquetInspectorHelpersCode.includes("case 'room_setup':")
+    && timelineBanquetInspectorHelpersCode.includes("return 'Підготувати кімнату'")
     && !timelineCode.includes('signals.slice(0, 3)')
     && !timelineCode.includes('cakeMarker || servingMarkers.find')
     && timelineCode.includes('timelineBanquetSummaryHref')
@@ -1592,9 +1593,9 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && !timelineCode.includes('showTimelineBanquetPopover')
     && !timelineConstructorCss.includes('.timeline-banquet-popover'));
 check('Room timeline service markers expose creator badges',
-    timelineCode.includes('function timelineBanquetOwnerName')
-    && timelineCode.includes('source?.createdBy')
-    && timelineCode.includes('source?.created_by')
+    timelineBanquetInspectorHelpersCode.includes('function timelineBanquetOwnerName')
+    && timelineBanquetInspectorHelpersCode.includes('source?.createdBy')
+    && timelineBanquetInspectorHelpersCode.includes('source?.created_by')
     && timelineCode.includes('function timelineRoomServiceMarkerOwnerName')
     && timelineCode.includes('function timelineRoomServiceMarkerOwnerLetter')
     && timelineCode.includes("markerEl.classList.toggle('has-user-letter'")
@@ -1693,11 +1694,11 @@ check('Room timeline banquet preview uses readable labels instead of single-lett
     && timelineBanquetRoomCardBlock.includes("['Сигнали'")
     && timelineCode.includes('<span>Прихід гостей</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>')
     && !timelineCode.includes('<span>Дата' + '/час</span><strong>${escapeHtml(timelineBanquetDateTimeText(summary))}</strong>')
-    && timelineCode.includes("label: 'Видача'")
+    && timelineBanquetInspectorHelpersCode.includes("label: 'Видача'")
     && timelineCode.includes("'Торт'")
     && timelineCode.includes("data-banquet-inspector-details>Деталі")
-    && timelineCode.includes('Активність —')
-    && timelineCode.includes('Внутрішній коментар')
+    && timelineBanquetInspectorHelpersCode.includes('Активність —')
+    && timelineBanquetInspectorHelpersCode.includes('Внутрішній коментар')
     && timelineCode.includes('>Банкетний лист</a>')
     && !timelineCode.includes('>Вижимка</a>')
     && /line-height:\s*1\.25\s*;/.test(timelineBanquetRoomCardSignalRule)
@@ -1724,16 +1725,16 @@ check('Room timeline banquet activity blocks open booking modal instead of compa
     && /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/.test(timelineCode)
     && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*showBookingDetails\(renderBooking\.id\)/.test(timelineCode));
 check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
-    timelineCode.includes('function timelineBanquetServingInfo')
-    && timelineCode.includes('timelineBanquetMenuPositions(booking)')
+    timelineBanquetInspectorHelpersCode.includes('function timelineBanquetServingInfo')
+    && timelineBanquetInspectorHelpersCode.includes('timelineBanquetMenuPositions(booking)')
     && timelineCode.includes('function timelineBanquetServiceEvents')
     && timelineCode.includes('function timelineBanquetRoomServingSignals')
     && timelineCode.includes('timelineBanquetMarkerLabel(marker)')
     && timelineCode.includes('data-banquet-room-marker')
     && timelineCode.includes('timelineBanquetGlanceRows')
     && timelineCode.includes('summary.servingMarkers')
-    && timelineCode.includes("case 'room_setup':")
-    && timelineCode.includes("return 'Підготувати кімнату'")
+    && timelineBanquetInspectorHelpersCode.includes("case 'room_setup':")
+    && timelineBanquetInspectorHelpersCode.includes("return 'Підготувати кімнату'")
     && timelineCode.includes('Не вказано час видачі')
     && timelineCode.includes('requestIdleCallback')
     && !timelineCode.includes('data-banquet-service-marker')
@@ -2618,7 +2619,7 @@ check('Booking panel header shows client and child count live context',
     && bookingCode.includes('const kitchenChildrenCount = formData.kitchenEnabled')
     && bookingCode.includes('kidsCount: kidsCount || kitchenChildrenCount || null')
     && bookingCode.includes('obj.banquetGuests = formData.kitchenEnabled ? kitchenChildrenCount : null')
-    && timelineCode.includes('?? firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetGuests ?? booking.banquet_guests)')
+    && timelineBanquetInspectorHelpersCode.includes('?? firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetGuests ?? booking.banquet_guests)')
     && bookingCode.includes("document.getElementById('banquetGuests')?.value?.trim()")
     && bookingCode.includes("document.getElementById('banquetAdults')")
     && bookingCode.includes('banquetAdults')

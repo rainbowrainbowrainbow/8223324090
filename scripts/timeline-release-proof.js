@@ -32,6 +32,10 @@ const TIMELINE_ASSETS = [
         markers: ['timelineLineResourceIdentity', 'timelineBookingResourceIdentity', 'timelineBookingsForLine']
     },
     {
+        path: 'js/timeline-banquet-inspector-helpers.js',
+        markers: ['timelineBanquetSnapshotSummary', 'timelineBanquetServingInfo', 'timelineBanquetCommentItems']
+    },
+    {
         path: 'js/timeline.js',
         markers: ['buildDragInteractionIntent', 'buildResizeInteractionIntent', 'cancelActiveTimelineInteractions']
     },

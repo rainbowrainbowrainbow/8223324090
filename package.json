@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.15",
+  "version": "0.77.16",
   "eventGenix": {
-    "releaseLabel": "Timeline Banquet Inspector Activity Fix"
+    "releaseLabel": "Technical Debt Stability Fixes"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

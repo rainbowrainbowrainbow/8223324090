@@ -19,6 +19,11 @@ const LOCAL_UPLOAD_SURFACE = [
         tests: ['tests/chat-upload-storage.test.js', 'tests/chat-upload-route.test.js'],
         remoteBucket: null,
         envBucket: null,
+        fallbackPolicy: {
+            type: 'local-filesystem-primary',
+            durableSource: 'chat_messages metadata',
+            reviewBeforeDelete: true
+        },
         reason: 'Chat attachments are stored under /uploads/chat with file metadata persisted on chat messages in Postgres.'
     },
     {
@@ -32,6 +37,11 @@ const LOCAL_UPLOAD_SURFACE = [
         tests: ['tests/audio-storage.test.js'],
         remoteBucket: null,
         envBucket: null,
+        fallbackPolicy: {
+            type: 'local-filesystem-primary',
+            durableSource: 'sounds metadata',
+            reviewBeforeDelete: true
+        },
         reason: 'Manual and generated sounds are stored under /uploads/sounds with metadata persisted in the Postgres sounds table.'
     },
     {
@@ -45,6 +55,11 @@ const LOCAL_UPLOAD_SURFACE = [
         tests: ['tests/profile-avatar-storage.test.js', 'tests/route-smoke.test.js'],
         remoteBucket: null,
         envBucket: null,
+        fallbackPolicy: {
+            type: 'postgres-blob-primary-local-legacy',
+            durableSource: 'profile_avatar_blobs',
+            reviewBeforeDelete: true
+        },
         reason: 'New profile avatar uploads write binary content to Postgres profile_avatar_blobs while /uploads/profile-avatars remains the public URL and legacy local fallback.'
     },
     {
@@ -58,6 +73,11 @@ const LOCAL_UPLOAD_SURFACE = [
         tests: ['tests/image-storage.test.js'],
         remoteBucket: null,
         envBucket: null,
+        fallbackPolicy: {
+            type: 'local-filesystem-primary',
+            durableSource: 'catalog item URL metadata',
+            reviewBeforeDelete: true
+        },
         reason: 'Generated catalog images are stored under /uploads/catalog-images and saved as catalog item URLs in Postgres-backed catalogs.'
     },
     {
@@ -71,6 +91,11 @@ const LOCAL_UPLOAD_SURFACE = [
         tests: ['tests/designs.test.js', 'tests/design-storage.test.js'],
         remoteBucket: null,
         envBucket: null,
+        fallbackPolicy: {
+            type: 'postgres-blob-primary-local-legacy',
+            durableSource: 'design_file_blobs',
+            reviewBeforeDelete: true
+        },
         reason: 'Design board assets are stored in Postgres design_file_blobs; /uploads/designs remains a legacy public preview path and local disk fallback.'
     }
 ];

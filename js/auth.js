@@ -217,11 +217,22 @@ async function login(username, password) {
     }
 }
 
+function resetAuthExitVisualState(options = {}) {
+    const preserveShellReady = options.preserveShellReady === true;
+    document.body?.classList?.remove('page-exiting', 'shell-baseline');
+    document.body?.removeAttribute?.('aria-busy');
+    if (preserveShellReady) return;
+    if (typeof Sidebar !== 'undefined' && Sidebar.clearShellReady) Sidebar.clearShellReady();
+    else {
+        document.body?.classList?.remove('shell-ready');
+        document.documentElement?.classList?.remove('shell-ready');
+    }
+}
+
 function logout() {
     // v9.1: Disconnect WebSocket on logout
     if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
     revokeStoredRefreshToken();
-    clearAuthenticatedPageShell();
 
     AppState.currentUser = null;
     clearAuthStorage();
@@ -357,13 +368,16 @@ function clearPrivateClientCaches() {
 }
 
 function showLoginScreen() {
-    clearAuthenticatedPageShell();
     // v31.7.1: Redirect to canonical login page from sub-pages
     const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
     if (path !== '/' && path !== '/index') {
-        window.location.href = '/';
+        resetAuthExitVisualState({ preserveShellReady: true });
+        document.body.classList.remove('authenticated-shell', 'auth-screen');
+        if (typeof window.location.replace === 'function') window.location.replace('/');
+        else window.location.href = '/';
         return;
     }
+    clearAuthenticatedPageShell();
     document.body.classList.add('auth-screen');
     document.body.classList.remove('authenticated-shell');
     document.getElementById('loginScreen')?.classList.remove('hidden');
@@ -375,11 +389,7 @@ function showLoginScreen() {
 
 function clearAuthenticatedPageShell() {
     document.body.classList.remove('auth-screen', 'authenticated-shell');
-    if (typeof Sidebar !== 'undefined' && Sidebar.clearShellReady) Sidebar.clearShellReady();
-    else {
-        document.body.classList.remove('shell-ready');
-        document.documentElement.classList.remove('shell-ready');
-    }
+    resetAuthExitVisualState();
 }
 
 let _crmAssistantRailLoadPromise = null;

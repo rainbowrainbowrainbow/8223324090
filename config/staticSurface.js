@@ -187,7 +187,7 @@ const ROOT_HTML_SURFACE = [
         file: 'invite.html',
         canonicalPath: '/invite',
         owner: 'invite',
-        status: 'canonical-page',
+        status: 'public-page',
         aliases: [],
         purpose: 'Invite/onboarding page.'
     },
@@ -351,8 +351,17 @@ const LEGACY_STATIC_REDIRECTS = [
     { path: '/sales-deck.html', target: '/landing/sales-deck.html', owner: 'landing' }
 ];
 
+const STATIC_PAGE_EXPOSURE = {
+    publicRootFiles: ['invite.html'],
+    rootShellFiles: ['index.html'],
+    publicLandingFiles: ['landing/index.html', 'landing/manager-guide.html', 'landing/sales-deck.html'],
+    embeddedAliases: ['/embed/designs', '/embed/programs', '/embed/graduation'],
+    authenticatedRootPolicy: 'All other root HTML pages must be owned by PAGE_ACCESS or an explicit documented exception.'
+};
+
 module.exports = {
     ROOT_HTML_SURFACE,
     LANDING_SURFACE,
-    LEGACY_STATIC_REDIRECTS
+    LEGACY_STATIC_REDIRECTS,
+    STATIC_PAGE_EXPOSURE
 };

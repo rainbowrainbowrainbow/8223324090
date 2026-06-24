@@ -214,6 +214,14 @@ const STARTUP_DATA_BOOTSTRAPS = [
 ];
 
 const DB_STARTUP_SURFACE_DOC = 'docs/DB_STARTUP_SURFACE.md';
+const STARTUP_DATA_BOOTSTRAP_MODES = [
+    'env-gated',
+    'mark-only',
+    'seed-if-empty',
+    'legacy-seed-marker',
+    'env-gated-marker',
+    'startup-data-delete'
+];
 
 module.exports = {
     INIT_DATABASE_FLOW,
@@ -223,5 +231,6 @@ module.exports = {
     STARTUP_SCHEMA_FUNCTIONS,
     STARTUP_SCHEMA_TRIGGERS,
     STARTUP_DATA_BOOTSTRAPS,
+    STARTUP_DATA_BOOTSTRAP_MODES,
     DB_STARTUP_SURFACE_DOC
 };

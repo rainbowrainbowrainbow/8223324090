@@ -29,6 +29,11 @@ The Service Worker also keeps `park-offline` as the legacy offline IndexedDB
 name and supports explicit `CLEAR_PRIVATE_CACHES` and `INVALIDATE_CACHE`
 messages for private cache cleanup.
 
+`CLEAR_PRIVATE_CACHES` must run through `event.waitUntil(clearPrivateCaches())`
+and delete both the active `event-genix-api-*` Cache Storage namespace and the
+legacy `park-offline` database. This keeps logout/account switches from
+leaving stale private API responses or old offline mutations behind.
+
 ## API GET Cache Allowlist
 
 Only public, non-user-specific GET endpoints may be cached by the Service

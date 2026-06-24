@@ -8,6 +8,7 @@ const { JSDOM } = require('jsdom');
 const ROOT = path.join(__dirname, '..');
 const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-cache.js'), 'utf8');
 const timelineResourceIdentityCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-resource-identity.js'), 'utf8');
+const timelineBanquetInspectorHelpersCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-banquet-inspector-helpers.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
 const timelineInteractionModel = require('../js/timeline-interaction-model');
 
@@ -139,6 +140,7 @@ function createHarness() {
 
     const exposedCode = `${timelineCacheCode}
         ${timelineResourceIdentityCode}
+        ${timelineBanquetInspectorHelpersCode}
         ${timelineCode}
         window.__timelineLifecycleTest = {
             initBookingDrag,

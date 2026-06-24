@@ -151,6 +151,7 @@ function firstCssPxValue(value) {
 
 function createTimelineBanquetMarkerHarness() {
     const timeline = read('js/timeline.js');
+    const banquetInspectorHelpers = read('js/timeline-banquet-inspector-helpers.js');
     const start = timeline.indexOf('function timelineExtraData');
     const end = timeline.indexOf('function showTimelineBanquetPreviewFromBlock');
     assert.ok(start >= 0 && end > start, 'timeline banquet room preview slice exists');
@@ -209,7 +210,8 @@ function createTimelineBanquetMarkerHarness() {
     };
 
     vm.createContext(context);
-    vm.runInContext(timeline.slice(start, end), context, { filename: 'js/timeline.js' });
+    vm.runInContext(`${banquetInspectorHelpers}
+        ${timeline.slice(start, end)}`, context, { filename: 'js/timeline.js' });
     return context;
 }
 
@@ -1866,35 +1868,37 @@ test('timeline visual settings ignore deprecated room-load keys from saved paylo
 
 test('room timeline banquet preview is room-only, frontend-only, and snapshot-backed', () => {
     const timeline = read('js/timeline.js');
+    const banquetInspectorHelpers = read('js/timeline-banquet-inspector-helpers.js');
     const css = read('css/timeline.css');
     const controlsCss = read('css/controls.css');
 
     assert.match(timeline, /TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set\(\['primary', 'root', 'banquet'\]\)/);
     assert.match(timeline, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set\(\['activity', 'service', 'manual'\]\)/);
-    assert.match(timeline, /function timelineBanquetServingInfo/);
-    assert.match(timeline, /timelineBanquetMenuPositions\(booking\)/);
+    assert.match(timeline, /Timeline banquet inspector summary helpers live in js\/timeline-banquet-inspector-helpers\.js/);
+    assert.match(banquetInspectorHelpers, /function timelineBanquetServingInfo/);
+    assert.match(banquetInspectorHelpers, /timelineBanquetMenuPositions\(booking\)/);
     assert.match(timeline, /function timelineBanquetServiceEvents/);
     assert.match(timeline, /function applyTimelineBanquetPreview/);
     assert.match(timeline, /function renderTimelineBanquetRoomCard/);
     assert.match(timeline, /function showTimelineBanquetInspector/);
-    assert.match(timeline, /function timelineBanquetCommentItems/);
+    assert.match(banquetInspectorHelpers, /function timelineBanquetCommentItems/);
     assert.match(timeline, /function timelineBanquetCommentsHtml/);
-    assert.match(timeline, /function timelineBanquetActivityStartsText/);
+    assert.match(banquetInspectorHelpers, /function timelineBanquetActivityStartsText/);
     assert.match(timeline, /TIMELINE_BANQUET_COMPACT_HIDDEN_WARNING_CODES/);
     assert.match(timeline, /'banquet_group_not_found'/);
     assert.match(timeline, /'legacy_banquet_links_fallback'/);
     assert.match(timeline, /'banquet_group_schema_unavailable'/);
-    assert.match(timeline, /function timelineBanquetSnapshotWarningText/);
-    assert.match(timeline, /\.map\(timelineBanquetSnapshotWarningText\)/);
+    assert.match(banquetInspectorHelpers, /function timelineBanquetSnapshotWarningText/);
+    assert.match(banquetInspectorHelpers, /\.map\(timelineBanquetSnapshotWarningText\)/);
     assert.doesNotMatch(timeline, /Booking is not attached to a banquet group\./);
     assert.doesNotMatch(timeline, /Loaded from legacy booking_banquet_links because no banquet group exists yet\./);
     assert.doesNotMatch(timeline, /Banquet group schema is not available\./);
-    assert.match(timeline, /bookingWorkspace/);
-    assert.match(timeline, /comments\.kitchen/);
-    assert.match(timeline, /comments\.activity/);
-    assert.match(timeline, /comments\.internal/);
-    assert.match(timeline, /item\?\.servingNote \|\| item\?\.serving_note/);
-    assert.match(timeline, /item\?\.note \|\| item\?\.notes/);
+    assert.match(banquetInspectorHelpers, /bookingWorkspace/);
+    assert.match(banquetInspectorHelpers, /comments\.kitchen/);
+    assert.match(banquetInspectorHelpers, /comments\.activity/);
+    assert.match(banquetInspectorHelpers, /comments\.internal/);
+    assert.match(banquetInspectorHelpers, /item\?\.servingNote \|\| item\?\.serving_note/);
+    assert.match(banquetInspectorHelpers, /item\?\.note \|\| item\?\.notes/);
     assert.match(timeline, /timeline-banquet-inspector-menu-note/);
     assert.match(timeline, /Початок активностей/);
     assert.match(timeline, /<span>Прихід гостей<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
@@ -1903,8 +1907,8 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(timeline, /<span>Дата\/час<\/span><strong>\$\{escapeHtml\(timelineBanquetDateTimeText\(summary\)\)\}<\/strong>/);
     assert.doesNotMatch(timeline, /\['Час', timelineBanquetDateTimeText\(summary\)\]/);
     assert.match(timeline, /Примітки/);
-    assert.match(timeline, /Активність —/);
-    assert.match(timeline, /Внутрішній коментар/);
+    assert.match(banquetInspectorHelpers, /Активність —/);
+    assert.match(banquetInspectorHelpers, /Внутрішній коментар/);
     assert.match(timeline, />Банкетний лист<\/a>/);
     assert.doesNotMatch(timeline, />Вижимка<\/a>/);
     assert.match(timeline, /function timelineBanquetPreviewRolesByBookingId/);
@@ -1917,8 +1921,8 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function applyTimelineBanquetGridPreviewVisuals/);
     assert.match(timeline, /function timelineBanquetRoomCardSignals/);
     assert.match(timeline, /function timelineBanquetRoomServingSignals/);
-    assert.match(timeline, /function normalizeTimelineBanquetServiceEventType/);
-    assert.match(timeline, /function timelineBanquetServiceEventLabel/);
+    assert.match(banquetInspectorHelpers, /function normalizeTimelineBanquetServiceEventType/);
+    assert.match(banquetInspectorHelpers, /function timelineBanquetServiceEventLabel/);
     assert.match(timeline, /function timelineBanquetSummaryHasPersistentRoot/);
     assert.match(timeline, /function timelineBanquetGlanceRows/);
     assert.match(timeline, /data-banquet-room-card/);
@@ -1936,7 +1940,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /clearTimelineBanquetRoomPreviews\(\)[\s\S]*booking-block\.is-timeline-banquet-grid-duplicate/);
     assert.match(timeline, /timelineBanquetRoomServingSignals\(servingMarkers\)/);
     assert.match(timeline, /signals\.push\(\.\.\.timelineBanquetRoomServingSignals\(servingMarkers\)\)/);
-    assert.match(timeline, /case 'room_setup':\s*return 'Підготувати кімнату'/);
+    assert.match(banquetInspectorHelpers, /case 'room_setup':\s*return 'Підготувати кімнату'/);
     assert.match(timeline, /return signals;\s*\}/);
     assert.doesNotMatch(timeline, /signals\.slice\(0,\s*3\)/);
     assert.doesNotMatch(timeline, /cakeMarker \|\| servingMarkers\.find/);
@@ -3220,6 +3224,34 @@ test('timeline visual settings keep park animator and room views isolated', () =
     assert.equal(rooms.blocks.legend.visible, false);
     assert.equal(rooms.views.animators.blocks.dateControls.visible, false);
     assert.equal(rooms.views.rooms.blocks.legend.density, 'compact');
+});
+
+test('timeline identity repair report is read-only and covers banquet duplicate marker risk', () => {
+    const report = read('docs/TIMELINE_IDENTITY_BROKEN_ROWS_READONLY_2026-06-24.sql');
+    const repairPlan = read('docs/TIMELINE_ANIMATION_IDENTITY_REPAIR_PLAN_2026-06-23.md');
+    const stripped = report
+        .replace(/--.*$/gm, '')
+        .replace(/'[^']*'/g, "''");
+
+    assert.match(report, /READ ONLY: this script only runs SELECT statements/);
+    assert.match(report, /missing_line_id/);
+    assert.match(report, /line_id_without_matching_resource/);
+    assert.match(report, /timeline_identity_line_mismatch/);
+    assert.match(report, /stored_missing_animator_resource/);
+    assert.match(report, /computed_missing_animator_resource_candidate/);
+    assert.match(report, /linked_missing_timeline_identity/);
+    assert.match(report, /second_animator_missing_linked_booking/);
+    assert.match(report, /banquet_activity_hidden_by_duplicate_marker_risk/);
+    assert.match(report, /banquet_group_bookings/);
+    assert.match(report, /banquet_groups/);
+    assert.match(report, /booking_block/);
+    assert.match(report, /service_marker/);
+    assert.doesNotMatch(stripped, /\b(UPDATE|DELETE|INSERT|MERGE|TRUNCATE|ALTER|DROP|CREATE)\b/i);
+
+    assert.match(repairPlan, /TIMELINE_IDENTITY_BROKEN_ROWS_READONLY_2026-06-24\.sql/);
+    assert.match(repairPlan, /banquet_activity_hidden_by_duplicate_marker_risk/);
+    assert.match(repairPlan, /No data update/);
+    assert.match(repairPlan, /fix code, not data/);
 });
 
 test('business operating profile owns shell start page and module visibility', () => {

@@ -110,6 +110,107 @@ function loadCheckSessionHarness(overrides = {}) {
     return { context, calls, classSets, store };
 }
 
+function extractAuthFunction(functionName) {
+    const start = AUTH_CODE.indexOf(`function ${functionName}`);
+    assert.ok(start >= 0, `${functionName} function missing`);
+    const signatureStart = AUTH_CODE.indexOf('(', start);
+    let signatureDepth = 0;
+    let signatureEnd = -1;
+    for (let i = signatureStart; i < AUTH_CODE.length; i += 1) {
+        const char = AUTH_CODE[i];
+        if (char === '(') signatureDepth += 1;
+        if (char === ')') {
+            signatureDepth -= 1;
+            if (signatureDepth === 0) {
+                signatureEnd = i;
+                break;
+            }
+        }
+    }
+    assert.ok(signatureEnd > signatureStart, `${functionName} signature end missing`);
+    const bodyStart = AUTH_CODE.indexOf('{', signatureEnd);
+    let depth = 0;
+    for (let i = bodyStart; i < AUTH_CODE.length; i += 1) {
+        const char = AUTH_CODE[i];
+        if (char === '{') depth += 1;
+        if (char === '}') {
+            depth -= 1;
+            if (depth === 0) return AUTH_CODE.slice(start, i + 1);
+        }
+    }
+    throw new Error(`Could not extract ${functionName}`);
+}
+
+function classListHarness(initial = []) {
+    const set = new Set(initial);
+    return {
+        set,
+        classList: {
+            add: (...classes) => classes.forEach(cls => set.add(cls)),
+            remove: (...classes) => classes.forEach(cls => set.delete(cls)),
+            contains: cls => set.has(cls)
+        }
+    };
+}
+
+function loadLogoutShellHarness(pathname = '/') {
+    const calls = [];
+    const bodyClasses = classListHarness(['authenticated-shell', 'shell-ready', 'shell-baseline', 'page-exiting']);
+    const htmlClasses = classListHarness(['shell-ready']);
+    const loginClasses = classListHarness(['hidden']);
+    const mainClasses = classListHarness([]);
+    const sidebarToggleClasses = classListHarness([]);
+    const bodyAttrs = new Map([['aria-busy', 'true']]);
+    const elements = {
+        loginScreen: { classList: loginClasses.classList },
+        mainApp: { classList: mainClasses.classList },
+        sidebarToggle: { classList: sidebarToggleClasses.classList }
+    };
+    const context = {
+        console,
+        AppState: { currentUser: { id: 1 } },
+        ParkWS: { disconnect: () => calls.push(['ParkWS.disconnect']) },
+        Sidebar: {
+            clearShellReady: () => {
+                calls.push(['Sidebar.clearShellReady']);
+                bodyClasses.set.delete('shell-ready');
+                htmlClasses.set.delete('shell-ready');
+            }
+        },
+        document: {
+            body: {
+                classList: bodyClasses.classList,
+                removeAttribute: name => bodyAttrs.delete(name),
+                getAttribute: name => bodyAttrs.get(name) || null
+            },
+            documentElement: { classList: htmlClasses.classList },
+            getElementById: id => elements[id] || null
+        },
+        window: {
+            location: {
+                pathname,
+                href: `http://localhost${pathname}`,
+                replace(target) {
+                    calls.push(['location.replace', target]);
+                    this.pathname = target;
+                    this.href = `http://localhost${target}`;
+                }
+            }
+        },
+        revokeStoredRefreshToken: () => calls.push(['revokeStoredRefreshToken']),
+        clearAuthStorage: () => calls.push(['clearAuthStorage']),
+        clearPrivateClientCaches: () => calls.push(['clearPrivateClientCaches'])
+    };
+    vm.createContext(context);
+    vm.runInContext([
+        extractAuthFunction('resetAuthExitVisualState'),
+        extractAuthFunction('clearAuthenticatedPageShell'),
+        extractAuthFunction('showLoginScreen'),
+        extractAuthFunction('logout')
+    ].join('\n'), context, { filename: 'js/auth.js' });
+    return { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs };
+}
+
 test('apiVerifyToken refreshes a stored refresh session when the legacy token is missing', async () => {
     const calls = [];
     const { context, store } = loadApi(async (url, options = {}) => {
@@ -155,6 +256,61 @@ test('checkSession falls back to login instead of leaving a blank shell when ver
         calls.map(call => call[0]),
         ['warn', 'clearAuthStorage', 'clearPrivateClientCaches', 'showLoginScreen']
     );
+});
+
+test('showLoginScreen clears logout exit state before showing the canonical login screen', () => {
+    const { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs } = loadLogoutShellHarness('/');
+
+    context.showLoginScreen();
+
+    assert.equal(bodyClasses.set.has('auth-screen'), true);
+    assert.equal(bodyClasses.set.has('authenticated-shell'), false);
+    assert.equal(bodyClasses.set.has('page-exiting'), false);
+    assert.equal(bodyClasses.set.has('shell-baseline'), false);
+    assert.equal(bodyClasses.set.has('shell-ready'), false);
+    assert.equal(htmlClasses.set.has('shell-ready'), false);
+    assert.equal(bodyAttrs.has('aria-busy'), false);
+    assert.equal(loginClasses.set.has('hidden'), false);
+    assert.equal(mainClasses.set.has('hidden'), true);
+    assert.equal(calls.some(call => call[0] === 'location.replace'), false);
+});
+
+test('showLoginScreen redirects sub-pages without leaving a partially hidden shell', () => {
+    for (const pagePath of ['/customers', '/leads', '/dashboard', '/profile']) {
+        const { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs } = loadLogoutShellHarness(pagePath);
+
+        context.showLoginScreen();
+
+        assert.equal(bodyClasses.set.has('page-exiting'), false, `${pagePath} keeps page-exiting`);
+        assert.equal(bodyClasses.set.has('shell-baseline'), false, `${pagePath} keeps shell-baseline`);
+        assert.equal(bodyClasses.set.has('authenticated-shell'), false, `${pagePath} keeps authenticated-shell`);
+        assert.equal(bodyClasses.set.has('auth-screen'), false, `${pagePath} enters auth-screen before redirect`);
+        assert.equal(bodyClasses.set.has('shell-ready'), true, `${pagePath} hides mainApp before redirect`);
+        assert.equal(htmlClasses.set.has('shell-ready'), true, `${pagePath} clears html shell-ready before redirect`);
+        assert.equal(bodyAttrs.has('aria-busy'), false, `${pagePath} keeps aria-busy`);
+        assert.equal(loginClasses.set.has('hidden'), true, `${pagePath} shows local login before redirect`);
+        assert.equal(mainClasses.set.has('hidden'), false, `${pagePath} hides mainApp before redirect`);
+        assert.deepEqual(calls.filter(call => call[0] === 'location.replace'), [['location.replace', '/']], pagePath);
+    }
+});
+
+test('logout clears session data and exits to a stable login visual state', () => {
+    const { context, calls, bodyClasses, loginClasses, mainClasses, bodyAttrs } = loadLogoutShellHarness('/');
+
+    context.logout();
+
+    assert.equal(context.AppState.currentUser, null);
+    assert.deepEqual(calls.slice(0, 4).map(call => call[0]), [
+        'ParkWS.disconnect',
+        'revokeStoredRefreshToken',
+        'clearAuthStorage',
+        'clearPrivateClientCaches'
+    ]);
+    assert.equal(bodyClasses.set.has('auth-screen'), true);
+    assert.equal(bodyClasses.set.has('page-exiting'), false);
+    assert.equal(bodyAttrs.has('aria-busy'), false);
+    assert.equal(loginClasses.set.has('hidden'), false);
+    assert.equal(mainClasses.set.has('hidden'), true);
 });
 
 test('apiFetchWithAuthRetry refreshes before protected task mutations when the legacy token is missing', async () => {

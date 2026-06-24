@@ -7,14 +7,17 @@ const {
     API_CACHE_ALLOWLIST,
     MUTATION_QUEUE_ALLOWLIST,
     SENSITIVE_API_PATH_PREFIXES,
+    SERVICE_WORKER_POLICY,
     runtimeApiAllowlist
 } = require('../config/serviceWorkerPolicy');
 
 const ROOT = path.join(__dirname, '..');
 const swSource = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
 
-function loadPolicy() {
+function loadPolicy(options = {}) {
     const listeners = {};
+    const deletedCaches = [];
+    const deletedDatabases = [];
     const context = {
         console,
         URL,
@@ -22,7 +25,7 @@ function loadPolicy() {
         Response,
         fetch: async () => new Response('{}', { status: 200 }),
         caches: {
-            async keys() { return []; },
+            async keys() { return options.cacheKeys || []; },
             async open() {
                 return {
                     async addAll() {},
@@ -33,10 +36,14 @@ function loadPolicy() {
                 };
             },
             async match() { return null; },
-            async delete() { return true; }
+            async delete(name) {
+                deletedCaches.push(name);
+                return true;
+            }
         },
         indexedDB: {
-            deleteDatabase() {
+            deleteDatabase(name) {
+                deletedDatabases.push(name);
                 const request = {};
                 process.nextTick(() => request.onsuccess && request.onsuccess());
                 return request;
@@ -62,10 +69,17 @@ function loadPolicy() {
             SENSITIVE_API_PATH_PREFIXES,
             MUTATION_QUEUE_ALLOWLIST,
             isApiCacheAllowed,
-            isMutationQueueAllowed
+            isMutationQueueAllowed,
+            clearPrivateCaches,
+            OFFLINE_DB_NAME,
+            __deletedCaches: ${JSON.stringify(null)},
+            __deletedDatabases: ${JSON.stringify(null)}
         };
     `, context, { filename: 'sw.js' });
 
+    context.self.__policy.__deletedCaches = deletedCaches;
+    context.self.__policy.__deletedDatabases = deletedDatabases;
+    context.self.__policy.__listeners = listeners;
     return context.self.__policy;
 }
 
@@ -115,6 +129,27 @@ describe('Service Worker cache safety policy', () => {
         assert.equal(policy.isMutationQueueAllowed(post('/api/bookings')), false);
         assert.equal(policy.isMutationQueueAllowed(post('/api/finance/transactions')), false);
         assert.equal(policy.isMutationQueueAllowed(post('/api/chat/messages')), false);
+    });
+
+    it('clears private API caches and the legacy offline DB on explicit cleanup', async () => {
+        const runtimePolicy = loadPolicy({
+            cacheKeys: [
+                'event-genix-v0.77.15',
+                'event-genix-api-v0.77.15',
+                'event-genix-api-old',
+                'unrelated-cache'
+            ]
+        });
+
+        await runtimePolicy.clearPrivateCaches();
+
+        assert.deepEqual(runtimePolicy.__deletedCaches.sort(), [
+            'event-genix-api-old',
+            'event-genix-api-v0.77.15'
+        ]);
+        assert.deepEqual(runtimePolicy.__deletedDatabases, [SERVICE_WORKER_POLICY.offlineDatabaseName]);
+        assert.equal(runtimePolicy.OFFLINE_DB_NAME, SERVICE_WORKER_POLICY.offlineDatabaseName);
+        assert.equal(typeof runtimePolicy.__listeners.message, 'function');
     });
 
     it('documents the sensitive endpoint classes in the policy guardrail', () => {

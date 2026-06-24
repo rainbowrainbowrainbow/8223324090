@@ -35,6 +35,24 @@ All local upload directories must stay ignored in `.gitignore`, including
 `uploads/chat`, `uploads/sounds`, `uploads/profile-avatars`,
 `uploads/catalog-images`, and `uploads/designs`.
 
+## Local Fallback Policy
+
+Every local upload path has an explicit fallback policy in
+`config/storageSurface.js`:
+
+- `local-filesystem-primary`: the local file is still the primary binary source;
+  Postgres keeps metadata only. Current paths: `/uploads/chat`
+  (`chat_messages metadata`), `/uploads/sounds` (`sounds metadata`), and
+  `/uploads/catalog-images` (`catalog item URL metadata`).
+- `postgres-blob-primary-local-legacy`: new writes store binary content in
+  Postgres and local files remain a legacy read fallback only. Current paths:
+  `/uploads/profile-avatars` (`profile_avatar_blobs`) and `/uploads/designs`
+  (`design_file_blobs`).
+
+All local fallback policies set `reviewBeforeDelete: true`. Do not delete an
+`uploads/*` directory or route until the related rows have been migrated,
+exported, or explicitly confirmed obsolete.
+
 ## Remote Storage Buckets
 
 There are currently no active remote storage buckets in the CRM runtime. Legacy

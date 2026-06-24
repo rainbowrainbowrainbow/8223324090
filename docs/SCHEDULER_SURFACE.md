@@ -122,6 +122,34 @@ credentials/env described in `README.md`; it is not part of the self-contained
 direct tests before changing their timing, idempotency, retry behavior, or
 notification target.
 
+## Static-Only Coverage Debt
+
+These jobs are intentionally registered as static-only coverage debt in
+`config/schedulerSurface.js`. They have source/interval/dedup ownership guards,
+but no direct behavior test in the local baseline yet:
+
+`checkAutoDigest`, `checkAutoReminder`, `checkAutoBackup`,
+`checkRecurringTasks`, `checkRecurringAfisha`, `checkScheduledDeletions`,
+`checkCertificateExpiry`, `checkTaskReminders`, `checkWorkDayTriggers`,
+`checkMonthlyPointsReset`, `checkHrAutoClose`, `checkHrNoShow`,
+`checkStreakUpdates`, `checkBirthdayGreetings`, `checkBirthdayReminders`,
+`checkDormantCustomers`, `checkUpcomingBookings`, `checkSLABreach`,
+`checkScheduledAnnouncements`, `checkTaskOverdue`, `checkCustomerRetention`,
+`checkAutoReport`, `checkHotLeads`, `checkExpiredChatMessages`,
+`checkAutoReviewRequests`, `checkTeamPulseReminder`,
+`checkBookingPushReminders`, `checkCertExpiryReminders`,
+`checkStaleCatalogImages`, `checkChatDailyDigest`,
+`checkRecurringAnnouncements`, `checkEventPipeline`, `checkNpsFollowUp`,
+`checkCleaningTasks`, `syncAgentActivities`, `cleanupRefreshTokens`,
+`openclawBridgeStaleMessages`, `cleanupKleshnyaMessages`,
+`telegramRetryQueue`, `eventBusProcessOutbox`, `marketingPublishScheduled`,
+`marketingWeeklyPlan`, `dashboardAlertBroadcaster`, `taskLifecycleStartup`,
+and `taskLifecycleDaily`.
+
+If one of these jobs gets direct tests, remove it from
+`STATIC_ONLY_SCHEDULER_JOBS` in the same change. If a new scheduler job is added
+without tests, it must appear here so the production risk remains visible.
+
 ## Done Marker
 
 This pack is considered done when all of these remain true:

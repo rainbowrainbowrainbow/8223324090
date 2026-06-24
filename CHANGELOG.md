@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.16 - Technical Debt Stability Fixes
+
+### Stability / Logout shell / Timeline guards / Cleanup surfaces / (Клешня, 24.06.2026) [codex]
+- **Logout більше не лишає частково прихований CRM shell** - вихід чистить `page-exiting`, shell readiness state, busy-флаги і повертає стабільний login/redirect state.
+- **Timeline banquet inspector винесено з моноліту** - helper-и mini inspector перенесені в окремий frontend module без зміни UI contract.
+- **Banquet activity regression matrix зафіксовано** - додано focused QA matrix для logout, timeline inspector, rooms/animators switch, customer children, booking summary і version badge.
+- **Production-risk cleanup guards посилено** - DB startup, scheduler, storage, static surface і Service Worker policy тепер перевіряють ризикові ownership rules.
+- **Timeline identity repair plan доповнено read-only inventory** - broken/orphan animation rows можна знайти без зміни production data.
+- **Service Worker private cache policy уточнено** - cache guard фіксує sensitive API prefixes і не дозволяє offline mutation endpoints.
+- **Релізні маркери піднято до `0.77.16`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.15 - Timeline Banquet Inspector Activity Fix
 
 ### Timeline / Banquet mini inspector / Activity summary / (Клешня, 24.06.2026) [codex]

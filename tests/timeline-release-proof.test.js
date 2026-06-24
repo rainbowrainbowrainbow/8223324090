@@ -77,6 +77,7 @@ test('timeline release proof validates both shared contexts, assets, and service
         assert.ok(report.assets.some(item => item.path === 'js/timeline-interaction-model.js'));
         assert.ok(report.assets.some(item => item.path === 'js/timeline-cache.js'));
         assert.ok(report.assets.some(item => item.path === 'js/timeline-resource-identity.js'));
+        assert.ok(report.assets.some(item => item.path === 'js/timeline-banquet-inspector-helpers.js'));
         assert.ok(report.assets.some(item => item.path === 'js/booking-drawer-state.js'));
         assert.ok(report.assets.some(item => item.path === 'js/booking-banquet-selector.js'));
         assert.ok(report.assets.some(item => item.path === 'js/booking-save-path.js'));

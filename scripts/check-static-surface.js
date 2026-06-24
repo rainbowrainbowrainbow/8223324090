@@ -11,7 +11,8 @@ const path = require('path');
 const {
     ROOT_HTML_SURFACE,
     LANDING_SURFACE,
-    LEGACY_STATIC_REDIRECTS
+    LEGACY_STATIC_REDIRECTS,
+    STATIC_PAGE_EXPOSURE
 } = require('../config/staticSurface');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -61,6 +62,14 @@ function htmlFileReferenceExists(server, file) {
     return server.includes(`'${file}'`) || server.includes(`"${file}"`);
 }
 
+function docSection(doc, heading) {
+    const start = doc.indexOf(heading);
+    if (start === -1) return '';
+    const rest = doc.slice(start + heading.length);
+    const next = rest.search(/\n## /);
+    return next === -1 ? rest : rest.slice(0, next);
+}
+
 function validateSurfaceEntry(entry, label) {
     if (!entry.file) fail(`${label}: missing file`);
     if (!entry.canonicalPath || !entry.canonicalPath.startsWith('/')) {
@@ -85,6 +94,55 @@ ensureUnique('root HTML surface', ROOT_HTML_SURFACE, 'canonicalPath');
 const server = fs.readFileSync(SERVER_PATH, 'utf8');
 const doc = fs.existsSync(DOC_PATH) ? fs.readFileSync(DOC_PATH, 'utf8') : '';
 if (!doc) fail('docs/STATIC_SURFACE.md is required');
+
+const rootByFile = new Map(ROOT_HTML_SURFACE.map(entry => [entry.file, entry]));
+const landingByFile = new Map(LANDING_SURFACE.map(entry => [entry.file, entry]));
+const exposureDoc = docSection(doc, '## Exposure Classification');
+if (!exposureDoc) fail('docs/STATIC_SURFACE.md: missing Exposure Classification section');
+
+for (const file of STATIC_PAGE_EXPOSURE.publicRootFiles || []) {
+    const entry = rootByFile.get(file);
+    if (!entry) {
+        fail(`static exposure public root ${file}: missing from ROOT_HTML_SURFACE`);
+    } else if (entry.status !== 'public-page') {
+        fail(`static exposure public root ${file}: status must be public-page`);
+    }
+    if (!exposureDoc.includes(`\`${file}\``)) fail(`static exposure public root ${file}: missing from docs/STATIC_SURFACE.md`);
+}
+
+for (const file of STATIC_PAGE_EXPOSURE.rootShellFiles || []) {
+    const entry = rootByFile.get(file);
+    if (!entry) {
+        fail(`static exposure root shell ${file}: missing from ROOT_HTML_SURFACE`);
+    } else if (entry.status !== 'root-shell') {
+        fail(`static exposure root shell ${file}: status must be root-shell`);
+    }
+    if (!exposureDoc.includes(`\`${file}\``)) fail(`static exposure root shell ${file}: missing from docs/STATIC_SURFACE.md`);
+}
+
+for (const file of STATIC_PAGE_EXPOSURE.publicLandingFiles || []) {
+    const entry = landingByFile.get(file);
+    if (!entry) {
+        fail(`static exposure public landing ${file}: missing from LANDING_SURFACE`);
+    } else if (entry.status !== 'public-page') {
+        fail(`static exposure public landing ${file}: status must be public-page`);
+    }
+    if (!exposureDoc.includes(`\`${file}\``)) fail(`static exposure public landing ${file}: missing from docs/STATIC_SURFACE.md`);
+}
+
+const allAliases = new Set(ROOT_HTML_SURFACE.flatMap(entry => entry.aliases || []));
+for (const alias of STATIC_PAGE_EXPOSURE.embeddedAliases || []) {
+    if (!allAliases.has(alias)) fail(`static exposure embedded alias ${alias}: missing from ROOT_HTML_SURFACE aliases`);
+    if (!exposureDoc.includes(`\`${alias}\``)) fail(`static exposure embedded alias ${alias}: missing from docs/STATIC_SURFACE.md`);
+}
+
+for (const entry of ROOT_HTML_SURFACE) {
+    const isPublicRoot = (STATIC_PAGE_EXPOSURE.publicRootFiles || []).includes(entry.file);
+    const isRootShell = (STATIC_PAGE_EXPOSURE.rootShellFiles || []).includes(entry.file);
+    if (!isPublicRoot && !isRootShell && entry.status === 'public-page') {
+        fail(`root ${entry.file}: public-page status requires STATIC_PAGE_EXPOSURE.publicRootFiles ownership`);
+    }
+}
 
 for (const entry of ROOT_HTML_SURFACE) {
     const label = `root ${entry.file}`;

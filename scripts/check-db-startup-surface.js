@@ -16,6 +16,7 @@ const {
     STARTUP_SCHEMA_FUNCTIONS,
     STARTUP_SCHEMA_TRIGGERS,
     STARTUP_DATA_BOOTSTRAPS,
+    STARTUP_DATA_BOOTSTRAP_MODES,
     DB_STARTUP_SURFACE_DOC
 } = require('../config/dbStartupSurface');
 
@@ -55,6 +56,12 @@ function read(relativePath) {
 
 function assertDocMentions(doc, value, label) {
     if (!doc.includes(`\`${value}\``)) {
+        fail(`${DB_STARTUP_SURFACE_DOC}: missing ${label} ${value}`);
+    }
+}
+
+function assertDocMentionsMode(doc, value, label) {
+    if (!doc.includes(`\`${value}\``) && !doc.includes(`| ${value} |`)) {
         fail(`${DB_STARTUP_SURFACE_DOC}: missing ${label} ${value}`);
     }
 }
@@ -164,12 +171,23 @@ for (const entry of STARTUP_DATA_BOOTSTRAPS) {
         fail(`startup data bootstrap entry is incomplete: ${JSON.stringify(entry)}`);
         continue;
     }
+    if (!STARTUP_DATA_BOOTSTRAP_MODES.includes(entry.mode)) {
+        fail(`${entry.name}: unsupported startup data bootstrap mode "${entry.mode}"`);
+    }
     const source = read(entry.sourceFile);
     if (!source.includes(entry.marker)) {
         fail(`${entry.name}: marker not found in ${entry.sourceFile}`);
     }
+    if (entry.mode === 'startup-data-delete' && !/delete/i.test(entry.marker)) {
+        fail(`${entry.name}: startup-data-delete hooks must expose a DELETE marker`);
+    }
     assertDocMentions(doc, entry.name, 'startup data bootstrap');
     assertDocMentions(doc, entry.sourceFile, 'startup data source');
+    assertDocMentionsMode(doc, entry.mode, 'startup data mode');
+}
+
+for (const mode of STARTUP_DATA_BOOTSTRAP_MODES) {
+    assertDocMentionsMode(doc, mode, 'startup data mode registry');
 }
 
 [

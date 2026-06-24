@@ -113,7 +113,8 @@ function loadRuntimePolicy(swSource) {
             OFFLINE_DB_NAME,
             isApiCacheAllowed,
             isMutationQueueAllowed,
-            isSensitiveApiPath
+            isSensitiveApiPath,
+            clearPrivateCaches
         };
     `, context, { filename: SERVICE_WORKER_POLICY.file });
 
@@ -210,8 +211,17 @@ if (!swSource.includes('requestHasAuthorization')) {
 if (!swSource.includes('clearPrivateCaches')) {
     fail(`${SERVICE_WORKER_POLICY.file}: private cache clear helper missing`);
 }
+if (!/addEventListener\('message'[\s\S]*CLEAR_PRIVATE_CACHES[\s\S]*event\.waitUntil\(clearPromise\)/.test(swSource)) {
+    fail(`${SERVICE_WORKER_POLICY.file}: CLEAR_PRIVATE_CACHES message must wait for clearPrivateCaches`);
+}
+if (!/clearPrivateCaches[\s\S]*name === API_CACHE_NAME \|\| name\.startsWith\(API_CACHE_PREFIX\)[\s\S]*caches\.delete\(name\)[\s\S]*clearOfflineMutationQueue\(\)/.test(swSource)) {
+    fail(`${SERVICE_WORKER_POLICY.file}: private cleanup must delete API cache namespace and clear offline DB`);
+}
 if (!test.includes('config/serviceWorkerPolicy')) {
     fail(`${SERVICE_WORKER_POLICY.testFile}: focused test must import config/serviceWorkerPolicy`);
+}
+if (!test.includes('clearPrivateCaches') || !test.includes('SERVICE_WORKER_POLICY.offlineDatabaseName')) {
+    fail(`${SERVICE_WORKER_POLICY.testFile}: focused test must exercise private cache cleanup and offline DB deletion`);
 }
 
 if (failures.length) {

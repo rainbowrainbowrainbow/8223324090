@@ -21,6 +21,10 @@ const GITIGNORE_PATH = path.join(ROOT, '.gitignore');
 const failures = [];
 
 const LOCAL_PERSISTENCE = new Set(['local-postgres-metadata', 'local-only-legacy']);
+const LOCAL_FALLBACK_POLICIES = new Set([
+    'local-filesystem-primary',
+    'postgres-blob-primary-local-legacy'
+]);
 const REMOTE_PROVIDERS = new Set();
 const SOURCE_DIRS = ['routes', 'services', 'js', 'css'];
 const SOURCE_ROOT_FILES = ['server.js', 'sw.js'];
@@ -166,6 +170,14 @@ for (const entry of LOCAL_UPLOAD_SURFACE) {
     if (!entry.localDir || !normalizeSlashes(entry.localDir).startsWith('uploads/')) fail(`${label}: localDir must live under uploads/`);
     if (!entry.owner) fail(`${label}: missing owner`);
     if (!LOCAL_PERSISTENCE.has(entry.persistence)) fail(`${label}: invalid persistence ${entry.persistence}`);
+    if (!entry.fallbackPolicy || !LOCAL_FALLBACK_POLICIES.has(entry.fallbackPolicy.type)) {
+        fail(`${label}: missing or invalid fallbackPolicy.type`);
+    } else {
+        if (!entry.fallbackPolicy.durableSource) fail(`${label}: fallbackPolicy.durableSource is required`);
+        if (entry.fallbackPolicy.reviewBeforeDelete !== true) fail(`${label}: fallbackPolicy.reviewBeforeDelete must be true`);
+        ensureDocMentions(doc, entry.fallbackPolicy.type, label);
+        ensureDocMentions(doc, entry.fallbackPolicy.durableSource, label);
+    }
     ensureFile(entry.routeFile, label);
     ensureFile(entry.serviceFile, label);
     ensureListedFiles(entry.frontendFiles, label);

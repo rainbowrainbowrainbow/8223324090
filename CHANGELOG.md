@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.18 - Booking Detail Polish
+
+### Booking detail / Banquet package / Notes / Invite block / (Клешня, 24.06.2026) [codex]
+- **Аніматори в detail card більше не підтягують кімнату як fallback** - значення типу `Пасенко Женя + Диван 3` виправлено, room name не потрапляє в список аніматорів, а два аніматори показуються як `Женя + Андрій`.
+- **Блок меню/пакету став акуратнішим** - таблиця отримала легкі вертикальні розділювачі, довгі назви не обрізаються, а рядок `Вхід` показується як компактний subtotal із формулою дрібнішим текстом.
+- **`Разом пакет` перейменовано на `Загальна сума`** - змінено тільки display label у картці, без зміни `finalTotal`, `price` або finance/order summary calculations.
+- **Примітки банкету перенесено над меню** - кухонні, activity та внутрішні нотатки лишаються видимими, компактнішими і не губляться між секціями.
+- **Запрошення для клієнта перероблено в робочий compact block** - додано `Доступ і запрошення`, meta chips, кнопку `Відкрити`, копіювання короткого тексту, Viber / Telegram, Instagram, окреме копіювання лінка і share через messenger text.
+- **Dark mode invite block виправлено після visual QA** - заголовок запрошення більше не використовує темний `--white` surface token і читається в темній темі.
+- **Regression coverage розширено** - `tests/ui-check.js` і `tests/booking-package-contract.test.js` захищають room fallback, labels, порядок приміток, compact CSS, invite formats, copy/share behavior і dark-mode styling.
+- **Manual visual QA виконано через local Playwright harness** - перевірено desktop/narrow dark screenshots для activity з 1/2 аніматорами, банкету з меню/входом/примітками і invite block; live logged-in QA лишається після deploy через відсутність valid live/staging login у середовищі.
+- **Релізні маркери піднято до `0.77.18`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.17 - Activity Detail Card Fix
 
 ### Timeline / Activity detail card / Animator names / Scenario labels / (Клешня, 24.06.2026) [codex]

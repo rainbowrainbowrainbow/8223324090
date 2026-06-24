@@ -4051,7 +4051,7 @@ body.booking-menu-catalog-active {
 .booking-detail-package-table-row {
     display: grid;
     grid-template-columns: minmax(0, 1.7fr) minmax(64px, 0.52fr) minmax(74px, 0.58fr) minmax(82px, 0.62fr);
-    gap: 10px;
+    gap: 0;
     align-items: center;
 }
 
@@ -4070,6 +4070,14 @@ body.booking-menu-catalog-active {
     padding: 7px 14px;
     border-top: 1px solid var(--gray-100);
     font-size: 13px;
+}
+
+.booking-detail-package-table-head > span:not(:first-child),
+.booking-detail-package-table-row > span,
+.booking-detail-package-table-row > strong {
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--gray-100);
 }
 
 .booking-detail-package-table-row > span,
@@ -4164,6 +4172,20 @@ body.booking-menu-catalog-active {
     line-height: 1.35;
 }
 
+.booking-detail-package-entry-row {
+    background: rgba(15, 23, 42, 0.02);
+}
+
+.booking-detail-package-entry-title {
+    font-weight: 850;
+}
+
+.booking-detail-package-entry-row small {
+    margin-top: 3px;
+    font-size: 12px;
+    font-weight: 650;
+}
+
 .booking-detail-package-total {
     min-height: 38px;
     background: var(--gray-50);
@@ -4189,6 +4211,9 @@ body.booking-menu-catalog-active {
     .booking-detail-package-table-row > strong {
         justify-self: start;
         font-size: 12px;
+        margin-left: 0;
+        padding-left: 0;
+        border-left: 0;
     }
 
     .booking-detail-package-table-row > span:nth-of-type(1)::before {

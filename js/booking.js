@@ -4551,7 +4551,7 @@ function renderBookingPackageEntryRow(bookingPackage = {}) {
         : label;
     return `
         <div class="booking-detail-package-row booking-detail-package-entry-row">
-            <div>${escapeHtml(entryCharge.title || 'Вхід')}<small>${escapeHtml(details)}</small></div>
+            <div><span class="booking-detail-package-entry-title">${escapeHtml(entryCharge.title || 'Вхід')}</span><small>${escapeHtml(details)}</small></div>
             <strong>${escapeHtml(formatPrice(entryCharge.subtotal))}</strong>
         </div>
     `;
@@ -4594,7 +4594,7 @@ function renderBookingPackageDetail(booking, options = {}) {
             ${entryRow}
             ${eventRows}
             <div class="booking-detail-package-row booking-detail-package-total">
-                <div>Разом пакет</div>
+                <div>Загальна сума</div>
                 <strong>${escapeHtml(formatPrice(bookingPackage?.finalTotal ?? booking.price ?? 0))}</strong>
             </div>
         </div>
@@ -9058,6 +9058,19 @@ function bookingDetailPushUniqueName(names, value) {
     names.push(text);
 }
 
+function bookingDetailIsRoomNameFallback(booking = {}, value = '') {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    const key = text.toLocaleLowerCase('uk-UA');
+    const roomNames = [
+        booking.room,
+        booking.roomName,
+        booking.room_name,
+        bookingDetailRoomName(booking)
+    ].map(item => String(item || '').trim().toLocaleLowerCase('uk-UA')).filter(Boolean);
+    return roomNames.includes(key);
+}
+
 function bookingDetailSecondAnimatorName(booking = {}) {
     const extra = bookingDetailTimelineExtraData(booking);
     const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
@@ -9087,7 +9100,10 @@ async function resolveBookingDetailAnimatorDisplay(booking = {}) {
     const primaryLine = bookingDetailFindLineByIdentity(animatorLines, identityValues);
     const names = [];
     bookingDetailPushUniqueName(names, primaryLine?.name || primaryLine?.shortName || primaryLine?.short_name);
-    bookingDetailPushUniqueName(names, identity.resourceName || identity.resource_name || identity.lineName || identity.line_name);
+    const identityName = identity.resourceName || identity.resource_name || identity.lineName || identity.line_name;
+    if (!bookingDetailIsRoomNameFallback(booking, identityName)) {
+        bookingDetailPushUniqueName(names, identityName);
+    }
     bookingDetailPushUniqueName(names, bookingDetailSecondAnimatorName(booking));
     return names.length ? names.join(' + ') : 'Не вказано';
 }
@@ -9925,9 +9941,9 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
             </div>
             ${renderBanquetDepositStatusSection(anchorBooking, snapshot)}
             ${renderBanquetWorkSection('Банкет', primaryBody, 'summary')}
+            ${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}
             ${renderBanquetMenuSection(packageBooking)}
             ${renderBanquetServiceSection(packageBooking, serviceManualMembers)}
-            ${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}
             ${renderBanquetActivitiesSection(activityMembers)}
             ${renderBanquetWarningsSection(warnings)}
             ${renderBanquetTechnicalSection({
@@ -10076,7 +10092,14 @@ async function showBookingDetails(bookingId) {
     const inviteUrl = `/invite?${inviteParams.toString()}`;
 
     const fullInviteUrl = `${window.location.origin}/invite?${inviteParams.toString()}`;
-    const inviteShareText = `Запрошуємо на ${escapeHtml(booking.programName || booking.label)} ${escapeHtml(booking.date)}! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх`;
+    const inviteProgramLabel = String(booking.programName || booking.label || 'свято').trim();
+    const inviteRoomLabel = String(booking.room || '').trim();
+    const inviteDateLabel = String(booking.date || '').trim();
+    const inviteTimeLabel = String(booking.time || '').trim();
+    const inviteAddress = 'Парк Закревського Періоду, вул. Закревського 31/2, 3 поверх';
+    const inviteShortText = `Запрошуємо на ${inviteProgramLabel}${inviteDateLabel ? ` ${inviteDateLabel}` : ''}${inviteTimeLabel ? ` о ${inviteTimeLabel}` : ''}.${inviteRoomLabel ? ` Кімната: ${inviteRoomLabel}.` : ''} ${fullInviteUrl}`;
+    const inviteMessengerText = `Вітаємо! Запрошуємо на ${inviteProgramLabel}.\nДата: ${inviteDateLabel || '-'}\nЧас: ${inviteTimeLabel || '-'}\n${inviteRoomLabel ? `Кімната: ${inviteRoomLabel}\n` : ''}Адреса: ${inviteAddress}\nДеталі: ${fullInviteUrl}`;
+    const inviteInstagramText = `${inviteProgramLabel}${inviteDateLabel ? ` · ${inviteDateLabel}` : ''}${inviteTimeLabel ? ` · ${inviteTimeLabel}` : ''}${inviteRoomLabel ? ` · ${inviteRoomLabel}` : ''}\n${fullInviteUrl}`;
 
     // v7.6.1: Line switch buttons
     const otherLines = lines.filter(l => l.id !== booking.lineId);
@@ -10088,18 +10111,28 @@ async function showBookingDetails(bookingId) {
             </div>
         </div>` : '';
     const inviteSectionHtml = roomFirstServiceBooking ? '' : `
-        <div class="invite-section">
-            <div class="invite-section-header">🎉 Запрошення для клієнта</div>
+        <div class="invite-section" data-share-text="${escapeHtml(inviteMessengerText)}">
+            <div class="invite-section-top">
+                <div>
+                    <div class="invite-section-eyebrow">Доступ і запрошення</div>
+                    <div class="invite-section-header">Запрошення для клієнта</div>
+                </div>
+                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">Відкрити</a>
+            </div>
             <div class="invite-preview">
-                <span>📅 ${escapeHtml(booking.date)}</span>
-                <span>🕐 ${escapeHtml(booking.time)}</span>
-                <span>🎪 ${escapeHtml(booking.programName || booking.label)}</span>
-                <span>🏠 ${escapeHtml(booking.room)}</span>
+                <span>${escapeHtml(booking.date)}</span>
+                <span>${escapeHtml(booking.time)}</span>
+                <span>${escapeHtml(inviteProgramLabel)}</span>
+                ${inviteRoomLabel ? `<span>${escapeHtml(inviteRoomLabel)}</span>` : ''}
+            </div>
+            <div class="invite-format-grid" aria-label="Формати запрошення">
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-text="${escapeHtml(inviteShortText)}">Короткий текст</button>
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-text="${escapeHtml(inviteMessengerText)}">Viber / Telegram</button>
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-text="${escapeHtml(inviteInstagramText)}">Instagram</button>
             </div>
             <div class="invite-actions">
-                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">👁 Відкрити</a>
-                <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-url="${escapeHtml(fullInviteUrl)}">📋 Копіювати</button>
-                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">📤 Поділитися</button>' : ''}
+                <button onclick="copyInviteLink(this)" class="btn-invite-copy btn-invite-link-copy" data-url="${escapeHtml(fullInviteUrl)}">Копіювати лінк</button>
+                ${navigator.share ? '<button onclick="shareInviteLink()" class="btn-invite-share">Поділитися</button>' : ''}
             </div>
         </div>
     `;
@@ -10657,8 +10690,9 @@ async function duplicateBooking(bookingId) {
 // ==========================================
 
 function copyInviteLink(btn) {
-    const url = btn && btn.dataset.url ? btn.dataset.url : '';
-    navigator.clipboard.writeText(url).then(() => {
+    const text = btn && (btn.dataset.text || btn.dataset.url) ? (btn.dataset.text || btn.dataset.url) : '';
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
         if (btn) {
             const original = btn.innerHTML;
             btn.innerHTML = '✅ Скопійовано!';
@@ -10671,18 +10705,15 @@ function shareInviteLink() {
     try {
         const modal = document.getElementById('bookingDetails');
         if (!modal) return;
-        const preview = modal.querySelector('.invite-preview');
+        const section = modal.querySelector('.invite-section');
         const link = modal.querySelector('.btn-invite-open');
         if (!link) return;
         const url = link.href;
-        const spans = preview ? preview.querySelectorAll('span') : [];
-        const text = spans.length > 0
-            ? `Запрошуємо! ${Array.from(spans).map(s => s.textContent).join(' | ')} — Парк Закревського Періоду`
-            : 'Запрошуємо на свято! Парк Закревського Періоду';
+        const text = section?.dataset.shareText || 'Запрошуємо на свято! Парк Закревського Періоду';
         if (navigator.share) {
             navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
         } else {
-            copyInviteLink(url);
+            navigator.clipboard.writeText(`${text}\n${url}`).catch(() => showNotification('Не вдалося скопіювати', 'error'));
         }
     } catch (e) {
         showNotification('Поділитися не вдалося', 'error');

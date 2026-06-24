@@ -1449,28 +1449,56 @@
    ========================================== */
 
 .invite-section {
-    background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
-    border: 1px solid #FCD34D;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
     border-radius: var(--radius-card);
-    padding: 14px;
+    padding: 12px;
     margin: 16px 0;
+    display: grid;
+    gap: 10px;
+}
+
+.invite-section-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.invite-section-eyebrow {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .invite-section-header {
     font-size: var(--font-sm);
     font-weight: 800;
-    color: #92400E;
-    margin-bottom: 10px;
+    color: var(--gray-800);
 }
 
 .invite-preview {
     display: flex;
     flex-wrap: wrap;
     gap: 6px 12px;
-    margin-bottom: 12px;
     font-size: var(--font-xs);
     font-weight: 600;
-    color: #78350F;
+    color: var(--gray-600);
+}
+
+.invite-preview span {
+    padding: 3px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 999px;
+    background: var(--gray-50);
+}
+
+.invite-format-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
 }
 
 .invite-actions {
@@ -1479,7 +1507,8 @@
 }
 
 .invite-actions a,
-.invite-actions button {
+.invite-actions button,
+.invite-format-grid button {
     flex: 1;
     display: inline-flex;
     align-items: center;
@@ -1498,14 +1527,18 @@
 }
 
 .btn-invite-open {
-    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 8px 12px;
+    background: var(--primary);
     color: #FFFFFF;
-    box-shadow: 0 2px 8px rgba(245,158,11,0.3);
+    border-radius: var(--radius-sm);
+    box-shadow: none;
 }
 
 .btn-invite-open:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(245,158,11,0.4);
+    box-shadow: 0 4px 12px rgba(20,184,166,0.18);
     color: #FFFFFF;
 }
 
@@ -1529,6 +1562,18 @@
 .btn-invite-share:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(16,185,129,0.4);
+}
+
+@media (max-width: 640px) {
+    .invite-section-top,
+    .invite-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .invite-format-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ==========================================

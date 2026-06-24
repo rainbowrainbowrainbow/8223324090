@@ -3021,13 +3021,17 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     const text = document.body.textContent;
 
     assert.equal(document.querySelectorAll('.booking-banquet-section--summary .booking-banquet-member--primary').length, 1);
+    const menuSection = document.querySelector('.booking-banquet-section--menu');
     assert.equal(document.querySelectorAll('.booking-banquet-section--menu .booking-detail-package-table-row').length, 1);
+    assert.match(menuSection?.textContent || '', /Загальна сума/);
+    assert.doesNotMatch(menuSection?.textContent || '', /Разом пакет/);
     assert.match(document.querySelector('.booking-banquet-section--menu')?.textContent || '', /Ковбаски гриль/);
     assert.equal(document.querySelectorAll('.booking-banquet-section--service .booking-banquet-service-row--checklist').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /12:00\s*·\s*Підготувати кімнату/);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /15:45\s*·\s*Напої/);
     const commentsSection = document.querySelector('.booking-banquet-section--comments');
     assert.ok(commentsSection, 'full banquet detail renders comments section');
+    assert.ok((commentsSection.compareDocumentPosition(menuSection) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING) !== 0, 'comments are placed before menu');
     assert.match(commentsSection?.textContent || '', /Кухня/);
     assert.match(commentsSection?.textContent || '', /Підготувати дитячий стіл/);
     assert.match(commentsSection?.textContent || '', /Активність\s*—\s*АН\(60\)/);

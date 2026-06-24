@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.17",
+  "version": "0.77.18",
   "eventGenix": {
-    "releaseLabel": "Activity Detail Card Fix"
+    "releaseLabel": "Booking Detail Polish"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

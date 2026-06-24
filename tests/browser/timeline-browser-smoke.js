@@ -306,6 +306,116 @@ async function fillKitchenAndSubmit(page, sourceBookingId) {
     return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
 }
 
+async function openActiveBanquetEmptyCellDrawer(page, date, room, time, snapshot) {
+    await renderTimelineView(page, date, 'rooms');
+    return page.evaluate(async ({ room, time, snapshot }) => {
+        const groupId = String(snapshot?.groupId || snapshot?.group?.id || '').trim();
+        const primary = snapshot?.bookings?.primary || {};
+        const kitchen = Array.isArray(snapshot?.bookings?.kitchen) ? snapshot.bookings.kitchen[0] : null;
+        const packageSource = kitchen || primary;
+        const bookingPackage = packageSource?.extraData?.bookingPackage
+            || packageSource?.extra_data?.bookingPackage
+            || packageSource?.extraData?.booking_package
+            || packageSource?.extra_data?.booking_package
+            || {};
+        const summary = {
+            groupId,
+            snapshot,
+            primaryBooking: primary,
+            carrierBooking: packageSource || primary,
+            groupName: snapshot?.group?.groupName || snapshot?.group?.group_name || primary.groupName || primary.group_name || primary.label || '',
+            customerId: snapshot?.group?.customerId || snapshot?.group?.customer_id || primary.customerId || primary.customer_id || null,
+            customerName: primary.customerName || primary.customer_name || '',
+            room,
+            date,
+            kidsCount: primary.kidsCount || primary.kids_count || packageSource?.banquetGuests || packageSource?.banquet_guests || null,
+            banquetGuests: packageSource?.banquetGuests || packageSource?.banquet_guests || primary.kidsCount || primary.kids_count || null,
+            banquetAdults: packageSource?.banquetAdults || packageSource?.banquet_adults || null,
+            banquetTables: packageSource?.banquetTables || packageSource?.banquet_tables || null,
+            menuCount: Array.isArray(bookingPackage.menuPositions) ? bookingPackage.menuPositions.length : 0,
+            packageSnapshot: {
+                sourceBookingId: packageSource?.id || primary.id || null,
+                menuPositions: Array.isArray(bookingPackage.menuPositions) ? bookingPackage.menuPositions : [],
+                serviceEvents: Array.isArray(bookingPackage.serviceEvents) ? bookingPackage.serviceEvents : [],
+                banquetMenu: packageSource?.banquetMenu || packageSource?.banquet_menu || '',
+                finalTotal: bookingPackage.finalTotal ?? null,
+                source: 'timeline_browser_smoke'
+            }
+        };
+        if (typeof showTimelineBanquetInspector !== 'function') {
+            return { ok: false, error: 'showTimelineBanquetInspector unavailable' };
+        }
+        showTimelineBanquetInspector(null, summary, { dataset: { bookingId: packageSource?.id || primary.id || '' } });
+        const lines = await getLinesForDate(AppState.selectedDate);
+        const line = lines.find(item => {
+            const values = [item.id, item.resourceId, item.resource_id, item.name, item.shortName, item.short_name];
+            return values.some(value => String(value || '') === room || (typeof sameBookingRoom === 'function' && sameBookingRoom(value, room)));
+        });
+        if (!line) return { ok: false, error: `room line not found: ${room}` };
+        const lineId = String(line.id || line.name || '').trim();
+        const cell = Array.from(document.querySelectorAll('.grid-cell[data-time][data-line]'))
+            .find(node => String(node.dataset.line || '') === lineId && String(node.dataset.time || '') === time);
+        if (!cell) return { ok: false, error: `empty cell not found: ${lineId} ${time}` };
+        await selectCell(cell);
+        await new Promise(resolve => setTimeout(resolve, 250));
+        const banner = document.querySelector('.booking-active-banquet-context');
+        const standalone = document.querySelector('[data-booking-standalone-override]');
+        return {
+            ok: true,
+            activeContext: typeof getTimelineActiveBanquetContext === 'function' ? getTimelineActiveBanquetContext() : null,
+            selectedGroupId: BookingDrawerState.selectedBanquetGroupId || '',
+            activeBanquetIntent: BookingDrawerState.activeBanquetIntent || '',
+            roleIntent: BookingDrawerState.activeBanquetRoleIntent || '',
+            bannerText: banner?.textContent || '',
+            hasStandaloneOverride: Boolean(standalone),
+            panelVisible: !document.getElementById('bookingPanel')?.classList.contains('hidden'),
+            guests: document.getElementById('banquetGuests')?.value || ''
+        };
+    }, { room, time, snapshot });
+}
+
+async function submitActiveBanquetMemberFromEmptyCell(page, groupId) {
+    const genericBookingRequests = [];
+    const requestHandler = request => {
+        if (request.method() !== 'POST') return;
+        const pathname = new URL(request.url()).pathname;
+        if (pathname === '/api/bookings' || pathname === '/api/bookings/full') {
+            genericBookingRequests.push(request.url());
+        }
+    };
+    page.on('request', requestHandler);
+    const responsePromise = page.waitForResponse(response =>
+        response.url().includes(`/api/banquets/${encodeURIComponent(groupId)}/member-booking`)
+        && response.request().method() === 'POST'
+    );
+    await page.evaluate(() => {
+        if (typeof setBookingKitchenEnabled === 'function') setBookingKitchenEnabled(true, { markDirty: true });
+        const guests = document.getElementById('banquetGuests');
+        if (guests) guests.value = guests.value || '4';
+        if (typeof setBookingMenuPositions === 'function') {
+            setBookingMenuPositions([{
+                productId: 'task37-empty-cell-menu',
+                title: 'Task37 empty cell menu',
+                quantity: 1,
+                unitPrice: 120,
+                subtotal: 120,
+                kitchenType: 'menu',
+                servingUnit: 'portion',
+                servingTime: '17:30'
+            }]);
+        }
+        document.getElementById('bookingNotes').value = 'Task37 active inspector empty cell smoke';
+        document.getElementById('bookingForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    const response = await responsePromise;
+    page.off('request', requestHandler);
+    const body = await response.json();
+    assert.equal(response.ok(), true, 'active inspector -> empty cell member endpoint returns ok');
+    assert.equal(body.success, true, 'active inspector -> empty cell response success');
+    assert.deepEqual(genericBookingRequests, [], 'active inspector -> empty cell does not use generic booking endpoints');
+    return body.booking || body.memberBooking || body.banquetGroup?.bookings?.kitchen?.[0];
+}
+
 async function chooseFirstActivityProgram(page) {
     return page.evaluate(async () => {
         if (typeof getProducts === 'function') await getProducts();
@@ -483,6 +593,7 @@ async function run() {
         const activitySnapshot = await banquetSnapshot(base, token, activity.id);
         assert.ok(groupId(activitySnapshot), 'activity-first banquet group exists');
         assert.equal(String(activitySnapshot.bookings?.primary?.id || activitySnapshot.group?.primaryBookingId), String(activity.id));
+        const activityGroupId = groupId(activitySnapshot);
 
         await renderTimelineView(page, date, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFromActivity.id);
@@ -494,6 +605,21 @@ async function run() {
         await renderTimelineView(page, secondDate, 'rooms');
         await renderTimelineView(page, date, 'rooms');
         await assertRoomMarkerVisible(page, kitchenFromActivity.id);
+
+        const emptyCellDrawer = await openActiveBanquetEmptyCellDrawer(page, date, room, '17:00', activitySnapshot);
+        assert.equal(emptyCellDrawer.ok, true, `active inspector -> empty cell opens drawer: ${emptyCellDrawer.error || ''}`);
+        assert.equal(emptyCellDrawer.panelVisible, true, 'active inspector -> empty cell drawer visible');
+        assert.equal(String(emptyCellDrawer.activeContext?.groupId || emptyCellDrawer.selectedGroupId), activityGroupId, 'active inspector context keeps the banquet group');
+        assert.equal(emptyCellDrawer.activeBanquetIntent, 'add_to_existing', 'empty cell drawer has add-to-existing intent');
+        assert.ok(emptyCellDrawer.hasStandaloneOverride, 'empty cell drawer exposes explicit standalone override');
+        assert.ok(String(emptyCellDrawer.bannerText || '').trim(), 'empty cell drawer shows active banquet banner');
+        const emptyCellKitchen = await submitActiveBanquetMemberFromEmptyCell(page, activityGroupId);
+        assert.ok(emptyCellKitchen?.id, 'active inspector empty-cell kitchen booking created');
+        createdBookingIds.push(emptyCellKitchen.id);
+        const emptyCellSnapshot = await banquetSnapshot(base, token, emptyCellKitchen.id);
+        assert.equal(groupId(emptyCellSnapshot), activityGroupId, 'empty cell grouped save reloads inside the same banquet group');
+        await renderTimelineView(page, date, 'rooms');
+        await assertRoomMarkerVisible(page, emptyCellKitchen.id);
 
         const reused = await fetchJson(base, scopedPath('/api/banquets/from-source/member-booking'), {
             method: 'POST',

@@ -1012,11 +1012,42 @@ function drawFinalBrand(doc, summary = {}) {
     resetCursorX(doc);
 }
 
+function summaryCelebrants(summary = {}) {
+    const explicit = Array.isArray(summary.celebrants) ? summary.celebrants : [];
+    const customerChildren = Array.isArray(summary.customer?.children) ? summary.customer.children : [];
+    const fallback = summary.celebrant ? [summary.celebrant] : [];
+    return [...explicit, ...customerChildren, ...fallback]
+        .map(child => ({
+            name: cleanText(child?.name || child?.childName || child?.child_name),
+            birthday: cleanText(child?.birthday || child?.birthDate || child?.childBirthday || child?.child_birthday)
+        }))
+        .filter(child => child.name || child.birthday)
+        .filter((child, index, rows) => rows.findIndex(item =>
+            item.name === child.name && item.birthday === child.birthday
+        ) === index);
+}
+
+function summaryCelebrantsNames(summary = {}) {
+    const names = summaryCelebrants(summary).map(child => child.name).filter(Boolean);
+    return names.length ? names.join(', ') : null;
+}
+
+function summaryCelebrantsBirthdays(summary = {}) {
+    const birthdays = summaryCelebrants(summary).map(child => child.birthday).filter(Boolean);
+    return birthdays.length ? birthdays.map(formatDate).join(', ') : null;
+}
+
 function buildBriefItems(summary = {}, view) {
     const event = summary.event || {};
     const customer = summary.customer || {};
     const celebrant = summary.celebrant || {};
     const counts = summary.counts || {};
+    const celebrants = summaryCelebrants(summary);
+    const celebrantsNameLabel = celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник';
+    const celebrantsBirthdayLabel = celebrants.length > 1 ? 'ДН дітей' : 'Дата народження';
+    const celebrantsNameDisplay = summaryCelebrantsNames(summary) || celebrant.name;
+    const celebrantsBirthdayDisplay = summaryCelebrantsBirthdays(summary)
+        || (celebrant.birthday ? formatDate(celebrant.birthday) : null);
     const items = [
         { label: 'Клієнт', value: customer.name },
         { label: 'Телефон', value: customer.phone },
@@ -1027,8 +1058,8 @@ function buildBriefItems(summary = {}, view) {
         { label: 'Дорослі', value: counts.adults },
         { label: 'Столи', value: counts.tables },
         { label: 'Програма', value: event.hasRealProgram ? (event.programDisplayName || event.programName) : null },
-        { label: 'Іменинник', value: celebrant.name },
-        { label: 'Дата народження', value: celebrant.birthday ? formatDate(celebrant.birthday) : null },
+        { label: celebrantsNameLabel, value: celebrantsNameDisplay },
+        { label: celebrantsBirthdayLabel, value: celebrantsBirthdayDisplay },
         { label: 'Бронь створено', value: formatDateTime(event.createdAt) }
     ];
     if (view.config.showInternalFields) {

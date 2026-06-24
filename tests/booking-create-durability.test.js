@@ -2195,6 +2195,53 @@ test('booking drawer source bridge cannot bypass stale context validation into n
     );
 });
 
+test('active add-to-existing create path only resolves atomic endpoints or blocked states', () => {
+    const savePath = read('js', 'booking-save-path.js');
+    const bookingJs = read('js', 'booking.js');
+    const endpointBlock = savePath.slice(
+        savePath.indexOf('function bookingCreatePathEndpoint'),
+        savePath.indexOf('function buildBookingCreatePath')
+    );
+    const resolverBlock = savePath.slice(
+        savePath.indexOf('function resolveBookingCreatePath'),
+        savePath.indexOf("if (typeof window !== 'undefined')")
+    );
+    const createFlowBlock = bookingJs.slice(
+        bookingJs.indexOf('const createPath = resolveBookingCreatePath'),
+        bookingJs.indexOf('if (createResult && createResult.success === false)')
+    );
+    const activeGuardIndex = resolverBlock.indexOf('activeBanquetIntent && !standaloneBookingOverride');
+    const finalNormalFallbackIndex = resolverBlock.indexOf("return buildBookingCreatePath(normalKind || 'normal_booking'");
+
+    assert.match(endpointBlock, /case 'existing_group_member':[\s\S]*\/api\/banquets\/\$\{encodeURIComponent\(safeGroupId\)\}\/member-booking/);
+    assert.match(endpointBlock, /case 'existing_group_activity':[\s\S]*\/api\/banquets\/\$\{encodeURIComponent\(safeGroupId\)\}\/activity-booking/);
+    assert.match(endpointBlock, /case 'normal_booking':[\s\S]*return '\/api\/bookings'/);
+    assert.ok(activeGuardIndex >= 0, 'resolver should have active add-to-existing guard');
+    assert.ok(finalNormalFallbackIndex > activeGuardIndex, 'normal create fallback should be after active guard');
+    assert.match(
+        resolverBlock.slice(activeGuardIndex, finalNormalFallbackIndex),
+        /active_banquet_context_requires_source_booking[\s\S]*blocked: true/,
+        'missing source booking should block before normal fallback'
+    );
+    assert.match(
+        resolverBlock.slice(activeGuardIndex, finalNormalFallbackIndex),
+        /active_banquet_context_member[\s\S]*existing_group_member/,
+        'active kitchen/member intent should resolve to group member path'
+    );
+    assert.match(
+        resolverBlock.slice(activeGuardIndex, finalNormalFallbackIndex),
+        /active_banquet_context_activity[\s\S]*existing_group_activity/,
+        'active activity intent should resolve to group activity path'
+    );
+    assert.match(createFlowBlock, /if \(createPath\.blocked\)[\s\S]*return;/);
+    assert.match(createFlowBlock, /if \(finalCreatePath\.blocked\)[\s\S]*return;/);
+    assert.ok(
+        createFlowBlock.indexOf('if (finalCreatePath.blocked)') <
+            createFlowBlock.indexOf('apiCreateBooking(booking)'),
+        'final active-context block should run before generic apiCreateBooking'
+    );
+});
+
 test('booking conflict locks serialize line and room resources in deterministic order', async () => {
     clearModules();
     const { lockBookingConflictResources } = require('../services/booking');

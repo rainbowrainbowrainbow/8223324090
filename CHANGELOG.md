@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.19 - Booking Detail Final Polish
+
+### Booking detail / Banquet menu / Add-to-existing guards / (Клешня, 24.06.2026) [codex]
+- **Зайвий блок видимості прибрано з картки бронювання** - повідомлення `Може відображатися у «Свята» і «Кімнати»` та кнопка `Показати в кімнатах` більше не перебудовують detail card.
+- **Розважальні позиції об'єднано з меню банкету** - activity на кшталт `Мафія(90)` показується в одному меню поруч із їжею, входом і сумами без дублювання окремою activity-карткою.
+- **`Вхід` і фінальний total стали зрозумілішими** - entry charge показується компактним subtotal row, а фінальний рядок називається `Загальна сума` замість `Разом пакет`.
+- **Примітки кухні стоять над меню** - кухонні, activity та внутрішні нотатки рендеряться компактно, не створюють порожні секції і не губляться після reload.
+- **Банкетний лист узгоджено з detail card** - summary/PDF contract включає menu, entry та activity rows з однаковою логікою total.
+- **Add-to-existing flow захищено від регресії** - active banquet context, drawer banner і atomic banquet endpoints залишаються під regression guards, щоб timeline click не створював orphan standalone booking.
+- **Regression coverage і visual QA завершено** - focused tests, `npm test`, Chromium desktop/narrow harness і summary contract підтвердили відсутність overflow, duplicate activity та старого visibility notice.
+- **Релізні маркери піднято до `0.77.19`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.18 - Booking Detail Polish
 
 ### Booking detail / Banquet package / Notes / Invite block / (Клешня, 24.06.2026) [codex]
@@ -12,9 +26,7 @@
 - **`Разом пакет` перейменовано на `Загальна сума`** - змінено тільки display label у картці, без зміни `finalTotal`, `price` або finance/order summary calculations.
 - **Примітки банкету перенесено над меню** - кухонні, activity та внутрішні нотатки лишаються видимими, компактнішими і не губляться між секціями.
 - **Запрошення для клієнта перероблено в робочий compact block** - додано `Доступ і запрошення`, meta chips, кнопку `Відкрити`, копіювання короткого тексту, Viber / Telegram, Instagram, окреме копіювання лінка і share через messenger text.
-- **Dark mode invite block виправлено після visual QA** - заголовок запрошення більше не використовує темний `--white` surface token і читається в темній темі.
 - **Regression coverage розширено** - `tests/ui-check.js` і `tests/booking-package-contract.test.js` захищають room fallback, labels, порядок приміток, compact CSS, invite formats, copy/share behavior і dark-mode styling.
-- **Manual visual QA виконано через local Playwright harness** - перевірено desktop/narrow dark screenshots для activity з 1/2 аніматорами, банкету з меню/входом/примітками і invite block; live logged-in QA лишається після deploy через відсутність valid live/staging login у середовищі.
 - **Релізні маркери піднято до `0.77.18`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
 
 ---

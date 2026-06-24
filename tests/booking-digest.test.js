@@ -122,6 +122,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.counts.guests, null);
     assert.equal(summary.counts.tables, 2);
     assert.equal(summary.orderRows.length, 5);
+    assert.deepEqual(summary.orderRows.map(row => row.type), ['program', 'activity', 'menu', 'menu', 'service_event']);
     assert.equal(summary.orderRows[0].type, 'program');
     assert.equal(summary.orderRows[0].durationMinutes, 90);
     assert.equal(summary.orderRows[0].quantity, null);
@@ -131,6 +132,7 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.orderRows[2].type, 'menu');
     assert.equal(summary.orderRows[2].meta.servingTime, '16:30');
     assert.equal(summary.orderRows[2].meta.servingUnit, '100г');
+    assert.equal(summary.orderRows[3].type, 'menu');
     assert.equal(summary.orderRows[4].type, 'service_event');
     assert.equal(summary.orderRows[4].meta.time, '17:10');
     assert.equal(summary.serviceEvents.length, 1);
@@ -207,6 +209,10 @@ test('banquet summary prefers canonical customer children over legacy child fiel
     assert.equal(summary.success, true);
     assert.equal(summary.celebrant.name, 'Canonical First');
     assert.equal(summary.celebrant.birthday, '2019-02-03');
+    assert.deepEqual(summary.celebrants.map(child => child.name), ['Canonical First', 'Canonical Second']);
+    assert.equal(summary.customer.childNameDisplay, 'Canonical First, Canonical Second');
+    assert.equal(summary.customer.childBirthdayDisplay, '2019-02-03, 2020-04-05');
+    assert.equal(summary.customer.childrenDisplay, 'Canonical First (2019-02-03), Canonical Second (2020-04-05)');
 });
 
 test('banquet summary builds compact finance rows without duplicate booking or zero subtotals', () => {

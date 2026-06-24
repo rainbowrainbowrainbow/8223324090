@@ -265,14 +265,66 @@ function venueForContext(businessContext, warnings) {
     };
 }
 
+function dateOnly(value) {
+    if (!value) return null;
+    const text = String(value).trim();
+    return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
+}
+
+function normalizeCustomerChild(child = {}) {
+    if (!child || typeof child !== 'object' || Array.isArray(child)) return null;
+    const name = cleanText(valueOf(child, 'name', 'childName', 'child_name'), 200);
+    const birthday = dateOnly(valueOf(child, 'birthday', 'birthDate', 'birth_date', 'childBirthday', 'child_birthday'));
+    const ageSnapshot = nullableNumber(valueOf(child, 'ageSnapshot', 'age_snapshot', 'age', 'childAge', 'child_age'));
+    const note = cleanText(valueOf(child, 'note', 'notes'), 500);
+    if (!name && !birthday && ageSnapshot === null && !note) return null;
+    return { name, birthday, ageSnapshot, note };
+}
+
+function normalizeCustomerChildren(customer = {}) {
+    const canonical = Array.isArray(customer.children)
+        ? customer.children.map(normalizeCustomerChild).filter(Boolean)
+        : [];
+    if (canonical.length) return canonical;
+
+    const legacy = normalizeCustomerChild({
+        name: valueOf(customer, 'childName', 'child_name'),
+        birthday: valueOf(customer, 'childBirthday', 'child_birthday')
+    });
+    return legacy ? [legacy] : [];
+}
+
+function customerChildLine(child = {}) {
+    if (child.name && child.birthday) return `${child.name} (${child.birthday})`;
+    return child.name || child.birthday || null;
+}
+
+function customerChildrenFullDisplay(children = []) {
+    const lines = (Array.isArray(children) ? children : []).map(customerChildLine).filter(Boolean);
+    return lines.length ? lines.join(', ') : null;
+}
+
+function customerChildrenBirthdayDisplay(children = []) {
+    const birthdays = (Array.isArray(children) ? children : []).map(child => child.birthday).filter(Boolean);
+    return birthdays.length ? birthdays.join(', ') : null;
+}
+
 function normalizeCustomer(customer = {}) {
+    const children = normalizeCustomerChildren(customer);
+    const primary = children[0] || {};
     return {
         id: valueOf(customer, 'id'),
         name: cleanText(valueOf(customer, 'name', 'customerName', 'customer_name'), 200),
         phone: cleanText(valueOf(customer, 'phone', 'customerPhone', 'customer_phone'), 80),
         instagram: cleanText(valueOf(customer, 'instagram'), 120),
         source: cleanText(valueOf(customer, 'source'), 120),
-        notes: cleanText(valueOf(customer, 'notes'), 1000)
+        notes: cleanText(valueOf(customer, 'notes'), 1000),
+        childName: primary.name || cleanText(valueOf(customer, 'childName', 'child_name'), 200),
+        childBirthday: primary.birthday || dateOnly(valueOf(customer, 'childBirthday', 'child_birthday')),
+        childNameDisplay: children.map(child => child.name).filter(Boolean).join(', ') || null,
+        childBirthdayDisplay: customerChildrenBirthdayDisplay(children),
+        childrenDisplay: customerChildrenFullDisplay(children),
+        children
     };
 }
 
@@ -1468,6 +1520,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         generatedBy,
         hasRealProgram
     });
+    const normalizedCustomer = normalizeCustomer(customer || {});
+    const normalizedCelebrant = normalizeCelebrant(primaryBooking, normalizedCustomer);
 
     return {
         success: true,
@@ -1490,8 +1544,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         },
         venue: venueForContext(context, warnings),
         event: eventSummary,
-        customer: normalizeCustomer(customer || {}),
-        celebrant: normalizeCelebrant(primaryBooking, customer || {}),
+        customer: normalizedCustomer,
+        celebrants: normalizedCustomer.children,
+        celebrant: normalizedCelebrant,
         counts: {
             children: nullableNumber(firstNonNull(explicitChildrenCount, legacyChildrenCount)),
             adults: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetAdults', 'banquet_adults'), valueOf(primaryBooking, 'banquetAdults', 'banquet_adults'))),

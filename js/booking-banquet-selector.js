@@ -34,7 +34,14 @@ function bookingBanquetGroupCandidateLabel(candidate = {}) {
 
 function getSelectedBookingBanquetGroupId() {
     const select = document.getElementById('bookingBanquetGroupSelect');
-    if (select) return String(select.value || '').trim();
+    if (select) {
+        const value = String(select.value || '').trim();
+        if (value) return value;
+        const explicitGroupId = String(BookingDrawerState.explicitBanquetContext?.groupId || '').trim();
+        const selectedGroupId = String(BookingDrawerState.selectedBanquetGroupId || '').trim();
+        if (explicitGroupId && selectedGroupId && explicitGroupId === selectedGroupId) return selectedGroupId;
+        return '';
+    }
     return String(BookingDrawerState.selectedBanquetGroupId || '').trim();
 }
 
@@ -47,13 +54,18 @@ function getSelectedBookingBanquetGroupCandidate(groupId = getSelectedBookingBan
 function selectedBookingBanquetGroupContext() {
     const groupId = getSelectedBookingBanquetGroupId();
     const candidate = getSelectedBookingBanquetGroupCandidate(groupId);
+    const explicitContext = BookingDrawerState.explicitBanquetContext
+        && groupId
+        && String(BookingDrawerState.explicitBanquetContext.groupId || '') === String(groupId || '')
+        ? BookingDrawerState.explicitBanquetContext
+        : null;
     const realRoomContext = BookingDrawerState.roomSelectionBanquetContext
         && groupId
         && String(BookingDrawerState.roomSelectionBanquetContext.groupId || '') === String(groupId || '')
         ? BookingDrawerState.roomSelectionBanquetContext
         : null;
     const virtualState = !groupId ? bookingBanquetSelectorVirtualState() : null;
-    const roomContext = realRoomContext || (virtualState?.valid ? virtualState.context : null);
+    const roomContext = explicitContext || realRoomContext || (virtualState?.valid ? virtualState.context : null);
     return {
         groupId,
         candidate,
@@ -62,7 +74,8 @@ function selectedBookingBanquetGroupContext() {
         customerId: candidate?.customerId ?? candidate?.primaryBooking?.customerId ?? roomContext?.banquetGroupCustomerId ?? roomContext?.sourceCustomerId ?? null,
         sourceCustomerId: roomContext?.sourceCustomerId ?? null,
         banquetGroupCustomerId: roomContext?.banquetGroupCustomerId ?? candidate?.customerId ?? null,
-        source: candidate ? 'booking_banquet_group_selector' : (virtualState?.bridge || (roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector')),
+        source: candidate ? 'booking_banquet_group_selector' : (explicitContext?.source || virtualState?.bridge || (roomContext ? 'room_selection_auto_banquet_context' : 'booking_banquet_group_selector')),
+        isExplicitBanquetContext: Boolean(explicitContext),
         isRoomSelectionAuto: Boolean(roomContext),
         isVirtualSourceBridge: Boolean(virtualState?.valid)
     };
@@ -321,6 +334,10 @@ function resetBanquetSelectorContext(options = {}) {
     BookingDrawerState.banquetGroupCandidatesKey = '';
     BookingDrawerState.selectedBanquetGroupId = '';
     BookingDrawerState.manualBanquetGroupSelection = false;
+    BookingDrawerState.explicitBanquetContext = null;
+    BookingDrawerState.activeBanquetIntent = null;
+    BookingDrawerState.activeBanquetRoleIntent = null;
+    BookingDrawerState.standaloneBookingOverride = false;
     if (options.render !== false) renderBookingBanquetGroupSelector();
 }
 
@@ -342,6 +359,95 @@ function resetBookingDrawerStateForOpen(mode = inferBookingDrawerModeForOpen()) 
     return BookingDrawerState.drawerGenerationId;
 }
 
+function bookingActiveBanquetContextLabel(context = selectedBookingBanquetGroupContext()) {
+    const groupId = String(context?.groupId || BookingDrawerState.explicitBanquetContext?.groupId || '').trim();
+    const groupName = context?.groupName || BookingDrawerState.explicitBanquetContext?.groupName || '';
+    if (groupName && groupId) return `${groupName} · #${groupId}`;
+    if (groupName) return groupName;
+    return groupId ? `#${groupId}` : 'банкет не вибрано';
+}
+
+function bookingActiveBanquetMetaParts(context = selectedBookingBanquetGroupContext()) {
+    const candidate = context?.candidate || {};
+    const primary = candidate.primaryBooking || {};
+    const explicit = BookingDrawerState.explicitBanquetContext || {};
+    return [
+        explicit.customerName || explicit.sourceCustomerName || '',
+        explicit.targetRoom || explicit.sourceRoom || candidate.room || primary.room || '',
+        explicit.date || candidate.date || primary.date || bookingBanquetGroupDateValue() || ''
+    ].filter(Boolean);
+}
+
+function bookingActiveBanquetRoleIntentLabel(role) {
+    switch (String(role || '').trim()) {
+        case 'activity':
+            return 'Активність';
+        case 'kitchen':
+            return 'Кухня / меню';
+        case 'service':
+            return 'Сервіс';
+        case 'manual':
+            return 'Ручна операція';
+        case 'needs_choice':
+            return 'Оберіть роль';
+        default:
+            return '';
+    }
+}
+
+function bookingActiveBanquetRoleIntentValue() {
+    const resolver = typeof resolveBookingActiveBanquetRoleIntent === 'function'
+        ? resolveBookingActiveBanquetRoleIntent
+        : null;
+    const role = resolver
+        ? resolver(BookingDrawerState.explicitBanquetContext || {})
+        : BookingDrawerState.activeBanquetRoleIntent;
+    BookingDrawerState.activeBanquetRoleIntent = role || null;
+    return role || '';
+}
+
+function renderActiveBanquetContextBanner() {
+    const banner = document.getElementById('bookingActiveBanquetContext');
+    if (!banner) return;
+    const activeIntent = BookingDrawerState.activeBanquetIntent === 'add_to_existing';
+    const selectedContext = selectedBookingBanquetGroupContext();
+    const hasGroup = Boolean(selectedContext?.groupId);
+    const shouldShow = activeIntent || selectedContext?.isExplicitBanquetContext;
+    if (!shouldShow) {
+        banner.hidden = true;
+        banner.classList.add('hidden');
+        banner.classList.remove('is-mismatch', 'is-standalone-ready');
+        banner.innerHTML = '';
+        return;
+    }
+    const mismatch = hasGroup && selectedBookingBanquetGroupCustomerMismatch(selectedContext);
+    const metaParts = bookingActiveBanquetMetaParts(selectedContext);
+    const title = hasGroup
+        ? `Додається до банкету: ${bookingActiveBanquetContextLabel(selectedContext)}`
+        : 'Потрібно вибрати банкет';
+    const note = mismatch
+        ? 'Клієнт не збігається з вибраним банкетом. Оберіть інший банкет або створіть окремо.'
+        : (hasGroup ? 'Нове бронювання буде додано до цієї банкетної групи.' : 'Активний банкетний контекст скинуто. Оберіть банкет або створіть окреме бронювання.');
+    const roleIntent = bookingActiveBanquetRoleIntentValue();
+    const roleLabel = bookingActiveBanquetRoleIntentLabel(roleIntent);
+    banner.classList.toggle('is-mismatch', mismatch || !hasGroup);
+    banner.classList.toggle('is-standalone-ready', Boolean(BookingDrawerState.standaloneBookingOverride));
+    banner.innerHTML = `
+        <div class="booking-active-banquet-context__main">
+            <strong>${escapeHtml(title)}</strong>
+            ${metaParts.length ? `<span>${metaParts.map(part => escapeHtml(part)).join(' · ')}</span>` : ''}
+            ${roleLabel ? `<span class="booking-active-banquet-context__role">Роль: ${escapeHtml(roleLabel)}</span>` : ''}
+            <small>${escapeHtml(note)}</small>
+        </div>
+        <div class="booking-active-banquet-context__actions">
+            <button type="button" data-booking-change-banquet>Змінити банкет</button>
+            <button type="button" data-booking-standalone-override>Створити окремо</button>
+        </div>
+    `;
+    banner.hidden = false;
+    banner.classList.remove('hidden');
+}
+
 function renderBookingBanquetGroupSelector(options = {}) {
     const section = document.getElementById('bookingBanquetGroupSection');
     const select = document.getElementById('bookingBanquetGroupSelect');
@@ -358,6 +464,7 @@ function renderBookingBanquetGroupSelector(options = {}) {
         select.innerHTML = '<option value="">Без прив’язки</option>';
         select.value = '';
         if (hint) hint.textContent = 'Оберіть клієнта, щоб побачити його банкети на дату.';
+        renderActiveBanquetContextBanner();
         return;
     }
 
@@ -407,6 +514,7 @@ function renderBookingBanquetGroupSelector(options = {}) {
             hint.textContent = 'Банкетів цього клієнта на дату не знайдено.';
         }
     }
+    renderActiveBanquetContextBanner();
 }
 
 async function refreshBookingBanquetGroupCandidates(options = {}) {
@@ -450,7 +558,9 @@ async function refreshBookingBanquetGroupCandidates(options = {}) {
         .filter(Boolean);
     const all = allBookingBanquetGroupCandidates();
     const selectedStillExists = all.some(candidate => String(candidate.groupId) === String(BookingDrawerState.selectedBanquetGroupId));
-    if (BookingDrawerState.selectedBanquetGroupId && !selectedStillExists) {
+    const selectedIsExplicit = BookingDrawerState.explicitBanquetContext?.groupId
+        && String(BookingDrawerState.explicitBanquetContext.groupId) === String(BookingDrawerState.selectedBanquetGroupId || '');
+    if (BookingDrawerState.selectedBanquetGroupId && !selectedStillExists && !selectedIsExplicit) {
         BookingDrawerState.selectedBanquetGroupId = '';
     }
     renderBookingBanquetGroupSelector();

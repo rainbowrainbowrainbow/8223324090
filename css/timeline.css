@@ -2339,6 +2339,18 @@ body.dark-mode .booking-banquet-unlink-btn {
     background: var(--white);
 }
 
+.booking-banquet-section--comments {
+    gap: 6px;
+    padding: 8px 10px;
+    border-style: solid;
+    border-color: rgba(20, 184, 166, 0.18);
+    background: rgba(20, 184, 166, 0.04);
+}
+
+.booking-banquet-section--comments .booking-banquet-section-title {
+    font-size: 11px;
+}
+
 .booking-banquet-section--summary .booking-banquet-member {
     border-style: dashed;
 }
@@ -2406,6 +2418,10 @@ body.dark-mode .booking-banquet-unlink-btn {
     gap: 6px;
 }
 
+.booking-banquet-comments--compact {
+    gap: 5px;
+}
+
 .booking-banquet-comment-row {
     display: grid;
     grid-template-columns: 96px minmax(0, 1fr);
@@ -2416,12 +2432,25 @@ body.dark-mode .booking-banquet-unlink-btn {
     background: var(--gray-50);
 }
 
+.booking-banquet-comments--compact .booking-banquet-comment-row {
+    grid-template-columns: 80px minmax(0, 1fr);
+    padding: 5px 7px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.72);
+}
+
 .booking-banquet-comment-row strong {
     min-width: 0;
     color: var(--primary-dark);
     font-size: 11px;
     font-weight: 950;
     overflow-wrap: anywhere;
+}
+
+.booking-banquet-comments--compact .booking-banquet-comment-row strong,
+.booking-banquet-comments--compact .booking-banquet-comment-row span {
+    font-size: 11px;
+    line-height: 1.25;
 }
 
 .booking-banquet-comment-row span {
@@ -2535,6 +2564,12 @@ body.dark-mode .booking-banquet-section--work,
 body.dark-mode .booking-banquet-technical {
     background: var(--white);
     border-color: var(--gray-200);
+}
+
+html[data-theme="dark"] .booking-banquet-section--comments,
+body.dark-mode .booking-banquet-section--comments {
+    background: rgba(20, 184, 166, 0.06);
+    border-color: rgba(20, 184, 166, 0.2);
 }
 
 html[data-theme="dark"] .booking-banquet-empty,

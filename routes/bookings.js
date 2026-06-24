@@ -629,18 +629,56 @@ function mergeExistingExtraDataForBookingUpdate(payload = {}, oldRow = {}) {
     };
 }
 
-function hasBanquetGroupPayload(payload = {}) {
+function banquetGroupPayloads(payload = {}) {
     const extra = parsePayloadExtraData(payload);
-    const group = extra?.banquetGroup || extra?.banquet_group || payload.banquetGroup || payload.banquet_group;
-    if (!group || typeof group !== 'object' || Array.isArray(group)) return false;
-    return Boolean(
-        group.groupId
+    return [
+        extra?.banquetGroup,
+        extra?.banquet_group,
+        payload.banquetGroup,
+        payload.banquet_group
+    ].filter(group => group && typeof group === 'object' && !Array.isArray(group));
+}
+
+function banquetGroupRequiresMembership(group = {}) {
+    const requiresMembership = group.requiresMembership ?? group.requires_membership;
+    return requiresMembership === true || String(requiresMembership || '').trim().toLowerCase() === 'true';
+}
+
+function hasExplicitBanquetAddToExistingIntent(payload = {}) {
+    return banquetGroupPayloads(payload).some(group => (
+        String(group.intent || '').trim().toLowerCase() === 'add_to_existing'
+        || banquetGroupRequiresMembership(group)
+    ));
+}
+
+function hasBanquetGroupPayload(payload = {}) {
+    return banquetGroupPayloads(payload).some(group => Boolean(
+        hasExplicitBanquetAddToExistingIntent({ banquetGroup: group })
+        || group.groupId
         || group.group_id
         || group.sourceBookingId
         || group.source_booking_id
         || group.role
         || group.source === 'room_booking_animation_bridge'
-    );
+    ));
+}
+
+function banquetAddToExistingRequiresAtomicPayload() {
+    return {
+        success: false,
+        code: 'BANQUET_ADD_TO_EXISTING_REQUIRES_ATOMIC_ENDPOINT',
+        error: 'Add-to-existing banquet bookings must be created through atomic banquet endpoints.',
+        useEndpoints: [
+            '/api/banquets/:groupId/member-booking',
+            '/api/banquets/:groupId/activity-booking'
+        ]
+    };
+}
+
+function rejectExplicitBanquetAddToExistingGenericCreate(res, payload = {}) {
+    if (!hasExplicitBanquetAddToExistingIntent(payload)) return false;
+    res.status(409).json(banquetAddToExistingRequiresAtomicPayload());
+    return true;
 }
 
 function hasAnyBanquetGroupPayload(...payloadGroups) {
@@ -2593,6 +2631,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
     b.businessContext = businessContext;
+    if (rejectExplicitBanquetAddToExistingGenericCreate(res, b)) return;
     if (!b.date || !b.time || !b.lineId) {
         return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
     }

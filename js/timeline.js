@@ -26,6 +26,287 @@ const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
     byGroup: new Map()
 };
 const TIMELINE_BANQUET_ROOM_PREVIEWS = new Map();
+let TIMELINE_ACTIVE_BANQUET_CONTEXT = null;
+
+function timelineActiveBanquetSourceBookings(summary = {}) {
+    return [
+        summary.carrierBooking,
+        summary.primaryBooking,
+        ...(Array.isArray(summary.allBookings) ? summary.allBookings : []),
+        ...(Array.isArray(summary.kitchenBookings) ? summary.kitchenBookings : []),
+        ...(Array.isArray(summary.activityBookings) ? summary.activityBookings : [])
+    ].filter(Boolean);
+}
+
+function firstTimelineActiveBanquetValue(summary = {}, getter) {
+    for (const source of timelineActiveBanquetSourceBookings(summary)) {
+        const value = getter(source);
+        if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+    }
+    return null;
+}
+
+function normalizeTimelineActiveBanquetCount(value) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    const number = Number(text);
+    if (!Number.isFinite(number) || number < 0) return null;
+    return String(Math.round(number * 100) / 100);
+}
+
+function cloneTimelineActiveBanquetArray(items = []) {
+    return (Array.isArray(items) ? items : [])
+        .filter(item => item && typeof item === 'object')
+        .map(item => ({ ...item }));
+}
+
+function timelineActiveBanquetPackageSource(summary = {}) {
+    const snapshot = summary.snapshot || {};
+    const grouped = snapshot.bookings || {};
+    const candidates = uniqueTimelineBanquetBookings([
+        ...(Array.isArray(summary.kitchenBookings) ? summary.kitchenBookings : []),
+        ...(Array.isArray(grouped.kitchen) ? grouped.kitchen : []),
+        ...(Array.isArray(summary.allBookings) ? summary.allBookings : []),
+        summary.primaryBooking
+    ].filter(Boolean));
+    return candidates.find(booking => {
+        return timelineBanquetMenuPositions(booking).length > 0
+            || timelineBanquetServiceEvents(booking).length > 0
+            || String(booking?.banquetMenu || booking?.banquet_menu || '').trim();
+    }) || candidates[0] || null;
+}
+
+function timelineActiveBanquetPackageSnapshot(summary = {}) {
+    const sourceBooking = timelineActiveBanquetPackageSource(summary);
+    if (!sourceBooking) return null;
+    const bookingPackage = timelineBanquetBookingPackage(sourceBooking);
+    const menuPositions = cloneTimelineActiveBanquetArray(timelineBanquetMenuPositions(sourceBooking));
+    const serviceEvents = cloneTimelineActiveBanquetArray(timelineBanquetServiceEvents(sourceBooking));
+    const banquetMenu = String(sourceBooking.banquetMenu || sourceBooking.banquet_menu || '').trim();
+    if (!menuPositions.length && !serviceEvents.length && !banquetMenu) return null;
+    return {
+        sourceBookingId: sourceBooking.id || sourceBooking.bookingId || sourceBooking.booking_id || null,
+        menuPositions,
+        serviceEvents,
+        banquetMenu,
+        programBasePrice: bookingPackage.programBasePrice ?? bookingPackage.program_base_price ?? null,
+        positionsSubtotal: bookingPackage.positionsSubtotal ?? bookingPackage.positions_subtotal ?? null,
+        entryCharge: bookingPackage.entryCharge || bookingPackage.entry_charge || null,
+        entrySubtotal: bookingPackage.entrySubtotal ?? bookingPackage.entry_subtotal ?? null,
+        finalTotal: bookingPackage.finalTotal ?? bookingPackage.final_total ?? null,
+        warnings: cloneTimelineActiveBanquetArray(bookingPackage.warnings || []),
+        source: 'timeline_banquet_snapshot'
+    };
+}
+
+function normalizeTimelineActiveBanquetContext(summary = {}, source = {}) {
+    const options = typeof source === 'string' ? { source } : (source || {});
+    const snapshot = summary.snapshot || {};
+    const primaryBooking = summary.primaryBooking || snapshot?.bookings?.primary || {};
+    const carrierBooking = summary.carrierBooking || primaryBooking || {};
+    const groupId = String(options.groupId || summary.groupId || timelineBanquetSnapshotGroupId(snapshot) || '').trim();
+    if (!groupId) return null;
+
+    const primaryBookingId = String(
+        options.primaryBookingId
+        || snapshot?.group?.primaryBookingId
+        || snapshot?.group?.primary_booking_id
+        || primaryBooking?.id
+        || ''
+    ).trim();
+    const sourceBookingId = String(
+        options.sourceBookingId
+        || options.triggerBookingId
+        || carrierBooking?.id
+        || primaryBookingId
+        || firstTimelineActiveBanquetValue(summary, booking => booking.id)
+        || ''
+    ).trim();
+    const businessContext = String(
+        options.businessContext
+        || snapshot?.businessContext
+        || snapshot?.business_context
+        || firstTimelineActiveBanquetValue(summary, booking => booking.businessContext || booking.business_context)
+        || timelineBusinessContextValue()
+        || ''
+    ).trim();
+    const date = timelineDateKey(
+        options.date
+        || summary.date
+        || snapshot?.group?.date
+        || firstTimelineActiveBanquetValue(summary, booking => booking.date)
+        || (typeof AppState !== 'undefined' ? AppState.selectedDate : null)
+    );
+    const room = String(
+        options.room
+        || summary.room
+        || snapshot?.group?.room
+        || firstTimelineActiveBanquetValue(summary, booking => booking.room)
+        || ''
+    ).trim();
+    const customerId = firstTimelineActiveBanquetValue(summary, booking => booking.customerId ?? booking.customer_id);
+    const customerName = String(
+        options.customerName
+        || summary.customerName
+        || firstTimelineActiveBanquetValue(summary, booking => booking.customerName || booking.customer_name)
+        || ''
+    ).trim();
+    const groupName = String(
+        options.groupName
+        || summary.groupName
+        || snapshot?.group?.name
+        || snapshot?.group?.label
+        || firstTimelineActiveBanquetValue(summary, booking => booking.groupName || booking.group_name || booking.label || booking.programName || booking.program_name)
+        || ''
+    ).trim();
+    const kidsCount = normalizeTimelineActiveBanquetCount(
+        options.kidsCount
+        ?? options.kids_count
+        ?? summary.kidsCount
+        ?? firstTimelineActiveBanquetValue(summary, booking => booking.kidsCount ?? booking.kids_count)
+    );
+    const banquetGuests = normalizeTimelineActiveBanquetCount(
+        options.banquetGuests
+        ?? options.banquet_guests
+        ?? summary.banquetGuests
+        ?? firstTimelineActiveBanquetValue(summary, booking => booking.banquetGuests ?? booking.banquet_guests)
+        ?? kidsCount
+    );
+    const banquetAdults = normalizeTimelineActiveBanquetCount(
+        options.banquetAdults
+        ?? options.banquet_adults
+        ?? summary.banquetAdults
+        ?? firstTimelineActiveBanquetValue(summary, booking => booking.banquetAdults ?? booking.banquet_adults)
+    );
+    const banquetTables = normalizeTimelineActiveBanquetCount(
+        options.banquetTables
+        ?? options.banquet_tables
+        ?? summary.banquetTables
+        ?? firstTimelineActiveBanquetValue(summary, booking => booking.banquetTables ?? booking.banquet_tables)
+    );
+    const packageSnapshot = options.packageSnapshot || options.package_snapshot || timelineActiveBanquetPackageSnapshot(summary);
+
+    return {
+        groupId,
+        sourceBookingId: sourceBookingId || primaryBookingId || null,
+        primaryBookingId: primaryBookingId || sourceBookingId || null,
+        businessContext,
+        date,
+        customerId: customerId != null && String(customerId).trim() !== '' ? String(customerId).trim() : null,
+        customerName,
+        room,
+        groupName,
+        kidsCount,
+        banquetGuests,
+        banquetAdults,
+        banquetTables,
+        menuCount: Number(summary.menuCount || 0) || (packageSnapshot?.menuPositions?.length || 0),
+        activityCount: Number(summary.activityCount || 0) || 0,
+        packageSnapshot,
+        source: String(options.source || 'timeline_banquet_inspector').trim(),
+        timelineView: timelineCurrentViewKey(),
+        createdAt: Date.now()
+    };
+}
+
+function timelineActiveBanquetContextIsCurrent(context = {}) {
+    if (!context?.groupId) return false;
+    if (context.businessContext && context.businessContext !== timelineBusinessContextValue()) return false;
+    if (context.timelineView && context.timelineView !== timelineCurrentViewKey()) return false;
+    const selectedDate = timelineDateKey(typeof AppState !== 'undefined' ? AppState.selectedDate : null);
+    if (context.date && selectedDate && context.date !== selectedDate) return false;
+    return true;
+}
+
+function getTimelineActiveBanquetContext() {
+    if (!TIMELINE_ACTIVE_BANQUET_CONTEXT) return null;
+    if (!timelineActiveBanquetContextIsCurrent(TIMELINE_ACTIVE_BANQUET_CONTEXT)) {
+        clearTimelineActiveBanquetContext('stale_context');
+        return null;
+    }
+    return { ...TIMELINE_ACTIVE_BANQUET_CONTEXT };
+}
+
+function setTimelineActiveBanquetContext(summary, source) {
+    const context = normalizeTimelineActiveBanquetContext(summary, source);
+    TIMELINE_ACTIVE_BANQUET_CONTEXT = context;
+    return context ? { ...context } : null;
+}
+
+function clearTimelineActiveBanquetContext(reason) {
+    if (!TIMELINE_ACTIVE_BANQUET_CONTEXT) return null;
+    const previous = TIMELINE_ACTIVE_BANQUET_CONTEXT;
+    TIMELINE_ACTIVE_BANQUET_CONTEXT = null;
+    if (typeof window !== 'undefined') {
+        window.__timelineActiveBanquetContextLastClearReason = String(reason || '').trim() || 'cleared';
+    }
+    return previous;
+}
+
+function timelineCellLineDescriptor(cell) {
+    const lineId = String(cell?.dataset?.line || '').trim();
+    const appLines = typeof AppState !== 'undefined' && Array.isArray(AppState.lines) ? AppState.lines : [];
+    const line = appLines.find(item => {
+        return [
+            item?.id,
+            item?.lineId,
+            item?.line_id,
+            item?.resourceId,
+            item?.resource_id,
+            item?.name
+        ].some(value => String(value || '').trim() === lineId);
+    }) || {};
+    const grid = cell?.closest?.('.line-grid');
+    const lineEl = grid?.closest?.('.timeline-line');
+    const header = lineEl?.querySelector?.('.line-header');
+    const rawValues = [
+        lineId,
+        grid?.dataset?.lineId,
+        header?.dataset?.lineId,
+        header?.dataset?.timelineRoomName,
+        header?.querySelector?.('.line-name')?.textContent,
+        line.id,
+        line.lineId,
+        line.line_id,
+        line.resourceId,
+        line.resource_id,
+        line.name
+    ];
+    const room = String(
+        line.name
+        || header?.dataset?.timelineRoomName
+        || header?.querySelector?.('.line-name')?.textContent
+        || lineId
+        || ''
+    ).trim();
+    return {
+        lineId,
+        room,
+        matchKeys: rawValues.map(timelineBanquetRoomKey).filter(Boolean)
+    };
+}
+
+function timelineCellLineRoomKeys(cell) {
+    return timelineCellLineDescriptor(cell).matchKeys;
+}
+
+function getTimelineActiveBanquetContextForCell(cell) {
+    const context = getTimelineActiveBanquetContext();
+    if (!context || !cell || String(cell?.dataset?.line || '') === 'afisha') return null;
+    const target = timelineCellLineDescriptor(cell);
+    const contextRoomKey = timelineBanquetRoomKey(context.room);
+    const targetRoomKey = timelineBanquetRoomKey(target.room);
+    const targetIsDifferentRoom = Boolean(contextRoomKey && targetRoomKey && contextRoomKey !== targetRoomKey);
+    return {
+        ...context,
+        targetTime: String(cell.dataset.time || '').trim(),
+        targetLineId: target.lineId,
+        targetRoom: target.room,
+        targetIsDifferentRoom,
+        targetRoomRelation: targetIsDifferentRoom ? 'different_room' : 'same_room'
+    };
+}
 
 function invalidateTimelineBanquetSnapshotCache(options = {}) {
     const bookingIds = new Set(
@@ -199,6 +480,7 @@ async function setTimelineView(view, options = {}) {
     try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
     updateTimelineViewControls();
     if (next !== current) {
+        clearTimelineActiveBanquetContext('timeline_view_changed');
         clearTimelineBanquetRoomPreviews();
         markTimelineNavigationScrollReset('view-switch-before-render');
         AppState.cachedBookings = {};
@@ -1665,6 +1947,7 @@ function ensureTimelineBanquetInspector() {
 function hideTimelineBanquetInspector() {
     const inspector = document.getElementById('timelineBanquetInspector');
     if (inspector) inspector.classList.add('hidden');
+    clearTimelineActiveBanquetContext('inspector_closed');
     document.body.classList.remove('timeline-banquet-inspector-open');
 }
 
@@ -1833,6 +2116,11 @@ function showTimelineBanquetInspector(event, summary, trigger) {
     if (!summary) return;
     if (typeof hideTooltip === 'function') hideTooltip();
     const inspector = ensureTimelineBanquetInspector();
+    const triggerBookingId = String(trigger?.dataset?.bookingId || '').trim();
+    const activeContext = setTimelineActiveBanquetContext(summary, {
+        source: 'timeline_banquet_inspector',
+        triggerBookingId
+    });
     const warnings = (summary.warnings || []).length
         ? `<div class="timeline-banquet-inspector-warnings">${summary.warnings.slice(0, 4).map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
         : '';
@@ -1897,7 +2185,8 @@ function showTimelineBanquetInspector(event, summary, trigger) {
         el.addEventListener('click', clickEvent => clickEvent.stopPropagation());
     });
     inspector.classList.remove('hidden');
-    inspector.dataset.banquetGroupId = String(summary.groupId || '');
+    inspector.dataset.banquetGroupId = String(activeContext?.groupId || summary.groupId || '');
+    inspector.dataset.activeBanquetContext = activeContext ? '1' : '0';
     document.body.classList.add('timeline-banquet-inspector-open');
     inspector.focus?.({ preventScroll: true });
 }
@@ -2433,6 +2722,7 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
 function clearTimelineBanquetRoomPreviews() {
     TIMELINE_BANQUET_ROOM_PREVIEWS.clear();
     clearTimelineRoomServiceMarkers();
+    clearTimelineActiveBanquetContext('room_previews_cleared');
     hideTimelineBanquetInspector();
     document.querySelectorAll('.booking-block.has-timeline-banquet-preview-trigger, .booking-block.is-timeline-banquet-occupancy-band, .booking-block.is-timeline-banquet-grid-duplicate').forEach(block => {
         clearTimelineBanquetPreviewVisuals(block);
@@ -2709,6 +2999,7 @@ async function handleTimelineBusinessContextChanged(event) {
     const detail = event?.detail || {};
     if (detail.previous && detail.current && detail.previous === detail.current) return;
     if (typeof AppState === 'undefined') return;
+    clearTimelineActiveBanquetContext('business_context_changed');
     AppState.cachedBookings = {};
     AppState.cachedLines = {};
     AppState.linesByDate = {};
@@ -3261,7 +3552,11 @@ function graduationNestedHtml(booking, segments) {
 
 async function selectCell(cell) {
     if (isViewer()) return;
-    const opened = await openBookingPanel(cell.dataset.time, cell.dataset.line);
+    const banquetContext = getTimelineActiveBanquetContextForCell(cell);
+    const opened = await openBookingPanel(cell.dataset.time, cell.dataset.line, {
+        banquetContext,
+        contextSource: 'timeline_empty_cell'
+    });
     if (!opened) return;
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
     cell.classList.add('selected');
@@ -3285,6 +3580,29 @@ function getDefaultTimelineBookingTime(date = AppState.selectedDate) {
     return minutesToTime(candidate);
 }
 
+async function timelineConfirmStandaloneCreateWithActiveBanquet(context = {}) {
+    const groupLabel = [context.groupName, context.customerName, context.room].filter(Boolean).join(' · ') || 'активний банкет';
+    const message = [
+        `Відкрито ${groupLabel}.`,
+        'Щоб додати бронювання до цього банкету, спочатку натисніть потрібну клітинку таймлайну.',
+        'Створити окреме бронювання без привʼязки до банкету?'
+    ].join('\n\n');
+    const confirmFn = typeof confirmModal === 'function'
+        ? confirmModal
+        : (typeof window !== 'undefined' && typeof window.confirmModal === 'function' ? window.confirmModal : null);
+    if (confirmFn) {
+        return !!(await confirmFn(message, {
+            type: 'warning',
+            okText: 'Створити окремо',
+            cancelText: 'Обрати клітинку'
+        }));
+    }
+    if (typeof showNotification === 'function') {
+        showNotification('Оберіть клітинку таймлайну, щоб додати бронювання до активного банкету.', 'info');
+    }
+    return false;
+}
+
 function bookingCostumeLabel(booking = {}) {
     const costume = String(booking.costume || '').trim();
     return costume ? `Костюм: ${costume}` : '';
@@ -3300,6 +3618,11 @@ async function openTimelineCreateBookingFromToolbar() {
 
     const selectedCell = document.querySelector('.grid-cell.selected[data-time][data-line]:not([data-line="afisha"])');
     if (selectedCell) return selectCell(selectedCell);
+
+    const activeBanquetContext = getTimelineActiveBanquetContext();
+    if (activeBanquetContext && !await timelineConfirmStandaloneCreateWithActiveBanquet(activeBanquetContext)) {
+        return false;
+    }
 
     const lines = normalizeTimelineLinesForContext(await getLinesForDate(AppState.selectedDate).catch(() => []));
     const line = lines.find(item => item && String(item.id || '') !== 'afisha');
@@ -6031,6 +6354,7 @@ async function changeDate(days) {
     _debugRender(`changeDate(${days}) from=${formatDate(AppState.selectedDate)}`);
     // C2: Auto-close booking panel on date change
     if (!await closeBookingPanel(false)) return;
+    clearTimelineActiveBanquetContext('date_change');
     // v3.9: Cleanup pending poll on date change
     if (AppState.pendingPollInterval) {
         clearInterval(AppState.pendingPollInterval);

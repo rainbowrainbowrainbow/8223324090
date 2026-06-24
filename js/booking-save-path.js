@@ -177,6 +177,14 @@ function buildBookingCreatePath(kind, options = {}) {
     };
 }
 
+function bookingCreatePathActiveBanquetRole(formData = {}, drawerState = BookingDrawerState) {
+    const roleIntent = String(drawerState?.activeBanquetRoleIntent || '').trim().toLowerCase();
+    if (isSelectedBanquetActivityCreate(formData) || roleIntent === 'activity') return 'activity';
+    if (isSelectedBanquetKitchenCreate(formData) || ['kitchen', 'service', 'manual', 'member'].includes(roleIntent)) return 'member';
+    if (roleIntent === 'needs_choice') return 'needs_choice';
+    return roleIntent || 'needs_choice';
+}
+
 function resolveBookingCreatePath(formState = {}, drawerState = BookingDrawerState) {
     const formData = formState.formData || formState || {};
     const selectedBanquetContext = formState.selectedBanquetContext || selectedBookingBanquetGroupContext();
@@ -201,12 +209,84 @@ function resolveBookingCreatePath(formState = {}, drawerState = BookingDrawerSta
     );
     const normalKind = fullBookingRequired ? 'full_booking' : 'normal_booking';
     const normalReason = fullBookingRequired ? 'linked_or_multi_activity_booking' : 'no_banquet_context';
+    const activeBanquetIntent = drawerState?.activeBanquetIntent === 'add_to_existing';
+    const standaloneBookingOverride = Boolean(drawerState?.standaloneBookingOverride);
 
     const realGroupKind = isKitchenCreate
         ? 'existing_group_member'
         : (isActivityCreate ? 'existing_group_activity' : normalKind);
     const roomBridgeContext = drawerState?.roomBookingAnimationBridge || null;
-    const realGroupSourceBookingId = selectedBanquetContext?.sourceBookingId || roomBridgeContext?.sourceBookingId || null;
+    const explicitContext = drawerState?.explicitBanquetContext || null;
+    const realGroupSourceBookingId = selectedBanquetContext?.sourceBookingId
+        || explicitContext?.sourceBookingId
+        || explicitContext?.primaryBookingId
+        || roomBridgeContext?.sourceBookingId
+        || null;
+
+    if (activeBanquetIntent && !standaloneBookingOverride && !groupId) {
+        return buildBookingCreatePath('normal_booking', {
+            reason: 'active_banquet_context_requires_group',
+            blocked: true,
+            error: 'Ви почали додавати бронювання до існуючого банкету. Оберіть банкет або натисніть “Створити окремо”.'
+        });
+    }
+
+    if (activeBanquetIntent && !standaloneBookingOverride && groupId && selectedBookingBanquetGroupCustomerMismatch(selectedBanquetContext)) {
+        return buildBookingCreatePath(realGroupKind, {
+            groupId,
+            sourceBookingId: realGroupSourceBookingId,
+            reason: 'customer_mismatch',
+            blocked: true,
+            error: 'Клієнт бронювання не збігається з вибраним банкетом. Оберіть правильного клієнта або натисніть “Створити окремо”.'
+        });
+    }
+
+    if (activeBanquetIntent && !standaloneBookingOverride && groupId) {
+        const activeRole = bookingCreatePathActiveBanquetRole(formData, drawerState);
+        if (!['member', 'activity'].includes(activeRole)) {
+            return buildBookingCreatePath('normal_booking', {
+                groupId,
+                sourceBookingId: realGroupSourceBookingId,
+                context: selectedBanquetContext,
+                reason: 'active_banquet_context_requires_role',
+                blocked: true,
+                error: 'Виберіть, що додається до банкету: активність або кухня/сервіс. Звичайне бронювання тут не створюється автоматично.'
+            });
+        }
+        if (!realGroupSourceBookingId) {
+            return buildBookingCreatePath(activeRole === 'activity' ? 'existing_group_activity' : 'existing_group_member', {
+                groupId,
+                context: selectedBanquetContext,
+                reason: 'active_banquet_context_requires_source_booking',
+                blocked: true,
+                error: 'Не знайдено основне бронювання банкету для прив’язки. Закрийте форму, відкрийте банкет ще раз і повторіть дію.'
+            });
+        }
+        if (activeRole === 'activity') {
+            if (selectedActivityPrograms.length > 1) {
+                return buildBookingCreatePath('existing_group_activity', {
+                    groupId,
+                    sourceBookingId: realGroupSourceBookingId,
+                    context: selectedBanquetContext,
+                    reason: 'multiple_activity_programs',
+                    blocked: true,
+                    error: 'Для прив’язки до банкету оберіть одну активність. Додаткові активності додавайте окремо.'
+                });
+            }
+            return buildBookingCreatePath('existing_group_activity', {
+                groupId,
+                sourceBookingId: realGroupSourceBookingId,
+                context: selectedBanquetContext,
+                reason: 'active_banquet_context_activity'
+            });
+        }
+        return buildBookingCreatePath('existing_group_member', {
+            groupId,
+            sourceBookingId: realGroupSourceBookingId,
+            context: selectedBanquetContext,
+            reason: 'active_banquet_context_member'
+        });
+    }
 
     if (groupId && selectedBookingBanquetGroupCustomerMismatch(selectedBanquetContext)) {
         return buildBookingCreatePath(realGroupKind, {
@@ -330,7 +410,15 @@ function resolveBookingCreatePath(formState = {}, drawerState = BookingDrawerSta
         });
     }
 
-    return buildBookingCreatePath(normalKind, {
+    if (activeBanquetIntent && !standaloneBookingOverride) {
+        return buildBookingCreatePath('normal_booking', {
+            reason: 'active_banquet_context_unresolved_path',
+            blocked: true,
+            error: 'Активний банкетний контекст не вдалося перетворити на безпечний шлях створення. Натисніть “Створити окремо” або відкрийте банкет знову.'
+        });
+    }
+
+    return buildBookingCreatePath(normalKind || 'normal_booking', {
         reason: normalReason
     });
 }

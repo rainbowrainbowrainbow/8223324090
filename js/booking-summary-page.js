@@ -75,6 +75,31 @@
         });
     }
 
+    function summaryCelebrants(summary = {}) {
+        const explicit = Array.isArray(summary.celebrants) ? summary.celebrants : [];
+        const customerChildren = Array.isArray(summary.customer?.children) ? summary.customer.children : [];
+        const fallback = summary.celebrant ? [summary.celebrant] : [];
+        return [...explicit, ...customerChildren, ...fallback]
+            .map(child => ({
+                name: String(child?.name || child?.childName || child?.child_name || '').trim(),
+                birthday: String(child?.birthday || child?.birthDate || child?.childBirthday || child?.child_birthday || '').trim()
+            }))
+            .filter(child => child.name || child.birthday)
+            .filter((child, index, rows) => rows.findIndex(item =>
+                item.name === child.name && item.birthday === child.birthday
+            ) === index);
+    }
+
+    function summaryCelebrantsNames(summary = {}) {
+        const names = summaryCelebrants(summary).map(child => child.name).filter(Boolean);
+        return names.length ? names.join(', ') : null;
+    }
+
+    function summaryCelebrantsBirthdays(summary = {}) {
+        const birthdays = summaryCelebrants(summary).map(child => child.birthday).filter(Boolean);
+        return birthdays.length ? birthdays.map(formatBirthday).join(', ') : null;
+    }
+
     function formatDateTime(value) {
         if (!value) return '—';
         const date = new Date(value);
@@ -696,6 +721,12 @@
         const renderedAt = new Date();
         const manager = summary.document?.generatedBy || event.manager;
         const documentTitle = summary.document?.title || 'БАНКЕТНИЙ ЛИСТ';
+        const celebrants = summaryCelebrants(summary);
+        const celebrantsNameLabel = celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник';
+        const celebrantsBirthdayLabel = celebrants.length > 1 ? 'ДН дітей' : 'Дата народження';
+        const celebrantsNameDisplay = summaryCelebrantsNames(summary) || celebrant.name;
+        const celebrantsBirthdayDisplay = summaryCelebrantsBirthdays(summary)
+            || (celebrant.birthday ? formatBirthday(celebrant.birthday) : null);
 
         if (printRoot) printRoot.hidden = false;
         doc.hidden = false;
@@ -741,8 +772,8 @@
                     ${briefColumn([
                         briefItem('Діти', counts.children),
                         programLabel ? briefItem('Програма', programLabel) : '',
-                        briefItem('Іменинник', celebrant.name),
-                        briefItem('Дата народження', formatBirthday(celebrant.birthday)),
+                        briefItem(celebrantsNameLabel, celebrantsNameDisplay),
+                        briefItem(celebrantsBirthdayLabel, celebrantsBirthdayDisplay),
                         briefItem('Бронь створено', formatDateTime(event.createdAt))
                     ])}
                 </div>
@@ -826,6 +857,12 @@
         const financeRows = sections.finance ? summaryFinanceRows(summary) : [];
         const terms = sections.terms && Array.isArray(summary.terms?.items) ? summary.terms.items : [];
         const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;
+        const celebrants = summaryCelebrants(summary);
+        const celebrantsNameLabel = celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник';
+        const celebrantsBirthdayLabel = celebrants.length > 1 ? 'ДН дітей' : 'Дата народження';
+        const celebrantsNameDisplay = summaryCelebrantsNames(summary) || celebrant.name;
+        const celebrantsBirthdayDisplay = summaryCelebrantsBirthdays(summary)
+            || (celebrant.birthday ? formatBirthday(celebrant.birthday) : null);
 
         return [
             summary.venue?.name || 'Банкетний лист',
@@ -835,8 +872,8 @@
             `Прихід гостей: ${formatValue(event.time)}`,
             `Замовник: ${formatValue(customer.name)}`,
             `Телефон: ${formatValue(customer.phone)}`,
-            `Іменинник: ${formatValue(celebrant.name)}`,
-            `Дата народження: ${formatBirthday(celebrant.birthday)}`,
+            `${celebrantsNameLabel}: ${formatValue(celebrantsNameDisplay)}`,
+            `${celebrantsBirthdayLabel}: ${formatValue(celebrantsBirthdayDisplay)}`,
             `Кімната: ${formatValue(event.room)}`,
             `Бронь створено: ${formatDateTime(event.createdAt)}`,
             `Менеджер: ${formatValue(event.manager)}`,

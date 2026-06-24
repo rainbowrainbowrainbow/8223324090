@@ -1985,6 +1985,74 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.doesNotMatch(css, /timeline-banquet-room-card-icons/);
 });
 
+test('room timeline active banquet context is carried from inspector to empty-cell booking creation', () => {
+    const timeline = read('js/timeline.js');
+    const inspectorStart = timeline.indexOf('function showTimelineBanquetInspector');
+    const inspectorEnd = timeline.indexOf('function timelineBanquetRoomKey');
+    const hideStart = timeline.indexOf('function hideTimelineBanquetInspector');
+    const hideEnd = timeline.indexOf('function timelineBanquetDateTimeText');
+    const selectStart = timeline.indexOf('async function selectCell');
+    const selectEnd = timeline.indexOf('function getDefaultTimelineBookingTime');
+    const toolbarStart = timeline.indexOf('async function openTimelineCreateBookingFromToolbar');
+    const toolbarEnd = timeline.indexOf('window.openTimelineCreateBookingFromToolbar');
+
+    assert.ok(inspectorStart >= 0 && inspectorEnd > inspectorStart, 'inspector block should exist');
+    assert.ok(hideStart >= 0 && hideEnd > hideStart, 'hide inspector block should exist');
+    assert.ok(selectStart >= 0 && selectEnd > selectStart, 'selectCell block should exist');
+    assert.ok(toolbarStart >= 0 && toolbarEnd > toolbarStart, 'toolbar create block should exist');
+
+    const inspectorBlock = timeline.slice(inspectorStart, inspectorEnd);
+    const hideBlock = timeline.slice(hideStart, hideEnd);
+    const selectCellBlock = timeline.slice(selectStart, selectEnd);
+    const toolbarBlock = timeline.slice(toolbarStart, toolbarEnd);
+
+    assert.match(timeline, /function normalizeTimelineActiveBanquetContext/, 'timeline should normalize an active banquet context');
+    assert.match(timeline, /function timelineActiveBanquetPackageSnapshot/, 'timeline should carry package snapshot for add-to-existing prefill');
+    assert.match(timeline, /function setTimelineActiveBanquetContext/, 'timeline should store the active banquet context');
+    assert.match(timeline, /function clearTimelineActiveBanquetContext/, 'timeline should clear stale active banquet context');
+    assert.match(timeline, /function getTimelineActiveBanquetContextForCell/, 'timeline should resolve active banquet context for a clicked cell');
+    assert.match(timeline, /banquetGuests[\s\S]*banquetAdults[\s\S]*banquetTables[\s\S]*packageSnapshot/, 'active context should include guest counts and package snapshot');
+    assert.match(
+        inspectorBlock,
+        /setTimelineActiveBanquetContext\(summary,\s*\{[\s\S]*source:\s*'timeline_banquet_inspector'/,
+        'opening the mini banquet inspector should store full active context'
+    );
+    assert.match(
+        hideBlock,
+        /clearTimelineActiveBanquetContext\('inspector_closed'\)/,
+        'closing the inspector should clear the active context'
+    );
+    assert.match(timeline, /clearTimelineActiveBanquetContext\('timeline_view_changed'\)/, 'timeline view changes should clear active banquet context');
+    assert.match(timeline, /clearTimelineActiveBanquetContext\('business_context_changed'\)/, 'business context changes should clear active banquet context');
+    assert.match(timeline, /clearTimelineActiveBanquetContext\('date_change'\)/, 'date changes should clear active banquet context');
+    assert.match(
+        timeline,
+        /function getTimelineActiveBanquetContext\(\)[\s\S]*clearTimelineActiveBanquetContext\('stale_context'\)/,
+        'stale active banquet context should fail closed'
+    );
+    assert.match(
+        selectCellBlock,
+        /const banquetContext = getTimelineActiveBanquetContextForCell\(cell\)/,
+        'empty cell click should read active banquet context'
+    );
+    assert.match(
+        selectCellBlock,
+        /openBookingPanel\(cell\.dataset\.time,\s*cell\.dataset\.line,\s*\{[\s\S]*banquetContext[\s\S]*contextSource:\s*'timeline_empty_cell'/,
+        'empty cell click should pass banquet context into the booking drawer'
+    );
+    assert.match(timeline, /targetIsDifferentRoom/, 'cell context should mark another room instead of rejecting it');
+    assert.doesNotMatch(
+        selectCellBlock,
+        /cellRoomKeys\.includes\(contextRoomKey\)\)\s*return null/,
+        'another room in the same active banquet should not be rejected by timeline'
+    );
+    assert.match(
+        toolbarBlock,
+        /const activeBanquetContext = getTimelineActiveBanquetContext\(\);[\s\S]*timelineConfirmStandaloneCreateWithActiveBanquet\(activeBanquetContext\)/,
+        'toolbar create without a selected cell should ask before standalone create while banquet is active'
+    );
+});
+
 test('room timeline banquet preview hydration is guarded against stale async mutations', () => {
     const timeline = read('js/timeline.js');
     const booking = read('js/booking.js');
@@ -2845,6 +2913,12 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /refusing non-local browser smoke/);
     assert.match(smoke, /\/api\/banquets\/from-source\/member-booking/);
     assert.match(smoke, /\/api\/banquets\/from-source\/activity-booking/);
+    assert.match(smoke, /function openActiveBanquetEmptyCellDrawer/);
+    assert.match(smoke, /function submitActiveBanquetMemberFromEmptyCell/);
+    assert.match(smoke, /active inspector -> empty cell/);
+    assert.match(smoke, /\/api\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/member-booking/);
+    assert.match(smoke, /genericBookingRequests/);
+    assert.match(smoke, /does not use generic booking endpoints/);
     assert.match(smoke, /activity first -> kitchen/);
     assert.match(smoke, /kitchen first -> activity/);
     assert.match(smoke, /Банкетів цього клієнта на дату не знайдено/);

@@ -1997,6 +1997,12 @@ test('POST banquet activity-booking allows activity over same-banquet kitchen ro
         assert.equal(data.membership.role, 'activity');
         assert.equal(state.rows.find(row => row.id === 'BK-2099-9999')?.customer_id, 101);
         assert.ok(state.banquetMemberships.some(row => row.group_id === 'BQ-ROOT' && row.booking_id === 'BK-2099-9999' && row.role === 'activity'));
+        const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
+        const roomActivity = timelineBooking(roomRows, 'BK-2099-9999');
+        assert.equal(roomActivity.timelineProjection.hiddenReason, null);
+        const animatorRows = await getTimelineBookings(baseUrl, '2099-06-01', 'animators');
+        const animatorActivity = timelineBooking(animatorRows, 'BK-2099-9999');
+        assert.equal(animatorActivity.timelineProjection.hiddenReason, null);
         assert.ok(state.tx.includes('COMMIT'));
         assert.ok(state.queries.some(query => /LEFT JOIN banquet_group_bookings bgb/i.test(query.sql)));
     }, {
@@ -2448,6 +2454,40 @@ test('POST full rejects banquet group payloads before legacy-only link creation'
         assert.equal(data.code, 'BANQUET_GROUP_ACTIVITY_REQUIRES_ATOMIC_ENDPOINT');
         assert.equal(state.links.length, 0);
         assert.equal(state.queries.some(query => /INSERT INTO booking_banquet_links/i.test(query.sql)), false);
+    });
+});
+
+test('POST booking rejects explicit add-to-existing banquet intent on generic endpoint', async () => {
+    await withApp([], [], async ({ baseUrl, state }) => {
+        const res = await fetch(`${baseUrl}/api/bookings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: '2099-06-01',
+                time: '12:00',
+                lineId: 'line-1',
+                room: 'Room A',
+                duration: 30,
+                status: 'confirmed',
+                extraData: {
+                    banquetGroup: {
+                        intent: 'add_to_existing',
+                        requiresMembership: true,
+                        groupId: 'BQ-2099-0001',
+                        sourceBookingId: 'BK-2099-0001'
+                    }
+                }
+            })
+        });
+        const data = await res.json();
+        assert.equal(res.status, 409, JSON.stringify(data));
+        assert.equal(data.code, 'BANQUET_ADD_TO_EXISTING_REQUIRES_ATOMIC_ENDPOINT');
+        assert.deepEqual(data.useEndpoints, [
+            '/api/banquets/:groupId/member-booking',
+            '/api/banquets/:groupId/activity-booking'
+        ]);
+        assert.equal(state.rows.length, 0);
+        assert.equal(state.queries.some(query => /INSERT INTO bookings/i.test(query.sql)), false);
     });
 });
 

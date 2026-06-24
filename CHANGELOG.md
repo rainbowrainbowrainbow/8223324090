@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.22 - Booking Menu Polish
+
+### Booking details modal / Banquet menu / Timeline / (Клешня, 24.06.2026) [codex]
+- **Меню в booking details modal стало чистішим** - прибрано службовий summary `Меню: 1 · Вхід · Розваги: 1`, який дублював вміст таблиці.
+- **Serving title більше не шумить у modal** - рядок на кшталт `16:30 Позиції меню` приховано саме в деталях бронювання, без зміни даних банкетного пакета.
+- **Розважальні позиції лишаються в основному меню без дубля таблиці** - `Мафія(90)` показується поруч із меню та входом, але без окремого другого header `Позиція / К-сть / Ціна / Сума`.
+- **З activity row прибрано зайвий бейдж `РОЗВАГИ`** - видима назва активності лишається `Мафія(90)`, без службового префікса.
+- **Верхню неоднозначну суму прибрано з деталей бронювання** - рядок `Сума: 2 700 ₴` більше не показується у верхньому блоці modal, щоб не плутати її з меню, входом і загальним total.
+- **Regression coverage і Browser QA оновлено** - contract/static тести захищають нову поведінку, а Chromium QA перевіряє desktop, mobile, dark mode, sticky footer і відсутність horizontal overflow.
+- **Релізні маркери піднято до `0.77.22`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.21 - Event Cards
 
 ### Event cards / Programs / Leads / Afisha / Booking details / (Клешня, 24.06.2026) [codex]

@@ -4469,14 +4469,17 @@ function groupedBookingMenuPositions(positions = []) {
     });
 }
 
-function renderBookingPackageMenuRows(positions = []) {
+function renderBookingPackageMenuRows(positions = [], options = {}) {
     if (!positions.length) return '';
+    const showServingTitles = options.showServingTitles !== false;
     return groupedBookingMenuPositions(positions).map(group => `
         <div class="booking-detail-package-serving-group${group.servingTime ? '' : ' booking-detail-package-serving-group--missing'}">
+            ${showServingTitles ? `
             <div class="booking-detail-package-serving-title">
                 <span>${escapeHtml(bookingServingTimeLabel(group.servingTime))}</span>
                 <small>Позиції меню</small>
             </div>
+            ` : ''}
             <div class="booking-detail-package-table" role="table" aria-label="Позиції меню ${escapeHtml(bookingServingTimeLabel(group.servingTime))}">
                 <div class="booking-detail-package-table-head" role="row">
                     <span role="columnheader">Позиція</span>
@@ -4521,22 +4524,29 @@ function normalizeBookingPackageEntertainmentRows(rows = []) {
         .filter(Boolean);
 }
 
-function renderBookingPackageEntertainmentRows(rows = []) {
+function renderBookingPackageEntertainmentRows(rows = [], options = {}) {
     const entertainmentRows = normalizeBookingPackageEntertainmentRows(rows);
     if (!entertainmentRows.length) return '';
+    const showEntertainmentTitle = options.showEntertainmentTitle !== false;
+    const showEntertainmentTableHead = options.showEntertainmentTableHead !== false;
+    const showEntertainmentKindBadge = options.showEntertainmentKindBadge !== false;
     return `
         <div class="booking-detail-package-serving-group booking-detail-package-serving-group--entertainment">
+            ${showEntertainmentTitle ? `
             <div class="booking-detail-package-serving-title">
                 <span>Розваги</span>
                 <small>Розважальні позиції</small>
             </div>
+            ` : ''}
             <div class="booking-detail-package-table" role="table" aria-label="Розважальні позиції">
+                ${showEntertainmentTableHead ? `
                 <div class="booking-detail-package-table-head" role="row">
                     <span role="columnheader">Позиція</span>
                     <span role="columnheader">К-сть</span>
                     <span role="columnheader">Ціна</span>
                     <span role="columnheader">Сума</span>
                 </div>
+                ` : ''}
                 ${entertainmentRows.map(row => {
                     const meta = [row.time, row.room, row.durationLabel].filter(Boolean).join(' · ');
                     const priceLabel = row.unitPrice > 0 ? formatPrice(row.unitPrice) : '—';
@@ -4544,7 +4554,7 @@ function renderBookingPackageEntertainmentRows(rows = []) {
                     return `
                         <div class="booking-detail-package-table-row booking-detail-package-table-row--entertainment" role="row">
                             <div class="booking-detail-package-item" role="cell">
-                                <span class="booking-menu-position-kind booking-menu-position-kind--entertainment">РОЗВАГИ</span>${escapeHtml(row.title)}
+                                ${showEntertainmentKindBadge ? '<span class="booking-menu-position-kind booking-menu-position-kind--entertainment">РОЗВАГИ</span>' : ''}${escapeHtml(row.title)}
                                 ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
                             </div>
                             <span role="cell">${escapeHtml(row.durationLabel || '1 програма')}</span>
@@ -4651,19 +4661,28 @@ function renderBookingPackageDetail(booking, options = {}) {
     const title = options.title || 'Меню / сервісні позиції';
     const modifier = options.compact ? ' booking-detail-package--compact' : '';
     const includeServiceEvents = options.includeServiceEvents !== false;
+    const showHeaderSummary = options.showHeaderSummary !== false;
     const missingServingTimes = bookingMenuMissingServingTimeCount(positions);
     const rows = positions.length
-        ? renderBookingPackageMenuRows(positions)
+        ? renderBookingPackageMenuRows(positions, {
+            showServingTitles: options.showServingTitles !== false
+        })
         : (booking?.banquetMenu ? `<div class="booking-detail-package-row"><div>${escapeHtml(booking.banquetMenu)}</div><strong>—</strong></div>` : '');
-    const entertainmentHtml = renderBookingPackageEntertainmentRows(entertainmentRows);
+    const entertainmentHtml = renderBookingPackageEntertainmentRows(entertainmentRows, {
+        showEntertainmentTitle: options.showEntertainmentTitle !== false,
+        showEntertainmentTableHead: options.showEntertainmentTableHead !== false,
+        showEntertainmentKindBadge: options.showEntertainmentKindBadge !== false
+    });
     const entryCharge = bookingPackageEntryChargeFromPackage(bookingPackage);
     const entryRow = entryCharge ? renderBookingPackageEntryRow(bookingPackage) : '';
-    const businessRowsSummary = bookingPackageBusinessRowsSummary({
-        menuCount: positions.length,
-        legacyMenu: !positions.length && Boolean(booking?.banquetMenu),
-        entryCharge,
-        entertainmentRows
-    });
+    const businessRowsSummary = showHeaderSummary
+        ? bookingPackageBusinessRowsSummary({
+            menuCount: positions.length,
+            legacyMenu: !positions.length && Boolean(booking?.banquetMenu),
+            entryCharge,
+            entertainmentRows
+        })
+        : '';
     const entertainmentSubtotal = entertainmentRows.reduce((total, row) => (
         row.includedInPackage ? total : total + bookingPackageMoneyValue(row.subtotal)
     ), 0);
@@ -10085,6 +10104,11 @@ function renderBanquetMenuSection(packageBooking, entertainmentMembers = []) {
             title: 'Меню',
             compact: true,
             includeServiceEvents: false,
+            showHeaderSummary: false,
+            showServingTitles: false,
+            showEntertainmentTitle: false,
+            showEntertainmentTableHead: false,
+            showEntertainmentKindBadge: false,
             entertainmentRows
         }),
         'menu'
@@ -10748,10 +10772,6 @@ async function showBookingDetails(bookingId) {
         ${lineDetailHtml}
         ${hostsDetailHtml}
         ${animationExtrasHtml}
-        <div class="booking-detail-row">
-            <span class="label">Сума:</span>
-            <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
-        </div>
         ${renderEducationLessonDetail(booking)}
         ${renderBookingWorkspaceDetail(booking)}
         ${packageDetailHtml}

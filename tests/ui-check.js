@@ -2544,6 +2544,16 @@ const bookingDetailStandardEnd = bookingCode.indexOf('// v24.3.1: CRM', bookingD
 const bookingDetailStandardBlock = bookingDetailStandardStart >= 0 && bookingDetailStandardEnd > bookingDetailStandardStart
     ? bookingCode.slice(bookingDetailStandardStart, bookingDetailStandardEnd)
     : '';
+function sourceBlock(source, startToken, endToken) {
+    const start = source.indexOf(startToken);
+    if (start < 0) return '';
+    const end = source.indexOf(endToken, start + startToken.length);
+    return end > start ? source.slice(start, end) : source.slice(start);
+}
+const renderBookingPackageMenuRowsBlock = sourceBlock(bookingCode, 'function renderBookingPackageMenuRows', 'function normalizeBookingPackageEntertainmentRows');
+const renderBookingPackageEntertainmentRowsBlock = sourceBlock(bookingCode, 'function renderBookingPackageEntertainmentRows', 'function formatBookingEntryQuantityLabel');
+const renderBookingPackageDetailBlock = sourceBlock(bookingCode, 'function renderBookingPackageDetail', 'function shouldHideBookingWorkspaceScenarioDetail');
+const renderBanquetMenuSectionBlock = sourceBlock(bookingCode, 'function renderBanquetMenuSection', 'function renderBanquetServiceSection');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
 const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
 const bookingStatusActionBlock = bookingStatusActionStart >= 0 && bookingStatusActionEnd > bookingStatusActionStart
@@ -2779,7 +2789,7 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailTimeLabel)}')
     && bookingDetailLineRowHasNoCopyAffordance
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Ведучих')
-    && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Сума')
+    && !bookingDetailStandardBlock.includes('<span class="label">Сума:</span>')
     && !bookingDetailStandardBlock.includes('<span class="label">Ціна:</span>')
     && bookingDetailRowHasNoCopyAffordance(bookingCode, 'Сценарій')
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Статус')
@@ -2873,11 +2883,15 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && bookingCode.includes('Загальна сума')
     && !bookingCode.includes('<div>Разом пакет</div>')
     && bookingCode.includes('function bookingPackageBusinessRowsSummary')
-    && bookingCode.includes('parts.push(`Меню: ${normalizedMenuCount}`)')
     && bookingCode.includes("if (entryCharge) parts.push('Вхід')")
-    && bookingCode.includes('parts.push(`Розваги: ${normalizedEntertainmentCount}`)')
-    && bookingCode.includes('<small>Позиції меню</small>')
-    && bookingCode.includes('<small>Розважальні позиції</small>')
+    && bookingCode.includes('function renderBookingPackageMenuRows(positions = [], options = {})')
+    && bookingCode.includes('function renderBookingPackageEntertainmentRows(rows = [], options = {})')
+    && bookingCode.includes('const showHeaderSummary = options.showHeaderSummary !== false')
+    && bookingCode.includes('showHeaderSummary: false')
+    && bookingCode.includes('showServingTitles: false')
+    && bookingCode.includes('showEntertainmentTitle: false')
+    && bookingCode.includes('showEntertainmentTableHead: false')
+    && bookingCode.includes('showEntertainmentKindBadge: false')
     && !bookingCode.includes('${escapeHtml(String(group.items.length))} позицій')
     && !bookingCode.includes('${escapeHtml(String(entertainmentRows.length))} позицій')
     && bookingCode.indexOf('${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}') < bookingCode.indexOf('${renderBanquetMenuSection(packageBooking, entertainmentMembers)}')
@@ -2916,6 +2930,32 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && darkModeCss.includes('body.dark-mode .invite-section-header { color: var(--gray-900); }')
     && !darkModeCss.includes('body.dark-mode .invite-section-header { color: var(--white); }')
     && darkModeCss.includes('body.dark-mode .invite-section-eyebrow'));
+check('Booking detail menu polish blocks legacy banquet menu clutter',
+    Boolean(bookingDetailStandardBlock)
+    && !bookingDetailStandardBlock.includes('<span class="label">Сума:</span>')
+    && renderBookingPackageDetailBlock.includes('booking-detail-package')
+    && bookingCode.includes('booking-detail-package-table')
+    && bookingCode.includes('booking-detail-package-table-row')
+    && bookingCode.includes('booking-detail-package-entry-row')
+    && renderBookingPackageEntertainmentRowsBlock.includes('booking-detail-package-table-row--entertainment')
+    && renderBookingPackageDetailBlock.includes('const showHeaderSummary = options.showHeaderSummary !== false')
+    && renderBookingPackageDetailBlock.includes('businessRowsSummary = showHeaderSummary')
+    && renderBookingPackageMenuRowsBlock.includes('showServingTitles ?')
+    && renderBookingPackageEntertainmentRowsBlock.includes('showEntertainmentTitle ?')
+    && renderBookingPackageEntertainmentRowsBlock.includes('showEntertainmentTableHead ?')
+    && renderBookingPackageEntertainmentRowsBlock.includes('showEntertainmentKindBadge ?')
+    && renderBanquetMenuSectionBlock.includes('showHeaderSummary: false')
+    && renderBanquetMenuSectionBlock.includes('showServingTitles: false')
+    && renderBanquetMenuSectionBlock.includes('showEntertainmentTitle: false')
+    && renderBanquetMenuSectionBlock.includes('showEntertainmentTableHead: false')
+    && renderBanquetMenuSectionBlock.includes('showEntertainmentKindBadge: false')
+    && !renderBanquetMenuSectionBlock.includes('parts.push(`Меню: ${normalizedMenuCount}`)')
+    && !renderBanquetMenuSectionBlock.includes('parts.push(`Розваги: ${normalizedEntertainmentCount}`)')
+    && !renderBanquetMenuSectionBlock.includes('<small>Позиції меню</small>')
+    && !renderBanquetMenuSectionBlock.includes('РОЗВАГИ')
+    && bookingCode.includes('function renderFullBanquetDetail')
+    && bookingCode.includes('renderBanquetMenuSection(packageBooking, entertainmentMembers)')
+    && bookingCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)'));
 check('Booking status actions use narrow endpoints and edit_booking visibility',
     apiCode.includes('async function apiMarkBookingPreliminary(id, payload = {})')
     && apiCode.includes('/preliminary')

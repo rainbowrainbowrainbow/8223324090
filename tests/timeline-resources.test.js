@@ -2399,6 +2399,12 @@ test('room timeline keeps activity-first primary animation visible beside kitche
     assert.equal(serviceMarkers[0].dataset.bookingId, 'BK-KITCHEN-MARKER');
     assert.equal(serviceMarkers[0].dataset.banquetRoomMarker, 'food_service');
 
+    const inspectorSummary = kitchenBlock._timelineBanquetSummary;
+    assert.ok(inspectorSummary, 'kitchen marker keeps banquet inspector summary');
+    assert.equal(inspectorSummary.activityCount, 1);
+    assert.deepEqual(Array.from(inspectorSummary.activityBookings, booking => booking.id), ['BK-ACTIVITY-PRIMARY']);
+    assert.deepEqual(Array.from(inspectorSummary.activityPreviewItems, item => item.title), ['Primary animator']);
+
     assert.ok(activityBlock, 'primary animation block exists');
     assert.equal(activityBlock.dataset.bookingId, 'BK-ACTIVITY-PRIMARY');
     assert.equal(activityBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
@@ -2446,6 +2452,11 @@ test('room timeline keeps two banquet activities visible beside overlapping kitc
     assert.deepEqual(activityBlocks.map(block => block.dataset.bookingId).sort(), ['BK-ACTIVITY-PRIMARY', 'BK-ACTIVITY-SECONDARY']);
     assert.equal(new Set(activityBlocks.map(block => block.dataset.bookingId)).size, 2);
     assert.equal(serviceMarkers.length, 1);
+    assert.equal(kitchenBlock._timelineBanquetSummary.activityCount, 2);
+    assert.deepEqual(
+        Array.from(kitchenBlock._timelineBanquetSummary.activityBookings, booking => booking.id).sort(),
+        ['BK-ACTIVITY-PRIMARY', 'BK-ACTIVITY-SECONDARY']
+    );
     assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker[data-booking-id="BK-KITCHEN-MARKER"]').length, 1);
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), true);
     assert.equal(serviceMarkers[0].dataset.banquetRoomMarker, 'food_service');

@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.15 - Timeline Banquet Inspector Activity Fix
+
+### Timeline / Banquet mini inspector / Activity summary / (Клешня, 24.06.2026) [codex]
+- **Mini banquet inspector більше не показує `0 активностей`, коли activity реально є на timeline** - primary activity/animation банкетної групи тепер входить у `activityBookings` і `activityPreviewItems`.
+- **Primary activity не плутається з banquet root/container** - у summary додається тільки renderable activity booking, а banquet root, kitchen і service marker не рахуються як активності.
+- **Kitchen/food marker лишається робочою поверхнею inspector** - клік по service marker відкриває mini inspector зі списком активностей, меню, видачею і примітками.
+- **Дві активності в одному банкеті показуються повністю** - primary activity і secondary activity разом потрапляють у activity count/list без дублювання карток.
+- **Reload і перемикання `Кімнати` -> `Аніматори` -> `Кімнати` не гублять summary** - local Chromium QA підтвердив, що inspector після reload знову бачить activity list.
+- **Regression coverage розширено** - `tests/timeline-resources.test.js` перевіряє activity-first primary banquet animation, kitchen marker summary і сценарій із двома activities.
+- **Релізні маркери піднято до `0.77.15`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.14 - Timeline Banquet Animation Fix
 
 ### Timeline / Banquet room markers / Animation activity cards / (Клешня, 24.06.2026) [codex]

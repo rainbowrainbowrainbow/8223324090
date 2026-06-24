@@ -1557,7 +1557,9 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         ...(grouped.kitchen || []),
         ...allBookings.filter(booking => timelineBanquetBookingHasMenu(booking) || timelineBanquetServiceEvents(booking).length > 0)
     ]);
+    const primaryActivityBookings = timelineBanquetPreviewBookingIsRenderableActivity(primaryBooking) ? [primaryBooking] : [];
     const activityBookings = uniqueTimelineBanquetBookings([
+        ...primaryActivityBookings,
         ...(grouped.activities || []),
         ...(snapshot.members || [])
             .filter(member => member?.role === 'activity')

@@ -15,6 +15,23 @@ function escapeJsString(str) {
     return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
 }
 
+function getProgramEventCardMeta(record = {}) {
+    return window.EventCards?.getEventCardMeta?.(record) || {
+        src: '/images/event-cards/event-card-holiday-party.png',
+        alt: 'Зображення типу заходу'
+    };
+}
+
+function renderProgramEventCardVisual(record = {}, modifier = '') {
+    const card = getProgramEventCardMeta(record);
+    const className = `event-card-visual${modifier ? ` event-card-visual--${modifier}` : ''}`;
+    return `
+        <div class="${className}">
+            <img src="${escapeHtml(card.src)}" alt="${escapeHtml(card.alt || 'Зображення типу заходу')}" loading="lazy" decoding="async">
+        </div>
+    `;
+}
+
 function productBusinessScope() {
     return window.CrmBusinessContext?.scope?.() || { mode: 'single', activeContext: activeBusinessContext || 'event_genix' };
 }
@@ -1193,6 +1210,7 @@ function renderProgramProducts(grid, canManage) {
         const productId = escapeJsString(p.id);
         return `
             <div class="card program-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
+                ${renderProgramEventCardVisual(p)}
                 <div class="card-header">
                     <div>
                         ${renderProgramIconVisual(p)}

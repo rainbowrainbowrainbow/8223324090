@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.21 - Event Cards
+
+### Event cards / Programs / Leads / Afisha / Booking details / (Клешня, 24.06.2026) [codex]
+- **Додано 6 готових PNG-карток для типів заходів** - holiday-party, show-program, family-event, workshop, private-party і quest зберігаються як static assets без стискання або перегенерації.
+- **Єдиний frontend resolver вибирає картку за наявними даними івенту** - category/type/program/name/title/description/notes та nested payloads мапляться на правильний PNG без зміни БД або backend API.
+- **UI івентів підключено до resolver** - картки показуються у програмах, афіші, лідах і деталях бронювання з fallback на святкову картку для невідомого типу.
+- **Зображення адаптивні і стабільні** - спільний CSS задає `aspect-ratio`, `object-fit: cover`, lazy loading і mobile-safe варіанти без layout jumps.
+- **Regression coverage додано** - Node tests перевіряють усі 6 сценаріїв, fallback, існуючі CRM field variants і wiring сторінок без PostgreSQL або live server.
+- **Релізні маркери піднято до `0.77.21`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.20 - Customer Children Closeout
 
 ### Customers / Children / Birthday tags / Lead sync / (Клешня, 24.06.2026) [codex]

@@ -7,6 +7,36 @@ function _escB(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function getBookingEventCardRecord(booking = {}, program = {}) {
+    return {
+        ...booking,
+        category: program?.category || booking.category,
+        programName: booking.programName || program?.name || booking.label,
+        programCode: booking.programCode || program?.code || booking.programId,
+        title: booking.programName || booking.label || program?.name,
+        name: booking.programName || booking.label || program?.name,
+        description: booking.description || booking.notes || booking.comment || program?.description,
+        notes: booking.notes || booking.comment || program?.description
+    };
+}
+
+function getBookingEventCardMeta(record = {}) {
+    return window.EventCards?.getEventCardMeta?.(record) || {
+        src: '/images/event-cards/event-card-holiday-party.png',
+        alt: 'Зображення типу заходу'
+    };
+}
+
+function renderBookingEventCardVisual(record = {}, modifier = 'booking') {
+    const card = getBookingEventCardMeta(record);
+    const className = `event-card-visual${modifier ? ` event-card-visual--${modifier}` : ''}`;
+    return `
+        <div class="${className}">
+            <img src="${_escB(card.src)}" alt="${_escB(card.alt || 'Зображення типу заходу')}" loading="lazy" decoding="async">
+        </div>
+    `;
+}
+
 // v33.3: Toggle booking tag selection
 function toggleBookingTag(el) {
     el.classList.toggle('active');
@@ -10526,6 +10556,7 @@ async function showBookingDetails(bookingId) {
     }
 
     const program = getProductsSync().find(p => p.id === booking.programId);
+    const bookingEventCardRecord = getBookingEventCardRecord(booking, program);
     const lesson = educationLessonDetailsFromBooking(booking);
     const isEducationBooking = Boolean(lesson && Object.keys(lesson).length);
     const roomFirstServiceBooking = canAddAnimationFromRoomBooking(booking);
@@ -10721,6 +10752,7 @@ async function showBookingDetails(bookingId) {
                 </div>
             </div>
         </div>
+        ${renderBookingEventCardVisual(bookingEventCardRecord)}
         ${priorityCustomerBlockHtml}
         <div class="booking-detail-row">
             <span class="label">${escapeHtml(bookingDetailDateLabel)}:</span>

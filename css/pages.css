@@ -14,6 +14,53 @@
 @import url("./pages-analytics-vacancy.css");
 @import url("./pages-profile.css");
 
+.event-card-visual {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 0 0 12px;
+    overflow: hidden;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.08);
+}
+
+.event-card-visual img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.event-card-visual--compact {
+    aspect-ratio: 16 / 8;
+    margin-bottom: 8px;
+}
+
+.event-card-visual--workspace {
+    aspect-ratio: 21 / 9;
+    margin-bottom: 14px;
+}
+
+.event-card-visual--booking {
+    aspect-ratio: 16 / 7;
+    margin: 0 0 14px;
+}
+
+.afisha-event-hero-card > .event-card-visual--workspace {
+    grid-column: 1 / -1;
+}
+
+body.dark-mode .event-card-visual {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 700px) {
+    .event-card-visual--workspace,
+    .event-card-visual--booking {
+        aspect-ratio: 16 / 9;
+    }
+}
+
 .banquet-terms-price-panel {
     display: grid;
     gap: 10px;

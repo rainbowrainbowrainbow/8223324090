@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.14 - Timeline Banquet Animation Fix
+
+### Timeline / Banquet room markers / Animation activity cards / (Клешня, 24.06.2026) [codex]
+- **Animation у банкеті більше не ховається поруч із kitchen/food marker** - activity/animation, яка є `primaryBookingId` банкетної групи, більше не отримує duplicate-hide роль `primary`.
+- **Kitchen/service duplicate logic стала безпечнішою** - room timeline ховає тільки справді дубльовані kitchen/root surfaces, а renderable activity blocks лишає видимими.
+- **Service marker і activity можуть співіснувати в одній кімнаті** - для same-time `Видача`, partial overlap і двох animations lane layout не дає overlap, clipping, `display:none` або `aria-hidden`.
+- **Клік по activity відкриває правильну бронь** - animation block зберігає booking modal ownership, а банкетний inspector лишається для root/service surfaces.
+- **Rooms/animators switch не губить рядки** - сценарій `Кімнати` -> `Аніматори` -> reload повертає animation у правильну view без duplicate cards.
+- **Regression coverage розширено** - додано guards для primary activity + kitchen marker, двох activities, backend projection sanity, room/animator matching і static UI contract.
+- **Manual QA виконано в Chromium** - перевірено 1/2 animations, same-time `Видача`, partial overlap, іншу кімнату банкету і compact modes `15/30/60 хв`.
+- **Релізні маркери піднято до `0.77.14`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.13 - Timeline Animation Visibility Fix
 
 ### Timeline / Animation visibility / Linked animator rows / Diagnostics / (Клешня, 23.06.2026) [codex]

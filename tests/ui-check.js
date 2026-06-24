@@ -1480,7 +1480,7 @@ const timelineBanquetRoomCardBlock = timelineCode.slice(
 );
 const timelineBanquetOccupancyRoleBlock = timelineCode.slice(
     timelineCode.indexOf('function timelineBanquetPreviewRoleUsesOccupancyBand'),
-    timelineCode.indexOf('function timelineBanquetPreviewRoleUsesGridDuplicateHide')
+    timelineCode.indexOf('function timelineBanquetPreviewGridDuplicateReason')
 );
 const timelineRoomServiceMarkerBlock = timelineCode.slice(
     timelineCode.indexOf('function renderTimelineRoomServiceMarkers'),
@@ -1659,9 +1659,10 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineCode.includes('function timelineRoomServiceMarkerDisplay')
     && timelineCode.includes('function timelineRoomServiceMarkerLane')
     && timelineCode.includes('function syncTimelineRoomServiceMarkerLayout')
-    && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers)')
-    && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers)')
-    && timelineCode.includes('timelineBanquetPreviewRoleUsesGridDuplicateHide(role)')
+    && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers, target.booking, { isPrimary: targetIsPrimary })')
+    && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers, carrierBooking, { isPrimary: carrierIsPrimary })')
+    && timelineCode.includes('function timelineBanquetPreviewGridDuplicateReason')
+    && timelineCode.includes('timelineBanquetPreviewRoleUsesGridDuplicateHide(role, context)')
     && timelineCode.includes("normalizedRole === 'kitchen'")
     && timelineCode.includes('setTimelineBanquetGridDuplicateHidden(block, false)')
     && !/normalizedRole === 'kitchen'/.test(timelineBanquetOccupancyRoleBlock)

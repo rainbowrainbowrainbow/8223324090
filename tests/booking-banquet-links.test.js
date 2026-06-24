@@ -1126,6 +1126,8 @@ test('GET bookings room view projects activity and kitchen rows through the same
         const data = await res.json();
         assert.equal(res.status, 200, JSON.stringify(data));
         assert.equal(data.some(item => item.id === 'BK-LINKED-ROOM-CHILD'), false);
+        assert.equal(data.filter(item => item.id === 'BK-ACTIVITY-FIRST').length, 1);
+        assert.equal(data.filter(item => item.id === 'BK-KITCHEN-FIRST').length, 1);
 
         const activity = data.find(item => item.id === 'BK-ACTIVITY-FIRST');
         assert.equal(activity.resourceId, 'Room A');
@@ -1137,6 +1139,7 @@ test('GET bookings room view projects activity and kitchen rows through the same
         assert.equal(activity.timelineProjection.visibleInAnimatorTimeline, true);
         assert.equal(activity.timelineProjection.visibleInRoomTimeline, true);
         assert.equal(activity.timelineProjection.displaySurface, 'booking_block');
+        assert.equal(activity.timelineProjection.hiddenReason, null);
 
         const kitchen = data.find(item => item.id === 'BK-KITCHEN-FIRST');
         assert.equal(kitchen.resourceId, 'Room A');
@@ -1148,6 +1151,7 @@ test('GET bookings room view projects activity and kitchen rows through the same
         assert.equal(kitchen.timelineProjection.visibleInAnimatorTimeline, false);
         assert.equal(kitchen.timelineProjection.visibleInRoomTimeline, true);
         assert.equal(kitchen.timelineProjection.displaySurface, 'service_marker');
+        assert.equal(kitchen.timelineProjection.hiddenReason, null);
     });
 });
 
@@ -1416,6 +1420,8 @@ test('POST banquet source member-booking exposes final activity-first timeline p
         });
 
         const roomRows = await getTimelineBookings(baseUrl, '2099-06-01', 'rooms');
+        assert.equal(roomRows.filter(item => item.id === 'BK-ACTIVITY-FIRST').length, 1);
+        assert.equal(roomRows.filter(item => item.id === data.booking.id).length, 1);
         const roomActivity = timelineBooking(roomRows, 'BK-ACTIVITY-FIRST');
         assert.equal(roomActivity.resourceId, 'Room A');
         assert.equal(roomActivity.resourceType, 'room');

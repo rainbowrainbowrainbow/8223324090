@@ -1746,12 +1746,86 @@ function normalizeTimelineBanquetPreviewRole(value) {
     return '';
 }
 
-function assignTimelineBanquetPreviewRole(roles, bookingId, role) {
-    const id = String(bookingId || '').trim();
+function timelineBanquetPreviewEmbeddedRole(booking = {}) {
+    const extra = timelineExtraData(booking);
+    return normalizeTimelineBanquetPreviewRole(
+        extra?.multiActivity?.role
+        || extra?.multi_activity?.role
+        || extra?.banquetGroup?.role
+        || extra?.banquet_group?.role
+    );
+}
+
+function timelineBanquetPreviewProjectionDisplaySurface(booking = {}) {
+    const projection = booking?.timelineProjection || booking?.timeline_projection || {};
+    return String(projection?.displaySurface || projection?.display_surface || '').trim().toLowerCase();
+}
+
+function timelineBanquetPreviewUsesServiceMarkerSurface(booking = {}) {
+    const identity = timelineEmbeddedIdentity(booking);
+    const projection = booking?.timelineProjection || booking?.timeline_projection || {};
+    const embeddedRole = timelineBanquetPreviewEmbeddedRole(booking);
+    const category = String(booking?.category || '').trim().toLowerCase();
+    if (timelineBanquetPreviewProjectionDisplaySurface(booking) === 'service_marker') return true;
+    if (embeddedRole === 'kitchen' || embeddedRole === 'service') return true;
+    if (category === 'kitchen' || category === 'service') return true;
+    return [
+        booking?.lineId,
+        booking?.line_id,
+        booking?.resourceId,
+        booking?.resource_id,
+        identity.resourceId,
+        identity.resource_id,
+        identity.lineId,
+        identity.line_id,
+        projection?.sourceLineId,
+        projection?.source_line_id,
+        projection?.lineId,
+        projection?.line_id,
+        projection?.resourceId,
+        projection?.resource_id
+    ].some(timelineBanquetServiceLineMatches);
+}
+
+function timelineBanquetPreviewBookingIsRenderableActivity(booking = {}, block = null) {
+    if (!booking && !block) return false;
+    if (timelineBanquetPreviewUsesServiceMarkerSurface(booking)) return false;
+    const category = String(booking?.category || '').trim().toLowerCase();
+    if (category === 'banquet' || category === 'graduation') return false;
+    if (block?.classList?.contains('is-room-timeline-activity-card')) return true;
+    const displaySurface = timelineBanquetPreviewProjectionDisplaySurface(booking);
+    if (displaySurface && displaySurface !== 'booking_block') return false;
+    return Boolean(category);
+}
+
+function timelineBanquetPreviewRoleForBooking(booking = {}, role, block = null) {
     const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
+    if (
+        TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole)
+        && timelineBanquetPreviewBookingIsRenderableActivity(booking, block)
+    ) {
+        return 'activity';
+    }
+    return normalizedRole;
+}
+
+function assignTimelineBanquetPreviewRole(roles, bookingId, role, booking = null) {
+    const id = String(bookingId || '').trim();
+    const normalizedRole = timelineBanquetPreviewRoleForBooking(booking || {}, role);
     if (!id || !normalizedRole) return;
     const existingRole = roles.get(id);
-    if (existingRole === 'primary' && normalizedRole !== 'primary') return;
+    if (existingRole === 'primary' && normalizedRole !== 'primary') {
+        if (normalizedRole === 'activity' || normalizedRole === 'manual') {
+            roles.set(id, normalizedRole);
+        }
+        return;
+    }
+    if (
+        TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES.has(existingRole)
+        && TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole)
+    ) {
+        return;
+    }
     if (!existingRole || normalizedRole === 'primary') {
         roles.set(id, normalizedRole);
     }
@@ -1759,10 +1833,10 @@ function assignTimelineBanquetPreviewRole(roles, bookingId, role) {
 
 function timelineBanquetPreviewRolesByBookingId(snapshot = {}) {
     const roles = new Map();
-    const assignBooking = (booking, role) => assignTimelineBanquetPreviewRole(roles, booking?.id || booking?.bookingId, role);
+    const assignBooking = (booking, role) => assignTimelineBanquetPreviewRole(roles, booking?.id || booking?.bookingId, role, booking);
     (snapshot.members || []).forEach(member => {
         const role = member?.isPrimary ? 'primary' : member?.role;
-        assignTimelineBanquetPreviewRole(roles, member?.bookingId || member?.booking?.id, role);
+        assignTimelineBanquetPreviewRole(roles, member?.bookingId || member?.booking?.id, role, member?.booking);
     });
     assignTimelineBanquetPreviewRole(roles, snapshot?.group?.primaryBookingId || snapshot?.group?.primary_booking_id, 'primary');
     const grouped = snapshot.bookings || {};
@@ -1778,15 +1852,9 @@ function timelineBanquetPreviewRoleForTarget(target = {}, rolesByBookingId = new
     const booking = target.booking || {};
     const id = String(booking.id || target.block?.dataset?.bookingId || '').trim();
     const snapshotRole = rolesByBookingId.get(id);
-    if (snapshotRole) return snapshotRole;
-    const extra = timelineExtraData(booking);
-    const embeddedRole = normalizeTimelineBanquetPreviewRole(
-        extra?.multiActivity?.role
-        || extra?.multi_activity?.role
-        || extra?.banquetGroup?.role
-        || extra?.banquet_group?.role
-    );
-    if (embeddedRole) return embeddedRole;
+    if (snapshotRole) return timelineBanquetPreviewRoleForBooking(booking, snapshotRole, target.block);
+    const embeddedRole = timelineBanquetPreviewEmbeddedRole(booking);
+    if (embeddedRole) return timelineBanquetPreviewRoleForBooking(booking, embeddedRole, target.block);
     if (String(booking.category || '').trim().toLowerCase() === 'banquet' || target.block?.classList?.contains('banquet-block')) {
         return 'banquet';
     }
@@ -1807,9 +1875,33 @@ function timelineBanquetPreviewRoleUsesOccupancyBand(role) {
     return false;
 }
 
-function timelineBanquetPreviewRoleUsesGridDuplicateHide(role) {
+function timelineBanquetPreviewGridDuplicateReason(role, options = {}) {
     const normalizedRole = normalizeTimelineBanquetPreviewRole(role);
-    return normalizedRole === 'kitchen' || TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES.has(normalizedRole);
+    if (!normalizedRole) return '';
+    const booking = options.booking || {};
+    const block = options.block || null;
+    if (timelineBanquetPreviewBookingIsRenderableActivity(booking, block)) {
+        return '';
+    }
+    if (normalizedRole === 'kitchen' || normalizedRole === 'service') {
+        return 'kitchen_duplicate';
+    }
+    if (normalizedRole === 'banquet' || normalizedRole === 'root') {
+        return 'banquet_root_duplicate';
+    }
+    if (normalizedRole === 'primary') {
+        const category = String(booking?.category || '').trim().toLowerCase();
+        const displaySurface = timelineBanquetPreviewProjectionDisplaySurface(booking);
+        const confirmedContainer = category === 'banquet'
+            || block?.classList?.contains('banquet-block')
+            || displaySurface === 'service_marker';
+        return confirmedContainer ? 'banquet_root_duplicate' : '';
+    }
+    return '';
+}
+
+function timelineBanquetPreviewRoleUsesGridDuplicateHide(role, options = {}) {
+    return Boolean(timelineBanquetPreviewGridDuplicateReason(role, options));
 }
 
 function setTimelineBanquetOccupancyBand(block, enabled = false) {
@@ -1824,14 +1916,25 @@ function setTimelineBanquetOccupancyBand(block, enabled = false) {
     }
 }
 
-function setTimelineBanquetGridDuplicateHidden(block, enabled = false) {
+function setTimelineBanquetGridDuplicateHidden(block, enabled = false, reason = '') {
     if (!block) return;
+    const normalizedReason = String(reason || '').trim();
     block.classList.toggle('is-timeline-banquet-grid-duplicate', Boolean(enabled));
     if (enabled) {
         block.dataset.timelineBanquetGridDuplicate = '1';
+        if (normalizedReason) {
+            block.dataset.timelineBanquetGridDuplicateReason = normalizedReason;
+        } else {
+            delete block.dataset.timelineBanquetGridDuplicateReason;
+        }
         block.setAttribute('aria-hidden', 'true');
     } else {
         delete block.dataset.timelineBanquetGridDuplicate;
+        if (normalizedReason) {
+            block.dataset.timelineBanquetGridDuplicateReason = normalizedReason;
+        } else {
+            delete block.dataset.timelineBanquetGridDuplicateReason;
+        }
         block.removeAttribute('aria-hidden');
     }
 }
@@ -2759,9 +2862,17 @@ function clearTimelineBanquetPreviewVisuals(block, options = {}) {
     }
 }
 
-function applyTimelineBanquetGridPreviewVisuals(block, role, hasRoomServiceMarkers = false) {
-    const hideGridDuplicate = Boolean(hasRoomServiceMarkers && timelineBanquetPreviewRoleUsesGridDuplicateHide(role));
-    setTimelineBanquetGridDuplicateHidden(block, hideGridDuplicate);
+function applyTimelineBanquetGridPreviewVisuals(block, role, hasRoomServiceMarkers = false, booking = null, options = {}) {
+    const context = { booking: booking || {}, block };
+    const duplicateReason = hasRoomServiceMarkers ? timelineBanquetPreviewGridDuplicateReason(role, context) : '';
+    const notHiddenReason = hasRoomServiceMarkers
+        && !duplicateReason
+        && options.isPrimary === true
+        && timelineBanquetPreviewBookingIsRenderableActivity(booking || {}, block)
+        ? 'activity_primary_visible'
+        : '';
+    const hideGridDuplicate = Boolean(duplicateReason && timelineBanquetPreviewRoleUsesGridDuplicateHide(role, context));
+    setTimelineBanquetGridDuplicateHidden(block, hideGridDuplicate, duplicateReason || notHiddenReason);
     setTimelineBanquetOccupancyBand(block, false);
 }
 
@@ -2794,6 +2905,20 @@ function resolveTimelineBanquetPreviewTargets(snapshot = {}, summary = {}, carri
     return targets.sort((a, b) => String(a.booking?.time || '').localeCompare(String(b.booking?.time || '')));
 }
 
+function timelineBanquetPreviewTargetIsPrimary(target = {}, snapshot = {}, summary = {}) {
+    const id = String(target.booking?.id || target.block?.dataset?.bookingId || '').trim();
+    if (!id) return false;
+    const primaryIds = [
+        snapshot?.group?.primaryBookingId,
+        snapshot?.group?.primary_booking_id,
+        summary?.primaryBooking?.id,
+        summary?.primaryBooking?.bookingId,
+        summary?.carrierBooking?.id,
+        summary?.carrierBooking?.bookingId
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return primaryIds.includes(id);
+}
+
 function applyTimelineBanquetPreview(snapshot = {}, options = {}) {
     if (!isRoomTimelineView()) return false;
     if (
@@ -2819,16 +2944,19 @@ function applyTimelineBanquetPreview(snapshot = {}, options = {}) {
     targets.forEach(target => {
         const targetSummary = timelineBanquetSummaryForInspector(summary, servingInfo, target.booking || carrier.booking);
         const targetRole = timelineBanquetPreviewRoleForTarget(target, previewRolesByBookingId);
+        const targetIsPrimary = timelineBanquetPreviewTargetIsPrimary(target, snapshot, summary);
         target.block.dataset.banquetGroupId = groupId;
         setTimelineBanquetPreviewRole(target.block, targetRole);
-        applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers);
+        applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers, target.booking, { isPrimary: targetIsPrimary });
         target.block._timelineBanquetSummary = targetSummary;
         target.block.classList.add('has-timeline-banquet-preview-trigger');
     });
     const carrierRole = timelineBanquetPreviewRoleForTarget({ block, booking: carrier.booking || summary.carrierBooking || summary.primaryBooking }, previewRolesByBookingId);
+    const carrierBooking = carrier.booking || summary.carrierBooking || summary.primaryBooking;
+    const carrierIsPrimary = timelineBanquetPreviewTargetIsPrimary({ block, booking: carrierBooking }, snapshot, summary);
     block.dataset.banquetGroupId = groupId;
     setTimelineBanquetPreviewRole(block, carrierRole);
-    applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers);
+    applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers, carrierBooking, { isPrimary: carrierIsPrimary });
     block._timelineBanquetSummary = summaryForInspector;
     block.classList.add('has-timeline-banquet-preview-trigger');
     registerTimelineBanquetRoomPreview(summaryForInspector);

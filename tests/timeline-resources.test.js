@@ -180,6 +180,7 @@ function createTimelineBanquetMarkerHarness() {
         __timelineViewState: viewState,
         __cachedBookings: [],
         TIMELINE_BANQUET_ROOM_PREVIEWS: new Map(),
+        TIMELINE_BANQUET_SERVICE_LINE_ID: 'banquet-service',
         TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES: new Set(['primary', 'root', 'banquet']),
         TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES: new Set(['activity', 'service', 'manual']),
         AppState: { selectedDate: new Date('2099-06-18T00:00:00') },
@@ -409,6 +410,139 @@ function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
     });
 
     return { ctx, rootBlock, kitchenBlock, activityBlock };
+}
+
+function applyTimelineBanquetPreviewWithPrimaryActivityAndKitchenMarker(options = {}) {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const lineGrid = ctx.document.querySelector('.line-grid');
+    const activityBooking = {
+        id: 'BK-ACTIVITY-PRIMARY',
+        category: 'animation',
+        date: '2099-06-18',
+        time: '14:00',
+        duration: 60,
+        room: 'Room A',
+        lineId: 'room-a',
+        line_id: 'room-a',
+        label: 'Primary animator',
+        timelineProjection: {
+            timelineView: 'rooms',
+            view: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            resourceName: 'Room A',
+            lineId: 'room-a',
+            sourceLineId: 'room-a',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+    const secondaryActivityBooking = options.secondaryActivity ? {
+        id: 'BK-ACTIVITY-SECONDARY',
+        category: 'show',
+        date: '2099-06-18',
+        time: '14:00',
+        duration: 30,
+        room: 'Room A',
+        lineId: 'room-a',
+        line_id: 'room-a',
+        label: 'Secondary animator',
+        timelineProjection: {
+            timelineView: 'rooms',
+            view: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            resourceName: 'Room A',
+            lineId: 'room-a',
+            sourceLineId: 'room-a',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    } : null;
+    const kitchenBooking = {
+        id: 'BK-KITCHEN-MARKER',
+        category: 'banquet',
+        date: '2099-06-18',
+        time: '14:00',
+        duration: 60,
+        room: 'Room A',
+        lineId: 'banquet-service',
+        line_id: 'banquet-service',
+        label: 'Kitchen marker',
+        extraData: {
+            bookingPackage: {
+                menuPositions: [
+                    { id: 'menu-1', title: 'Pizza', servingTime: '14:00' }
+                ],
+                serviceEvents: []
+            }
+        },
+        timelineProjection: {
+            timelineView: 'rooms',
+            view: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            resourceName: 'Room A',
+            lineId: 'banquet-service',
+            sourceLineId: 'banquet-service',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: false,
+            displaySurface: 'service_marker',
+            hiddenReason: null
+        }
+    };
+    const activityBlock = ctx.document.createElement('div');
+    activityBlock.className = 'booking-block animation is-room-timeline-activity-card';
+    activityBlock.dataset.bookingId = activityBooking.id;
+    const activityMinutes = ctx.timeToMinutes(activityBooking.time);
+    const startMinutes = ctx.getTimeRange().start * 60;
+    activityBlock.style.left = `${ctx.timelineMinutesToPixels(activityMinutes - startMinutes)}px`;
+    activityBlock.style.width = `${ctx.timelineDurationWidth(activityBooking.duration)}px`;
+    activityBlock.innerHTML = '<div class="user-letter">A</div><div class="title">Primary animator</div><div class="subtitle">14:00</div>';
+    let secondaryActivityBlock = null;
+    if (secondaryActivityBooking) {
+        secondaryActivityBlock = ctx.document.createElement('div');
+        secondaryActivityBlock.className = 'booking-block show is-room-timeline-activity-card';
+        secondaryActivityBlock.dataset.bookingId = secondaryActivityBooking.id;
+        const secondaryActivityMinutes = ctx.timeToMinutes(secondaryActivityBooking.time);
+        secondaryActivityBlock.style.left = `${ctx.timelineMinutesToPixels(secondaryActivityMinutes - startMinutes)}px`;
+        secondaryActivityBlock.style.width = `${ctx.timelineDurationWidth(secondaryActivityBooking.duration)}px`;
+        secondaryActivityBlock.innerHTML = '<div class="user-letter">S</div><div class="title">Secondary animator</div><div class="subtitle">14:00</div>';
+    }
+    const kitchenBlock = ctx.document.createElement('div');
+    kitchenBlock.className = 'booking-block banquet-block';
+    kitchenBlock.dataset.bookingId = kitchenBooking.id;
+    kitchenBlock.innerHTML = '<div class="user-letter">K</div><div class="title">Kitchen marker</div><div class="subtitle">14:00</div>';
+    lineGrid.append(...[activityBlock, secondaryActivityBlock, kitchenBlock].filter(Boolean));
+
+    ctx.__cachedBookings = [activityBooking, secondaryActivityBooking, kitchenBooking].filter(Boolean);
+    ctx.applyTimelineBanquetPreview({
+        success: true,
+        group: {
+            id: 'GRP-ACTIVITY-FIRST',
+            room: 'Room A',
+            date: '2099-06-18',
+            primaryBookingId: activityBooking.id
+        },
+        bookings: {
+            primary: activityBooking,
+            kitchen: [kitchenBooking],
+            activities: secondaryActivityBooking ? [secondaryActivityBooking] : [],
+            services: [],
+            manual: []
+        },
+        members: [
+            { bookingId: activityBooking.id, role: 'primary', isPrimary: true, booking: activityBooking },
+            ...(secondaryActivityBooking ? [{ bookingId: secondaryActivityBooking.id, role: 'activity', booking: secondaryActivityBooking }] : []),
+            { bookingId: kitchenBooking.id, role: 'kitchen', booking: kitchenBooking }
+        ]
+    });
+
+    return { ctx, activityBlock, secondaryActivityBlock, kitchenBlock };
 }
 
 test('timeline resource migration creates durable multi-cabinet resources', () => {
@@ -749,6 +883,115 @@ test('timeline resource matching ignores stale line ids when room projection is 
     assert.deepEqual([...hooks.timelineBookingMatchKeys(canonicalRoomBooking)].sort(), ['room a']);
     assert.equal(hooks.timelineBookingsForLine([canonicalRoomBooking], roomLine).length, 1);
     assert.equal(hooks.timelineBookingsForLine([canonicalRoomBooking], staleLine).length, 0);
+});
+
+test('banquet animation matches room and animator lines across view switches and reloads', () => {
+    const hooks = createTimelineResourceMatchingHarness({ roomView: true });
+    const roomLine = {
+        id: 'room-a',
+        name: 'Room A',
+        resourceId: 'Room A',
+        resourceType: 'room'
+    };
+    const animatorLine = {
+        id: 'animator-anna',
+        name: 'Animator Anna',
+        resourceId: 'animator-anna',
+        resourceType: 'animator'
+    };
+    const roomAnimation = {
+        id: 'BK-ACTIVITY-PRIMARY',
+        category: 'animation',
+        lineId: 'animator-anna',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'rooms',
+            view: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            resourceName: 'Room A',
+            lineId: 'room-a',
+            sourceLineId: 'animator-anna',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+    const roomKitchen = {
+        id: 'BK-KITCHEN-MARKER',
+        category: 'banquet',
+        lineId: 'banquet-service',
+        room: 'Room A',
+        timelineProjection: {
+            timelineView: 'rooms',
+            view: 'rooms',
+            resourceType: 'room',
+            resourceId: 'Room A',
+            resourceName: 'Room A',
+            lineId: 'banquet-service',
+            sourceLineId: 'banquet-service',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: false,
+            displaySurface: 'service_marker',
+            hiddenReason: null
+        }
+    };
+    const animatorAnimation = {
+        ...roomAnimation,
+        timelineProjection: {
+            timelineView: 'animators',
+            view: 'animators',
+            resourceType: 'animator',
+            resourceId: 'animator-anna',
+            resourceName: 'Animator Anna',
+            lineId: 'animator-anna',
+            sourceLineId: 'animator-anna',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: true,
+            displaySurface: 'booking_block',
+            hiddenReason: null
+        }
+    };
+    const animatorKitchen = {
+        ...roomKitchen,
+        timelineProjection: {
+            timelineView: 'animators',
+            view: 'animators',
+            resourceType: 'service',
+            resourceId: 'banquet-service',
+            resourceName: 'Banquet service',
+            lineId: 'banquet-service',
+            sourceLineId: 'banquet-service',
+            visibleInRoomTimeline: true,
+            visibleInAnimatorTimeline: false,
+            displaySurface: 'hidden',
+            hiddenReason: 'banquet_service_hidden_from_animator'
+        }
+    };
+
+    let normalizedRoomBookings = hooks.normalizeTimelineBookingsForContext([roomAnimation, roomKitchen]);
+    assert.deepEqual(normalizedRoomBookings.map(booking => booking.id).sort(), ['BK-ACTIVITY-PRIMARY', 'BK-KITCHEN-MARKER']);
+    assert.deepEqual([...hooks.timelineBookingMatchKeys(normalizedRoomBookings.find(booking => booking.id === 'BK-ACTIVITY-PRIMARY'))].sort(), ['room a']);
+    assert.equal(hooks.timelineBookingsForLine(normalizedRoomBookings, roomLine).filter(booking => booking.id === 'BK-ACTIVITY-PRIMARY').length, 1);
+    assert.equal(hooks.timelineBookingsForLine(normalizedRoomBookings, animatorLine).length, 0);
+
+    normalizedRoomBookings = hooks.normalizeTimelineBookingsForContext([roomAnimation, roomKitchen]);
+    assert.equal(hooks.timelineBookingsForLine(normalizedRoomBookings, roomLine).filter(booking => booking.id === 'BK-ACTIVITY-PRIMARY').length, 1);
+
+    hooks.setRoomView(false);
+    const normalizedAnimatorBookings = hooks.normalizeTimelineBookingsForContext([animatorAnimation, animatorKitchen]);
+    assert.deepEqual(normalizedAnimatorBookings.map(booking => booking.id), ['BK-ACTIVITY-PRIMARY']);
+    assert.deepEqual([...hooks.timelineBookingMatchKeys(normalizedAnimatorBookings[0])].sort(), ['animator-anna']);
+    assert.equal(hooks.timelineBookingsForLine(normalizedAnimatorBookings, animatorLine).length, 1);
+    assert.equal(hooks.timelineBookingsForLine(normalizedAnimatorBookings, roomLine).length, 0);
+
+    hooks.setRoomView(true);
+    const normalizedReturnedRoomBookings = hooks.normalizeTimelineBookingsForContext([roomAnimation, roomKitchen]);
+    const returnedRoomActivityMatches = hooks.timelineBookingsForLine(normalizedReturnedRoomBookings, roomLine)
+        .filter(booking => booking.id === 'BK-ACTIVITY-PRIMARY');
+    assert.equal(normalizedReturnedRoomBookings.filter(booking => booking.id === 'BK-ACTIVITY-PRIMARY').length, 1);
+    assert.equal(returnedRoomActivityMatches.length, 1);
 });
 
 test('timeline resource matching exposes deterministic hidden reasons for canonical hidden bookings', () => {
@@ -1669,6 +1912,7 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function timelineBanquetPreviewRoleUsesOccupancyBand/);
     assert.match(timeline, /function setTimelineBanquetOccupancyBand/);
     assert.match(timeline, /function timelineBanquetPreviewRoleUsesGridDuplicateHide/);
+    assert.match(timeline, /function timelineBanquetPreviewGridDuplicateReason/);
     assert.match(timeline, /function setTimelineBanquetGridDuplicateHidden/);
     assert.match(timeline, /function applyTimelineBanquetGridPreviewVisuals/);
     assert.match(timeline, /function timelineBanquetRoomCardSignals/);
@@ -1684,8 +1928,8 @@ test('room timeline banquet preview is room-only, frontend-only, and snapshot-ba
     assert.match(timeline, /function hydrateTimelineBanquetPreview[\s\S]*isRoomTimelineView\(\)/);
     assert.match(timeline, /function applyTimelineBanquetPreview[\s\S]*if \(!isRoomTimelineView\(\)\) return/);
     assert.match(timeline, /timelineBanquetServingInfo\(summary\)/);
-    assert.match(timeline, /applyTimelineBanquetGridPreviewVisuals\(target\.block, targetRole, hasRoomServiceMarkers\)/);
-    assert.match(timeline, /applyTimelineBanquetGridPreviewVisuals\(block, carrierRole, hasRoomServiceMarkers\)/);
+    assert.match(timeline, /applyTimelineBanquetGridPreviewVisuals\(target\.block, targetRole, hasRoomServiceMarkers, target\.booking, \{ isPrimary: targetIsPrimary \}\)/);
+    assert.match(timeline, /applyTimelineBanquetGridPreviewVisuals\(block, carrierRole, hasRoomServiceMarkers, carrierBooking, \{ isPrimary: carrierIsPrimary \}\)/);
     assert.match(timeline, /clearTimelineBanquetPreviewVisuals\(block\)[\s\S]*setTimelineBanquetOccupancyBand\(block, false\)/);
     assert.match(timeline, /clearTimelineBanquetPreviewVisuals\(block\)[\s\S]*setTimelineBanquetGridDuplicateHidden\(block, false\)/);
     assert.match(timeline, /clearTimelineBanquetRoomPreviews\(\)[\s\S]*booking-block\.has-timeline-banquet-preview-trigger/);
@@ -2111,6 +2355,7 @@ test('room timeline hides duplicate banquet grid blocks when service markers exi
     assert.equal(rootBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
     assert.equal(rootBlock.classList.contains('is-timeline-banquet-grid-duplicate'), true);
     assert.equal(rootBlock.dataset.timelineBanquetGridDuplicate, '1');
+    assert.equal(rootBlock.dataset.timelineBanquetGridDuplicateReason, 'banquet_root_duplicate');
     assert.equal(rootBlock.dataset.timelineBanquetPreviewRole, 'primary');
     assert.equal(rootBlock.getAttribute('aria-hidden'), 'true');
     assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
@@ -2122,6 +2367,7 @@ test('room timeline hides duplicate banquet grid blocks when service markers exi
     );
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicate, '1');
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicateReason, 'kitchen_duplicate');
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
     assert.ok(kitchenBlock._timelineBanquetSummary);
     assert.equal(ctx.timelineBanquetBlockCanOpenInspector(kitchenBlock), true);
@@ -2131,6 +2377,7 @@ test('room timeline hides duplicate banquet grid blocks when service markers exi
     assert.equal(activityBlock.classList.contains('is-timeline-banquet-occupancy-band'), false);
     assert.equal(activityBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(activityBlock.dataset.timelineBanquetPreviewRole, 'activity');
+    assert.equal(ctx.timelineBanquetPreviewRoleUsesGridDuplicateHide('primary'), false);
     assert.equal(ctx.timelineBanquetBlockCanOpenInspector(activityBlock), false);
 
     ctx.clearTimelineBanquetPreviewVisuals(kitchenBlock);
@@ -2138,7 +2385,87 @@ test('room timeline hides duplicate banquet grid blocks when service markers exi
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicate, undefined);
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicateReason, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, undefined);
+});
+
+test('room timeline keeps activity-first primary animation visible beside kitchen service marker', () => {
+    const { ctx, activityBlock, kitchenBlock } = applyTimelineBanquetPreviewWithPrimaryActivityAndKitchenMarker();
+    const serviceMarkers = ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker');
+    const lineGrid = ctx.document.querySelector('.line-grid');
+    const line = ctx.document.querySelector('.timeline-line');
+
+    assert.equal(serviceMarkers.length, 1);
+    assert.equal(serviceMarkers[0].dataset.bookingId, 'BK-KITCHEN-MARKER');
+    assert.equal(serviceMarkers[0].dataset.banquetRoomMarker, 'food_service');
+
+    assert.ok(activityBlock, 'primary animation block exists');
+    assert.equal(activityBlock.dataset.bookingId, 'BK-ACTIVITY-PRIMARY');
+    assert.equal(activityBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
+    assert.equal(activityBlock.classList.contains('is-room-timeline-activity-card'), true);
+    assert.equal(activityBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
+    assert.equal(activityBlock.dataset.timelineBanquetGridDuplicate, undefined);
+    assert.equal(activityBlock.dataset.timelineBanquetGridDuplicateReason, 'activity_primary_visible');
+    assert.equal(activityBlock.getAttribute('aria-hidden'), null);
+    assert.equal(activityBlock.dataset.timelineBanquetPreviewRole, 'activity');
+    assert.equal(ctx.timelineBanquetBlockCanOpenInspector(activityBlock), false);
+    assert.equal(activityBlock.style.left, serviceMarkers[0].style.left);
+    assert.equal(activityBlock.dataset.roomOperationalLane, '0');
+    assert.equal(activityBlock.dataset.roomActivityLane, '0');
+    assert.equal(activityBlock.style.getPropertyValue('--timeline-room-lane-top'), '10px');
+    assert.equal(activityBlock.style.top, '10px');
+    assert.equal(activityBlock.style.height, '72px');
+    assert.equal(activityBlock.style.getPropertyValue('--timeline-room-activity-card-height'), '72px');
+
+    assert.equal(kitchenBlock.classList.contains('has-timeline-banquet-preview-trigger'), true);
+    assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
+    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), true);
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicateReason, 'kitchen_duplicate');
+    assert.equal(kitchenBlock.getAttribute('aria-hidden'), 'true');
+    assert.equal(serviceMarkers[0].dataset.markerLane, '1');
+    assert.equal(serviceMarkers[0].dataset.roomOperationalLane, '1');
+    assert.equal(serviceMarkers[0].style.getPropertyValue('--timeline-room-lane-top'), '90px');
+    assert.equal(serviceMarkers[0].style.top, '90px');
+    assert.equal(lineGrid.dataset.roomOperationalLanes, '2');
+    assert.equal(line.dataset.roomOperationalLanes, '2');
+    assert.equal(lineGrid.style.getPropertyValue('--timeline-room-operational-row-height'), '154px');
+    assert.equal(line.style.getPropertyValue('--timeline-line-min-h'), '154px');
+    assert.equal(lineGrid.classList.contains('has-timeline-room-operational-lanes'), true);
+    assert.equal(line.classList.contains('has-timeline-room-operational-lanes'), true);
+});
+
+test('room timeline keeps two banquet activities visible beside overlapping kitchen marker', () => {
+    const { ctx, activityBlock, secondaryActivityBlock, kitchenBlock } = applyTimelineBanquetPreviewWithPrimaryActivityAndKitchenMarker({
+        secondaryActivity: true
+    });
+    const serviceMarkers = ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker');
+    const lineGrid = ctx.document.querySelector('.line-grid');
+    const activityBlocks = Array.from(ctx.document.querySelectorAll('.line-grid .is-room-timeline-activity-card'));
+
+    assert.equal(activityBlocks.length, 2);
+    assert.deepEqual(activityBlocks.map(block => block.dataset.bookingId).sort(), ['BK-ACTIVITY-PRIMARY', 'BK-ACTIVITY-SECONDARY']);
+    assert.equal(new Set(activityBlocks.map(block => block.dataset.bookingId)).size, 2);
+    assert.equal(serviceMarkers.length, 1);
+    assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker[data-booking-id="BK-KITCHEN-MARKER"]').length, 1);
+    assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), true);
+    assert.equal(serviceMarkers[0].dataset.banquetRoomMarker, 'food_service');
+
+    for (const block of [activityBlock, secondaryActivityBlock]) {
+        assert.ok(block, 'activity block exists');
+        assert.equal(block.classList.contains('is-timeline-banquet-grid-duplicate'), false);
+        assert.equal(block.getAttribute('aria-hidden'), null);
+        assert.equal(block.dataset.timelineBanquetPreviewRole, 'activity');
+        assert.equal(block.style.left, serviceMarkers[0].style.left);
+    }
+
+    assert.equal(activityBlock.dataset.roomOperationalLane, '0');
+    assert.equal(secondaryActivityBlock.dataset.roomOperationalLane, '1');
+    assert.equal(serviceMarkers[0].dataset.roomOperationalLane, '2');
+    assert.equal(activityBlock.style.top, '10px');
+    assert.equal(secondaryActivityBlock.style.top, '90px');
+    assert.equal(serviceMarkers[0].style.top, '170px');
+    assert.equal(lineGrid.dataset.roomOperationalLanes, '3');
+    assert.equal(lineGrid.style.getPropertyValue('--timeline-room-operational-row-height'), '234px');
 });
 
 test('room timeline keeps kitchen booking block normal when no service markers exist', () => {
@@ -2156,6 +2483,7 @@ test('room timeline keeps kitchen booking block normal when no service markers e
     assert.equal(kitchenBlock.classList.contains('is-timeline-banquet-grid-duplicate'), false);
     assert.equal(kitchenBlock.dataset.timelineBanquetOccupancyBand, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicate, undefined);
+    assert.equal(kitchenBlock.dataset.timelineBanquetGridDuplicateReason, undefined);
     assert.equal(kitchenBlock.dataset.timelineBanquetPreviewRole, 'kitchen');
 });
 

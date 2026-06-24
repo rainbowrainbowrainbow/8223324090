@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.22",
+  "version": "0.77.23",
   "eventGenix": {
-    "releaseLabel": "Booking Menu Polish"
+    "releaseLabel": "Task Priority Colors"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

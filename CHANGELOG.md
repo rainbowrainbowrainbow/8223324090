@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.23 - Task Priority Colors
+
+### Tasks / Profile My Day / Priority dropdown / (Клешня, 25.06.2026) [codex]
+- **Кольорова індикація задач стала повною для всіх priority** - `urgent`, `high`, `normal` і `low` мають власні зрозумілі стани замість акценту тільки на термінових задачах.
+- **Tasks page отримала стабільний priority marker** - картки використовують `data-priority`, лівий border, легкий фон, hover і focus-visible без конфлікту з category-класами.
+- **Profile / Мій день узгоджено з основними задачами** - рядки, cabinet task cards і priority select показують однакову логіку кольорів у light і dark mode.
+- **Dropdown priority більше не застрягає у старому візуальному стані** - після успішної зміни оновлюються класи, `data-priority` і пов'язані task cards; при помилці select повертається назад.
+- **CSS debt не збільшено в `tasks.html`** - нові priority styles винесено в `css/pages-tasks.css`, щоб не ламати theme surface budget.
+- **Regression coverage і Browser QA оновлено** - static guards покривають усі чотири priority, select states, dark mode і mobile-safe visual surface без PostgreSQL.
+- **Релізні маркери піднято до `0.77.23`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.22 - Booking Menu Polish
 
 ### Booking details modal / Banquet menu / Timeline / (Клешня, 24.06.2026) [codex]

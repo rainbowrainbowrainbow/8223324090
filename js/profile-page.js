@@ -124,6 +124,7 @@ const CABINET_TASK_PRIORITIES = [
     { value: 'normal', label: 'Звичайний', hint: 'Стандартний пріоритет' },
     { value: 'low', label: 'Низький', hint: 'Можна виконати пізніше' }
 ];
+const CABINET_TASK_PRIORITY_VALUES = CABINET_TASK_PRIORITIES.map(item => item.value);
 
 const CABINET_TASK_SOUND_THEMES = [
     { value: 'subtle', label: 'Мʼякий' },
@@ -2979,6 +2980,28 @@ function applyCabinetTaskStatusToProjection(taskId, status, resultTask = {}, fal
     return true;
 }
 
+function applyCabinetTaskPriorityToProjection(taskId, priority = 'normal', resultTask = {}) {
+    const id = normalizeCabinetTaskId(taskId);
+    const normalized = normalizeCabinetPriority(priority);
+    if (!id || !myCabinetData || typeof myCabinetData !== 'object') return false;
+    let updated = false;
+    Object.keys(myCabinetData).forEach(key => {
+        if (!Array.isArray(myCabinetData[key])) return;
+        myCabinetData[key] = myCabinetData[key].map(task => {
+            if (cabinetProjectionTaskId(task) !== id) return task;
+            updated = true;
+            return {
+                ...task,
+                ...(resultTask || {}),
+                priority: normalized,
+                taskPriority: normalized,
+                priority_level: normalized
+            };
+        });
+    });
+    return updated;
+}
+
 function scheduleCabinetProjectionRefresh(delay = 900) {
     if (cabinetProjectionRefreshTimer) clearTimeout(cabinetProjectionRefreshTimer);
     cabinetProjectionRefreshTimer = setTimeout(() => {
@@ -3110,6 +3133,48 @@ function normalizeCabinetPriority(priority = '') {
     if (value === 'critical') return 'urgent';
     if (value === 'medium') return 'normal';
     return CABINET_TASK_PRIORITIES.some(item => item.value === value) ? value : 'normal';
+}
+
+function setCabinetPriorityClass(element, priority = 'normal') {
+    if (!element) return normalizeCabinetPriority(priority);
+    const normalized = normalizeCabinetPriority(priority);
+    CABINET_TASK_PRIORITY_VALUES.forEach(value => element.classList.remove(`priority-${value}`));
+    element.classList.add(`priority-${normalized}`);
+    return normalized;
+}
+
+function setCabinetPrioritySelectVisual(select, priority = 'normal') {
+    if (!select) return normalizeCabinetPriority(priority);
+    const normalized = normalizeCabinetPriority(priority);
+    CABINET_TASK_PRIORITY_VALUES.forEach(value => select.classList.remove(`cabinet-task-priority-select--${value}`));
+    select.classList.add(`cabinet-task-priority-select--${normalized}`);
+    select.value = normalized;
+    return normalized;
+}
+
+function setCabinetPrioritySelectBusy(select, busy) {
+    if (!select) return;
+    const isBusy = Boolean(busy);
+    select.disabled = isBusy;
+    select.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    select.closest('.cabinet-task-card')?.classList.toggle('is-updating', isBusy);
+}
+
+function applyCabinetTaskPriorityVisualState(taskId, priority = 'normal', sourceSelect = null) {
+    const id = normalizeCabinetTaskId(taskId);
+    const normalized = normalizeCabinetPriority(priority);
+    if (!id) return normalized;
+    const cards = new Set();
+    const sourceCard = sourceSelect?.closest?.('.cabinet-task-card');
+    if (sourceCard) cards.add(sourceCard);
+    document.querySelectorAll(`.cabinet-task-card[data-task-id="${id}"]`).forEach(card => cards.add(card));
+    cards.forEach(card => {
+        setCabinetPriorityClass(card, normalized);
+        card.dataset.taskPriority = normalized;
+        setCabinetPrioritySelectVisual(card.querySelector('[data-cabinet-task-priority-select]'), normalized);
+    });
+    setCabinetPrioritySelectVisual(sourceSelect, normalized);
+    return normalized;
 }
 
 function cabinetTaskPriorityRank(task = {}) {
@@ -5401,22 +5466,28 @@ async function saveCabinetTaskSoundPreferences(patch = {}) {
 async function updateCabinetTaskPriority(select) {
     const taskId = normalizeCabinetTaskId(select?.dataset?.taskId);
     const priority = normalizeCabinetPriority(select?.value);
-    if (!taskId) return;
+    if (!taskId || !select) return;
     const previous = normalizeCabinetPriority(findCabinetTask(taskId)?.priority || 'normal');
-    select.disabled = true;
+    setCabinetPrioritySelectBusy(select, true);
     const result = await apiPatch(`/tasks/${taskId}/priority`, {
         priority,
         sourceSurface: 'profile_my_cabinet'
     });
-    select.disabled = false;
+    setCabinetPrioritySelectBusy(select, false);
     if (result?.success) {
+        applyCabinetTaskPriorityToProjection(taskId, priority, result.task || {});
+        applyCabinetTaskPriorityVisualState(taskId, priority, select);
         notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
-        await refreshMyCabinetTab({ silent: true });
+        try {
+            await refreshMyCabinetTab({ silent: true });
+        } catch (error) {
+            console.warn('Profile cabinet priority refresh failed', error);
+        }
         renderCabinetActiveTab();
         if (typeof showNotification === 'function') showNotification('Пріоритет оновлено', 'success');
         return;
     }
-    select.value = previous;
+    applyCabinetTaskPriorityVisualState(taskId, previous, select);
     if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
 }
 

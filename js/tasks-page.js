@@ -99,6 +99,41 @@ const TASK_PRIORITY_OPTIONS = [
     { value: 'normal', label: 'Звичайний' },
     { value: 'low', label: 'Низький' }
 ];
+const TASK_PRIORITY_VALUES = TASK_PRIORITY_OPTIONS.map(item => item.value);
+
+function normalizeTaskPriorityValue(value = 'normal') {
+    const normalized = String(value || 'normal').toLowerCase().trim();
+    return TASK_PRIORITY_VALUES.includes(normalized) ? normalized : 'normal';
+}
+
+function setTaskPrioritySelectVisual(select, priority = 'normal') {
+    if (!select) return normalizeTaskPriorityValue(priority);
+    const normalized = normalizeTaskPriorityValue(priority);
+    TASK_PRIORITY_VALUES.forEach(value => select.classList.remove(`task-priority-select--${value}`));
+    select.classList.add(`task-priority-select--${normalized}`);
+    select.value = normalized;
+    return normalized;
+}
+
+function setTaskPrioritySelectBusy(select, busy) {
+    if (!select) return;
+    select.disabled = Boolean(busy);
+    select.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+function applyTaskPriorityVisualState(taskId, priority = 'normal') {
+    const id = Number(taskId || 0);
+    const normalized = normalizeTaskPriorityValue(priority);
+    if (!id) return normalized;
+    document.querySelectorAll(`.task-card[data-task-id="${id}"]`).forEach(card => {
+        TASK_PRIORITY_VALUES.forEach(value => card.classList.remove(`priority-${value}`));
+        card.classList.add(`priority-${normalized}`);
+        card.dataset.priority = normalized;
+        setTaskPrioritySelectVisual(card.querySelector('[data-task-priority-select]'), normalized);
+    });
+    return normalized;
+}
+
 const TASK_SOUND_THEME_OPTIONS = [
     { value: 'subtle', label: 'Мʼякий' },
     { value: 'classic', label: 'Класичний' },
@@ -1971,7 +2006,7 @@ function taskKindBadge(t) {
 }
 
 function renderTaskPriorityControl(task = {}) {
-    const current = task.priority || 'normal';
+    const current = normalizeTaskPriorityValue(task.priority);
     return `<select class="task-priority-select task-priority-select--${escapeHtml(current)}" data-task-priority-select data-task-id="${task.id}" aria-label="Пріоритет задачі">
         ${TASK_PRIORITY_OPTIONS.map(item => `<option value="${item.value}" ${item.value === current ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
     </select>`;
@@ -2901,7 +2936,9 @@ function openTaskRowActionMenu(button) {
     });
 }
 
-function renderTaskCard(t) {
+function renderTaskCard(task) {
+    const priority = normalizeTaskPriorityValue(task.priority);
+    const t = { ...task, priority };
     const cat = t.category || 'admin';
     const catInfo = getCategoryConfig(cat);
     const subInfo = getSubcategoryConfig(cat, t.subcategory);
@@ -2965,7 +3002,7 @@ function renderTaskCard(t) {
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
+    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
@@ -4157,9 +4194,11 @@ async function handleTaskActionButton(button) {
         if (action === 'move-today') await moveDeferredTaskToToday(taskId);
         if (action === 'reschedule-overdue') await rescheduleOverdueTask(taskId, button.dataset.rescheduleOption || 'tomorrow');
         if (action === 'priority-menu') {
-            const priority = button.dataset.priority || 'normal';
+            const priority = normalizeTaskPriorityValue(button.dataset.priority);
             const result = await apiPatchTaskPriority(taskId, priority);
             if (result?.success) {
+                allTasks = allTasks.map(item => Number(item.id) === taskId ? { ...item, ...(result.task || {}), priority } : item);
+                applyTaskPriorityVisualState(taskId, priority);
                 notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
                 showNotification('Пріоритет оновлено', 'success');
                 await loadAllTasks();
@@ -4414,20 +4453,21 @@ async function cycleStatus(taskId, newStatus) {
 
 async function updateTaskPriorityQuick(select) {
     const taskId = Number(select.dataset.taskId || 0);
-    const priority = select.value || 'normal';
+    const priority = normalizeTaskPriorityValue(select.value);
     const task = allTasks.find(t => Number(t.id) === taskId);
-    const previous = task?.priority || 'normal';
-    select.disabled = true;
+    const previous = normalizeTaskPriorityValue(task?.priority);
+    setTaskPrioritySelectBusy(select, true);
     const result = await apiPatchTaskPriority(taskId, priority);
-    select.disabled = false;
+    setTaskPrioritySelectBusy(select, false);
     if (result?.success) {
         allTasks = allTasks.map(item => Number(item.id) === taskId ? { ...item, ...(result.task || {}), priority } : item);
+        applyTaskPriorityVisualState(taskId, priority);
         showNotification('Пріоритет оновлено', 'success');
         notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
         renderBoard();
         return;
     }
-    select.value = previous;
+    setTaskPrioritySelectVisual(select, previous);
     showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
 }
 

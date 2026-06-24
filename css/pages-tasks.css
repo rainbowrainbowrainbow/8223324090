@@ -1,6 +1,16 @@
 .task-card {
+    --task-priority-color: var(--gray-300);
+    --task-priority-bg: rgba(255, 255, 255, 0.88);
+    --task-priority-hover-bg: rgba(255, 255, 255, 0.96);
+    --task-priority-focus-ring: rgba(59, 130, 246, 0.2);
     cursor: pointer;
-    border-left: 4px solid var(--gray-200);
+    border-left: 4px solid var(--task-priority-color);
+}
+
+.task-card:focus-visible {
+    outline: 3px solid var(--task-priority-focus-ring);
+    outline-offset: 2px;
+    background: var(--task-priority-hover-bg);
 }
 
 .task-card[data-status="in_progress"] {
@@ -17,9 +27,146 @@
     color: var(--gray-400);
 }
 
+.task-card[data-priority],
+.task-card[data-priority]:hover,
+.task-card.is-self-personal[data-priority],
+.task-card.is-self-personal[data-priority]:hover {
+    border-left-color: var(--task-priority-color);
+}
+
+.task-card[data-priority="urgent"],
+.task-card.priority-urgent {
+    --task-priority-color: #E11D48;
+    --task-priority-bg: linear-gradient(135deg, rgba(225, 29, 72, 0.13), rgba(255, 255, 255, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(225, 29, 72, 0.17), rgba(255, 255, 255, 0.96));
+    --task-priority-focus-ring: rgba(225, 29, 72, 0.24);
+    border-left-color: var(--task-priority-color);
+}
+
+.task-card[data-priority="urgent"] .task-card-title,
+.task-card.priority-urgent .task-card-title {
+    color: #9f1239;
+    font-weight: 950;
+}
+
 .task-card[data-priority="high"],
 .task-card.priority-high {
-    border-left-color: #EF4444;
+    --task-priority-color: #F97316;
+    --task-priority-bg: linear-gradient(135deg, rgba(249, 115, 22, 0.11), rgba(255, 255, 255, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(255, 255, 255, 0.96));
+    --task-priority-focus-ring: rgba(249, 115, 22, 0.24);
+    border-left-color: var(--task-priority-color);
+}
+
+.task-card[data-priority="normal"],
+.task-card.priority-normal {
+    --task-priority-color: #64748B;
+    --task-priority-bg: linear-gradient(135deg, rgba(100, 116, 139, 0.08), rgba(255, 255, 255, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(100, 116, 139, 0.11), rgba(255, 255, 255, 0.96));
+    --task-priority-focus-ring: rgba(100, 116, 139, 0.22);
+    border-left-color: var(--task-priority-color);
+}
+
+.task-card[data-priority="low"],
+.task-card.priority-low {
+    --task-priority-color: #0EA5E9;
+    --task-priority-bg: linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(255, 255, 255, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(255, 255, 255, 0.96));
+    --task-priority-focus-ring: rgba(14, 165, 233, 0.24);
+    border-left-color: var(--task-priority-color);
+}
+
+.task-priority-select:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.28);
+    outline-offset: 2px;
+}
+
+.task-priority-select--urgent,
+.task-card[data-priority="urgent"] .task-priority-select {
+    background: rgba(225, 29, 72, 0.12);
+    border-color: rgba(225, 29, 72, 0.48);
+    color: #9f1239;
+}
+
+.task-priority-select--high,
+.task-card[data-priority="high"] .task-priority-select {
+    background: rgba(249, 115, 22, 0.12);
+    border-color: rgba(249, 115, 22, 0.48);
+    color: #9a3412;
+}
+
+.task-priority-select--normal,
+.task-card[data-priority="normal"] .task-priority-select {
+    background: rgba(100, 116, 139, 0.1);
+    border-color: rgba(100, 116, 139, 0.38);
+    color: #334155;
+}
+
+.task-priority-select--low,
+.task-card[data-priority="low"] .task-priority-select {
+    background: rgba(14, 165, 233, 0.12);
+    border-color: rgba(14, 165, 233, 0.42);
+    color: #075985;
+}
+
+html[data-theme="dark"] .task-card[data-priority="urgent"],
+body.dark-mode .task-card[data-priority="urgent"] {
+    --task-priority-color: #FB7185;
+    --task-priority-bg: linear-gradient(135deg, rgba(225, 29, 72, 0.24), rgba(15, 23, 42, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(225, 29, 72, 0.3), rgba(15, 23, 42, 0.94));
+    --task-priority-focus-ring: rgba(251, 113, 133, 0.34);
+}
+
+html[data-theme="dark"] .task-card[data-priority="high"],
+body.dark-mode .task-card[data-priority="high"] {
+    --task-priority-color: #FDBA74;
+    --task-priority-bg: linear-gradient(135deg, rgba(249, 115, 22, 0.22), rgba(15, 23, 42, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(249, 115, 22, 0.28), rgba(15, 23, 42, 0.94));
+    --task-priority-focus-ring: rgba(251, 146, 60, 0.32);
+}
+
+html[data-theme="dark"] .task-card[data-priority="normal"],
+body.dark-mode .task-card[data-priority="normal"] {
+    --task-priority-color: #94A3B8;
+    --task-priority-bg: linear-gradient(135deg, rgba(100, 116, 139, 0.16), rgba(15, 23, 42, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(100, 116, 139, 0.22), rgba(15, 23, 42, 0.94));
+    --task-priority-focus-ring: rgba(148, 163, 184, 0.28);
+}
+
+html[data-theme="dark"] .task-card[data-priority="low"],
+body.dark-mode .task-card[data-priority="low"] {
+    --task-priority-color: #7DD3FC;
+    --task-priority-bg: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(15, 23, 42, 0.9));
+    --task-priority-hover-bg: linear-gradient(135deg, rgba(14, 165, 233, 0.26), rgba(15, 23, 42, 0.94));
+    --task-priority-focus-ring: rgba(56, 189, 248, 0.3);
+}
+
+html[data-theme="dark"] .task-priority-select--urgent,
+body.dark-mode .task-priority-select--urgent {
+    background: rgba(225, 29, 72, 0.22);
+    border-color: rgba(251, 113, 133, 0.5);
+    color: #fecdd3;
+}
+
+html[data-theme="dark"] .task-priority-select--high,
+body.dark-mode .task-priority-select--high {
+    background: rgba(249, 115, 22, 0.2);
+    border-color: rgba(251, 146, 60, 0.5);
+    color: #fed7aa;
+}
+
+html[data-theme="dark"] .task-priority-select--normal,
+body.dark-mode .task-priority-select--normal {
+    background: rgba(100, 116, 139, 0.2);
+    border-color: rgba(148, 163, 184, 0.38);
+    color: #e2e8f0;
+}
+
+html[data-theme="dark"] .task-priority-select--low,
+body.dark-mode .task-priority-select--low {
+    background: rgba(14, 165, 233, 0.2);
+    border-color: rgba(56, 189, 248, 0.45);
+    color: #bae6fd;
 }
 
 /* Shared task UX primitives for My Day and Tasks */
@@ -666,30 +813,6 @@ html[data-theme="dark"] .cabinet-day-stat.is-hot {
     .task-work-row .task-card-meta > select {
         max-width: 100%;
     }
-}
-
-.task-card[data-priority="urgent"],
-.task-card.priority-urgent {
-    border-left-color: #E11D48;
-    background:
-        linear-gradient(90deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.05) 42%, rgba(255, 255, 255, 0)),
-        var(--white, #fff);
-    box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.16);
-}
-
-.task-card[data-priority="urgent"] .task-card-title,
-.task-card.priority-urgent .task-card-title {
-    color: #9f1239;
-    font-weight: 950;
-}
-
-.task-priority-select--urgent,
-.task-card[data-priority="urgent"] .task-priority-select,
-.task-card.priority-urgent .task-priority-select {
-    border-color: rgba(244, 63, 94, 0.48);
-    background: #e11d48;
-    color: #fff;
-    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
 }
 
 /* ==========================================

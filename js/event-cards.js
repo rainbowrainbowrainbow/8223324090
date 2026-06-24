@@ -94,16 +94,24 @@
 
     const CATEGORY_CARD_KEYS = Object.freeze({
         birthday: 'holiday-party',
+        event: 'holiday-party',
+        regular: 'holiday-party',
         photo: 'holiday-party',
+        pinata: 'holiday-party',
         quest: 'quest',
         masterclass: 'workshop',
         workshop: 'workshop',
         craft: 'workshop',
+        education: 'workshop',
+        lesson: 'workshop',
         show: 'show-program',
         animation: 'show-program',
         animator: 'show-program',
         program: 'show-program',
         family: 'family-event',
+        graduation: 'family-event',
+        trip: 'family-event',
+        offsite: 'family-event',
         corporate: 'private-party',
         private: 'private-party',
         vip: 'private-party',
@@ -111,6 +119,65 @@
     });
 
     const KEYWORD_RULES = Object.freeze([
+        Object.freeze({
+            key: 'quest',
+            terms: Object.freeze([
+                '\u043a\u04321',
+                '\u043a\u04324',
+                '\u043a\u04325',
+                '\u043a\u04326',
+                '\u043a\u04327',
+                '\u043a\u04328',
+                '\u043a\u04329',
+                '\u043a\u043210',
+                '\u043a\u043211'
+            ])
+        }),
+        Object.freeze({
+            key: 'workshop',
+            terms: Object.freeze([
+                '\u043c\u043a',
+                '\u0437\u0430\u043d\u044f\u0442\u0442\u044f',
+                '\u0443\u0440\u043e\u043a',
+                '\u043f\u0440\u0430\u043a\u0442\u0438\u043a\u0430',
+                'lesson',
+                'practice'
+            ])
+        }),
+        Object.freeze({
+            key: 'family-event',
+            terms: Object.freeze([
+                'graduation',
+                '\u0432\u0438\u043f\u0443\u0441\u043a\u043d\u0438\u0439',
+                '\u0432\u0438\u043f\u0443\u0441\u043a\u043d\u0435',
+                'trip',
+                '\u0432\u0438\u0457\u0437\u0434',
+                'offsite'
+            ])
+        }),
+        Object.freeze({
+            key: 'show-program',
+            terms: Object.freeze([
+                '\u0430\u043d(',
+                '\u0430\u043d2',
+                '\u0434\u043e\u0434\u0430\u0442\u043a\u043e\u0432\u0438\u0439 \u0432\u0435\u0434\u0443\u0447\u0438\u0439',
+                '\u0432\u0435\u0434\u0443\u0447\u0438\u0439',
+                '\u0431\u0443\u043b\u044c\u0431\u0430\u0448\u043a\u043e\u0432\u0435 \u0448\u043e\u0443',
+                '\u0441\u0443\u0445\u0438\u043c \u043b\u044c\u043e\u0434\u043e\u043c',
+                '\u043d\u0435\u043e\u043d',
+                '\u043c\u0430\u0444\u0456\u044f'
+            ])
+        }),
+        Object.freeze({
+            key: 'holiday-party',
+            terms: Object.freeze([
+                '\u0434\u0440',
+                '\u043f\u0456\u043d\u044c\u044f\u0442\u0430',
+                'pinata',
+                '\u0444\u043e\u0442\u043e\u0441\u0435\u0441\u0456\u044f',
+                '\u0444\u043e\u0442\u043e\u0433\u0440\u0430\u0444'
+            ])
+        }),
         Object.freeze({
             key: 'quest',
             terms: Object.freeze(['квест', 'quest', 'детектив', 'пошук скарбів', 'treasure', 'escape'])
@@ -229,6 +296,33 @@
         return getEventCardMeta(event).file;
     }
 
+    function escapeHtmlAttribute(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function renderEventCardImage(event = {}, options = {}) {
+        const renderOptions = options && typeof options === 'object' ? options : {};
+        const card = getEventCardMeta(event);
+        const modifier = String(renderOptions.modifier || '').trim();
+        const extraClassName = String(renderOptions.className || '').trim();
+        const classNames = ['event-card-visual'];
+        if (modifier) classNames.push(`event-card-visual--${modifier}`);
+        if (extraClassName) classNames.push(extraClassName);
+        const alt = renderOptions.alt || card.alt || 'Р—РѕР±СЂР°Р¶РµРЅРЅСЏ С‚РёРїСѓ Р·Р°С…РѕРґСѓ';
+        const loading = renderOptions.loading === 'eager' ? 'eager' : 'lazy';
+        const decoding = ['async', 'auto', 'sync'].includes(renderOptions.decoding) ? renderOptions.decoding : 'async';
+
+        return `
+        <div class="${escapeHtmlAttribute(classNames.join(' '))}">
+            <img src="${escapeHtmlAttribute(card.src)}" alt="${escapeHtmlAttribute(alt)}" loading="${loading}" decoding="${decoding}">
+        </div>
+    `;
+    }
+
     const api = {
         EVENT_CARD_BASE_PATH,
         EVENT_CARD_FILES,
@@ -236,10 +330,12 @@
         getEventCard,
         getEventCardFile,
         getEventCardMeta,
+        renderEventCardImage,
         resolveEventCardKey
     };
 
     root.EventCards = api;
     root.getEventCard = getEventCard;
+    root.renderEventCardImage = renderEventCardImage;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

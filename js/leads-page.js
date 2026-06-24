@@ -85,23 +85,6 @@ const QUALITY_CATEGORIES = {
     corporate:  'Корпоратив'
 };
 
-function getLeadEventCardMeta(record = {}) {
-    return window.EventCards?.getEventCardMeta?.(record) || {
-        src: '/images/event-cards/event-card-holiday-party.png',
-        alt: 'Зображення типу заходу'
-    };
-}
-
-function renderLeadEventCardVisual(record = {}, modifier = '') {
-    const card = getLeadEventCardMeta(record);
-    const className = `event-card-visual${modifier ? ` event-card-visual--${modifier}` : ''}`;
-    return `
-        <div class="${className}">
-            <img src="${escapeHtml(card.src)}" alt="${escapeHtml(card.alt || 'Зображення типу заходу')}" loading="lazy" decoding="async">
-        </div>
-    `;
-}
-
 const PIPELINE_STAGES = [
     {
         key: 'new',
@@ -1791,7 +1774,7 @@ function renderLeadWorkspaceContent(workspace) {
 
     body.innerHTML = `
         <section class="workspace-hero">
-            ${renderLeadEventCardVisual(lead, 'workspace')}
+            ${window.EventCards.renderEventCardImage(lead, { modifier: 'workspace' })}
             <div class="workspace-hero-main">
                 <div>
                     <h3 class="workspace-name">${workspaceText(lead.clientName, maysternyaMode ? `Заявка #${lead.id}` : `Лід #${lead.id}`)}</h3>
@@ -2042,7 +2025,7 @@ function renderKanban() {
             const phoneTel = phone.replace(/[^+\d]/g, '');
 
             return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}">
-                ${renderLeadEventCardVisual(l, 'compact')}
+                ${window.EventCards.renderEventCardImage(l, { modifier: 'compact' })}
                 <div class="kanban-card-top">
                     <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
                     <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>

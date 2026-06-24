@@ -20,23 +20,6 @@ function getBookingEventCardRecord(booking = {}, program = {}) {
     };
 }
 
-function getBookingEventCardMeta(record = {}) {
-    return window.EventCards?.getEventCardMeta?.(record) || {
-        src: '/images/event-cards/event-card-holiday-party.png',
-        alt: 'Зображення типу заходу'
-    };
-}
-
-function renderBookingEventCardVisual(record = {}, modifier = 'booking') {
-    const card = getBookingEventCardMeta(record);
-    const className = `event-card-visual${modifier ? ` event-card-visual--${modifier}` : ''}`;
-    return `
-        <div class="${className}">
-            <img src="${_escB(card.src)}" alt="${_escB(card.alt || 'Зображення типу заходу')}" loading="lazy" decoding="async">
-        </div>
-    `;
-}
-
 // v33.3: Toggle booking tag selection
 function toggleBookingTag(el) {
     el.classList.toggle('active');
@@ -10752,7 +10735,7 @@ async function showBookingDetails(bookingId) {
                 </div>
             </div>
         </div>
-        ${renderBookingEventCardVisual(bookingEventCardRecord)}
+        ${window.EventCards.renderEventCardImage(bookingEventCardRecord, { modifier: 'booking' })}
         ${priorityCustomerBlockHtml}
         <div class="booking-detail-row">
             <span class="label">${escapeHtml(bookingDetailDateLabel)}:</span>

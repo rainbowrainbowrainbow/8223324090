@@ -7,6 +7,7 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
+const eventCardsHelper = require('../js/event-cards');
 
 const ROOT = path.join(__dirname, '..');
 let passed = 0, failed = 0;
@@ -121,6 +122,17 @@ function getHtmlScripts(html) {
         .map(m => m[1].split('?')[0]);
 }
 
+function scriptIndex(scripts, expected) {
+    return scripts.findIndex(src => src === expected || src.endsWith(`/${expected}`));
+}
+
+function htmlScriptLoadsBefore(htmlFile, dependency, consumer) {
+    const scripts = getHtmlScripts(fileText(htmlFile));
+    const dependencyIndex = scriptIndex(scripts, dependency);
+    const consumerIndex = scriptIndex(scripts, consumer);
+    return dependencyIndex >= 0 && consumerIndex >= 0 && dependencyIndex < consumerIndex;
+}
+
 function getInlineScripts(html) {
     return [...html.matchAll(/<script(?!\s+src)[^>]*>([\s\S]*?)<\/script>/g)]
         .map(m => m[1]);
@@ -134,6 +146,23 @@ function walkFiles(dir, matcher) {
         return matcher(full) ? [full] : [];
     });
 }
+
+const eventCardSmokeDom = new JSDOM(`<main>${eventCardsHelper.renderEventCardImage({ title: 'Treasure quest' })}</main>`);
+const eventCardSmokeImage = eventCardSmokeDom.window.document.querySelector('.event-card-visual img');
+const eventCardPagesCss = cssTextWithImports('css/pages.css');
+const eventCardVisualRule = cssRuleText(eventCardPagesCss, '.event-card-visual');
+const eventCardImageRule = cssRuleText(eventCardPagesCss, '.event-card-visual img');
+
+check('Event card visual smoke is static, ordered, and DB-free',
+    htmlScriptLoadsBefore('index.html', 'js/event-cards.js', 'js/booking.js')
+    && htmlScriptLoadsBefore('programs.html', 'js/event-cards.js', 'js/programs-page.js')
+    && htmlScriptLoadsBefore('leads.html', 'js/event-cards.js', 'js/leads-page.js')
+    && htmlScriptLoadsBefore('afisha.html', 'js/event-cards.js', 'js/afisha-page.js')
+    && eventCardSmokeImage?.closest('.event-card-visual')
+    && eventCardSmokeImage?.getAttribute('src')?.startsWith('/images/event-cards/')
+    && eventCardVisualRule.includes('aspect-ratio: 16 / 9')
+    && eventCardImageRule.includes('object-fit: cover'));
+eventCardSmokeDom.window.close();
 
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS

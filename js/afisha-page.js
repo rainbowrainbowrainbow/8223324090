@@ -41,23 +41,6 @@
             .replace(/'/g, '&#039;');
     }
 
-    function getAfishaEventCardMeta(record = {}) {
-        return window.EventCards?.getEventCardMeta?.(record) || {
-            src: '/images/event-cards/event-card-holiday-party.png',
-            alt: 'Зображення типу заходу'
-        };
-    }
-
-    function renderAfishaEventCardVisual(record = {}, modifier = '') {
-        const card = getAfishaEventCardMeta(record);
-        const className = `event-card-visual${modifier ? ` event-card-visual--${modifier}` : ''}`;
-        return `
-            <div class="${className}">
-                <img src="${esc(card.src)}" alt="${esc(card.alt || 'Зображення типу заходу')}" loading="lazy" decoding="async">
-            </div>
-        `;
-    }
-
     function notify(message, type = 'info') {
         if (typeof showNotification === 'function') showNotification(message, type);
     }
@@ -262,7 +245,7 @@
             return `
                 <article class="afisha-page-item ${isActive ? 'is-active' : ''}" data-afisha-id="${esc(item.id)}">
                     <button type="button" class="afisha-event-select" data-afisha-action="select" data-id="${esc(item.id)}" aria-pressed="${isActive ? 'true' : 'false'}">
-                        ${renderAfishaEventCardVisual(item, 'compact')}
+                        ${window.EventCards.renderEventCardImage(item, { modifier: 'compact' })}
                         <div class="afisha-item-main">
                             <div class="afisha-item-topline">
                                 ${typeBadge(item.type)}
@@ -328,7 +311,7 @@
         const materials = selectedMaterials();
         container.innerHTML = `
             <article class="afisha-event-hero-card">
-                ${renderAfishaEventCardVisual(item, 'workspace')}
+                ${window.EventCards.renderEventCardImage(item, { modifier: 'workspace' })}
                 <div class="afisha-event-hero-main">
                     <div class="afisha-item-topline">
                         ${typeBadge(item.type)}

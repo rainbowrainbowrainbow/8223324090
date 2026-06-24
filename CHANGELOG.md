@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.17 - Activity Detail Card Fix
+
+### Timeline / Activity detail card / Animator names / Scenario labels / (Клешня, 24.06.2026) [codex]
+- **Карта activity більше не показує `Прихід гостей` для активності** - у деталях `Мафія(90)` та інших activity відображається `Час активності` з реальним діапазоном часу, а arrival label лишається тільки для банкету.
+- **Аніматори показуються реальними іменами** - detail card у room timeline підтягує animator line/resource, fallback із `timelineIdentity` і другого аніматора у форматі `Женя + Андрій`.
+- **Технічний рядок `Ведучих: 1` прибрано з activity card** - для активностей лишається зрозумілий рядок `Аніматори`, а не службовий hosts count.
+- **Сценарій більше не бреше generic `Подія`** - known activity program показує конкретну назву або тип (`Мафія`, `Квест`, `Анімація`), а технічні workspace labels фільтруються.
+- **Regression guards оновлено** - `tests/ui-check.js`, `tests/booking-drawer-encoding.test.js` і `tests/booking-package-contract.test.js` перевіряють activity labels, animator names, scenario resolver і збереження arrival labels для банкету.
+- **Manual QA локально заблоковано інфраструктурою** - local/e2e server не піднявся без доступного PostgreSQL на `127.0.0.1:55432`, тому реліз підтверджено automated baseline і потребує live/staging spot-check після deploy.
+- **Релізні маркери піднято до `0.77.17`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.16 - Technical Debt Stability Fixes
 
 ### Stability / Logout shell / Timeline guards / Cleanup surfaces / (Клешня, 24.06.2026) [codex]

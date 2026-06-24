@@ -4634,14 +4634,132 @@ function bookingDetailModalTitle(booking = {}, fallback = 'Бронювання'
     return [label || programCode, programName].filter(Boolean).join(': ') || fallback;
 }
 
+function bookingDetailScenarioText(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return [
+            value.label,
+            value.name,
+            value.title,
+            value.value,
+            value.text
+        ].map(bookingDetailScenarioText).find(Boolean) || '';
+    }
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const technical = new Set([
+        'event',
+        'event_kitchen',
+        'kitchen_only',
+        'lead_only',
+        'closed_slot',
+        'подія',
+        'подія + кухня',
+        'подія+кухня',
+        'заявка'
+    ]);
+    return technical.has(text.toLocaleLowerCase('uk-UA')) ? '' : text;
+}
+
+function bookingDetailActivityExplicitScenarioLabel(booking = {}, workspace = null) {
+    const extra = bookingDetailTimelineExtraData(booking);
+    return [
+        workspace?.scenario,
+        workspace?.activityScenario,
+        workspace?.activity_scenario,
+        workspace?.activityTheme,
+        workspace?.activity_theme,
+        workspace?.theme,
+        workspace?.themeName,
+        workspace?.theme_name,
+        workspace?.scenarioLabel,
+        workspace?.scenario_label,
+        workspace?.scenarioName,
+        workspace?.scenario_name,
+        workspace?.gameScenario,
+        workspace?.game_scenario,
+        workspace?.gameTheme,
+        workspace?.game_theme,
+        extra.activityScenario,
+        extra.activity_scenario,
+        extra.activityTheme,
+        extra.activity_theme,
+        extra.theme,
+        extra.themeName,
+        extra.theme_name,
+        extra.scenarioLabel,
+        extra.scenario_label,
+        extra.scenarioName,
+        extra.scenario_name,
+        extra.gameScenario,
+        extra.game_scenario,
+        extra.gameTheme,
+        extra.game_theme
+    ].map(bookingDetailScenarioText).find(Boolean) || '';
+}
+
+function bookingDetailCategoryScenarioLabel(category) {
+    const labels = {
+        quest: 'Квест',
+        animation: 'Анімація',
+        show: 'Шоу',
+        photo: 'Фото',
+        masterclass: 'Майстер-клас',
+        pinata: 'Піньята',
+        education: 'Заняття',
+        custom: 'Інше'
+    };
+    return labels[String(category || '').trim().toLowerCase()] || '';
+}
+
+function bookingDetailProgramForScenario(booking = {}) {
+    const products = typeof getProductsSync === 'function' ? getProductsSync() : [];
+    if (!Array.isArray(products) || !products.length) return null;
+    const id = String(booking.programId || booking.program_id || '').trim();
+    const code = String(booking.programCode || booking.program_code || '').trim();
+    const name = String(booking.programName || booking.program_name || '').trim();
+    const label = String(booking.label || '').trim();
+    return products.find(product => id && String(product.id || '').trim() === id)
+        || products.find(product => code && String(product.code || '').trim() === code)
+        || products.find(product => name && String(product.name || '').trim() === name)
+        || products.find(product => label && String(product.label || '').trim() === label)
+        || null;
+}
+
+function bookingDetailActivityProductScenarioLabel(booking = {}) {
+    const program = bookingDetailProgramForScenario(booking);
+    const category = program?.category || booking.category || booking.category_id;
+    const productLabel = [
+        program?.name,
+        booking.programName,
+        booking.program_name,
+        program?.label,
+        booking.label,
+        program?.code,
+        booking.programCode,
+        booking.program_code
+    ].map(bookingDetailScenarioText).find(Boolean);
+    const categoryLabel = bookingDetailCategoryScenarioLabel(category);
+    return productLabel || categoryLabel;
+}
+
+function bookingDetailActivityScenarioLabel(booking = {}, workspace = null) {
+    if (!bookingDetailIsActivityWithRoomContext(booking)) return '';
+    const explicitLabel = bookingDetailActivityExplicitScenarioLabel(booking, workspace);
+    const productLabel = bookingDetailActivityProductScenarioLabel(booking);
+    const categoryLabel = bookingDetailCategoryScenarioLabel(booking.category || booking.category_id);
+    return explicitLabel || productLabel || categoryLabel || 'Активність';
+}
+
 function renderBookingWorkspaceDetail(booking) {
     const workspace = getBookingWorkspaceFromBooking(booking);
-    if (!workspace && booking?.programId) return '';
+    const activityScenarioLabel = bookingDetailActivityScenarioLabel(booking, workspace);
+    if (!workspace && booking?.programId && !activityScenarioLabel) return '';
     const scenario = workspace?.scenario || (booking?.programId ? 'event' : 'lead_only');
     const meta = getBookingWorkspaceScenarioMeta(scenario);
+    const scenarioLabel = activityScenarioLabel || meta.label;
     const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail(booking)
         ? ''
-        : `<div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span></div>`;
+        : `<div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">${escapeHtml(scenarioLabel)}</span></div>`;
     const lead = workspace?.leadDetails || {};
     const leadRows = [
         lead.source ? `<div class="booking-detail-row"><span class="label">Джерело ліда:</span><span class="value">${escapeHtml(lead.source)}</span></div>` : '',
@@ -8889,6 +9007,91 @@ function bookingDetailTimelineExtraData(booking = {}) {
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+function bookingDetailTimelineIdentity(booking = {}) {
+    const extra = bookingDetailTimelineExtraData(booking);
+    const raw = booking.timelineIdentity
+        || booking.timeline_identity
+        || extra.timelineIdentity
+        || extra.timeline_identity
+        || {};
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+function bookingDetailLineIdentityValues(booking = {}, identity = bookingDetailTimelineIdentity(booking)) {
+    return [
+        booking.lineId,
+        booking.line_id,
+        booking.resourceId,
+        booking.resource_id,
+        identity.lineId,
+        identity.line_id,
+        identity.resourceId,
+        identity.resource_id
+    ].map(value => String(value || '').trim()).filter(Boolean);
+}
+
+function bookingDetailFindLineByIdentity(lines = [], identityValues = []) {
+    const targets = new Set(identityValues.map(value => String(value || '').trim()).filter(Boolean));
+    if (!targets.size) return null;
+    return (Array.isArray(lines) ? lines : []).find(line => [
+        line?.id,
+        line?.lineId,
+        line?.line_id,
+        line?.resourceId,
+        line?.resource_id
+    ].some(value => targets.has(String(value || '').trim()))) || null;
+}
+
+function bookingDetailPushUniqueName(names, value) {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLocaleLowerCase('uk-UA');
+    if (names.some(existing => String(existing || '').trim().toLocaleLowerCase('uk-UA') === key)) return;
+    names.push(text);
+}
+
+function bookingDetailSecondAnimatorName(booking = {}) {
+    const extra = bookingDetailTimelineExtraData(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    return String(
+        booking.secondAnimator
+        || booking.second_animator
+        || booking.secondAnimatorLineName
+        || booking.second_animator_line_name
+        || workspace.secondAnimatorLineName
+        || workspace.second_animator_line_name
+        || workspace.secondAnimator
+        || workspace.second_animator
+        || ''
+    ).trim();
+}
+
+async function resolveBookingDetailAnimatorDisplay(booking = {}) {
+    const identity = bookingDetailTimelineIdentity(booking);
+    const identityValues = bookingDetailLineIdentityValues(booking, identity);
+    let animatorLines = [];
+    try {
+        animatorLines = await getAnimatorLinesForBookingDate({ forceAnimatorView: true, fresh: false });
+    } catch (err) {
+        console.warn('[BookingDetail] Animator lines unavailable for detail display:', err);
+    }
+
+    const primaryLine = bookingDetailFindLineByIdentity(animatorLines, identityValues);
+    const names = [];
+    bookingDetailPushUniqueName(names, primaryLine?.name || primaryLine?.shortName || primaryLine?.short_name);
+    bookingDetailPushUniqueName(names, identity.resourceName || identity.resource_name || identity.lineName || identity.line_name);
+    bookingDetailPushUniqueName(names, bookingDetailSecondAnimatorName(booking));
+    return names.length ? names.join(' + ') : 'Не вказано';
+}
+
 function bookingDetailRoomName(booking = {}) {
     const projection = bookingDetailTimelineProjection(booking);
     return String(
@@ -9310,6 +9513,7 @@ function bookingDetailIsPrimaryBanquetMember(booking = {}, banquetSnapshot = nul
 function bookingDetailIsBanquetArrivalMode(booking = {}, banquetSnapshot = null, fullBanquetDetailHtml = '') {
     const category = String(booking.category || '').trim().toLowerCase();
     if (category === 'banquet') return true;
+    if (bookingDetailIsActivityWithRoomContext(booking)) return false;
     if (bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml)) return true;
     if (bookingDetailIsPrimaryBanquetMember(booking, banquetSnapshot)) return true;
     return Boolean(String(fullBanquetDetailHtml || '').trim() && bookingDetailCanOwnBanquetPackage(booking));
@@ -9853,7 +10057,11 @@ async function showBookingDetails(bookingId) {
     const lesson = educationLessonDetailsFromBooking(booking);
     const isEducationBooking = Boolean(lesson && Object.keys(lesson).length);
     const roomFirstServiceBooking = canAddAnimationFromRoomBooking(booking);
-    const lineRoleLabel = isEducationBooking ? 'Кабінет' : 'Аніматор';
+    const isActivityDetailBooking = bookingDetailIsActivityWithRoomContext(booking);
+    const lineRoleLabel = isEducationBooking ? 'Кабінет' : (isActivityDetailBooking ? 'Аніматори' : 'Аніматор');
+    const lineDetailValue = isActivityDetailBooking
+        ? await resolveBookingDetailAnimatorDisplay(booking)
+        : (line ? line.name : '-');
     const descriptionHtml = program && program.description
         ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
         : '';
@@ -9974,10 +10182,10 @@ async function showBookingDetails(bookingId) {
     const lineDetailHtml = roomFirstServiceBooking ? '' : `
         <div class="booking-detail-row">
             <span class="label">${lineRoleLabel}:</span>
-            <span class="value">${escapeHtml(line ? line.name : '-')}</span>
+            <span class="value">${escapeHtml(lineDetailValue)}</span>
         </div>
     `;
-    const hostsDetailHtml = roomFirstServiceBooking ? '' : `
+    const hostsDetailHtml = roomFirstServiceBooking || isActivityDetailBooking ? '' : `
         <div class="booking-detail-row">
             <span class="label">Ведучих:</span>
             <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
@@ -9994,12 +10202,13 @@ async function showBookingDetails(bookingId) {
     const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
         && bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
     const isBanquetArrivalMode = bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const isActivityDetailMode = isActivityDetailBooking;
     const headerTimeMetaHtml = useBanquetHeaderSchedule
         || isBanquetArrivalMode
         ? ''
         : `<span class="booking-detail-meta-item">${escapeHtml(bookingDetailTimeRange)}</span>`;
     const bookingDetailDateLabel = isBanquetArrivalMode ? 'Дата банкету' : 'Дата';
-    const bookingDetailTimeLabel = isBanquetArrivalMode ? 'Прихід гостей' : 'Час';
+    const bookingDetailTimeLabel = isActivityDetailMode ? 'Час активності' : (isBanquetArrivalMode ? 'Прихід гостей' : 'Час');
     const bookingDetailTimeValue = isBanquetArrivalMode ? (booking.time || '-') : bookingDetailTimeRange;
     const customerBlockHtml = booking.customerId
         ? `<div id="bookingCustomerBlock" class="booking-customer-block${hasBanquetOverview ? ' booking-customer-block--priority' : ''}"></div>`

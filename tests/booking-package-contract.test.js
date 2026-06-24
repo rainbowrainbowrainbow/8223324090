@@ -3177,7 +3177,8 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.match(bookingJs, /function bookingDetailCanOwnBanquetPackage\(/);
     assert.match(bookingJs, /function bookingDetailIsBanquetArrivalMode\(/);
     assert.match(bookingJs, /const bookingDetailDateLabel = isBanquetArrivalMode \? 'Дата банкету' : 'Дата';/);
-    assert.match(bookingJs, /const bookingDetailTimeLabel = isBanquetArrivalMode \? 'Прихід гостей' : 'Час';/);
+    assert.match(bookingJs, /const isActivityDetailMode = isActivityDetailBooking;/);
+    assert.match(bookingJs, /const bookingDetailTimeLabel = isActivityDetailMode \? 'Час активності' : \(isBanquetArrivalMode \? 'Прихід гостей' : 'Час'\);/);
     assert.match(bookingJs, /const bookingDetailTimeValue = isBanquetArrivalMode \? \(booking\.time \|\| '-'\) : bookingDetailTimeRange;/);
     assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailDateLabel\)\}:<\/span>/);
     assert.match(bookingJs, /<span class="label">\$\{escapeHtml\(bookingDetailTimeLabel\)\}:<\/span>/);

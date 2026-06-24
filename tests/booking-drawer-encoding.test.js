@@ -45,8 +45,10 @@ test('booking detail scenario row is hidden only for kitchen bookings', () => {
     const renderEnd = bookingJs.indexOf('function initBookingPackageWorkspace', helperEnd);
     assert.ok(renderEnd > helperEnd, 'workspace detail block has a stable end');
     const renderBlock = bookingJs.slice(helperEnd, renderEnd);
+    assert.match(renderBlock, /const activityScenarioLabel = bookingDetailActivityScenarioLabel\(booking, workspace\);/);
+    assert.match(renderBlock, /const scenarioLabel = activityScenarioLabel \|\| meta\.label;/);
     assert.match(renderBlock, /const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail\(booking\)\s*\?\s*''\s*:/);
-    assert.match(renderBlock, /<span class="label">Сценарій:<\/span><span class="value">\$\{escapeHtml\(meta\.label\)\}<\/span>/);
+    assert.match(renderBlock, /<span class="label">Сценарій:<\/span><span class="value">\$\{escapeHtml\(scenarioLabel\)\}<\/span>/);
     assert.match(renderBlock, /\$\{scenarioRowHtml\}/);
 });
 

@@ -517,6 +517,10 @@ checkPage('customers.html', (doc, html) => {
     check('Customer children section is list-based and text-safe', customerPageCode.includes('role="list"') && customerPageCode.includes('role="listitem"') && customerChildFactsRule.includes('grid-template-columns') && customerChildFactValueRule.includes('overflow-wrap: anywhere') && customerChildNoteRule.includes('overflow-wrap: anywhere') && darkCustomerChildNoteRule.includes('#CBD5E1'));
     check('Customer hero layout prevents action overlap', customerHeroRule.includes('display: grid') && customerHeroRule.includes('grid-template-areas') && customerHeroRule.includes('"actions actions"') && customerHeroIdentityRule.includes('min-width: 0') && customerHeroActionsRule.includes('flex-wrap: wrap') && customerHeroActionsRule.includes('grid-area: actions') && customerHeroActionButtonRule.includes('white-space: normal') && customerHeroActionButtonRule.includes('overflow-wrap: anywhere') && customerHeroDangerRule.includes('border-left'));
     check('Customer API surfaces canonical children for list search export and bulk placeholders', customerRouteCode.includes('function loadCustomerChildrenMap') && customerRouteCode.includes('function applyCustomerChildrenProjection') && customerRouteCode.includes('function customerChildrenSearchSql') && customerRouteCode.includes('queryUpcomingBirthdayRows') && customerRouteCode.includes('customer.childNameDisplay || customer.childName') && customerRouteCode.includes('UPDATE customer_children') && customerRouteCode.includes('customerChildrenNameDisplay') && customerRouteCode.includes('customerChildrenBirthdayDisplay'));
+    check('Customer legacy child fields are compatibility snapshots backed by policy helper', customerRouteCode.includes('buildLegacyChildSnapshot') && fileText('services/customerChildren.js').includes('LEGACY_CHILD_FIELD_POLICY') && fileText('docs/CUSTOMER_CHILDREN_LEGACY_FIELDS_POLICY_2026-06-23.md').includes('compatibility snapshots only'));
+    check('Customer placeholders and exports show multi-child display policy', customerRouteCode.includes("replace(/\\{childBirthday\\}/g, customer.childBirthdayDisplay || customer.childBirthday || '')") && customerRouteCode.includes("'Діти'") && customerRouteCode.includes("'ДН дітей'") && customerRouteCode.includes('projected.childBirthdayDisplay ? `; ДН: ${projected.childBirthdayDisplay}`') && customerPageCode.includes('{childBirthday}') && customerPageCode.includes('підставляють короткий список') && fileText('docs/CUSTOMER_CHILDREN_DISPLAY_POLICY_2026-06-23.md').includes('Bulk message `{childName}`'));
+    check('Customer child manual review exposes audit-preserving UI and API', !!doc.querySelector('.crm-tab[data-tab="children-review"]') && !!doc.getElementById('tabChildrenReview') && customerPageCode.includes('function loadChildrenReview') && customerPageCode.includes('function saveChildrenReviewEditor') && customerPageCode.includes("customerApiUrl('/api/customers/children-review?format=csv&limit=500')") && customerRouteCode.includes("router.get('/children-review'") && customerRouteCode.includes("router.post('/children-review/:customerId/resolve'") && customerRouteCode.includes("source_kind = 'manual_review'") && customerRouteCode.includes('original_preserved_in_source_rows') && customerRouteCode.includes('jsonb_set'));
+    check('Customer child manual review resolves only active review candidates', customerRouteCode.includes("sourceFilter = `AND cc.id = ANY($3::bigint[]) AND ${customerChildReviewActiveSql('cc')} AND ${customerChildReviewCandidateSql('cc')}`"));
     check('Customer birthday scheduler reads canonical children with legacy fallback', schedulerCode.includes('function queryCustomersByChildBirthday') && schedulerCode.includes('JOIN customer_children cc') && schedulerCode.includes('UNION ALL') && schedulerCode.includes('isCustomerChildrenStorageMissing'));
     check('Customer dark mode covers body.dark-mode surfaces', html.includes('body.dark-mode .stat-card') && html.includes('body.dark-mode .crm-table-wrap'));
     check('Customer dark mode covers html data-theme surfaces', html.includes('html[data-theme="dark"] .stat-card') && html.includes('html[data-theme="dark"] .crm-table-wrap'));
@@ -639,10 +643,11 @@ checkPage('leads.html', (doc, html) => {
     const kanbanView = doc.getElementById('kanbanView');
     const kanbanSummarySlot = doc.getElementById('kanbanSummarySlot');
     const leadPageCode = fileText('js/leads-page.js');
+    const leadPageStyles = fileText('css/pages-leads.css');
     check('Leads explainability region exists', !!doc.getElementById('leadsExplainability'));
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
-    check('Lead celebrants textarea supports per-child birthdays', doc.getElementById('leadCelebrants')?.getAttribute('placeholder')?.includes('2018-01-01') && doc.getElementById('ccCelebrants')?.getAttribute('placeholder')?.includes('2020-03-04') && leadPageCode.includes('const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/') && leadPageCode.includes('birthday,') && leadPageCode.includes('notes: notes || null'));
+    check('Lead celebrants use structured rows with birthday and preview', doc.getElementById('leadCelebrants')?.hasAttribute('hidden') && doc.getElementById('ccCelebrants')?.hasAttribute('hidden') && doc.getElementById('leadCelebrantsRows') && doc.getElementById('ccCelebrantsRows') && doc.getElementById('leadCelebrantsPreview') && doc.getElementById('ccCelebrantsPreview') && html.includes('data-celebrants-editor="leadCelebrants"') && html.includes('data-celebrants-editor="ccCelebrants"') && leadPageCode.includes('function renderCelebrantsEditor') && leadPageCode.includes('function getCelebrantsPayload') && leadPageCode.includes('function isCelebrantsEditorDirty') && leadPageCode.includes("if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants") && leadPageCode.includes('if (ccCelebrantsDirty) leadBody.celebrants = body.celebrants || []') && leadPageStyles.includes('.lead-celebrant-row') && leadPageStyles.includes('.lead-celebrants-preview'));
     check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
     check('Lead edit modal save button exists', saveBtn?.type === 'button');
     check('Customer card modal date input exists', customerDate?.type === 'date');
@@ -698,6 +703,7 @@ checkPage('timeline-settings.html', (doc, html) => {
 checkPage('booking-summary.html', (doc, html) => {
     const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
     const banquetSummaryServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'banquetSummary.js'), 'utf8');
+    const banquetSummaryPdfCode = fs.readFileSync(path.join(ROOT, 'services', 'banquetSummaryPdf.js'), 'utf8');
     const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
     const printCss = cssAtRuleBlock(pageCss, '@media print');
     const mobileCss = cssAtRuleBlock(pageCss, '@media (max-width: 760px)');
@@ -1070,16 +1076,23 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCss.includes('.summary-total-card'));
     check('Booking summary details rows use birthday, children, and conditional program contract',
         pageCode.includes('function formatBirthday(value)')
+        && pageCode.includes('function summaryCelebrants(summary = {})')
+        && pageCode.includes('function summaryCelebrantsNames(summary = {})')
         && renderDocumentBody.includes("briefItem('Діти', counts.children)")
         && renderDocumentBody.includes("programLabel ? briefItem('Програма', programLabel) : ''")
-        && renderDocumentBody.includes("briefItem('Дата народження', formatBirthday(celebrant.birthday))")
+        && renderDocumentBody.includes('briefItem(celebrantsNameLabel, celebrantsNameDisplay)')
+        && renderDocumentBody.includes('briefItem(celebrantsBirthdayLabel, celebrantsBirthdayDisplay)')
+        && renderDocumentBody.includes("celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник'")
+        && renderDocumentBody.includes("celebrants.length > 1 ? 'ДН дітей' : 'Дата народження'")
         && summaryTextBody.includes('const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;')
-        && summaryTextBody.includes('`Дата народження: ${formatBirthday(celebrant.birthday)}`')
+        && summaryTextBody.includes('`${celebrantsNameLabel}: ${formatValue(celebrantsNameDisplay)}`')
+        && summaryTextBody.includes('`${celebrantsBirthdayLabel}: ${formatValue(celebrantsBirthdayDisplay)}`')
         && summaryTextBody.includes('`Дітей: ${formatValue(counts.children)}`')
         && summaryTextBody.includes('...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : [])')
         && !renderDocumentBody.includes("briefItem('Учасники'")
         && !renderDocumentBody.includes("briefItem('Програма', event.programName)")
         && !summaryTextBody.includes('`Програма: ${formatValue(event.programName)}`'));
+    check('Banquet summary backend and PDF preserve full customer children display', banquetSummaryServiceCode.includes('celebrants: normalizedCustomer.children') && banquetSummaryServiceCode.includes('childrenDisplay: customerChildrenFullDisplay(children)') && banquetSummaryPdfCode.includes('function summaryCelebrants(summary = {})') && banquetSummaryPdfCode.includes("celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник'") && banquetSummaryPdfCode.includes("celebrants.length > 1 ? 'ДН дітей' : 'Дата народження'"));
 });
 
 checkPage('sound.html', (doc, html) => {
@@ -2506,6 +2519,38 @@ const bookingDetailLineRowHasNoCopyAffordance = bookingDetailLineDetailBlock.inc
     && !bookingDetailLineDetailBlock.includes('detail-copy-btn');
 const bookingDetailStatusBadgeRule = cssRuleText(globalModalsCss, '#bookingModal .booking-detail-row .status-badge');
 const bookingDetailGroupRow = bookingDetailRowBlock(bookingDetailStandardBlock, 'Група');
+const activityFirstBanquetDetailFixture = {
+    booking: {
+        id: 'BK-2026-0502',
+        programId: 'mafia',
+        programName: 'Мафія',
+        label: 'Мафія(90)',
+        category: 'show',
+        duration: 90,
+        date: '2026-06-24',
+        time: '15:00',
+        room: 'Диван 3',
+        lineId: 'anim-zhenia',
+        hosts: 2,
+        secondAnimator: 'Андрій',
+        extraData: {
+            bookingWorkspace: { scenario: 'event' },
+            timelineIdentity: {
+                lineId: 'anim-zhenia',
+                resourceId: 'anim-zhenia',
+                resourceName: 'Женя'
+            }
+        }
+    },
+    animatorLines: [{ id: 'anim-zhenia', name: 'Женя' }],
+    expected: {
+        timeLabel: 'Час активності',
+        timeValue: '15:00 - 16:30',
+        animatorLabel: 'Аніматори',
+        animatorValue: 'Женя + Андрій',
+        scenarioValue: 'Мафія'
+    }
+};
 const kitchenMenuImagesCode = fs.readFileSync(path.join(ROOT, 'js/kitchen-menu-images.js'), 'utf8');
 const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8');
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
@@ -2648,8 +2693,17 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-meta')
     && globalModalsCss.includes('.booking-detail-meta-item')
     && !/\.booking-detail-header\s*\{[^}]*linear-gradient\(135deg,\s*var\(--primary\)/.test(globalModalsCss)
+    && bookingCode.includes('if (bookingDetailIsActivityWithRoomContext(booking)) return false;')
+    && bookingCode.includes('async function resolveBookingDetailAnimatorDisplay(booking = {})')
+    && bookingCode.includes("getAnimatorLinesForBookingDate({ forceAnimatorView: true, fresh: false })")
+    && bookingCode.includes("names.join(' + ')")
+    && bookingCode.includes("'Не вказано'")
+    && bookingCode.includes("isActivityDetailBooking ? 'Аніматори' : 'Аніматор'")
+    && bookingDetailLineDetailBlock.includes('${escapeHtml(lineDetailValue)}')
+    && bookingDetailStandardBlock.includes('const hostsDetailHtml = roomFirstServiceBooking || isActivityDetailBooking ?')
     && bookingDetailStandardBlock.includes("const bookingDetailDateLabel = isBanquetArrivalMode ? 'Дата банкету' : 'Дата';")
-    && bookingDetailStandardBlock.includes("const bookingDetailTimeLabel = isBanquetArrivalMode ? 'Прихід гостей' : 'Час';")
+    && bookingDetailStandardBlock.includes('const isActivityDetailMode = isActivityDetailBooking;')
+    && bookingDetailStandardBlock.includes("const bookingDetailTimeLabel = isActivityDetailMode ? 'Час активності' : (isBanquetArrivalMode ? 'Прихід гостей' : 'Час');")
     && bookingDetailStandardBlock.includes("const bookingDetailTimeValue = isBanquetArrivalMode ? (booking.time || '-') : bookingDetailTimeRange;")
     && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailDateLabel)}')
     && bookingDetailDynamicLabelRowHasNoCopyAffordance(bookingDetailStandardBlock, '${escapeHtml(bookingDetailTimeLabel)}')
@@ -2679,7 +2733,14 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && bookingDetailStandardBlock.includes("const bookingDetailTitle = bookingDetailModalTitle(booking, roomFirstServiceBooking ? 'Кімнатна бронь' : 'Бронювання');")
     && !bookingDetailStandardBlock.includes("const bookingDetailTitle = [booking.label || booking.programCode, booking.programName]")
     && bookingCode.includes('const scenarioRowHtml = shouldHideBookingWorkspaceScenarioDetail(booking)')
-    && bookingCode.includes('<span class="label">Сценарій:</span><span class="value">${escapeHtml(meta.label)}</span>')
+    && bookingCode.includes('function bookingDetailActivityScenarioLabel(booking = {}, workspace = null)')
+    && bookingCode.includes('function bookingDetailActivityProductScenarioLabel(booking = {})')
+    && bookingCode.includes("quest: 'Квест'")
+    && bookingCode.includes("animation: 'Анімація'")
+    && bookingCode.includes("return explicitLabel || productLabel || categoryLabel || 'Активність';")
+    && bookingCode.includes('const activityScenarioLabel = bookingDetailActivityScenarioLabel(booking, workspace);')
+    && bookingCode.includes('const scenarioLabel = activityScenarioLabel || meta.label;')
+    && bookingCode.includes('<span class="label">Сценарій:</span><span class="value">${escapeHtml(scenarioLabel)}</span>')
     && bookingCode.includes('${scenarioRowHtml}')
     && bookingCode.includes('customer-action-btn" title="Скопіювати імʼя"')
     && bookingCode.includes("navigator.clipboard.writeText('${escapeHtml(customer.phone)}')")
@@ -2700,6 +2761,32 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && globalModalsCss.includes('.booking-detail-danger-zone')
     && panelCss.includes('.booking-detail-package-row > div')
     && panelCss.includes('overflow-wrap: anywhere'));
+check('Activity-first banquet detail fixture keeps activity labels and values correct',
+    activityFirstBanquetDetailFixture.booking.programId === 'mafia'
+    && activityFirstBanquetDetailFixture.booking.programName === 'Мафія'
+    && activityFirstBanquetDetailFixture.booking.duration === 90
+    && activityFirstBanquetDetailFixture.booking.room === 'Диван 3'
+    && activityFirstBanquetDetailFixture.booking.secondAnimator === 'Андрій'
+    && activityFirstBanquetDetailFixture.expected.timeLabel === 'Час активності'
+    && activityFirstBanquetDetailFixture.expected.animatorLabel === 'Аніматори'
+    && activityFirstBanquetDetailFixture.expected.animatorValue === 'Женя + Андрій'
+    && activityFirstBanquetDetailFixture.expected.scenarioValue === 'Мафія'
+    && bookingCode.includes('if (bookingDetailIsActivityWithRoomContext(booking)) return false;')
+    && bookingDetailStandardBlock.includes("const bookingDetailTimeLabel = isActivityDetailMode ? 'Час активності' : (isBanquetArrivalMode ? 'Прихід гостей' : 'Час');")
+    && bookingDetailStandardBlock.includes('const bookingDetailTimeValue = isBanquetArrivalMode ? (booking.time || \'-\') : bookingDetailTimeRange;')
+    && bookingCode.includes('const lineRoleLabel = isEducationBooking ? \'Кабінет\' : (isActivityDetailBooking ? \'Аніматори\' : \'Аніматор\');')
+    && bookingDetailLineDetailBlock.includes('${escapeHtml(lineDetailValue)}')
+    && bookingDetailStandardBlock.includes('const hostsDetailHtml = roomFirstServiceBooking || isActivityDetailBooking ?')
+    && bookingCode.includes('bookingDetailPushUniqueName(names, primaryLine?.name || primaryLine?.shortName || primaryLine?.short_name);')
+    && bookingCode.includes('bookingDetailPushUniqueName(names, bookingDetailSecondAnimatorName(booking));')
+    && bookingCode.includes("names.join(' + ')")
+    && bookingCode.includes('const activityScenarioLabel = bookingDetailActivityScenarioLabel(booking, workspace);')
+    && bookingCode.includes('const scenarioLabel = activityScenarioLabel || meta.label;')
+    && bookingCode.includes('bookingDetailScenarioText')
+    && bookingCode.includes("return explicitLabel || productLabel || categoryLabel || 'Активність';")
+    && bookingCode.includes('<span class="label">Сценарій:</span><span class="value">${escapeHtml(scenarioLabel)}</span>')
+    && !bookingDetailStandardBlock.includes("const bookingDetailTimeLabel = isBanquetArrivalMode ? 'Прихід гостей' : 'Час';")
+    && !bookingDetailStandardBlock.includes('<span class="value">${escapeHtml(String(booking.hosts))}</span>'));
 check('Booking status actions use narrow endpoints and edit_booking visibility',
     apiCode.includes('async function apiMarkBookingPreliminary(id, payload = {})')
     && apiCode.includes('/preliminary')

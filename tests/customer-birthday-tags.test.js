@@ -243,6 +243,12 @@ test('syncBirthdayTagsForCustomer prefers canonical child birthday over legacy f
     assert.deepEqual(systemTags(client).map(tag => tag.system_key), ['birthday', 'birthday_month_08']);
 });
 
+test('syncBirthdayTagsForCustomer ignores manually superseded canonical child birthdays', () => {
+    const serviceSource = readSource('services/customerBirthdayTags.js');
+
+    assert.ok(serviceSource.includes("COALESCE(source_payload #>> '{manual_review,superseded}', 'false') <> 'true'"));
+});
+
 test('syncBirthdayTagsForCustomer is idempotent and does not duplicate system rows', async () => {
     const client = createFakeBirthdayTagClient({ child_birthday: '2019-07-20' });
 

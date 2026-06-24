@@ -53,7 +53,8 @@ const {
 const {
     validateChildBirthday,
     replaceCustomerChildren,
-    buildCustomerChildrenProjection
+    buildCustomerChildrenProjection,
+    buildLegacyChildSnapshot
 } = require('../services/customerChildren');
 
 function getKleshnya() { return require('../services/kleshnya'); }
@@ -1284,6 +1285,9 @@ async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, custom
     const normalizedBusinessContext = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
     const children = leadCustomerChildren(lead);
     const rawCelebrants = parseJsonArray(lead.celebrants);
+    const legacyChildSnapshot = buildLegacyChildSnapshot(children, {
+        childName: leadCustomerChildName(lead)
+    });
     const savedChildren = await replaceCustomerChildren(
         customerId,
         children,
@@ -1301,13 +1305,13 @@ async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, custom
                 lead_celebrants: rawCelebrants,
                 children_count: lead.children_count ?? null,
                 child_age: lead.child_age ?? null,
-                original_lead_child_name_snapshot: leadCustomerChildName(lead)
+                original_lead_child_name_snapshot: legacyChildSnapshot.childName
             }
         },
         { client: queryable }
     );
 
-    const firstChildName = leadCustomerChildName(lead);
+    const firstChildName = legacyChildSnapshot.childName;
     const updated = await queryable.query(
         `UPDATE customers
          SET child_name = CASE

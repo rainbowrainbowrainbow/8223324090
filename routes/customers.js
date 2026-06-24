@@ -19,9 +19,11 @@ const {
     replaceCustomerChildren,
     listCustomerChildren,
     buildCustomerChildrenProjection,
+    buildLegacyChildSnapshot,
     customerChildrenNameDisplay,
     customerChildrenBirthdayDisplay,
     firstCustomerChild,
+    mapCustomerChildRow,
     isCustomerChildrenStorageMissing
 } = require('../services/customerChildren');
 const {
@@ -175,7 +177,11 @@ function normalizeCustomerChildrenPayload(body = {}) {
         throw err;
     }
 
-    const firstChild = childrenProvided ? (children[0] || null) : null;
+    const canonicalSnapshot = buildLegacyChildSnapshot(children);
+    const legacySnapshot = buildLegacyChildSnapshot([], {
+        childName: legacyChildName,
+        childBirthday: legacyBirthday
+    });
     return {
         childrenProvided,
         children: childrenProvided
@@ -184,8 +190,8 @@ function normalizeCustomerChildrenPayload(body = {}) {
                 childName: legacyChildName,
                 childBirthday: legacyBirthday
             }, []),
-        childNameSnapshot: childrenProvided ? (firstChild?.name || null) : legacyChildName,
-        childBirthdaySnapshot: childrenProvided ? (firstChild?.birthday || null) : legacyBirthday
+        childNameSnapshot: childrenProvided ? canonicalSnapshot.childName : legacySnapshot.childName,
+        childBirthdaySnapshot: childrenProvided ? canonicalSnapshot.childBirthday : legacySnapshot.childBirthday
     };
 }
 
@@ -646,6 +652,128 @@ function applyCustomerChildrenProjection(customer, childRows = []) {
     return customer;
 }
 
+function customerChildReviewActiveSql(alias = 'cc') {
+    return `COALESCE(${alias}.source_payload #>> '{manual_review,superseded}', 'false') <> 'true'`;
+}
+
+function customerChildReviewCandidateSql(alias = 'cc') {
+    return `(
+        ${alias}.source_payload->>'needs_review' = 'true'
+        OR ${alias}.source_payload #>> '{manual_review,needs_review}' = 'true'
+        OR ${alias}.source_payload->>'age_snapshot_from_name' = 'true'
+        OR ${alias}.source_payload->>'birthday_rejected' = 'true'
+        OR (
+            ${alias}.source_kind = 'legacy_customer_child'
+            AND ${alias}.birthday IS NULL
+        )
+        OR COALESCE(${alias}.source_payload->'source_columns'->>'child_name', ${alias}.name, '') ~ '[,;\\n\\r]'
+    )`;
+}
+
+function customerChildReviewIssueCodesSql(alias = 'cc') {
+    return `ARRAY_REMOVE(ARRAY[
+        CASE
+            WHEN ${alias}.source_payload->>'needs_review' = 'true'
+              OR ${alias}.source_payload #>> '{manual_review,needs_review}' = 'true'
+            THEN 'needs_review'
+        END,
+        CASE WHEN ${alias}.source_payload->>'age_snapshot_from_name' = 'true' THEN 'suspected_age_in_name' END,
+        CASE WHEN ${alias}.source_payload->>'birthday_rejected' = 'true' THEN 'birthday_rejected' END,
+        CASE
+            WHEN ${alias}.source_kind = 'legacy_customer_child' AND ${alias}.birthday IS NULL
+            THEN 'birthday_missing'
+        END,
+        CASE
+            WHEN COALESCE(${alias}.source_payload->'source_columns'->>'child_name', ${alias}.name, '') ~ '[,;\\n\\r]'
+            THEN 'suspected_multi_child_text'
+        END
+    ], NULL)`;
+}
+
+function mapCustomerChildReviewSource(row = {}) {
+    const child = mapCustomerChildRow(row);
+    const sourceColumns = child.sourcePayload?.source_columns || child.sourcePayload?.sourceColumns || {};
+    return {
+        ...child,
+        issueCodes: Array.isArray(row.issue_codes) ? row.issue_codes : [],
+        originalText: sourceColumns.child_name ?? child.sourcePayload?.child_name ?? child.name ?? null,
+        originalBirthday: sourceColumns.child_birthday ?? child.sourcePayload?.child_birthday ?? child.birthday ?? null,
+        originalSourceTable: child.sourcePayload?.source_table || null,
+        copyRule: child.sourcePayload?.copy_rule || null
+    };
+}
+
+function groupCustomerChildReviewRows(rows = []) {
+    const grouped = new Map();
+    for (const row of rows) {
+        const customerId = Number(row.customer_id);
+        if (!grouped.has(customerId)) {
+            grouped.set(customerId, {
+                customerId,
+                businessContext: row.customer_business_context || row.business_context || DEFAULT_BUSINESS_CONTEXT,
+                name: row.customer_name || null,
+                phone: row.customer_phone || null,
+                instagram: row.customer_instagram || null,
+                childName: row.customer_child_name || null,
+                childBirthday: row.customer_child_birthday || null,
+                sources: []
+            });
+        }
+        grouped.get(customerId).sources.push(mapCustomerChildReviewSource(row));
+    }
+    return Array.from(grouped.values()).map(item => ({
+        ...item,
+        issueCodes: Array.from(new Set(item.sources.flatMap(source => source.issueCodes || []))),
+        sourceChildIds: item.sources.map(source => source.id).filter(Boolean)
+    }));
+}
+
+function csvCell(value) {
+    const text = Array.isArray(value) ? value.join('|') : String(value ?? '');
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
+function customerChildrenReviewCsv(items = []) {
+    const headers = [
+        'customer_id',
+        'business_context',
+        'customer_name',
+        'phone',
+        'instagram',
+        'source_child_id',
+        'issue_codes',
+        'original_text',
+        'original_birthday',
+        'current_name',
+        'current_birthday',
+        'age_snapshot',
+        'source_kind',
+        'source_payload_json'
+    ];
+    const rows = [];
+    for (const item of items) {
+        for (const source of item.sources || []) {
+            rows.push([
+                item.customerId,
+                item.businessContext,
+                item.name,
+                item.phone,
+                item.instagram,
+                source.id,
+                source.issueCodes || [],
+                source.originalText,
+                source.originalBirthday,
+                source.name,
+                source.birthday,
+                source.ageSnapshot,
+                source.sourceKind,
+                JSON.stringify(source.sourcePayload || {})
+            ]);
+        }
+    }
+    return [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\n') + '\n';
+}
+
 function customerChildrenSearchSql(patternRef, alias = 'c') {
     return `EXISTS (
         SELECT 1
@@ -717,6 +845,245 @@ async function queryUpcomingBirthdayRows(businessContext, days) {
     `, legacyParams);
     return legacyResult.rows;
 }
+
+// Children manual review: list/export ambiguous legacy child rows without changing data.
+router.get('/children-review', requireRole('manager', 'admin'), async (req, res) => {
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
+        const result = await pool.query(
+            `SELECT
+                    c.id AS customer_id,
+                    COALESCE(c.business_context, $1) AS customer_business_context,
+                    c.name AS customer_name,
+                    c.phone AS customer_phone,
+                    c.instagram AS customer_instagram,
+                    c.child_name AS customer_child_name,
+                    c.child_birthday AS customer_child_birthday,
+                    cc.id,
+                    cc.business_context,
+                    cc.customer_id,
+                    cc.lead_id,
+                    cc.booking_id,
+                    cc.name,
+                    cc.birthday,
+                    cc.age_snapshot,
+                    cc.note,
+                    cc.source_kind,
+                    cc.source_payload,
+                    cc.sort_order,
+                    cc.created_at,
+                    cc.updated_at,
+                    ${customerChildReviewIssueCodesSql('cc')} AS issue_codes
+             FROM customer_children cc
+             JOIN customers c
+               ON c.id = cc.customer_id
+              AND COALESCE(c.business_context, $1) = cc.business_context
+             WHERE cc.business_context = $1
+               AND ${customerChildReviewActiveSql('cc')}
+               AND ${customerChildReviewCandidateSql('cc')}
+             ORDER BY c.id ASC, cc.sort_order ASC, cc.id ASC
+             LIMIT $2`,
+            [businessContext, limit]
+        );
+
+        const items = groupCustomerChildReviewRows(result.rows);
+        if (req.query.format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="customer_children_review_${new Date().toISOString().slice(0, 10)}.csv"`);
+            return res.send(customerChildrenReviewCsv(items));
+        }
+
+        res.json({
+            success: true,
+            businessContext,
+            count: items.length,
+            sourceRows: result.rows.length,
+            items
+        });
+    } catch (err) {
+        log.error('Customer children review list error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/children-review/:customerId/resolve', requireRole('manager', 'admin'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        const customerId = parseInt(req.params.customerId, 10);
+        if (!Number.isInteger(customerId) || customerId <= 0) {
+            return res.status(400).json({ error: 'Invalid customer ID' });
+        }
+
+        let children;
+        try {
+            if (!Array.isArray(req.body?.children)) {
+                return res.status(400).json({ error: 'children must be an array' });
+            }
+            children = req.body.children
+                .map((child, index) => normalizeChildInput(child, index, { requireName: true }))
+                .filter(Boolean);
+        } catch (err) {
+            if (err instanceof CustomerChildrenError) {
+                return res.status(err.status || 400).json({ error: err.message, code: err.code, details: err.details });
+            }
+            throw err;
+        }
+
+        if (!children.length) {
+            return res.status(400).json({ error: 'At least one child is required' });
+        }
+
+        const sourceChildIds = Array.isArray(req.body?.sourceChildIds)
+            ? Array.from(new Set(req.body.sourceChildIds
+                .map(value => Number(value))
+                .filter(value => Number.isInteger(value) && value > 0)))
+            : [];
+        const reviewNote = cleanText(req.body?.reviewNote || req.body?.note);
+        const reviewedAt = new Date().toISOString();
+        const reviewedBy = req.user?.id || null;
+
+        await client.query('BEGIN');
+
+        const customerResult = await client.query(
+            `SELECT *
+             FROM customers
+             WHERE id = $1
+               AND COALESCE(business_context, $2) = $2
+             FOR UPDATE`,
+            [customerId, businessContext]
+        );
+        if (!customerResult.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Клієнта не знайдено' });
+        }
+
+        const sourceParams = [customerId, businessContext];
+        let sourceFilter = `AND ${customerChildReviewActiveSql('cc')} AND ${customerChildReviewCandidateSql('cc')}`;
+        if (sourceChildIds.length) {
+            sourceParams.push(sourceChildIds);
+            sourceFilter = `AND cc.id = ANY($3::bigint[]) AND ${customerChildReviewActiveSql('cc')} AND ${customerChildReviewCandidateSql('cc')}`;
+        }
+        const sourceResult = await client.query(
+            `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
+                    age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at,
+                    ${customerChildReviewIssueCodesSql('cc')} AS issue_codes
+             FROM customer_children cc
+             WHERE cc.customer_id = $1
+               AND cc.business_context = $2
+               ${sourceFilter}
+             ORDER BY cc.sort_order ASC, cc.id ASC
+             FOR UPDATE`,
+            sourceParams
+        );
+
+        if (!sourceResult.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Немає активних записів дітей для ручної ревізії' });
+        }
+
+        const resolvedSourceIds = sourceResult.rows.map(row => Number(row.id));
+        const supersedePayload = {
+            status: 'superseded',
+            superseded: true,
+            superseded_at: reviewedAt,
+            superseded_by: reviewedBy,
+            reason: 'manual_review_replaced'
+        };
+        await client.query(
+            `UPDATE customer_children
+             SET source_payload = jsonb_set(
+                     source_payload,
+                     '{manual_review}',
+                     COALESCE(source_payload->'manual_review', '{}'::jsonb) || $3::jsonb,
+                     true
+                 ),
+                 updated_at = NOW()
+             WHERE customer_id = $1
+               AND business_context = $2
+               AND source_kind = 'manual_review'
+               AND ${customerChildReviewActiveSql('customer_children')}`,
+            [customerId, businessContext, JSON.stringify(supersedePayload)]
+        );
+
+        const sourceReviewPayload = {
+            status: 'resolved',
+            superseded: true,
+            resolved_at: reviewedAt,
+            resolved_by: reviewedBy,
+            replacement_count: children.length,
+            review_note: reviewNote,
+            original_preserved: true
+        };
+        await client.query(
+            `UPDATE customer_children
+             SET source_payload = jsonb_set(
+                     source_payload,
+                     '{manual_review}',
+                     COALESCE(source_payload->'manual_review', '{}'::jsonb) || $3::jsonb,
+                     true
+                 ),
+                 updated_at = NOW()
+             WHERE id = ANY($1::bigint[])
+               AND business_context = $2`,
+            [resolvedSourceIds, businessContext, JSON.stringify(sourceReviewPayload)]
+        );
+
+        for (const [index, child] of children.entries()) {
+            await client.query(
+                `INSERT INTO customer_children (
+                    business_context, customer_id, lead_id, booking_id, name, birthday, age_snapshot, note,
+                    source_kind, source_payload, sort_order
+                 )
+                 VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, 'manual_review', $7::jsonb, $8)`,
+                [
+                    businessContext,
+                    customerId,
+                    child.name,
+                    child.birthday,
+                    child.ageSnapshot,
+                    child.note,
+                    JSON.stringify({
+                        source: 'customer_children_manual_review',
+                        copy_rule: 'manual_review_resolution',
+                        reviewed_at: reviewedAt,
+                        reviewed_by: reviewedBy,
+                        review_note: reviewNote,
+                        source_child_ids: resolvedSourceIds,
+                        input_index: index,
+                        original_preserved_in_source_rows: true
+                    }),
+                    100 + index
+                ]
+            );
+        }
+
+        await syncBirthdayTagsAfterCustomerSave(client, customerId, reviewedBy);
+        const savedChildren = await listCustomerChildren(customerId, businessContext, { client });
+        const customer = applyCustomerChildrenProjection(mapCustomerRow(customerResult.rows[0]), savedChildren);
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            customer,
+            resolvedSourceChildIds: resolvedSourceIds,
+            children: customer.children || []
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err instanceof CustomerChildrenError) {
+            return res.status(err.status || 400).json({ error: err.message, code: err.code, details: err.details });
+        }
+        log.error('Customer children review resolve error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
 
 // Autocomplete search (for booking form dropdown)
 router.get('/search', async (req, res) => {
@@ -919,8 +1286,8 @@ router.get('/export', exportLimiter, async (req, res) => {
 
         const BOM = '\uFEFF';
         const header = [
-            'ID', "Ім'я", 'Телефон', 'Instagram', 'Соц. ідентичності', "Ім'я дитини",
-            'ДН дитини', 'Джерело', 'Нотатки', 'Бронювань',
+            'ID', "Ім'я", 'Телефон', 'Instagram', 'Соц. ідентичності', 'Діти',
+            'ДН дітей', 'Джерело', 'Нотатки', 'Бронювань',
             'Витрачено (грн)', 'Перший візит', 'Останній візит',
             'Сертифікатів', 'Створено'
         ].join(';');
@@ -989,8 +1356,8 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
             { header: 'Телефон', key: 'phone', width: 16 },
             { header: 'Instagram', key: 'instagram', width: 18 },
             { header: 'Соц. ідентичності', key: 'socialIdentities', width: 28 },
-            { header: "Ім'я дитини", key: 'childName', width: 18 },
-            { header: 'ДН дитини', key: 'childBday', width: 14 },
+            { header: 'Діти', key: 'childName', width: 28 },
+            { header: 'ДН дітей', key: 'childBday', width: 24 },
             { header: 'Джерело', key: 'source', width: 14 },
             { header: 'Бронювань', key: 'bookings', width: 12 },
             { header: 'Витрачено (₴)', key: 'spent', width: 14 },
@@ -1628,7 +1995,10 @@ router.get('/export-vcf', exportLimiter, async (req, res) => {
             ];
             if (r.phone) lines.push(`TEL;TYPE=CELL:${r.phone}`);
             if (r.instagram) lines.push(`X-INSTAGRAM:${r.instagram}`);
-            if (projected.childNameDisplay) lines.push(`NOTE:Діти: ${projected.childNameDisplay}${r.notes ? ' | ' + r.notes.replace(/\n/g, ' ') : ''}`);
+            if (projected.childNameDisplay) {
+                const birthdayText = projected.childBirthdayDisplay ? `; ДН: ${projected.childBirthdayDisplay}` : '';
+                lines.push(`NOTE:Діти: ${projected.childNameDisplay}${birthdayText}${r.notes ? ' | ' + r.notes.replace(/\n/g, ' ') : ''}`);
+            }
             else if (r.notes) lines.push(`NOTE:${r.notes.replace(/\n/g, ' ')}`);
             if (projected.childBirthday) {
                 const d = new Date(projected.childBirthday);
@@ -1749,6 +2119,7 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
             const message = template
                 .replace(/\{name\}/g, customer.name || '')
                 .replace(/\{childName\}/g, customer.childNameDisplay || customer.childName || '')
+                .replace(/\{childBirthday\}/g, customer.childBirthdayDisplay || customer.childBirthday || '')
                 .replace(/\{phone\}/g, customer.phone || '');
             return { id: customer.id, message };
         });

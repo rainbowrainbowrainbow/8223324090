@@ -60,10 +60,17 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(leadsRoute, /INSERT INTO leads[\s\S]*celebrants\)/);
         assert.match(leadsRoute, /celebrants = \$\$\{params\.length\}::jsonb/);
         assert.match(leadsPage, /function parseCelebrantsInput/);
+        assert.match(leadsPage, /function renderCelebrantsEditor/);
+        assert.match(leadsPage, /function getCelebrantsPayload/);
+        assert.match(leadsPage, /function isCelebrantsEditorDirty/);
         assert.match(leadsPage, /function renderCelebrantsValue/);
         assert.match(leadsPage, /leadCelebrants/);
-        assert.match(leadsHtml, /id="leadCelebrants"/);
-        assert.match(leadsHtml, /id="ccCelebrants"/);
+        assert.match(leadsHtml, /id="leadCelebrants" hidden/);
+        assert.match(leadsHtml, /id="ccCelebrants" hidden/);
+        assert.match(leadsHtml, /id="leadCelebrantsRows"/);
+        assert.match(leadsHtml, /id="ccCelebrantsRows"/);
+        assert.doesNotMatch(leadsHtml, /<textarea[^>]*id="leadCelebrants"[^>]*placeholder=/);
+        assert.doesNotMatch(leadsHtml, /<textarea[^>]*id="ccCelebrants"[^>]*placeholder=/);
     });
 
     it('keeps lead/customer linking explicit while preserving cross-channel identity evidence', () => {

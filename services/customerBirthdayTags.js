@@ -171,6 +171,7 @@ async function syncBirthdayTagsForCustomer(clientOrPool, customerId, options = {
                      WHERE customer_id = c.id
                        AND business_context = COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
                        AND birthday IS NOT NULL
+                       AND COALESCE(source_payload #>> '{manual_review,superseded}', 'false') <> 'true'
                      ORDER BY sort_order ASC, id ASC
                      LIMIT 1
                  ) cc ON TRUE

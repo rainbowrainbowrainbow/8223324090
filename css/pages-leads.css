@@ -107,6 +107,75 @@ body[data-page-group="mgmt"] .kanban-cards {
     font: 800 12px/1.35 var(--font-main);
 }
 
+.lead-celebrants-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lead-celebrants-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lead-celebrant-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1.4fr) minmax(120px, 1fr) minmax(80px, .7fr) minmax(120px, 1fr) 36px;
+    gap: 8px;
+    align-items: end;
+    padding: 10px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 8px;
+    background: #F8FAFC;
+}
+
+.lead-celebrant-field {
+    min-width: 0;
+}
+
+.lead-celebrant-field label {
+    margin-bottom: 4px;
+    font-size: 10px;
+}
+
+.lead-celebrant-remove {
+    width: 36px;
+    min-height: 36px;
+    border: 1px solid #FCA5A5;
+    border-radius: 8px;
+    background: #FEF2F2;
+    color: #B91C1C;
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.lead-celebrants-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.lead-celebrants-add {
+    min-height: 38px;
+    padding: 8px 12px;
+    border: 1.5px solid #A7F3D0;
+    border-radius: 8px;
+    background: #ECFDF5;
+    color: #047857;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.lead-celebrants-preview {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 800;
+}
+
 .lead-workflow-info-btn {
     appearance: none;
     -webkit-appearance: none;
@@ -325,6 +394,21 @@ body.dark-mode .lead-active-queue-hint {
     border-color: rgba(96,165,250,0.24);
     background: rgba(59,130,246,0.12);
     color: #BFDBFE;
+}
+
+body.dark-mode .lead-celebrant-row {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.12);
+}
+
+body.dark-mode .lead-celebrants-preview {
+    color: #CBD5E1;
+}
+
+body.dark-mode .lead-celebrants-add {
+    background: rgba(16,185,129,0.12);
+    border-color: rgba(52,211,153,0.28);
+    color: #A7F3D0;
 }
 
 body.dark-mode .lead-workflow-info-btn {
@@ -914,6 +998,14 @@ body.dark-mode .kanban-card .lead-type-select--kanban.type-low {
 }
 
 @media (max-width: 768px) {
+    .lead-celebrant-row {
+        grid-template-columns: 1fr;
+    }
+
+    .lead-celebrant-remove {
+        width: 100%;
+    }
+
     .kanban-column-empty:hover {
         min-width: 190px;
         max-width: 220px;

@@ -29,6 +29,8 @@ describe('Sales Funnel deposit_received local regression', () => {
 
         assert.match(leadsRoute, /function leadCustomerChildren\(lead = \{\}\)/);
         assert.match(leadsRoute, /const children = leadCustomerChildren\(lead\);[\s\S]*replaceCustomerChildren\(\s*customerId,\s*children,/);
+        assert.match(leadsRoute, /const legacyChildSnapshot = buildLegacyChildSnapshot\(children,/);
+        assert.match(leadsRoute, /original_lead_child_name_snapshot: legacyChildSnapshot\.childName/);
         assert.match(leadsRoute, /sourceKind: 'lead_celebrant'/);
         assert.match(leadsRoute, /sourceLeadId: leadId/);
         assert.match(leadsRoute, /sortOrderBase: 10/);

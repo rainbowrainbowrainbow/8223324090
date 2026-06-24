@@ -18,6 +18,8 @@ const CrmState = {
     predefinedTags: [],
     editingTags: [],
     editingChildren: [],
+    childrenReview: null,
+    childrenReviewEditor: null,
     rfmData: null,
     stats: null,
     businessContext: 'event_genix',
@@ -399,6 +401,319 @@ function bindCustomerEditChildrenTools() {
         const index = Number.parseInt(button.dataset.childRemove, 10);
         CrmState.editingChildren = (CrmState.editingChildren || []).filter((_, i) => i !== index);
         renderCustomerEditChildren();
+    });
+}
+
+function customerChildReviewIssueLabel(code) {
+    const labels = {
+        needs_review: 'Потребує ревізії',
+        suspected_age_in_name: 'Вік у полі імені',
+        birthday_rejected: 'Дата відхилена',
+        birthday_missing: 'Немає ДН',
+        suspected_multi_child_text: 'Можливо кілька дітей'
+    };
+    return labels[code] || code;
+}
+
+function customerChildReviewSourceText(source = {}) {
+    return source.originalText || source.name || '—';
+}
+
+function customerChildReviewSourceJson(source = {}) {
+    try {
+        return JSON.stringify(source.sourcePayload || {}, null, 2);
+    } catch {
+        return '{}';
+    }
+}
+
+function normalizeChildrenReviewEditorChildren(children = []) {
+    return (Array.isArray(children) ? children : [])
+        .map(normalizeCustomerChildForEdit)
+        .filter(child => child.name || child.birthday || child.ageSnapshot || child.note);
+}
+
+function renderChildrenReviewEditorRows() {
+    const rows = (Array.isArray(CrmState.childrenReviewEditor?.children) ? CrmState.childrenReviewEditor.children : [])
+        .map(normalizeCustomerChildForEdit);
+    CrmState.childrenReviewEditor.children = rows;
+    if (!rows.length) {
+        CrmState.childrenReviewEditor.children = [normalizeCustomerChildForEdit()];
+    }
+    return (CrmState.childrenReviewEditor.children || []).map((child, index) => `
+        <div class="customer-child-edit-row children-review-edit-row" data-review-child-index="${index}">
+            <div class="customer-child-field">
+                <label>Ім'я</label>
+                <input type="text" data-review-child-field="name" value="${escapeHtml(child.name)}" placeholder="Ім'я дитини">
+            </div>
+            <div class="customer-child-field">
+                <label>ДН</label>
+                <input type="date" data-review-child-field="birthday" value="${escapeHtml(child.birthday)}">
+            </div>
+            <div class="customer-child-field customer-child-field--age">
+                <label>Вік</label>
+                <input type="number" min="0" max="120" data-review-child-field="ageSnapshot" value="${escapeHtml(child.ageSnapshot)}" placeholder="4">
+            </div>
+            <div class="customer-child-field customer-child-field--note">
+                <label>Нотатка</label>
+                <input type="text" data-review-child-field="note" value="${escapeHtml(child.note)}" placeholder="опційно">
+            </div>
+            <button type="button" class="customer-child-remove-btn" data-review-action="remove-child" data-review-child-remove="${index}" aria-label="Прибрати дитину">×</button>
+        </div>
+    `).join('');
+}
+
+function renderChildrenReviewEditor() {
+    const editor = CrmState.childrenReviewEditor;
+    if (!editor) return '';
+    const sources = editor.sources || [];
+    return `<div class="children-review-editor">
+        <div class="children-review-editor-head">
+            <div>
+                <h4>Ручна ревізія: ${escapeHtml(editor.customerName || `#${editor.customerId}`)}</h4>
+                <p>Original legacy/source рядки лишаться в audit. Нижче введи правильний список дітей.</p>
+            </div>
+            <button type="button" class="btn-page-secondary" data-review-action="cancel-editor">Закрити</button>
+        </div>
+        <div class="children-review-originals">
+            ${sources.map(source => `
+                <details class="children-review-original">
+                    <summary>${escapeHtml(customerChildReviewSourceText(source))}</summary>
+                    <pre>${escapeHtml(customerChildReviewSourceJson(source))}</pre>
+                </details>
+            `).join('')}
+        </div>
+        <div class="customer-children-list children-review-edit-list" aria-live="polite">
+            ${renderChildrenReviewEditorRows()}
+        </div>
+        <div class="children-review-note-row">
+            <label for="childrenReviewNote">Коментар до ревізії</label>
+            <input type="text" id="childrenReviewNote" value="${escapeHtml(editor.reviewNote || '')}" placeholder="що саме виправлено">
+        </div>
+        <div class="children-review-actions">
+            <button type="button" class="btn-page-secondary" data-review-action="add-child">+ Дитина</button>
+            <button type="button" class="btn-page-primary" data-review-action="save-review">Зберегти ревізію</button>
+        </div>
+    </div>`;
+}
+
+function renderChildrenReviewTab() {
+    const el = document.getElementById('tabChildrenReview');
+    if (!el) return;
+    const data = CrmState.childrenReview;
+    if (!data) {
+        el.innerHTML = '<div class="crm-empty"><div class="empty-text">Завантаження ревізії дітей...</div></div>';
+        return;
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    const rows = items.length ? items.map(item => {
+        const issueBadges = (item.issueCodes || []).map(code =>
+            `<span class="children-review-issue">${escapeHtml(customerChildReviewIssueLabel(code))}</span>`
+        ).join('');
+        const sourcePreview = (item.sources || []).map(source => `
+            <details class="children-review-source">
+                <summary>${escapeHtml(customerChildReviewSourceText(source))}</summary>
+                <pre>${escapeHtml(customerChildReviewSourceJson(source))}</pre>
+            </details>
+        `).join('');
+        return `<tr>
+            <td>
+                <button type="button" class="link-btn" data-review-action="open-customer" data-customer-id="${item.customerId}">#${item.customerId}</button>
+                <div class="children-review-name">${escapeHtml(item.name || 'Без імені')}</div>
+            </td>
+            <td>${issueBadges || '—'}</td>
+            <td>${sourcePreview}</td>
+            <td>
+                <button type="button" class="btn-page-secondary" data-review-action="edit-review" data-customer-id="${item.customerId}">Розкласти</button>
+            </td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="4"><div class="crm-empty"><div class="empty-text">Немає активних записів для ревізії</div></div></td></tr>`;
+
+    el.innerHTML = `
+        <div class="children-review-panel">
+            <div class="children-review-toolbar">
+                <div>
+                    <h4>Ревізія дітей</h4>
+                    <p>${items.length} клієнтів, ${data.sourceRows || 0} source rows. Ручне виправлення не вигадує ДН з віку.</p>
+                </div>
+                <div class="children-review-actions">
+                    <button type="button" class="btn-page-secondary" data-review-action="refresh">Оновити</button>
+                    <button type="button" class="btn-page-secondary" data-review-action="export">Експорт CSV</button>
+                </div>
+            </div>
+            ${renderChildrenReviewEditor()}
+            <div class="crm-table-wrap children-review-table-wrap">
+                <table class="crm-table children-review-table">
+                    <thead><tr><th>Клієнт</th><th>Причини</th><th>Original source</th><th>Дія</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
+async function loadChildrenReview(force = false) {
+    const el = document.getElementById('tabChildrenReview');
+    if (!el) return;
+    if (CrmState.childrenReview && !force) {
+        renderChildrenReviewTab();
+        return;
+    }
+    el.innerHTML = '<div class="crm-empty"><div class="empty-text">Завантаження ревізії дітей...</div></div>';
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch(customerApiUrl('/api/customers/children-review?limit=200'), {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Помилка завантаження ревізії дітей');
+        CrmState.childrenReview = data;
+        renderChildrenReviewTab();
+    } catch (err) {
+        el.innerHTML = `<div class="crm-empty error"><div class="empty-text">${escapeHtml(err.message || 'Помилка завантаження')}</div></div>`;
+    }
+}
+
+function startChildrenReviewEditor(customerId) {
+    const item = (CrmState.childrenReview?.items || []).find(row => Number(row.customerId) === Number(customerId));
+    if (!item) return;
+    const sources = item.sources || [];
+    const seedChildren = sources.map(source => normalizeCustomerChildForEdit({
+        name: source.name || source.originalText || '',
+        birthday: source.birthday || '',
+        ageSnapshot: source.ageSnapshot ?? '',
+        note: source.note || ''
+    })).filter(child => child.name || child.birthday || child.ageSnapshot || child.note);
+    CrmState.childrenReviewEditor = {
+        customerId: item.customerId,
+        customerName: item.name,
+        sourceChildIds: item.sourceChildIds || [],
+        sources,
+        children: seedChildren.length ? seedChildren : [normalizeCustomerChildForEdit()],
+        reviewNote: ''
+    };
+    renderChildrenReviewTab();
+}
+
+function updateChildrenReviewEditorChild(index, field, value) {
+    if (!CrmState.childrenReviewEditor) return;
+    if (!Array.isArray(CrmState.childrenReviewEditor.children)) CrmState.childrenReviewEditor.children = [];
+    if (!CrmState.childrenReviewEditor.children[index]) CrmState.childrenReviewEditor.children[index] = normalizeCustomerChildForEdit();
+    CrmState.childrenReviewEditor.children[index] = normalizeCustomerChildForEdit({
+        ...CrmState.childrenReviewEditor.children[index],
+        [field]: value
+    });
+}
+
+async function saveChildrenReviewEditor() {
+    const editor = CrmState.childrenReviewEditor;
+    if (!editor) return;
+    const children = normalizeChildrenReviewEditorChildren(editor.children);
+    if (!children.length || children.some(child => !child.name)) {
+        showNotification('Для кожної дитини в ревізії потрібно вказати імʼя', 'error');
+        return;
+    }
+    if (children.some(child => child.ageSnapshot !== '' && (!Number.isInteger(Number(child.ageSnapshot)) || Number(child.ageSnapshot) < 0 || Number(child.ageSnapshot) > 120))) {
+        showNotification('Вік дитини має бути числом від 0 до 120', 'error');
+        return;
+    }
+    const token = localStorage.getItem('pzp_token');
+    try {
+        const res = await fetch(customerApiUrl(`/api/customers/children-review/${editor.customerId}/resolve`), {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(customerPayload({
+                sourceChildIds: editor.sourceChildIds,
+                reviewNote: document.getElementById('childrenReviewNote')?.value || editor.reviewNote || '',
+                children: children.map(child => ({
+                    name: child.name,
+                    birthday: child.birthday || null,
+                    ageSnapshot: child.ageSnapshot === '' ? null : Number(child.ageSnapshot),
+                    note: child.note || null
+                }))
+            }))
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Помилка збереження ревізії');
+        showNotification('Ревізію дітей збережено');
+        CrmState.childrenReviewEditor = null;
+        CrmState.childrenReview = null;
+        await refreshData();
+    } catch (err) {
+        showNotification(err.message || 'Помилка збереження ревізії', 'error');
+    }
+}
+
+function exportChildrenReviewCsv() {
+    const token = localStorage.getItem('pzp_token');
+    const touchWindow = typeof openTouchDownloadWindow === 'function'
+        ? openTouchDownloadWindow('Ревізія дітей')
+        : null;
+    fetch(customerApiUrl('/api/customers/children-review?format=csv&limit=500'), {
+        headers: { 'Authorization': `Bearer ${token}` }
+    }).then(res => {
+        if (!res.ok) throw new Error('Помилка експорту ревізії');
+        return res.blob();
+    }).then(blob => {
+        const filename = `customer_children_review_${new Date().toISOString().slice(0, 10)}.csv`;
+        if (typeof finishBlobDownload === 'function') {
+            finishBlobDownload(blob, filename, { touchWindow, successMessage: 'CSV ревізії підготовлено' });
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+    }).catch(() => {
+        if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
+        showNotification('Помилка експорту ревізії', 'error');
+    });
+}
+
+function bindChildrenReviewTools() {
+    const el = document.getElementById('tabChildrenReview');
+    if (!el || bindChildrenReviewTools.bound) return;
+    bindChildrenReviewTools.bound = true;
+    el.addEventListener('input', event => {
+        const field = event.target?.dataset?.reviewChildField;
+        const row = event.target?.closest?.('[data-review-child-index]');
+        if (!field || !row) return;
+        updateChildrenReviewEditorChild(Number.parseInt(row.dataset.reviewChildIndex, 10), field, event.target.value);
+    });
+    el.addEventListener('click', async event => {
+        const button = event.target.closest('[data-review-action]');
+        if (!button) return;
+        const action = button.dataset.reviewAction;
+        if (action === 'refresh') {
+            CrmState.childrenReview = null;
+            await loadChildrenReview(true);
+        } else if (action === 'export') {
+            exportChildrenReviewCsv();
+        } else if (action === 'edit-review') {
+            startChildrenReviewEditor(button.dataset.customerId);
+        } else if (action === 'open-customer') {
+            await showCustomerDetail(button.dataset.customerId);
+        } else if (action === 'cancel-editor') {
+            CrmState.childrenReviewEditor = null;
+            renderChildrenReviewTab();
+        } else if (action === 'add-child') {
+            if (!CrmState.childrenReviewEditor) return;
+            CrmState.childrenReviewEditor.children = [
+                ...(CrmState.childrenReviewEditor.children || []),
+                normalizeCustomerChildForEdit()
+            ];
+            renderChildrenReviewTab();
+        } else if (action === 'remove-child') {
+            if (!CrmState.childrenReviewEditor) return;
+            const index = Number.parseInt(button.dataset.reviewChildRemove, 10);
+            CrmState.childrenReviewEditor.children = (CrmState.childrenReviewEditor.children || []).filter((_, i) => i !== index);
+            renderChildrenReviewTab();
+        } else if (action === 'save-review') {
+            await saveChildrenReviewEditor();
+        }
     });
 }
 
@@ -1084,7 +1399,7 @@ function applyInitialCustomerQueryParams() {
         CrmState.filters.sortBy = 'total_bookings';
         setCustomerFilterInputsFromState();
     }
-    return ['list', 'rfm', 'duplicates', 'nps', 'bulk'].includes(requestedTab) ? requestedTab : '';
+    return ['list', 'rfm', 'duplicates', 'nps', 'children-review', 'bulk'].includes(requestedTab) ? requestedTab : '';
 }
 
 function getCustomerFilterSummary() {
@@ -2441,7 +2756,7 @@ async function loadBulkTab() {
         </select>
         <label>Шаблон повідомлення</label>
         <textarea id="bulkTemplate" placeholder="Привіт, {name}! Запрошуємо {childName} на свято 🎉"></textarea>
-        <div style="font-size:11px;color:var(--gray-400);margin-top:-8px;margin-bottom:12px">Доступні змінні: {name}, {childName}, {phone}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:-8px;margin-bottom:12px">Доступні змінні: {name}, {childName}, {childBirthday}, {phone}. Для кількох дітей {childName} і {childBirthday} підставляють короткий список.</div>
         <div id="bulkPreview" class="bulk-preview" style="display:none"></div>
         <div style="display:flex;gap:8px">
             <button class="btn-page-secondary" onclick="previewBulk()" style="flex:1">Попередній перегляд</button>
@@ -2567,8 +2882,8 @@ async function importVcf(file) {
 function switchTab(tab) {
     CrmState.activeTab = tab;
     document.querySelectorAll('.crm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-    const tabs = ['tabList', 'tabRfm', 'tabDuplicates', 'tabNps', 'tabBulk'];
-    const map = { list: 'tabList', rfm: 'tabRfm', duplicates: 'tabDuplicates', nps: 'tabNps', bulk: 'tabBulk' };
+    const tabs = ['tabList', 'tabRfm', 'tabDuplicates', 'tabNps', 'tabChildrenReview', 'tabBulk'];
+    const map = { list: 'tabList', rfm: 'tabRfm', duplicates: 'tabDuplicates', nps: 'tabNps', 'children-review': 'tabChildrenReview', bulk: 'tabBulk' };
     tabs.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = id === map[tab] ? '' : 'none';
@@ -2579,6 +2894,7 @@ function switchTab(tab) {
     }
     if (tab === 'duplicates') loadDuplicates();
     if (tab === 'nps') loadNps();
+    if (tab === 'children-review') loadChildrenReview();
     if (tab === 'bulk') loadBulkTab();
 }
 
@@ -2596,6 +2912,10 @@ async function refreshData() {
     if (CrmState.activeTab === 'rfm') {
         await fetchRFM();
         renderRFM();
+    }
+    if (CrmState.activeTab === 'children-review') {
+        CrmState.childrenReview = null;
+        await loadChildrenReview(true);
     }
 }
 
@@ -2660,10 +2980,13 @@ async function initPage() {
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);
+    const canReviewChildren = canManage || user.role === 'admin';
     document.getElementById('addCustomerBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
     document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
+    const childrenReviewTab = document.querySelector('.crm-tab[data-tab="children-review"]');
+    if (childrenReviewTab) childrenReviewTab.style.display = canReviewChildren ? '' : 'none';
     syncCustomerReadOnlyUi();
 
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -2675,6 +2998,7 @@ async function initPage() {
     document.querySelectorAll('.crm-tab').forEach(tab => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
+    bindChildrenReviewTools();
 
     // Filters with debounce
     document.getElementById('searchInput')?.addEventListener('input', (e) => {

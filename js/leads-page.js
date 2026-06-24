@@ -382,9 +382,8 @@ function syncLeadModalBusinessFields() {
     if (notesLabel) notesLabel.textContent = maysternyaMode ? 'Запит / повідомлення' : 'Нотатки';
     if (maysternyaMode) {
         const children = document.getElementById('leadChildrenCount');
-        const celebrants = document.getElementById('leadCelebrants');
         if (children) children.value = '';
-        if (celebrants) celebrants.value = '';
+        setCelebrantsEditorValue('leadCelebrants', [], { markInitial: false });
     }
 }
 
@@ -1262,6 +1261,164 @@ function parseCelebrantsInput(value) {
                 source: 'operator'
             };
         });
+}
+
+function emptyLeadCelebrant() {
+    return { name: '', birthday: '', age: '', notes: '', source: 'operator' };
+}
+
+function normalizeCelebrantForEditor(item = {}) {
+    if (!item || typeof item !== 'object') return emptyLeadCelebrant();
+    const ageValue = item.age ?? item.childAge ?? item.child_age ?? '';
+    return {
+        name: String(item.name || item.childName || item.child_name || '').trim(),
+        birthday: String(item.birthday || item.birthDate || item.birth_date || '').trim(),
+        age: ageValue === null || ageValue === undefined ? '' : String(ageValue).trim(),
+        notes: String(item.notes || item.note || '').trim(),
+        source: item.source || 'operator'
+    };
+}
+
+function cleanCelebrantsForPayload(rows = []) {
+    return (Array.isArray(rows) ? rows : [])
+        .map(normalizeCelebrantForEditor)
+        .filter(item => item.name || item.birthday || item.age || item.notes)
+        .slice(0, 20)
+        .map(item => ({
+            name: item.name || null,
+            birthday: /^\d{4}-\d{2}-\d{2}$/.test(item.birthday) ? item.birthday : null,
+            age: item.age === '' ? null : parseInt(item.age, 10),
+            notes: item.notes || null,
+            source: item.source || 'operator'
+        }))
+        .filter(item => item.name || item.birthday || Number.isFinite(item.age) || item.notes)
+        .map(item => ({
+            ...item,
+            age: Number.isFinite(item.age) && item.age >= 0 && item.age <= 120 ? item.age : null
+        }));
+}
+
+function celebrantsEditorRowsFromValue(value) {
+    if (Array.isArray(value)) {
+        return value.map(normalizeCelebrantForEditor).filter(item => item.name || item.birthday || item.age || item.notes);
+    }
+    const parsedJson = parseJsonArray(value);
+    if (parsedJson.length) {
+        return parsedJson.map(normalizeCelebrantForEditor).filter(item => item.name || item.birthday || item.age || item.notes);
+    }
+    return parseCelebrantsInput(value).map(normalizeCelebrantForEditor).filter(item => item.name || item.birthday || item.age || item.notes);
+}
+
+function getCelebrantsRowsElement(targetId) {
+    return document.getElementById(`${targetId}Rows`);
+}
+
+function getCelebrantsPreviewElement(targetId) {
+    return document.getElementById(`${targetId}Preview`);
+}
+
+function readCelebrantsEditorRows(targetId) {
+    const rowsEl = getCelebrantsRowsElement(targetId);
+    if (!rowsEl) return [];
+    return Array.from(rowsEl.querySelectorAll('[data-celebrant-row]')).map(row => normalizeCelebrantForEditor({
+        name: row.querySelector('[data-celebrant-field="name"]')?.value || '',
+        birthday: row.querySelector('[data-celebrant-field="birthday"]')?.value || '',
+        age: row.querySelector('[data-celebrant-field="age"]')?.value || '',
+        notes: row.querySelector('[data-celebrant-field="notes"]')?.value || ''
+    }));
+}
+
+function getCelebrantsEditorState(targetId) {
+    return JSON.stringify(cleanCelebrantsForPayload(readCelebrantsEditorRows(targetId)));
+}
+
+function renderCelebrantsPreview(targetId) {
+    const preview = getCelebrantsPreviewElement(targetId);
+    if (!preview) return;
+    const count = cleanCelebrantsForPayload(readCelebrantsEditorRows(targetId)).length;
+    preview.textContent = count ? `${count} дітей буде збережено` : '0 дітей буде збережено';
+}
+
+function syncCelebrantsMirror(targetId, options = {}) {
+    const textarea = document.getElementById(targetId);
+    const payload = cleanCelebrantsForPayload(readCelebrantsEditorRows(targetId));
+    if (textarea) {
+        textarea.value = formatCelebrantsInput(payload);
+        if (options.markInitial) textarea.dataset.initialValue = JSON.stringify(payload);
+    }
+    renderCelebrantsPreview(targetId);
+    return payload;
+}
+
+function renderCelebrantsEditor(targetId, rows = []) {
+    const rowsEl = getCelebrantsRowsElement(targetId);
+    if (!rowsEl) return;
+    const editableRows = (Array.isArray(rows) && rows.length ? rows : [emptyLeadCelebrant()])
+        .map(normalizeCelebrantForEditor);
+    rowsEl.innerHTML = editableRows.map((item, index) => `
+        <div class="lead-celebrant-row" data-celebrant-row data-index="${index}">
+            <div class="lead-celebrant-field">
+                <label>Ім'я дитини</label>
+                <input type="text" data-celebrant-field="name" value="${escapeHtml(item.name)}" placeholder="Саша">
+            </div>
+            <div class="lead-celebrant-field">
+                <label>ДН</label>
+                <input type="date" data-celebrant-field="birthday" value="${escapeHtml(item.birthday)}">
+            </div>
+            <div class="lead-celebrant-field">
+                <label>Вік</label>
+                <input type="number" min="0" max="120" data-celebrant-field="age" value="${escapeHtml(item.age)}" placeholder="4">
+            </div>
+            <div class="lead-celebrant-field">
+                <label>Нотатка</label>
+                <input type="text" data-celebrant-field="notes" value="${escapeHtml(item.notes)}" placeholder="опційно">
+            </div>
+            <button type="button" class="lead-celebrant-remove" data-celebrants-action="remove" data-target="${escapeHtml(targetId)}" data-index="${index}" aria-label="Прибрати дитину">×</button>
+        </div>
+    `).join('');
+    syncCelebrantsMirror(targetId);
+}
+
+function setCelebrantsEditorValue(targetId, value = [], options = {}) {
+    const rows = celebrantsEditorRowsFromValue(value);
+    renderCelebrantsEditor(targetId, rows);
+    syncCelebrantsMirror(targetId, { markInitial: options.markInitial !== false });
+}
+
+function getCelebrantsPayload(targetId) {
+    return syncCelebrantsMirror(targetId);
+}
+
+function isCelebrantsEditorDirty(targetId) {
+    const textarea = document.getElementById(targetId);
+    const initial = textarea?.dataset?.initialValue || '[]';
+    return getCelebrantsEditorState(targetId) !== initial;
+}
+
+function bindCelebrantsEditors() {
+    if (bindCelebrantsEditors.bound) return;
+    bindCelebrantsEditors.bound = true;
+    document.addEventListener('input', event => {
+        if (!event.target?.matches?.('[data-celebrant-field]')) return;
+        const editor = event.target.closest('[data-celebrants-editor]');
+        const targetId = editor?.dataset?.celebrantsEditor;
+        if (targetId) syncCelebrantsMirror(targetId);
+    });
+    document.addEventListener('click', event => {
+        const button = event.target.closest('[data-celebrants-action]');
+        if (!button) return;
+        const targetId = button.dataset.target;
+        if (!targetId) return;
+        const rows = readCelebrantsEditorRows(targetId);
+        if (button.dataset.celebrantsAction === 'add') {
+            rows.push(emptyLeadCelebrant());
+            renderCelebrantsEditor(targetId, rows);
+        } else if (button.dataset.celebrantsAction === 'remove') {
+            const index = Number.parseInt(button.dataset.index, 10);
+            const nextRows = rows.filter((_, i) => i !== index);
+            renderCelebrantsEditor(targetId, nextRows.length ? nextRows : [emptyLeadCelebrant()]);
+        }
+    });
 }
 
 function renderCelebrantsValue(lead = {}) {
@@ -2639,6 +2796,7 @@ function getCustomerCardState() {
         'ccEventDate',
         'ccGuestCount',
         'ccChildrenCount',
+        'ccCelebrants',
         'ccBudget',
         'ccHowFound',
         'ccNotes'
@@ -2731,7 +2889,7 @@ async function showCustomerCardModal(leadId) {
     document.getElementById('ccEventDate').value = lead?.event_date ? lead.event_date.split('T')[0] : '';
     document.getElementById('ccGuestCount').value = '';
     document.getElementById('ccChildrenCount').value = lead?.children_count || '';
-    document.getElementById('ccCelebrants').value = formatCelebrantsInput(lead?.celebrants || []);
+    setCelebrantsEditorValue('ccCelebrants', normalizeLeadCelebrants(lead || {}), { markInitial: true });
     document.getElementById('ccBudget').value = '';
     document.getElementById('ccHowFound').value = '';
     document.getElementById('ccNotes').value = '';
@@ -2764,13 +2922,15 @@ async function saveCustomerCard() {
     if (!guardLeadWrite('редагувати картку клієнта ліда')) return;
     const overlay = document.getElementById('customerCardModal');
     const leadId = parseInt(overlay.dataset.leadId);
+    const ccCelebrants = getCelebrantsPayload('ccCelebrants');
+    const ccCelebrantsDirty = isCelebrantsEditorDirty('ccCelebrants');
 
     const body = {
         event_type: document.getElementById('ccEventType')?.value || null,
         event_date: document.getElementById('ccEventDate')?.value || null,
         guest_count: parseInt(document.getElementById('ccGuestCount')?.value) || null,
         children_count: parseInt(document.getElementById('ccChildrenCount')?.value) || null,
-        celebrants: parseCelebrantsInput(document.getElementById('ccCelebrants')?.value),
+        celebrants: ccCelebrants,
         budget_approx: parseInt(document.getElementById('ccBudget')?.value) || null,
         how_found: document.getElementById('ccHowFound')?.value || null,
         email: document.getElementById('ccEmail')?.value || null,
@@ -2782,14 +2942,14 @@ async function saveCustomerCard() {
     // Also update lead name/phone if changed
     const name = document.getElementById('ccName')?.value.trim();
     const phone = document.getElementById('ccPhone')?.value.trim();
-    if (name || phone || body.event_date || body.children_count || (body.celebrants || []).length) {
+    if (name || phone || body.event_date || body.children_count || ccCelebrantsDirty) {
         try {
             const leadBody = {};
             if (name) leadBody.client_name = name;
             if (phone) leadBody.phone = phone;
             if (body.event_date) leadBody.event_date = body.event_date;
             if (body.children_count) leadBody.children_count = body.children_count;
-            leadBody.celebrants = body.celebrants || [];
+            if (ccCelebrantsDirty) leadBody.celebrants = body.celebrants || [];
             await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(leadBody) });
         } catch(e) { /* non-blocking */ }
     }
@@ -3059,6 +3219,7 @@ function setupEvents() {
     bindLeadWorkflowInfoButton();
     bindLeadModalButton('leadModalCancel', closeLeadModal);
     bindLeadModalButton('leadModalSave', saveLead);
+    bindCelebrantsEditors();
     document.getElementById('lostReasonSelect')?.addEventListener('change', updateLostReasonDetailsVisibility);
 
     // Close modals on overlay click
@@ -3126,7 +3287,7 @@ function openAddModal() {
     document.getElementById('leadSource').value = '';
     document.getElementById('leadEventDate').value = '';
     document.getElementById('leadChildrenCount').value = '';
-    document.getElementById('leadCelebrants').value = '';
+    setCelebrantsEditorValue('leadCelebrants', [], { markInitial: true });
     document.getElementById('leadNotes').value = '';
     document.getElementById('leadAssignedTo').value = '';
     syncLeadModalBusinessFields();
@@ -3154,7 +3315,7 @@ function editLead(id) {
     document.getElementById('leadSource').value = lead.source || '';
     document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
     document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (lead.children_count || '');
-    document.getElementById('leadCelebrants').value = isMaysternyaLeadContext() ? '' : formatCelebrantsInput(lead.celebrants || []);
+    setCelebrantsEditorValue('leadCelebrants', isMaysternyaLeadContext() ? [] : normalizeLeadCelebrants(lead), { markInitial: true });
     document.getElementById('leadNotes').value = lead.notes || '';
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
 
@@ -3213,6 +3374,8 @@ async function saveLead() {
     const name = document.getElementById('leadName')?.value.trim();
     if (!name) { if (typeof showNotification === 'function') showNotification("Ім'я обов'язкове", 'error'); return; }
     if (leadSaveInFlight) return;
+    const leadCelebrants = isMaysternyaLeadContext() ? [] : getCelebrantsPayload('leadCelebrants');
+    const leadCelebrantsDirty = !isMaysternyaLeadContext() && isCelebrantsEditorDirty('leadCelebrants');
 
     const body = {
         client_name: name,
@@ -3221,11 +3384,11 @@ async function saveLead() {
         source: document.getElementById('leadSource')?.value || null,
         event_date: document.getElementById('leadEventDate')?.value || null,
         children_count: isMaysternyaLeadContext() ? null : (parseInt(document.getElementById('leadChildrenCount')?.value) || null),
-        celebrants: isMaysternyaLeadContext() ? [] : parseCelebrantsInput(document.getElementById('leadCelebrants')?.value),
         notes: document.getElementById('leadNotes')?.value.trim() || null,
         assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
     };
-    if (!body.children_count && body.celebrants.length) body.children_count = body.celebrants.length;
+    if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants;
+    if (!body.children_count && (body.celebrants || []).length) body.children_count = body.celebrants.length;
 
     // Add pipeline/type if editing
     if (editId) {

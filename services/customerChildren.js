@@ -10,6 +10,44 @@ const MAX_CHILDREN_PER_CUSTOMER = 50;
 const CHILD_SOURCE_KIND_MAX = 64;
 const CHILD_NAME_MAX = 200;
 const CHILD_NOTE_MAX = 1000;
+const LEGACY_CHILD_FIELD_POLICY = Object.freeze({
+    canonicalTruth: 'customer_children',
+    legacyFields: Object.freeze(['customers.child_name', 'customers.child_birthday']),
+    mode: 'compatibility_snapshot_only',
+    allowedWriters: Object.freeze({
+        customerApi: 'routes/customers.js may write legacy snapshots only while calling replaceCustomerChildren in the same customer transaction.',
+        leadSync: 'routes/leads.js may write child_name as a lead-owned snapshot only after syncing all lead celebrants to customer_children.',
+        bookingCreate: 'routes/bookings.js may write legacy fields only when creating a new customer from a booking payload.',
+        maysternyaWebhookCreate: 'services/maysternyaBookingWebhook.js may write legacy fields only when creating a new Maysternya customer.',
+        customerMerge: 'routes/customers.js merge may fill empty legacy snapshot fields from the duplicate customer while moving customer_children rows.'
+    }),
+    rules: Object.freeze([
+        'customer_children is the canonical multi-child truth.',
+        'customers.child_name and customers.child_birthday are compatibility snapshots, not independent truth.',
+        'New flows must not overwrite multiple canonical children with one legacy child.',
+        'Birthday must be explicit YYYY-MM-DD; never infer birthday from age text or age_snapshot.'
+    ])
+});
+const CUSTOMER_CHILD_DISPLAY_POLICY = Object.freeze({
+    storageTruth: 'customer_children',
+    surfaces: Object.freeze({
+        legacyChildName: 'first_child_snapshot',
+        legacyChildBirthday: 'first_explicit_birthday_snapshot',
+        bulkMessageChildName: 'joined_compact_names',
+        bulkMessageChildBirthday: 'joined_compact_birthdays',
+        birthdayReminders: 'one_row_per_child_birthday',
+        bookingCustomerBlock: 'joined_compact_names',
+        banquetSummary: 'full_children_list_with_single_child_compat_celebrant',
+        vcardNote: 'joined_compact_names_and_birthdays',
+        vcardBday: 'first_explicit_birthday_only'
+    }),
+    labels: Object.freeze({
+        childName: 'Діти',
+        childBirthday: 'ДН дітей',
+        singleCelebrant: 'Іменинник',
+        multipleCelebrants: 'Діти клієнта'
+    })
+});
 
 class CustomerChildrenError extends Error {
     constructor(message, { status = 400, code = 'CUSTOMER_CHILDREN_ERROR', details = null } = {}) {
@@ -151,6 +189,14 @@ async function withTransaction(options, callback) {
 
 function mapCustomerChildRow(row = {}) {
     const sourcePayload = jsonObject(row.source_payload ?? row.sourcePayload);
+    const manualReview = jsonObject(sourcePayload.manual_review ?? sourcePayload.manualReview, null);
+    const superseded = manualReview?.superseded === true || manualReview?.status === 'superseded';
+    const needsReview = sourcePayload.needs_review === true
+        || sourcePayload.needsReview === true
+        || manualReview?.needs_review === true
+        || manualReview?.needsReview === true
+        || sourcePayload.age_snapshot_from_name === true
+        || sourcePayload.birthday_rejected === true;
     return {
         id: row.id ?? null,
         businessContext: row.business_context || row.businessContext || DEFAULT_BUSINESS_CONTEXT,
@@ -163,6 +209,9 @@ function mapCustomerChildRow(row = {}) {
         note: row.note || null,
         sourceKind: row.source_kind || row.sourceKind || 'unknown',
         sourcePayload,
+        manualReview,
+        needsReview,
+        superseded,
         sortOrder: row.sort_order ?? row.sortOrder ?? 0,
         createdAt: row.created_at || row.createdAt || null,
         updatedAt: row.updated_at || row.updatedAt || null
@@ -317,10 +366,32 @@ function buildCustomerChildrenProjection(customerRow = {}, canonicalRows = []) {
     const rows = Array.isArray(canonicalRows) ? canonicalRows : [];
     const projection = rows
         .map(mapCustomerChildRow)
+        .filter(child => !child.superseded)
         .filter(child => child.name || child.birthday || child.ageSnapshot !== null || child.note)
         .sort((a, b) => (a.sortOrder - b.sortOrder) || ((a.id || 0) - (b.id || 0)));
 
     return projection.length ? projection : buildLegacyChildProjection(customerRow);
+}
+
+function buildLegacyChildSnapshot(children = [], fallback = {}) {
+    const rows = Array.isArray(children) ? children : [];
+    const first = rows.find(child => {
+        if (!child || typeof child !== 'object') return false;
+        return cleanText(child.name ?? child.childName ?? child.child_name, CHILD_NAME_MAX)
+            || dateOnlyFromRow(child.birthday ?? child.birthDate ?? child.birth_date ?? child.childBirthday ?? child.child_birthday);
+    }) || null;
+
+    const name = first
+        ? cleanText(first.name ?? first.childName ?? first.child_name, CHILD_NAME_MAX)
+        : cleanText(fallback.childName ?? fallback.child_name, CHILD_NAME_MAX);
+    const birthday = first
+        ? dateOnlyFromRow(first.birthday ?? first.birthDate ?? first.birth_date ?? first.childBirthday ?? first.child_birthday)
+        : dateOnlyFromRow(fallback.childBirthday ?? fallback.child_birthday);
+
+    return {
+        childName: name || null,
+        childBirthday: birthday || null
+    };
 }
 
 function customerChildrenNameDisplay(children = [], options = {}) {
@@ -345,6 +416,24 @@ function customerChildrenBirthdayDisplay(children = [], options = {}) {
     return `${visible.join(', ')}${suffix}`;
 }
 
+function customerChildLineDisplay(child = {}) {
+    const name = cleanText(child?.name ?? child?.childName ?? child?.child_name, CHILD_NAME_MAX);
+    const birthday = dateOnlyFromRow(child?.birthday ?? child?.birthDate ?? child?.birth_date ?? child?.childBirthday ?? child?.child_birthday);
+    if (name && birthday) return `${name} (${birthday})`;
+    return name || birthday || null;
+}
+
+function customerChildrenFullDisplay(children = [], options = {}) {
+    const limit = Number.isInteger(Number(options.limit)) ? Math.max(1, Number(options.limit)) : 12;
+    const rows = (Array.isArray(children) ? children : [])
+        .map(customerChildLineDisplay)
+        .filter(Boolean);
+    if (!rows.length) return null;
+    const visible = rows.slice(0, limit);
+    const suffix = rows.length > visible.length ? ` +${rows.length - visible.length}` : '';
+    return `${visible.join(', ')}${suffix}`;
+}
+
 function firstCustomerChild(children = []) {
     return (Array.isArray(children) ? children : []).find(child =>
         child && (child.name || child.birthday || child.ageSnapshot !== null || child.note)
@@ -353,13 +442,18 @@ function firstCustomerChild(children = []) {
 
 module.exports = {
     CustomerChildrenError,
+    LEGACY_CHILD_FIELD_POLICY,
+    CUSTOMER_CHILD_DISPLAY_POLICY,
     validateChildBirthday,
     normalizeChildInput,
     listCustomerChildren,
     replaceCustomerChildren,
     buildCustomerChildrenProjection,
+    buildLegacyChildSnapshot,
     customerChildrenNameDisplay,
     customerChildrenBirthdayDisplay,
+    customerChildrenFullDisplay,
+    customerChildLineDisplay,
     firstCustomerChild,
     mapCustomerChildRow,
     isCustomerChildrenStorageMissing

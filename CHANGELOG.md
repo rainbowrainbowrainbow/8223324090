@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.20 - Customer Children Closeout
+
+### Customers / Children / Birthday tags / Lead sync / (Клешня, 24.06.2026) [codex]
+- **`customer_children` закріплено як canonical truth для дітей клієнта** - customer card, create/edit API і lead conversion більше не повинні обрізати 2-гу або 3-тю дитину до legacy одного поля.
+- **Legacy поля лишаються тільки compatibility snapshot** - `child_name` / `child_birthday` не є джерелом правди і не мають перезаписувати повний список дітей.
+- **Форми лідів отримали structured celebrants input** - менеджер бачить окремі рядки дітей, preview кількості і не залежить від ком/переносів у textarea.
+- **Картка клієнта показує дітей як список** - 0/1/3+ дітей, birthday, age snapshot і legacy fallback відображаються без змішування з одним текстовим полем.
+- **Birthday tags синхронізуються з canonical child birthday** - системні теги дня народження беруть нову структуру, не вигадують дату з віку і лишають ручні теги недоторканими.
+- **Lead -> customer sync зберігає всі celebrants** - deal/customer-card creation переносить кожну дитину у canonical rows і зберігає source payload для audit.
+- **Документи policy додано** - display policy і legacy fields ownership policy фіксують, як booking/placeholders/printable summaries мають працювати з кількома дітьми.
+- **Regression coverage посилено** - focused tests перевіряють migration/static policy, customer children service, birthday tags, lead conversion і operations flow.
+- **Релізні маркери піднято до `0.77.20`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.19 - Booking Detail Final Polish
 
 ### Booking detail / Banquet menu / Add-to-existing guards / (Клешня, 24.06.2026) [codex]

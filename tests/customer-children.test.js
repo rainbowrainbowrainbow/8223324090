@@ -5,13 +5,17 @@ const path = require('node:path');
 
 const {
     CustomerChildrenError,
+    LEGACY_CHILD_FIELD_POLICY,
+    CUSTOMER_CHILD_DISPLAY_POLICY,
     validateChildBirthday,
     normalizeChildInput,
     listCustomerChildren,
     replaceCustomerChildren,
     buildCustomerChildrenProjection,
+    buildLegacyChildSnapshot,
     customerChildrenNameDisplay,
     customerChildrenBirthdayDisplay,
+    customerChildrenFullDisplay,
     firstCustomerChild,
     mapCustomerChildRow
 } = require('../services/customerChildren');
@@ -39,6 +43,90 @@ test('customer_children migration is additive idempotent and preserves source da
     assert.doesNotMatch(sql, /\bUPDATE\s+customers\b/i);
     assert.doesNotMatch(sql, /\bDELETE\s+FROM\s+customers\b/i);
     assert.doesNotMatch(sql, /make_date\([^)]*age/i);
+});
+
+test('legacy child fields policy keeps customer_children as canonical truth', () => {
+    const policyDoc = fs.readFileSync(path.join(ROOT, 'docs', 'CUSTOMER_CHILDREN_LEGACY_FIELDS_POLICY_2026-06-23.md'), 'utf8');
+
+    assert.equal(LEGACY_CHILD_FIELD_POLICY.canonicalTruth, 'customer_children');
+    assert.equal(LEGACY_CHILD_FIELD_POLICY.mode, 'compatibility_snapshot_only');
+    assert.deepEqual(LEGACY_CHILD_FIELD_POLICY.legacyFields, ['customers.child_name', 'customers.child_birthday']);
+    assert.match(LEGACY_CHILD_FIELD_POLICY.allowedWriters.customerApi, /replaceCustomerChildren/);
+    assert.match(LEGACY_CHILD_FIELD_POLICY.allowedWriters.leadSync, /all lead celebrants/);
+    assert.match(LEGACY_CHILD_FIELD_POLICY.allowedWriters.bookingCreate, /creating a new customer/);
+    assert.ok(LEGACY_CHILD_FIELD_POLICY.rules.some(rule => /must not overwrite multiple canonical children/i.test(rule)));
+    assert.ok(LEGACY_CHILD_FIELD_POLICY.rules.some(rule => /never infer birthday from age/i.test(rule)));
+
+    assert.match(policyDoc, /`customer_children` is the canonical source of truth/);
+    assert.match(policyDoc, /compatibility snapshots only/);
+    assert.match(policyDoc, /Forbidden Patterns/);
+    assert.match(policyDoc, /Creating a fake birthday from age/);
+});
+
+test('customer child display policy defines placeholder and printable summary behavior', () => {
+    const policyDoc = fs.readFileSync(path.join(ROOT, 'docs', 'CUSTOMER_CHILDREN_DISPLAY_POLICY_2026-06-23.md'), 'utf8');
+
+    assert.equal(CUSTOMER_CHILD_DISPLAY_POLICY.storageTruth, 'customer_children');
+    assert.equal(CUSTOMER_CHILD_DISPLAY_POLICY.surfaces.bulkMessageChildName, 'joined_compact_names');
+    assert.equal(CUSTOMER_CHILD_DISPLAY_POLICY.surfaces.bulkMessageChildBirthday, 'joined_compact_birthdays');
+    assert.equal(CUSTOMER_CHILD_DISPLAY_POLICY.surfaces.birthdayReminders, 'one_row_per_child_birthday');
+    assert.equal(CUSTOMER_CHILD_DISPLAY_POLICY.surfaces.banquetSummary, 'full_children_list_with_single_child_compat_celebrant');
+    assert.equal(CUSTOMER_CHILD_DISPLAY_POLICY.surfaces.vcardBday, 'first_explicit_birthday_only');
+    assert.match(policyDoc, /Bulk message `\{childName\}` \| Compact joined child names/);
+    assert.match(policyDoc, /Birthday reminders\/greetings \| One row per child birthday/);
+    assert.match(policyDoc, /Do not use first child as storage truth/);
+});
+
+test('customer closeout guards duplicate merge and booking legacy create ownership', () => {
+    const customersRoute = fs.readFileSync(path.join(ROOT, 'routes', 'customers.js'), 'utf8');
+    const bookingsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
+    const policyDoc = fs.readFileSync(path.join(ROOT, 'docs', 'CUSTOMER_CHILDREN_LEGACY_FIELDS_POLICY_2026-06-23.md'), 'utf8');
+
+    assert.match(customersRoute, /UPDATE customer_children[\s\S]*SET customer_id = \$1[\s\S]*WHERE customer_id = \$2[\s\S]*AND business_context = \$3/);
+    assert.match(customersRoute, /if \(!primary\.child_name && dup\.child_name\)/);
+    assert.match(customersRoute, /if \(!primary\.child_birthday && dup\.child_birthday\)/);
+    assert.match(policyDoc, /duplicate merge \| Fill empty legacy snapshot fields/);
+    assert.match(policyDoc, /Move `customer_children` rows from duplicate to primary customer/);
+
+    assert.match(bookingsRoute, /INSERT INTO customers \(business_context, name, phone, instagram, child_name, child_birthday, source\)/);
+    assert.doesNotMatch(bookingsRoute, /replaceCustomerChildren/);
+    assert.doesNotMatch(bookingsRoute, /UPDATE customer_children/i);
+    assert.match(policyDoc, /booking customer create \| Write `child_name` \/ `child_birthday` only when creating a brand-new customer/);
+    assert.match(policyDoc, /Must not update an existing customer's canonical children from one booking legacy payload/);
+});
+
+test('customer children docs and QA artifacts keep UTF-8 child examples readable', () => {
+    const relativeFiles = [
+        'docs/CUSTOMER_CHILDREN_DATA_SAFETY_INVENTORY_2026-06-23.md',
+        'docs/CUSTOMER_CHILDREN_MANUAL_QA_2026-06-23.md',
+        'docs/CUSTOMER_CHILDREN_LEGACY_FIELDS_POLICY_2026-06-23.md',
+        'docs/CUSTOMER_CHILDREN_DISPLAY_POLICY_2026-06-23.md',
+        'docs/CUSTOMER_CHILDREN_INVENTORY_READONLY_2026-06-23.sql',
+        'output/playwright/customer-children-manual-qa/harness.html',
+        'tests/customer-children.test.js'
+    ];
+    const mojibakeMarkers = [
+        '\u0420\u040e\u0420\u00b0\u0421\u20ac\u0420\u00b0',
+        '\u0421\u0452\u0420\u0455\u0420\u0454\u0420\u0451'
+    ];
+    const readableExampleFiles = [];
+
+    for (const relative of relativeFiles) {
+        const fullPath = path.join(ROOT, relative);
+        if (!fs.existsSync(fullPath)) {
+            continue;
+        }
+
+        const content = fs.readFileSync(fullPath, 'utf8');
+        const found = mojibakeMarkers.filter(marker => content.includes(marker));
+        assert.deepEqual(found, [], `${relative} contains customer-children mojibake markers: ${found.join(', ')}`);
+
+        if (content.includes('Саша 4 роки')) {
+            readableExampleFiles.push(relative);
+        }
+    }
+
+    assert.ok(readableExampleFiles.length >= 3, 'customer-children docs/QA should keep readable "Саша 4 роки" examples');
 });
 
 test('validateChildBirthday accepts only timezone-safe YYYY-MM-DD calendar dates', () => {
@@ -82,6 +170,40 @@ test('normalizeChildInput preserves explicit fields without inventing birthday f
     assert.equal(normalizeChildInput({}), null);
     assert.throws(() => normalizeChildInput({ name: 'Mia', birthday: '2026-13-01' }), CustomerChildrenError);
     assert.throws(() => normalizeChildInput({ birthday: '2019-05-20' }, 0, { requireName: true }), CustomerChildrenError);
+});
+
+test('buildLegacyChildSnapshot uses only explicit first-child compatibility data', () => {
+    assert.deepEqual(buildLegacyChildSnapshot([
+        { name: 'Anna', birthday: '2018-01-01', ageSnapshot: 8 },
+        { name: 'Bohdan', birthday: '2019-02-03' },
+        { name: 'Sofia', birthday: '2020-03-04' }
+    ]), {
+        childName: 'Anna',
+        childBirthday: '2018-01-01'
+    });
+
+    assert.deepEqual(buildLegacyChildSnapshot([
+        { name: 'Age Only', ageSnapshot: 4 }
+    ]), {
+        childName: 'Age Only',
+        childBirthday: null
+    });
+
+    assert.deepEqual(buildLegacyChildSnapshot([
+        { ageSnapshot: 4, note: 'legacy text said 4 years' },
+        { name: 'Mia', birthday: '2019-05-20' }
+    ]), {
+        childName: 'Mia',
+        childBirthday: '2019-05-20'
+    });
+
+    assert.deepEqual(buildLegacyChildSnapshot([], {
+        childName: 'Legacy',
+        childBirthday: '2017-07-08'
+    }), {
+        childName: 'Legacy',
+        childBirthday: '2017-07-08'
+    });
 });
 
 test('ambiguous legacy child text is projected as data, not as a fake birthday', () => {
@@ -150,6 +272,68 @@ test('buildCustomerChildrenProjection falls back to legacy customer fields only 
     assert.equal(canonical[0].sourceKind, 'lead_celebrant');
 });
 
+test('manual review rows supersede ambiguous legacy rows while preserving source payload audit', () => {
+    const children = buildCustomerChildrenProjection({
+        id: 12,
+        businessContext: 'event_genix',
+        childName: 'Sasha 4 years',
+        childBirthday: null
+    }, [
+        {
+            id: 7,
+            business_context: 'event_genix',
+            customer_id: 12,
+            name: 'Sasha',
+            birthday: null,
+            age_snapshot: 4,
+            source_kind: 'legacy_customer_child',
+            source_payload: {
+                source_columns: { child_name: 'Sasha 4 years', child_birthday: null },
+                age_snapshot_from_name: true,
+                original_child_name_preserved: true,
+                manual_review: {
+                    status: 'resolved',
+                    superseded: true,
+                    resolved_by: 5
+                }
+            },
+            sort_order: 0
+        },
+        {
+            id: 8,
+            business_context: 'event_genix',
+            customer_id: 12,
+            name: 'Sasha',
+            birthday: '2019-05-20',
+            age_snapshot: 4,
+            note: 'manual correction',
+            source_kind: 'manual_review',
+            source_payload: {
+                copy_rule: 'manual_review_resolution',
+                source_child_ids: [7],
+                original_preserved_in_source_rows: true
+            },
+            sort_order: 100
+        }
+    ]);
+
+    assert.equal(children.length, 1);
+    assert.equal(children[0].name, 'Sasha');
+    assert.equal(children[0].birthday, '2019-05-20');
+    assert.equal(children[0].sourceKind, 'manual_review');
+
+    const legacy = mapCustomerChildRow({
+        id: 7,
+        source_payload: {
+            age_snapshot_from_name: true,
+            manual_review: { superseded: true, status: 'resolved' }
+        }
+    });
+    assert.equal(legacy.needsReview, true);
+    assert.equal(legacy.superseded, true);
+    assert.equal(legacy.manualReview.status, 'resolved');
+});
+
 test('customer children display helpers preserve multi-child projection for legacy consumers', () => {
     const children = buildCustomerChildrenProjection({
         id: 12,
@@ -164,7 +348,9 @@ test('customer children display helpers preserve multi-child projection for lega
     assert.equal(firstCustomerChild(children).name, 'Anna');
     assert.equal(customerChildrenNameDisplay(children), 'Anna, Bohdan, Sofia');
     assert.equal(customerChildrenBirthdayDisplay(children), '2018-01-01, 2020-03-04');
+    assert.equal(customerChildrenFullDisplay(children), 'Anna (2018-01-01), Bohdan, Sofia (2020-03-04)');
     assert.equal(customerChildrenNameDisplay(children, { limit: 2 }), 'Anna, Bohdan +1');
+    assert.equal(customerChildrenFullDisplay(children, { limit: 2 }), 'Anna (2018-01-01), Bohdan +1');
 });
 
 test('listCustomerChildren maps canonical rows and falls back cleanly when storage is absent', async () => {

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.26 - Timeline Inventory Click Fix
+
+### Timeline / Booking drawer / Warehouse costumes / (Клешня, 25.06.2026) [codex]
+- **Клік по linked/banquet блоках більше не губиться** - timeline тепер пробує відкрити parent booking, а якщо parent прихований у поточному view/cache, fallback відкриває власну linked-бронь.
+- **`showBookingDetails()` повертає явний результат** - modal lookup нормалізує `id` як string/number, повертає `true` після відкриття і `false` при відсутній броні, щоб click handler міг коректно fallback-нутись.
+- **Селектор костюмів у booking drawer читає Warehouse inventory** - при відкритті drawer список підтягується з `/api/warehouse/costumes`, а старий `COSTUMES` лишається offline/fallback джерелом.
+- **Збережені нестандартні костюми не зникають при edit/duplicate** - перед виставленням `booking.costume` UI додає відсутню option, щоб старі записи не скидали значення в порожній select.
+- **Regression coverage оновлено** - timeline resource test і UI smoke guard перевіряють click fallback, modal ownership і Warehouse-backed costume selector.
+- **Релізні маркери піднято до `0.77.26`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.25 - Banquet Sheet Polish
 
 ### Banquet sheet / Client PDF / Export toolbar / (Клешня, 25.06.2026) [codex]

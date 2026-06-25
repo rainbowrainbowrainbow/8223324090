@@ -212,16 +212,87 @@ function initializeLocalData() {
     }
 }
 
-function initializeCostumes() {
-    const select = document.getElementById('costumeSelect');
-    if (!select) return;
+function normalizeCostumeOptionName(costume) {
+    const rawName = typeof costume === 'string'
+        ? costume
+        : (costume?.name || costume?.title || costume?.label || '');
+    return String(rawName || '').trim();
+}
 
-    COSTUMES.forEach(costume => {
+function uniqueCostumeOptionNames(costumes = []) {
+    const names = [];
+    const seen = new Set();
+    costumes.forEach(costume => {
+        const name = normalizeCostumeOptionName(costume);
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) return;
+        seen.add(key);
+        names.push(name);
+    });
+    return names;
+}
+
+function ensureCostumeSelectOption(value) {
+    const select = document.getElementById('costumeSelect');
+    const name = normalizeCostumeOptionName(value);
+    if (!select || !name) return false;
+    const exists = Array.from(select.options).some(option => option.value === name);
+    if (exists) return true;
+
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+    return true;
+}
+
+function renderCostumeOptions(costumes = [], options = {}) {
+    const select = document.getElementById('costumeSelect');
+    if (!select) return [];
+    const selectedValue = normalizeCostumeOptionName(options.selectedValue ?? select.value);
+    const names = uniqueCostumeOptionNames(costumes);
+    if (selectedValue && !names.some(name => name === selectedValue)) names.push(selectedValue);
+
+    select.innerHTML = '';
+    const emptyOption = document.createElement('option');
+    emptyOption.value = '';
+    emptyOption.textContent = 'Без костюма';
+    select.appendChild(emptyOption);
+
+    names.forEach(name => {
         const option = document.createElement('option');
-        option.value = costume;
-        option.textContent = costume;
+        option.value = name;
+        option.textContent = name;
         select.appendChild(option);
     });
+    select.value = selectedValue && names.includes(selectedValue) ? selectedValue : '';
+    return names;
+}
+
+async function initializeCostumes(options = {}) {
+    const select = document.getElementById('costumeSelect');
+    if (!select) return false;
+
+    const selectedValue = select.value;
+    const fallbackCostumes = Array.isArray(COSTUMES) ? COSTUMES : [];
+    renderCostumeOptions(fallbackCostumes, { selectedValue });
+
+    const hasAuthToken = typeof getStoredAuthToken !== 'function' || Boolean(getStoredAuthToken());
+    if (!options.refreshWarehouse || !hasAuthToken || typeof apiGetWarehouseCostumes !== 'function') return false;
+    if (select.dataset.costumeWarehouseLoaded === '1' && options.forceWarehouse !== true) return true;
+
+    try {
+        const response = await apiGetWarehouseCostumes();
+        if (!response?.success) return false;
+        const warehouseNames = uniqueCostumeOptionNames(response.data || []);
+        select.dataset.costumeWarehouseLoaded = '1';
+        if (!warehouseNames.length) return true;
+        renderCostumeOptions([...warehouseNames, ...fallbackCostumes], { selectedValue: select.value || selectedValue });
+        return true;
+    } catch (err) {
+        console.warn('[app] Failed to load warehouse costumes for booking selector', err);
+        return false;
+    }
 }
 
 // ==========================================

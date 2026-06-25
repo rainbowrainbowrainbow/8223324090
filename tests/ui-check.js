@@ -297,6 +297,20 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/timeline.js', "header.classList.add('has-timeline-banquet-room-preview')")
         && htmlContains('js/timeline.js', 'clearTimelineBanquetRoomHeaderPreviewState(header);')
         && htmlContains('css/timeline.css', '.line-header.has-timeline-banquet-room-preview'));
+    check('Timeline block click falls back when linked parent is hidden in current view',
+        timelineCode.includes('function openTimelineBookingDetailsFromBlock')
+        && timelineCode.includes("showBookingDetails(targetId, { silentMissing: Boolean(linkedId), source: 'timeline_block_click' })")
+        && timelineCode.includes("showBookingDetails(ownId, { source: 'timeline_block_click_fallback' })")
+        && bookingCode.includes('async function showBookingDetails(bookingId, options = {})')
+        && bookingCode.includes('options.silentMissing !== true')
+        && !timelineCode.includes('showBookingDetails(renderBooking.linkedTo)'));
+    check('Booking costume selector hydrates from Warehouse inventory with static fallback',
+        appCode.includes('async function initializeCostumes(options = {})')
+        && appCode.includes('apiGetWarehouseCostumes')
+        && appCode.includes('function ensureCostumeSelectOption')
+        && appCode.includes('renderCostumeOptions([...warehouseNames, ...fallbackCostumes]')
+        && bookingCode.includes('await initializeCostumes({ refreshWarehouse: true })')
+        && bookingCode.includes('ensureCostumeSelectOption(booking.costume)'));
     check('Animator timeline filters banquet service pseudo-lines and kitchen blocks',
         htmlContains('js/timeline.js', "TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'")
         && htmlContains('js/timeline.js', 'function isParkAnimatorTimelineView')
@@ -1919,7 +1933,8 @@ check('Room timeline banquet activity blocks open booking modal instead of compa
     timelineCode.includes("TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set(['activity', 'service', 'manual'])")
     && /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/.test(timelineCode)
     && /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/.test(timelineCode)
-    && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*showBookingDetails\(renderBooking\.id\)/.test(timelineCode));
+    && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/.test(timelineCode)
+    && timelineCode.includes("showBookingDetails(ownId, { source: 'timeline_block_click_fallback' })"));
 check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
     timelineBanquetInspectorHelpersCode.includes('function timelineBanquetServingInfo')
     && timelineBanquetInspectorHelpersCode.includes('timelineBanquetMenuPositions(booking)')

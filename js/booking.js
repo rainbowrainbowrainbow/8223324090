@@ -5548,6 +5548,9 @@ async function openBookingPanel(time, lineId, options = {}) {
     // Скинути костюм
     const costumeSelect = document.getElementById('costumeSelect');
     if (costumeSelect) costumeSelect.value = '';
+    if (typeof initializeCostumes === 'function') {
+        await initializeCostumes({ refreshWarehouse: true });
+    }
 
     // Скинути статус та к-кість дітей
     const statusRadio = document.querySelector('input[name="bookingStatus"][value="confirmed"]');
@@ -10529,10 +10532,22 @@ async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot 
     }
 }
 
-async function showBookingDetails(bookingId) {
+async function showBookingDetails(bookingId, options = {}) {
+    const cleanBookingId = String(bookingId || '').trim();
+    if (!cleanBookingId) return false;
     const bookings = await getBookingsForDate(AppState.selectedDate);
-    const booking = bookings.find(b => b.id === bookingId);
-    if (!booking) return;
+    const booking = bookings.find(b => String(b.id) === cleanBookingId);
+    if (!booking) {
+        if (options.silentMissing !== true && typeof showNotification === 'function') {
+            showNotification('Бронювання не знайдено в поточному режимі таймлайну. Оновіть сторінку або перемкніть режим.', 'warning');
+        }
+        console.warn('[booking] Details target not found', {
+            bookingId: cleanBookingId,
+            source: options.source || 'unknown',
+            date: AppState.selectedDate
+        });
+        return false;
+    }
 
     const endTime = addMinutesToTime(booking.time, booking.duration);
     const bookingDate = new Date(booking.date);
@@ -10559,7 +10574,7 @@ async function showBookingDetails(bookingId) {
             ${actions}
         `;
         document.getElementById('bookingModal')?.classList.remove('hidden');
-        return;
+        return true;
     }
 
     const program = getProductsSync().find(p => p.id === booking.programId);
@@ -10886,6 +10901,7 @@ async function showBookingDetails(bookingId) {
                 </div>`;
         });
     }
+    return true;
 }
 
 function selectedBanquetCandidateRole(bookingId) {
@@ -10992,6 +11008,7 @@ async function editBooking(bookingId) {
     // Заповнити форму
     document.getElementById('roomSelect').value = booking.room || '';
     await refreshBookingRoomAvailabilityForSelectedDate({ selectedRoom: booking.room || '', excludeId: bookingId });
+    if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
     document.getElementById('costumeSelect').value = booking.costume || '';
     document.getElementById('bookingNotes').value = bookingCommentValueForType(editComments, editCommentType) || booking.notes || '';
     const groupEditInput = document.getElementById('bookingGroupName');
@@ -11103,6 +11120,7 @@ async function duplicateBooking(bookingId) {
 
     // Pre-fill форму (ідентично editBooking)
     document.getElementById('roomSelect').value = booking.room || '';
+    if (typeof ensureCostumeSelectOption === 'function') ensureCostumeSelectOption(booking.costume);
     document.getElementById('costumeSelect').value = booking.costume || '';
     const duplicateCommentType = bookingCommentTypeForBooking(booking);
     const duplicateComments = bookingWorkspaceCommentsFromBooking(booking);

@@ -2855,7 +2855,10 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(timeline, /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/);
     assert.match(timeline, /const targetRole = timelineBanquetPreviewRoleForTarget\(target, previewRolesByBookingId\)/);
     assert.match(timeline, /setTimelineBanquetPreviewRole\(target\.block, targetRole\)/);
-    assert.match(timeline, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*showBookingDetails\(renderBooking\.id\)/);
+    assert.match(timeline, /function openTimelineBookingDetailsFromBlock[\s\S]*const ownId = String\(renderBooking\?\.id \|\| ''\)\.trim\(\)/);
+    assert.match(timeline, /showBookingDetails\(targetId, \{ silentMissing: Boolean\(linkedId\), source: 'timeline_block_click' \}\)/);
+    assert.match(timeline, /showBookingDetails\(ownId, \{ source: 'timeline_block_click_fallback' \}\)/);
+    assert.match(timeline, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
 });
 
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {

@@ -2933,6 +2933,36 @@ function showTimelineBanquetPreviewFromBlock(event, block) {
     return true;
 }
 
+async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
+    if (typeof showBookingDetails !== 'function') return false;
+    const ownId = String(renderBooking?.id || '').trim();
+    const linkedId = String(renderBooking?.linkedTo || renderBooking?.linked_to || '').trim();
+    const targetId = linkedId || ownId;
+    if (!targetId) return false;
+
+    let opened = false;
+    try {
+        opened = await showBookingDetails(targetId, { silentMissing: Boolean(linkedId), source: 'timeline_block_click' });
+    } catch (err) {
+        console.warn('[timeline] Failed to open booking details from block', { targetId, ownId, linkedId, err });
+    }
+    if (opened) return true;
+
+    if (linkedId && ownId && ownId !== linkedId) {
+        try {
+            opened = await showBookingDetails(ownId, { source: 'timeline_block_click_fallback' });
+        } catch (err) {
+            console.warn('[timeline] Failed to open linked booking fallback details', { ownId, linkedId, err });
+        }
+        if (opened) return true;
+    }
+
+    if (typeof showNotification === 'function') {
+        showNotification('Бронювання не знайдено в поточному режимі таймлайну. Оновіть сторінку або перемкніть режим.', 'warning');
+    }
+    return false;
+}
+
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape') hideTimelineBanquetInspector();
 });
@@ -3828,7 +3858,7 @@ function createBookingBlock(booking, startHour, anchor) {
                 return;
             }
             if (showTimelineBanquetPreviewFromBlock(e, block)) return;
-            showBookingDetails(renderBooking.linkedTo);
+            void openTimelineBookingDetailsFromBlock(renderBooking);
         });
     } else {
         block.addEventListener('click', (e) => {
@@ -3842,7 +3872,7 @@ function createBookingBlock(booking, startHour, anchor) {
                 return;
             }
             if (showTimelineBanquetPreviewFromBlock(e, block)) return;
-            showBookingDetails(renderBooking.id);
+            void openTimelineBookingDetailsFromBlock(renderBooking);
         });
     }
     block.addEventListener('mouseenter', (e) => {

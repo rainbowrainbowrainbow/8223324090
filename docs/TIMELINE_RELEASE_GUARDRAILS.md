@@ -99,4 +99,7 @@ npm run release:timeline-proof -- <live-url>
 - `git push origin HEAD:$RELEASE_DEPLOY_BRANCH` completed.
 - `npm run version:smoke -- <live-url>` green.
 - `npm run release:timeline-proof -- <live-url>` green.
+- `npm run smoke:live -- <live-url>` green with `LIVE_SMOKE_TOKEN` or `LIVE_SMOKE_USER` + `LIVE_SMOKE_PASS`; if credentials are missing, mark protected smoke blocked with exact missing env vars and do not claim it passed.
 - Authenticated operator UAT, якщо змінювалась interaction logic.
+- For timeline/booking releases, verify linked booking clicks in `Аніматори` and `Кімнати`: parent visible opens modal, parent/root hidden falls back to visible booking, and banquet activity blocks do not get replaced by compact inspector ownership.
+- For booking drawer or inventory releases, verify Warehouse costumes load in the authenticated drawer and saved custom costume values remain selectable on edit/duplicate.

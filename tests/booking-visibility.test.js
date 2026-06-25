@@ -243,6 +243,33 @@ test('booking-derived linked routes prefer exact visible child route then parent
     assert.equal(denied.reason, 'booking-not-visible');
 });
 
+test('booking details can fall back to id read when current timeline projection misses', () => {
+    const root = path.resolve(__dirname, '..');
+    const routes = fs.readFileSync(path.join(root, 'routes', 'bookings.js'), 'utf8');
+    const api = fs.readFileSync(path.join(root, 'js', 'api.js'), 'utf8');
+    const booking = fs.readFileSync(path.join(root, 'js', 'booking.js'), 'utf8');
+
+    const detailRouteIndex = routes.indexOf("router.get('/detail/:id'");
+    const dateRouteIndex = routes.indexOf("router.get('/:date'");
+    assert.ok(detailRouteIndex >= 0, 'booking detail-by-id route exists');
+    assert.ok(dateRouteIndex > detailRouteIndex, 'detail-by-id route must be registered before date route');
+    const detailRouteBlock = routes.slice(detailRouteIndex, dateRouteIndex);
+    assert.match(detailRouteBlock, /bookingActiveStatusSql\('b'\)/);
+    assert.match(detailRouteBlock, /canViewBooking\(req\.user, row\)/);
+    assert.match(detailRouteBlock, /attachBanquetLinksToBookings\(\[mapBookingRow\(row\)\], businessContext\)/);
+
+    assert.match(api, /async function apiGetBookingById\(id, options = \{\}\)/);
+    assert.match(api, /\/bookings\/detail\/\$\{encodeURIComponent\(cleanId\)\}/);
+    assert.match(api, /getTimelineAuthHeaders\(false\)/);
+
+    assert.match(booking, /async function resolveBookingDetailsRecord\(cleanBookingId, options = \{\}\)/);
+    assert.match(booking, /const currentDateBookings = await getBookingsForDate\(AppState\.selectedDate\)/);
+    assert.match(booking, /apiGetBookingById\(cleanBookingId, \{ fresh: true \}\)/);
+    assert.match(booking, /\[fetchedBooking, \.\.\.bookings\.filter\(b => String\(b\.id\) !== cleanBookingId\)\]/);
+    assert.match(booking, /lookupSource: detailRecord\.source/);
+    assert.doesNotMatch(booking, /Бронювання не знайдено в поточному режимі таймлайну\. Оновіть сторінку або перемкніть режим\./);
+});
+
 test('no parallel booking visibility system is introduced in services or routes', () => {
     const root = path.resolve(__dirname, '..');
     const forbidden = /\b(bookingVisibilityV2|bookingScopeHelper|queueBookingScope)\b/;

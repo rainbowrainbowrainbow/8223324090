@@ -219,17 +219,49 @@ function normalizeCostumeOptionName(costume) {
     return String(rawName || '').trim();
 }
 
-function uniqueCostumeOptionNames(costumes = []) {
-    const names = [];
+const BOOKING_COSTUME_NON_BOOKABLE_CONDITIONS = new Set(['damaged', 'retired']);
+
+function bookingCostumeAssignedName(costume) {
+    if (!costume || typeof costume !== 'object') return '';
+    return String(costume.assigned_name || costume.assignedName || '').trim();
+}
+
+function bookingCostumeCondition(costume) {
+    if (!costume || typeof costume !== 'object') return '';
+    return String(costume.condition || '').trim().toLowerCase();
+}
+
+function bookingCostumeIsSelectable(costume) {
+    const name = normalizeCostumeOptionName(costume);
+    if (!name) return false;
+    if (!costume || typeof costume !== 'object') return true;
+    if (costume.deleted === true || costume.is_deleted === true || costume.deleted_at || costume.deletedAt) return false;
+    return !BOOKING_COSTUME_NON_BOOKABLE_CONDITIONS.has(bookingCostumeCondition(costume));
+}
+
+function bookingCostumeOptionLabel(costume) {
+    const name = normalizeCostumeOptionName(costume);
+    if (!name) return '';
+    const meta = [];
+    const assignedName = bookingCostumeAssignedName(costume);
+    const condition = bookingCostumeCondition(costume);
+    if (assignedName) meta.push(`assigned to ${assignedName}`);
+    if (condition && condition !== 'good' && condition !== 'new') meta.push(`condition: ${condition}`);
+    return meta.length ? `${name} — ${meta.join(', ')}` : name;
+}
+
+function bookingCostumeSelectOptions(costumes = []) {
+    const options = [];
     const seen = new Set();
     costumes.forEach(costume => {
+        if (!bookingCostumeIsSelectable(costume)) return;
         const name = normalizeCostumeOptionName(costume);
         const key = name.toLowerCase();
         if (!name || seen.has(key)) return;
         seen.add(key);
-        names.push(name);
+        options.push({ value: name, label: bookingCostumeOptionLabel(costume) || name });
     });
-    return names;
+    return options;
 }
 
 function ensureCostumeSelectOption(value) {
@@ -246,12 +278,18 @@ function ensureCostumeSelectOption(value) {
     return true;
 }
 
+function bookingCostumeFallbackOptions() {
+    return Array.isArray(BOOKING_COSTUME_FALLBACK_OPTIONS) ? BOOKING_COSTUME_FALLBACK_OPTIONS : [];
+}
+
 function renderCostumeOptions(costumes = [], options = {}) {
     const select = document.getElementById('costumeSelect');
     if (!select) return [];
     const selectedValue = normalizeCostumeOptionName(options.selectedValue ?? select.value);
-    const names = uniqueCostumeOptionNames(costumes);
-    if (selectedValue && !names.some(name => name === selectedValue)) names.push(selectedValue);
+    const costumeOptions = bookingCostumeSelectOptions(costumes);
+    if (selectedValue && !costumeOptions.some(option => option.value === selectedValue)) {
+        costumeOptions.push({ value: selectedValue, label: `${selectedValue} — saved on booking` });
+    }
 
     select.innerHTML = '';
     const emptyOption = document.createElement('option');
@@ -259,14 +297,14 @@ function renderCostumeOptions(costumes = [], options = {}) {
     emptyOption.textContent = 'Без костюма';
     select.appendChild(emptyOption);
 
-    names.forEach(name => {
+    costumeOptions.forEach(costumeOption => {
         const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
+        option.value = costumeOption.value;
+        option.textContent = costumeOption.label;
         select.appendChild(option);
     });
-    select.value = selectedValue && names.includes(selectedValue) ? selectedValue : '';
-    return names;
+    select.value = selectedValue && costumeOptions.some(option => option.value === selectedValue) ? selectedValue : '';
+    return costumeOptions;
 }
 
 async function initializeCostumes(options = {}) {
@@ -274,20 +312,26 @@ async function initializeCostumes(options = {}) {
     if (!select) return false;
 
     const selectedValue = select.value;
-    const fallbackCostumes = Array.isArray(COSTUMES) ? COSTUMES : [];
-    renderCostumeOptions(fallbackCostumes, { selectedValue });
-
+    const fallbackCostumes = bookingCostumeFallbackOptions();
+    const wantsWarehouse = options.refreshWarehouse === true;
     const hasAuthToken = typeof getStoredAuthToken !== 'function' || Boolean(getStoredAuthToken());
-    if (!options.refreshWarehouse || !hasAuthToken || typeof apiGetWarehouseCostumes !== 'function') return false;
-    if (select.dataset.costumeWarehouseLoaded === '1' && options.forceWarehouse !== true) return true;
+
+    if (wantsWarehouse && select.dataset.costumeWarehouseLoaded === '1' && options.forceWarehouse !== true) {
+        ensureCostumeSelectOption(selectedValue);
+        return true;
+    }
+
+    renderCostumeOptions(fallbackCostumes, { selectedValue });
+    select.dataset.costumeSource = 'fallback';
+
+    if (!wantsWarehouse || !hasAuthToken || typeof apiGetWarehouseCostumes !== 'function') return false;
 
     try {
         const response = await apiGetWarehouseCostumes();
         if (!response?.success) return false;
-        const warehouseNames = uniqueCostumeOptionNames(response.data || []);
         select.dataset.costumeWarehouseLoaded = '1';
-        if (!warehouseNames.length) return true;
-        renderCostumeOptions([...warehouseNames, ...fallbackCostumes], { selectedValue: select.value || selectedValue });
+        select.dataset.costumeSource = 'warehouse';
+        renderCostumeOptions(response.data || [], { selectedValue: select.value || selectedValue });
         return true;
     } catch (err) {
         console.warn('[app] Failed to load warehouse costumes for booking selector', err);

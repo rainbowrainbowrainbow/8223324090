@@ -143,7 +143,8 @@ function normalizeTimelineModeState(state = AppState) {
 // КОСТЮМИ
 // ==========================================
 
-const COSTUMES = [
+// Offline-only fallback for the booking costume select. Warehouse inventory is the primary source.
+const BOOKING_COSTUME_FALLBACK_OPTIONS = [
     'Супер Кіт', 'Леді Баг', 'Тік-ток ведучий чорн', 'Тік-ток ведучий син',
     'Майнкрафт Кріпер', 'Піратка 2', 'Пірат 1', 'Ельза', 'Студент Ґоґвортса',
     'Ліло', 'Стіч', 'Єдиноріжка', 'Поняшка', 'Ютуб', 'Людина-павук',

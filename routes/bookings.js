@@ -2449,6 +2449,34 @@ router.get('/:id/banquet-summary.pdf', async (req, res) => {
     }
 });
 
+router.get('/detail/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!validateId(id)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+
+        const result = await pool.query(
+            `SELECT b.*
+               FROM bookings b
+              WHERE b.id = $1
+                AND ${bookingContextSql('b', '$2')}
+                AND ${bookingActiveStatusSql('b')}
+              LIMIT 1`,
+            [id, businessContext]
+        );
+        const row = result.rows[0] || null;
+        if (!row) return res.status(404).json({ success: false, error: 'Booking not found' });
+        if (!canViewBooking(req.user, row)) return sendBookingDenied(req, res, row);
+
+        const [booking] = await attachBanquetLinksToBookings([mapBookingRow(row)], businessContext);
+        res.json({ success: true, booking });
+    } catch (err) {
+        log.error('GET /bookings/detail/:id error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // Get bookings for a date
 router.get('/:date', async (req, res) => {
     try {

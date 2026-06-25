@@ -2849,16 +2849,47 @@ test('room-grid service marker lifecycle is scoped to room view and view-aware c
 
 test('room timeline banquet activity blocks keep full booking modal click ownership', () => {
     const timeline = read('js/timeline.js');
+    const inspectorFunction = timeline.slice(
+        timeline.indexOf('function timelineBanquetBlockCanOpenInspector'),
+        timeline.indexOf('function hydrateTimelineBanquetBadges')
+    );
+    const previewFunction = timeline.slice(
+        timeline.indexOf('function showTimelineBanquetPreviewFromBlock'),
+        timeline.indexOf('async function openTimelineBookingDetailsFromBlock')
+    );
+    const openDetailsFunction = timeline.slice(
+        timeline.indexOf('async function openTimelineBookingDetailsFromBlock'),
+        timeline.indexOf('document.addEventListener', timeline.indexOf('async function openTimelineBookingDetailsFromBlock'))
+    );
+    const renderBlockClickStart = timeline.indexOf('if (isLinked) {', timeline.indexOf("block.setAttribute('data-booking-id'"));
+    const linkedClickBlock = timeline.slice(
+        renderBlockClickStart,
+        timeline.indexOf('} else {', renderBlockClickStart)
+    );
+    const ownClickBlock = timeline.slice(
+        timeline.indexOf('} else {', renderBlockClickStart),
+        timeline.indexOf('block.addEventListener(\'mouseenter\'')
+    );
 
-    assert.match(timeline, /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/);
-    assert.match(timeline, /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES\.has\(role\)\) return true/);
-    assert.match(timeline, /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/);
+    assert.match(timeline, /TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES = new Set\(\['primary', 'root', 'banquet'\]\)/);
+    assert.match(timeline, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES = new Set\(\['activity', 'service', 'manual'\]\)/);
+    assert.match(inspectorFunction, /TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/);
+    assert.match(inspectorFunction, /TIMELINE_BANQUET_INSPECTOR_BLOCK_ROLES\.has\(role\)\) return true/);
+    assert.match(previewFunction, /if \(!isRoomTimelineView\(\) \|\| !block\?\._timelineBanquetSummary\) return false/);
+    assert.match(previewFunction, /if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false/);
+    assert.match(previewFunction, /showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/);
     assert.match(timeline, /const targetRole = timelineBanquetPreviewRoleForTarget\(target, previewRolesByBookingId\)/);
     assert.match(timeline, /setTimelineBanquetPreviewRole\(target\.block, targetRole\)/);
-    assert.match(timeline, /function openTimelineBookingDetailsFromBlock[\s\S]*const ownId = String\(renderBooking\?\.id \|\| ''\)\.trim\(\)/);
-    assert.match(timeline, /showBookingDetails\(targetId, \{ silentMissing: Boolean\(linkedId\), source: 'timeline_block_click' \}\)/);
-    assert.match(timeline, /showBookingDetails\(ownId, \{ source: 'timeline_block_click_fallback' \}\)/);
-    assert.match(timeline, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
+    assert.match(openDetailsFunction, /const ownId = String\(renderBooking\?\.id \|\| ''\)\.trim\(\)/);
+    assert.match(openDetailsFunction, /const linkedId = String\(renderBooking\?\.linkedTo \|\| renderBooking\?\.linked_to \|\| ''\)\.trim\(\)/);
+    assert.match(openDetailsFunction, /const targetId = linkedId \|\| ownId/);
+    assert.match(openDetailsFunction, /showBookingDetails\(targetId, \{ silentMissing: Boolean\(linkedId\), source: 'timeline_block_click' \}\)/);
+    assert.match(openDetailsFunction, /if \(linkedId && ownId && ownId !== linkedId\)/);
+    assert.match(openDetailsFunction, /showBookingDetails\(ownId, \{ source: 'timeline_block_click_fallback' \}\)/);
+    assert.doesNotMatch(openDetailsFunction, /showBookingDetails\(\s*renderBooking\.(?:linkedTo|linked_to)\s*\)/);
+    assert.doesNotMatch(timeline, /showBookingDetails\(\s*booking\.(?:linkedTo|linked_to)\s*\)/);
+    assert.match(linkedClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
+    assert.match(ownClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
 });
 
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {

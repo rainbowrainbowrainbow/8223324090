@@ -1367,6 +1367,33 @@ async function apiGetBookings(date, options = {}) {
     }
 }
 
+async function apiGetBookingById(id, options = {}) {
+    const cleanId = String(id || '').trim();
+    if (!cleanId) return { success: false, error: 'Missing booking ID', status: 400 };
+    try {
+        let path = timelineApiUrl(`/bookings/detail/${encodeURIComponent(cleanId)}`);
+        if (options.fresh) {
+            path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
+        }
+        const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, status: response?.status || 401 };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return {
+                success: false,
+                error: body.error || body.message || `Booking API error ${response.status}`,
+                code: body.code || null,
+                status: response.status,
+                requestId: body.requestId || body.request_id || null
+            };
+        }
+        return body;
+    } catch (err) {
+        console.error('API getBookingById error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiCreateBooking(booking) {
     try {
         const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings')}`, {

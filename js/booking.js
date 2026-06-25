@@ -10532,19 +10532,53 @@ async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot 
     }
 }
 
+async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
+    const currentDateBookings = await getBookingsForDate(AppState.selectedDate);
+    const bookings = Array.isArray(currentDateBookings) ? currentDateBookings : [];
+    const cachedBooking = bookings.find(b => String(b.id) === cleanBookingId);
+    if (cachedBooking) return { booking: cachedBooking, bookings, source: 'date-cache' };
+
+    if (typeof apiGetBookingById !== 'function') {
+        return { booking: null, bookings, source: 'date-cache-miss', error: 'apiGetBookingById unavailable' };
+    }
+
+    const response = await apiGetBookingById(cleanBookingId, { fresh: true });
+    const fetchedBooking = response?.booking && String(response.booking.id) === cleanBookingId
+        ? response.booking
+        : null;
+    if (!response?.success || !fetchedBooking) {
+        return {
+            booking: null,
+            bookings,
+            source: 'id-fetch-miss',
+            status: response?.status || null,
+            error: response?.error || 'Booking not found'
+        };
+    }
+
+    return {
+        booking: fetchedBooking,
+        bookings: [fetchedBooking, ...bookings.filter(b => String(b.id) !== cleanBookingId)],
+        source: 'id-fetch'
+    };
+}
+
 async function showBookingDetails(bookingId, options = {}) {
     const cleanBookingId = String(bookingId || '').trim();
     if (!cleanBookingId) return false;
-    const bookings = await getBookingsForDate(AppState.selectedDate);
-    const booking = bookings.find(b => String(b.id) === cleanBookingId);
+    const detailRecord = await resolveBookingDetailsRecord(cleanBookingId, options);
+    const { booking, bookings } = detailRecord;
     if (!booking) {
         if (options.silentMissing !== true && typeof showNotification === 'function') {
-            showNotification('Бронювання не знайдено в поточному режимі таймлайну. Оновіть сторінку або перемкніть режим.', 'warning');
+            showNotification('Не вдалося відкрити бронювання: запис недоступний або у вас немає прав.', 'warning');
         }
         console.warn('[booking] Details target not found', {
             bookingId: cleanBookingId,
             source: options.source || 'unknown',
-            date: AppState.selectedDate
+            date: AppState.selectedDate,
+            lookupSource: detailRecord.source,
+            status: detailRecord.status || null,
+            error: detailRecord.error || null
         });
         return false;
     }

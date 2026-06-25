@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.27 - Timeline Click Debt Closure
+
+### Timeline / Booking details / Warehouse costumes / Release QA / (Клешня, 25.06.2026) [codex]
+- **Клік по linked/banquet блоках закрито як борг** - timeline відкриває parent booking, а якщо parent/root прихований поточним view/cache, fallback відкриває видиму linked-бронь.
+- **Booking details більше не залежить від timeline projection** - `showBookingDetails()` при cache miss читає бронювання через `/api/bookings/detail/:id`, зберігаючи auth/business visibility boundaries.
+- **Селектор костюмів використовує Warehouse як джерело правди** - authenticated drawer читає `/api/warehouse/costumes`, а статичний список лишається offline fallback.
+- **Непридатні костюми не пропонуються як новий вибір** - selector відкидає deleted/damaged/retired записи, показує assigned status у label і не стирає saved custom costume на edit/duplicate.
+- **Regression coverage посилено** - `timeline-resources`, `booking-visibility`, `route-smoke`, `booking-drawer-encoding` і `test:ui` покривають click fallback, modal ownership, fetch-by-id і Warehouse selector contract.
+- **Release/QA guardrails оновлено** - UAT matrix і release checklist тепер вимагають linked click QA, Warehouse costume check, `version:smoke` і protected `smoke:live`.
+- **Релізні маркери піднято до `0.77.27`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.26 - Timeline Inventory Click Fix
 
 ### Timeline / Booking drawer / Warehouse costumes / (Клешня, 25.06.2026) [codex]

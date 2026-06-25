@@ -43,6 +43,22 @@
 | Context parity | `timeline-regression-matrix.test.js` | Повторити критичні сценарії на `/` і `/maysternya-doli` | Обидва контексти працюють через той самий shared engine | два URL + screenshots |
 | Asset/version proof | `version:smoke`, live asset check | Відкрити DevTools/network або source | `timeline.js?v=<release>` і `timeline-interaction-model.js?v=<release>` відповідають release | URL/source screenshot |
 
+## Linked / banquet click and inventory QA
+
+Цей блок обов'язковий для релізів, які зачіпають `js/timeline.js`, `js/booking.js`, `routes/bookings.js`, `js/api.js`, Warehouse costumes або booking drawer.
+
+| Сценарій | Executable proof | Live-auth UAT | Очікуваний результат | Доказ |
+| --- | --- | --- | --- | --- |
+| Linked booking click, parent visible | `node --test tests/timeline-resources.test.js` | У `Аніматори` натиснути linked/secondary блок, коли parent booking є у поточному view/cache | Відкривається booking details modal для parent/root booking, без silent dead click | browser, роль, дата, view, label/id блоку |
+| Linked booking click, parent hidden | `node --test tests/booking-visibility.test.js tests/timeline-resources.test.js` | У `Аніматори` або `Кімнати` натиснути linked/banquet activity блок, коли parent/root прихований поточним view/projection | Якщо parent не відкрився, fallback відкриває власну visible booking; користувач бачить modal або явне warning, не мертвий клік | booking id, view, console warning за наявності |
+| Room view banquet activity ownership | `node --test tests/timeline-resources.test.js` | У `Кімнати` натиснути activity/animation блок банкету поруч із kitchen/service marker | Activity block відкриває booking details modal; compact banquet inspector не перехоплює цей клік | screenshot modal або коротке відео |
+| Animator view banquet activity ownership | `node --test tests/timeline-resources.test.js` | У `Аніматори` натиснути banquet-linked activity/ordinary booking block | Відкривається booking details modal через `openTimelineBookingDetailsFromBlock`, не inspector-only surface | screenshot modal |
+| Warehouse costumes in booking drawer | `npm run test:ui` + `node --test tests/booking-drawer-encoding.test.js` | Відкрити create/edit/duplicate booking drawer і перевірити поле `Костюм` | Authenticated drawer підтягує `/api/warehouse/costumes`; saved custom costume не зникає; unavailable/deleted/damaged/retired не пропонуються як новий вибір | selected options або notes з booking id |
+| Live version smoke | `npm run version:smoke -- <live-url>` | Після deploy перевірити `/api/version` і login HTML | Live version/release label збігаються з `package.json` | command output |
+| Protected live smoke | `npm run smoke:live -- <live-url>` з `LIVE_SMOKE_TOKEN` або `LIVE_SMOKE_USER` + `LIVE_SMOKE_PASS` | Запустити після version smoke, не друкуючи секрети | Protected bookings/lines/leads contracts проходять; якщо credentials відсутні, release QA явно позначається blocked | command output або список відсутніх env vars |
+
+Дані для ручного звіту: browser, user role, date, view, clicked block labels/ids, pass/fail result. Якщо клік усе ще мертвий, записати точний booking id, view, date, console error і reproduction notes.
+
 ## Exact live-auth UAT script
 
 1. Відкрити production URL `/`.

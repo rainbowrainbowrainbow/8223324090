@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
@@ -299,6 +300,85 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(panelCss, /body\.timeline-dashboard-page \.pinata-service-section input/);
     assert.match(responsiveCss, /--booking-footer-space:\s*calc\(32px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(responsiveCss, /width:\s*min\(92vw,\s*680px\)/);
+});
+
+test('booking costume selector filters operationally inactive records and preserves saved custom value', () => {
+    const appJs = read('js', 'app.js');
+    const helperStart = appJs.indexOf('function normalizeCostumeOptionName');
+    const helperEnd = appJs.indexOf('async function initializeCostumes', helperStart);
+    assert.ok(helperStart >= 0, 'costume helper block start exists');
+    assert.ok(helperEnd > helperStart, 'costume helper block end exists');
+
+    const select = {
+        children: [],
+        dataset: {},
+        value: '',
+        set innerHTML(value) {
+            this.children = [];
+        },
+        get innerHTML() {
+            return this.children.map(child => child.textContent).join('');
+        },
+        appendChild(child) {
+            this.children.push(child);
+            return child;
+        }
+    };
+    const document = {
+        getElementById(id) {
+            return id === 'costumeSelect' ? select : null;
+        },
+        createElement() {
+            return { value: '', textContent: '' };
+        }
+    };
+    const helpers = vm.runInNewContext(
+        `${appJs.slice(helperStart, helperEnd)}
+        ({ bookingCostumeSelectOptions, renderCostumeOptions });`,
+        { document }
+    );
+
+    const costumes = [
+        { name: ' Elsa ', condition: 'good' },
+        { name: 'Anna', condition: 'new', assigned_name: 'Animator Anna' },
+        { name: 'Duplicate', condition: 'good' },
+        { name: 'duplicate', condition: 'good' },
+        { name: 'Broken', condition: 'damaged' },
+        { name: 'Retired', condition: 'retired' },
+        { name: 'Deleted', condition: 'good', deleted_at: '2026-06-01T00:00:00.000Z' },
+        { name: 'Flagged', condition: 'good', is_deleted: true },
+        { name: '', condition: 'good' }
+    ];
+
+    const activeOptions = helpers.bookingCostumeSelectOptions(costumes);
+    assert.deepEqual(
+        Array.from(activeOptions, option => option.value),
+        ['Elsa', 'Anna', 'Duplicate'],
+        'selector keeps active costumes only and de-duplicates by name'
+    );
+    assert.deepEqual(
+        Array.from(activeOptions, option => option.label),
+        ['Elsa', 'Anna — assigned to Animator Anna', 'Duplicate'],
+        'assigned costume keeps value but displays assignee status'
+    );
+
+    const renderedOptions = helpers.renderCostumeOptions(costumes, { selectedValue: 'Archived Custom Costume' });
+    assert.deepEqual(
+        Array.from(renderedOptions, option => option.value),
+        ['Elsa', 'Anna', 'Duplicate', 'Archived Custom Costume'],
+        'saved custom value remains selectable even when Warehouse does not return it'
+    );
+    assert.equal(select.value, 'Archived Custom Costume');
+    assert.deepEqual(
+        Array.from(select.children, child => child.textContent),
+        [
+            'Без костюма',
+            'Elsa',
+            'Anna — assigned to Animator Anna',
+            'Duplicate',
+            'Archived Custom Costume — saved on booking'
+        ]
+    );
 });
 
 test('timeline caches are scoped by business and display mode before booking visibility checks', () => {

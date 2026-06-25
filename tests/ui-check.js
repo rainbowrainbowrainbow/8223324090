@@ -306,9 +306,21 @@ checkPage('index.html', (doc, html) => {
         && !timelineCode.includes('showBookingDetails(renderBooking.linkedTo)'));
     check('Booking costume selector hydrates from Warehouse inventory with static fallback',
         appCode.includes('async function initializeCostumes(options = {})')
+        && appCode.includes('function bookingCostumeFallbackOptions')
+        && appCode.includes('BOOKING_COSTUME_FALLBACK_OPTIONS')
+        && appCode.includes("BOOKING_COSTUME_NON_BOOKABLE_CONDITIONS = new Set(['damaged', 'retired'])")
+        && appCode.includes('function bookingCostumeIsSelectable')
+        && appCode.includes('costume.deleted === true || costume.is_deleted === true || costume.deleted_at || costume.deletedAt')
+        && appCode.includes('function bookingCostumeOptionLabel')
+        && appCode.includes('assigned to ${assignedName}')
+        && appCode.includes('saved on booking')
         && appCode.includes('apiGetWarehouseCostumes')
         && appCode.includes('function ensureCostumeSelectOption')
-        && appCode.includes('renderCostumeOptions([...warehouseNames, ...fallbackCostumes]')
+        && appCode.includes("select.dataset.costumeSource = 'fallback'")
+        && appCode.includes("select.dataset.costumeSource = 'warehouse'")
+        && appCode.includes('renderCostumeOptions(response.data || [], { selectedValue: select.value || selectedValue })')
+        && !appCode.includes('Array.isArray(COSTUMES)')
+        && !appCode.includes('renderCostumeOptions([...warehouseNames, ...fallbackCostumes]')
         && bookingCode.includes('await initializeCostumes({ refreshWarehouse: true })')
         && bookingCode.includes('ensureCostumeSelectOption(booking.costume)'));
     check('Animator timeline filters banquet service pseudo-lines and kitchen blocks',

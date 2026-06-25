@@ -1122,6 +1122,17 @@ function createFakePool() {
                     rowCount: rows.length
                 };
             }
+            if (/FROM booking_banquet_links\s+WHERE business_context = \$1\s+AND relation_type = ANY\(\$2::text\[\]\)\s+AND booking_a_id = ANY\(\$3::text\[\]\)\s+AND booking_b_id = ANY\(\$3::text\[\]\)/i.test(text)) {
+                const relationTypes = new Set(Array.isArray(params[1]) ? params[1].map(String) : []);
+                const ids = new Set(Array.isArray(params[2]) ? params[2].map(String) : []);
+                const rows = hrState.banquetLinks.filter(link =>
+                    link.business_context === params[0]
+                    && relationTypes.has(String(link.relation_type))
+                    && ids.has(String(link.booking_a_id))
+                    && ids.has(String(link.booking_b_id))
+                );
+                return { rows: rows.map(link => ({ ...link })), rowCount: rows.length };
+            }
             if (/SELECT b\.\* FROM bookings b WHERE b\.id = ANY\(\$1::text\[\]\)/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(String) : [];
                 const activeOnly = /LOWER\(COALESCE\(NULLIF\(BTRIM\(b\.status\), ''\), 'confirmed'\)\) != 'cancelled'/i.test(text);
@@ -2767,6 +2778,24 @@ describe('route-level API safety smoke', () => {
         const res = await request('GET', '/api/bookings/BK-SUMMARY/banquet-summary?businessContext=event_genix');
 
         assert.equal(res.status, 401);
+    });
+
+    it('serves booking details by id without falling through to date projection route', async () => {
+        const res = await request(
+            'GET',
+            '/api/bookings/detail/BK-ACTIVITY?businessContext=event_genix',
+            undefined,
+            withAuth()
+        );
+
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.id, 'BK-ACTIVITY');
+        assert.equal(res.data.booking.date, '2099-06-20');
+        assert.equal(res.data.booking.programName, 'Face painting');
+        assert.equal(res.data.booking.businessContext, 'event_genix');
+        assert.ok(queries.some(q => /FROM bookings b\s+WHERE b\.id = \$1/i.test(q.text)));
+        assert.equal(res.text.includes('Invalid date format'), false);
     });
 
     it('returns structured banquet summary rows with adults, linked activities, and deposit warning', async () => {

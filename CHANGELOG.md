@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.28 - Invite Visit Polish
+
+### Public invite / Banquet sheet parity / (Клешня, 25.06.2026) [codex]
+- **Invite page показує лого компанії замість старого аватара** - динозавра замінено на бренд-лого Event Genix у верхньому блоці запрошення, а event-card hero лишився шапкою події.
+- **Час у запрошенні став зрозумілішим** - дата, час активності, активність і кімната мають явні підписи; якщо передано окремий час приходу гостей, він показується окремо від часу активності.
+- **Нижній invite flow перероблено під гостя** - generic плитки всіх послуг прибрано, натомість сторінка веде через адресу, орієнтир, карту, підготовку перед візитом, контакт і share/copy.
+- **Перед візитом персоналізовано під тип події** - public invite показує короткі підказки для шоу, квестів, майстер-класів, сімейних подій, приватних вечірок і fallback-свят без нових приватних URL-даних.
+- **Банкетний лист і client PDF вирівняно по примітках** - безпечні примітки до menu/entry rows показуються в client PDF так само, як у HTML-таблиці.
+- **Copy text банкетного листа оновлено під client contract** - текст для копіювання тепер відповідає таблиці `Позиція / К-сть / Ціна / Сума` і не тягне internal-only коментарі.
+- **Regression coverage і Browser QA оновлено** - static guards і Chromium QA перевіряють company logo, time labels, lower guest flow, skip-link, share/copy, desktop і mobile overflow.
+- **Релізні маркери піднято до `0.77.28`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.27 - Timeline Click Debt Closure
 
 ### Timeline / Booking details / Warehouse costumes / Release QA / (Клешня, 25.06.2026) [codex]

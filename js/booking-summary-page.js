@@ -521,6 +521,25 @@
         return `<div class="summary-order-meta">${items.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
     }
 
+    function summaryClientOrderTextLines(rows = [], currency = 'UAH') {
+        return rows.flatMap((row, index) => {
+            const title = row?.title || row?.name || (row?.type === 'entry' ? 'Вхід' : 'Позиція');
+            const lines = [
+                `${index + 1}. ${title}`,
+                `   К-сть: ${summaryClientOrderQuantityLabel(row)}`,
+                `   Ціна: ${summaryClientOrderUnitPriceLabel(row, currency)}`,
+                `   Сума: ${summaryClientOrderSubtotalLabel(row, currency)}`
+            ];
+            const duration = summaryDurationLabel(row);
+            const serving = summaryOrderServingLabel(row);
+            const comment = orderRowComment(row);
+            if (duration !== '—') lines.push(`   Тривалість: ${duration}`);
+            if (serving !== '—') lines.push(`   Видача: ${serving}`);
+            if (comment) lines.push(`   Примітка: ${comment}`);
+            return lines;
+        });
+    }
+
     function orderRowsHtml(summary, mode = summaryMode(summary)) {
         const rows = summaryOrderRows(summary, mode);
         const currency = summary?.totals?.currency || 'UAH';
@@ -945,7 +964,7 @@
             ] : []),
             ...(sections.orderRows ? [
                 mode === 'kitchen' ? 'Кухня / видача:' : 'Замовлення:',
-                ...(rows.length ? rows.map((row, index) => {
+                ...(rows.length && mode === 'client' ? summaryClientOrderTextLines(rows, currency) : rows.length ? rows.map((row, index) => {
                 const comment = orderRowComment(row);
                 const servingTime = summaryServingTime(row);
                 const quantityLabel = summaryOrderQuantityLabel(row);

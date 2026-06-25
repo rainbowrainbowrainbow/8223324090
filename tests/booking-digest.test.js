@@ -494,6 +494,7 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
                 quantity: 3,
                 unitPrice: 260,
                 subtotal: 780,
+                comment: 'Без цибулі',
                 meta: { servingUnit: 'порція', servingTime: '16:30' }
             },
             {
@@ -532,7 +533,9 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
                 { role: 'kitchen', label: 'Кухня', name: null, modes: ['kitchen', 'staff'], showWhenEmpty: true }
             ]
         },
-        comments: [],
+        comments: [
+            { type: 'internal', label: 'Внутрішній коментар', text: 'Не показувати клієнту' }
+        ],
         totals: {
             currency: 'UAH',
             orderTotal: 5097.5,
@@ -644,14 +647,16 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(copiedText, /Розклад:\n12:30 — Прихід гостей/);
     assert.match(copiedText, /12:30 — Анімація 60хв/);
     assert.match(copiedText, /14:30 — Видача меню/);
-    assert.match(copiedText, /Анімація 60хв — 60 хв — 2\s*900 ₴ \(Хоче більше жартів\)/);
+    assert.match(copiedText, /Замовлення:\n1\. Анімація 60хв\n\s+К-сть: —\n\s+Ціна: 2\s*900 ₴\n\s+Сума: 2\s*900 ₴\n\s+Тривалість: 60 хв\n\s+Примітка: Хоче більше жартів/);
     assert.doesNotMatch(copiedText, /Анімація 60хв.*1 порц/);
-    assert.match(copiedText, /Нутелла — 14:30 — 5 порцій по 100 г × 90 ₴ = 450 ₴/);
-    assert.match(copiedText, /Бургер — 16:30 — 3 порції × 260 ₴ = 780 ₴/);
-    assert.match(copiedText, /Свічка — 16:35 — 1 порція × 30 ₴ = 30 ₴/);
-    assert.match(copiedText, /Лимонад — 16:40 — 2,5 л × 95 ₴ = 237,5 ₴/);
-    assert.match(copiedText, /Вхід — 12 дітей × 300 ₴ = 3\s*600 ₴/);
+    assert.match(copiedText, /2\. Нутелла\n\s+К-сть: 5 порцій по 100 г\n\s+Ціна: 90 ₴\n\s+Сума: 450 ₴\n\s+Видача: 14:30/);
+    assert.match(copiedText, /3\. Бургер\n\s+К-сть: 3 порції\n\s+Ціна: 260 ₴\n\s+Сума: 780 ₴\n\s+Видача: 16:30\n\s+Примітка: Без цибулі/);
+    assert.match(copiedText, /4\. Свічка\n\s+К-сть: 1 порція\n\s+Ціна: 30 ₴\n\s+Сума: 30 ₴\n\s+Видача: 16:35/);
+    assert.match(copiedText, /5\. Лимонад\n\s+К-сть: 2,5 л\n\s+Ціна: 95 ₴\n\s+Сума: 237,5 ₴\n\s+Видача: 16:40/);
+    assert.match(copiedText, /6\. Вхід\n\s+К-сть: 12 дітей\n\s+Ціна: 300 ₴\n\s+Сума: 3\s*600 ₴/);
+    assert.doesNotMatch(copiedText, /× .* = /);
     assert.doesNotMatch(copiedText, /Вхід: 3\s*600 ₴/);
+    assert.doesNotMatch(copiedText, /Не показувати клієнту/);
     assert.match(copiedText, /Фінанси:/);
     assert.match(copiedText, /Загальна сума: 5\s*097,5 ₴/);
     assert.doesNotMatch(copiedText, /Сума бронювання/);

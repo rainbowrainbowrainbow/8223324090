@@ -1262,7 +1262,7 @@ body.booking-summary-page {
     }
 }
 
-/* Banquet celebration compact theme: transparent PNG assets + last-page brand footer. */
+/* Banquet celebration compact theme: transparent PNG assets. */
 :root {
     --summary-bg: #eef5f2;
     --summary-panel: #fffdf8;

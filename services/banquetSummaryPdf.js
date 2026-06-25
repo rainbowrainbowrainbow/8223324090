@@ -132,10 +132,19 @@ function rowServingTime(row = {}) {
 }
 
 function rowCommentForMode(row = {}, mode) {
-    if (row.type === 'entry') return cleanText(row.comment);
+    const type = String(row.type || '').trim().toLowerCase();
+    if (mode === 'client') {
+        if (type === 'service_event') {
+            return row.meta?.time ? cleanText(`Час ${row.meta.time}`) : '';
+        }
+        return ['program', 'activity', 'entry', 'menu'].includes(type)
+            ? cleanText(row.comment)
+            : '';
+    }
+    if (type === 'entry') return cleanText(row.comment);
     const parts = [];
-    if (row.type === 'service_event' && row.meta?.time) parts.push(`Час ${row.meta.time}`);
-    if (row.comment && (mode !== 'client' || row.type === 'program' || row.type === 'activity')) {
+    if (type === 'service_event' && row.meta?.time) parts.push(`Час ${row.meta.time}`);
+    if (row.comment) {
         parts.push(row.comment);
     }
     return cleanText(parts.join(' · '));

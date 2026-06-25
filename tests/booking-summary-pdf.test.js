@@ -125,6 +125,8 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(menuTableRow[1], '2 порція');
     assert.equal(menuTableRow[2], '250 грн');
     assert.equal(menuTableRow[3], '500 грн');
+    assert.match(menuTableRow[0], /Видача: 15:15/);
+    assert.match(menuTableRow[0], /Примітка: Без цибулі/);
     assert.equal(clientView.orderTableRows.flat().includes('1 порція'), false);
 
     assert.deepEqual(financeLabels, ['Загальна сума']);

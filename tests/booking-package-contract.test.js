@@ -1504,6 +1504,7 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(route, /err\.code === 'banquet_summary_pdf_validation_failed'/);
     assert.match(route, /details: Array\.isArray\(err\.details\) \? err\.details : undefined/);
 
+    // Product decision: the visible toolbar is client-only, while direct kitchen/staff URLs stay supported for legacy internal links.
     assert.match(html, /data-booking-summary-pdf-mode="client"/);
     assert.doesNotMatch(html, /data-booking-summary-pdf-mode="kitchen"/);
     assert.doesNotMatch(html, /data-booking-summary-pdf-mode="staff"/);
@@ -1512,6 +1513,10 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(html, /id="bookingSummaryBack"/);
     assert.doesNotMatch(html, /booking-summary-export/);
     assert.match(pageCode, /function closeSummaryDocument\(\)/);
+    assert.match(pageCode, /const SUMMARY_MODES = new Set\(\['client', 'kitchen', 'staff'\]\)/);
+    assert.match(pageCode, /return normalizeSummaryMode\(summary\?\.mode \|\| qs\(\)\.get\('mode'\) \|\| 'client'\)/);
+    assert.match(pageCode, /const mode = normalizeSummaryMode\(params\.get\('mode'\) \|\| 'client'\)/);
+    assert.match(pageCode, /const requestParams = new URLSearchParams\(\{ businessContext, mode \}\)/);
     assert.match(pageCode, /el\('bookingSummaryClientPdf'\)\?\.addEventListener\('click', \(\) => exportSummaryPdf\('client'\)\)/);
     assert.doesNotMatch(pageCode, /document\.querySelectorAll\('\[data-booking-summary-pdf-mode\]'\)/);
     assert.match(pageCode, /function exportSummaryPdf\(mode\)/);
@@ -1684,6 +1689,8 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.equal(clientEntryPdfRow[1], '12 дітей');
     assert.equal(clientEntryPdfRow[2], '300 грн');
     assert.match(clientEntryPdfRow[3], /^3\s*600 грн$/);
+    assert.match(clientMenuPdfRow[0], /Видача: 15:00/);
+    assert.match(clientMenuPdfRow[0], /Примітка: Без цибулі/);
     assert.equal(clientMenuPdfRow[2], '250 грн');
     assert.equal(clientMenuPdfRow[3], '750 грн');
 

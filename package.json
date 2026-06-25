@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.27",
+  "version": "0.77.28",
   "eventGenix": {
-    "releaseLabel": "Timeline Click Debt Closure"
+    "releaseLabel": "Invite Visit Polish"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

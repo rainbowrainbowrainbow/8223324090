@@ -155,11 +155,43 @@ const eventCardImageRule = cssRuleText(eventCardPagesCss, '.event-card-visual im
 const inviteHtml = fileText('invite.html');
 const inviteDom = new JSDOM(inviteHtml);
 const inviteHeroImage = inviteDom.window.document.querySelector('#inviteHeroImage');
+const inviteLogoImage = inviteDom.window.document.querySelector('.logo-img');
 const inviteSkipLink = inviteDom.window.document.querySelector('.skip-link');
 const inviteHeroWrapRule = cssRuleText(inviteHtml, '.invite-hero-wrap');
 const inviteHeroImageRule = cssRuleText(inviteHtml, '.invite-hero');
+const inviteLogoImageRule = cssRuleText(inviteHtml, '.logo-img');
+const inviteDetailRowRule = cssRuleText(inviteHtml, '.event-detail-row');
+const inviteDetailLabelRule = cssRuleText(inviteHtml, '.event-detail-label');
+const inviteDetailValueRule = cssRuleText(inviteHtml, '.event-detail-value');
+const inviteLocationMapRule = cssRuleText(inviteHtml, '.invite-section--location .map-link');
+const inviteVisitRowRule = cssRuleText(inviteHtml, '.invite-section--visit .invite-info-row');
+const inviteFooterRule = cssRuleText(inviteHtml, '.invite-footer');
+const inviteShareButtonsRule = cssRuleText(inviteHtml, '.share-buttons');
+const inviteShareButtonRule = cssRuleText(inviteHtml, '.share-btn');
 const inviteSkipLinkRule = cssRuleText(inviteHtml, '.skip-link');
 const inviteSkipLinkFocusRule = cssRuleIncludingSelectorText(inviteHtml, '.skip-link:focus-visible');
+
+function renderInviteSmokeDom(query) {
+    const dom = new JSDOM(inviteHtml, {
+        url: `http://localhost:3000/invite${query}`,
+        runScripts: 'outside-only'
+    });
+    dom.window.EventCards = eventCardsHelper;
+    getInlineScripts(inviteHtml).forEach(script => dom.window.eval(script));
+    return dom;
+}
+
+function inviteVisitTipValues(dom) {
+    return [...dom.window.document.querySelectorAll('[data-visit-tip] .value')]
+        .map(node => node.textContent.trim());
+}
+
+const inviteShowProgramDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program');
+const inviteQuestDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=16:00&program=Квест&room=Карта&card=quest');
+const inviteInvalidCardDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&program=Невідома%20подія&room=Поні&card=broken-card');
+const inviteShowProgramTips = inviteVisitTipValues(inviteShowProgramDom);
+const inviteQuestTips = inviteVisitTipValues(inviteQuestDom);
+const inviteInvalidCardTips = inviteVisitTipValues(inviteInvalidCardDom);
 
 check('Event card visual smoke is static, ordered, and DB-free',
     htmlScriptLoadsBefore('index.html', 'js/event-cards.js', 'js/booking.js')
@@ -174,9 +206,11 @@ eventCardSmokeDom.window.close();
 check('Invite page uses dynamic event-card header contract',
     scriptIndex(getHtmlScripts(inviteHtml), 'js/event-cards.js') >= 0
     && inviteHeroImage?.getAttribute('src') === '/images/event-cards/event-card-holiday-party.png'
+    && inviteHeroImage?.getAttribute('src')?.startsWith('/images/event-cards/')
     && inviteHeroImage?.getAttribute('alt') === 'Зображення типу заходу'
     && !inviteHtml.includes('images/banners/banner-invite-v2.png')
     && inviteHtml.includes("const end = params.get('end');")
+    && inviteHtml.includes("const arrival = params.get('arrival') || params.get('guestTime') || params.get('guest_time');")
     && inviteHtml.includes("const eventType = params.get('type');")
     && inviteHtml.includes("const category = params.get('category');")
     && inviteHtml.includes("const requested = String(params.get('card') || '').trim();")
@@ -187,7 +221,7 @@ check('Invite page uses dynamic event-card header contract',
     && inviteHtml.includes('return allowedKeys.has(resolved) && cards[resolved] ? cards[resolved] : fallback;')
     && inviteHtml.includes("hero.dataset.card = card.key")
     && inviteHtml.includes("title.textContent = program || 'Запрошення'")
-    && inviteHtml.includes("time + ' - ' + end")
+    && inviteHtml.includes('formatInviteTimeRange(time, end)')
     && inviteHtml.includes('onclick="shareInvite(event)"')
     && inviteHtml.includes('onclick="copyLink(event)"')
     && inviteHtml.includes('function writeClipboardText(text)')
@@ -198,6 +232,93 @@ check('Invite page uses dynamic event-card header contract',
     && inviteHtml.includes('document.execCommand(\'copy\')')
     && inviteHeroWrapRule.includes('aspect-ratio: 16 / 9')
     && inviteHeroImageRule.includes('object-fit: cover'));
+check('Invite event details use labeled rows for date, activity time, program, and room',
+    inviteHtml.includes("const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));")
+    && inviteHtml.includes("renderEventDetailRow('📅', 'Дата', date)")
+    && inviteHtml.includes("renderEventDetailRow('🕐', 'Прихід гостей', arrival)")
+    && inviteHtml.includes("renderEventDetailRow('⏱', 'Час активності', timeRange)")
+    && inviteHtml.includes("renderEventDetailRow('🎉', 'Активність', program)")
+    && inviteHtml.includes("renderEventDetailRow('📍', 'Кімната', room)")
+    && inviteHtml.includes('function renderEventDetailRow(icon, label, value)')
+    && inviteDetailRowRule.includes('display: grid')
+    && inviteDetailRowRule.includes('grid-template-columns: 28px minmax(0, 1fr)')
+    && inviteDetailRowRule.includes('border-radius: 16px')
+    && inviteDetailLabelRule.includes('text-transform: uppercase')
+    && inviteDetailValueRule.includes('display: block')
+    && inviteDetailValueRule.includes('overflow-wrap: anywhere')
+    && !inviteHtml.includes('<div class="event-detail-row">📅 <strong>')
+    && !inviteHtml.includes('<div class="event-detail-row">🕐 <strong>')
+    && !inviteHtml.includes('<div class="event-detail-row">⏱ <strong>')
+    && !inviteHtml.includes("if (timeRange) html += '<div class=\"event-detail-row\">"));
+check('Invite page uses Event Genix company logo instead of legacy mascot avatar',
+    inviteLogoImage?.getAttribute('src') === 'images/brand/event-genix-logo.png'
+    && inviteLogoImage?.getAttribute('alt') === 'Логотип Event Genix'
+    && fs.existsSync(path.join(ROOT, 'images', 'brand', 'event-genix-logo.png'))
+    && inviteLogoImageRule.includes('object-fit: contain')
+    && inviteLogoImageRule.includes('object-position: center')
+    && inviteLogoImageRule.includes('background: #FFFFFF')
+    && !inviteHtml.includes('src="images/logo-new.png"')
+    && !inviteHtml.includes('images/branding/event-genix-logo.png')
+    && !inviteHtml.includes('dinosaur')
+    && !inviteHtml.includes('Динозавр'));
+check('Invite lower flow focuses on guest visit details instead of generic service marketing',
+    inviteHtml.includes('<h2>📍 Як нас знайти</h2>')
+    && inviteHtml.includes('<div class="label">Орієнтир</div>')
+    && inviteHtml.includes('м. Лісова / м. Чернігівська')
+    && inviteHtml.includes('class="map-link"')
+    && inviteHtml.includes('🗺 Відкрити на карті')
+    && inviteHtml.includes('<div class="invite-section invite-section--visit" id="inviteVisitSection">')
+    && inviteHtml.includes('<h2>✅ Перед візитом</h2>')
+    && inviteHtml.includes('data-visit-tip')
+    && inviteHtml.includes('const INVITE_VISIT_TIPS = {')
+    && inviteHtml.includes("'holiday-party': [")
+    && inviteHtml.includes("'show-program': [")
+    && inviteHtml.includes("'family-event': [")
+    && inviteHtml.includes("'workshop': [")
+    && inviteHtml.includes("'private-party': [")
+    && inviteHtml.includes("'quest': [")
+    && inviteHtml.includes('renderInviteVisitTips(card.key)')
+    && inviteHtml.includes("const tips = INVITE_VISIT_TIPS[cardKey] || INVITE_VISIT_TIPS['holiday-party'];")
+    && inviteHtml.includes("section.querySelectorAll('[data-visit-tip]').forEach(row => row.remove());")
+    && inviteHtml.includes('function renderInviteInfoRow(tip)')
+    && inviteHtml.includes('Приходьте за 5-10 хвилин до початку шоу.')
+    && inviteHtml.includes('Приходьте за 5-10 хвилин для короткого інструктажу.')
+    && inviteHtml.includes('Приходьте трохи раніше, щоб спокійно підготуватися.')
+    && inviteHtml.includes('Перевірте час і кімнату перед приїздом.')
+    && inviteHtml.includes('Приходьте трохи раніше, щоб діти спокійно адаптувалися до простору.')
+    && inviteHtml.includes('Приходьте за 5-10 хвилин до початку події.')
+    && inviteHtml.includes('<h2>📞 Контакти</h2>')
+    && inviteHtml.includes('Поділитися запрошенням')
+    && inviteHtml.includes('onclick="shareInvite(event)"')
+    && inviteHtml.includes('onclick="copyLink(event)"')
+    && inviteLocationMapRule.includes('margin-top: 12px')
+    && inviteVisitRowRule.includes('align-items: flex-start')
+    && inviteFooterRule.includes('padding: 16px 30px 20px')
+    && inviteShareButtonsRule.includes('flex-wrap: wrap')
+    && inviteShareButtonRule.includes('min-height: 40px')
+    && !inviteHtml.includes('Що вас чекає')
+    && !inviteHtml.includes('features-list')
+    && !inviteHtml.includes('feature-item')
+    && !inviteHtml.includes('images/icon-quest.png')
+    && !inviteHtml.includes('images/icon-animation.png')
+    && !inviteHtml.includes('images/icon-show.png')
+    && !inviteHtml.includes('images/icon-masterclass.png')
+    && !inviteHtml.includes('images/icon-photo.png')
+    && !inviteHtml.includes('images/icon-pinata.png'));
+check('Invite personalized guest tips render by card and fall back safely',
+    inviteShowProgramDom.window.document.querySelector('#inviteHeroImage')?.dataset.card === 'show-program'
+    && inviteShowProgramTips.some(text => text.includes('до початку шоу'))
+    && inviteShowProgramTips.some(text => text.includes('плануєте зйомку'))
+    && inviteQuestDom.window.document.querySelector('#inviteHeroImage')?.dataset.card === 'quest'
+    && inviteQuestTips.some(text => text.includes('короткого інструктажу'))
+    && inviteQuestTips.some(text => text.includes('проходити завдання'))
+    && inviteInvalidCardDom.window.document.querySelector('#inviteHeroImage')?.dataset.card === 'holiday-party'
+    && inviteInvalidCardTips.some(text => text.includes('до початку події'))
+    && inviteInvalidCardDom.window.document.querySelector('#inviteTitle')?.textContent.includes('Невідома подія')
+    && inviteInvalidCardDom.window.document.querySelector('#inviteVisitSection')?.querySelectorAll('[data-visit-tip]').length >= 2);
+inviteShowProgramDom.window.close();
+inviteQuestDom.window.close();
+inviteInvalidCardDom.window.close();
 check('Invite skip link stays accessible without showing as a broken page link',
     inviteSkipLink?.getAttribute('href') === '#invite-details'
     && inviteHtml.includes('id="invite-details"')
@@ -1008,6 +1129,13 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('function summaryClientOrderUnitPriceLabel(row = {}, currency = \'UAH\')')
         && pageCode.includes('function summaryClientOrderSubtotalLabel(row = {}, currency = \'UAH\')')
         && pageCode.includes('function summaryClientOrderMetaHtml(row = {})')
+        && pageCode.includes('function summaryClientOrderTextLines(rows = [], currency = \'UAH\')')
+        && pageCode.includes('`   К-сть: ${summaryClientOrderQuantityLabel(row)}`')
+        && pageCode.includes('`   Ціна: ${summaryClientOrderUnitPriceLabel(row, currency)}`')
+        && pageCode.includes('`   Сума: ${summaryClientOrderSubtotalLabel(row, currency)}`')
+        && pageCode.includes("if (duration !== '—') lines.push(`   Тривалість: ${duration}`);")
+        && pageCode.includes("if (serving !== '—') lines.push(`   Видача: ${serving}`);")
+        && pageCode.includes('if (comment) lines.push(`   Примітка: ${comment}`);')
         && pageCode.includes('<table class="summary-order-table summary-order-table--client">')
         && pageCode.includes('<th>Позиція</th>')
         && pageCode.includes('<th class="qty">К-сть</th>')
@@ -1027,6 +1155,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('<col style="width:86px">')
         && pageCode.includes('<col style="width:118px">')
         && pageCode.includes('<td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>')
+        && summaryTextBody.includes("rows.length && mode === 'client' ? summaryClientOrderTextLines(rows, currency)")
         && summaryTextBody.includes('const durationLabel = summaryDurationLabel(row)')
         && summaryTextBody.includes('const quantityLabel = summaryOrderQuantityLabel(row)')
         && summaryTextBody.includes("row?.type === 'program' || row?.type === 'activity'")

@@ -599,7 +599,24 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
     assert.match(tableText, /2,5 л/);
     assert.match(tableText, /Вхід/);
     assert.match(tableText, /12 дітей/);
-    assert.match(tableText, /300 ₴ = 3\s*600 ₴/);
+    const orderTable = window.document.querySelector('.summary-order-table--client');
+    assert.ok(orderTable, 'client order table is rendered');
+    assert.deepEqual(
+        [...orderTable.querySelectorAll('thead th')].map(cell => cell.textContent.trim()),
+        ['Позиція', 'К-сть', 'Ціна', 'Сума']
+    );
+    const entryRow = [...orderTable.querySelectorAll('tbody tr')]
+        .find(row => row.textContent.includes('Вхід'));
+    assert.ok(entryRow, 'entry row is rendered in client order table');
+    assert.deepEqual(
+        [...entryRow.querySelectorAll('td')].map(cell => cell.textContent.trim().replace(/\s+/g, ' ')),
+        ['Вхід', '12 дітей', '300 ₴', '3 600 ₴']
+    );
+    assert.deepEqual(
+        [...entryRow.querySelectorAll('td')].map(cell => cell.getAttribute('data-label')),
+        ['Позиція', 'К-сть', 'Ціна', 'Сума']
+    );
+    assert.doesNotMatch(tableText, /300 ₴ = 3\s*600 ₴/);
     assert.match(tableText, /Фінанси/);
     assert.match(tableText, /Загальна сума/);
     assert.doesNotMatch(tableText, /Сума бронювання/);

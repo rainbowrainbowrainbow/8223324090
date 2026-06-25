@@ -239,7 +239,7 @@ function buildBanquetSummaryPrintEdgeFixture() {
         },
         terms: {
             title: 'Banquet Terms With Long Wrapping Text',
-            items: Array.from({ length: 10 }, (_, index) => `Long term ${index + 1}: ${longSentence} This term is intentionally verbose to verify A4 page breaks, no clipped lines, and stable final brand placement after the terms block.`),
+            items: Array.from({ length: 10 }, (_, index) => `Long term ${index + 1}: ${longSentence} This term is intentionally verbose to verify A4 page breaks, no clipped lines, and stable terms placement.`),
             source: 'print_edge_fixture',
             snapshotSource: null,
             missingCodes: []
@@ -1505,8 +1505,15 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(route, /details: Array\.isArray\(err\.details\) \? err\.details : undefined/);
 
     assert.match(html, /data-booking-summary-pdf-mode="client"/);
-    assert.match(html, /data-booking-summary-pdf-mode="kitchen"/);
-    assert.match(html, /data-booking-summary-pdf-mode="staff"/);
+    assert.doesNotMatch(html, /data-booking-summary-pdf-mode="kitchen"/);
+    assert.doesNotMatch(html, /data-booking-summary-pdf-mode="staff"/);
+    assert.match(html, /id="bookingSummaryClientPdf"/);
+    assert.match(html, /id="bookingSummaryClose"/);
+    assert.doesNotMatch(html, /id="bookingSummaryBack"/);
+    assert.doesNotMatch(html, /booking-summary-export/);
+    assert.match(pageCode, /function closeSummaryDocument\(\)/);
+    assert.match(pageCode, /el\('bookingSummaryClientPdf'\)\?\.addEventListener\('click', \(\) => exportSummaryPdf\('client'\)\)/);
+    assert.doesNotMatch(pageCode, /document\.querySelectorAll\('\[data-booking-summary-pdf-mode\]'\)/);
     assert.match(pageCode, /function exportSummaryPdf\(mode\)/);
     assert.match(pageCode, /Accept: 'application\/pdf'/);
     assert.match(pageCode, /response\.blob\(\)/);
@@ -1531,20 +1538,20 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pageCode, /class="banquet-top-plate"/);
     assert.doesNotMatch(pageCode, /class="banquet-corner-art"/);
     assert.doesNotMatch(pageCode, /aria-hidden="true">EG/);
-    assert.match(pageCode, /class="banquet-final-brand"/);
+    assert.doesNotMatch(pageCode, /class="banquet-final-brand"/);
     assert.match(summaryCss, /--summary-official-ink/);
     assert.match(summaryCss, /\.brand-logo-frame/);
     assert.match(summaryCss, /\.brand-logo/);
     assert.match(summaryCss, /\.banquet-top-plate,\s*\.banquet-corner-art[\s\S]*display: none !important/);
-    assert.match(summaryCss, /\.banquet-final-brand/);
-    assert.match(summaryCss, /@media print[\s\S]*\.banquet-final-brand/);
+    assert.doesNotMatch(summaryCss, /\.banquet-final-brand/);
+    assert.doesNotMatch(summaryCss, /@media print[\s\S]*\.banquet-final-brand/);
     assert.match(pdfService, /BANQUET_LOGO_PATH/);
     assert.match(pdfService, /doc\.image\(BANQUET_LOGO_PATH/);
     assert.doesNotMatch(pdfService, /\.text\('EG'/);
     assert.doesNotMatch(pdfService, /BANQUET_TOP_PLATE/);
     assert.doesNotMatch(pdfService, /BANQUET_CORNER_IMAGE/);
     assert.doesNotMatch(pdfService, /BANQUET_FINAL_LOGO/);
-    assert.match(pdfService, /function drawFinalBrand/);
+    assert.doesNotMatch(pdfService, /function drawFinalBrand/);
     assert.doesNotMatch(pageCode, /<span>Booking ID:/);
     assert.match(pageCode, /function summaryModeContract\(summary = currentSummary, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /function summaryScheduleRows\(summary, mode = summaryMode\(summary\)\)/);
@@ -1580,12 +1587,13 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pdfService, /BANQUET_FINAL_LOGO/);
     assert.doesNotMatch(pdfService, /BANQUET_HERO_LOGO/);
     assert.match(pdfService, /function drawPageDecor/);
-    assert.match(pdfService, /function drawFinalBrand/);
+    assert.doesNotMatch(pdfService, /function drawFinalBrand/);
     assert.match(pdfService, /function drawHeroBookingCard/);
     assert.match(pdfService, /formatDateTime\(renderedAt\)/);
     assert.doesNotMatch(pdfService, /Booking ID: \$\{pdfText\(summary\.bookingId\)\}/);
     assert.match(summaryService, /function buildBanquetSchedule/);
     assert.match(summaryService, /function buildResponsiblePeople/);
+    assert.match(summaryService, /BANQUET_SUMMARY_MODES\s*=\s*Object\.freeze\(\['client', 'kitchen', 'staff'\]\)/);
     assert.match(summaryService, /function banquetSummaryModeContract/);
     assert.match(summaryService, /modeContract,/);
     assert.match(summaryService, /responsible,/);
@@ -1666,9 +1674,22 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.equal(client.config.showFinance, true);
     assert.equal(client.config.showTerms, true);
     assert.deepEqual(client.modeContract.orderRowTypes, ['program', 'activity', 'entry', 'menu']);
+    assert.deepEqual(client.orderTableColumns.map(column => column.label), ['Позиція', 'К-сть', 'Ціна', 'Сума']);
+    const clientProgramPdfRow = client.orderTableRows.find(row => String(row[0]).includes('Паперове шоу'));
+    const clientEntryPdfRow = client.orderTableRows.find(row => row[0] === 'Вхід');
+    const clientMenuPdfRow = client.orderTableRows.find(row => String(row[0]).includes('Піца'));
+    assert.equal(clientProgramPdfRow[2], '—');
+    assert.match(clientProgramPdfRow[3], /^2\s*900 грн$/);
+    assert.equal(clientEntryPdfRow[0], 'Вхід');
+    assert.equal(clientEntryPdfRow[1], '12 дітей');
+    assert.equal(clientEntryPdfRow[2], '300 грн');
+    assert.match(clientEntryPdfRow[3], /^3\s*600 грн$/);
+    assert.equal(clientMenuPdfRow[2], '250 грн');
+    assert.equal(clientMenuPdfRow[3], '750 грн');
 
     const kitchen = buildBanquetSummaryPdfView(sampleSummary, 'kitchen');
     assert.deepEqual(kitchen.rows.map(row => row.type), ['menu']);
+    assert.deepEqual(kitchen.orderTableColumns.map(column => column.label), ['№', 'Назва', 'Тривалість', 'Порції', 'Видача', 'Примітка']);
     assert.deepEqual(kitchen.schedule.map(item => item.title), ['Видача: Піца', 'Торт']);
     assert.equal(kitchen.schedule.find(item => item.title === 'Видача: Піца')?.note, 'Без цибулі');
     assert.deepEqual(kitchen.responsible.map(row => `${row.label}:${row.name || '—'}`), ['Менеджер:Сергій', 'Кухня:—']);
@@ -1748,11 +1769,17 @@ test('banquet summary official fixture renders logo masthead, core sections, and
 
     const orderTable = sheet.querySelector('.summary-order-table');
     assert.ok(orderTable, 'order table exists');
-    assert.ok(orderTable.querySelector('thead th.num'), 'order table keeps numbered header');
+    assert.ok(orderTable.classList.contains('summary-order-table--client'), 'client order table uses price layout');
+    assert.deepEqual(
+        Array.from(orderTable.querySelectorAll('thead th')).map(th => th.textContent.trim()),
+        ['Позиція', 'К-сть', 'Ціна', 'Сума']
+    );
+    assert.ok(orderTable.querySelector('td.money[data-label="Ціна"]'), 'client order table shows unit price column');
+    assert.ok(orderTable.querySelector('td.money[data-label="Сума"]'), 'client order table shows subtotal column');
     assert.equal(orderTable.querySelectorAll('tbody tr').length, summary.orderRows.length);
     assert.ok(sheet.querySelector('.summary-finance-table [data-finance-row="total"]'), 'finance table keeps total row');
     assert.ok(sheet.querySelector('.summary-terms'), 'terms block exists');
-    assert.ok(sheet.querySelector('.banquet-final-brand'), 'final brand footer exists');
+    assert.equal(sheet.querySelector('.banquet-final-brand'), null, 'final brand footer is removed');
 
     const clientView = buildBanquetSummaryPdfView(summary, 'client');
     assert.equal(clientView.rows.length, summary.orderRows.length);
@@ -1805,7 +1832,7 @@ test('banquet summary print edge fixture keeps long A4 output printable', async 
     assert.equal(sheet.querySelectorAll('.summary-schedule-item').length, summary.schedule.length);
     assert.equal(sheet.querySelectorAll('.summary-terms li').length, summary.terms.items.length);
     assert.ok(sheet.querySelector('.summary-finance-table [data-finance-row="total"]'), 'finance total remains visible');
-    assert.ok(sheet.querySelector('.banquet-final-brand'), 'final brand remains visible after long terms');
+    assert.equal(sheet.querySelector('.banquet-final-brand'), null, 'final brand stays removed after long terms');
 
     const clientView = buildBanquetSummaryPdfView(summary, 'client');
     assert.equal(clientView.rows.length, summary.orderRows.length);

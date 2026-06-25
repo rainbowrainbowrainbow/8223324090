@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { buildBanquetSummary } = require('../services/banquetSummary');
 const { renderBanquetTermsFromPriceRules } = require('../services/banquetTerms');
@@ -94,7 +96,9 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     const summary = qualitySummary();
     const clientView = buildBanquetSummaryPdfView(summary, 'client');
     const programRow = clientView.rows.find(row => row.type === 'program');
-    const programTableRow = clientView.orderTableRows.find(row => row[1] === 'Паперове неон-шоу');
+    const programTableRow = clientView.orderTableRows.find(row => String(row[0]).includes('Паперове неон-шоу'));
+    const entryTableRow = clientView.orderTableRows.find(row => row[0] === 'Вхід');
+    const menuTableRow = clientView.orderTableRows.find(row => String(row[0]).includes('Піца'));
     const financeLabels = clientView.financeRows.map(row => row.label);
     const termsText = summary.terms.items.join('\n');
 
@@ -109,11 +113,18 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(clientView.comments.length, 0);
     assert.equal(summary.comments.some(comment => comment.text === 'Передзвонити перед святом'), true);
 
+    assert.deepEqual(clientView.orderTableColumns.map(column => column.label), ['Позиція', 'К-сть', 'Ціна', 'Сума']);
     assert.ok(programTableRow, 'program row is rendered in PDF table view');
-    assert.equal(programTableRow[2], '60 хв');
-    assert.equal(programTableRow[3], '—');
-    assert.equal(programTableRow.at(-1), 'Хоче більше жартів 2');
+    assert.match(programTableRow[0], /Тривалість: 60 хв/);
+    assert.match(programTableRow[0], /Примітка: Хоче більше жартів 2/);
+    assert.equal(programTableRow[1], '—');
+    assert.match(programTableRow[2], /^1\s*500 грн$/);
+    assert.match(programTableRow[3], /^1\s*500 грн$/);
     assert.equal(programTableRow.includes('1 порція'), false);
+    assert.deepEqual(entryTableRow, ['Вхід', '2 дітей', '300 грн', '600 грн']);
+    assert.equal(menuTableRow[1], '2 порція');
+    assert.equal(menuTableRow[2], '250 грн');
+    assert.equal(menuTableRow[3], '500 грн');
     assert.equal(clientView.orderTableRows.flat().includes('1 порція'), false);
 
     assert.deepEqual(financeLabels, ['Загальна сума']);
@@ -141,9 +152,12 @@ test('banquet PDF buffer is a clean server PDF without browser print footer arti
     const summary = qualitySummary();
     const buffer = await buildBanquetSummaryPdfBuffer(summary, { mode: 'client' });
     const raw = buffer.toString('latin1');
+    const pdfRendererSource = fs.readFileSync(path.join(__dirname, '..', 'services', 'banquetSummaryPdf.js'), 'utf8');
 
     assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
     assert.ok(buffer.length > 1000, 'PDF buffer contains rendered content');
+    assert.doesNotMatch(pdfRendererSource, /drawFinalBrand/);
+    assert.doesNotMatch(pdfRendererSource, /banquet-final-brand/);
     assert.doesNotMatch(raw, /https?:\/\//i);
     assert.doesNotMatch(raw, /localhost|127\.0\.0\.1|about:blank/i);
     assert.doesNotMatch(raw, /\b1\s*\/\s*1\b/);

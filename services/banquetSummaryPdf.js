@@ -608,6 +608,18 @@ function rowAmount(row = {}, currency) {
     return formatMoney(row.subtotal, currency);
 }
 
+function clientOrderTitleCell(row = {}, mode = 'client') {
+    const details = [];
+    const duration = rowDurationLabel(row);
+    const serving = rowServingTime(row);
+    const comment = rowCommentForMode(row, mode);
+    if (duration !== '—') details.push(`Тривалість: ${duration}`);
+    if (serving !== '—') details.push(`Видача: ${serving}`);
+    if (comment) details.push(`Примітка: ${comment}`);
+    const title = row.title || row.name || 'Позиція';
+    return details.length ? `${title}\n${details.join(' · ')}` : title;
+}
+
 function addFinanceRow(rows, key, label, amount, currency, options = {}) {
     const value = nullableNumber(amount);
     if (value === null) return;
@@ -741,6 +753,14 @@ function drawComments(doc, comments = []) {
 
 function buildOrderTableRows(view, summary = {}) {
     const currency = summary.totals?.currency || 'UAH';
+    if (view.mode === 'client') {
+        return view.rows.map(row => [
+            clientOrderTitleCell(row, view.mode),
+            rowQuantityLabel(row),
+            formatMoney(row.unitPrice, currency),
+            formatMoney(row.subtotal, currency)
+        ]);
+    }
     return view.rows.map((row, index) => {
         const base = [
             String(index + 1),
@@ -756,6 +776,14 @@ function buildOrderTableRows(view, summary = {}) {
 }
 
 function buildOrderTableColumns(view) {
+    if (view.mode === 'client') {
+        return [
+            { label: 'Позиція', weight: 3.4 },
+            { label: 'К-сть', weight: 1 },
+            { label: 'Ціна', weight: 1.05 },
+            { label: 'Сума', weight: 1.15 }
+        ];
+    }
     const columns = [
         { label: '№', weight: 0.35 },
         { label: 'Назва', weight: 2.2 },
@@ -971,47 +999,6 @@ function drawHeader(doc, summary, view) {
     doc.y = top + height + 7;
 }
 
-function drawFinalBrand(doc, summary = {}) {
-    const availableWidth = pageContentWidth(doc);
-    const width = Math.min(330, availableWidth * 0.68);
-    const height = 48;
-    const bottomY = doc.page.height - doc.page.margins.bottom - height - 8;
-    if (doc.y > bottomY - 8) {
-        doc.addPage();
-        drawPageDecor(doc);
-        doc.x = doc.page.margins.left;
-        doc.y = doc.page.margins.top;
-    }
-    resetCursorX(doc);
-    const x = doc.page.margins.left + (availableWidth - width) / 2;
-    const y = Math.max(doc.y + 4, bottomY);
-
-    doc.save();
-    doc.moveTo(x + 36, y - 5)
-        .lineTo(x + width - 36, y - 5)
-        .lineWidth(0.45)
-        .strokeColor(PDF_COLORS.border)
-        .stroke();
-    doc.restore();
-
-    doc.font('SummaryBold')
-        .fontSize(8)
-        .fillColor(PDF_COLORS.tealDark)
-        .text(pdfText(summary.venue?.name, 'Event Genix'), x, y + 14, {
-            width,
-            align: 'center'
-        });
-    doc.font('SummaryRegular')
-        .fontSize(6.6)
-        .fillColor(PDF_COLORS.muted)
-        .text(pdfText(summary.bookingId, ''), x, y + 27, {
-            width,
-            align: 'center'
-        });
-    doc.y = y + height + 2;
-    resetCursorX(doc);
-}
-
 function summaryCelebrants(summary = {}) {
     const explicit = Array.isArray(summary.celebrants) ? summary.celebrants : [];
     const customerChildren = Array.isArray(summary.customer?.children) ? summary.customer.children : [];
@@ -1111,7 +1098,6 @@ function drawBanquetSummaryPdf(doc, summary = {}, view) {
         drawParagraphList(doc, view.warnings.map(item => item.message || item.code || item));
     }
 
-    drawFinalBrand(doc, summary);
 }
 
 async function buildBanquetSummaryPdfBuffer(summary = {}, options = {}) {

@@ -9,10 +9,10 @@
     <title>Event Genix | Банкетний лист</title>
     <meta name="description" content="Preview і друк банкетного листа Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.24">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.24">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.24">
-    <link rel="stylesheet" href="css/booking-summary.css?v=0.77.24">
+    <link rel="stylesheet" href="css/base.css?v=0.77.25">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.25">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.25">
+    <link rel="stylesheet" href="css/booking-summary.css?v=0.77.25">
 </head>
 <body class="booking-summary-page">
     <header class="booking-summary-toolbar" aria-label="Дії з банкетним листом">
@@ -21,15 +21,10 @@
             <h1>Банкетний лист</h1>
         </div>
         <div class="booking-summary-actions">
-            <a id="bookingSummaryBack" class="booking-summary-btn booking-summary-btn-secondary" href="/">Повернутись</a>
             <button id="bookingSummaryCopy" type="button" class="booking-summary-btn booking-summary-btn-secondary">Скопіювати текст</button>
-            <div class="booking-summary-export" aria-label="Експорт PDF">
-                <span>Експорт PDF</span>
-                <button type="button" class="booking-summary-btn booking-summary-btn-secondary" data-booking-summary-pdf-mode="client">Для клієнта</button>
-                <button type="button" class="booking-summary-btn booking-summary-btn-secondary" data-booking-summary-pdf-mode="kitchen">Для кухні</button>
-                <button type="button" class="booking-summary-btn booking-summary-btn-secondary" data-booking-summary-pdf-mode="staff">Для персоналу</button>
-            </div>
-            <button id="bookingSummaryPrint" type="button" class="booking-summary-btn booking-summary-btn-primary">Друк / PDF</button>
+            <button id="bookingSummaryClientPdf" type="button" class="booking-summary-btn booking-summary-btn-primary" data-booking-summary-pdf-mode="client">PDF для клієнта</button>
+            <button id="bookingSummaryPrint" type="button" class="booking-summary-btn booking-summary-btn-secondary">Друк</button>
+            <button id="bookingSummaryClose" type="button" class="booking-summary-close" aria-label="Закрити банкетний лист" title="Закрити">×</button>
         </div>
     </header>
 
@@ -43,7 +38,7 @@
         </div>
     </main>
 
-    <script src="js/auth.js?v=0.77.24" defer></script>
-    <script src="js/booking-summary-page.js?v=0.77.24" defer></script>
+    <script src="js/auth.js?v=0.77.25" defer></script>
+    <script src="js/booking-summary-page.js?v=0.77.25" defer></script>
 </body>
 </html>

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.25 - Banquet Sheet Polish
+
+### Banquet sheet / Client PDF / Export toolbar / (Клешня, 25.06.2026) [codex]
+- **Toolbar банкетного листа став легшим** - прибрано перевантаження кнопками, режими `Для кухні` і `Для персоналу` більше не пропонуються в клієнтському UI.
+- **Повернення замінено на компактний хрестик** - велика кнопка `Повернутись` прибрана з шапки, закриття використовує існуючу логіку повернення або fallback URL.
+- **PDF/export surface зафіксовано як клієнтський** - основна дія експорту завжди викликає client PDF, не ламаючи backend modes `kitchen` і `staff`.
+- **Замовлення стало клієнтською таблицею з цінами** - блок показує `Позиція`, `К-сть`, `Ціна`, `Сума`, а деталі видачі і примітки лишаються компактно під назвою позиції.
+- **Server PDF оновлено під клієнтську таблицю** - client PDF отримав окрему колонку `Ціна`, зберігає `Сума` і не перераховує фінанси поза готовими summary fields.
+- **Зайвий footer прибрано з HTML і PDF** - внизу банкетного листа більше немає дубля назви центру і booking code.
+- **Regression coverage і Browser QA оновлено** - static guards, focused contract tests, PDF tests, Chromium desktop/mobile, print flow і client PDF download перевіряють новий contract.
+- **Релізні маркери піднято до `0.77.25`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.24 - Invite Cards Refresh
 
 ### Invite flow / Booking details / Event cards / (Клешня, 25.06.2026) [codex]

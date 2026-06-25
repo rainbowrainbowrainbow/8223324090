@@ -848,6 +848,14 @@ checkPage('booking-summary.html', (doc, html) => {
     const printCommentsRule = cssRuleIncludingSelectorText(printCss, '.summary-comments');
     const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
     const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
+    const summaryToolbarRule = cssRuleText(pageCss, '.booking-summary-toolbar');
+    const summaryActionsRule = cssRuleText(pageCss, '.booking-summary-actions');
+    const summaryButtonRule = cssRuleText(pageCss, '.booking-summary-btn');
+    const summarySecondaryButtonRule = cssRuleText(pageCss, '.booking-summary-btn-secondary');
+    const summaryPrimaryButtonRule = cssRuleText(pageCss, '.booking-summary-btn-primary');
+    const summaryCloseButtonRule = cssRuleText(pageCss, '.booking-summary-close');
+    const mobileSummaryActionsRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-actions');
+    const mobileSummaryCloseRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-close');
     const banquetHeroRule = cssRuleText(pageCss, '.banquet-hero');
     const bookingCardRule = cssRuleText(pageCss, '.booking-card');
     const bookingIdRule = cssRuleText(pageCss, '.booking-id');
@@ -870,14 +878,49 @@ checkPage('booking-summary.html', (doc, html) => {
     const pdfExportButtons = Array.from(doc.querySelectorAll('[data-booking-summary-pdf-mode]'));
     const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
     check('Booking summary page exposes preview shell and actions',
-        !!doc.getElementById('bookingSummaryBack')
+        !doc.getElementById('bookingSummaryBack')
+        && !!doc.getElementById('bookingSummaryClose')
         && !!doc.getElementById('bookingSummaryCopy')
+        && !!doc.getElementById('bookingSummaryClientPdf')
         && !!doc.getElementById('bookingSummaryPrint')
-        && pdfExportButtons.length === 3
-        && pdfExportButtons.map(button => button.getAttribute('data-booking-summary-pdf-mode')).join(',') === 'client,kitchen,staff'
+        && pdfExportButtons.length === 1
+        && pdfExportButtons[0]?.getAttribute('data-booking-summary-pdf-mode') === 'client'
+        && doc.getElementById('bookingSummaryClose')?.getAttribute('aria-label') === 'Закрити банкетний лист'
+        && doc.getElementById('bookingSummaryClose')?.getAttribute('title') === 'Закрити'
+        && doc.getElementById('bookingSummaryClientPdf')?.textContent?.trim() === 'PDF для клієнта'
+        && !html.includes('data-booking-summary-pdf-mode="kitchen"')
+        && !html.includes('data-booking-summary-pdf-mode="staff"')
+        && !html.includes('Для кухні')
+        && !html.includes('Для персоналу')
+        && !html.includes('Експорт PDF')
+        && !html.includes('Повернутись')
+        && pageCode.includes("el('bookingSummaryClientPdf')?.addEventListener('click', () => exportSummaryPdf('client'))")
+        && !pageCode.includes("document.querySelectorAll('[data-booking-summary-pdf-mode]')")
+        && html.includes('booking-summary-shell')
+        && html.includes('booking-summary-btn-primary')
+        && !banquetSummaryPdfCode.includes('drawFinalBrand')
         && !!doc.getElementById('bookingSummaryWarnings')
         && !!doc.getElementById('bookingSummaryPrintRoot')
         && !!doc.getElementById('bookingSummaryDocument'));
+    check('Booking summary toolbar uses compact unified button hierarchy',
+        summaryToolbarRule.includes('padding: 12px 20px')
+        && summaryToolbarRule.includes('gap: 16px')
+        && summaryActionsRule.includes('flex-wrap: nowrap')
+        && summaryButtonRule.includes('min-height: 38px')
+        && summaryButtonRule.includes('white-space: nowrap')
+        && summaryButtonRule.includes('transition:')
+        && summarySecondaryButtonRule.includes('background: rgba(15, 23, 42, 0.72)')
+        && summaryPrimaryButtonRule.includes('box-shadow: 0 10px 26px rgba(20, 184, 166, 0.22)')
+        && summaryCloseButtonRule.includes('width: 38px')
+        && summaryCloseButtonRule.includes('border-radius: 999px')
+        && pageCss.includes('.booking-summary-btn:disabled')
+        && pageCss.includes('.booking-summary-btn:active')
+        && pageCss.includes('.booking-summary-btn-primary:hover')
+        && pageCss.includes('.booking-summary-close:active')
+        && mobileSummaryActionsRule.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px')
+        && mobileSummaryCloseRule.includes('grid-column: 3')
+        && printToolbarRule.includes('display: none !important')
+        && !pageCss.includes('.booking-summary-export'));
     check('Booking summary page uses banquet sheet naming without changing internal route contracts',
         doc.title === 'Event Genix | Банкетний лист'
         && doc.querySelector('meta[name="description"]')?.getAttribute('content') === 'Preview і друк банкетного листа Event Genix'
@@ -935,6 +978,21 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('function summaryOrderQuantityLabel(row = {})')
         && pageCode.includes("['program', 'activity', 'service_event'].includes(row?.type)")
         && pageCode.includes('function summaryDurationLabel(row = {})')
+        && pageCode.includes('function summaryClientOrderQuantityLabel(row = {})')
+        && pageCode.includes('function summaryClientOrderUnitPriceLabel(row = {}, currency = \'UAH\')')
+        && pageCode.includes('function summaryClientOrderSubtotalLabel(row = {}, currency = \'UAH\')')
+        && pageCode.includes('function summaryClientOrderMetaHtml(row = {})')
+        && pageCode.includes('<table class="summary-order-table summary-order-table--client">')
+        && pageCode.includes('<th>Позиція</th>')
+        && pageCode.includes('<th class="qty">К-сть</th>')
+        && pageCode.includes('<th class="money">Ціна</th>')
+        && pageCode.includes('<th class="money">Сума</th>')
+        && pageCode.includes('data-label="Позиція"')
+        && pageCode.includes('data-label="Ціна"')
+        && pageCode.includes('data-label="Сума"')
+        && pageCode.includes('${summaryClientOrderMetaHtml(row)}')
+        && pageCode.includes('summaryClientOrderUnitPriceLabel(row, currency)')
+        && pageCode.includes('summaryClientOrderSubtotalLabel(row, currency)')
         && pageCode.includes('<th class="duration">Тривалість</th>')
         && pageCode.includes('<td class="duration">${escapeHtml(summaryDurationLabel(row))}</td>')
         && pageCode.includes("function summaryOrderServingLabel(row = {})")
@@ -953,6 +1011,10 @@ checkPage('booking-summary.html', (doc, html) => {
         && banquetSummaryServiceCode.includes('servingUnit: item.servingUnit || null')
         && banquetSummaryServiceCode.includes('durationMinutes: durationMinutesOfBooking(mainBooking)')
         && banquetSummaryServiceCode.includes('durationMinutes: durationMinutesOfBooking(booking)')
+        && pageCss.includes('.summary-order-table--client')
+        && pageCss.includes('.summary-order-table .money')
+        && pageCss.includes('.summary-order-meta')
+        && pageCss.includes('grid-template-columns: 84px minmax(0, 1fr)')
         && pageCss.includes('.summary-order-table .duration')
         && pageCss.includes('.summary-order-table .qty')
         && pageCss.includes('white-space: normal'));
@@ -1004,7 +1066,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('margin: 0')
         && pageCss.includes('padding: var(--summary-a4-pad-top) var(--summary-a4-pad-x) var(--summary-a4-pad-bottom)')
         && pageCss.includes('grid-column: auto !important')
-        && pageCss.includes('margin: auto auto 0')
+        && !pageCss.includes('.banquet-final-brand')
         && pageCss.includes('padding: 3px 4px')
         && printSectionHeadingRule.includes('break-after: avoid')
         && printSectionHeadingRule.includes('page-break-after: avoid')
@@ -1119,7 +1181,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && !renderDocumentBody.includes('BANQUET_FINAL_LOGO_SRC')
         && !renderDocumentBody.includes('class="banquet-top-plate"')
         && !renderDocumentBody.includes('class="banquet-corner-art"')
-        && renderDocumentBody.includes('class="banquet-final-brand"')
+        && !renderDocumentBody.includes('class="banquet-final-brand"')
         && renderDocumentBody.includes('<aside class="booking-card"')
         && renderDocumentBody.includes('<div class="brand-copy">')
         && renderDocumentBody.includes('venue.addressLine1')
@@ -1134,7 +1196,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCss.includes('display: none !important')
         && pageCss.includes('.brand-logo[hidden]')
         && pageCss.includes('.brand-logo-frame.is-logo-missing .brand-logo')
-        && pageCss.includes('.banquet-final-brand')
+        && !pageCss.includes('.banquet-final-brand')
         && pageCss.includes('grid-template-columns: 24mm minmax(0, 1fr) minmax(48mm, 58mm)')
         && pageCss.includes('border-left: 0')
         && pageCss.includes('.brand-logo-frame')
@@ -1161,7 +1223,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && pageCode.includes('Загальна сума')
         && !pageCode.includes('До сплати')
         && !pageCode.includes('Сума бронювання')
-        && pageCode.includes('<table class="summary-order-table">')
+        && pageCode.includes('<table class="summary-order-table summary-order-table--client">')
         && !pageCode.includes('function compactFact')
         && !pageCode.includes('function compactLine')
         && !pageCode.includes('compactLine([')
@@ -1169,7 +1231,7 @@ checkPage('booking-summary.html', (doc, html) => {
         && !pageCode.includes("compactFact('Менеджер', event.manager)")
         && !pageCode.includes('summary-info-grid')
         && !pageCode.includes('summary-total-card')
-        && !pageCode.includes('<td class="money">')
+        && pageCode.includes('<td class="money" data-label="Ціна">')
         && pageCss.includes('.summary-brief-grid')
         && pageCss.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
         && summaryBriefRule.includes('--summary-brief-label-width: 118px')

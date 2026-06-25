@@ -497,11 +497,68 @@
         return formatValue(summaryServingTime(row));
     }
 
+    function summaryClientOrderQuantityLabel(row = {}) {
+        return summaryOrderQuantityLabel(row);
+    }
+
+    function summaryClientOrderUnitPriceLabel(row = {}, currency = 'UAH') {
+        return formatMoney(row.unitPrice, currency);
+    }
+
+    function summaryClientOrderSubtotalLabel(row = {}, currency = 'UAH') {
+        return formatMoney(row.subtotal, currency);
+    }
+
+    function summaryClientOrderMetaHtml(row = {}) {
+        const items = [];
+        const duration = summaryDurationLabel(row);
+        const serving = summaryOrderServingLabel(row);
+        const comment = orderRowComment(row);
+        if (duration !== '—') items.push(`Тривалість: ${duration}`);
+        if (serving !== '—') items.push(`Видача: ${serving}`);
+        if (comment) items.push(`Примітка: ${comment}`);
+        if (!items.length) return '';
+        return `<div class="summary-order-meta">${items.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
+    }
+
     function orderRowsHtml(summary, mode = summaryMode(summary)) {
         const rows = summaryOrderRows(summary, mode);
         const currency = summary?.totals?.currency || 'UAH';
         if (!rows.length) {
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
+        }
+        if (normalizeSummaryMode(mode) === 'client') {
+            return `
+            <table class="summary-order-table summary-order-table--client">
+                <colgroup>
+                    <col>
+                    <col style="width:118px">
+                    <col style="width:116px">
+                    <col style="width:122px">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Позиція</th>
+                        <th class="qty">К-сть</th>
+                        <th class="money">Ціна</th>
+                        <th class="money">Сума</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(row => `
+                        <tr>
+                            <td class="name" data-label="Позиція">
+                                <span>${escapeHtml(row.title || row.name || 'Позиція')}</span>
+                                ${summaryClientOrderMetaHtml(row)}
+                            </td>
+                            <td class="qty" data-label="К-сть">${escapeHtml(summaryClientOrderQuantityLabel(row))}</td>
+                            <td class="money" data-label="Ціна">${escapeHtml(summaryClientOrderUnitPriceLabel(row, currency))}</td>
+                            <td class="money" data-label="Сума">${escapeHtml(summaryClientOrderSubtotalLabel(row, currency))}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
         }
         return `
             <table class="summary-order-table">
@@ -824,11 +881,6 @@
                 ${renderTerms(summary)}
             </section>` : ''}
             </div>
-
-            <footer class="banquet-final-brand" aria-label="Фінальна плашка банкетного листа">
-                <span>${escapeHtml(venue.name || 'Event Genix')}</span>
-                <strong>${escapeHtml(summary.bookingId || '')}</strong>
-            </footer>
         `;
         const logo = doc.querySelector('.brand-logo');
         if (logo) {
@@ -954,6 +1006,15 @@
         textarea.remove();
     }
 
+    function closeSummaryDocument() {
+        const fallback = el('bookingSummaryClose')?.dataset.returnUrl || '/';
+        if (window.history.length > 1) {
+            window.history.back();
+            return;
+        }
+        window.location.assign(fallback || '/');
+    }
+
     function printSummaryDocument() {
         const originalTitle = document.title;
         const printTitle = currentSummary?.bookingId
@@ -1066,8 +1127,8 @@
         const groupId = params.get('groupId') || '';
         const mode = normalizeSummaryMode(params.get('mode') || 'client');
         const returnUrl = params.get('return') || '/';
-        const back = el('bookingSummaryBack');
-        if (back) back.href = returnUrl || '/';
+        const close = el('bookingSummaryClose');
+        if (close) close.dataset.returnUrl = returnUrl || '/';
 
         if (!id) {
             setState('Не передано booking id.', 'error');
@@ -1101,10 +1162,9 @@
     }
 
     function bindActions() {
+        el('bookingSummaryClose')?.addEventListener('click', closeSummaryDocument);
         el('bookingSummaryPrint')?.addEventListener('click', printSummaryDocument);
-        document.querySelectorAll('[data-booking-summary-pdf-mode]').forEach(button => {
-            button.addEventListener('click', () => exportSummaryPdf(button.dataset.bookingSummaryPdfMode));
-        });
+        el('bookingSummaryClientPdf')?.addEventListener('click', () => exportSummaryPdf('client'));
         el('bookingSummaryCopy')?.addEventListener('click', async () => {
             if (!currentSummary) {
                 showToast('Банкетний лист ще не завантажений');

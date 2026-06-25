@@ -10577,11 +10577,16 @@ async function showBookingDetails(bookingId) {
         : '';
 
     // B2: Per-event invite URL with booking details
+    const inviteCardKeyCandidate = window.EventCards?.resolveEventCardKey?.(bookingEventCardRecord);
+    const inviteCardKey = window.EventCards?.EVENT_CARDS?.[inviteCardKeyCandidate]?.key || 'holiday-party';
+    const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';
     const inviteParams = new URLSearchParams({
         date: booking.date,
         time: booking.time,
+        end: inviteEndTimeLabel,
         program: booking.programName || booking.label,
-        room: booking.room
+        room: booking.room,
+        card: inviteCardKey
     });
     const inviteUrl = `/invite?${inviteParams.toString()}`;
 
@@ -10590,10 +10595,11 @@ async function showBookingDetails(bookingId) {
     const inviteRoomLabel = String(booking.room || '').trim();
     const inviteDateLabel = String(booking.date || '').trim();
     const inviteTimeLabel = String(booking.time || '').trim();
+    const inviteTimeRangeLabel = inviteTimeLabel && inviteEndTimeLabel ? `${inviteTimeLabel} - ${inviteEndTimeLabel}` : inviteTimeLabel;
     const inviteAddress = 'Парк Закревського Періоду, вул. Закревського 31/2, 3 поверх';
-    const inviteShortText = `Запрошуємо на ${inviteProgramLabel}${inviteDateLabel ? ` ${inviteDateLabel}` : ''}${inviteTimeLabel ? ` о ${inviteTimeLabel}` : ''}.${inviteRoomLabel ? ` Кімната: ${inviteRoomLabel}.` : ''} ${fullInviteUrl}`;
-    const inviteMessengerText = `Вітаємо! Запрошуємо на ${inviteProgramLabel}.\nДата: ${inviteDateLabel || '-'}\nЧас: ${inviteTimeLabel || '-'}\n${inviteRoomLabel ? `Кімната: ${inviteRoomLabel}\n` : ''}Адреса: ${inviteAddress}\nДеталі: ${fullInviteUrl}`;
-    const inviteInstagramText = `${inviteProgramLabel}${inviteDateLabel ? ` · ${inviteDateLabel}` : ''}${inviteTimeLabel ? ` · ${inviteTimeLabel}` : ''}${inviteRoomLabel ? ` · ${inviteRoomLabel}` : ''}\n${fullInviteUrl}`;
+    const inviteShortText = `Запрошуємо на ${inviteProgramLabel}${inviteDateLabel ? ` ${inviteDateLabel}` : ''}${inviteTimeRangeLabel ? ` о ${inviteTimeRangeLabel}` : ''}.${inviteRoomLabel ? ` Кімната: ${inviteRoomLabel}.` : ''} ${fullInviteUrl}`;
+    const inviteMessengerText = `Вітаємо! Запрошуємо на ${inviteProgramLabel}.\nДата: ${inviteDateLabel || '-'}\nЧас: ${inviteTimeRangeLabel || '-'}\n${inviteRoomLabel ? `Кімната: ${inviteRoomLabel}\n` : ''}Адреса: ${inviteAddress}\nДеталі: ${fullInviteUrl}`;
+    const inviteInstagramText = `${inviteProgramLabel}${inviteDateLabel ? ` · ${inviteDateLabel}` : ''}${inviteTimeRangeLabel ? ` · ${inviteTimeRangeLabel}` : ''}${inviteRoomLabel ? ` · ${inviteRoomLabel}` : ''}\n${fullInviteUrl}`;
 
     // v7.6.1: Line switch buttons
     const otherLines = lines.filter(l => l.id !== booking.lineId);
@@ -10609,13 +10615,14 @@ async function showBookingDetails(bookingId) {
             <div class="invite-section-top">
                 <div>
                     <div class="invite-section-eyebrow">Доступ і запрошення</div>
-                    <div class="invite-section-header">Запрошення для клієнта</div>
+                    <div class="invite-section-header">Публічне запрошення для клієнта</div>
+                    <div class="invite-section-description">Посилання на запрошення для гостя</div>
                 </div>
-                <a href="${inviteUrl}" target="_blank" class="btn-invite-open">Відкрити</a>
+                <a href="${inviteUrl}" target="_blank" rel="noopener" class="btn-invite-open">Відкрити запрошення</a>
             </div>
             <div class="invite-preview">
-                <span>${escapeHtml(booking.date)}</span>
-                <span>${escapeHtml(booking.time)}</span>
+                ${inviteDateLabel ? `<span>${escapeHtml(inviteDateLabel)}</span>` : ''}
+                ${inviteTimeRangeLabel ? `<span>${escapeHtml(inviteTimeRangeLabel)}</span>` : ''}
                 <span>${escapeHtml(inviteProgramLabel)}</span>
                 ${inviteRoomLabel ? `<span>${escapeHtml(inviteRoomLabel)}</span>` : ''}
             </div>

@@ -115,6 +115,8 @@
         corporate: 'private-party',
         private: 'private-party',
         vip: 'private-party',
+        mafia: 'private-party',
+        '\u043c\u0430\u0444\u0456\u044f': 'private-party',
         banquet: 'private-party'
     });
 
@@ -164,8 +166,7 @@
                 '\u0432\u0435\u0434\u0443\u0447\u0438\u0439',
                 '\u0431\u0443\u043b\u044c\u0431\u0430\u0448\u043a\u043e\u0432\u0435 \u0448\u043e\u0443',
                 '\u0441\u0443\u0445\u0438\u043c \u043b\u044c\u043e\u0434\u043e\u043c',
-                '\u043d\u0435\u043e\u043d',
-                '\u043c\u0430\u0444\u0456\u044f'
+                '\u043d\u0435\u043e\u043d'
             ])
         }),
         Object.freeze({
@@ -188,7 +189,7 @@
         }),
         Object.freeze({
             key: 'private-party',
-            terms: Object.freeze(['приватна вечірка', 'private', 'vip', 'закрита вечірка', 'тематична вечірка', 'корпоратив'])
+            terms: Object.freeze(['приватна вечірка', 'private', 'vip', 'закрита вечірка', 'тематична вечірка', 'корпоратив', 'мафія', 'mafia'])
         }),
         Object.freeze({
             key: 'family-event',

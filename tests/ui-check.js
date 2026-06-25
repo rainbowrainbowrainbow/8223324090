@@ -152,6 +152,14 @@ const eventCardSmokeImage = eventCardSmokeDom.window.document.querySelector('.ev
 const eventCardPagesCss = cssTextWithImports('css/pages.css');
 const eventCardVisualRule = cssRuleText(eventCardPagesCss, '.event-card-visual');
 const eventCardImageRule = cssRuleText(eventCardPagesCss, '.event-card-visual img');
+const inviteHtml = fileText('invite.html');
+const inviteDom = new JSDOM(inviteHtml);
+const inviteHeroImage = inviteDom.window.document.querySelector('#inviteHeroImage');
+const inviteSkipLink = inviteDom.window.document.querySelector('.skip-link');
+const inviteHeroWrapRule = cssRuleText(inviteHtml, '.invite-hero-wrap');
+const inviteHeroImageRule = cssRuleText(inviteHtml, '.invite-hero');
+const inviteSkipLinkRule = cssRuleText(inviteHtml, '.skip-link');
+const inviteSkipLinkFocusRule = cssRuleIncludingSelectorText(inviteHtml, '.skip-link:focus-visible');
 
 check('Event card visual smoke is static, ordered, and DB-free',
     htmlScriptLoadsBefore('index.html', 'js/event-cards.js', 'js/booking.js')
@@ -163,6 +171,48 @@ check('Event card visual smoke is static, ordered, and DB-free',
     && eventCardVisualRule.includes('aspect-ratio: 16 / 9')
     && eventCardImageRule.includes('object-fit: cover'));
 eventCardSmokeDom.window.close();
+check('Invite page uses dynamic event-card header contract',
+    scriptIndex(getHtmlScripts(inviteHtml), 'js/event-cards.js') >= 0
+    && inviteHeroImage?.getAttribute('src') === '/images/event-cards/event-card-holiday-party.png'
+    && inviteHeroImage?.getAttribute('alt') === 'Зображення типу заходу'
+    && !inviteHtml.includes('images/banners/banner-invite-v2.png')
+    && inviteHtml.includes("const end = params.get('end');")
+    && inviteHtml.includes("const eventType = params.get('type');")
+    && inviteHtml.includes("const category = params.get('category');")
+    && inviteHtml.includes("const requested = String(params.get('card') || '').trim();")
+    && inviteHtml.includes("new Set(['holiday-party', 'show-program', 'family-event', 'workshop', 'private-party', 'quest'])")
+    && inviteHtml.includes("const fallback = cards['holiday-party']")
+    && inviteHtml.includes("src: '/images/event-cards/event-card-holiday-party.png'")
+    && inviteHtml.includes('window.EventCards?.resolveEventCardKey?.({')
+    && inviteHtml.includes('return allowedKeys.has(resolved) && cards[resolved] ? cards[resolved] : fallback;')
+    && inviteHtml.includes("hero.dataset.card = card.key")
+    && inviteHtml.includes("title.textContent = program || 'Запрошення'")
+    && inviteHtml.includes("time + ' - ' + end")
+    && inviteHtml.includes('onclick="shareInvite(event)"')
+    && inviteHtml.includes('onclick="copyLink(event)"')
+    && inviteHtml.includes('function writeClipboardText(text)')
+    && inviteHtml.includes('function fallbackCopy()')
+    && inviteHtml.includes('navigator.clipboard && typeof navigator.clipboard.writeText === \'function\'')
+    && inviteHtml.includes('Promise.race([clipboardWrite, clipboardTimeout]).catch(fallbackCopy)')
+    && inviteHtml.includes("new Error('Clipboard timeout')")
+    && inviteHtml.includes('document.execCommand(\'copy\')')
+    && inviteHeroWrapRule.includes('aspect-ratio: 16 / 9')
+    && inviteHeroImageRule.includes('object-fit: cover'));
+check('Invite skip link stays accessible without showing as a broken page link',
+    inviteSkipLink?.getAttribute('href') === '#invite-details'
+    && inviteHtml.includes('id="invite-details"')
+    && inviteSkipLinkRule.includes('position: fixed')
+    && inviteSkipLinkRule.includes('width: 1px')
+    && inviteSkipLinkRule.includes('height: 1px')
+    && inviteSkipLinkRule.includes('clip-path: inset(50%)')
+    && inviteSkipLinkRule.includes('overflow: hidden')
+    && inviteSkipLinkRule.includes('z-index: 1000')
+    && inviteSkipLinkFocusRule.includes('width: auto')
+    && inviteSkipLinkFocusRule.includes('height: auto')
+    && inviteSkipLinkFocusRule.includes('clip-path: none')
+    && inviteSkipLinkFocusRule.includes('background: #FFFFFF')
+    && inviteSkipLinkFocusRule.includes('outline: 3px solid'));
+inviteDom.window.close();
 
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS
@@ -2557,6 +2607,8 @@ const renderBookingPackageMenuRowsBlock = sourceBlock(bookingCode, 'function ren
 const renderBookingPackageEntertainmentRowsBlock = sourceBlock(bookingCode, 'function renderBookingPackageEntertainmentRows', 'function formatBookingEntryQuantityLabel');
 const renderBookingPackageDetailBlock = sourceBlock(bookingCode, 'function renderBookingPackageDetail', 'function shouldHideBookingWorkspaceScenarioDetail');
 const renderBanquetMenuSectionBlock = sourceBlock(bookingCode, 'function renderBanquetMenuSection', 'function renderBanquetServiceSection');
+const bookingInviteParamsBlock = sourceBlock(bookingCode, 'const inviteParams = new URLSearchParams', 'const inviteUrl =');
+const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'let banquetSnapshot');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
 const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
 const bookingStatusActionBlock = bookingStatusActionStart >= 0 && bookingStatusActionEnd > bookingStatusActionStart
@@ -2915,11 +2967,17 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && panelCss.includes('border-left: 1px solid var(--gray-100)')
     && timelineConstructorCss.includes('grid-template-columns: 96px minmax(0, 1fr)')
     && timelineConstructorCss.includes('font-size: 11px')
+    && bookingCode.includes('const inviteTimeRangeLabel = inviteTimeLabel && inviteEndTimeLabel')
     && bookingCode.includes('const inviteShortText =')
     && bookingCode.includes('const inviteMessengerText =')
     && bookingCode.includes('const inviteInstagramText =')
     && bookingCode.includes('data-share-text="${escapeHtml(inviteMessengerText)}"')
     && bookingCode.includes('invite-section-eyebrow')
+    && bookingCode.includes('Публічне запрошення для клієнта')
+    && bookingCode.includes('Посилання на запрошення для гостя')
+    && bookingCode.includes('Відкрити запрошення')
+    && bookingCode.includes('rel="noopener"')
+    && bookingInviteSectionBlock.includes('href="${inviteUrl}"')
     && bookingCode.includes('invite-format-grid')
     && bookingCode.includes('data-text="${escapeHtml(inviteShortText)}"')
     && bookingCode.includes('Viber / Telegram')
@@ -2927,12 +2985,32 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && bookingCode.includes('btn-invite-link-copy')
     && bookingCode.includes('btn.dataset.text || btn.dataset.url')
     && bookingCode.includes('section?.dataset.shareText')
+    && bookingInviteSectionBlock.includes('${inviteTimeRangeLabel ? `<span>${escapeHtml(inviteTimeRangeLabel)}</span>` : \'\'}')
+    && !bookingInviteSectionBlock.includes('class="btn-invite-open">Відкрити</a>')
     && featuresCss.includes('.invite-section-top')
     && featuresCss.includes('.invite-section-eyebrow')
+    && featuresCss.includes('.invite-section-description')
     && featuresCss.includes('.invite-format-grid')
+    && featuresCss.includes('.btn-invite-open:focus-visible')
+    && featuresCss.includes('min-height: 42px')
+    && featuresCss.includes('white-space: nowrap')
     && darkModeCss.includes('body.dark-mode .invite-section-header { color: var(--gray-900); }')
     && !darkModeCss.includes('body.dark-mode .invite-section-header { color: var(--white); }')
-    && darkModeCss.includes('body.dark-mode .invite-section-eyebrow'));
+    && darkModeCss.includes('body.dark-mode .invite-section-eyebrow')
+    && darkModeCss.includes('body.dark-mode .invite-section-description')
+    && darkModeCss.includes('body.dark-mode .btn-invite-open:focus-visible'));
+check('Booking invite URL exposes only public event card contract',
+    Boolean(bookingInviteParamsBlock)
+    && bookingCode.includes('const inviteCardKeyCandidate = window.EventCards?.resolveEventCardKey?.(bookingEventCardRecord);')
+    && bookingCode.includes("const inviteCardKey = window.EventCards?.EVENT_CARDS?.[inviteCardKeyCandidate]?.key || 'holiday-party';")
+    && bookingCode.includes("const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';")
+    && bookingInviteParamsBlock.includes('date: booking.date')
+    && bookingInviteParamsBlock.includes('time: booking.time')
+    && bookingInviteParamsBlock.includes('end: inviteEndTimeLabel')
+    && bookingInviteParamsBlock.includes('program: booking.programName || booking.label')
+    && bookingInviteParamsBlock.includes('room: booking.room')
+    && bookingInviteParamsBlock.includes('card: inviteCardKey')
+    && !/(customer|client|phone|comment|notes|price|sum|status|deposit|id)/i.test(bookingInviteParamsBlock));
 check('Booking detail menu polish blocks legacy banquet menu clutter',
     Boolean(bookingDetailStandardBlock)
     && !bookingDetailStandardBlock.includes('<span class="label">Сума:</span>')

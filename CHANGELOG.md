@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.24 - Invite Cards Refresh
+
+### Invite flow / Booking details / Event cards / (Клешня, 25.06.2026) [codex]
+- **Публічне запрошення отримало актуальну шапку події** - `invite.html` більше не використовує старий handshake banner як головний hero, а показує PNG-картку типу заходу через `card`.
+- **Посилання на запрошення стало повнішим без приватних даних** - booking details додає `end` і `card` до `/invite`, але не передає ім'я клієнта, телефон, коментарі, суми або внутрішні статуси.
+- **Назва активності стала головним заголовком invite page** - для сценарію на кшталт `Мафія` сторінка показує назву події, час `15:00 - 16:30`, кімнату і нейтральний підзаголовок `Запрошуємо на подію`.
+- **CRM-блок запрошення став зрозумілішим** - кнопка `Відкрити` замінена на primary CTA `Відкрити запрошення`, preview chips показують актуальні date/time/program/room, copy/share використовують той самий URL.
+- **Accessibility link більше не виглядає як зламана кнопка** - skip-link на invite page прихований за замовчуванням і з'являється тільки при keyboard focus.
+- **Resolver знає активність `Мафія`** - `мафія` / `mafia` мапляться на `private-party`, щоб public invite і CRM-картка тримали один візуальний стиль.
+- **Regression coverage і Browser QA оновлено** - static guards перевіряють invite URL contract, dynamic hero, fallback, skip-link, CTA і clipboard fallback; Chromium QA покриває desktop, mobile і copy/share flow.
+- **Релізні маркери піднято до `0.77.24`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.23 - Task Priority Colors
 
 ### Tasks / Profile My Day / Priority dropdown / (Клешня, 25.06.2026) [codex]

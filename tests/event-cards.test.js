@@ -47,6 +47,7 @@ test('event card resolver maps all six planned event card scenarios', () => {
         [{ description: 'Творчий майстер-клас hand-made' }, 'workshop', 'event-card-workshop.png'],
         [{ qualityCategory: 'family', notes: 'Сімейне свято' }, 'family-event', 'event-card-family-event.png'],
         [{ eventType: 'corporate', title: 'VIP закрита вечірка' }, 'private-party', 'event-card-private-party.png'],
+        [{ programName: 'Мафія' }, 'private-party', 'event-card-private-party.png'],
         [{ type: 'birthday', title: 'День народження' }, 'holiday-party', 'event-card-holiday-party.png']
     ];
 
@@ -61,6 +62,20 @@ test('event card resolver falls back to holiday card for unknown or empty data',
     assert.equal(resolveEventCardKey({}), 'holiday-party');
     assert.equal(getEventCardFile({ category: 'unknown-event-type', title: 'Unmapped service' }), 'event-card-holiday-party.png');
     assert.equal(getEventCard({}), '/images/event-cards/event-card-holiday-party.png');
+});
+
+test('event card resolver maps Mafia activities to private party card', () => {
+    const cases = [
+        { programName: 'Мафія' },
+        { title: 'мафія' },
+        { category: 'mafia' }
+    ];
+
+    cases.forEach(event => {
+        assert.equal(resolveEventCardKey(event), 'private-party');
+        assert.equal(getEventCardFile(event), 'event-card-private-party.png');
+        assert.equal(getEventCard(event), '/images/event-cards/event-card-private-party.png');
+    });
 });
 
 test('event card renderer keeps shared image markup stable', () => {

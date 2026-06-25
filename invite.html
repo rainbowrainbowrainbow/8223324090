@@ -416,7 +416,7 @@ body { padding: 12px; }
             </div>
             <div class="invite-header-content">
                 <img loading="lazy" src="images/brand/event-genix-logo.png" alt="Логотип Event Genix" class="logo-img">
-                <p class="invite-brand">Event Genix</p>
+                <p class="invite-brand" id="inviteBrandName">Event Genix</p>
                 <h1 id="inviteTitle">Запрошення</h1>
                 <p class="subtitle">Запрошуємо на подію</p>
                 <div id="eventDetails"></div>
@@ -424,62 +424,9 @@ body { padding: 12px; }
         </div>
 
         <div id="invite-details" class="invite-body">
-            <div class="invite-section invite-section--location">
-                <h2>📍 Як нас знайти</h2>
-                <div class="invite-info-row">
-                    <span class="icon">📍</span>
-                    <div class="info">
-                        <div class="label">Адреса</div>
-                        <div class="value">вул. Закревського 31/2, 3 поверх</div>
-                    </div>
-                </div>
-                <div class="invite-info-row">
-                    <span class="icon">🚇</span>
-                    <div class="info">
-                        <div class="label">Орієнтир</div>
-                        <div class="value">м. Лісова / м. Чернігівська</div>
-                    </div>
-                </div>
-                <a href="https://maps.google.com/?q=вул.+Закревського+31/2+Київ" target="_blank" rel="noopener" class="map-link">
-                    🗺 Відкрити на карті
-                </a>
-            </div>
-
-            <div class="invite-section invite-section--visit" id="inviteVisitSection">
-                <h2>✅ Перед візитом</h2>
-                <div class="invite-info-row" data-visit-tip>
-                    <span class="icon">⏱</span>
-                    <div class="info">
-                        <div class="label">Коли приходити</div>
-                        <div class="value">Приходьте за 5-10 хвилин до початку події.</div>
-                    </div>
-                </div>
-                <div class="invite-info-row" data-visit-tip>
-                    <span class="icon">👟</span>
-                    <div class="info">
-                        <div class="label">Підготовка</div>
-                        <div class="value">Оберіть зручний одяг для активної програми.</div>
-                    </div>
-                </div>
-                <div class="invite-info-row" data-visit-tip>
-                    <span class="icon">💬</span>
-                    <div class="info">
-                        <div class="label">Уточнення</div>
-                        <div class="value">Якщо плани змінились, зв'яжіться з нами заздалегідь.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="invite-section">
-                <h2>📞 Контакти</h2>
-                <div class="invite-info-row">
-                    <span class="icon">📱</span>
-                    <div class="info">
-                        <div class="label">Телефон</div>
-                        <div class="value"><a href="tel:+380XXXXXXXXX">Зв'яжіться з нами</a></div>
-                    </div>
-                </div>
-            </div>
+            <div class="invite-section invite-section--location" id="inviteLocationSection"></div>
+            <div class="invite-section invite-section--visit" id="inviteVisitSection"></div>
+            <div class="invite-section" id="inviteContactSection"></div>
         </div>
 
         <div class="invite-footer">
@@ -491,40 +438,34 @@ body { padding: 12px; }
         </div>
     </div>
 
-    <script src="js/event-cards.js?v=0.77.28"></script>
+    <script src="js/event-cards.js?v=0.77.29"></script>
+    <script src="js/invite-config.js?v=0.77.29"></script>
     <script>
-        const INVITE_VISIT_TIPS = {
-            'holiday-party': [
-                { icon: '⏱', label: 'Коли приходити', value: 'Приходьте за 5-10 хвилин до початку події.' },
-                { icon: '👟', label: 'Підготовка', value: 'Оберіть зручний одяг для активної програми.' },
-                { icon: '💬', label: 'Уточнення', value: 'Якщо плани змінились, зв\'яжіться з нами заздалегідь.' }
-            ],
-            'show-program': [
-                { icon: '⏱', label: 'Коли приходити', value: 'Приходьте за 5-10 хвилин до початку шоу.' },
-                { icon: '🎭', label: 'Підготовка', value: 'Залиште дітям трохи простору біля зони програми.' },
-                { icon: '📸', label: 'Фото', value: 'Якщо плануєте зйомку, підготуйте телефон або камеру заздалегідь.' }
-            ],
-            'family-event': [
-                { icon: '⏱', label: 'Коли приходити', value: 'Приходьте трохи раніше, щоб діти спокійно адаптувалися до простору.' },
-                { icon: '👟', label: 'Підготовка', value: 'Оберіть зручний одяг для дитячої активності.' },
-                { icon: '💬', label: 'Уточнення', value: 'Якщо у гостей є особливі побажання, зв\'яжіться з нами заздалегідь.' }
-            ],
-            'workshop': [
-                { icon: '⏱', label: 'Коли приходити', value: 'Приходьте трохи раніше, щоб спокійно підготуватися.' },
-                { icon: '🎨', label: 'Підготовка', value: 'Одяг має бути зручним для творчої роботи.' },
-                { icon: '🧺', label: 'Після заняття', value: 'Залиште кілька хвилин після майстер-класу, щоб спокійно зібрати роботу.' }
-            ],
-            'private-party': [
-                { icon: '⏱', label: 'Перед візитом', value: 'Перевірте час і кімнату перед приїздом.' },
-                { icon: '🎭', label: 'Формат', value: 'Налаштуйтеся на камерну програму без зайвого поспіху.' },
-                { icon: '💬', label: 'Уточнення', value: 'Якщо плани змінились, зв\'яжіться з нами заздалегідь.' }
-            ],
-            'quest': [
-                { icon: '⏱', label: 'Коли приходити', value: 'Приходьте за 5-10 хвилин для короткого інструктажу.' },
-                { icon: '🧭', label: 'Підготовка', value: 'Зручний одяг допоможе активно проходити завдання.' },
-                { icon: '💬', label: 'Уточнення', value: 'Якщо хтось запізнюється, повідомте нас заздалегідь.' }
-            ]
-        };
+        const DEFAULT_INVITE_CONFIG = Object.freeze({
+            brandName: 'Event Genix',
+            shareTitle: 'Event Genix',
+            shareFallbackText: 'Запрошуємо на подію!',
+            location: Object.freeze({
+                title: 'Як нас знайти',
+                rows: Object.freeze([]),
+                mapIcon: '🗺',
+                mapLabel: 'Відкрити на карті',
+                mapUrl: ''
+            }),
+            visit: Object.freeze({
+                title: 'Перед візитом',
+                tips: Object.freeze({
+                    'holiday-party': Object.freeze([
+                        Object.freeze({ icon: '⏱', label: 'Коли приходити', value: 'Приходьте за 5-10 хвилин до початку події.' })
+                    ])
+                })
+            }),
+            contact: Object.freeze({
+                title: 'Контакти',
+                rows: Object.freeze([])
+            })
+        });
+        const INVITE_CONFIG = window.InviteConfig || DEFAULT_INVITE_CONFIG;
 
         // Show per-event details from URL params
         (function() {
@@ -539,6 +480,7 @@ body { padding: 12px; }
             const category = params.get('category');
             const hero = document.getElementById('inviteHeroImage');
             const title = document.getElementById('inviteTitle');
+            const brand = document.getElementById('inviteBrandName');
             const card = resolveInviteEventCard(params, { program, eventType, category });
 
             if (hero) {
@@ -547,9 +489,12 @@ body { padding: 12px; }
                 hero.dataset.card = card.key;
             }
 
+            if (brand) brand.textContent = inviteConfigText(INVITE_CONFIG.brandName, DEFAULT_INVITE_CONFIG.brandName);
             if (title) title.textContent = program || 'Запрошення';
 
+            renderInviteLocation();
             renderInviteVisitTips(card.key);
+            renderInviteContact();
 
             const timeRange = formatInviteTimeRange(time, end);
             const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));
@@ -616,19 +561,83 @@ body { padding: 12px; }
         function renderInviteVisitTips(cardKey) {
             const section = document.getElementById('inviteVisitSection');
             if (!section) return;
-            const tips = INVITE_VISIT_TIPS[cardKey] || INVITE_VISIT_TIPS['holiday-party'];
-            section.querySelectorAll('[data-visit-tip]').forEach(row => row.remove());
-            section.insertAdjacentHTML('beforeend', tips.map(renderInviteInfoRow).join(''));
+            const configTips = INVITE_CONFIG.visit?.tips || {};
+            const fallbackTips = DEFAULT_INVITE_CONFIG.visit.tips;
+            const tips = configTips[cardKey] || configTips['holiday-party'] || fallbackTips['holiday-party'];
+            const title = inviteConfigText(INVITE_CONFIG.visit?.title, DEFAULT_INVITE_CONFIG.visit.title);
+            section.hidden = !Array.isArray(tips) || tips.length === 0;
+            section.innerHTML = section.hidden
+                ? ''
+                : renderInviteSectionTitle('✅', title) + tips.map(tip => renderInviteInfoRow(tip, 'data-visit-tip')).join('');
         }
 
-        function renderInviteInfoRow(tip) {
-            return '<div class="invite-info-row" data-visit-tip>'
-                + '<span class="icon">' + escapeHtml(tip.icon) + '</span>'
+        function renderInviteLocation() {
+            const section = document.getElementById('inviteLocationSection');
+            if (!section) return;
+            const location = INVITE_CONFIG.location || DEFAULT_INVITE_CONFIG.location;
+            const rows = inviteConfigRows(location.rows);
+            const mapUrl = inviteConfigText(location.mapUrl, '');
+            const title = inviteConfigText(location.title, DEFAULT_INVITE_CONFIG.location.title);
+            section.hidden = rows.length === 0 && !mapUrl;
+            if (section.hidden) {
+                section.innerHTML = '';
+                return;
+            }
+            section.innerHTML = renderInviteSectionTitle(location.titleIcon || '📍', title)
+                + rows.map(row => renderInviteInfoRow(row)).join('')
+                + (mapUrl
+                    ? '<a href="' + escapeHtml(mapUrl) + '" target="_blank" rel="noopener" class="map-link">'
+                        + escapeHtml(inviteConfigText(location.mapIcon, DEFAULT_INVITE_CONFIG.location.mapIcon)) + ' '
+                        + escapeHtml(inviteConfigText(location.mapLabel, DEFAULT_INVITE_CONFIG.location.mapLabel))
+                        + '</a>'
+                    : '');
+        }
+
+        function renderInviteContact() {
+            const section = document.getElementById('inviteContactSection');
+            if (!section) return;
+            const contact = INVITE_CONFIG.contact || DEFAULT_INVITE_CONFIG.contact;
+            const rows = inviteConfigRows(contact.rows);
+            section.hidden = rows.length === 0;
+            section.innerHTML = section.hidden
+                ? ''
+                : renderInviteSectionTitle(contact.titleIcon || '📞', inviteConfigText(contact.title, DEFAULT_INVITE_CONFIG.contact.title))
+                    + rows.map(row => renderInviteInfoRow(row)).join('');
+        }
+
+        function renderInviteSectionTitle(icon, title) {
+            return '<h2>' + escapeHtml(inviteConfigText(icon, '')) + ' ' + escapeHtml(title) + '</h2>';
+        }
+
+        function renderInviteInfoRow(item, attributes) {
+            const href = inviteConfigText(item.href, '');
+            const value = href
+                ? '<a href="' + escapeHtml(href) + '">' + escapeHtml(inviteConfigText(item.value, '')) + '</a>'
+                : escapeHtml(inviteConfigText(item.value, ''));
+            return '<div class="invite-info-row"' + (attributes ? ' ' + attributes : '') + '>'
+                + '<span class="icon">' + escapeHtml(inviteConfigText(item.icon, '')) + '</span>'
                 + '<div class="info">'
-                + '<div class="label">' + escapeHtml(tip.label) + '</div>'
-                + '<div class="value">' + escapeHtml(tip.value) + '</div>'
+                + '<div class="label">' + escapeHtml(inviteConfigText(item.label, '')) + '</div>'
+                + '<div class="value">' + value + '</div>'
                 + '</div>'
                 + '</div>';
+        }
+
+        function inviteConfigRows(rows) {
+            return Array.isArray(rows)
+                ? rows.filter(row => row && inviteConfigText(row.label, '') && inviteConfigText(row.value, ''))
+                : [];
+        }
+
+        function inviteConfigText(value, fallback) {
+            const text = String(value || '').trim();
+            return text || String(fallback || '').trim();
+        }
+
+        function inviteLocationAddress() {
+            const rows = inviteConfigRows(INVITE_CONFIG.location?.rows);
+            const addressRow = rows.find(row => String(row.label || '').trim().toLowerCase() === 'адреса');
+            return inviteConfigText(addressRow?.value, '');
         }
 
         function escapeHtml(str) {
@@ -650,11 +659,15 @@ body { padding: 12px; }
                 hasDistinctArrival ? 'Прихід гостей: ' + arrival : '',
                 timeRange ? 'Час активності: ' + timeRange : ''
             ].filter(Boolean).join('. ');
+            const shareTitle = inviteConfigText(INVITE_CONFIG.shareTitle, inviteConfigText(INVITE_CONFIG.brandName, DEFAULT_INVITE_CONFIG.shareTitle));
+            const shareFallbackText = inviteConfigText(INVITE_CONFIG.shareFallbackText, DEFAULT_INVITE_CONFIG.shareFallbackText);
+            const address = inviteLocationAddress();
+            const locationTail = [shareTitle, address].filter(Boolean).join(' — ');
             const text = program && date
-                ? 'Запрошуємо на ' + program + ' ' + date + (timeDetails ? '. ' + timeDetails : '') + '! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх'
-                : 'Запрошуємо на подію! Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх';
+                ? 'Запрошуємо на ' + program + ' ' + date + (timeDetails ? '. ' + timeDetails : '') + '!' + (locationTail ? ' ' + locationTail : '')
+                : shareFallbackText + (locationTail ? ' ' + locationTail : '');
             if (navigator.share) {
-                navigator.share({ title: 'Парк Закревського Періоду', text: text, url: window.location.href });
+                navigator.share({ title: shareTitle, text: text, url: window.location.href });
             } else {
                 copyLink(event);
             }

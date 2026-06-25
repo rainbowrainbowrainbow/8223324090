@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.29 - Invite Debt Closure
+
+### Public invite config / Follow-up QA / Banquet sheet decisions / (Клешня, 25.06.2026) [codex]
+- **Invite business info винесено в окремий frontend config** - адреса, орієнтир, карта, контакт, бренд, share-тексти і підказки перед візитом тепер живуть у `js/invite-config.js`, а не розкидані напряму в `invite.html`.
+- **Public invite отримав безпечний fallback config** - якщо `js/invite-config.js` не завантажиться, сторінка не ламається і показує мінімальний безпечний набір даних.
+- **Підказки перед візитом закріплено для всіх 6 типів карток** - `holiday-party`, `show-program`, `family-event`, `workshop`, `private-party` і `quest` мають власні короткі guest tips без нових API, DB або приватних URL-даних.
+- **Share/copy invite більше не тримає адресу hardcoded у handler-і** - текст поширення бере бренд і адресу з config, зберігаючи той самий public URL.
+- **Legacy kitchen/staff modes лишені як compatibility surface** - клієнтський UI банкетного листа не показує ці режими, але прямі internal/legacy URL і backend PDF modes не видалялися.
+- **Booking-summary CSS debt закрито рішенням не чіпати без print-safe duplicate** - після аудиту не знайдено 100% безпечних dead CSS правил, тому A4/print/mobile geometry залишені без ризикового cleanup.
+- **Regression coverage і Browser QA оновлено** - static guards перевіряють invite config contract, а локальний browser QA підтвердив client PDF toolbar, table, menu notes, mobile overflow і print PDF render.
+- **Релізні маркери піднято до `0.77.29`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.28 - Invite Visit Polish
 
 ### Public invite / Banquet sheet parity / (Клешня, 25.06.2026) [codex]

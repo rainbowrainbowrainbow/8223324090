@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
 const eventCardsHelper = require('../js/event-cards');
+const inviteConfig = require('../js/invite-config');
 
 const ROOT = path.join(__dirname, '..');
 let passed = 0, failed = 0;
@@ -157,6 +158,7 @@ const inviteDom = new JSDOM(inviteHtml);
 const inviteHeroImage = inviteDom.window.document.querySelector('#inviteHeroImage');
 const inviteLogoImage = inviteDom.window.document.querySelector('.logo-img');
 const inviteSkipLink = inviteDom.window.document.querySelector('.skip-link');
+const inviteExpectedCardKeys = ['holiday-party', 'show-program', 'family-event', 'workshop', 'private-party', 'quest'];
 const inviteHeroWrapRule = cssRuleText(inviteHtml, '.invite-hero-wrap');
 const inviteHeroImageRule = cssRuleText(inviteHtml, '.invite-hero');
 const inviteLogoImageRule = cssRuleText(inviteHtml, '.logo-img');
@@ -177,6 +179,7 @@ function renderInviteSmokeDom(query) {
         runScripts: 'outside-only'
     });
     dom.window.EventCards = eventCardsHelper;
+    dom.window.InviteConfig = inviteConfig;
     getInlineScripts(inviteHtml).forEach(script => dom.window.eval(script));
     return dom;
 }
@@ -205,6 +208,8 @@ check('Event card visual smoke is static, ordered, and DB-free',
 eventCardSmokeDom.window.close();
 check('Invite page uses dynamic event-card header contract',
     scriptIndex(getHtmlScripts(inviteHtml), 'js/event-cards.js') >= 0
+    && scriptIndex(getHtmlScripts(inviteHtml), 'js/invite-config.js') >= 0
+    && htmlScriptLoadsBefore('invite.html', 'js/event-cards.js', 'js/invite-config.js')
     && inviteHeroImage?.getAttribute('src') === '/images/event-cards/event-card-holiday-party.png'
     && inviteHeroImage?.getAttribute('src')?.startsWith('/images/event-cards/')
     && inviteHeroImage?.getAttribute('alt') === 'Зображення типу заходу'
@@ -220,12 +225,19 @@ check('Invite page uses dynamic event-card header contract',
     && inviteHtml.includes('window.EventCards?.resolveEventCardKey?.({')
     && inviteHtml.includes('return allowedKeys.has(resolved) && cards[resolved] ? cards[resolved] : fallback;')
     && inviteHtml.includes("hero.dataset.card = card.key")
+    && inviteHtml.includes('const INVITE_CONFIG = window.InviteConfig || DEFAULT_INVITE_CONFIG;')
+    && inviteHtml.includes('renderInviteLocation();')
     && inviteHtml.includes("title.textContent = program || 'Запрошення'")
+    && inviteHtml.includes('renderInviteContact();')
     && inviteHtml.includes('formatInviteTimeRange(time, end)')
     && inviteHtml.includes('onclick="shareInvite(event)"')
     && inviteHtml.includes('onclick="copyLink(event)"')
     && inviteHtml.includes('function writeClipboardText(text)')
     && inviteHtml.includes('function fallbackCopy()')
+    && inviteHtml.includes('const shareTitle = inviteConfigText(INVITE_CONFIG.shareTitle')
+    && inviteHtml.includes('const address = inviteLocationAddress();')
+    && inviteHtml.includes('navigator.share({ title: shareTitle, text: text, url: window.location.href })')
+    && !inviteHtml.includes('Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх')
     && inviteHtml.includes('navigator.clipboard && typeof navigator.clipboard.writeText === \'function\'')
     && inviteHtml.includes('Promise.race([clipboardWrite, clipboardTimeout]).catch(fallbackCopy)')
     && inviteHtml.includes("new Error('Clipboard timeout')")
@@ -262,32 +274,29 @@ check('Invite page uses Event Genix company logo instead of legacy mascot avatar
     && !inviteHtml.includes('dinosaur')
     && !inviteHtml.includes('Динозавр'));
 check('Invite lower flow focuses on guest visit details instead of generic service marketing',
-    inviteHtml.includes('<h2>📍 Як нас знайти</h2>')
-    && inviteHtml.includes('<div class="label">Орієнтир</div>')
-    && inviteHtml.includes('м. Лісова / м. Чернігівська')
-    && inviteHtml.includes('class="map-link"')
-    && inviteHtml.includes('🗺 Відкрити на карті')
-    && inviteHtml.includes('<div class="invite-section invite-section--visit" id="inviteVisitSection">')
-    && inviteHtml.includes('<h2>✅ Перед візитом</h2>')
-    && inviteHtml.includes('data-visit-tip')
-    && inviteHtml.includes('const INVITE_VISIT_TIPS = {')
-    && inviteHtml.includes("'holiday-party': [")
-    && inviteHtml.includes("'show-program': [")
-    && inviteHtml.includes("'family-event': [")
-    && inviteHtml.includes("'workshop': [")
-    && inviteHtml.includes("'private-party': [")
-    && inviteHtml.includes("'quest': [")
+    inviteExpectedCardKeys.every(key => Array.isArray(inviteConfig.visit?.tips?.[key]) && inviteConfig.visit.tips[key].length >= 1)
+    && inviteConfig.brandName === 'Event Genix'
+    && inviteConfig.location?.rows?.some(row => row.label === 'Адреса' && row.value.includes('Закревського'))
+    && inviteConfig.location?.rows?.some(row => row.label === 'Орієнтир' && row.value.includes('Лісова'))
+    && inviteConfig.location?.mapUrl?.startsWith('https://maps.google.com/')
+    && inviteConfig.contact?.rows?.some(row => row.label === 'Телефон' && row.href?.startsWith('tel:'))
+    && inviteHtml.includes('id="inviteLocationSection"')
+    && inviteHtml.includes('id="inviteVisitSection"')
+    && inviteHtml.includes('id="inviteContactSection"')
+    && inviteHtml.includes('function renderInviteLocation()')
+    && inviteHtml.includes('function renderInviteContact()')
+    && inviteHtml.includes('function renderInviteInfoRow(item, attributes)')
     && inviteHtml.includes('renderInviteVisitTips(card.key)')
-    && inviteHtml.includes("const tips = INVITE_VISIT_TIPS[cardKey] || INVITE_VISIT_TIPS['holiday-party'];")
-    && inviteHtml.includes("section.querySelectorAll('[data-visit-tip]').forEach(row => row.remove());")
-    && inviteHtml.includes('function renderInviteInfoRow(tip)')
-    && inviteHtml.includes('Приходьте за 5-10 хвилин до початку шоу.')
-    && inviteHtml.includes('Приходьте за 5-10 хвилин для короткого інструктажу.')
-    && inviteHtml.includes('Приходьте трохи раніше, щоб спокійно підготуватися.')
-    && inviteHtml.includes('Перевірте час і кімнату перед приїздом.')
-    && inviteHtml.includes('Приходьте трохи раніше, щоб діти спокійно адаптувалися до простору.')
-    && inviteHtml.includes('Приходьте за 5-10 хвилин до початку події.')
-    && inviteHtml.includes('<h2>📞 Контакти</h2>')
+    && inviteHtml.includes('const configTips = INVITE_CONFIG.visit?.tips || {};')
+    && inviteHtml.includes("const tips = configTips[cardKey] || configTips['holiday-party'] || fallbackTips['holiday-party'];")
+    && !inviteHtml.includes('const INVITE_VISIT_TIPS = {')
+    && !inviteHtml.includes('м. Лісова / м. Чернігівська')
+    && !inviteHtml.includes('вул. Закревського 31/2, 3 поверх')
+    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('Як нас знайти')
+    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('вул. Закревського 31/2, 3 поверх')
+    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection .map-link')?.getAttribute('href') === inviteConfig.location.mapUrl
+    && inviteShowProgramDom.window.document.querySelector('#inviteVisitSection')?.textContent.includes('Перед візитом')
+    && inviteShowProgramDom.window.document.querySelector('#inviteContactSection')?.textContent.includes('Контакти')
     && inviteHtml.includes('Поділитися запрошенням')
     && inviteHtml.includes('onclick="shareInvite(event)"')
     && inviteHtml.includes('onclick="copyLink(event)"')

@@ -117,8 +117,14 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(summary.comments.some(comment => comment.text === 'Передзвонити перед святом'), true);
 
     assert.deepEqual(clientView.orderTableColumns.map(column => column.label), ['Позиція', 'К-сть', 'Ціна', 'Сума']);
+    assert.deepEqual(clientView.orderTableColumns.map(column => column.align || 'left'), ['left', 'center', 'right', 'right']);
     assert.deepEqual(menuOrderView.metaLines, ['Видача: 15:15', 'Примітка: Без цибулі']);
     assert.ok(programTableRow, 'program row is rendered in PDF table view');
+    assert.deepEqual(programTableRow[0].split('\n'), [
+        'Паперове неон-шоу',
+        'Тривалість: 60 хв',
+        'Примітка: Хоче більше жартів 2'
+    ]);
     assert.match(programTableRow[0], /Тривалість: 60 хв/);
     assert.match(programTableRow[0], /Примітка: Хоче більше жартів 2/);
     assert.equal(programTableRow[1], '—');
@@ -131,6 +137,7 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(menuTableRow[3], '500 ₴');
     assert.match(menuTableRow[0], /Видача: 15:15/);
     assert.match(menuTableRow[0], /Примітка: Без цибулі/);
+    assert.deepEqual(menuTableRow[0].split('\n'), ['Піца', 'Видача: 15:15', 'Примітка: Без цибулі']);
     assert.equal(clientView.orderTableRows.flat().includes('1 порція'), false);
 
     assert.deepEqual(financeLabels, ['Загальна сума']);
@@ -162,8 +169,18 @@ test('banquet PDF buffer is a clean server PDF without browser print footer arti
 
     assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
     assert.ok(buffer.length > 1000, 'PDF buffer contains rendered content');
+    assert.match(pdfRendererSource, /const PDFDocument = require\('pdfkit'\)/);
+    assert.match(pdfRendererSource, /const PDF_TYPE_SCALE = Object\.freeze/);
+    assert.match(pdfRendererSource, /const PDF_HEADER_LAYOUT = Object\.freeze/);
+    assert.match(pdfRendererSource, /const PDF_TABLE_LAYOUT = Object\.freeze/);
+    assert.match(pdfRendererSource, /const PDF_SPACING_LAYOUT = Object\.freeze/);
+    assert.match(pdfRendererSource, /BANQUET_LOGO_PATH/);
+    assert.match(pdfRendererSource, /doc\.image\(BANQUET_LOGO_PATH/);
     assert.doesNotMatch(pdfRendererSource, /drawFinalBrand/);
     assert.doesNotMatch(pdfRendererSource, /banquet-final-brand/);
+    assert.doesNotMatch(pdfRendererSource, /displayHeaderFooter/);
+    assert.doesNotMatch(pdfRendererSource, /puppeteer/i);
+    assert.doesNotMatch(pdfRendererSource, /playwright/i);
     assert.doesNotMatch(raw, /https?:\/\//i);
     assert.doesNotMatch(raw, /localhost|127\.0\.0\.1|about:blank/i);
     assert.doesNotMatch(raw, /\b1\s*\/\s*1\b/);

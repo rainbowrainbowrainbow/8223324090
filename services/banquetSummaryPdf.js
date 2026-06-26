@@ -31,6 +31,60 @@ const PDF_COLORS = Object.freeze({
     border: '#d8e3e1',
     soft: '#f7f8f5'
 });
+const PDF_TYPE_SCALE = Object.freeze({
+    sectionTitle: 10,
+    keyValue: 8.8,
+    paragraph: 8.8,
+    emptyState: 8.6,
+    tableHeader: 8.9,
+    tableBody: 8.5,
+    scheduleEmpty: 9.2,
+    heroPill: 7.6,
+    heroCardTitle: 9.3,
+    heroCardBadge: 7.7,
+    heroCardMeta: 7.6,
+    heroGenerated: 7.4,
+    heroVenueTitle: 11,
+    heroVenueMeta: 7.4,
+    heroVenuePhone: 8
+});
+const PDF_HEADER_LAYOUT = Object.freeze({
+    height: 76,
+    guideOffsetY: 74,
+    logoSize: 44,
+    cardWidth: 144,
+    cardHeight: 60
+});
+const PDF_TABLE_LAYOUT = Object.freeze({
+    clientOrderColumns: Object.freeze({
+        position: 4.8,
+        quantity: 0.85,
+        unitPrice: 0.9,
+        subtotal: 0.95
+    })
+});
+const PDF_SPACING_LAYOUT = Object.freeze({
+    sectionEnsure: 19,
+    sectionPreMoveDown: 0.18,
+    sectionRuleY: 13.5,
+    sectionAccentStartY: 2.7,
+    sectionAccentEndY: 11.8,
+    sectionTitleY: 1.7,
+    sectionAfterY: 17,
+    keyValueMinRow: 12.5,
+    keyValueExtraHeight: 3.2,
+    keyValueEnsureExtra: 0.5,
+    keyValueAfterMoveDown: 0.06,
+    paragraphLineGap: 0.55,
+    paragraphMinSpace: 14.5,
+    paragraphExtraSpace: 2.8,
+    paragraphAfterMoveDown: 0.04,
+    tablePadding: 2.4,
+    tableLineGap: 0.25,
+    tableParagraphGap: 0.85,
+    tableHeaderMinHeight: 14.5,
+    tableBodyMinHeight: 15.2
+});
 
 const PDF_VALIDATION_ERROR_CODE = 'banquet_summary_pdf_validation_failed';
 const ENTRY_BLOCKING_WARNING_CODES = new Set([
@@ -502,8 +556,8 @@ function drawPageDecor(doc) {
     const borderHeight = pageHeight - borderTop - Math.max(18, doc.page.margins.bottom - 8);
 
     doc.save();
-    doc.moveTo(left, top + 82)
-        .lineTo(left + width, top + 82)
+    doc.moveTo(left, top + PDF_HEADER_LAYOUT.guideOffsetY)
+        .lineTo(left + width, top + PDF_HEADER_LAYOUT.guideOffsetY)
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.border)
         .stroke();
@@ -518,33 +572,33 @@ function drawPageDecor(doc) {
 }
 
 function drawSectionTitle(doc, title) {
-    ensureSpace(doc, 22);
+    ensureSpace(doc, PDF_SPACING_LAYOUT.sectionEnsure);
     resetCursorX(doc);
-    doc.moveDown(0.35);
+    doc.moveDown(PDF_SPACING_LAYOUT.sectionPreMoveDown);
     resetCursorX(doc);
     const left = doc.page.margins.left;
     const y = doc.y;
     const label = title.toUpperCase();
-    doc.moveTo(left, y + 15)
-        .lineTo(left + pageContentWidth(doc), y + 15)
+    doc.moveTo(left, y + PDF_SPACING_LAYOUT.sectionRuleY)
+        .lineTo(left + pageContentWidth(doc), y + PDF_SPACING_LAYOUT.sectionRuleY)
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.border)
         .stroke();
-    doc.moveTo(left, y + 3)
-        .lineTo(left, y + 12.5)
+    doc.moveTo(left, y + PDF_SPACING_LAYOUT.sectionAccentStartY)
+        .lineTo(left, y + PDF_SPACING_LAYOUT.sectionAccentEndY)
         .lineWidth(1.1)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
     doc.font('SummaryBold')
-        .fontSize(8.4)
+        .fontSize(PDF_TYPE_SCALE.sectionTitle)
         .fillColor(PDF_COLORS.tealDark)
-        .text(label, left + 8, y + 2.4, {
+        .text(label, left + 8, y + PDF_SPACING_LAYOUT.sectionTitleY, {
             width: pageContentWidth(doc) - 8,
             align: 'left',
             lineGap: 0.2,
             continued: false
         });
-    doc.y = Math.max(doc.y, y + 19);
+    doc.y = Math.max(doc.y, y + PDF_SPACING_LAYOUT.sectionAfterY);
     resetCursorX(doc);
 }
 
@@ -557,27 +611,27 @@ function drawKeyValueGrid(doc, items = []) {
 
     for (let index = 0; index < filtered.length; index += 2) {
         const pair = filtered.slice(index, index + 2);
-        const rowHeight = Math.max(13, ...pair.map(item => {
-            doc.font('SummaryBold').fontSize(7.8);
+        const rowHeight = Math.max(PDF_SPACING_LAYOUT.keyValueMinRow, ...pair.map(item => {
+            doc.font('SummaryBold').fontSize(PDF_TYPE_SCALE.keyValue);
             const labelHeight = doc.heightOfString(`${item.label}:`, {
                 width: labelWidth,
                 lineGap: 0.3
             });
-            doc.font('SummaryRegular').fontSize(7.8);
+            doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.keyValue);
             const valueHeight = doc.heightOfString(pdfText(item.value), {
                 width: columnWidth - labelWidth,
                 lineGap: 0.3
             });
-            return Math.max(labelHeight, valueHeight) + 4;
+            return Math.max(labelHeight, valueHeight) + PDF_SPACING_LAYOUT.keyValueExtraHeight;
         }));
 
-        ensureSpace(doc, rowHeight + 1);
+        ensureSpace(doc, rowHeight + PDF_SPACING_LAYOUT.keyValueEnsureExtra);
         const y = doc.y;
         pair.forEach((item, pairIndex) => {
             const x = doc.page.margins.left + pairIndex * (columnWidth + 14);
-            doc.font('SummaryBold').fontSize(7.8).fillColor(PDF_COLORS.tealDark)
+            doc.font('SummaryBold').fontSize(PDF_TYPE_SCALE.keyValue).fillColor(PDF_COLORS.tealDark)
                 .text(`${item.label}:`, x, y, { width: labelWidth, lineGap: 0.3 });
-            doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.ink)
+            doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.keyValue).fillColor(PDF_COLORS.tealDark)
                 .text(pdfText(item.value), x + labelWidth, y, {
                     width: columnWidth - labelWidth,
                     lineGap: 0.3
@@ -586,30 +640,30 @@ function drawKeyValueGrid(doc, items = []) {
         doc.y = y + rowHeight;
         resetCursorX(doc);
     }
-    doc.moveDown(0.12);
+    doc.moveDown(PDF_SPACING_LAYOUT.keyValueAfterMoveDown);
 }
 
 function drawParagraphList(doc, items = []) {
     const filtered = items.map(item => cleanText(item)).filter(Boolean);
     if (!filtered.length) {
-        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.muted).text('Немає даних.');
+        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.emptyState).fillColor(PDF_COLORS.muted).text('Немає даних.');
         return;
     }
     filtered.forEach(item => {
         resetCursorX(doc);
         const text = `• ${item}`;
-        doc.font('SummaryRegular').fontSize(7.8);
+        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.paragraph);
         const height = doc.heightOfString(pdfText(text), {
             width: pageContentWidth(doc),
-            lineGap: 0.7
+            lineGap: PDF_SPACING_LAYOUT.paragraphLineGap
         });
-        ensureSpace(doc, Math.max(16, height + 4));
+        ensureSpace(doc, Math.max(PDF_SPACING_LAYOUT.paragraphMinSpace, height + PDF_SPACING_LAYOUT.paragraphExtraSpace));
         resetCursorX(doc);
-        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.ink).text(text, doc.page.margins.left, doc.y, {
+        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.paragraph).fillColor(PDF_COLORS.ink).text(text, doc.page.margins.left, doc.y, {
             width: pageContentWidth(doc),
-            lineGap: 0.7
+            lineGap: PDF_SPACING_LAYOUT.paragraphLineGap
         });
-        doc.moveDown(0.08);
+        doc.moveDown(PDF_SPACING_LAYOUT.paragraphAfterMoveDown);
         resetCursorX(doc);
     });
 }
@@ -632,7 +686,7 @@ function clientOrderTitleCell(viewModel = {}) {
         ? viewModel.metaLines.map(item => cleanText(item)).filter(Boolean)
         : [];
     const title = cleanText(viewModel.title, 'Позиція');
-    return details.length ? `${title}\n${details.join(' · ')}` : title;
+    return details.length ? `${title}\n${details.join('\n')}` : title;
 }
 
 function addFinanceRow(rows, key, label, amount, currency, options = {}) {
@@ -683,9 +737,36 @@ function financeRowsForSummary(summary = {}) {
     return fallbackFinanceRows(summary);
 }
 
+function tableCellLines(cell) {
+    const text = cell === undefined || cell === null ? '' : String(cell);
+    const lines = text.split(/\r?\n/).map(line => cleanText(line)).filter(Boolean);
+    return lines.length ? lines : [''];
+}
+
+function tableCellTextHeight(doc, cell, width, lineGap = PDF_SPACING_LAYOUT.tableLineGap, paragraphGap = PDF_SPACING_LAYOUT.tableParagraphGap) {
+    return tableCellLines(cell).reduce((height, line, index, lines) => {
+        const textHeight = doc.heightOfString(line, { width, lineGap });
+        return height + textHeight + (index < lines.length - 1 ? paragraphGap : 0);
+    }, 0);
+}
+
+function drawTableCellText(doc, cell, x, y, width, options = {}) {
+    const lineGap = options.lineGap ?? PDF_SPACING_LAYOUT.tableLineGap;
+    const paragraphGap = options.paragraphGap ?? PDF_SPACING_LAYOUT.tableParagraphGap;
+    const align = options.align || 'left';
+    let currentY = y;
+    const lines = tableCellLines(cell);
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const textHeight = doc.heightOfString(line, { width, lineGap });
+        doc.text(line, x, currentY, { width, lineGap, align });
+        currentY += textHeight + (index < lines.length - 1 ? paragraphGap : 0);
+    }
+}
+
 function drawTable(doc, columns = [], rows = []) {
     if (!rows.length) {
-        doc.font('SummaryRegular').fontSize(7.8).fillColor(PDF_COLORS.muted).text('Позиції відсутні.');
+        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.emptyState).fillColor(PDF_COLORS.muted).text('Позиції відсутні.');
         return;
     }
 
@@ -699,19 +780,20 @@ function drawTable(doc, columns = [], rows = []) {
         bold: true,
         fill: PDF_COLORS.soft,
         textColor: PDF_COLORS.tealDark,
-        minHeight: 15,
-        fontSize: 7.5,
+        minHeight: PDF_SPACING_LAYOUT.tableHeaderMinHeight,
+        fontSize: PDF_TYPE_SCALE.tableHeader,
         header: true
     };
 
     const drawRow = (cells, options = {}) => {
-        const padding = 2.8;
-        const fontSize = options.fontSize || 7.4;
+        const padding = PDF_SPACING_LAYOUT.tablePadding;
+        const fontSize = options.fontSize || PDF_TYPE_SCALE.tableBody;
         doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular').fontSize(fontSize);
-        const heights = cells.map((cell, index) => doc.heightOfString(pdfText(cell, ''), {
-            width: widths[index] - padding * 2,
-            lineGap: 0.3
-        }));
+        const heights = cells.map((cell, index) => tableCellTextHeight(
+            doc,
+            cell,
+            widths[index] - padding * 2
+        ));
         const height = Math.max(options.minHeight || 16, ...heights.map(item => item + padding * 2));
         const pageAdded = ensureSpace(doc, height + 2);
         if (pageAdded && !options.header) {
@@ -729,11 +811,11 @@ function drawTable(doc, columns = [], rows = []) {
             }
             doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular')
                 .fontSize(fontSize)
-                .fillColor(options.textColor || PDF_COLORS.ink)
-                .text(pdfText(cell, ''), x + padding, y + padding, {
-                    width: widths[index] - padding * 2,
-                    lineGap: 0.3
-                });
+                .fillColor(options.textColor || PDF_COLORS.ink);
+            drawTableCellText(doc, cell, x + padding, y + padding, widths[index] - padding * 2, {
+                lineGap: PDF_SPACING_LAYOUT.tableLineGap,
+                align: columns[index]?.align || 'left'
+            });
             x += widths[index];
         });
         doc.y = y + height;
@@ -741,7 +823,7 @@ function drawTable(doc, columns = [], rows = []) {
     };
 
     drawRow(headerCells, headerOptions);
-    rows.forEach(row => drawRow(row, { minHeight: 16, fontSize: 7.2 }));
+    rows.forEach(row => drawRow(row, { minHeight: PDF_SPACING_LAYOUT.tableBodyMinHeight, fontSize: PDF_TYPE_SCALE.tableBody }));
 }
 
 function drawFinance(doc, summary = {}) {
@@ -792,11 +874,12 @@ function buildOrderTableRows(view, summary = {}) {
 
 function buildOrderTableColumns(view) {
     if (view.mode === 'client') {
+        const weights = PDF_TABLE_LAYOUT.clientOrderColumns;
         return [
-            { label: 'Позиція', weight: 3.4 },
-            { label: 'К-сть', weight: 1 },
-            { label: 'Ціна', weight: 1.05 },
-            { label: 'Сума', weight: 1.15 }
+            { label: 'Позиція', weight: weights.position },
+            { label: 'К-сть', weight: weights.quantity, align: 'center' },
+            { label: 'Ціна', weight: weights.unitPrice, align: 'right' },
+            { label: 'Сума', weight: weights.subtotal, align: 'right' }
         ];
     }
     const columns = [
@@ -813,7 +896,7 @@ function buildOrderTableColumns(view) {
 
 function drawSchedule(doc, schedule = []) {
     if (!schedule.length) {
-        doc.font('SummaryRegular').fontSize(9).fillColor('#64748b').text('Розклад не заповнений.');
+        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.scheduleEmpty).fillColor(PDF_COLORS.muted).text('Розклад не заповнений.');
         return;
     }
     drawTable(doc, [
@@ -877,7 +960,7 @@ function drawHeroPill(doc, text, x, y, width) {
         .strokeColor(PDF_COLORS.gold)
         .stroke();
     doc.font('SummaryBold')
-        .fontSize(6.8)
+        .fontSize(PDF_TYPE_SCALE.heroPill)
         .fillColor(PDF_COLORS.teal)
         .text(label, x + 6, y + 3.4, { width: textWidth - 12, lineGap: 0 });
 }
@@ -892,24 +975,24 @@ function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, mana
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.border)
         .stroke();
-    doc.moveTo(x, y + 4)
-        .lineTo(x, y + height - 4)
+    doc.moveTo(x, y + 3)
+        .lineTo(x, y + height - 3)
         .lineWidth(1.1)
         .strokeColor(PDF_COLORS.gold)
         .stroke();
 
-    const innerX = x + 10;
-    const innerW = width - 18;
+    const innerX = x + 9;
+    const innerW = width - 17;
     doc.font('SummaryBold')
-        .fontSize(8.4)
+        .fontSize(PDF_TYPE_SCALE.heroCardTitle)
         .fillColor(PDF_COLORS.tealDark)
-        .text(pdfText(summary.document?.title, '\u0411\u0410\u041d\u041a\u0415\u0422\u041d\u0418\u0419 \u041b\u0418\u0421\u0422').toUpperCase(), innerX, y + 9, {
+        .text(pdfText(summary.document?.title, '\u0411\u0410\u041d\u041a\u0415\u0422\u041d\u0418\u0419 \u041b\u0418\u0421\u0422').toUpperCase(), innerX, y + 7.2, {
             width: innerW,
-            lineGap: 0.4
+            lineGap: 0.2
         });
 
     const bookingId = pdfText(summary.bookingId);
-    const bookingY = y + 26;
+    const bookingY = y + 23.5;
     const bookingW = Math.min(innerW, Math.max(66, doc.widthOfString(bookingId) + 12));
     doc.save();
     doc.fillOpacity(0.5)
@@ -921,7 +1004,7 @@ function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, mana
         .strokeColor('#dfcfaa')
         .stroke();
     doc.font('SummaryBold')
-        .fontSize(6.8)
+        .fontSize(PDF_TYPE_SCALE.heroCardBadge)
         .fillColor('#6e551c')
         .text(bookingId, innerX + 6, bookingY + 3.6, { width: bookingW - 12 });
 
@@ -929,17 +1012,17 @@ function drawHeroBookingCard(doc, summary, x, y, width, height, renderedAt, mana
         ['\u0421\u0444\u043e\u0440\u043c\u043e\u0432\u0430\u043d\u043e:', formatDateTime(renderedAt)],
         ['\u041c\u0435\u043d\u0435\u0434\u0436\u0435\u0440:', pdfText(manager)]
     ];
-    let rowY = y + 45;
+    let rowY = y + 39.5;
     rows.forEach(([label, value]) => {
         doc.font('SummaryRegular')
-            .fontSize(6.5)
+            .fontSize(PDF_TYPE_SCALE.heroCardMeta)
             .fillColor(PDF_COLORS.muted)
-            .text(label, innerX, rowY, { width: 46, lineGap: 0 });
+            .text(label, innerX, rowY, { width: 49, lineGap: 0 });
         doc.font('SummaryBold')
-            .fontSize(6.5)
+            .fontSize(PDF_TYPE_SCALE.heroCardMeta)
             .fillColor(PDF_COLORS.ink)
-            .text(value, innerX + 49, rowY, { width: innerW - 49, lineGap: 0.2 });
-        rowY += 10;
+            .text(value, innerX + 52, rowY, { width: innerW - 52, lineGap: 0.1 });
+        rowY += 9.4;
     });
 }
 function drawHeader(doc, summary, view) {
@@ -947,16 +1030,16 @@ function drawHeader(doc, summary, view) {
     const left = doc.page.margins.left;
     const top = doc.page.margins.top;
     const width = pageContentWidth(doc);
-    const height = 86;
-    const logoSize = 50;
-    const cardWidth = 144;
-    const cardHeight = 68;
+    const height = PDF_HEADER_LAYOUT.height;
+    const logoSize = PDF_HEADER_LAYOUT.logoSize;
+    const cardWidth = PDF_HEADER_LAYOUT.cardWidth;
+    const cardHeight = PDF_HEADER_LAYOUT.cardHeight;
     const cardX = left + width - cardWidth - 9;
-    const cardY = top + 11;
-    const logoX = left + 13;
-    const logoY = top + 20;
-    const brandX = logoX + logoSize + 13;
-    const brandWidth = Math.max(150, cardX - brandX - 14);
+    const cardY = top + 8;
+    const logoX = left + 12;
+    const logoY = top + 16;
+    const brandX = logoX + logoSize + 12;
+    const brandWidth = Math.max(150, cardX - brandX - 12);
     const renderedAt = new Date();
     const manager = summary.document?.generatedBy || summary.event?.manager || null;
 
@@ -966,10 +1049,10 @@ function drawHeader(doc, summary, view) {
 
     doc.save();
     doc.fillOpacity(0.96)
-        .roundedRect(left, top + 6, width, height - 6, 8)
+        .roundedRect(left, top + 4, width, height - 4, 8)
         .fill(PDF_COLORS.cream);
     doc.restore();
-    doc.roundedRect(left, top + 6, width, height - 6, 8)
+    doc.roundedRect(left, top + 4, width, height - 4, 8)
         .lineWidth(0.45)
         .strokeColor(PDF_COLORS.border)
         .stroke();
@@ -977,16 +1060,16 @@ function drawHeader(doc, summary, view) {
     drawHeroLogo(doc, logoX, logoY, logoSize);
 
     const generatedLabel = formatGeneratedAtShort(renderedAt);
-    doc.font('SummaryBold').fontSize(6.8);
+    doc.font('SummaryBold').fontSize(PDF_TYPE_SCALE.heroGenerated);
     const pillWidth = Math.min(brandWidth, Math.max(58, doc.widthOfString(generatedLabel) + 14));
     doc.font('SummaryBold')
-        .fontSize(6.6)
+        .fontSize(PDF_TYPE_SCALE.heroGenerated)
         .fillColor(PDF_COLORS.muted)
-        .text(generatedLabel, brandX, top + 17.1, { width: pillWidth, lineGap: 0 });
+        .text(generatedLabel, brandX, top + 13.5, { width: pillWidth, lineGap: 0 });
 
     const venueName = pdfText(venue.name, 'Event Genix');
-    const titleY = top + 33;
-    doc.font('SummaryBold').fontSize(10.2);
+    const titleY = top + 27;
+    doc.font('SummaryBold').fontSize(PDF_TYPE_SCALE.heroVenueTitle);
     const titleHeight = doc.heightOfString(venueName, {
         width: brandWidth,
         lineGap: 0.1
@@ -997,21 +1080,21 @@ function drawHeader(doc, summary, view) {
             lineGap: 0.1
         });
 
-    const addressY = Math.max(top + 50, titleY + Math.min(titleHeight, 27) + 3);
+    const addressY = Math.max(top + 43.5, titleY + Math.min(titleHeight, 22) + 2.5);
     doc.font('SummaryRegular')
-        .fontSize(6.7)
+        .fontSize(PDF_TYPE_SCALE.heroVenueMeta)
         .fillColor(PDF_COLORS.muted)
         .text(pdfText(venue.addressLine1), brandX, addressY, { width: brandWidth, lineGap: 0.1 })
-        .text(pdfText(venue.addressLine2), brandX, addressY + 8, { width: brandWidth, lineGap: 0.1 });
+        .text(pdfText(venue.addressLine2), brandX, addressY + 8.5, { width: brandWidth, lineGap: 0.1 });
     doc.font('SummaryBold')
-        .fontSize(7.2)
+        .fontSize(PDF_TYPE_SCALE.heroVenuePhone)
         .fillColor(PDF_COLORS.teal)
-        .text(pdfText(venue.phone), brandX, addressY + 17, { width: brandWidth, lineGap: 0 });
+        .text(pdfText(venue.phone), brandX, addressY + 17.5, { width: brandWidth, lineGap: 0 });
 
     drawHeroBookingCard(doc, summary, cardX, cardY, cardWidth, cardHeight, renderedAt, manager);
 
     doc.x = left;
-    doc.y = top + height + 7;
+    doc.y = top + height + 5;
 }
 
 function summaryCelebrants(summary = {}) {

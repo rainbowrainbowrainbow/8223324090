@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.33 - Client Banquet PDF Readability
+
+### Banquet PDF readability / Client order table / Visual QA / (Клешня, 26.06.2026) [codex]
+- **Клієнтську банкетку PDF зроблено читабельнішою** - основний текст, таблиці, key-value блоки й заголовки стали більшими та контрастнішими.
+- **Шрифти PDF винесено в layout constants** - typography tokens тепер явно фіксують розміри для секцій, таблиць, hero/card і службових підписів без повного редизайну.
+- **Верхній блок ущільнено** - header і booking card займають менше місця, зберігаючи логотип, заклад, адресу, телефон, booking id, дату формування і менеджера.
+- **Таблицю замовлення клієнта покращено** - колонка позиції стала ширшою, кількість/ціна/сума компактніші, грошові значення вирівняні для швидкого сканування.
+- **Коментарі й meta-рядки більше не склеюються в один довгий рядок** - деталі позицій переносяться окремими короткими рядками й акуратно працюють із довгими примітками.
+- **PDF QA зафіксовано через before/after render** - baseline і after PNG збережено в `tmp/pdfs/`, focused PDF тести й UI/static smoke підтверджують контракт.
+- **Релізні маркери піднято до `0.77.33`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.32 - Team Menu And Invite Fixes
 
 ### HR Team / Staff schedule / Invite address / Timeline duration / (Клешня, 26.06.2026) [codex]

@@ -8136,8 +8136,8 @@ async function closeMaysternyaTimelineSlot() {
 
     try {
         const result = await apiCreateBooking(booking);
-        if (result && result.success === false) {
-            showNotification(result.error || 'Не вдалось закрити слот', 'error');
+        if (!result || result.success === false) {
+            showNotification(result?.error || 'Не вдалось закрити слот', 'error');
             return;
         }
         if (result?.booking?.id) booking.id = result.booking.id;
@@ -8713,21 +8713,21 @@ async function handleBookingSubmit(e) {
 
         if (shouldUpdateExistingBooking) {
             const updateResult = await apiUpdateBooking(booking.id, booking);
-            if (updateResult && updateResult.success === false) {
+            if (!updateResult || updateResult.success === false) {
                 // Optimistic locking: check if it's a version conflict
-                if (updateResult.conflict) {
+                if (updateResult?.conflict) {
                     await handleOptimisticLockConflict(updateResult, booking);
                     unlockSubmitBtn();
                     return;
                 }
-                if (updateResult.code === 'cancelled_booking_cannot_be_restored' || updateResult.currentStatus === 'cancelled') {
+                if (updateResult?.code === 'cancelled_booking_cannot_be_restored' || updateResult?.currentStatus === 'cancelled') {
                     resetBookingEditStateForCreate();
                     showNotification('Це бронювання вже скасоване. Режим редагування скинуто, створіть нове бронювання.', 'warning');
                     unlockSubmitBtn();
                     return;
                 }
-                showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
-                if (updateResult.conflictBookingId) revealHiddenBooking(updateResult.conflictBookingId);
+                showNotification(updateResult?.error || 'Помилка оновлення бронювання', 'error');
+                if (updateResult?.conflictBookingId) revealHiddenBooking(updateResult.conflictBookingId);
                 unlockSubmitBtn(); return;
             }
             // Update stored updatedAt from server response
@@ -10626,29 +10626,25 @@ async function showBookingDetails(bookingId, options = {}) {
         : '';
 
     // B2: Per-event invite URL with booking details
-    const inviteCardKeyCandidate = window.EventCards?.resolveEventCardKey?.(bookingEventCardRecord);
-    const inviteCardKey = window.EventCards?.EVENT_CARDS?.[inviteCardKeyCandidate]?.key || 'holiday-party';
     const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';
-    const inviteParams = new URLSearchParams({
-        date: booking.date,
-        time: booking.time,
-        end: inviteEndTimeLabel,
-        program: booking.programName || booking.label,
-        room: booking.room,
-        card: inviteCardKey
+    const inviteModel = window.InviteShare?.buildBookingDetailsInviteModel?.({
+        booking,
+        eventCardRecord: bookingEventCardRecord,
+        endTimeLabel: inviteEndTimeLabel
+    }, window.InviteConfig, window.location.origin, window.EventCards) || buildBookingDetailsInviteModelFallback({
+        booking,
+        eventCardRecord: bookingEventCardRecord,
+        endTimeLabel: inviteEndTimeLabel
     });
-    const inviteUrl = `/invite?${inviteParams.toString()}`;
-
-    const fullInviteUrl = `${window.location.origin}/invite?${inviteParams.toString()}`;
-    const inviteProgramLabel = String(booking.programName || booking.label || 'свято').trim();
-    const inviteRoomLabel = String(booking.room || '').trim();
-    const inviteDateLabel = String(booking.date || '').trim();
-    const inviteTimeLabel = String(booking.time || '').trim();
-    const inviteTimeRangeLabel = inviteTimeLabel && inviteEndTimeLabel ? `${inviteTimeLabel} - ${inviteEndTimeLabel}` : inviteTimeLabel;
-    const inviteAddress = 'Парк Закревського Періоду, вул. Закревського 31/2, 3 поверх';
-    const inviteShortText = `Запрошуємо на ${inviteProgramLabel}${inviteDateLabel ? ` ${inviteDateLabel}` : ''}${inviteTimeRangeLabel ? ` о ${inviteTimeRangeLabel}` : ''}.${inviteRoomLabel ? ` Кімната: ${inviteRoomLabel}.` : ''} ${fullInviteUrl}`;
-    const inviteMessengerText = `Вітаємо! Запрошуємо на ${inviteProgramLabel}.\nДата: ${inviteDateLabel || '-'}\nЧас: ${inviteTimeRangeLabel || '-'}\n${inviteRoomLabel ? `Кімната: ${inviteRoomLabel}\n` : ''}Адреса: ${inviteAddress}\nДеталі: ${fullInviteUrl}`;
-    const inviteInstagramText = `${inviteProgramLabel}${inviteDateLabel ? ` · ${inviteDateLabel}` : ''}${inviteTimeRangeLabel ? ` · ${inviteTimeRangeLabel}` : ''}${inviteRoomLabel ? ` · ${inviteRoomLabel}` : ''}\n${fullInviteUrl}`;
+    const invitePayload = inviteModel.payload;
+    const invitePreviewChips = Array.isArray(inviteModel.previewChips) && inviteModel.previewChips.length
+        ? inviteModel.previewChips
+        : [invitePayload.dateLabel, invitePayload.timeRangeLabel, invitePayload.programLabel, invitePayload.roomLabel].filter(Boolean);
+    const inviteUrl = invitePayload.inviteUrl;
+    const fullInviteUrl = invitePayload.fullInviteUrl;
+    const inviteShortText = invitePayload.shortText;
+    const inviteMessengerText = invitePayload.messengerText;
+    const inviteInstagramText = invitePayload.instagramText;
 
     // v7.6.1: Line switch buttons
     const otherLines = lines.filter(l => l.id !== booking.lineId);
@@ -10660,7 +10656,7 @@ async function showBookingDetails(bookingId, options = {}) {
             </div>
         </div>` : '';
     const inviteSectionHtml = roomFirstServiceBooking ? '' : `
-        <div class="invite-section" data-share-text="${escapeHtml(inviteMessengerText)}">
+        <div class="invite-section" data-share-title="${escapeHtml(invitePayload.shareTitle || 'Event Genix')}" data-share-text="${escapeHtml(inviteMessengerText)}">
             <div class="invite-section-top">
                 <div>
                     <div class="invite-section-eyebrow">Доступ і запрошення</div>
@@ -10670,10 +10666,7 @@ async function showBookingDetails(bookingId, options = {}) {
                 <a href="${inviteUrl}" target="_blank" rel="noopener" class="btn-invite-open">Відкрити запрошення</a>
             </div>
             <div class="invite-preview">
-                ${inviteDateLabel ? `<span>${escapeHtml(inviteDateLabel)}</span>` : ''}
-                ${inviteTimeRangeLabel ? `<span>${escapeHtml(inviteTimeRangeLabel)}</span>` : ''}
-                <span>${escapeHtml(inviteProgramLabel)}</span>
-                ${inviteRoomLabel ? `<span>${escapeHtml(inviteRoomLabel)}</span>` : ''}
+                ${invitePreviewChips.map(chip => `<span>${escapeHtml(chip)}</span>`).join('')}
             </div>
             <div class="invite-format-grid" aria-label="Формати запрошення">
                 <button onclick="copyInviteLink(this)" class="btn-invite-copy" data-text="${escapeHtml(inviteShortText)}">Короткий текст</button>
@@ -11237,6 +11230,76 @@ async function duplicateBooking(bookingId) {
 // INVITE HELPERS (v5.48)
 // ==========================================
 
+function buildBookingDetailsInviteModelFallback(input) {
+    const booking = input?.booking || {};
+    const eventCardRecord = input?.eventCardRecord || booking;
+    const inviteCardKeyCandidate = window.EventCards?.resolveEventCardKey?.(eventCardRecord);
+    const inviteCardKey = window.EventCards?.EVENT_CARDS?.[inviteCardKeyCandidate]?.key || 'holiday-party';
+    const publicData = {
+        date: booking.date,
+        time: booking.time,
+        end: input?.endTimeLabel,
+        program: booking.programName || booking.label,
+        room: booking.room,
+        card: inviteCardKey
+    };
+    const payload = buildBookingInviteSharePayloadFallback(publicData);
+    const previewChips = [
+        payload.dateLabel,
+        payload.timeRangeLabel,
+        payload.programLabel,
+        payload.roomLabel
+    ].filter(Boolean);
+    return {
+        cardKey: inviteCardKey,
+        publicData,
+        payload,
+        previewChips
+    };
+}
+
+function buildBookingInviteSharePayloadFallback(data) {
+    const clean = value => String(value || '').trim();
+    const safeData = {
+        date: clean(data?.date),
+        time: clean(data?.time),
+        end: clean(data?.end),
+        program: clean(data?.program),
+        room: clean(data?.room),
+        card: clean(data?.card)
+    };
+    const params = new URLSearchParams();
+    ['date', 'time', 'end', 'program', 'room', 'card'].forEach(key => params.set(key, safeData[key]));
+    const inviteUrl = `/invite?${params.toString()}`;
+    const fullInviteUrl = `${String(window.location?.origin || '').replace(/\/+$/, '')}${inviteUrl}`;
+    const programLabel = safeData.program || 'подію';
+    const timeRangeLabel = safeData.time && safeData.end && safeData.time !== safeData.end
+        ? `${safeData.time} - ${safeData.end}`
+        : safeData.time;
+    const shortText = `Запрошуємо на ${programLabel}${safeData.date ? ` ${safeData.date}` : ''}${timeRangeLabel ? ` о ${timeRangeLabel}` : ''}.${safeData.room ? ` Кімната: ${safeData.room}.` : ''} ${fullInviteUrl}`;
+    const messengerText = [
+        `Вітаємо! Запрошуємо на ${programLabel}.`,
+        `Дата: ${safeData.date || '-'}`,
+        `Час: ${timeRangeLabel || '-'}`,
+        safeData.room ? `Кімната: ${safeData.room}` : '',
+        `Деталі: ${fullInviteUrl}`
+    ].filter(Boolean).join('\n');
+    const instagramText = `${programLabel}${safeData.date ? ` · ${safeData.date}` : ''}${timeRangeLabel ? ` · ${timeRangeLabel}` : ''}${safeData.room ? ` · ${safeData.room}` : ''}\n${fullInviteUrl}`;
+
+    return {
+        inviteUrl,
+        fullInviteUrl,
+        programLabel,
+        roomLabel: safeData.room,
+        dateLabel: safeData.date,
+        timeRangeLabel,
+        shareTitle: 'Event Genix',
+        shortText,
+        messengerText,
+        instagramText
+    };
+}
+
 function copyInviteLink(btn) {
     const text = btn && (btn.dataset.text || btn.dataset.url) ? (btn.dataset.text || btn.dataset.url) : '';
     if (!text) return;
@@ -11257,9 +11320,10 @@ function shareInviteLink() {
         const link = modal.querySelector('.btn-invite-open');
         if (!link) return;
         const url = link.href;
-        const text = section?.dataset.shareText || 'Запрошуємо на свято! Парк Закревського Періоду';
+        const title = section?.dataset.shareTitle || window.InviteConfig?.shareTitle || window.InviteConfig?.brandName || 'Event Genix';
+        const text = section?.dataset.shareText || window.InviteConfig?.shareFallbackText || 'Запрошуємо на подію!';
         if (navigator.share) {
-            navigator.share({ title: 'Парк Закревського Періоду', text, url }).catch(() => {});
+            navigator.share({ title, text, url }).catch(() => {});
         } else {
             navigator.clipboard.writeText(`${text}\n${url}`).catch(() => showNotification('Не вдалося скопіювати', 'error'));
         }
@@ -11402,15 +11466,14 @@ async function deleteBooking(bookingId) {
         const confirmed = await customConfirm(confirmMsg, 'Видалення бронювання');
         if (!confirmed) return;
 
-        pushUndo('delete', [...allToDelete]);
-
         // v5.7: Single server call — server handles linked deletion, history, Telegram
         const delResult = await apiDeleteBooking(mainBookingId);
-        if (delResult && delResult.success === false) {
-            showNotification(delResult.error || 'Помилка видалення бронювання', 'error');
+        if (!delResult || delResult.success === false) {
+            showNotification(delResult?.error || 'Помилка видалення бронювання', 'error');
             return;
         }
 
+        pushUndo('delete', [...allToDelete]);
         invalidateBookingBanquetPreviewFreshness({
             bookingIds: allToDelete.map(item => item?.id).filter(Boolean)
         });
@@ -11762,20 +11825,34 @@ const BulkOps = {
         try {
             const ids = Array.from(this.selected);
             const undoData = [];
+            const failures = [];
 
             for (const id of ids) {
                 try {
                     const bookings = await getBookingsForDate(AppState.selectedDate);
                     const b = bookings.find(x => x.id === id);
+                    const result = await apiDeleteBooking(id);
+                    if (!result || result.success === false) {
+                        failures.push(result?.error || `Не вдалося видалити ${id}`);
+                        continue;
+                    }
                     if (b) undoData.push(b);
-                    await apiDeleteBooking(id);
-                } catch (e) { /* continue */ }
+                } catch (e) {
+                    failures.push(e?.message || `Не вдалося видалити ${id}`);
+                }
             }
 
             if (undoData.length > 0) pushUndo('delete', undoData);
-            this.clear();
-            AppState.cachedBookings = {};
-            await renderTimeline();
+            const successCount = ids.length - failures.length;
+            if (successCount > 0) {
+                this.clear();
+                AppState.cachedBookings = {};
+                await renderTimeline();
+            }
+            if (failures.length > 0) {
+                showNotification(`Видалено ${successCount}/${ids.length}. ${failures[0]}`, successCount > 0 ? 'warning' : 'error');
+                return;
+            }
             showNotification(`Видалено ${ids.length} бронювань`, 'warning');
         } finally {
             this._busy = false;

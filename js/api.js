@@ -37,13 +37,37 @@ function apiErrorFromPayload(payload = {}, fallback = 'API error') {
 }
 
 function apiFailureFromBody(body = {}, response = null, fallback = 'API error') {
+    const requestId = body.requestId || body.request_id || null;
     return {
         success: false,
-        error: body.error || body.message || fallback,
+        error: formatApiErrorPayload(body, fallback),
         code: body.code || null,
+        conflict: body.conflict || false,
         conflictBookingId: body.conflictBookingId || body.details?.conflictBookingId || null,
+        currentData: body.currentData || null,
+        currentStatus: body.currentStatus || null,
         status: response?.status || body.status || null,
+        requestId,
         details: body.details || null
+    };
+}
+
+function apiAuthFailure(response = null) {
+    return apiFailureFromBody(
+        { error: 'Сесію завершено. Увійдіть знову.' },
+        response,
+        'Сесію завершено. Увійдіть знову.'
+    );
+}
+
+function apiOfflineFailure(err, fallback = 'Немає звʼязку з сервером. Перевірте інтернет і спробуйте ще раз.') {
+    return {
+        success: false,
+        error: fallback,
+        offline: true,
+        status: null,
+        requestId: null,
+        details: err?.message ? { message: err.message } : null
     };
 }
 
@@ -1401,7 +1425,7 @@ async function apiCreateBooking(booking) {
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return apiFailureFromBody(body, response);
@@ -1409,7 +1433,7 @@ async function apiCreateBooking(booking) {
         return await response.json();
     } catch (err) {
         console.error('API createBooking error:', err);
-        return { success: false, error: err.message, offline: true };
+        return apiOfflineFailure(err, 'Не вдалося створити бронювання. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 
@@ -1488,7 +1512,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload))
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return apiFailureFromBody(body, response);
@@ -1496,7 +1520,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
         return await response.json();
     } catch (err) {
         console.error('API createBookingFull error:', err);
-        return { success: false, error: err.message, offline: true };
+        return apiOfflineFailure(err, 'Не вдалося створити бронювання з повʼязаними подіями. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 
@@ -1747,15 +1771,15 @@ async function apiDeleteBooking(id) {
             method: 'DELETE',
             headers: getTimelineAuthHeaders(false)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return apiFailureFromBody(body, response);
         }
         return await response.json();
     } catch (err) {
         console.error('API deleteBooking error:', err);
-        return { success: false, error: err.message, offline: true };
+        return apiOfflineFailure(err, 'Не вдалося видалити бронювання. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 
@@ -1766,26 +1790,25 @@ async function apiUpdateBooking(id, booking) {
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         // Optimistic locking: 409 with conflict field
         if (response.status === 409) {
             const body = await response.json().catch(() => ({}));
             return {
-                success: false,
+                ...apiFailureFromBody(body, response, 'Конфлікт даних'),
                 conflict: body.conflict || false,
-                error: body.error || 'Конфлікт даних',
                 currentData: body.currentData || null,
                 conflictBookingId: body.conflictBookingId || null
             };
         }
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return apiFailureFromBody(body, response);
         }
         return await response.json();
     } catch (err) {
         console.error('API updateBooking error:', err);
-        return { success: false, error: err.message, offline: true };
+        return apiOfflineFailure(err, 'Не вдалося оновити бронювання. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 

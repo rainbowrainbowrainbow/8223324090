@@ -57,9 +57,8 @@
             rows: Object.freeze([
                 Object.freeze({
                     icon: '📱',
-                    label: 'Телефон',
-                    value: 'Зв\'яжіться з нами',
-                    href: 'tel:+380XXXXXXXXX'
+                    label: 'Контакт',
+                    value: 'Зв\'яжіться з нами'
                 })
             ])
         })

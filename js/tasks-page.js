@@ -121,6 +121,33 @@ function setTaskPrioritySelectBusy(select, busy) {
     select.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
+function taskMutationFailure(payload = {}, response = null, fallback = 'Не вдалося оновити задачу') {
+    return {
+        success: false,
+        error: window.CrmApiErrors?.format?.(payload, fallback) || payload.error || payload.message || fallback,
+        offline: Boolean(payload.offline),
+        status: response?.status || payload.status || null,
+        requestId: payload.requestId || payload.request_id || null
+    };
+}
+
+function taskMutationOfflineFailure(error, fallback = 'Немає звʼязку з сервером. Перевірте інтернет і спробуйте ще раз.') {
+    return {
+        success: false,
+        error: fallback,
+        offline: true,
+        status: null,
+        requestId: null,
+        details: error?.message ? { message: error.message } : null
+    };
+}
+
+function normalizeTaskMutationResult(result, fallback = 'Не вдалося оновити задачу') {
+    if (result?.success) return result;
+    if (result && result.success === false) return taskMutationFailure(result, null, fallback);
+    return taskMutationOfflineFailure(null, fallback);
+}
+
 function applyTaskPriorityVisualState(taskId, priority = 'normal') {
     const id = Number(taskId || 0);
     const normalized = normalizeTaskPriorityValue(priority);
@@ -1495,18 +1522,17 @@ async function apiPatchTaskStatus(id, status) {
         const response = await taskApiFetch(`${API_BASE}/tasks/${id}/status`, {
             method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ status })
         });
-        if (handleAuthError(response)) return null;
+        if (handleAuthError(response)) return taskMutationFailure({}, response, 'Сесію завершено. Увійдіть знову.');
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-            return {
-                success: false,
-                error: payload.error || payload.message || `status update failed (${response.status})`
-            };
+            return taskMutationFailure(payload, response, `status update failed (${response.status})`);
         }
-        return payload;
+        return payload?.success === false
+            ? taskMutationFailure(payload, response, 'status update failed')
+            : { success: true, ...payload };
     } catch (err) {
         console.error('API patchTaskStatus error:', err);
-        return { success: false, error: err?.message || 'status update failed' };
+        return taskMutationOfflineFailure(err, 'Не вдалося змінити статус задачі. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 
@@ -1517,18 +1543,17 @@ async function apiPatchTaskPriority(id, priority) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ priority, sourceSurface: 'tasks_page' })
         });
-        if (handleAuthError(response)) return null;
+        if (handleAuthError(response)) return taskMutationFailure({}, response, 'Сесію завершено. Увійдіть знову.');
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-            return {
-                success: false,
-                error: payload.error || payload.message || `priority update failed (${response.status})`
-            };
+            return taskMutationFailure(payload, response, `priority update failed (${response.status})`);
         }
-        return payload;
+        return payload?.success === false
+            ? taskMutationFailure(payload, response, 'priority update failed')
+            : { success: true, ...payload };
     } catch (err) {
         console.error('API patchTaskPriority error:', err);
-        return { success: false, error: err?.message || 'priority update failed' };
+        return taskMutationOfflineFailure(err, 'Не вдалося змінити пріоритет задачі. Перевірте зʼєднання і спробуйте ще раз.');
     }
 }
 
@@ -2668,7 +2693,8 @@ function renderArchiveView(container) {
 
 async function restoreTask(taskId) {
     const result = await apiPatchTaskStatus(taskId, 'todo');
-    if (result?.success) {
+    const mutation = normalizeTaskMutationResult(result, 'Не вдалося відновити задачу');
+    if (mutation.success) {
         // Clear archive fields
         await taskApiFetchWithAuth(`/api/tasks/${taskId}`, {
             method: 'PUT',
@@ -2677,6 +2703,8 @@ async function restoreTask(taskId) {
         }).catch(() => {});
         if (typeof showNotification === 'function') showNotification('Задачу відновлено', 'success');
         await loadAllTasks();
+    } else if (typeof showNotification === 'function') {
+        showNotification(mutation.error, 'error');
     }
 }
 
@@ -4196,14 +4224,15 @@ async function handleTaskActionButton(button) {
         if (action === 'priority-menu') {
             const priority = normalizeTaskPriorityValue(button.dataset.priority);
             const result = await apiPatchTaskPriority(taskId, priority);
-            if (result?.success) {
+            const mutation = normalizeTaskMutationResult(result, 'Не вдалося змінити пріоритет');
+            if (mutation.success) {
                 allTasks = allTasks.map(item => Number(item.id) === taskId ? { ...item, ...(result.task || {}), priority } : item);
                 applyTaskPriorityVisualState(taskId, priority);
                 notifyTaskWidgetsChanged({ action: 'task_priority', taskId, priority });
                 showNotification('Пріоритет оновлено', 'success');
                 await loadAllTasks();
             } else {
-                showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
+                showNotification(mutation.error, 'error');
             }
         }
         if (action === 'delete') await deleteTask(taskId);
@@ -4279,8 +4308,9 @@ async function moveTaskBetweenKanbanColumns(taskId, targetStatus) {
 
     const result = await apiPatchTaskStatus(taskId, targetStatus);
     kanbanSavingTaskIds.delete(Number(taskId));
+    const mutation = normalizeTaskMutationResult(result, 'Не вдалося зберегти переміщення. Задачу повернуто назад.');
 
-    if (result?.success) {
+    if (mutation.success) {
         if (result.task) applyKanbanTaskStatus(taskId, result.task.status || targetStatus, result.task);
         showNotification(`Задачу переміщено: ${STATUS_LABELS[targetStatus] || targetStatus}`, 'success');
         await loadAllTasks();
@@ -4289,7 +4319,7 @@ async function moveTaskBetweenKanbanColumns(taskId, targetStatus) {
 
     restoreKanbanTaskSnapshot(rollbackSnapshot);
     renderBoard();
-    showNotification(result?.error || 'Не вдалося зберегти переміщення. Задачу повернуто назад.', 'error');
+    showNotification(mutation.error || 'Не вдалося зберегти переміщення. Задачу повернуто назад.', 'error');
 }
 
 function setupTaskKanbanDragAndDrop(board) {
@@ -4442,12 +4472,13 @@ async function cycleStatus(taskId, newStatus) {
         }
         result = await apiCompleteTask(taskId, { reportId });
     }
-    if (result && result.success) {
+    const mutation = normalizeTaskMutationResult(result, 'Помилка зміни статусу');
+    if (mutation.success) {
         if (newStatus === 'done') window.SoundEngine?.playTask?.('task-complete');
         notifyTaskWidgetsChanged({ action: 'task_status', taskId, status: newStatus });
         await loadAllTasks();
     } else {
-        showNotification(result?.error || 'Помилка зміни статусу', 'error');
+        showNotification(mutation.error || 'Помилка зміни статусу', 'error');
     }
 }
 
@@ -4459,7 +4490,8 @@ async function updateTaskPriorityQuick(select) {
     setTaskPrioritySelectBusy(select, true);
     const result = await apiPatchTaskPriority(taskId, priority);
     setTaskPrioritySelectBusy(select, false);
-    if (result?.success) {
+    const mutation = normalizeTaskMutationResult(result, 'Не вдалося змінити пріоритет');
+    if (mutation.success) {
         allTasks = allTasks.map(item => Number(item.id) === taskId ? { ...item, ...(result.task || {}), priority } : item);
         applyTaskPriorityVisualState(taskId, priority);
         showNotification('Пріоритет оновлено', 'success');
@@ -4467,8 +4499,9 @@ async function updateTaskPriorityQuick(select) {
         renderBoard();
         return;
     }
+    applyTaskPriorityVisualState(taskId, previous);
     setTaskPrioritySelectVisual(select, previous);
-    showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
+    showNotification(mutation.error || 'Не вдалося змінити пріоритет', 'error');
 }
 
 async function snoozeTaskQuick(event, taskId, minutes) {
@@ -5588,7 +5621,16 @@ async function quickChangeStatus(taskId, newStatus) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
         });
-        if (!res) return;
+        if (!res) {
+            showNotification('Помилка зміни статусу', 'error');
+            return;
+        }
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            const mutation = taskMutationFailure(data, res, 'Помилка зміни статусу');
+            showNotification(mutation.error, 'error');
+            return;
+        }
         await closeTaskDetailOverlay(true);
         showNotification('Статус змінено');
         await loadAllTasks();

@@ -9,6 +9,7 @@ const path = require('path');
 const pkg = require('../package.json');
 const eventCardsHelper = require('../js/event-cards');
 const inviteConfig = require('../js/invite-config');
+const inviteShare = require('../js/invite-share');
 
 const ROOT = path.join(__dirname, '..');
 let passed = 0, failed = 0;
@@ -154,6 +155,10 @@ const eventCardPagesCss = cssTextWithImports('css/pages.css');
 const eventCardVisualRule = cssRuleText(eventCardPagesCss, '.event-card-visual');
 const eventCardImageRule = cssRuleText(eventCardPagesCss, '.event-card-visual img');
 const inviteHtml = fileText('invite.html');
+const inviteConfigCode = fileText('js/invite-config.js');
+const inviteShareCode = fileText('js/invite-share.js');
+const inviteBrowserSmokeCode = fileText('tests/browser/invite-browser-smoke.js');
+const bookingSummaryBrowserSmokeCode = fileText('tests/browser/booking-summary-browser-smoke.js');
 const inviteDom = new JSDOM(inviteHtml);
 const inviteHeroImage = inviteDom.window.document.querySelector('#inviteHeroImage');
 const inviteLogoImage = inviteDom.window.document.querySelector('.logo-img');
@@ -195,9 +200,39 @@ const inviteInvalidCardDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&p
 const inviteShowProgramTips = inviteVisitTipValues(inviteShowProgramDom);
 const inviteQuestTips = inviteVisitTipValues(inviteQuestDom);
 const inviteInvalidCardTips = inviteVisitTipValues(inviteInvalidCardDom);
+const inviteShareSmokePayload = inviteShare.buildInviteSharePayload({
+    date: '2026-06-25',
+    time: '15:00',
+    end: '15:30',
+    program: 'Паперове Неон-шоу',
+    room: 'Поні',
+    card: 'show-program',
+    phone: '+380000000000',
+    comment: 'internal note'
+}, inviteConfig, 'https://crm.example');
+const inviteDetailsSmokeModel = inviteShare.buildBookingDetailsInviteModel({
+    booking: {
+        date: '2026-06-25',
+        time: '15:00',
+        programName: 'Паперове Неон-шоу',
+        label: 'Internal fallback label',
+        room: 'Поні',
+        phone: '+380000000000',
+        comment: 'private note',
+        price: 9999,
+        status: 'confirmed'
+    },
+    eventCardRecord: { title: 'Show program' },
+    endTimeLabel: '15:30'
+}, inviteConfig, 'https://crm.example', {
+    resolveEventCardKey: () => 'show-program',
+    EVENT_CARDS: { 'show-program': { key: 'show-program' } }
+});
 
 check('Event card visual smoke is static, ordered, and DB-free',
-    htmlScriptLoadsBefore('index.html', 'js/event-cards.js', 'js/booking.js')
+    htmlScriptLoadsBefore('index.html', 'js/event-cards.js', 'js/invite-config.js')
+    && htmlScriptLoadsBefore('index.html', 'js/invite-config.js', 'js/invite-share.js')
+    && htmlScriptLoadsBefore('index.html', 'js/invite-share.js', 'js/booking.js')
     && htmlScriptLoadsBefore('programs.html', 'js/event-cards.js', 'js/programs-page.js')
     && htmlScriptLoadsBefore('leads.html', 'js/event-cards.js', 'js/leads-page.js')
     && htmlScriptLoadsBefore('afisha.html', 'js/event-cards.js', 'js/afisha-page.js')
@@ -244,6 +279,29 @@ check('Invite page uses dynamic event-card header contract',
     && inviteHtml.includes('document.execCommand(\'copy\')')
     && inviteHeroWrapRule.includes('aspect-ratio: 16 / 9')
     && inviteHeroImageRule.includes('object-fit: cover'));
+check('Invite share helper builds safe public URL and config-based share payload',
+    typeof inviteShare.buildInviteParams === 'function'
+    && typeof inviteShare.buildInviteUrl === 'function'
+    && typeof inviteShare.buildInviteSharePayload === 'function'
+    && typeof inviteShare.buildBookingDetailsInviteModel === 'function'
+    && inviteShareCode.includes("const SAFE_INVITE_KEYS = Object.freeze(['date', 'time', 'end', 'program', 'room', 'card'])")
+    && inviteShareSmokePayload.fullInviteUrl === 'https://crm.example/invite?date=2026-06-25&time=15%3A00&end=15%3A30&program=%D0%9F%D0%B0%D0%BF%D0%B5%D1%80%D0%BE%D0%B2%D0%B5+%D0%9D%D0%B5%D0%BE%D0%BD-%D1%88%D0%BE%D1%83&room=%D0%9F%D0%BE%D0%BD%D1%96&card=show-program'
+    && inviteShareSmokePayload.inviteUrl.startsWith('/invite?date=2026-06-25&time=15%3A00&end=15%3A30')
+    && inviteShareSmokePayload.messengerText.includes(inviteConfig.location.rows[0].value)
+    && inviteShareSmokePayload.shareTitle === inviteConfig.shareTitle
+    && !inviteShareSmokePayload.fullInviteUrl.includes('phone')
+    && !inviteShareSmokePayload.fullInviteUrl.includes('comment')
+    && !inviteShareSmokePayload.messengerText.includes('internal note')
+    && !inviteShareSmokePayload.shortText.includes('+380000000000')
+    && inviteDetailsSmokeModel.cardKey === 'show-program'
+    && inviteDetailsSmokeModel.payload.fullInviteUrl === inviteShareSmokePayload.fullInviteUrl
+    && inviteDetailsSmokeModel.previewChips.includes('Паперове Неон-шоу')
+    && inviteDetailsSmokeModel.previewChips.includes('15:00 - 15:30')
+    && inviteDetailsSmokeModel.publicData.card === 'show-program'
+    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('phone')
+    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('comment')
+    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('price')
+    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('status'));
 check('Invite event details use labeled rows for date, activity time, program, and room',
     inviteHtml.includes("const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));")
     && inviteHtml.includes("renderEventDetailRow('📅', 'Дата', date)")
@@ -279,7 +337,9 @@ check('Invite lower flow focuses on guest visit details instead of generic servi
     && inviteConfig.location?.rows?.some(row => row.label === 'Адреса' && row.value.includes('Закревського'))
     && inviteConfig.location?.rows?.some(row => row.label === 'Орієнтир' && row.value.includes('Лісова'))
     && inviteConfig.location?.mapUrl?.startsWith('https://maps.google.com/')
-    && inviteConfig.contact?.rows?.some(row => row.label === 'Телефон' && row.href?.startsWith('tel:'))
+    && inviteConfig.contact?.rows?.some(row => row.label === 'Контакт' && row.value === 'Зв\'яжіться з нами' && !row.href)
+    && !inviteConfigCode.includes('tel:+380XXXXXXXXX')
+    && !inviteHtml.includes('tel:+380XXXXXXXXX')
     && inviteHtml.includes('id="inviteLocationSection"')
     && inviteHtml.includes('id="inviteVisitSection"')
     && inviteHtml.includes('id="inviteContactSection"')
@@ -325,6 +385,24 @@ check('Invite personalized guest tips render by card and fall back safely',
     && inviteInvalidCardTips.some(text => text.includes('до початку події'))
     && inviteInvalidCardDom.window.document.querySelector('#inviteTitle')?.textContent.includes('Невідома подія')
     && inviteInvalidCardDom.window.document.querySelector('#inviteVisitSection')?.querySelectorAll('[data-visit-tip]').length >= 2);
+check('Invite browser smoke covers real public invite render without joining npm test',
+    pkg.scripts?.['test:browser:invite'] === 'npx --yes --package playwright node tests/browser/invite-browser-smoke.js'
+    && pkg.scripts?.test === 'npm run verify'
+    && !pkg.scripts?.verify?.includes('test:browser:invite')
+    && inviteBrowserSmokeCode.includes("const INVITE_PATH = '/invite?date=2026-06-25&time=15:00&end=15:30&program=")
+    && inviteBrowserSmokeCode.includes('card=show-program')
+    && inviteBrowserSmokeCode.includes("if (relativePath === 'invite') relativePath = 'invite.html';")
+    && inviteBrowserSmokeCode.includes("page.setViewportSize({ width: 390, height: 844 })")
+    && inviteBrowserSmokeCode.includes('assertNoHorizontalOverflow(page)')
+    && inviteBrowserSmokeCode.includes("page.locator('.logo-img')")
+    && inviteBrowserSmokeCode.includes('event-card-show-program.png')
+    && inviteBrowserSmokeCode.includes('const labels = labelText.map(item => item.trim());')
+    && inviteBrowserSmokeCode.includes('date label is visible')
+    && inviteBrowserSmokeCode.includes('activity label is visible')
+    && inviteBrowserSmokeCode.includes('room label is visible')
+    && inviteBrowserSmokeCode.includes('generic service grid title is absent')
+    && inviteBrowserSmokeCode.includes("const shareButtons = page.locator('.share-btn')")
+    && inviteBrowserSmokeCode.includes('assertSkipLinkHiddenByDefault(page)'));
 inviteShowProgramDom.window.close();
 inviteQuestDom.window.close();
 inviteInvalidCardDom.window.close();
@@ -1077,6 +1155,28 @@ checkPage('booking-summary.html', (doc, html) => {
         && mobileSummaryCloseRule.includes('grid-column: 3')
         && printToolbarRule.includes('display: none !important')
         && !pageCss.includes('.booking-summary-export'));
+    check('Booking summary browser smoke covers client document surface without joining npm test',
+        pkg.scripts?.['test:browser:booking-summary'] === 'npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js'
+        && pkg.scripts?.test === 'npm run verify'
+        && !pkg.scripts?.verify?.includes('test:browser:booking-summary')
+        && bookingSummaryBrowserSmokeCode.includes("const SUMMARY_PATH = '/booking-summary.html?id=BK-SMOKE-001&mode=client&businessContext=event_genix'")
+        && bookingSummaryBrowserSmokeCode.includes('routeBookingSummaryApi(page)')
+        && bookingSummaryBrowserSmokeCode.includes('banquet-summary.pdf')
+        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryDocument:not([hidden])')
+        && bookingSummaryBrowserSmokeCode.includes('.booking-summary-toolbar')
+        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryClose[aria-label="Закрити банкетний лист"]')
+        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryClientPdf[data-booking-summary-pdf-mode="client"]')
+        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryPrint')
+        && bookingSummaryBrowserSmokeCode.includes('Для кухні')
+        && bookingSummaryBrowserSmokeCode.includes('Для персоналу')
+        && bookingSummaryBrowserSmokeCode.includes('.banquet-final-brand')
+        && bookingSummaryBrowserSmokeCode.includes('Позиція')
+        && bookingSummaryBrowserSmokeCode.includes('К-сть')
+        && bookingSummaryBrowserSmokeCode.includes('Ціна')
+        && bookingSummaryBrowserSmokeCode.includes('Сума')
+        && bookingSummaryBrowserSmokeCode.includes('assertPrintCssHidesToolbar(page)')
+        && bookingSummaryBrowserSmokeCode.includes("page.setViewportSize({ width: 390, height: 844 })")
+        && bookingSummaryBrowserSmokeCode.includes('assertNoHorizontalOverflow(page)'));
     check('Booking summary page uses banquet sheet naming without changing internal route contracts',
         doc.title === 'Event Genix | Банкетний лист'
         && doc.querySelector('meta[name="description"]')?.getAttribute('content') === 'Preview і друк банкетного листа Event Genix'
@@ -1585,6 +1685,26 @@ const taskPriorityStates = ['urgent', 'high', 'normal', 'low'];
 const tasksPriorityStyleSurface = `${tasksHtmlForProfileChecks}\n${profilePagesCss}`;
 check('Urgent tasks are visibly highlighted across profile and tasks surfaces', profileCode.includes('data-task-priority="${escapeHtml(priority)}"') && profileCode.includes('priority-${priority}') && profileCode.includes('profile-task-priority--${escapeHtml(priority)}') && profileCode.includes('cabinet-task-priority-select--${escapeHtml(selected)}') && legacyProfileGameCode.includes('urgent-priority high-priority') && legacyProfileGameCode.includes('prof-inbox-item danger${urgentCls}') && tasksPageCodeForProfileChecks.includes("data-priority=\"${escapeHtml(t.priority || 'normal')}\"") && tasksPageCodeForProfileChecks.includes('task-priority-select--${escapeHtml(current)}') && profilePagesCss.includes('.profile-task-row[data-task-priority="urgent"]') && profilePagesCss.includes('.profile-task-priority--urgent') && profilePagesCss.includes('body.dark-mode .profile-task-row[data-task-priority="urgent"]') && profilePagesCss.includes('.cabinet-task-card.priority-urgent') && profilePagesCss.includes('.cabinet-task-priority-select--urgent') && profilePagesCss.includes('.task-card[data-priority="urgent"]') && profilePagesCss.includes('.task-priority-select--urgent') && darkModeCss.includes('body.dark-mode .prof-task-row.urgent-priority') && darkModeCss.includes('body.dark-mode .task-card[data-priority="urgent"]'));
 check('Task priority colors cover urgent, high, normal and low across Tasks and Profile', taskPriorityStates.every(priority => tasksPageCodeForProfileChecks.includes(`{ value: '${priority}'`)) && taskPriorityStates.every(priority => profileCode.includes(`{ value: '${priority}'`)) && taskPriorityStates.every(priority => tasksPriorityStyleSurface.includes(`.task-card[data-priority="${priority}"]`)) && taskPriorityStates.every(priority => tasksPriorityStyleSurface.includes(`.task-priority-select--${priority}`)) && taskPriorityStates.every(priority => profilePagesCss.includes(`.profile-task-row[data-task-priority="${priority}"]`) || profilePagesCss.includes(`.cabinet-task-card[data-task-priority="${priority}"]`)) && taskPriorityStates.every(priority => profilePagesCss.includes(`.cabinet-task-priority-select--${priority}`)) && ['high', 'normal', 'low'].every(priority => tasksPriorityStyleSurface.includes(`body.dark-mode .task-card[data-priority="${priority}"]`) || tasksPriorityStyleSurface.includes(`html[data-theme="dark"] .task-card[data-priority="${priority}"]`)) && ['high', 'normal', 'low'].every(priority => profilePagesCss.includes(`body.dark-mode .profile-task-row[data-task-priority="${priority}"]`) || profilePagesCss.includes(`body.dark-mode .cabinet-task-card[data-task-priority="${priority}"]`)));
+check('Task status and priority mutations fail visibly and rollback quick priority controls',
+    tasksPageCodeForProfileChecks.includes('function taskMutationFailure(payload = {}, response = null')
+    && tasksPageCodeForProfileChecks.includes('function taskMutationOfflineFailure(error, fallback =')
+    && tasksPageCodeForProfileChecks.includes('function normalizeTaskMutationResult(result, fallback =')
+    && tasksPageCodeForProfileChecks.includes('requestId: payload.requestId || payload.request_id || null')
+    && tasksPageCodeForProfileChecks.includes('offline: true')
+    && tasksPageCodeForProfileChecks.includes('setTaskPrioritySelectBusy(select, true)')
+    && tasksPageCodeForProfileChecks.includes('setTaskPrioritySelectBusy(select, false)')
+    && tasksPageCodeForProfileChecks.includes('applyTaskPriorityVisualState(taskId, previous)')
+    && tasksPageCodeForProfileChecks.includes('setTaskPrioritySelectVisual(select, previous)')
+    && tasksPageCodeForProfileChecks.includes('const mutation = normalizeTaskMutationResult(result,')
+    && tasksPageCodeForProfileChecks.includes('if (!res.ok)')
+    && tasksPageCodeForProfileChecks.includes('taskMutationFailure(data, res,')
+    && profileCode.includes('function normalizeCabinetTaskMutationResult(result, fallback =')
+    && profileCode.includes('function patchCabinetTaskPriority(taskId, priority)')
+    && profileCode.includes('setCabinetPrioritySelectBusy(select, true)')
+    && profileCode.includes('setCabinetPrioritySelectBusy(select, false)')
+    && profileCode.includes('applyCabinetTaskPriorityVisualState(taskId, previous, select)')
+    && profileCode.includes("const mutation = normalizeCabinetTaskMutationResult(result, 'Task status update failed')")
+    && profileCode.includes("throw new Error(mutation.error || 'Task status update failed')"));
 check('Profile unfinished tabs use role-aware soon lockdown', profileCode.includes('PROFILE_CREATOR_ONLY_TABS') && profileCode.includes("new Set(['inventory', 'shop'])") && profileCode.includes('PROFILE_ALWAYS_SOON_TABS') && profileCode.includes("new Set(['quests', 'season', 'teams', 'referral'])") && profileCode.includes('function profileTabLock') && profileCode.includes('function renderProfileComingSoon') && profileCode.includes("profileTabLock('inventory')") && profileCode.includes("profileTabLock('shop')") && profileCode.includes("profileTabLock('quests')"));
 check('Profile soon tabs collapse into one compact menu', profileCode.includes('function renderProfileSoonMenu') && profileCode.includes('data-profile-soon-menu') && profileCode.includes('data-profile-soon-trigger') && profileCode.includes('function toggleProfileSoonMenu') && profileCode.includes('function switchProfileSoonTab') && profilePagesCss.includes('.profile-soon-menu-panel') && profilePagesCss.includes('.profile-soon-menu-trigger'));
 check('Profile soon tabs have diagonal CRM badge styles', profilePageHtml.includes('.profile-primary-tab.is-soon::after') && profilePageHtml.includes('content: attr(data-profile-soon)') && profilePageHtml.includes('.profile-soon-panel') && profilePageHtml.includes('body.dark-mode .profile-primary-tab.is-soon') && profilePageHtml.includes('.profile-soon-ribbon'));
@@ -1614,6 +1734,7 @@ const criticalJS = [
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js', 'js/timeline-settings-page.js',
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
     'js/booking-drawer-state.js', 'js/booking-banquet-selector.js', 'js/booking-save-path.js',
+    'js/invite-config.js', 'js/invite-share.js',
     'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js',
     'js/timeline-cache.js', 'js/timeline-resource-identity.js', 'js/timeline-banquet-inspector-helpers.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
@@ -1722,6 +1843,7 @@ const warehouseCode = fs.readFileSync(path.join(ROOT, 'js/warehouse-page.js'), '
 const responsiveCss = fs.readFileSync(path.join(ROOT, 'css/responsive.css'), 'utf8');
 const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
 const apiCode = fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8');
+const bookingMutationCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
 const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js/timeline-cache.js'), 'utf8');
@@ -2733,7 +2855,21 @@ check('Reports API surfaces requestId-aware backend errors to users',
 check('Shared API wrappers preserve backend requestId metadata',
     apiCode.includes('function apiErrorFromResponse')
     && apiCode.includes('formatApiErrorPayload')
-    && apiCode.includes('requestId: errBody.requestId || errBody.request_id || null'));
+    && apiCode.includes('requestId: errBody.requestId || errBody.request_id || null')
+    && apiCode.includes('const requestId = body.requestId || body.request_id || null')
+    && apiCode.includes('requestId,')
+    && apiCode.includes('function apiAuthFailure(response = null)')
+    && apiCode.includes('function apiOfflineFailure(err, fallback ='));
+check('Critical booking mutations use normalized failure contract and user-visible guards',
+    /async function apiCreateBooking[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося створити бронювання/.test(apiCode)
+    && /async function apiCreateBookingFull[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося створити бронювання з повʼязаними подіями/.test(apiCode)
+    && /async function apiDeleteBooking[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося видалити бронювання/.test(apiCode)
+    && /async function apiUpdateBooking[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response, 'Конфлікт даних'\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося оновити бронювання/.test(apiCode)
+    && bookingMutationCode.includes('if (!updateResult || updateResult.success === false)')
+    && bookingMutationCode.includes('if (!delResult || delResult.success === false)')
+    && bookingMutationCode.includes('if (!result || result.success === false)')
+    && bookingMutationCode.includes('const failures = []')
+    && bookingMutationCode.includes('Видалено ${successCount}/${ids.length}. ${failures[0]}'));
 check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));
 check('Timeline responsive density updates JS cell geometry with viewport', uiCode.includes('function applyTimelineResponsiveDensity') && uiCode.includes('_timelineResponsiveCellWidth') && uiCode.includes('--timeline-cell-w') && htmlContains('js/app.js', 'initTimelineResponsiveResize'));
 check('Timeline Android density reads lexical CONFIG and visual viewport', uiCode.includes("typeof CONFIG === 'undefined'") && !uiCode.includes('if (!window.CONFIG || !CONFIG.TIMELINE)') && uiCode.includes('window.visualViewport?.addEventListener?.(\'resize\'') && uiCode.includes('window.visualViewport?.addEventListener?.(\'scroll\''));
@@ -2834,7 +2970,7 @@ const renderBookingPackageMenuRowsBlock = sourceBlock(bookingCode, 'function ren
 const renderBookingPackageEntertainmentRowsBlock = sourceBlock(bookingCode, 'function renderBookingPackageEntertainmentRows', 'function formatBookingEntryQuantityLabel');
 const renderBookingPackageDetailBlock = sourceBlock(bookingCode, 'function renderBookingPackageDetail', 'function shouldHideBookingWorkspaceScenarioDetail');
 const renderBanquetMenuSectionBlock = sourceBlock(bookingCode, 'function renderBanquetMenuSection', 'function renderBanquetServiceSection');
-const bookingInviteParamsBlock = sourceBlock(bookingCode, 'const inviteParams = new URLSearchParams', 'const inviteUrl =');
+const bookingInviteParamsBlock = sourceBlock(bookingCode, 'const inviteModel = window.InviteShare', 'const invitePayload = inviteModel.payload');
 const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'let banquetSnapshot');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
 const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
@@ -3194,11 +3330,19 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && panelCss.includes('border-left: 1px solid var(--gray-100)')
     && timelineConstructorCss.includes('grid-template-columns: 96px minmax(0, 1fr)')
     && timelineConstructorCss.includes('font-size: 11px')
-    && bookingCode.includes('const inviteTimeRangeLabel = inviteTimeLabel && inviteEndTimeLabel')
-    && bookingCode.includes('const inviteShortText =')
-    && bookingCode.includes('const inviteMessengerText =')
-    && bookingCode.includes('const inviteInstagramText =')
+    && bookingCode.includes('const inviteModel = window.InviteShare?.buildBookingDetailsInviteModel?.({')
+    && bookingCode.includes('}, window.InviteConfig, window.location.origin, window.EventCards) || buildBookingDetailsInviteModelFallback({')
+    && bookingCode.includes('const invitePayload = inviteModel.payload;')
+    && bookingCode.includes('const invitePreviewChips = Array.isArray(inviteModel.previewChips)')
+    && bookingCode.includes('const inviteShortText = invitePayload.shortText;')
+    && bookingCode.includes('const inviteMessengerText = invitePayload.messengerText;')
+    && bookingCode.includes('const inviteInstagramText = invitePayload.instagramText;')
+    && bookingCode.includes('function buildBookingDetailsInviteModelFallback(input)')
+    && bookingCode.includes('function buildBookingInviteSharePayloadFallback(data)')
+    && !bookingCode.includes('const inviteAddress =')
+    && !bookingCode.includes('Парк Закревського Періоду, вул. Закревського 31/2, 3 поверх')
     && bookingCode.includes('data-share-text="${escapeHtml(inviteMessengerText)}"')
+    && bookingCode.includes('data-share-title="${escapeHtml(invitePayload.shareTitle')
     && bookingCode.includes('invite-section-eyebrow')
     && bookingCode.includes('Публічне запрошення для клієнта')
     && bookingCode.includes('Посилання на запрошення для гостя')
@@ -3212,7 +3356,8 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && bookingCode.includes('btn-invite-link-copy')
     && bookingCode.includes('btn.dataset.text || btn.dataset.url')
     && bookingCode.includes('section?.dataset.shareText')
-    && bookingInviteSectionBlock.includes('${inviteTimeRangeLabel ? `<span>${escapeHtml(inviteTimeRangeLabel)}</span>` : \'\'}')
+    && bookingCode.includes('section?.dataset.shareTitle || window.InviteConfig?.shareTitle')
+    && bookingInviteSectionBlock.includes("${invitePreviewChips.map(chip => `<span>${escapeHtml(chip)}</span>`).join('')}")
     && !bookingInviteSectionBlock.includes('class="btn-invite-open">Відкрити</a>')
     && featuresCss.includes('.invite-section-top')
     && featuresCss.includes('.invite-section-eyebrow')
@@ -3228,15 +3373,21 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && darkModeCss.includes('body.dark-mode .btn-invite-open:focus-visible'));
 check('Booking invite URL exposes only public event card contract',
     Boolean(bookingInviteParamsBlock)
-    && bookingCode.includes('const inviteCardKeyCandidate = window.EventCards?.resolveEventCardKey?.(bookingEventCardRecord);')
-    && bookingCode.includes("const inviteCardKey = window.EventCards?.EVENT_CARDS?.[inviteCardKeyCandidate]?.key || 'holiday-party';")
+    && inviteShareCode.includes('function buildBookingDetailsInviteModel(input, config, origin, eventCards)')
+    && inviteShareCode.includes('const cardKey = resolveInviteCardKey(eventCardRecord, eventCards);')
+    && inviteShareCode.includes("date: cleanText(booking.date)")
+    && inviteShareCode.includes("time: cleanText(booking.time)")
+    && inviteShareCode.includes("end: cleanText(input && input.endTimeLabel)")
+    && inviteShareCode.includes("program: cleanText(booking.programName || booking.label)")
+    && inviteShareCode.includes("room: cleanText(booking.room)")
+    && inviteShareCode.includes('card: cardKey')
+    && inviteShareCode.includes('previewChips')
     && bookingCode.includes("const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';")
-    && bookingInviteParamsBlock.includes('date: booking.date')
-    && bookingInviteParamsBlock.includes('time: booking.time')
-    && bookingInviteParamsBlock.includes('end: inviteEndTimeLabel')
-    && bookingInviteParamsBlock.includes('program: booking.programName || booking.label')
-    && bookingInviteParamsBlock.includes('room: booking.room')
-    && bookingInviteParamsBlock.includes('card: inviteCardKey')
+    && bookingInviteParamsBlock.includes('booking,')
+    && bookingInviteParamsBlock.includes('eventCardRecord: bookingEventCardRecord')
+    && bookingInviteParamsBlock.includes('endTimeLabel: inviteEndTimeLabel')
+    && bookingCode.includes('const inviteUrl = invitePayload.inviteUrl;')
+    && bookingCode.includes('const fullInviteUrl = invitePayload.fullInviteUrl;')
     && !/(customer|client|phone|comment|notes|price|sum|status|deposit|id)/i.test(bookingInviteParamsBlock));
 check('Booking detail menu polish blocks legacy banquet menu clutter',
     Boolean(bookingDetailStandardBlock)

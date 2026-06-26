@@ -3160,6 +3160,33 @@ function setCabinetPrioritySelectBusy(select, busy) {
     select.closest('.cabinet-task-card')?.classList.toggle('is-updating', isBusy);
 }
 
+function cabinetTaskMutationFailure(payload = {}, fallback = 'Не вдалося оновити задачу') {
+    return {
+        success: false,
+        error: window.CrmApiErrors?.format?.(payload, fallback) || payload.error || payload.message || fallback,
+        offline: Boolean(payload.offline),
+        status: payload.status || null,
+        requestId: payload.requestId || payload.request_id || null
+    };
+}
+
+function cabinetTaskOfflineFailure(error, fallback = 'Немає звʼязку з сервером. Перевірте інтернет і спробуйте ще раз.') {
+    return {
+        success: false,
+        error: fallback,
+        offline: true,
+        status: null,
+        requestId: null,
+        details: error?.message ? { message: error.message } : null
+    };
+}
+
+function normalizeCabinetTaskMutationResult(result, fallback = 'Не вдалося оновити задачу') {
+    if (result?.success) return result;
+    if (result && result.success === false) return cabinetTaskMutationFailure(result, fallback);
+    return cabinetTaskOfflineFailure(null, fallback);
+}
+
 function applyCabinetTaskPriorityVisualState(taskId, priority = 'normal', sourceSelect = null) {
     const id = normalizeCabinetTaskId(taskId);
     const normalized = normalizeCabinetPriority(priority);
@@ -5463,16 +5490,21 @@ async function saveCabinetTaskSoundPreferences(patch = {}) {
     }
 }
 
+async function patchCabinetTaskPriority(taskId, priority) {
+    const result = await apiPatch(`/tasks/${taskId}/priority`, {
+        priority,
+        sourceSurface: 'profile_my_cabinet'
+    });
+    return normalizeCabinetTaskMutationResult(result, 'Не вдалося змінити пріоритет');
+}
+
 async function updateCabinetTaskPriority(select) {
     const taskId = normalizeCabinetTaskId(select?.dataset?.taskId);
     const priority = normalizeCabinetPriority(select?.value);
     if (!taskId || !select) return;
     const previous = normalizeCabinetPriority(findCabinetTask(taskId)?.priority || 'normal');
     setCabinetPrioritySelectBusy(select, true);
-    const result = await apiPatch(`/tasks/${taskId}/priority`, {
-        priority,
-        sourceSurface: 'profile_my_cabinet'
-    });
+    const result = await patchCabinetTaskPriority(taskId, priority);
     setCabinetPrioritySelectBusy(select, false);
     if (result?.success) {
         applyCabinetTaskPriorityToProjection(taskId, priority, result.task || {});
@@ -5713,7 +5745,8 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
     } else {
         result = await apiPatch(`/auth/tasks/${id}/quick-status`, { status });
     }
-    if (!result?.success) throw new Error(result?.error || 'Task status update failed');
+    const mutation = normalizeCabinetTaskMutationResult(result, 'Task status update failed');
+    if (!mutation.success) throw new Error(mutation.error || 'Task status update failed');
     notifyTaskWidgetsChanged({ action: 'task_status', taskId: id, status });
     const updatedTask = result.task || result.data?.task || {};
     const appliedLocal = status === 'done'

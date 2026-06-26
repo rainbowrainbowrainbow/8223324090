@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.30 - Invite Reliability Polish
+
+### Invite reliability / Mutation errors / QA guards / (Клешня, 25.06.2026) [codex]
+- **Fake contact у public invite прибрано** - `js/invite-config.js` більше не містить placeholder `tel:+380XXXXXXXXX`, а contact block лишається безпечним без вигаданого клікабельного номера.
+- **Invite share/config отримали спільне джерело правди** - URL, тексти поширення, адреса і preview chips формуються через `js/invite-share.js` та `js/invite-config.js`, щоб CRM modal і public invite не розходилися.
+- **Booking details invite block став менш ризиковим** - `showBookingDetails()` більше не складає invite params/share payload вручну; helper приймає тільки public поля `date/time/end/program/room/card`.
+- **Booking mutations не маскують помилки** - create/update/delete booking flows перевіряють `success === false`, показують користувачу помилку і не закривають/не оновлюють UI як успішний при failed request.
+- **Task status/priority mutations отримали rollback guards** - dropdown-и задач блокуються під час запиту, повертають попередній стан при помилці і показують user-visible error.
+- **Browser smoke додано для invite і booking-summary** - окремі scripts перевіряють public invite render, company logo, time labels, share/copy, client PDF toolbar, order table, print CSS і mobile overflow без PostgreSQL.
+- **Production smoke ще не підтверджувався** - до push/deploy live proof був заблокований dirty worktree; після деплою треба запустити `version:smoke` і `smoke:live` на production URL.
+- **Релізні маркери піднято до `0.77.30`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.29 - Invite Debt Closure
 
 ### Public invite config / Follow-up QA / Banquet sheet decisions / (Клешня, 25.06.2026) [codex]

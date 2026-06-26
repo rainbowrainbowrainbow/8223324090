@@ -41,12 +41,12 @@
         location: Object.freeze({
             title: 'Як нас знайти',
             rows: Object.freeze([
-                Object.freeze({ icon: '📍', label: 'Адреса', value: 'вул. Закревського 31/2, 3 поверх' }),
+                Object.freeze({ icon: '📍', label: 'Адреса', value: 'вул. Закревського 61/2, 3 поверх' }),
                 Object.freeze({ icon: '🚇', label: 'Орієнтир', value: 'м. Лісова / м. Чернігівська' })
             ]),
             mapIcon: '🗺',
             mapLabel: 'Відкрити на карті',
-            mapUrl: 'https://maps.google.com/?q=вул.+Закревського+31/2+Київ'
+            mapUrl: 'https://maps.google.com/?q=вул.+Закревського+61/2+Київ'
         }),
         visit: Object.freeze({
             title: 'Перед візитом',

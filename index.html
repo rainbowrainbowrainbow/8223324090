@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.31">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.31">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.31">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.31">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.31">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.31">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.31">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.31">
-    <link rel="stylesheet" href="css/features.css?v=0.77.31">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.31">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.31">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.31">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.31">
+    <link rel="stylesheet" href="css/base.css?v=0.77.32">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.32">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.32">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.32">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.32">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.32">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.32">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.32">
+    <link rel="stylesheet" href="css/features.css?v=0.77.32">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.32">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.32">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.32">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.32">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.31">✨ 0.77.31</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.32">✨ 0.77.32</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.31 — CRM Refactor Hardening</p>
+                <p class="tagline">AI First CRM v0.77.32 — Team Menu And Invite Fixes</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.31</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.32</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -625,6 +625,12 @@
                     </div>
                 </div>
 
+                <!-- v3.2: К-кість дітей (для МК) -->
+                <div id="kidsCountSection" class="form-section kids-count-section hidden">
+                    <label>Кількість дітей</label>
+                    <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
+                </div>
+
                 <!-- Кастомна програма -->
                 <div id="customProgramSection" class="custom-program-section hidden">
                     <div class="form-section">
@@ -724,12 +730,6 @@
                         </select>
                         <input type="hidden" id="pinataFillerNumber" name="pinataFillerNumber" maxlength="80">
                     </div>
-                </div>
-
-                <!-- v3.2: К-кість дітей (для МК) -->
-                <div id="kidsCountSection" class="form-section kids-count-section hidden">
-                    <label>Кількість дітей</label>
-                    <input type="number" id="kidsCountInput" min="1" max="50" placeholder="Введіть к-кість дітей">
                 </div>
 
                 <!-- v8.3.1: Розміри футболок (для МК Футболок) -->
@@ -1727,6 +1727,19 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.77.32 — Team Menu And Invite Fixes</h4>
+                    <ul>
+                        <li><b>Професії HR Team очищено</b> — з меню прибрано дублікати на кшталт бармена, HR-менеджера, загального інструктора, клінінгу, техніка і старших кухарських ролей.</li>
+                        <li><b>Назви професій оновлено</b> — старший інструктор показується як <code>Адміністратор ігрових зон</code>, технічний напрям як <code>Технічний директор</code>, додано <code>Піцайоло</code>.</li>
+                        <li><b>Offboarding виправлено</b> — завершення співпраці не блокується, коли активного CRM-акаунта немає, і показує зрозумілу помилку доступу замість мовчазного редіректу.</li>
+                        <li><b>Графік команди доповнено</b> — у структурі графіка видимі <code>Рецепція</code> та <code>Гардероб</code>, а прибиральники не дублюються як клінінг.</li>
+                        <li><b>Адресу запрошення виправлено</b> — public invite і share text використовують <code>вул. Закревського 61/2, 3 поверх</code>.</li>
+                        <li><b>Тривалість програм захищено</b> — відомі програми Event Genix не стають 15-хвилинними, якщо API повернув підозріло коротку тривалість.</li>
+                        <li><b>Regression coverage оновлено</b> — тести перевіряють curated професії, offboarding guardrails, структуру графіка, invite address/share і timeline duration fallback.</li>
+                        <li><b>Version markers синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.32</code>.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.77.31 — CRM Refactor Hardening</h4>
                     <ul>
@@ -14726,41 +14739,41 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.31"></script>
-    <script src="js/timeline-visibility.js?v=0.77.31"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.31"></script>
-    <script src="js/config.js?v=0.77.31"></script>
-    <script src="js/api.js?v=0.77.31"></script>
-    <script src="js/ui.js?v=0.77.31"></script>
-    <script src="js/auth.js?v=0.77.31"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.31"></script>
-    <script src="js/timeline-cache.js?v=0.77.31"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.31"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.31"></script>
-    <script src="js/event-cards.js?v=0.77.31"></script>
-    <script src="js/invite-config.js?v=0.77.31"></script>
-    <script src="js/invite-share.js?v=0.77.31"></script>
-    <script src="js/timeline.js?v=0.77.31"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.31"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.31"></script>
-    <script src="js/booking-save-path.js?v=0.77.31"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.31"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.31"></script>
-    <script src="js/booking.js?v=0.77.31"></script>
-    <script src="js/settings.js?v=0.77.31"></script>
-    <script src="js/booking-form.js?v=0.77.31"></script>
-    <script src="js/booking-linked.js?v=0.77.31"></script>
-    <script src="js/settings-dashboard.js?v=0.77.31"></script>
-    <script src="js/settings-history.js?v=0.77.31"></script>
-    <script src="js/settings-afisha.js?v=0.77.31"></script>
-    <script src="js/settings-certificates.js?v=0.77.31"></script>
-    <script src="js/offline.js?v=0.77.31"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.31"></script>
-    <script src="js/search.js?v=0.77.31"></script>
-    <script src="js/ws.js?v=0.77.31"></script>
-    <script src="js/app.js?v=0.77.31"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.31"></script>
-    <script src="js/components/sidebar.js?v=0.77.31"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.31"></script>
+    <script src="js/timeline-context.js?v=0.77.32"></script>
+    <script src="js/timeline-visibility.js?v=0.77.32"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.32"></script>
+    <script src="js/config.js?v=0.77.32"></script>
+    <script src="js/api.js?v=0.77.32"></script>
+    <script src="js/ui.js?v=0.77.32"></script>
+    <script src="js/auth.js?v=0.77.32"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.32"></script>
+    <script src="js/timeline-cache.js?v=0.77.32"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.32"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.32"></script>
+    <script src="js/event-cards.js?v=0.77.32"></script>
+    <script src="js/invite-config.js?v=0.77.32"></script>
+    <script src="js/invite-share.js?v=0.77.32"></script>
+    <script src="js/timeline.js?v=0.77.32"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.32"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.32"></script>
+    <script src="js/booking-save-path.js?v=0.77.32"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.32"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.32"></script>
+    <script src="js/booking.js?v=0.77.32"></script>
+    <script src="js/settings.js?v=0.77.32"></script>
+    <script src="js/booking-form.js?v=0.77.32"></script>
+    <script src="js/booking-linked.js?v=0.77.32"></script>
+    <script src="js/settings-dashboard.js?v=0.77.32"></script>
+    <script src="js/settings-history.js?v=0.77.32"></script>
+    <script src="js/settings-afisha.js?v=0.77.32"></script>
+    <script src="js/settings-certificates.js?v=0.77.32"></script>
+    <script src="js/offline.js?v=0.77.32"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.32"></script>
+    <script src="js/search.js?v=0.77.32"></script>
+    <script src="js/ws.js?v=0.77.32"></script>
+    <script src="js/app.js?v=0.77.32"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.32"></script>
+    <script src="js/components/sidebar.js?v=0.77.32"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.32"></script>
 </body>
 </html>

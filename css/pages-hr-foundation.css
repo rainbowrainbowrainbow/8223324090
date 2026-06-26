@@ -102,6 +102,7 @@
 }
 
 .hr-offboarding-readiness-card {
+    min-width: 0;
     border: 1px solid var(--gray-100);
     border-radius: 9px;
     background: var(--white);
@@ -151,7 +152,9 @@
     color: var(--gray-500);
     font-size: 10px;
     font-weight: 900;
+    line-height: 1.2;
     text-transform: uppercase;
+    overflow-wrap: anywhere;
 }
 
 .hr-offboarding-readiness-grid .is-ok b {
@@ -182,6 +185,7 @@
     color: var(--gray-600);
     font-size: 11px;
     line-height: 1.35;
+    overflow-wrap: anywhere;
 }
 
 .hr-offboarding-readiness-alert {
@@ -192,6 +196,14 @@
     padding: 7px 8px;
     font-size: 11px;
     font-weight: 800;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+    .hr-offboarding-readiness-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .hr-staff-role-assignment-row {

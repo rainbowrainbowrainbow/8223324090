@@ -1648,7 +1648,7 @@ const EXCEL_TO_CRM_ROLE = {
     'Аніматори': { dept: 'animators', role: 'animator' },
     'Арт отдел': { dept: 'admin', role: 'art_director' },
     'Бармени': { dept: 'cafe', role: 'barista' },
-    'Батутисти': { dept: 'trampoline', role: 'instructor' },
+    'Батутисти': { dept: 'trampoline', role: 'trampoline_instructor' },
     'Бухгалтер': { dept: 'admin', role: 'accountant' },
     'Гардеробщиці': { dept: 'cleaning', role: 'wardrobe' },
     'Ейчар': { dept: 'admin', role: 'hr' },
@@ -1659,14 +1659,16 @@ const EXCEL_TO_CRM_ROLE = {
     'Офіціанти': { dept: 'cafe', role: 'waiter' },
     'Охорона': { dept: 'security', role: 'maintenance' },
     'Тех-директор': { dept: 'tech', role: 'it_specialist' },
-    'Хозяюшки залу': { dept: 'cleaning', role: 'cleaning' }
+    'Хозяюшки залу': { dept: 'cleaning', role: 'cleaner' }
 };
 
 function staffRoleToAccountRole(roleType) {
     const role = String(roleType || '').trim();
     const aliases = {
-        trampoline_instructor: 'instructor',
+        trampoline_instructor: 'animator',
+        senior_instructor: 'manager',
         cleaner: 'cleaning',
+        pizzaiolo: 'cook',
         technician: 'maintenance',
         head_cook: 'head_chef',
         bartender: 'barista',

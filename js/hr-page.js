@@ -13,16 +13,17 @@ const ROLE_LABELS = {
     creator: 'Творець', director: 'Директор', vice_director: 'Зам. директора',
     senior_manager: 'Старший менеджер', manager: 'Менеджер',
     accountant: 'Бухгалтер', art_director: 'Арт-директор', marketer: 'Маркетолог',
-    it_specialist: 'IT-спеціаліст', hr: 'HR-менеджер', hr_manager: 'HR-менеджер',
+    it_specialist: 'IT-спеціаліст', hr: 'HR', hr_manager: 'HR',
     admin: 'Адмін', security: 'Охорона',
-    senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
+    senior_instructor: 'Адміністратор ігрових зон', instructor: 'Інструктор батутів',
     trampoline_instructor: 'Інструктор батутів',
-    head_chef: 'Шеф-повар', head_cook: 'Шеф-повар', cook: 'Повар',
+    head_chef: 'Кухар', head_cook: 'Кухар', cook: 'Кухар',
     head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
-    animator: 'Аніматор', host: 'Ведуча', technician: 'Технік',
-    reception: 'Рецепція', barista: 'Бариста', bartender: 'Бармен',
+    animator: 'Аніматор', host: 'Ведуча', technician: 'Технічний директор',
+    reception: 'Рецепція', barista: 'Бариста', bartender: 'Бариста',
     waiter: 'Офіціант', wardrobe: 'Гардеробник',
-    cleaning: 'Клінінг', cleaner: 'Прибиральник', maintenance: 'Технік',
+    cleaning: 'Прибиральник', cleaner: 'Прибиральник', maintenance: 'Технічний директор',
+    pizzaiolo: 'Піцайоло',
     dishwasher: 'Посудомийник', intern: 'Стажер'
 };
 
@@ -887,6 +888,14 @@ function formatResumeFileSize(bytes) {
 }
 
 async function hrFetch(path, options = {}, legacyBody = undefined) {
+    let allowForbiddenResponse = false;
+    if (options && typeof options === 'object' && !(options instanceof String)) {
+        allowForbiddenResponse = options.allowForbiddenResponse === true;
+        if (Object.prototype.hasOwnProperty.call(options, 'allowForbiddenResponse')) {
+            const { allowForbiddenResponse: _allowForbiddenResponse, ...cleanOptions } = options;
+            options = cleanOptions;
+        }
+    }
     const isFormData = typeof FormData !== 'undefined' && options?.body instanceof FormData;
     const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
     if (typeof options === 'string') {
@@ -902,12 +911,14 @@ async function hrFetch(path, options = {}, legacyBody = undefined) {
         ? await apiFetchWithAuthRetry(`/api/hr${path}`, request)
         : await fetch(`/api/hr${path}`, request);
     if (!resp) return null;
-    if (resp.status === 401 || resp.status === 403) {
+    if (resp.status === 401 || (resp.status === 403 && !allowForbiddenResponse)) {
         localStorage.removeItem('pzp_token');
         location.href = '/';
         return null;
     }
-    return resp.json();
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
+    return data;
 }
 
 async function crmApiFetch(path, options = {}) {
@@ -2044,7 +2055,7 @@ function renderProfessions() {
                 ${(item.responsibilities || []).slice(0, 4).map(text => `<span>${escapeHtml(text)}</span>`).join('') || '<span>Відповідальності ще не заповнені.</span>'}
             </div>
             <div class="hr-profession-actions">
-                <button type="button" onclick="openProfessionEditor(${Number(item.id)})">Редагувати</button>
+                ${item.is_virtual || item.isVirtual ? '<span class="hr-profession-chip">Базова професія</span>' : `<button type="button" onclick="openProfessionEditor(${Number(item.id)})">Редагувати</button>`}
             </div>
         </article>
     `).join('');
@@ -2071,7 +2082,7 @@ function renderProfessionChecklists() {
                     <h4>${escapeHtml(item.title || item.key)}</h4>
                     ${item.department ? `<span class="hr-profession-key">${escapeHtml(item.department)}</span>` : ''}
                 </div>
-                <button type="button" class="btn-secondary" onclick="openProfessionEditor(${Number(item.id)})">Змінити</button>
+                ${item.is_virtual || item.isVirtual ? '<span class="hr-profession-chip">Базова професія</span>' : `<button type="button" class="btn-secondary" onclick="openProfessionEditor(${Number(item.id)})">Змінити</button>`}
             </div>
             <p>${escapeHtml(item.shortInfo || item.short_info || 'Опис професії ще не заповнений.')}</p>
             <div class="hr-checklist-list">
@@ -2090,6 +2101,10 @@ async function openProfessionEditor(professionId = null) {
     await ensureProfessionsLoaded({ silent: true });
     await ensureCompanyStructureNodesLoaded({ silent: true });
     const current = professionId ? hrProfessions.find(item => Number(item.id) === Number(professionId)) : null;
+    if (current?.is_virtual || current?.isVirtual) {
+        showNotification('Базову професію не можна редагувати з каталогу. Створіть окрему професію, якщо потрібна інша логіка.', 'warning');
+        return;
+    }
     const currentStructureNode = current?.structure_node_id || current?.structureNodeId || '';
     const result = await formModal(current ? `Професія · ${current.title}` : 'Нова професія', [
         { key: 'key', label: 'Key', required: true, defaultValue: current?.key || '', placeholder: 'animator', hint: current ? 'Технічний key після створення не змінюється, бо до нього привʼязані графік, ставки, чеклісти й навчання.' : '' },
@@ -4939,8 +4954,16 @@ async function completeStaffOffboarding() {
         showNotification('Вкажіть причину завершення співпраці', 'error');
         return;
     }
-    const accountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
-    if (accountAction === 'disable' && staffOffboardingReadiness?.disable_available === false) {
+    const selectedAccountAction = document.getElementById('editOffboardingAccountAction')?.value || 'review';
+    const hasOffboardingReadiness = Boolean(staffOffboardingReadiness && typeof staffOffboardingReadiness === 'object');
+    const activeAccountCount = hasOffboardingReadiness ? Number(staffOffboardingReadiness.active_account_count || 0) : null;
+    let accountAction = selectedAccountAction;
+    let skippedAccountActionNote = '';
+    if (selectedAccountAction === 'disable' && hasOffboardingReadiness && activeAccountCount <= 0) {
+        accountAction = 'none';
+        skippedAccountActionNote = ' Активного CRM-акаунта немає, тому дію з акаунтом пропущено.';
+    }
+    if (accountAction === 'disable' && hasOffboardingReadiness && staffOffboardingReadiness.disable_available === false) {
         const needsAccountAccess = (staffOffboardingReadiness.disable_blockers || [])
             .some(item => item.block_reason === 'requires_manage_accounts');
         showNotification(needsAccountAccess
@@ -4948,9 +4971,11 @@ async function completeStaffOffboarding() {
             : 'CRM-акаунт не можна вимкнути автоматично: перевірте блок готовності.', 'error');
         return;
     }
-    const openResources = Number(staffOffboardingReadiness?.open_resource_count || 0);
-    const documentAlerts = Number(staffOffboardingReadiness?.document_alert_count || 0);
-    const readinessNote = openResources || documentAlerts
+    const openResources = hasOffboardingReadiness ? Number(staffOffboardingReadiness.open_resource_count || 0) : 0;
+    const documentAlerts = hasOffboardingReadiness ? Number(staffOffboardingReadiness.document_alert_count || 0) : 0;
+    const readinessNote = !hasOffboardingReadiness
+        ? ' Перевірку готовності не завантажено; сервер перевірить доступ і акаунти під час завершення.'
+        : openResources || documentAlerts
         ? ` Є хвости: ресурси ${openResources}, документи ${documentAlerts}.`
         : '';
     const ok = await confirmHrAction(`Завершити співпрацю з цим співробітником? Профіль стане неактивним.${readinessNote}`);
@@ -4962,14 +4987,14 @@ async function completeStaffOffboarding() {
         reason,
         notes: document.getElementById('editOffboardingNotes')?.value || null
     };
-    const data = await hrFetch(`/staff/${staffId}/offboarding`, { method: 'POST', body });
+    const data = await hrFetch(`/staff/${staffId}/offboarding`, { method: 'POST', body, allowForbiddenResponse: true });
     if (!data?.success) {
         showNotification(data?.error || 'Не вдалося завершити співпрацю', 'error');
         return;
     }
     const resourceNote = data.open_resource_count ? ` Неповернуті ресурси: ${data.open_resource_count}.` : '';
     const accountNote = data.disabled_accounts ? ` Вимкнено CRM-акаунтів: ${data.disabled_accounts}.` : '';
-    showNotification(`Співпрацю завершено.${resourceNote}${accountNote}`, data.open_resource_count ? 'warning' : 'success');
+    showNotification(`Співпрацю завершено.${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
     await closeHrEditableModal('staffEditModal', true);
     await loadTeam();
 }

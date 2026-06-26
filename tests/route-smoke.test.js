@@ -215,6 +215,30 @@ function createFakePool() {
                 role_type: 'animator',
                 termination_date: '2099-05-30',
                 termination_reason: 'Former employee'
+            }],
+            [48, {
+                id: 48,
+                name: 'HR Offboard No Account None',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: ''
+            }],
+            [49, {
+                id: 49,
+                name: 'HR Offboard No Account Review',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: ''
+            }],
+            [50, {
+                id: 50,
+                name: 'HR Offboard No Account Disable',
+                is_active: true,
+                hr_pool_status: 'core',
+                blacklist_reason: null,
+                notes: ''
             }]
         ]),
         resourcesByStaff: new Map([
@@ -4009,6 +4033,37 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.data.open_resources[0].title, 'Рація складу');
         assert.equal(res.data.data.active_accounts[0].username, 'offboard.employee');
         assert.equal(res.data.data.document_alerts[0].title, 'Медкнижка 2026');
+    });
+
+    it('completes HR offboarding without active CRM accounts for none, review, and disable actions', async () => {
+        const readiness = await request('GET', '/api/hr/staff/48/offboarding-readiness', undefined, withAuth());
+        assert.equal(readiness.status, 200, JSON.stringify(readiness.data));
+        assert.equal(readiness.data.success, true);
+        assert.equal(readiness.data.data.active_account_count, 0);
+        assert.equal(readiness.data.data.disable_available, true);
+        assert.equal(readiness.data.data.disable_requires_manage_accounts, false);
+
+        for (const scenario of [
+            { staffId: 48, accountAction: 'none', reason: 'Завершення за домовленістю' },
+            { staffId: 49, accountAction: 'review', reason: 'Не пройшов випробувальний термін' },
+            { staffId: 50, accountAction: 'disable', reason: 'Завершення без активного CRM-акаунта' }
+        ]) {
+            queries.length = 0;
+            const res = await request('POST', `/api/hr/staff/${scenario.staffId}/offboarding`, {
+                effective_date: '2099-06-06',
+                target_pool_status: 'reserve',
+                account_action: scenario.accountAction,
+                reason: scenario.reason
+            }, withAuth());
+
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.data.account_action, scenario.accountAction);
+            assert.equal(res.data.staff.is_active, false);
+            assert.equal(res.data.staff.termination_reason, scenario.reason);
+            assert.equal(res.data.disabled_accounts, 0);
+            assert.equal(queries.some(q => /UPDATE users SET is_active = false/i.test(q.text)), false);
+        }
     });
 
     it('blocks HR-only offboarding from disabling linked CRM accounts without manage_accounts', async () => {

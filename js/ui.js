@@ -3301,8 +3301,8 @@ const POINTS_ROLE_HIERARCHY = [
     { key: 'senior_manager', name: 'Старший менеджер', icon: '⭐', tier: 'management' },
     { key: 'manager', name: 'Менеджер', icon: '📊', tier: 'management' },
     { key: 'admin', name: 'Адміністратор', icon: '🔧', tier: 'operational' },
-    { key: 'senior_instructor', name: 'Ст. інструктор', icon: '🎓', tier: 'operational' },
-    { key: 'instructor', name: 'Інструктор', icon: '📚', tier: 'field' },
+    { key: 'senior_instructor', name: 'Адміністратор ігрових зон', icon: '🎓', tier: 'operational' },
+    { key: 'instructor', name: 'Інструктор батутів', icon: '📚', tier: 'field' },
     { key: 'animator', name: 'Аніматор', icon: '🎭', tier: 'field' },
     { key: 'security', name: 'Охорона', icon: '🛡️', tier: 'field' },
     { key: 'waiter', name: 'Офіціант', icon: '🍽️', tier: 'field' }

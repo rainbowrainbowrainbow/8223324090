@@ -167,6 +167,11 @@ async function verifyInvite(page, baseUrl) {
     await assertTextIncludes(page.locator('#eventDetails'), '15:00 - 15:30', 'time range');
     await assertTextIncludes(page.locator('#eventDetails'), 'Поні', 'room value');
 
+    await assertTextIncludes(page.locator('#inviteLocationSection'), 'вул. Закревського 61/2, 3 поверх', 'location section');
+    const mapHref = await page.locator('#inviteLocationSection .map-link').getAttribute('href');
+    assert.equal(mapHref, 'https://maps.google.com/?q=вул.+Закревського+61/2+Київ', 'map link uses the current address');
+    assert.equal((await visibleText(page.locator('.invite-card'))).includes('Закревського 31/2'), false, 'old address is absent from visible invite card');
+
     await assertTextIncludes(page.locator('#inviteVisitSection'), 'Перед візитом', 'visit section');
     await assertTextIncludes(page.locator('#inviteVisitSection'), 'до початку шоу', 'show-program visit tips');
 

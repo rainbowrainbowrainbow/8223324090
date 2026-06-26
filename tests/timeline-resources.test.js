@@ -46,6 +46,55 @@ function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+function createConfigHarness() {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+    const context = {
+        console,
+        window: dom.window,
+        document: dom.window.document,
+        localStorage: dom.window.localStorage,
+        setTimeout,
+        clearTimeout,
+        Date,
+        URLSearchParams
+    };
+    context.window.TimelineBusinessContext = {
+        current: () => ({ apiValue: 'event_genix' }),
+        presentation: () => ({ mode: 'park' }),
+        storageKey: name => `test_${name}`
+    };
+    vm.createContext(context);
+    vm.runInContext(read('js/config.js'), context);
+    return { context, close: () => dom.window.close() };
+}
+
+test('timeline API products keep canonical durations for known programs', () => {
+    const config = read('js/config.js');
+    assert.match(config, /const EVENT_GENIX_PROGRAM_DURATION_FALLBACKS = EVENT_GENIX_PROGRAMS\.reduce/);
+    assert.match(config, /!product\.isCustom[\s\S]*product\.category !== 'custom'/);
+    assert.match(config, /function normalizeTimelineProductDurationFromApi/);
+    assert.match(config, /fallback > 15[\s\S]*duration <= 15/);
+    assert.match(config, /duration:\s*normalizeTimelineProductDurationFromApi\(p\)/);
+
+    const { context, close } = createConfigHarness();
+    try {
+        const map = id => context.mapApiProductToTimelineProduct({
+            id,
+            duration: 15,
+            businessContext: 'event_genix'
+        }).duration;
+
+        assert.equal(map('bubble'), 30);
+        assert.equal(map('neon_bubble'), 30);
+        assert.equal(map('paper'), 30);
+        assert.equal(map('pinata'), 15);
+        assert.equal(map('custom'), 15);
+        assert.equal(map('unknown'), 15);
+    } finally {
+        close();
+    }
+});
+
 function createTimelineResourceMatchingHarness(options = {}) {
     const timeline = read('js/timeline.js');
     const timelineResourceIdentity = read('js/timeline-resource-identity.js');

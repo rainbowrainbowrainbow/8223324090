@@ -75,22 +75,28 @@ const STATUS_ICONS = {
 const DEPT_SUB_GROUPS = {
     animators: [
         { key: 'animator', label: 'Аніматори', icon: '🎭' },
-        { key: 'instructor', label: 'Батутисти', icon: '🤸' }
+        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: '🤸' }
+    ],
+    trampoline: [
+        { key: 'trampoline_instructor,senior_instructor,instructor', label: 'Батутисти', icon: '🤸' },
+        { key: 'animator', label: 'Аніматори', icon: '🎭' }
     ],
     admin: [
         { key: 'vice_director,art_director,senior_manager', label: 'Керівники', icon: '👑' },
         { key: 'manager', label: 'Менеджери', icon: '💼' },
         { key: 'admin', label: 'Адміністратори', icon: '📋' },
+        { key: 'reception', label: 'Рецепція', icon: '🛎️' },
         { key: 'accountant', label: 'Бухгалтери', icon: '💰' },
         { key: 'hr', label: 'HR', icon: '👥' }
     ],
     cafe: [
         { key: 'cook', label: 'Кухня', icon: '🍳' },
-        { key: 'barista', label: 'Бармени', icon: '🍸' },
+        { key: 'pizzaiolo', label: 'Піцайоло', icon: '🍕' },
+        { key: 'barista', label: 'Бариста', icon: '☕' },
         { key: 'waiter', label: 'Офіціанти', icon: '🍽️' }
     ],
     cleaning: [
-        { key: 'cleaning', label: 'Хозяюшки', icon: '🧹' },
+        { key: 'cleaner,cleaning', label: 'Прибиральники', icon: '🧹' },
         { key: 'dishwasher', label: 'Мийка', icon: '🧽' },
         { key: 'wardrobe', label: 'Гардероб', icon: '🧥' }
     ]
@@ -98,7 +104,8 @@ const DEPT_SUB_GROUPS = {
 
 const STAFF_ROLE_OPTIONS = [
     { value: 'animator', label: 'Аніматор' },
-    { value: 'instructor', label: 'Інструктор' },
+    { value: 'trampoline_instructor', label: 'Інструктор батутів' },
+    { value: 'senior_instructor', label: 'Адміністратор ігрових зон' },
     { value: 'admin', label: 'Адміністратор' },
     { value: 'reception', label: 'Рецепція' },
     { value: 'manager', label: 'Менеджер' },
@@ -106,22 +113,23 @@ const STAFF_ROLE_OPTIONS = [
     { value: 'hr', label: 'HR' },
     { value: 'barista', label: 'Бариста' },
     { value: 'cook', label: 'Кухар' },
+    { value: 'pizzaiolo', label: 'Піцайоло' },
     { value: 'waiter', label: 'Офіціант' },
-    { value: 'cleaning', label: 'Клінінг' },
+    { value: 'cleaner', label: 'Прибиральник' },
     { value: 'dishwasher', label: 'Мийка' },
     { value: 'wardrobe', label: 'Гардероб' },
     { value: 'security', label: 'Охорона' },
-    { value: 'maintenance', label: 'Технік' },
+    { value: 'maintenance', label: 'Технічний директор' },
     { value: 'it_specialist', label: 'IT / техпідтримка' }
 ];
 
 const STAFF_ROLE_OPTIONS_BY_DEPT = {
-    animators: STAFF_ROLE_OPTIONS.filter(r => ['animator', 'instructor'].includes(r.value)),
-    trampoline: STAFF_ROLE_OPTIONS.filter(r => ['instructor', 'animator'].includes(r.value)),
+    animators: STAFF_ROLE_OPTIONS.filter(r => ['animator', 'host'].includes(r.value)),
+    trampoline: STAFF_ROLE_OPTIONS.filter(r => ['trampoline_instructor', 'senior_instructor', 'animator'].includes(r.value)),
     admin: STAFF_ROLE_OPTIONS.filter(r => ['admin', 'reception', 'manager', 'senior_manager', 'hr'].includes(r.value)),
-    cafe: STAFF_ROLE_OPTIONS.filter(r => ['barista', 'cook', 'waiter'].includes(r.value)),
+    cafe: STAFF_ROLE_OPTIONS.filter(r => ['barista', 'cook', 'pizzaiolo', 'waiter'].includes(r.value)),
     tech: STAFF_ROLE_OPTIONS.filter(r => ['maintenance', 'it_specialist'].includes(r.value)),
-    cleaning: STAFF_ROLE_OPTIONS.filter(r => ['cleaning', 'dishwasher', 'wardrobe'].includes(r.value)),
+    cleaning: STAFF_ROLE_OPTIONS.filter(r => ['cleaner', 'dishwasher', 'wardrobe'].includes(r.value)),
     security: STAFF_ROLE_OPTIONS.filter(r => ['security', 'maintenance'].includes(r.value)),
     __default: STAFF_ROLE_OPTIONS
 };
@@ -133,6 +141,26 @@ function normalizeProfessionKey(value) {
         .replace(/\s+/g, '_')
         .replace(/[^a-z0-9_:-]/g, '')
         .slice(0, 64);
+}
+
+function departmentSubGroupRoleKeys(subGroup = {}) {
+    return String(subGroup.key || '')
+        .split(',')
+        .map(normalizeProfessionKey)
+        .filter(Boolean);
+}
+
+function staffMatchesDepartmentSubGroup(staff = {}, subGroup = {}) {
+    const roleKey = normalizeProfessionKey(staff.role_type);
+    return Boolean(roleKey && departmentSubGroupRoleKeys(subGroup).includes(roleKey));
+}
+
+function shouldRenderDepartmentSubGroups(deptStaff = [], subGroups = null) {
+    return Array.isArray(subGroups) && subGroups.length > 0 && Array.isArray(deptStaff) && deptStaff.length > 0;
+}
+
+function departmentSubGroupRoleKeySet(subGroups = []) {
+    return new Set((subGroups || []).flatMap(departmentSubGroupRoleKeys));
 }
 
 function normalizeScheduleStatus(value) {
@@ -727,11 +755,10 @@ function renderSchedule() {
         // Department header
         bodyHtml += `<tr class="dept-row" data-dept="${dept}"><td colspan="${dates.length + 1}"><span class="dept-icon">${icon}</span> ${deptLabel} <span class="dept-count">${deptStaff.length}</span></td></tr>`;
 
-        if (subGroups && deptStaff.length > 3) {
+        if (shouldRenderDepartmentSubGroups(deptStaff, subGroups)) {
             // Render sub-groups within department
             for (const sg of subGroups) {
-                const roleKeys = sg.key.split(',');
-                const sgStaff = deptStaff.filter(s => roleKeys.includes(s.role_type));
+                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg));
                 if (sgStaff.length === 0) continue;
 
                 bodyHtml += `<tr class="sub-group-row"><td colspan="${dates.length + 1}"><span class="sub-group-icon">${sg.icon}</span> ${sg.label} <span class="sub-group-count">${sgStaff.length}</span></td></tr>`;
@@ -741,8 +768,8 @@ function renderSchedule() {
                 }
             }
             // Render staff that didn't match any sub-group (edge case)
-            const allRoleKeys = subGroups.flatMap(sg => sg.key.split(','));
-            const unmatched = deptStaff.filter(s => !allRoleKeys.includes(s.role_type));
+            const allRoleKeys = departmentSubGroupRoleKeySet(subGroups);
+            const unmatched = deptStaff.filter(s => !allRoleKeys.has(normalizeProfessionKey(s.role_type)));
             for (const emp of unmatched) {
                 bodyHtml += renderEmpRow(emp, dates, today);
             }
@@ -1542,17 +1569,19 @@ function suggestUsernameFromStaffInfo(info = {}) {
 function getStaffAccountRole(info = {}) {
     const role = String(info.role_type || '').trim();
     const aliases = {
-        trampoline_instructor: 'instructor',
+        trampoline_instructor: 'animator',
+        senior_instructor: 'manager',
         cleaner: 'cleaning',
         technician: 'maintenance',
         head_cook: 'head_chef',
         bartender: 'barista',
         hr_manager: 'hr',
+        pizzaiolo: 'cook',
         host: 'animator',
         intern: 'animator'
     };
     const mapped = aliases[role] || role;
-    const allowed = new Set(['animator', 'instructor', 'manager', 'hr', 'admin', 'cook', 'barista', 'waiter', 'maintenance', 'cleaning']);
+    const allowed = new Set(['animator', 'manager', 'hr', 'admin', 'cook', 'barista', 'waiter', 'maintenance', 'cleaning']);
     return allowed.has(mapped) ? mapped : 'animator';
 }
 
@@ -1736,15 +1765,14 @@ async function createAccountForLinkingStaff() {
         { key: 'confirmPassword', label: 'Повторити пароль, якщо вводите вручну', type: 'password' },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: getStaffAccountRole(info), options: [
             { value: 'animator', label: 'Аніматор' },
-            { value: 'instructor', label: 'Інструктор' },
             { value: 'manager', label: 'Менеджер' },
             { value: 'hr', label: 'HR' },
             { value: 'admin', label: 'Адмін' },
-            { value: 'cook', label: 'Повар' },
-            { value: 'barista', label: 'Бармен' },
+            { value: 'cook', label: 'Кухар' },
+            { value: 'barista', label: 'Бариста' },
             { value: 'waiter', label: 'Офіціант' },
-            { value: 'maintenance', label: 'Технік' },
-            { value: 'cleaning', label: 'Клінінг' }
+            { value: 'maintenance', label: 'Технічний директор' },
+            { value: 'cleaning', label: 'Прибиральник' }
         ] }
     ], {
         icon: '👤',
@@ -1953,14 +1981,13 @@ function handleExcelExport() {
             csv += row + '\n';
         };
 
-        if (subGroups) {
+        if (shouldRenderDepartmentSubGroups(deptStaff, subGroups)) {
             for (const sg of subGroups) {
-                const roleKeys = sg.key.split(',');
-                const sgStaff = deptStaff.filter(s => roleKeys.includes(s.role_type));
+                const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg));
                 for (const emp of sgStaff) renderStaffCsv(emp, sg.label);
             }
-            const allRoleKeys = subGroups.flatMap(sg => sg.key.split(','));
-            const unmatched = deptStaff.filter(s => !allRoleKeys.includes(s.role_type));
+            const allRoleKeys = departmentSubGroupRoleKeySet(subGroups);
+            const unmatched = deptStaff.filter(s => !allRoleKeys.has(normalizeProfessionKey(s.role_type)));
             for (const emp of unmatched) renderStaffCsv(emp, '');
         } else {
             for (const emp of deptStaff) renderStaffCsv(emp, '');
@@ -2017,7 +2044,7 @@ async function openAddStaffModal() {
             key: 'secondary_professions',
             label: 'Додаткові професії',
             type: 'textarea',
-            placeholder: 'host, instructor',
+            placeholder: 'host, trampoline_instructor',
             hint: 'Основна роль лишається джерелом групування графіка.'
         },
         { key: 'phone', label: 'Телефон', placeholder: '+380...' },

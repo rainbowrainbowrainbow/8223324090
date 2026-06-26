@@ -20,7 +20,7 @@ const SMOKE_SUMMARY = {
     },
     venue: {
         name: 'Event Genix',
-        addressLine1: 'вул. Закревського 31/2, 3 поверх',
+        addressLine1: 'вул. Закревського 61/2, 3 поверх',
         addressLine2: 'м. Київ',
         phone: '+380000000000'
     },

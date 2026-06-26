@@ -2016,11 +2016,21 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(html, /id="bookingPrimaryAnimatorSelect"/);
     assert.match(html, /id="customerDataToggle" checked hidden/);
     assert.ok(html.indexOf('id="roomSelect"') < html.indexOf('id="customerSearch"'));
+    assert.ok(html.indexOf('id="programDetails"') < html.indexOf('id="kidsCountSection"'), 'children count field should sit with selected activity details');
+    assert.ok(html.indexOf('id="kidsCountSection"') < html.indexOf('id="customProgramSection"'), 'children count field should stay above custom program details');
+    assert.ok(html.indexOf('id="kidsCountSection"') < html.indexOf('id="banquetFields"'), 'children count field should stay above banquet/kitchen fields');
+    assert.ok(html.indexOf('id="kidsCountSection"') < html.indexOf('class="form-section status-section"'), 'children count field should stay above status controls');
 
     assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);
+    assert.match(bookingJs, /function resolveBookingChildrenCountSource/);
+    assert.match(bookingJs, /function getBookingChildrenCountInputValue/);
+    assert.match(bookingJs, /function getKitchenChildrenCountInputValue/);
+    assert.match(bookingJs, /function shouldShowStandaloneKidsCountInput/);
     assert.match(bookingJs, /function bookingKitchenChildrenCountFromBooking/);
-    assert.match(bookingJs, /const kitchenChildrenCount = formData\.kitchenEnabled/);
-    assert.match(bookingJs, /kidsCount:\s*kidsCount \|\| kitchenChildrenCount \|\| null/);
+    assert.match(bookingJs, /source:\s*'kitchen'/);
+    assert.match(bookingJs, /editableElementId:\s*'banquetGuests'/);
+    assert.match(bookingJs, /editableElementId:\s*'kidsCountInput'/);
+    assert.match(bookingJs, /kidsCount:\s*childrenCountSource\.value \|\| null/);
     assert.match(bookingJs, /obj\.banquetGuests = formData\.kitchenEnabled \? kitchenChildrenCount : null/);
     assert.match(bookingJs, /getBookingWorkspaceHasEvent/);
     assert.match(bookingJs, /if \(isRoomFirstTimelineView\(\)\) return false;/);

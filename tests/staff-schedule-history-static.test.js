@@ -35,6 +35,42 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /entry \? normalizeScheduleStatus\(entry\.status\) : 'unset'/);
     });
 
+    it('keeps reception, pizzaiolo, and wardrobe visible in staff schedule subgroups', () => {
+        assert.match(staffPage, /key:\s*'reception',\s*label:\s*'Рецепція'/);
+        assert.match(staffPage, /key:\s*'pizzaiolo',\s*label:\s*'Піцайоло'/);
+        assert.match(staffPage, /key:\s*'wardrobe',\s*label:\s*'Гардероб'/);
+        assert.match(staffPage, /value:\s*'reception',\s*label:\s*'Рецепція'/);
+        assert.match(staffPage, /value:\s*'pizzaiolo',\s*label:\s*'Піцайоло'/);
+        assert.match(staffPage, /value:\s*'wardrobe',\s*label:\s*'Гардероб'/);
+    });
+
+    it('keeps canonical and legacy trampoline roles in the same schedule subgroup', () => {
+        assert.match(staffPage, /key:\s*'trampoline_instructor,senior_instructor,instructor',\s*label:\s*'Батутисти'/);
+        assert.match(staffPage, /trampoline:\s*\[\s*\{\s*key:\s*'trampoline_instructor,senior_instructor,instructor'/);
+        assert.match(staffPage, /function staffMatchesDepartmentSubGroup/);
+        assert.equal((staffPage.match(/staffMatchesDepartmentSubGroup\(s, sg\)/g) || []).length, 2);
+        assert.equal((staffPage.match(/departmentSubGroupRoleKeySet\(subGroups\)/g) || []).length, 2);
+        assert.match(staffPage, /placeholder:\s*'host, trampoline_instructor'/);
+        assert.doesNotMatch(staffPage, /placeholder:\s*'host, instructor'/);
+    });
+
+    it('keeps staff import and account linking on canonical role aliases', () => {
+        const importRoleMap = staffRoute.match(/const EXCEL_TO_CRM_ROLE = \{[\s\S]*?\n\};/)?.[0] || '';
+        assert.match(importRoleMap, /'Батутисти':\s*\{\s*dept:\s*'trampoline',\s*role:\s*'trampoline_instructor'\s*\}/);
+        assert.match(importRoleMap, /'Хозяюшки залу':\s*\{\s*dept:\s*'cleaning',\s*role:\s*'cleaner'\s*\}/);
+        assert.doesNotMatch(importRoleMap, /role:\s*'instructor'/);
+        assert.doesNotMatch(importRoleMap, /role:\s*'cleaning'/);
+
+        const accountRoleMapper = staffRoute.match(/function staffRoleToAccountRole\(roleType\) \{[\s\S]*?\n\}/)?.[0] || '';
+        assert.match(accountRoleMapper, /trampoline_instructor:\s*'animator'/);
+        assert.match(accountRoleMapper, /senior_instructor:\s*'manager'/);
+        assert.match(accountRoleMapper, /cleaner:\s*'cleaning'/);
+        assert.match(accountRoleMapper, /pizzaiolo:\s*'cook'/);
+        assert.doesNotMatch(accountRoleMapper, /trampoline_instructor:\s*'instructor'/);
+        assert.match(accountRoleMapper, /'instructor'/);
+        assert.match(accountRoleMapper, /'cleaning'/);
+    });
+
     it('renders explicit cell history UI and fetches it from the staff API', () => {
         assert.match(staffHtml, /id="schHistoryList"/);
         assert.match(staffHtml, /Історія клітинки/);

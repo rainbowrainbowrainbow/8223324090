@@ -33,6 +33,9 @@ const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
     normalizeProfessionCatalogRow,
+    isHiddenProfessionKey,
+    curateProfessionCatalogRows,
+    professionCatalogActiveKeySet,
     validateProfessionKeys,
     staffProfessionKeys,
     resolveStaffProfessionAssignment
@@ -922,8 +925,8 @@ async function auditLog(action, staffId, performedBy, details, ipAddress) {
 }
 
 async function activeProfessionKeySet(db = pool) {
-    const result = await db.query('SELECT key FROM hr_professions WHERE is_active = true');
-    return new Set(result.rows.map(row => normalizeProfessionKey(row.key)).filter(Boolean));
+    const result = await db.query('SELECT key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active FROM hr_professions');
+    return professionCatalogActiveKeySet(result.rows);
 }
 
 function normalizeProfessionPayload(body = {}, current = {}) {
@@ -1717,7 +1720,7 @@ router.get('/professions', async (req, res) => {
         );
         res.json({
             success: true,
-            data: result.rows.map(normalizeProfessionCatalogRow)
+            data: curateProfessionCatalogRows(result.rows)
         });
     } catch (err) {
         log.error('GET /hr/professions error', err);
@@ -1730,6 +1733,12 @@ router.post('/professions', requireRole('creator', 'director', 'vice_director', 
         const payload = normalizeProfessionPayload(req.body);
         if (!payload.key || !payload.title) {
             return res.status(400).json({ success: false, error: 'Потрібні key і title професії' });
+        }
+        if (isHiddenProfessionKey(payload.key)) {
+            return res.status(400).json({
+                success: false,
+                error: `Професія "${payload.key}" прихована як дубль. Використайте актуальну професію замість цього key.`
+            });
         }
         const result = await pool.query(
             `INSERT INTO hr_professions (key, title, department, short_info, responsibilities, checklist, color, structure_node_id, sort_order, is_active)

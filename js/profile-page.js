@@ -347,7 +347,18 @@ function profileRoleLabel(role) {
         hr: 'HR',
         accountant: 'Бухгалтер',
         animator: 'Аніматор',
-        instructor: 'Інструктор',
+        instructor: 'Інструктор батутів',
+        trampoline_instructor: 'Інструктор батутів',
+        senior_instructor: 'Адміністратор ігрових зон',
+        maintenance: 'Технічний директор',
+        technician: 'Технічний директор',
+        cleaning: 'Прибиральник',
+        cleaner: 'Прибиральник',
+        barista: 'Бариста',
+        bartender: 'Бариста',
+        cook: 'Кухар',
+        head_cook: 'Кухар',
+        head_chef: 'Кухар',
         art_director: 'Арт-директор'
     };
     return labels[role] || role || 'Працівник';

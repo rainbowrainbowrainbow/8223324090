@@ -2234,6 +2234,11 @@ const designsHtml = fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8');
 const staffCode = fs.readFileSync(path.join(ROOT, 'js/staff-page.js'), 'utf8');
 const hrCode = fs.readFileSync(path.join(ROOT, 'js/hr-page.js'), 'utf8');
 const hrRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
+const authCss = fs.readFileSync(path.join(ROOT, 'css/auth.css'), 'utf8');
+const hrPageCss = fs.readFileSync(path.join(ROOT, 'css/hr-page.css'), 'utf8');
+const hrFoundationCss = fs.readFileSync(path.join(ROOT, 'css/pages-hr-foundation.css'), 'utf8');
+const inviteHtmlForUiPolish = fs.readFileSync(path.join(ROOT, 'invite.html'), 'utf8');
+const staffHtmlForUiPolish = fs.readFileSync(path.join(ROOT, 'staff.html'), 'utf8');
 const hrPayrollPeriodServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const staffRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const hrAttendanceServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrAttendance.js'), 'utf8');
@@ -2320,15 +2325,25 @@ check('Booking panel header shows client and child count live context',
     && !htmlContains('index.html', '<label>Гостей</label>')
     && bookingCode.includes('function updateBookingContextHeaderSummary')
     && bookingCode.includes('function bookingContextGuestsText')
+    && bookingCode.includes('function resolveBookingChildrenCountSource')
+    && bookingCode.includes('function getBookingChildrenCountInputValue')
+    && bookingCode.includes('function getKitchenChildrenCountInputValue')
+    && bookingCode.includes('function shouldShowStandaloneKidsCountInput')
     && bookingCode.includes('function bookingKitchenChildrenCountFromBooking')
-    && bookingCode.includes('const kitchenChildrenCount = formData.kitchenEnabled')
-    && bookingCode.includes('kidsCount: kidsCount || kitchenChildrenCount || null')
+    && bookingCode.includes("source: 'kitchen'")
+    && bookingCode.includes("editableElementId: 'banquetGuests'")
+    && bookingCode.includes("editableElementId: 'kidsCountInput'")
+    && bookingCode.includes('kidsCount: childrenCountSource.value || null')
     && bookingCode.includes('obj.banquetGuests = formData.kitchenEnabled ? kitchenChildrenCount : null')
+    && indexHtmlForBookingPanel.indexOf('id="programDetails"') < indexHtmlForBookingPanel.indexOf('id="kidsCountSection"')
+    && indexHtmlForBookingPanel.indexOf('id="kidsCountSection"') < indexHtmlForBookingPanel.indexOf('id="customProgramSection"')
+    && indexHtmlForBookingPanel.indexOf('id="kidsCountSection"') < indexHtmlForBookingPanel.indexOf('id="banquetFields"')
+    && indexHtmlForBookingPanel.indexOf('id="kidsCountSection"') < indexHtmlForBookingPanel.indexOf('class="form-section status-section"')
     && timelineBanquetInspectorHelpersCode.includes('?? firstTimelineBanquetValue(sourceForCounts, booking => booking.banquetGuests ?? booking.banquet_guests)')
-    && bookingCode.includes("document.getElementById('banquetGuests')?.value?.trim()")
+    && bookingCode.includes("document.getElementById('banquetGuests')?.value")
     && bookingCode.includes("document.getElementById('banquetAdults')")
     && bookingCode.includes('banquetAdults')
-    && bookingCode.includes("document.getElementById('kidsCountInput')?.value?.trim()")
+    && bookingCode.includes("document.getElementById('kidsCountInput')?.value")
     && bookingCode.includes("document.getElementById('bookingLeadChildrenInfo')?.value?.trim()")
     && bookingCode.includes('updateBookingContextHeaderSummary();')
     && panelCss.includes('.info-value')
@@ -2509,6 +2524,10 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && bookingCode.includes('const inviteInstagramText = invitePayload.instagramText;')
     && bookingCode.includes('function buildBookingDetailsInviteModelFallback(input)')
     && bookingCode.includes('function buildBookingInviteSharePayloadFallback(data)')
+    && bookingCode.includes("const addressRow = rows.find(row => clean(row?.label).toLowerCase() === 'адреса');")
+    && bookingCode.includes('const addressLabel = address ? ` Адреса: ${address}.` : \'\';')
+    && bookingCode.includes('address ? `Адреса: ${address}` : \'\'')
+    && bookingCode.includes('shareTitle = clean(window.InviteConfig?.shareTitle)')
     && !bookingCode.includes('const inviteAddress =')
     && !bookingCode.includes('Парк Закревського Періоду, вул. Закревського 31/2, 3 поверх')
     && bookingCode.includes('data-share-text="${escapeHtml(inviteMessengerText)}"')
@@ -3196,6 +3215,21 @@ check('HR Team profile modal uses compact dropdown picker for secondary professi
 check('HR Team cards separate professions, statuses, actions, and move flow', htmlContains('hr.html', '.hr-team-card-head') && htmlContains('hr.html', '.hr-team-profession-area') && htmlContains('hr.html', '.hr-team-status-row') && htmlContains('hr.html', '.hr-team-actions') && htmlContains('hr.html', '.hr-team-move') && hrCode.includes('function buildStaffMovePayload') && hrCode.includes('function openStaffMoveMenu') && hrCode.includes('window.openStaffMoveMenu = openStaffMoveMenu') && hrCode.includes("body.hr_pool_status = 'reserve'") && hrCode.includes("body.role_type = 'intern'") && hrCode.includes('preferredWorkerRoleForStaff') && hrCode.includes('function setStaffProfileActive') && hrCode.includes("normalizedTarget === 'dismissed'") && hrCode.includes('через offboarding') && hrCode.includes('Звільнення:') && hrRouteCode.includes("termination_date = NULL") && hrRouteCode.includes("UPDATE employee_profiles") && hrRouteCode.includes("UPDATE users") && hrRouteCode.includes("staff_rehire") && pagesCss.includes('.hr-team-card.inactive') && !htmlContains('hr.html', '.hr-team-card.inactive { opacity: 0.5;'));
 check('HR Team profile action lives in card header and opens from avatar or name', hrCode.includes('const profileClick = `openStaffEdit(${Number(s.id)})`;') && hrCode.includes('hr-team-profile-trigger') && hrCode.includes('hr-team-name-button') && hrCode.includes('hr-team-edit hr-team-edit--top') && htmlContains('css/hr-page.css', '.hr-team-profile-trigger') && htmlContains('css/hr-page.css', '.hr-team-name-button') && htmlContains('css/hr-page.css', '.hr-team-edit--top'));
 check('HR staff profile opens with team identity card and editable name/phone row', htmlContains('hr.html', 'class="hr-staff-profile-hero"') && htmlContains('hr.html', 'id="editStaffHeaderName"') && htmlContains('hr.html', 'id="editStaffName"') && htmlContains('hr.html', 'id="editPhone"') && hrCode.includes('function syncStaffProfileHeaderName') && hrCode.includes("name: document.getElementById('editStaffName')?.value || null") && hrRouteCode.includes("queueStaffUpdate('name'") && htmlContains('css/hr-page.css', '.hr-staff-profile-card') && htmlContains('css/hr-page.css', '.hr-staff-profile-quick-fields') && htmlContains('css/hr-page.css', '.hr-staff-profile-quick-fields input') && htmlContains('css/hr-page.css', 'body.dark-mode .hr-staff-profile-quick-fields input'));
+check('HR/invite/changelog polish prevents long labels from overflowing compact surfaces',
+    hrPageCss.includes('.hr-profession-card-head > div')
+    && hrPageCss.includes('.hr-profession-chip')
+    && hrPageCss.includes('white-space: normal')
+    && hrPageCss.includes('.hr-staff-profile-quick-fields { grid-template-columns: 1fr; }')
+    && hrFoundationCss.includes('@media (max-width: 560px)')
+    && hrFoundationCss.includes('.hr-offboarding-readiness-grid {\n        grid-template-columns: 1fr;')
+    && staffHtmlForUiPolish.includes('.schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover')
+    && staffHtmlForUiPolish.includes('.sub-group-row td')
+    && staffHtmlForUiPolish.includes('overflow-wrap: anywhere')
+    && inviteHtmlForUiPolish.includes('.invite-info-row .info {\nflex: 1;\nmin-width: 0;')
+    && inviteHtmlForUiPolish.includes('.map-link')
+    && inviteHtmlForUiPolish.includes('overflow-wrap: anywhere')
+    && authCss.includes('.changelog-section code')
+    && authCss.includes('overflow-wrap: anywhere'));
 check('HR staff profile can choose hourly, daily, or monthly rate units', htmlContains('hr.html', 'id="editRateUnit"') && htmlContains('hr.html', 'value="day"') && htmlContains('hr.html', 'value="month"') && hrCode.includes('function syncStaffRateUnitUi') && hrCode.includes('rate_unit: currentEditRateUnit()') && hrCode.includes('function renderSalaryRateSummary') && hrCode.includes('formatStaffRate(segment.rate, segment.rateUnit)') && hrCode.includes("return 'month'") && hrRouteCode.includes('function normalizeStaffRateUnit') && hrRouteCode.includes("COALESCE(s.rate_unit, 'hour') AS rate_unit") && hrRouteCode.includes("WHEN rate_unit = 'month' THEN 0") && htmlContains('db/migrations/259_staff_rate_unit_month.sql', "rate_unit IN ('hour', 'day', 'month')") && htmlContains('css/hr-page.css', '.hr-primary-rate-card') && htmlContains('css/hr-page.css', '.hr-profession-rate-control'));
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));

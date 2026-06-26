@@ -29,6 +29,7 @@ const inviteHtml = fileText('invite.html');
 const inviteConfigCode = fileText('js/invite-config.js');
 const inviteShareCode = fileText('js/invite-share.js');
 const inviteBrowserSmokeCode = fileText('tests/browser/invite-browser-smoke.js');
+const bookingSummaryBrowserSmokeCode = fileText('tests/browser/booking-summary-browser-smoke.js');
 const inviteDom = new JSDOM(inviteHtml);
 const inviteHeroImage = inviteDom.window.document.querySelector('#inviteHeroImage');
 const inviteLogoImage = inviteDom.window.document.querySelector('.logo-img');
@@ -67,6 +68,7 @@ function inviteVisitTipValues(dom) {
 const inviteShowProgramDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program');
 const inviteQuestDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=16:00&program=Квест&room=Карта&card=quest');
 const inviteInvalidCardDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&program=Невідома%20подія&room=Поні&card=broken-card');
+const invitePrivateQueryDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program&phone=%2B380000000000&comment=internal-note&price=9999&status=confirmed');
 const inviteShowProgramTips = inviteVisitTipValues(inviteShowProgramDom);
 const inviteQuestTips = inviteVisitTipValues(inviteQuestDom);
 const inviteInvalidCardTips = inviteVisitTipValues(inviteInvalidCardDom);
@@ -158,6 +160,9 @@ check('Invite share helper builds safe public URL and config-based share payload
     && inviteShareSmokePayload.fullInviteUrl === 'https://crm.example/invite?date=2026-06-25&time=15%3A00&end=15%3A30&program=%D0%9F%D0%B0%D0%BF%D0%B5%D1%80%D0%BE%D0%B2%D0%B5+%D0%9D%D0%B5%D0%BE%D0%BD-%D1%88%D0%BE%D1%83&room=%D0%9F%D0%BE%D0%BD%D1%96&card=show-program'
     && inviteShareSmokePayload.inviteUrl.startsWith('/invite?date=2026-06-25&time=15%3A00&end=15%3A30')
     && inviteShareSmokePayload.messengerText.includes(inviteConfig.location.rows[0].value)
+    && inviteShareSmokePayload.shortText.includes(inviteConfig.location.rows[0].value)
+    && inviteConfig.location.mapUrl.includes('Закревського+61/2+Київ')
+    && !inviteConfig.location.mapUrl.includes('Закревського+31/2')
     && inviteShareSmokePayload.shareTitle === inviteConfig.shareTitle
     && !inviteShareSmokePayload.fullInviteUrl.includes('phone')
     && !inviteShareSmokePayload.fullInviteUrl.includes('comment')
@@ -171,7 +176,9 @@ check('Invite share helper builds safe public URL and config-based share payload
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('phone')
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('comment')
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('price')
-    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('status'));
+    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('status')
+    && inviteDetailsSmokeModel.payload.shortText.includes(inviteConfig.location.rows[0].value)
+    && inviteDetailsSmokeModel.payload.messengerText.includes(inviteConfig.location.rows[0].value));
 check('Invite event details use labeled rows for date, activity time, program, and room',
     inviteHtml.includes("const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));")
     && inviteHtml.includes("renderEventDetailRow('📅', 'Дата', date)")
@@ -222,9 +229,16 @@ check('Invite lower flow focuses on guest visit details instead of generic servi
     && !inviteHtml.includes('const INVITE_VISIT_TIPS = {')
     && !inviteHtml.includes('м. Лісова / м. Чернігівська')
     && !inviteHtml.includes('вул. Закревського 31/2, 3 поверх')
+    && inviteConfig.location?.rows?.some(row => row.label === 'Адреса' && row.value === 'вул. Закревського 61/2, 3 поверх')
+    && bookingSummaryBrowserSmokeCode.includes("addressLine1: 'вул. Закревського 61/2, 3 поверх'")
+    && !bookingSummaryBrowserSmokeCode.includes("addressLine1: 'вул. Закревського 31/2, 3 поверх'")
     && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('Як нас знайти')
-    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('вул. Закревського 31/2, 3 поверх')
+    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('вул. Закревського 61/2, 3 поверх')
     && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection .map-link')?.getAttribute('href') === inviteConfig.location.mapUrl
+    && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('+380000000000')
+    && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('internal-note')
+    && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('9999')
+    && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('confirmed')
     && inviteShowProgramDom.window.document.querySelector('#inviteVisitSection')?.textContent.includes('Перед візитом')
     && inviteShowProgramDom.window.document.querySelector('#inviteContactSection')?.textContent.includes('Контакти')
     && inviteHtml.includes('Поділитися запрошенням')
@@ -276,6 +290,7 @@ check('Invite browser smoke covers real public invite render without joining npm
 inviteShowProgramDom.window.close();
 inviteQuestDom.window.close();
 inviteInvalidCardDom.window.close();
+invitePrivateQueryDom.window.close();
 check('Invite skip link stays accessible without showing as a broken page link',
     inviteSkipLink?.getAttribute('href') === '#invite-details'
     && inviteHtml.includes('id="invite-details"')

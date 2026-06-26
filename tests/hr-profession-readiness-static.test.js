@@ -7,7 +7,10 @@ const {
     staffProfessionKeys,
     staffHasProfession,
     normalizeProfessionKey,
-    resolveStaffProfessionAssignment
+    isHiddenProfessionKey,
+    resolveStaffProfessionAssignment,
+    curateProfessionCatalogRows,
+    professionCatalogActiveKeySet
 } = require('../services/professions');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -25,6 +28,10 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const hrHtml = `${readRepoFile('hr.html')}\n${readRepoFile('css', 'hr-page.css')}`;
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
+    const authCode = readRepoFile('js', 'auth.js');
+    const sidebarCode = readRepoFile('js', 'components', 'sidebar.js');
+    const profileCode = readRepoFile('js', 'profile-page.js');
+    const uiCode = readRepoFile('js', 'ui.js');
 
     it('normalizes staff profession assignments for primary and secondary roles', () => {
         const staff = {
@@ -35,6 +42,77 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.equal(staffHasProfession(staff, 'host'), true);
         assert.equal(staffHasProfession(staff, 'cook'), false);
         assert.equal(normalizeProfessionKey(' Bar Tender '), 'bar_tender');
+    });
+
+    it('curates public profession catalog without legacy duplicates', () => {
+        const catalog = curateProfessionCatalogRows([
+            { id: 1, key: 'bartender', title: 'Бармен', department: 'Кафе', sort_order: 1, is_active: true },
+            { id: 2, key: 'hr_manager', title: 'HR-менеджер', department: 'Керівництво', sort_order: 2, is_active: true },
+            { id: 3, key: 'instructor', title: 'Інструктор', department: 'Батути', sort_order: 3, is_active: true },
+            { id: 4, key: 'senior_instructor', title: 'Старший інструктор', department: 'Батути', sort_order: 4, is_active: true },
+            { id: 5, key: 'cleaning', title: 'Клінінг', department: 'Чистота', sort_order: 5, is_active: true },
+            { id: 6, key: 'cleaner', title: 'Прибиральник', department: 'Чистота', sort_order: 6, is_active: true },
+            { id: 7, key: 'technician', title: 'Технік', department: 'Техніка', sort_order: 7, is_active: true },
+            { id: 8, key: 'maintenance', title: 'Технік', department: 'Техніка', sort_order: 8, is_active: true },
+            { id: 9, key: 'head_cook', title: 'Шеф-кухар', department: 'Кухня', sort_order: 9, is_active: true }
+        ]);
+        const byKey = new Map(catalog.map(row => [row.key, row]));
+
+        assert.equal(byKey.has('bartender'), false);
+        assert.equal(byKey.has('hr_manager'), false);
+        assert.equal(byKey.has('instructor'), false);
+        assert.equal(byKey.has('cleaning'), false);
+        assert.equal(byKey.has('technician'), false);
+        assert.equal(byKey.has('head_cook'), false);
+        ['bartender', 'hr_manager', 'instructor', 'head_cook', 'head_chef', 'cleaning', 'technician']
+            .forEach(key => assert.equal(isHiddenProfessionKey(key), true));
+        assert.equal(isHiddenProfessionKey('pizzaiolo'), false);
+        assert.equal(byKey.get('senior_instructor')?.title, 'Адміністратор ігрових зон');
+        assert.equal(byKey.get('maintenance')?.title, 'Технічний директор');
+        assert.equal(byKey.get('cleaner')?.title, 'Прибиральник');
+        assert.equal(byKey.get('pizzaiolo')?.title, 'Піцайоло');
+        assert.equal(byKey.get('pizzaiolo')?.is_virtual, true);
+
+        const activeKeys = professionCatalogActiveKeySet(catalog);
+        assert.equal(activeKeys.has('pizzaiolo'), true);
+        assert.equal(activeKeys.has('bartender'), false);
+    });
+
+    it('keeps adjacent UI role labels on canonical profession names', () => {
+        const roleNames = authCode.match(/const ROLE_NAMES = \{[\s\S]*?\n\};/)?.[0] || '';
+        const sidebarLabels = sidebarCode.match(/const labels = \{[\s\S]*?\n\s*\};/)?.[0] || '';
+        const profileLabels = profileCode.match(/function profileRoleLabel\(role\) \{[\s\S]*?const labels = \{[\s\S]*?\n\s*\};/)?.[0] || '';
+        const pointsRoles = uiCode.match(/const POINTS_ROLE_HIERARCHY = \[[\s\S]*?\n\];/)?.[0] || '';
+        const releaseLabelBlocks = `${roleNames}\n${sidebarLabels}\n${profileLabels}\n${pointsRoles}`;
+
+        assert.match(roleNames, /senior_instructor:\s*'Адміністратор ігрових зон'/);
+        assert.match(roleNames, /instructor:\s*'Інструктор батутів'/);
+        assert.match(roleNames, /trampoline_instructor:\s*'Інструктор батутів'/);
+        assert.match(roleNames, /maintenance:\s*'Технічний директор'/);
+        assert.match(roleNames, /technician:\s*'Технічний директор'/);
+        assert.match(roleNames, /cleaning:\s*'Прибиральник'/);
+        assert.match(roleNames, /cleaner:\s*'Прибиральник'/);
+        assert.match(roleNames, /bartender:\s*'Бариста'/);
+        assert.match(roleNames, /head_chef:\s*'Кухар'/);
+        assert.match(roleNames, /head_cook:\s*'Кухар'/);
+
+        assert.match(sidebarLabels, /senior_instructor:\s*'Адміністратор ігрових зон'/);
+        assert.match(sidebarLabels, /instructor:\s*'Інструктор батутів'/);
+        assert.match(sidebarLabels, /bartender:\s*'Бариста'/);
+        assert.match(sidebarLabels, /head_cook:\s*'Кухар'/);
+        assert.match(sidebarLabels, /maintenance:\s*'Технічний директор'/);
+        assert.match(sidebarLabels, /cleaning:\s*'Прибиральник'/);
+
+        assert.match(profileLabels, /senior_instructor:\s*'Адміністратор ігрових зон'/);
+        assert.match(profileLabels, /instructor:\s*'Інструктор батутів'/);
+        assert.match(profileLabels, /technician:\s*'Технічний директор'/);
+        assert.match(profileLabels, /cleaner:\s*'Прибиральник'/);
+        assert.match(profileLabels, /head_chef:\s*'Кухар'/);
+
+        assert.match(pointsRoles, /key:\s*'senior_instructor',\s*name:\s*'Адміністратор ігрових зон'/);
+        assert.match(pointsRoles, /key:\s*'instructor',\s*name:\s*'Інструктор батутів'/);
+
+        assert.doesNotMatch(releaseLabelBlocks, /Старший інструктор|Ст\. інструктор|Клінінг|Технік|Бармен|Шеф-кухар|HR-менеджер|HR менеджер/);
     });
 
     it('gates schedule profession assignment against primary and secondary professions', async () => {
@@ -96,6 +174,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /router\.put\('\/staff\/:id\/profession-checklist'/);
         assert.match(hrRoute, /if \(payload\.key !== currentKey\)/);
         assert.match(hrRoute, /Key професії не можна змінювати після створення/);
+        assert.match(hrRoute, /isHiddenProfessionKey\(payload\.key\)/);
+        assert.match(hrRoute, /прихована як дубль/);
         assert.match(hrRoute, /buildStaffProfileChanges/);
         assert.match(hrRoute, /resolveHrShiftProfession/);
         assert.match(hrRoute, /profession_key = COALESCE\(\$6, profession_key\)/);
@@ -130,6 +210,9 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function professionOptionsFromCatalog/);
         assert.doesNotMatch(hrPage, /Object\.entries\(ROLE_LABELS\)\.forEach\(\(\[value, label\]\)/);
         assert.match(hrPage, /key: current\?\.key \|\| result\.key/);
+        assert.match(hrPage, /item\.is_virtual \|\| item\.isVirtual \? '<span class="hr-profession-chip">Базова професія<\/span>' : `<button type="button" class="btn-secondary" onclick="openProfessionEditor/);
+        assert.match(hrPage, /current\?\.is_virtual \|\| current\?\.isVirtual/);
+        assert.match(hrPage, /Базову професію не можна редагувати з каталогу/);
         assert.match(hrPage, /staffProfessionOptions\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /staffHasProfession\(s, requiredProfession\)/);
 

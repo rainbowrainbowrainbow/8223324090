@@ -383,6 +383,23 @@ function getTimelineProductsPriceDate() {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+const EVENT_GENIX_PROGRAM_DURATION_FALLBACKS = EVENT_GENIX_PROGRAMS.reduce((acc, product) => {
+    const duration = Number(product.duration);
+    if (product.id && !product.isCustom && product.category !== 'custom' && Number.isFinite(duration)) {
+        acc[String(product.id)] = duration;
+    }
+    return acc;
+}, {});
+
+function normalizeTimelineProductDurationFromApi(product) {
+    const duration = Number(product && product.duration);
+    const fallback = EVENT_GENIX_PROGRAM_DURATION_FALLBACKS[String(product && product.id)];
+    if (Number.isFinite(fallback) && fallback > 15 && (!Number.isFinite(duration) || duration <= 15)) {
+        return fallback;
+    }
+    return Number.isFinite(duration) ? duration : null;
+}
+
 function mapApiProductToTimelineProduct(p) {
     return {
         id: p.id,
@@ -393,7 +410,7 @@ function mapApiProductToTimelineProduct(p) {
         icon: p.icon,
         imageUrl: p.imageUrl || p.image_url || p.photoUrl || p.photo_url || p.coverUrl || p.cover_url || p.thumbnailUrl || p.thumbnail_url || null,
         category: p.category,
-        duration: p.duration,
+        duration: normalizeTimelineProductDurationFromApi(p),
         price: p.price,
         hosts: p.hosts,
         age: p.ageRange,

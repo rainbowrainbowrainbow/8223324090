@@ -251,6 +251,7 @@ flex-shrink: 0;
 }
 .invite-info-row .info {
 flex: 1;
+min-width: 0;
 }
 .invite-info-row .info .label {
 font-size: 11px;
@@ -263,6 +264,7 @@ letter-spacing: 0.5px;
 font-size: 15px;
 font-weight: 700;
 color: #1E293B;
+overflow-wrap: anywhere;
 }
 .invite-info-row .info .value a {
 color: #059669;
@@ -286,6 +288,8 @@ font-weight: 800;
 font-size: 15px;
 transition: all 0.2s ease;
 box-shadow: 0 6px 18px rgba(16, 185, 129, 0.3);
+text-align: center;
+overflow-wrap: anywhere;
 }
 .map-link:hover {
 transform: translateY(-2px);
@@ -331,6 +335,8 @@ color: #334155;
 display: inline-flex;
 align-items: center;
 gap: 6px;
+text-align: center;
+overflow-wrap: anywhere;
 }
 .share-btn:hover {
 border-color: #10B981;
@@ -438,8 +444,8 @@ body { padding: 12px; }
         </div>
     </div>
 
-    <script src="js/event-cards.js?v=0.77.31"></script>
-    <script src="js/invite-config.js?v=0.77.31"></script>
+    <script src="js/event-cards.js?v=0.77.32"></script>
+    <script src="js/invite-config.js?v=0.77.32"></script>
     <script>
         const DEFAULT_INVITE_CONFIG = Object.freeze({
             brandName: 'Event Genix',

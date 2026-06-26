@@ -2547,15 +2547,21 @@ body.dark-mode .hr-org-detail {
 .hr-checklist-card-head {
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 10px;
     align-items: flex-start;
+}
+.hr-profession-card-head > div,
+.hr-checklist-card-head > div {
+    min-width: 0;
 }
 .hr-profession-card h4,
 .hr-checklist-card h4 {
     margin: 0;
     color: var(--gray-800);
     font-size: 16px;
+    overflow-wrap: anywhere;
 }
 .hr-profession-card p,
 .hr-checklist-card p {
@@ -2576,6 +2582,10 @@ body.dark-mode .hr-org-detail {
     color: #047857;
     font-size: 11px;
     font-weight: 800;
+    line-height: 1.25;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .hr-profession-list,
 .hr-checklist-list {
@@ -2748,6 +2758,7 @@ body.dark-mode .hr-org-detail {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
     min-height: 28px;
     padding: 5px 9px;
     border-radius: 999px;
@@ -2757,6 +2768,10 @@ body.dark-mode .hr-org-detail {
     font: inherit;
     font-size: 12px;
     font-weight: 850;
+    line-height: 1.25;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
     cursor: pointer;
 }
 .hr-profession-option {
@@ -3321,6 +3336,7 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-team-badges { gap: 4px; }
     .hr-team-actions > button { flex: 1 1 120px; }
     .hr-team-contact-grid span { grid-template-columns: 52px minmax(0, 1fr); }
+    .hr-staff-profile-quick-fields { grid-template-columns: 1fr; }
     .hr-profession-picker-head { align-items: flex-start; flex-direction: column; }
     .hr-profession-selected-chip,
     .hr-profession-option { min-height: 32px; }

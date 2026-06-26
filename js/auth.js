@@ -605,12 +605,12 @@ const ROLE_NAMES = {
     creator: 'Творець', director: 'Директор', vice_director: 'Заст. директора',
     senior_manager: 'Старший менеджер', manager: 'Менеджер',
     accountant: 'Бухгалтер', art_director: 'Арт-директор', marketer: 'Маркетолог',
-    it_specialist: 'IT-спеціаліст', hr: 'HR-менеджер',
+    it_specialist: 'IT-спеціаліст', hr: 'HR',
     admin: 'Адміністратор',
-    senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
-    head_chef: 'Шеф-кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
-    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста', security: 'Охорона',
-    wardrobe: 'Гардеробник', cleaning: 'Клінінг', maintenance: 'Технік',
+    senior_instructor: 'Адміністратор ігрових зон', instructor: 'Інструктор батутів', trampoline_instructor: 'Інструктор батутів',
+    head_chef: 'Кухар', head_cook: 'Кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
+    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста', bartender: 'Бариста', security: 'Охорона',
+    wardrobe: 'Гардеробник', cleaning: 'Прибиральник', cleaner: 'Прибиральник', maintenance: 'Технічний директор', technician: 'Технічний директор',
     dishwasher: 'Посудомийник', waiter: 'Офіціант'
 };
 

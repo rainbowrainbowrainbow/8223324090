@@ -70,7 +70,8 @@
         const fallbackText = cleanText(config && config.shareFallbackText) || 'Запрошуємо на подію!';
         const address = inviteAddress(config);
 
-        const shortText = `Запрошуємо на ${programLabel}${dateLabel ? ` ${dateLabel}` : ''}${timeRangeLabel ? ` о ${timeRangeLabel}` : ''}.${roomLabel ? ` Кімната: ${roomLabel}.` : ''} ${fullInviteUrl}`;
+        const addressLabel = address ? ` Адреса: ${address}.` : '';
+        const shortText = `Запрошуємо на ${programLabel}${dateLabel ? ` ${dateLabel}` : ''}${timeRangeLabel ? ` о ${timeRangeLabel}` : ''}.${roomLabel ? ` Кімната: ${roomLabel}.` : ''}${addressLabel} ${fullInviteUrl}`;
         const messengerLines = [
             `Вітаємо! Запрошуємо на ${programLabel}.`,
             `Дата: ${dateLabel || '-'}`,

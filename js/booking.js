@@ -886,7 +886,7 @@ function roomBookingCustomerId(booking = {}) {
 }
 
 function roomBookingKidsCount(booking = {}) {
-    const value = booking.kidsCount ?? booking.kids_count;
+    const value = booking.kidsCount ?? booking.kids_count ?? booking.banquetGuests ?? booking.banquet_guests;
     const number = parseInt(value, 10);
     return Number.isFinite(number) && number > 0 ? number : null;
 }
@@ -1205,7 +1205,7 @@ async function fetchBookingRoomAvailabilityForSelectedSlot(options = {}) {
     const params = [];
     const excludeId = String(options.excludeId ?? AppState.editingBookingId ?? '').trim();
     if (excludeId) params.push(`excludeId=${encodeURIComponent(excludeId)}`);
-    const requestedCapacity = parseInt(document.getElementById('kidsCountInput')?.value || '', 10);
+    const requestedCapacity = resolveBookingChildrenCountSource().value;
     if (Number.isFinite(requestedCapacity) && requestedCapacity > 0) params.push(`capacity=${encodeURIComponent(String(requestedCapacity))}`);
     if (params.length) path += `${path.includes('?') ? '&' : '?'}${params.join('&')}`;
     const response = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders(false) });
@@ -1280,10 +1280,8 @@ function bookingContextCustomerName() {
 }
 
 function bookingContextGuestsText() {
-    const banquetGuests = document.getElementById('banquetGuests')?.value?.trim();
-    if (banquetGuests) return banquetGuests;
-    const kidsCount = document.getElementById('kidsCountInput')?.value?.trim();
-    if (kidsCount) return kidsCount;
+    const childrenCount = resolveBookingChildrenCountSource().value;
+    if (childrenCount) return String(childrenCount);
     return document.getElementById('bookingLeadChildrenInfo')?.value?.trim() || '';
 }
 
@@ -1300,7 +1298,7 @@ function timelineResourceCapacityError(formData = getBookingFormData()) {
     if (!isTimelineResourceBackedBookingMode()) return null;
     const line = getSelectedTimelineResourceLine();
     const capacity = parseInt(line?.capacity, 10);
-    const kidsCount = parseInt(document.getElementById('kidsCountInput')?.value || formData?.kidsCount || 0, 10);
+    const kidsCount = normalizeBookingCountValue(formData?.kidsCount ?? resolveBookingChildrenCountSource().value);
     if (!Number.isFinite(capacity) || capacity <= 0 || !Number.isFinite(kidsCount) || kidsCount <= capacity) return null;
     return `${line.name || getTimelineBookingPresentation().roomOptionLabel} має місткість ${capacity}, а в записі ${kidsCount}`;
 }
@@ -1940,7 +1938,7 @@ function getEducationLessonDetails(formData = {}) {
         courseCode: document.getElementById('educationLessonCourse')?.value?.trim() || null,
         seriesSize: Number.isFinite(seriesSize) && seriesSize > 0 ? Math.min(seriesSize, 120) : 1,
         repeatEvery: normalizeEducationLessonRepeatEvery(document.getElementById('educationLessonRepeatEvery')?.value || 'weekly'),
-        studentCount: parseInt(document.getElementById('kidsCountInput')?.value || '0', 10) || null,
+        studentCount: resolveBookingChildrenCountSource({ kitchenEnabled: false, standaloneEditable: true }).value || null,
         resourceId: formData.lineId || document.getElementById('bookingLine')?.value || null,
         resourceName: resource?.name || formData.room || document.getElementById('roomSelect')?.value || null,
         source: 'education_timeline_booking'
@@ -1991,8 +1989,79 @@ function normalizeBookingCountValue(value) {
     return Number.isFinite(count) && count > 0 ? count : null;
 }
 
-function bookingKitchenChildrenCountFromBooking(booking = {}) {
+function getBookingChildrenCountInputValue() {
+    return normalizeBookingCountValue(document.getElementById('kidsCountInput')?.value);
+}
+
+function getKitchenChildrenCountInputValue() {
+    return normalizeBookingCountValue(document.getElementById('banquetGuests')?.value);
+}
+
+function bookingProgramUsesStandaloneChildrenInput(program = null) {
+    const educationMode = typeof isEducationTimelineBookingMode === 'function'
+        ? isEducationTimelineBookingMode()
+        : false;
+    return Boolean(program?.perChild || educationMode);
+}
+
+function resolveBookingChildrenCountSource(options = {}) {
+    const kitchenEnabled = options.kitchenEnabled ?? isBookingKitchenEnabled();
+    const standaloneEditable = options.standaloneEditable ?? bookingProgramUsesStandaloneChildrenInput(options.program || null);
+    const kitchenValue = options.kitchenValue !== undefined
+        ? normalizeBookingCountValue(options.kitchenValue)
+        : getKitchenChildrenCountInputValue();
+    const standaloneValue = options.standaloneValue !== undefined
+        ? normalizeBookingCountValue(options.standaloneValue)
+        : getBookingChildrenCountInputValue();
+    const fallbackValue = options.fallbackValue !== undefined
+        ? normalizeBookingCountValue(options.fallbackValue)
+        : null;
+
+    if (kitchenEnabled) {
+        return {
+            source: 'kitchen',
+            value: kitchenValue || fallbackValue || null,
+            kitchenValue,
+            standaloneValue,
+            showStandaloneInput: false,
+            editableElementId: 'banquetGuests'
+        };
+    }
+
+    if (standaloneEditable) {
+        const value = standaloneValue || fallbackValue || kitchenValue || null;
+        return {
+            source: standaloneValue ? 'kidsCount' : (kitchenValue ? 'legacyBanquetGuests' : 'kidsCount'),
+            value,
+            kitchenValue,
+            standaloneValue,
+            showStandaloneInput: true,
+            editableElementId: 'kidsCountInput'
+        };
+    }
+
+    const value = fallbackValue || kitchenValue || standaloneValue || null;
+    return {
+        source: kitchenValue ? 'legacyBanquetGuests' : (standaloneValue ? 'kidsCount' : 'none'),
+        value,
+        kitchenValue,
+        standaloneValue,
+        showStandaloneInput: false,
+        editableElementId: null
+    };
+}
+
+function shouldShowStandaloneKidsCountInput(program = null, options = {}) {
+    return resolveBookingChildrenCountSource({ ...options, program }).showStandaloneInput;
+}
+
+function bookingChildrenCountFromBooking(booking = {}) {
     const value = booking?.kidsCount ?? booking?.kids_count ?? booking?.banquetGuests ?? booking?.banquet_guests;
+    return value === null || value === undefined ? '' : String(value);
+}
+
+function bookingKitchenChildrenCountFromBooking(booking = {}) {
+    const value = booking?.banquetGuests ?? booking?.banquet_guests ?? booking?.kidsCount ?? booking?.kids_count;
     return value === null || value === undefined ? '' : String(value);
 }
 
@@ -2429,11 +2498,15 @@ function bookingMenuPositionIsEntry(item = {}) {
 
 function bookingEntryQuantityFromForm() {
     const roomSource = BookingDrawerState.roomSelectionBanquetContext?.sourceBooking || null;
+    const resolvedChildrenCount = resolveBookingChildrenCountSource({
+        fallbackValue: roomSource?.kidsCount ?? roomSource?.kids_count ?? roomSource?.banquetGuests ?? roomSource?.banquet_guests
+    }).value;
+    if (resolvedChildrenCount) return resolvedChildrenCount;
     const values = [
-        document.getElementById('banquetGuests')?.value,
-        document.getElementById('kidsCountInput')?.value,
         roomSource?.kidsCount,
-        roomSource?.kids_count
+        roomSource?.kids_count,
+        roomSource?.banquetGuests,
+        roomSource?.banquet_guests
     ];
     for (const value of values) {
         const count = normalizeBookingCountValue(value);
@@ -4268,7 +4341,7 @@ function getProgramBasePrice(program) {
     const pinataMode = getPinataModeValue();
     if (pinataMode === 'client') return toBookingMoney(document.getElementById('clientPinataServicePrice')?.value || getClientPinataDefaultPrice());
     if (pinataMode === 'none' && isPinataProgram(program)) return 0;
-    const kidsCount = Number(document.getElementById('kidsCountInput')?.value || 0);
+    const kidsCount = Number(resolveBookingChildrenCountSource({ program }).value || 0);
     if (program.perChild && kidsCount > 0) return toBookingMoney(program.price * kidsCount);
     return toBookingMoney(program.price || 0);
 }
@@ -6268,7 +6341,7 @@ async function showFreeRooms() {
         const queryParams = [];
         const excludeId = String(AppState.editingBookingId || '').trim();
         if (excludeId) queryParams.push(`excludeId=${encodeURIComponent(excludeId)}`);
-        const requestedCapacity = parseInt(document.getElementById('kidsCountInput')?.value || '', 10);
+        const requestedCapacity = resolveBookingChildrenCountSource().value;
         if (Number.isFinite(requestedCapacity) && requestedCapacity > 0) {
             queryParams.push(`capacity=${encodeURIComponent(String(requestedCapacity))}`);
         }
@@ -6513,7 +6586,7 @@ function getSelectedActivityPrograms() {
 
 function bookingActivityPriceValue(program) {
     if (!program) return 0;
-    const kidsCount = Number(document.getElementById('kidsCountInput')?.value || 0);
+    const kidsCount = Number(resolveBookingChildrenCountSource({ program }).value || 0);
     if (program.perChild && kidsCount > 0) return toBookingMoney(Number(program.price || 0) * kidsCount);
     return toBookingMoney(program.price || 0);
 }
@@ -6521,7 +6594,7 @@ function bookingActivityPriceValue(program) {
 function bookingActivityPriceLabel(program) {
     if (!program) return '—';
     const price = bookingActivityPriceValue(program);
-    if (program.perChild && !Number(document.getElementById('kidsCountInput')?.value || 0)) {
+    if (program.perChild && !Number(resolveBookingChildrenCountSource({ program }).value || 0)) {
         return `${formatPrice(program.price || 0)}/дит`;
     }
     return formatPrice(price);
@@ -6829,11 +6902,14 @@ function selectProgram(programId) {
     if (kidsCountSection) {
         const kidsLabel = kidsCountSection.querySelector('label');
         if (kidsLabel) kidsLabel.textContent = isEducationTimelineBookingMode() ? 'Кількість учнів' : 'Кількість дітей';
-        if (program.perChild || isEducationTimelineBookingMode()) {
+        const childrenCountSource = resolveBookingChildrenCountSource({ program });
+        if (shouldShowStandaloneKidsCountInput(program, { standaloneEditable: program.perChild || isEducationTimelineBookingMode() })) {
             kidsCountSection.classList.remove('hidden');
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
-                kidsInput.value = '';
+                kidsInput.value = childrenCountSource.source === 'legacyBanquetGuests' && childrenCountSource.value
+                    ? String(childrenCountSource.value)
+                    : '';
                 kidsInput.placeholder = isEducationTimelineBookingMode() ? 'Кількість учнів' : '';
                 kidsInput.oninput = () => {
                     const count = parseInt(kidsInput.value) || 0;
@@ -6849,6 +6925,8 @@ function selectProgram(programId) {
             }
         } else {
             kidsCountSection.classList.add('hidden');
+            const kidsInput = document.getElementById('kidsCountInput');
+            if (kidsInput && isBookingKitchenEnabled()) kidsInput.value = '';
         }
     }
 
@@ -7235,6 +7313,11 @@ function getBookingFormData() {
     const packageTotals = getBookingPackageTotals(program);
     const menuPositions = kitchenEnabled ? packageTotals.menuPositions : [];
     const serviceEvents = kitchenEnabled ? packageTotals.serviceEvents : [];
+    const childrenCountSource = resolveBookingChildrenCountSource({
+        program,
+        kitchenEnabled,
+        standaloneEditable: hasEvent && bookingProgramUsesStandaloneChildrenInput(program)
+    });
     const leadDetails = leadDetailsEnabled ? getBookingLeadDetails() : {};
     const scenario = getBookingWorkspaceScenario({ hasEvent, positions: menuPositions, hasKitchen: kitchenEnabled });
     const commentType = bookingCommentTypeForFormData({ hasEvent, kitchenEnabled, scenario });
@@ -7257,7 +7340,10 @@ function getBookingFormData() {
         entryCharge: kitchenEnabled ? packageTotals.entryCharge : null,
         entrySubtotal: kitchenEnabled ? (packageTotals.entrySubtotal || 0) : 0,
         bookingPackageWarnings: kitchenEnabled ? (packageTotals.warnings || []) : [],
-        finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice
+        finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice,
+        childrenCountSource,
+        kidsCount: childrenCountSource.value || null,
+        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue || null) : null
     };
     baseFormData.educationLesson = getEducationLessonDetails(baseFormData);
 
@@ -7456,12 +7542,14 @@ function buildBookingObject(formData, program) {
     const costume = hasEvent ? document.getElementById('costumeSelect')?.value : null;
     const statusEl = document.querySelector('input[name="bookingStatus"]:checked');
     const status = statusEl ? statusEl.value : 'confirmed';
-    const kidsCountInput = document.getElementById('kidsCountInput');
-    const kidsCount = (hasEvent && kidsCountInput && (program?.perChild || isEducationTimelineBookingMode()))
-        ? (parseInt(kidsCountInput.value, 10) || 0)
-        : 0;
+    const childrenCountSource = formData.childrenCountSource || resolveBookingChildrenCountSource({
+        program,
+        kitchenEnabled: formData.kitchenEnabled,
+        standaloneEditable: hasEvent && bookingProgramUsesStandaloneChildrenInput(program)
+    });
+    const kidsCount = childrenCountSource.value || 0;
     const kitchenChildrenCount = formData.kitchenEnabled
-        ? normalizeBookingCountValue(document.getElementById('banquetGuests')?.value)
+        ? (childrenCountSource.kitchenValue || null)
         : null;
     const servicePrice = Number(formData.clientPinataServicePrice || 0);
     const multiActivityPrograms = Array.isArray(formData.activityPrograms) ? formData.activityPrograms.filter(Boolean) : [];
@@ -7519,7 +7607,7 @@ function buildBookingObject(formData, program) {
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: status,
-        kidsCount: kidsCount || kitchenChildrenCount || null,
+        kidsCount: childrenCountSource.value || null,
         groupName: shouldPersistLegacyGroupName ? (document.getElementById('bookingGroupName')?.value.trim() || null) : null,
         programBasePrice: toBookingMoney(baseProgramPrice),
         menuPositions: formData.menuPositions || [],
@@ -7752,7 +7840,9 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
         notes: null,
         createdBy: baseBooking.createdBy,
         status: baseBooking.status,
-        kidsCount: program.perChild ? (parseInt(document.getElementById('kidsCountInput')?.value, 10) || null) : baseBooking.kidsCount || null,
+        kidsCount: program.perChild
+            ? (resolveBookingChildrenCountSource({ program, kitchenEnabled: false, standaloneEditable: true }).value || null)
+            : (bookingChildrenCountFromBooking(baseBooking) || null),
         groupName: null,
         menuPositions: [],
         extraData,
@@ -10512,10 +10602,11 @@ async function editBooking(bookingId) {
         }
 
         // К-кість дітей (МК)
-        if (program && (program.perChild || isEducationTimelineBookingMode()) && booking.kidsCount) {
+        const bookingChildrenCount = bookingChildrenCountFromBooking(booking);
+        if (program && (program.perChild || isEducationTimelineBookingMode()) && bookingChildrenCount) {
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
-                kidsInput.value = booking.kidsCount;
+                kidsInput.value = bookingChildrenCount;
                 kidsInput.dispatchEvent(new Event('input'));
             }
         }
@@ -10623,10 +10714,11 @@ async function duplicateBooking(bookingId) {
             }
         }
 
-        if (program && (program.perChild || isEducationTimelineBookingMode()) && booking.kidsCount) {
+        const bookingChildrenCount = bookingChildrenCountFromBooking(booking);
+        if (program && (program.perChild || isEducationTimelineBookingMode()) && bookingChildrenCount) {
             const kidsInput = document.getElementById('kidsCountInput');
             if (kidsInput) {
-                kidsInput.value = booking.kidsCount;
+                kidsInput.value = bookingChildrenCount;
                 kidsInput.dispatchEvent(new Event('input'));
             }
         }
@@ -10707,12 +10799,18 @@ function buildBookingInviteSharePayloadFallback(data) {
     const timeRangeLabel = safeData.time && safeData.end && safeData.time !== safeData.end
         ? `${safeData.time} - ${safeData.end}`
         : safeData.time;
-    const shortText = `Запрошуємо на ${programLabel}${safeData.date ? ` ${safeData.date}` : ''}${timeRangeLabel ? ` о ${timeRangeLabel}` : ''}.${safeData.room ? ` Кімната: ${safeData.room}.` : ''} ${fullInviteUrl}`;
+    const rows = Array.isArray(window.InviteConfig?.location?.rows) ? window.InviteConfig.location.rows : [];
+    const addressRow = rows.find(row => clean(row?.label).toLowerCase() === 'адреса');
+    const address = clean(addressRow?.value);
+    const addressLabel = address ? ` Адреса: ${address}.` : '';
+    const shareTitle = clean(window.InviteConfig?.shareTitle) || clean(window.InviteConfig?.brandName) || 'Event Genix';
+    const shortText = `Запрошуємо на ${programLabel}${safeData.date ? ` ${safeData.date}` : ''}${timeRangeLabel ? ` о ${timeRangeLabel}` : ''}.${safeData.room ? ` Кімната: ${safeData.room}.` : ''}${addressLabel} ${fullInviteUrl}`;
     const messengerText = [
         `Вітаємо! Запрошуємо на ${programLabel}.`,
         `Дата: ${safeData.date || '-'}`,
         `Час: ${timeRangeLabel || '-'}`,
         safeData.room ? `Кімната: ${safeData.room}` : '',
+        address ? `Адреса: ${address}` : '',
         `Деталі: ${fullInviteUrl}`
     ].filter(Boolean).join('\n');
     const instagramText = `${programLabel}${safeData.date ? ` · ${safeData.date}` : ''}${timeRangeLabel ? ` · ${timeRangeLabel}` : ''}${safeData.room ? ` · ${safeData.room}` : ''}\n${fullInviteUrl}`;
@@ -10724,7 +10822,8 @@ function buildBookingInviteSharePayloadFallback(data) {
         roomLabel: safeData.room,
         dateLabel: safeData.date,
         timeRangeLabel,
-        shareTitle: 'Event Genix',
+        shareTitle,
+        address,
         shortText,
         messengerText,
         instagramText

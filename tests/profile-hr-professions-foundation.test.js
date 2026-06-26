@@ -150,8 +150,10 @@ describe('profile, HR professions, and timeline compatibility foundation', () =>
     });
 
     it('keeps staff and timeline grouping compatible with primary role semantics', () => {
-        assert.match(staffPage, /roleKeys\.includes\(s\.role_type\)/);
-        assert.match(staffPage, /allRoleKeys\.includes\(s\.role_type\)/);
+        assert.match(staffPage, /function staffMatchesDepartmentSubGroup\(staff = \{\}, subGroup = \{\}\)/);
+        assert.match(staffPage, /const roleKey = normalizeProfessionKey\(staff\.role_type\)/);
+        assert.match(staffPage, /departmentSubGroupRoleKeys\(subGroup\)\.includes\(roleKey\)/);
+        assert.match(staffPage, /const allRoleKeys = departmentSubGroupRoleKeySet\(subGroups\)/);
         assert.match(staffPage, /secondary_professions: String\(result\.secondary_professions/);
         assert.match(bookingService, /s\.role_type = 'animator'/);
         assert.doesNotMatch(bookingService, /secondary_professions/);

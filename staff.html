@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.31">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.31">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.31">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.31">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.31">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.31">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.31">
+    <link rel="stylesheet" href="css/base.css?v=0.77.32">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.32">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.32">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.32">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.32">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.32">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.32">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -226,6 +226,8 @@
             font-size: 14px;
             color: var(--gray-700);
             border-top: 2px solid var(--gray-200);
+            white-space: normal;
+            overflow-wrap: anywhere;
         }
         .dept-row[data-dept="animators"] td { border-left: 4px solid #059669; }
         .dept-row[data-dept="admin"] td { border-left: 4px solid #4F46E5; }
@@ -262,6 +264,9 @@
             font-size: 12px;
             color: var(--gray-500);
             border-top: 1px dashed var(--gray-200);
+            line-height: 1.35;
+            white-space: normal;
+            overflow-wrap: anywhere;
         }
 
         .sub-group-icon {
@@ -285,11 +290,11 @@
         }
 
         /* Employee rows */
-        .schedule-table tbody tr:not(.dept-row) {
+        .schedule-table tbody tr:not(.dept-row):not(.sub-group-row) {
             transition: background 0.1s;
         }
 
-        .schedule-table tbody tr:not(.dept-row):hover {
+        .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover {
             background: rgba(16,185,129,0.03);
         }
 
@@ -308,7 +313,7 @@
             border-right: 1px solid var(--gray-100);
         }
 
-        .schedule-table tbody tr:not(.dept-row):hover td:first-child {
+        .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover td:first-child {
             background: rgba(16,185,129,0.03);
         }
 
@@ -352,6 +357,7 @@
         .emp-info {
             display: flex;
             flex-direction: column;
+            min-width: 0;
         }
 
         .emp-name {
@@ -359,12 +365,14 @@
             font-size: 13px;
             color: var(--gray-800);
             line-height: 1.2;
+            overflow-wrap: anywhere;
         }
 
         .emp-position {
             font-size: 10px;
             color: var(--gray-400);
             font-weight: 600;
+            overflow-wrap: anywhere;
         }
 
         .emp-hours {
@@ -1545,13 +1553,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.77.31"></script>
-    <script src="js/config.js?v=0.77.31"></script>
-    <script src="js/notification.js?v=0.77.31"></script>
-    <script src="js/api.js?v=0.77.31"></script>
-    <script src="js/auth.js?v=0.77.31"></script>
-    <script src="js/components/sidebar.js?v=0.77.31"></script>
+    <script src="js/ui.js?v=0.77.32"></script>
+    <script src="js/config.js?v=0.77.32"></script>
+    <script src="js/notification.js?v=0.77.32"></script>
+    <script src="js/api.js?v=0.77.32"></script>
+    <script src="js/auth.js?v=0.77.32"></script>
+    <script src="js/components/sidebar.js?v=0.77.32"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.77.31"></script><script src="js/alerts.js?v=0.77.31"></script>
+    <script src="js/staff-page.js?v=0.77.32"></script><script src="js/alerts.js?v=0.77.32"></script>
 </body>
 </html>

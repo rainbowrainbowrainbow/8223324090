@@ -38,7 +38,7 @@ const {
     listAccountSecurityEvents
 } = require('../services/accountSecurity');
 const {
-    normalizeProfessionCatalogRow,
+    curateProfessionCatalogRows,
     normalizeSecondaryProfessions
 } = require('../services/professions');
 const {
@@ -775,7 +775,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         const staffProfile = normalizeProfileStaffProfile(staffProfileR?.rows?.[0] || null);
         const professionCatalogR = get(26);
         const professionCatalog = professionCatalogR
-            ? professionCatalogR.rows.map(normalizeProfessionCatalogRow)
+            ? curateProfessionCatalogRows(professionCatalogR.rows)
             : [];
 
         // Recent activity

@@ -1,0 +1,157 @@
+{
+  "name": "realistic",
+  "expected": {
+    "browserPrintPages": 1,
+    "serverPdfPages": 1,
+    "bottomFreeMinMm": 8
+  },
+  "summary": {
+    "success": true,
+    "schemaVersion": 1,
+    "mode": "client",
+    "bookingId": "BK-2026-0515",
+    "businessContext": "event_genix",
+    "document": {
+      "type": "banquet_summary",
+      "title": "BANQUET SHEET",
+      "generatedBy": "Sergey"
+    },
+    "venue": {
+      "name": "Park Zakrevskogo Entertainment Center",
+      "addressLine1": "Kyiv, Zakrevskoho Street 61/2",
+      "addressLine2": "Zakrevskyi Mall, 3rd floor",
+      "phone": "0 800 753 553"
+    },
+    "event": {
+      "date": "2026-07-02",
+      "time": "12:45",
+      "room": "Ninja",
+      "programName": "Bubble Show",
+      "programDisplayName": "Bubble Show",
+      "hasRealProgram": true,
+      "manager": "Sergey",
+      "createdAt": "2026-06-26T14:14:00.000Z"
+    },
+    "customer": {
+      "name": "ShutkaMinutka",
+      "phone": "+380535232",
+      "children": [
+        { "name": "Zhartyik", "birthday": "2025-06-04" }
+      ]
+    },
+    "celebrant": {
+      "name": "Zhartyik",
+      "birthday": "2025-06-04"
+    },
+    "counts": {
+      "children": 11,
+      "adults": 0,
+      "guests": 11,
+      "tables": 1
+    },
+    "responsible": {
+      "rows": [
+        { "label": "Manager", "name": "Sergey", "modes": ["client"] }
+      ]
+    },
+    "schedule": [
+      { "time": "12:45", "title": "Guest arrival", "note": "Room: Ninja", "modes": ["client"] },
+      { "time": "12:45", "title": "Menu serving", "note": "", "modes": ["client"] },
+      { "time": "13:30", "title": "Bubble Show", "note": "", "modes": ["client"] },
+      { "time": "14:30", "title": "Forest Academy", "note": "", "modes": ["client"] },
+      { "time": "17:50", "title": "Menu serving", "note": "", "modes": ["client"] }
+    ],
+    "orderRows": [
+      {
+        "id": "realistic-program",
+        "type": "program",
+        "title": "Bubble Show",
+        "durationMinutes": 30,
+        "quantity": 1,
+        "unitPrice": 2400,
+        "subtotal": 2400,
+        "comment": "Children were very passive during the previous visit, so the animator should start slowly and keep the first activity calm.",
+        "meta": { "time": "13:30", "duration": 30 }
+      },
+      {
+        "id": "realistic-menu",
+        "type": "menu",
+        "title": "Kids menu set",
+        "quantity": 11,
+        "unitPrice": 280,
+        "subtotal": 3080,
+        "comment": "Serve after the first activity",
+        "meta": { "servingTime": "12:45", "servingUnit": "portion" }
+      },
+      {
+        "id": "realistic-cake",
+        "type": "service_event",
+        "title": "Cake ceremony",
+        "quantity": 1,
+        "unitPrice": 0,
+        "subtotal": 0,
+        "comment": "Bring candles to the room",
+        "meta": { "time": "15:10" }
+      }
+    ],
+    "orderRowViews": {
+      "client": [
+        {
+          "id": "realistic-program",
+          "type": "program",
+          "title": "Bubble Show",
+          "quantityLabel": "1",
+          "unitPriceLabel": "2400 UAH",
+          "subtotalLabel": "2400 UAH",
+          "metaLines": [
+            "Duration: 30 min",
+            "Note: Children were very passive during the previous visit, so the animator should start slowly and keep the first activity calm."
+          ]
+        },
+        {
+          "id": "realistic-menu",
+          "type": "menu",
+          "title": "Kids menu set",
+          "quantityLabel": "11 portions",
+          "unitPriceLabel": "280 UAH",
+          "subtotalLabel": "3080 UAH",
+          "metaLines": [
+            "Serving: 12:45",
+            "Note: Serve after the first activity"
+          ]
+        },
+        {
+          "id": "realistic-cake",
+          "type": "service_event",
+          "title": "Cake ceremony",
+          "quantityLabel": "1",
+          "unitPriceLabel": "0 UAH",
+          "subtotalLabel": "0 UAH",
+          "metaLines": [
+            "Serving: 15:10",
+            "Note: Bring candles to the room"
+          ]
+        }
+      ]
+    },
+    "finance": {
+      "currency": "UAH",
+      "rows": [
+        { "key": "total", "label": "Total", "amount": 5480, "currency": "UAH", "role": "total" }
+      ]
+    },
+    "totals": {
+      "currency": "UAH",
+      "orderTotal": 5480,
+      "bookingPrice": 5480
+    },
+    "terms": {
+      "title": "Banquet terms",
+      "items": [
+        "Menu and program details should be confirmed with the manager in advance."
+      ]
+    },
+    "comments": [],
+    "warnings": []
+  }
+}

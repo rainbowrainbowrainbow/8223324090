@@ -1,0 +1,133 @@
+{
+  "name": "compact",
+  "expected": {
+    "browserPrintPages": 1,
+    "serverPdfPages": 1,
+    "bottomFreeMinMm": 60
+  },
+  "summary": {
+    "success": true,
+    "schemaVersion": 1,
+    "mode": "client",
+    "bookingId": "BK-LAYOUT-COMPACT",
+    "businessContext": "event_genix",
+    "document": {
+      "type": "banquet_summary",
+      "title": "BANQUET SHEET",
+      "generatedBy": "QA Manager"
+    },
+    "venue": {
+      "name": "Event Genix",
+      "addressLine1": "Kyiv, Test Street 1",
+      "addressLine2": "3rd floor",
+      "phone": "0 800 753 553"
+    },
+    "event": {
+      "date": "2026-07-02",
+      "time": "12:45",
+      "room": "Ninja",
+      "programName": "Mini Bubble Show",
+      "programDisplayName": "Mini Bubble Show",
+      "hasRealProgram": true,
+      "manager": "Sergey",
+      "createdAt": "2026-06-26T14:14:00.000Z"
+    },
+    "customer": {
+      "name": "Mia",
+      "phone": "+380500000001",
+      "children": [
+        { "name": "Mia", "birthday": "2020-05-15" }
+      ]
+    },
+    "celebrant": {
+      "name": "Mia",
+      "birthday": "2020-05-15"
+    },
+    "counts": {
+      "children": 6,
+      "adults": 2,
+      "guests": 8,
+      "tables": 1
+    },
+    "responsible": {
+      "rows": [
+        { "label": "Manager", "name": "Sergey", "modes": ["client"] }
+      ]
+    },
+    "schedule": [
+      { "time": "12:45", "title": "Guest arrival", "note": "Room: Ninja", "modes": ["client"] },
+      { "time": "13:00", "title": "Mini Bubble Show", "note": "", "modes": ["client"] },
+      { "time": "13:45", "title": "Menu serving", "note": "Pizza set", "modes": ["client"] }
+    ],
+    "orderRows": [
+      {
+        "id": "compact-program",
+        "type": "program",
+        "title": "Mini Bubble Show",
+        "durationMinutes": 30,
+        "quantity": 1,
+        "unitPrice": 1800,
+        "subtotal": 1800,
+        "comment": "Short visible program note",
+        "meta": { "time": "13:00", "duration": 30 }
+      },
+      {
+        "id": "compact-menu",
+        "type": "menu",
+        "title": "Pizza set",
+        "quantity": 2,
+        "unitPrice": 350,
+        "subtotal": 700,
+        "comment": "Serve warm",
+        "meta": { "servingTime": "13:45", "servingUnit": "portion" }
+      }
+    ],
+    "orderRowViews": {
+      "client": [
+        {
+          "id": "compact-program",
+          "type": "program",
+          "title": "Mini Bubble Show",
+          "quantityLabel": "1",
+          "unitPriceLabel": "1800 UAH",
+          "subtotalLabel": "1800 UAH",
+          "metaLines": [
+            "Duration: 30 min",
+            "Note: Short visible program note"
+          ]
+        },
+        {
+          "id": "compact-menu",
+          "type": "menu",
+          "title": "Pizza set",
+          "quantityLabel": "2 portions",
+          "unitPriceLabel": "350 UAH",
+          "subtotalLabel": "700 UAH",
+          "metaLines": [
+            "Serving: 13:45",
+            "Note: Serve warm"
+          ]
+        }
+      ]
+    },
+    "finance": {
+      "currency": "UAH",
+      "rows": [
+        { "key": "total", "label": "Total", "amount": 2500, "currency": "UAH", "role": "total" }
+      ]
+    },
+    "totals": {
+      "currency": "UAH",
+      "orderTotal": 2500,
+      "bookingPrice": 2500
+    },
+    "terms": {
+      "title": "Banquet terms",
+      "items": [
+        "Menu changes should be confirmed in advance."
+      ]
+    },
+    "comments": [],
+    "warnings": []
+  }
+}

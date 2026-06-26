@@ -32,21 +32,21 @@ const PDF_COLORS = Object.freeze({
     soft: '#f7f8f5'
 });
 const PDF_TYPE_SCALE = Object.freeze({
-    sectionTitle: 10,
-    keyValue: 8.8,
-    paragraph: 8.8,
+    sectionTitle: 10.4,
+    keyValue: 9.4,
+    paragraph: 9.2,
     emptyState: 8.6,
-    tableHeader: 8.9,
-    tableBody: 8.5,
-    scheduleEmpty: 9.2,
+    tableHeader: 9.4,
+    tableBody: 9.2,
+    scheduleEmpty: 9.4,
     heroPill: 7.6,
     heroCardTitle: 9.3,
     heroCardBadge: 7.7,
     heroCardMeta: 7.6,
     heroGenerated: 7.4,
     heroVenueTitle: 11,
-    heroVenueMeta: 7.4,
-    heroVenuePhone: 8
+    heroVenueMeta: 7.8,
+    heroVenuePhone: 8.4
 });
 const PDF_HEADER_LAYOUT = Object.freeze({
     height: 76,
@@ -66,24 +66,24 @@ const PDF_TABLE_LAYOUT = Object.freeze({
 const PDF_SPACING_LAYOUT = Object.freeze({
     sectionEnsure: 19,
     sectionPreMoveDown: 0.18,
-    sectionRuleY: 13.5,
+    sectionRuleY: 10.5,
     sectionAccentStartY: 2.7,
     sectionAccentEndY: 11.8,
-    sectionTitleY: 1.7,
-    sectionAfterY: 17,
-    keyValueMinRow: 12.5,
-    keyValueExtraHeight: 3.2,
+    sectionTitleY: 1.2,
+    sectionAfterY: 13.5,
+    keyValueMinRow: 11.4,
+    keyValueExtraHeight: 1.2,
     keyValueEnsureExtra: 0.5,
     keyValueAfterMoveDown: 0.06,
-    paragraphLineGap: 0.55,
+    paragraphLineGap: 0.25,
     paragraphMinSpace: 14.5,
-    paragraphExtraSpace: 2.8,
+    paragraphExtraSpace: 1.6,
     paragraphAfterMoveDown: 0.04,
-    tablePadding: 2.4,
-    tableLineGap: 0.25,
-    tableParagraphGap: 0.85,
-    tableHeaderMinHeight: 14.5,
-    tableBodyMinHeight: 15.2
+    tablePadding: 1.6,
+    tableLineGap: 0,
+    tableParagraphGap: 0.45,
+    tableHeaderMinHeight: 12.8,
+    tableBodyMinHeight: 13.2
 });
 
 const PDF_VALIDATION_ERROR_CODE = 'banquet_summary_pdf_validation_failed';
@@ -526,24 +526,36 @@ function registerFonts(doc) {
     return fonts;
 }
 
-function ensureSpace(doc, height) {
-    const bottom = doc.page.height - doc.page.margins.bottom;
-    if (doc.y + height > bottom) {
-        doc.addPage();
-        drawPageDecor(doc);
-        doc.x = doc.page.margins.left;
-        doc.y = doc.page.margins.top;
-        return true;
-    }
-    return false;
-}
-
 function resetCursorX(doc) {
     doc.x = doc.page.margins.left;
 }
 
 function pageContentWidth(doc) {
     return doc.page.width - doc.page.margins.left - doc.page.margins.right;
+}
+
+function pageContentHeight(doc) {
+    return doc.page.height - doc.page.margins.top - doc.page.margins.bottom;
+}
+
+function pageBottom(doc) {
+    return doc.page.height - doc.page.margins.bottom;
+}
+
+function addDecoratedPage(doc) {
+    doc.addPage();
+    drawPageDecor(doc);
+    doc.x = doc.page.margins.left;
+    doc.y = doc.page.margins.top;
+}
+
+function ensureSpace(doc, height) {
+    const requiredHeight = Math.min(Math.max(0, height), pageContentHeight(doc));
+    if (doc.y + requiredHeight > pageBottom(doc)) {
+        addDecoratedPage(doc);
+        return true;
+    }
+    return false;
 }
 
 function drawPageDecor(doc) {
@@ -571,8 +583,9 @@ function drawPageDecor(doc) {
     doc.restore();
 }
 
-function drawSectionTitle(doc, title) {
-    ensureSpace(doc, PDF_SPACING_LAYOUT.sectionEnsure);
+function drawSectionTitle(doc, title, options = {}) {
+    const keepWithNext = Math.max(0, options.keepWithNext || 0);
+    ensureSpace(doc, Math.max(PDF_SPACING_LAYOUT.sectionEnsure, PDF_SPACING_LAYOUT.sectionAfterY + keepWithNext + 2));
     resetCursorX(doc);
     doc.moveDown(PDF_SPACING_LAYOUT.sectionPreMoveDown);
     resetCursorX(doc);
@@ -764,19 +777,18 @@ function drawTableCellText(doc, cell, x, y, width, options = {}) {
     }
 }
 
-function drawTable(doc, columns = [], rows = []) {
-    if (!rows.length) {
-        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.emptyState).fillColor(PDF_COLORS.muted).text('Позиції відсутні.');
-        return;
-    }
-
-    const left = doc.page.margins.left;
+function tableColumnWidths(doc, columns = []) {
     const contentWidth = pageContentWidth(doc);
-    const totalWeight = columns.reduce((sum, col) => sum + col.weight, 0);
-    const widths = columns.map(col => Math.floor(contentWidth * col.weight / totalWeight));
-    widths[widths.length - 1] += contentWidth - widths.reduce((sum, width) => sum + width, 0);
-    const headerCells = columns.map(col => col.label);
-    const headerOptions = {
+    const totalWeight = columns.reduce((sum, col) => sum + (Number(col.weight) || 0), 0) || columns.length || 1;
+    const widths = columns.map(col => Math.floor(contentWidth * (Number(col.weight) || 1) / totalWeight));
+    if (widths.length) {
+        widths[widths.length - 1] += contentWidth - widths.reduce((sum, width) => sum + width, 0);
+    }
+    return widths;
+}
+
+function tableHeaderOptions() {
+    return {
         bold: true,
         fill: PDF_COLORS.soft,
         textColor: PDF_COLORS.tealDark,
@@ -784,21 +796,60 @@ function drawTable(doc, columns = [], rows = []) {
         fontSize: PDF_TYPE_SCALE.tableHeader,
         header: true
     };
+}
+
+function tableBodyOptions() {
+    return {
+        minHeight: PDF_SPACING_LAYOUT.tableBodyMinHeight,
+        fontSize: PDF_TYPE_SCALE.tableBody
+    };
+}
+
+function tableRowHeight(doc, cells = [], widths = [], options = {}) {
+    const padding = PDF_SPACING_LAYOUT.tablePadding;
+    const fontSize = options.fontSize || PDF_TYPE_SCALE.tableBody;
+    doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular').fontSize(fontSize);
+    const heights = cells.map((cell, index) => tableCellTextHeight(
+        doc,
+        cell,
+        Math.max(1, (widths[index] || 0) - padding * 2),
+        options.lineGap ?? PDF_SPACING_LAYOUT.tableLineGap,
+        options.paragraphGap ?? PDF_SPACING_LAYOUT.tableParagraphGap
+    ));
+    return Math.max(options.minHeight || 16, ...heights.map(item => item + padding * 2));
+}
+
+function tableStartHeight(doc, columns = [], rows = []) {
+    if (!rows.length) return PDF_SPACING_LAYOUT.paragraphMinSpace;
+    const widths = tableColumnWidths(doc, columns);
+    const headerHeight = tableRowHeight(doc, columns.map(col => col.label), widths, tableHeaderOptions());
+    const firstRowHeight = tableRowHeight(doc, rows[0], widths, tableBodyOptions());
+    return headerHeight + firstRowHeight + 4;
+}
+
+function drawTable(doc, columns = [], rows = []) {
+    if (!rows.length) {
+        doc.font('SummaryRegular').fontSize(PDF_TYPE_SCALE.emptyState).fillColor(PDF_COLORS.muted).text('Позиції відсутні.');
+        return;
+    }
+
+    const left = doc.page.margins.left;
+    const widths = tableColumnWidths(doc, columns);
+    const headerCells = columns.map(col => col.label);
+    const headerOptions = tableHeaderOptions();
 
     const drawRow = (cells, options = {}) => {
         const padding = PDF_SPACING_LAYOUT.tablePadding;
         const fontSize = options.fontSize || PDF_TYPE_SCALE.tableBody;
-        doc.font(options.bold ? 'SummaryBold' : 'SummaryRegular').fontSize(fontSize);
-        const heights = cells.map((cell, index) => tableCellTextHeight(
-            doc,
-            cell,
-            widths[index] - padding * 2
-        ));
-        const height = Math.max(options.minHeight || 16, ...heights.map(item => item + padding * 2));
-        const pageAdded = ensureSpace(doc, height + 2);
+        const height = tableRowHeight(doc, cells, widths, options);
+        const rowHeightBudget = Math.min(height + 2, pageContentHeight(doc));
+        const pageAdded = ensureSpace(doc, rowHeightBudget);
         if (pageAdded && !options.header) {
             drawRow(headerCells, headerOptions);
-            ensureSpace(doc, height + 2);
+        }
+        if (!options.header && height + 2 <= pageContentHeight(doc) && doc.y + height + 2 > pageBottom(doc)) {
+            addDecoratedPage(doc);
+            drawRow(headerCells, headerOptions);
         }
         resetCursorX(doc);
         const y = doc.y;
@@ -823,7 +874,35 @@ function drawTable(doc, columns = [], rows = []) {
     };
 
     drawRow(headerCells, headerOptions);
-    rows.forEach(row => drawRow(row, { minHeight: PDF_SPACING_LAYOUT.tableBodyMinHeight, fontSize: PDF_TYPE_SCALE.tableBody }));
+    rows.forEach(row => drawRow(row, tableBodyOptions()));
+}
+
+function financeTableColumns() {
+    return [
+        { label: 'Позиція', weight: 2 },
+        { label: 'Сума', weight: 1 }
+    ];
+}
+
+function financeTableRows(summary = {}) {
+    return financeRowsForSummary(summary).map(row => [
+        row.label,
+        formatMoney(row.amount, row.currency || summary.totals?.currency || 'UAH')
+    ]);
+}
+
+function commentsTableColumns() {
+    return [
+        { label: 'Тип', weight: 1 },
+        { label: 'Коментар', weight: 3 }
+    ];
+}
+
+function commentsTableRows(comments = []) {
+    return comments.map(comment => [
+        comment.label || 'Примітка',
+        comment.text || ''
+    ]);
 }
 
 function drawFinance(doc, summary = {}) {
@@ -892,6 +971,29 @@ function buildOrderTableColumns(view) {
     if (view.config.showPrices) columns.push({ label: 'Сума', weight: 1.25 });
     columns.push({ label: 'Примітка', weight: 1.5 });
     return columns;
+}
+
+function scheduleTableColumns() {
+    return [
+        { label: 'Час', weight: 0.7 },
+        { label: 'Подія', weight: 2 },
+        { label: 'Примітка', weight: 2 }
+    ];
+}
+
+function scheduleTableRows(schedule = []) {
+    return schedule.map(item => [item.time, item.title, item.note || '']);
+}
+
+function responsibleTableColumns() {
+    return [
+        { label: 'Роль', weight: 1.1 },
+        { label: 'Відповідальний', weight: 2.2 }
+    ];
+}
+
+function responsibleTableRows(rows = []) {
+    return rows.map(row => [row.label, row.name || '—']);
 }
 
 function drawSchedule(doc, schedule = []) {
@@ -1162,36 +1264,57 @@ function drawBanquetSummaryPdf(doc, summary = {}, view) {
     }
 
     if (view.config.showResponsible && view.responsible.length) {
+        const responsibleColumns = responsibleTableColumns();
+        const responsibleRows = responsibleTableRows(view.responsible);
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, responsibleColumns, responsibleRows) + 2);
         drawSectionTitle(doc, 'Відповідальні');
-        drawResponsible(doc, view.responsible);
+        drawTable(doc, responsibleColumns, responsibleRows);
     }
 
     if (view.config.showSchedule) {
+        const scheduleColumns = scheduleTableColumns();
+        const scheduleRows = scheduleTableRows(view.schedule);
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, scheduleColumns, scheduleRows) + 2);
         drawSectionTitle(doc, 'Розклад');
-        drawSchedule(doc, view.schedule);
+        if (scheduleRows.length) {
+            drawTable(doc, scheduleColumns, scheduleRows);
+        } else {
+            drawSchedule(doc, view.schedule);
+        }
     }
 
     if (view.config.showOrderRows) {
+        const orderColumns = view.orderTableColumns;
+        const orderRows = view.orderTableRows;
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, orderColumns, orderRows) + 2);
         drawSectionTitle(doc, view.mode === 'kitchen' ? 'Кухня / видача' : 'Замовлення');
-        drawTable(doc, buildOrderTableColumns(view), buildOrderTableRows(view, summary));
+        drawTable(doc, orderColumns, orderRows);
     }
 
     if (view.config.showComments && view.comments.length) {
+        const commentsColumns = commentsTableColumns();
+        const commentsRows = commentsTableRows(view.comments);
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, commentsColumns, commentsRows) + 2);
         drawSectionTitle(doc, 'Коментарі');
-        drawComments(doc, view.comments);
+        drawTable(doc, commentsColumns, commentsRows);
     }
 
     if (view.config.showFinance) {
+        const financeColumns = financeTableColumns();
+        const financeRows = financeTableRows(summary);
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + tableStartHeight(doc, financeColumns, financeRows) + 2);
         drawSectionTitle(doc, 'Фінанси');
-        drawFinance(doc, summary);
+        drawTable(doc, financeColumns, financeRows);
     }
 
     if (view.config.showTerms) {
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + PDF_SPACING_LAYOUT.paragraphMinSpace + 2);
         drawSectionTitle(doc, summary.terms?.title || 'Умови банкету');
         drawParagraphList(doc, summary.terms?.items || []);
     }
 
     if (view.config.showWarnings && view.warnings.length) {
+        ensureSpace(doc, PDF_SPACING_LAYOUT.sectionAfterY + PDF_SPACING_LAYOUT.paragraphMinSpace + 2);
         drawSectionTitle(doc, 'Службові попередження');
         drawParagraphList(doc, view.warnings.map(item => item.message || item.code || item));
     }

@@ -3179,3 +3179,96 @@ body.booking-summary-page {
         color: var(--summary-official-ink) !important;
     }
 }
+
+/* Banquet readability density: measured A4 layout tokens. */
+:root {
+    --summary-density-section-gap: 2mm;
+    --summary-density-title-gap: 0.8mm;
+    --summary-density-brief-font: 11.2px;
+    --summary-density-brief-line: 1.14;
+    --summary-density-brief-row-pad-y: 0.6mm;
+    --summary-density-list-font: 10.5px;
+    --summary-density-list-line: 1.12;
+    --summary-density-list-row-pad-y: 0.6mm;
+    --summary-density-table-font: 10.2px;
+    --summary-density-table-line: 1.14;
+    --summary-density-table-pad-y: 0.9mm;
+    --summary-density-table-pad-x: 1.4mm;
+    --summary-density-meta-font: 9.8px;
+    --summary-density-meta-line: 1.1;
+}
+
+.booking-summary-document .summary-brief {
+    margin-bottom: 2mm;
+    padding: 2mm 2.4mm;
+}
+
+.booking-summary-document .summary-brief-grid {
+    row-gap: 0.5mm;
+}
+
+.booking-summary-document .summary-brief-item {
+    padding: var(--summary-density-brief-row-pad-y) 0;
+    font-size: var(--summary-density-brief-font);
+    line-height: var(--summary-density-brief-line);
+}
+
+.booking-summary-document .summary-section {
+    margin-top: var(--summary-density-section-gap);
+}
+
+.booking-summary-document .summary-section h2 {
+    margin-bottom: var(--summary-density-title-gap);
+    padding-bottom: 0.5mm;
+    font-size: 10.4px;
+    line-height: 1.08;
+    break-after: avoid;
+    page-break-after: avoid;
+}
+
+.booking-summary-document .summary-responsible-item,
+.booking-summary-document .summary-schedule-item {
+    padding: var(--summary-density-list-row-pad-y) 1.2mm;
+    font-size: var(--summary-density-list-font);
+    line-height: var(--summary-density-list-line);
+}
+
+.booking-summary-document .summary-schedule-item small {
+    margin-top: 0.4mm;
+    font-size: 8.6px;
+    line-height: 1.08;
+}
+
+.booking-summary-document .summary-order-table th,
+.booking-summary-document .summary-order-table td {
+    padding: var(--summary-density-table-pad-y) var(--summary-density-table-pad-x);
+    font-size: var(--summary-density-table-font);
+    line-height: var(--summary-density-table-line);
+}
+
+.booking-summary-document .summary-order-table {
+    break-inside: auto;
+    page-break-inside: auto;
+}
+
+.booking-summary-document .summary-order-table thead {
+    display: table-header-group;
+}
+
+.booking-summary-document .summary-order-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+.booking-summary-document .summary-order-meta {
+    gap: 1.5px 5px;
+    margin-top: 2px;
+    font-size: var(--summary-density-meta-font);
+    line-height: var(--summary-density-meta-line);
+}
+
+.booking-summary-document .summary-section--responsible,
+.booking-summary-document .summary-responsible-list {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}

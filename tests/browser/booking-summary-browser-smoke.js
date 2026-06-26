@@ -238,6 +238,51 @@ async function assertPrintCssHidesToolbar(page) {
     await page.emulateMedia({ media: 'screen' });
 }
 
+async function assertPrintCssPaginationPolicy(page) {
+    await page.emulateMedia({ media: 'print' });
+    const policy = await page.evaluate(() => {
+        const styleFor = selector => {
+            const element = document.querySelector(selector);
+            return element ? getComputedStyle(element) : null;
+        };
+        const sectionTitle = styleFor('.summary-section h2');
+        const orderTable = styleFor('.summary-order-table');
+        const orderHead = styleFor('.summary-order-table thead');
+        const orderRow = styleFor('.summary-order-table tr');
+        const responsibleList = styleFor('.summary-responsible-list');
+        return {
+            sectionBreakAfter: sectionTitle?.breakAfter || '',
+            sectionPageBreakAfter: sectionTitle?.pageBreakAfter || '',
+            orderTableBreakInside: orderTable?.breakInside || '',
+            orderTablePageBreakInside: orderTable?.pageBreakInside || '',
+            orderHeadDisplay: orderHead?.display || '',
+            orderRowBreakInside: orderRow?.breakInside || '',
+            orderRowPageBreakInside: orderRow?.pageBreakInside || '',
+            responsibleBreakInside: responsibleList?.breakInside || '',
+            responsiblePageBreakInside: responsibleList?.pageBreakInside || ''
+        };
+    });
+
+    assert.ok(
+        ['avoid', 'avoid-page'].includes(policy.sectionBreakAfter) || policy.sectionPageBreakAfter === 'avoid',
+        `section title avoids orphaning: ${JSON.stringify(policy)}`
+    );
+    assert.equal(policy.orderHeadDisplay, 'table-header-group', 'order table header repeats in print/PDF');
+    assert.ok(
+        policy.orderTableBreakInside === 'auto' || policy.orderTablePageBreakInside === 'auto',
+        `order table can continue to the next page: ${JSON.stringify(policy)}`
+    );
+    assert.ok(
+        ['avoid', 'avoid-page'].includes(policy.orderRowBreakInside) || policy.orderRowPageBreakInside === 'avoid',
+        `order rows avoid page breaks when possible: ${JSON.stringify(policy)}`
+    );
+    assert.ok(
+        ['avoid', 'avoid-page'].includes(policy.responsibleBreakInside) || policy.responsiblePageBreakInside === 'avoid',
+        `responsible block stays together when possible: ${JSON.stringify(policy)}`
+    );
+    await page.emulateMedia({ media: 'screen' });
+}
+
 async function verifyBookingSummary(page, baseUrl) {
     await page.addInitScript(() => {
         window.localStorage.setItem('pzp_token', 'booking-summary-browser-smoke-token');
@@ -270,6 +315,7 @@ async function verifyBookingSummary(page, baseUrl) {
     await assertTextIncludes(document, 'Без гострого', 'menu row note');
 
     await assertPrintCssHidesToolbar(page);
+    await assertPrintCssPaginationPolicy(page);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(100);

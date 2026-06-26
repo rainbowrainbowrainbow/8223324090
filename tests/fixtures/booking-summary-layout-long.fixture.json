@@ -1,0 +1,360 @@
+{
+  "name": "long",
+  "expected": {
+    "browserPrintPages": 2,
+    "serverPdfPages": 2
+  },
+  "summary": {
+    "success": true,
+    "schemaVersion": 1,
+    "mode": "client",
+    "bookingId": "BK-LAYOUT-LONG",
+    "businessContext": "event_genix",
+    "document": {
+      "type": "banquet_summary",
+      "title": "BANQUET SHEET",
+      "generatedBy": "QA Manager"
+    },
+    "venue": {
+      "name": "Park Zakrevskogo Entertainment Center",
+      "addressLine1": "Kyiv, Zakrevskoho Street 61/2",
+      "addressLine2": "Zakrevskyi Mall, 3rd floor",
+      "phone": "0 800 753 553"
+    },
+    "event": {
+      "date": "2026-07-02",
+      "time": "12:30",
+      "room": "Ninja",
+      "programName": "Mega Party Program",
+      "programDisplayName": "Mega Party Program",
+      "hasRealProgram": true,
+      "manager": "Sergey",
+      "createdAt": "2026-06-26T14:14:00.000Z"
+    },
+    "customer": {
+      "name": "ShutkaMinutka Long Client Name",
+      "phone": "+380535232",
+      "children": [
+        { "name": "Zhartyik", "birthday": "2025-06-04" }
+      ]
+    },
+    "celebrant": {
+      "name": "Zhartyik",
+      "birthday": "2025-06-04"
+    },
+    "counts": {
+      "children": 18,
+      "adults": 6,
+      "guests": 24,
+      "tables": 3
+    },
+    "responsible": {
+      "rows": [
+        { "label": "Manager", "name": "Sergey", "modes": ["client"] }
+      ]
+    },
+    "schedule": [
+      { "time": "12:30", "title": "Guest arrival", "note": "Room: Ninja", "modes": ["client"] },
+      { "time": "12:45", "title": "Welcome drinks", "note": "Keep service near the entrance", "modes": ["client"] },
+      { "time": "13:10", "title": "Mega Party Program", "note": "", "modes": ["client"] },
+      { "time": "13:45", "title": "Menu serving", "note": "Kids menu", "modes": ["client"] },
+      { "time": "14:15", "title": "Bubble Show", "note": "Second block", "modes": ["client"] },
+      { "time": "14:55", "title": "Cake ceremony", "note": "Prepare candles", "modes": ["client"] },
+      { "time": "15:20", "title": "Forest Academy", "note": "Quest room", "modes": ["client"] },
+      { "time": "16:10", "title": "Second menu serving", "note": "Fruit and drinks", "modes": ["client"] },
+      { "time": "17:00", "title": "Guest pickup", "note": "Parents arrive", "modes": ["client"] }
+    ],
+    "orderRows": [
+      {
+        "id": "long-program-1",
+        "type": "program",
+        "title": "Mega Party Program",
+        "durationMinutes": 60,
+        "quantity": 1,
+        "unitPrice": 3200,
+        "subtotal": 3200,
+        "comment": "Long note A: children need a slow start, the host should avoid loud games for the first ten minutes and keep parents updated.",
+        "meta": { "time": "13:10", "duration": 60 }
+      },
+      {
+        "id": "long-program-2",
+        "type": "activity",
+        "title": "Bubble Show",
+        "durationMinutes": 30,
+        "quantity": 1,
+        "unitPrice": 2400,
+        "subtotal": 2400,
+        "comment": "Long note B: use the small stage, keep the floor dry, and leave space for younger children near the front row.",
+        "meta": { "time": "14:15", "duration": 30 }
+      },
+      {
+        "id": "long-menu-1",
+        "type": "menu",
+        "title": "Kids menu set",
+        "quantity": 18,
+        "unitPrice": 280,
+        "subtotal": 5040,
+        "comment": "Long note C: two children do not eat cheese, one child needs a separate plate, and drinks should be served in small cups.",
+        "meta": { "servingTime": "13:45", "servingUnit": "portion" }
+      },
+      {
+        "id": "long-menu-2",
+        "type": "menu",
+        "title": "Fruit plate",
+        "quantity": 4,
+        "unitPrice": 420,
+        "subtotal": 1680,
+        "comment": "Put fruit plates on both sides of the table.",
+        "meta": { "servingTime": "16:10", "servingUnit": "plate" }
+      },
+      {
+        "id": "long-menu-3",
+        "type": "menu",
+        "title": "Juice set",
+        "quantity": 24,
+        "unitPrice": 90,
+        "subtotal": 2160,
+        "comment": "Long note D: mix apple and berry juice, keep water available, and refill cups before the cake ceremony starts.",
+        "meta": { "servingTime": "14:55", "servingUnit": "cup" }
+      },
+      {
+        "id": "long-service-1",
+        "type": "service_event",
+        "title": "Cake ceremony",
+        "quantity": 1,
+        "unitPrice": 0,
+        "subtotal": 0,
+        "comment": "Bring candles, lighter, knife, and small plates to the room before the host announces the ceremony.",
+        "meta": { "time": "14:55" }
+      },
+      {
+        "id": "long-activity-3",
+        "type": "activity",
+        "title": "Forest Academy",
+        "durationMinutes": 45,
+        "quantity": 1,
+        "unitPrice": 2800,
+        "subtotal": 2800,
+        "comment": "Long note E: split children into two smaller groups if they get tired, and keep the final puzzle short.",
+        "meta": { "time": "15:20", "duration": 45 }
+      },
+      {
+        "id": "long-menu-4",
+        "type": "menu",
+        "title": "Parent coffee set",
+        "quantity": 6,
+        "unitPrice": 140,
+        "subtotal": 840,
+        "comment": "Serve coffee after the cake ceremony.",
+        "meta": { "servingTime": "15:10", "servingUnit": "cup" }
+      },
+      {
+        "id": "long-entry",
+        "type": "entry",
+        "title": "Entry",
+        "quantity": 18,
+        "unitPrice": 300,
+        "subtotal": 5400,
+        "comment": "Entry count confirmed by manager.",
+        "meta": { "ruleCode": "weekday-child" }
+      },
+      {
+        "id": "long-menu-5",
+        "type": "menu",
+        "title": "Water bottles",
+        "quantity": 24,
+        "unitPrice": 35,
+        "subtotal": 840,
+        "comment": "Put bottles near the exit before parents arrive.",
+        "meta": { "servingTime": "16:40", "servingUnit": "bottle" }
+      },
+      {
+        "id": "long-service-2",
+        "type": "service_event",
+        "title": "Gift handoff",
+        "quantity": 1,
+        "unitPrice": 0,
+        "subtotal": 0,
+        "comment": "Keep gifts at reception and give them to parents at pickup.",
+        "meta": { "time": "17:00" }
+      },
+      {
+        "id": "long-menu-6",
+        "type": "menu",
+        "title": "Extra napkins",
+        "quantity": 3,
+        "unitPrice": 60,
+        "subtotal": 180,
+        "comment": "Leave napkins on the main table and near the cake area.",
+        "meta": { "servingTime": "13:30", "servingUnit": "pack" }
+      }
+    ],
+    "orderRowViews": {
+      "client": [
+        {
+          "id": "long-program-1",
+          "type": "program",
+          "title": "Mega Party Program",
+          "quantityLabel": "1",
+          "unitPriceLabel": "3200 UAH",
+          "subtotalLabel": "3200 UAH",
+          "metaLines": [
+            "Duration: 60 min",
+            "Note: Long note A: children need a slow start, the host should avoid loud games for the first ten minutes and keep parents updated."
+          ]
+        },
+        {
+          "id": "long-program-2",
+          "type": "activity",
+          "title": "Bubble Show",
+          "quantityLabel": "1",
+          "unitPriceLabel": "2400 UAH",
+          "subtotalLabel": "2400 UAH",
+          "metaLines": [
+            "Duration: 30 min",
+            "Note: Long note B: use the small stage, keep the floor dry, and leave space for younger children near the front row."
+          ]
+        },
+        {
+          "id": "long-menu-1",
+          "type": "menu",
+          "title": "Kids menu set",
+          "quantityLabel": "18 portions",
+          "unitPriceLabel": "280 UAH",
+          "subtotalLabel": "5040 UAH",
+          "metaLines": [
+            "Serving: 13:45",
+            "Note: Long note C: two children do not eat cheese, one child needs a separate plate, and drinks should be served in small cups."
+          ]
+        },
+        {
+          "id": "long-menu-2",
+          "type": "menu",
+          "title": "Fruit plate",
+          "quantityLabel": "4 plates",
+          "unitPriceLabel": "420 UAH",
+          "subtotalLabel": "1680 UAH",
+          "metaLines": [
+            "Serving: 16:10",
+            "Note: Put fruit plates on both sides of the table."
+          ]
+        },
+        {
+          "id": "long-menu-3",
+          "type": "menu",
+          "title": "Juice set",
+          "quantityLabel": "24 cups",
+          "unitPriceLabel": "90 UAH",
+          "subtotalLabel": "2160 UAH",
+          "metaLines": [
+            "Serving: 14:55",
+            "Note: Long note D: mix apple and berry juice, keep water available, and refill cups before the cake ceremony starts."
+          ]
+        },
+        {
+          "id": "long-service-1",
+          "type": "service_event",
+          "title": "Cake ceremony",
+          "quantityLabel": "1",
+          "unitPriceLabel": "0 UAH",
+          "subtotalLabel": "0 UAH",
+          "metaLines": [
+            "Serving: 14:55",
+            "Note: Bring candles, lighter, knife, and small plates to the room before the host announces the ceremony."
+          ]
+        },
+        {
+          "id": "long-activity-3",
+          "type": "activity",
+          "title": "Forest Academy",
+          "quantityLabel": "1",
+          "unitPriceLabel": "2800 UAH",
+          "subtotalLabel": "2800 UAH",
+          "metaLines": [
+            "Duration: 45 min",
+            "Note: Long note E: split children into two smaller groups if they get tired, and keep the final puzzle short."
+          ]
+        },
+        {
+          "id": "long-menu-4",
+          "type": "menu",
+          "title": "Parent coffee set",
+          "quantityLabel": "6 cups",
+          "unitPriceLabel": "140 UAH",
+          "subtotalLabel": "840 UAH",
+          "metaLines": [
+            "Serving: 15:10",
+            "Note: Serve coffee after the cake ceremony."
+          ]
+        },
+        {
+          "id": "long-entry",
+          "type": "entry",
+          "title": "Entry",
+          "quantityLabel": "18 children",
+          "unitPriceLabel": "300 UAH",
+          "subtotalLabel": "5400 UAH",
+          "metaLines": [
+            "Note: Entry count confirmed by manager."
+          ]
+        },
+        {
+          "id": "long-menu-5",
+          "type": "menu",
+          "title": "Water bottles",
+          "quantityLabel": "24 bottles",
+          "unitPriceLabel": "35 UAH",
+          "subtotalLabel": "840 UAH",
+          "metaLines": [
+            "Serving: 16:40",
+            "Note: Put bottles near the exit before parents arrive."
+          ]
+        },
+        {
+          "id": "long-service-2",
+          "type": "service_event",
+          "title": "Gift handoff",
+          "quantityLabel": "1",
+          "unitPriceLabel": "0 UAH",
+          "subtotalLabel": "0 UAH",
+          "metaLines": [
+            "Serving: 17:00",
+            "Note: Keep gifts at reception and give them to parents at pickup."
+          ]
+        },
+        {
+          "id": "long-menu-6",
+          "type": "menu",
+          "title": "Extra napkins",
+          "quantityLabel": "3 packs",
+          "unitPriceLabel": "60 UAH",
+          "subtotalLabel": "180 UAH",
+          "metaLines": [
+            "Serving: 13:30",
+            "Note: Leave napkins on the main table and near the cake area."
+          ]
+        }
+      ]
+    },
+    "finance": {
+      "currency": "UAH",
+      "rows": [
+        { "key": "total", "label": "Total", "amount": 24540, "currency": "UAH", "role": "total" }
+      ]
+    },
+    "totals": {
+      "currency": "UAH",
+      "orderTotal": 24540,
+      "bookingPrice": 24540
+    },
+    "terms": {
+      "title": "Banquet terms",
+      "items": [
+        "Menu and program details should be confirmed with the manager in advance.",
+        "Long events may continue on page two; visible notes must remain in the document."
+      ]
+    },
+    "comments": [],
+    "warnings": []
+  }
+}

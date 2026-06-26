@@ -2,6 +2,47 @@ const fs = require('fs');
 const path = require('path');
 const pkg = require('../../package.json');
 
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cssDeclarationValue(rule, property) {
+    let value = '';
+    const pattern = new RegExp(`(?:^|;)\\s*${escapeRegExp(property)}\\s*:\\s*([^;]+)`, 'g');
+    for (const match of rule.matchAll(pattern)) {
+        value = match[1].trim();
+    }
+    return value;
+}
+
+function cssCustomPropertyValue(css, property) {
+    let value = '';
+    const pattern = new RegExp(`${escapeRegExp(property)}\\s*:\\s*([^;]+);`, 'g');
+    for (const match of css.matchAll(pattern)) {
+        value = match[1].trim();
+    }
+    return value;
+}
+
+function resolveCssValue(css, value) {
+    const variable = String(value || '').match(/^var\((--[^),\s]+)\)$/);
+    return variable ? cssCustomPropertyValue(css, variable[1]) : String(value || '').trim();
+}
+
+function cssNumericValue(css, rule, property) {
+    const value = resolveCssValue(css, cssDeclarationValue(rule, property));
+    const match = value.match(/^(-?\d+(?:\.\d+)?)([a-z%]*)$/i);
+    return match ? { number: Number(match[1]), unit: match[2] || '', value } : null;
+}
+
+function cssShorthandFirstNumericValue(css, rule, property) {
+    const rawValue = cssDeclarationValue(rule, property);
+    const firstValue = rawValue.match(/var\([^)]*\)|[^\s]+/)?.[0] || '';
+    const value = resolveCssValue(css, firstValue);
+    const match = value.match(/^(-?\d+(?:\.\d+)?)([a-z%]*)$/i);
+    return match ? { number: Number(match[1]), unit: match[2] || '', value } : null;
+}
+
 function runBookingSummaryChecks(context, { bookingSummaryBrowserSmokeCode } = {}) {
     const {
         ROOT,
@@ -67,6 +108,20 @@ checkPage('booking-summary.html', (doc, html) => {
     const printBriefGridRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-grid');
     const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
     const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
+    const densityBlockStart = pageCss.indexOf('/* Banquet readability density: measured A4 layout tokens. */');
+    const densityCss = densityBlockStart >= 0 ? pageCss.slice(densityBlockStart) : '';
+    const densityBriefItemRule = cssRuleIncludingSelectorText(densityCss, '.booking-summary-document .summary-brief-item');
+    const densitySectionRule = cssRuleIncludingSelectorText(densityCss, '.booking-summary-document .summary-section');
+    const densityResponsibleItemRule = cssRuleIncludingSelectorText(densityCss, '.booking-summary-document .summary-responsible-item');
+    const densityScheduleItemRule = cssRuleIncludingSelectorText(densityCss, '.booking-summary-document .summary-schedule-item');
+    const densityOrderCellRule = cssRuleIncludingSelectorText(densityCss, '.booking-summary-document .summary-order-table td');
+    const densityBriefFont = cssNumericValue(densityCss, densityBriefItemRule, 'font-size');
+    const densityResponsibleFont = cssNumericValue(densityCss, densityResponsibleItemRule, 'font-size');
+    const densityScheduleFont = cssNumericValue(densityCss, densityScheduleItemRule, 'font-size');
+    const densityOrderFont = cssNumericValue(densityCss, densityOrderCellRule, 'font-size');
+    const densityBriefPadY = cssShorthandFirstNumericValue(densityCss, densityBriefItemRule, 'padding');
+    const densitySectionMarginTop = cssNumericValue(densityCss, densitySectionRule, 'margin-top');
+    const densityOrderPadY = cssShorthandFirstNumericValue(densityCss, densityOrderCellRule, 'padding');
     const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
     const renderTermsBody = pageCode.match(/function renderTerms\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function renderDocument/)?.[1] || '';
     const renderDocumentBody = pageCode.match(/function renderDocument\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function summaryText/)?.[1] || '';
@@ -317,6 +372,32 @@ checkPage('booking-summary.html', (doc, html) => {
         && termsSectionRule.includes('margin-top: 12px')
         && printTermsSpacingRule.includes('margin-top: 12px')
         && printA4PageRule.includes('aspect-ratio: auto'));
+    check('Booking summary readability density guard keeps readable floors and compact spacing',
+        densityBlockStart >= 0
+        && densityCss.includes('Banquet readability density')
+        && densityCss.includes('--summary-density-brief-font')
+        && densityCss.includes('--summary-density-list-font')
+        && densityCss.includes('--summary-density-table-font')
+        && densityBriefFont?.unit === 'px'
+        && densityBriefFont.number >= 10.8
+        && densityResponsibleFont?.unit === 'px'
+        && densityResponsibleFont.number >= 10.2
+        && densityScheduleFont?.unit === 'px'
+        && densityScheduleFont.number >= 10.2
+        && densityOrderFont?.unit === 'px'
+        && densityOrderFont.number >= 9.8
+        && densityBriefPadY?.unit === 'mm'
+        && densityBriefPadY.number <= 0.75
+        && densitySectionMarginTop?.unit === 'mm'
+        && densitySectionMarginTop.number <= 2.4
+        && densityOrderPadY?.unit === 'mm'
+        && densityOrderPadY.number <= 1.1
+        && pageCode.includes('<th>Позиція</th>')
+        && pageCode.includes('<th class="qty">К-сть</th>')
+        && pageCode.includes('<th class="money">Ціна</th>')
+        && pageCode.includes('<th class="money">Сума</th>')
+        && pageCode.includes('${summaryClientOrderMetaHtml(row)}')
+        && pageCode.includes('(Array.isArray(row.metaLines) ? row.metaLines : []).forEach(item => {'));
     check('Booking summary terms stay backend-driven across preview, copy text, and print',
         renderDocumentBody.includes('summary-section--terms')
         && renderDocumentBody.includes('${renderTerms(summary)}')

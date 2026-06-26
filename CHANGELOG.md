@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.35 - Client Banquet PDF Readability Density
+
+### Client banquet PDF readability / A4 density / Pagination QA / (Клешня, 26.06.2026) [codex]
+- **Клієнтський банкетний лист став читабельнішим** - основний текст, розклад і таблиця замовлення збільшені у browser preview, browser print і server PDF.
+- **Вертикальні відступи ущільнено за фактичними A4-вимірами** - client block, відповідальні, розклад, section titles і order table отримали компактніші spacing tokens, щоб типовий банкет лишався на 1 сторінці.
+- **Довгі банкети переносяться контрольовано** - HTML/print дозволяє clean page 2, а PDFKit повторює table header і не обрізає примітки при переході.
+- **Server PDF вирівняно з HTML-читабельністю** - PDF type scale і spacing constants підняли readable floors для key-value та order table без зміни фінансової логіки.
+- **QA coverage посилено** - додано layout audit script, fixtures `compact`/`realistic`/`long`, metrics JSON, browser print PDF artifacts, static readability guards і PDF fixture matrix.
+- **Релізні маркери піднято до `0.77.35`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.34 - HR Pulse Premium Visuals
 
 ### HR Pulse premium switcher / Today dashboard / Staff schedule / Reports / (Клешня, 26.06.2026) [codex]

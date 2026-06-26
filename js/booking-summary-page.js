@@ -509,33 +509,66 @@
         return formatMoney(row.subtotal, currency);
     }
 
-    function summaryClientOrderMetaHtml(row = {}) {
-        const items = [];
+    function summaryClientOrderRowViewFromRow(row = {}, currency = 'UAH') {
         const duration = summaryDurationLabel(row);
         const serving = summaryOrderServingLabel(row);
         const comment = orderRowComment(row);
-        if (duration !== '—') items.push(`Тривалість: ${duration}`);
-        if (serving !== '—') items.push(`Видача: ${serving}`);
-        if (comment) items.push(`Примітка: ${comment}`);
+        const commentLabel = comment ? `Примітка: ${comment}` : null;
+        const metaLines = [];
+        if (duration !== '—') metaLines.push(`Тривалість: ${duration}`);
+        if (serving !== '—') metaLines.push(`Видача: ${serving}`);
+        if (commentLabel) metaLines.push(commentLabel);
+        return {
+            type: row?.type || 'item',
+            title: row?.title || row?.name || (row?.type === 'entry' ? 'Вхід' : 'Позиція'),
+            quantityLabel: summaryClientOrderQuantityLabel(row),
+            unitPriceLabel: summaryClientOrderUnitPriceLabel(row, currency),
+            subtotalLabel: summaryClientOrderSubtotalLabel(row, currency),
+            metaLines,
+            commentLabel
+        };
+    }
+
+    function normalizeSummaryClientOrderRowView(row = {}) {
+        return {
+            type: String(row?.type || 'item'),
+            title: formatValue(row?.title || row?.name || 'Позиція'),
+            quantityLabel: formatValue(row?.quantityLabel),
+            unitPriceLabel: formatValue(row?.unitPriceLabel),
+            subtotalLabel: formatValue(row?.subtotalLabel),
+            metaLines: (Array.isArray(row?.metaLines) ? row.metaLines : [])
+                .map(item => String(item || '').trim())
+                .filter(Boolean),
+            commentLabel: String(row?.commentLabel || '').trim() || null
+        };
+    }
+
+    function summaryClientOrderRowViews(summary = {}, mode = summaryMode(summary)) {
+        const normalizedMode = normalizeSummaryMode(mode);
+        const explicit = summary?.orderRowViews?.[normalizedMode] || summary?.orderRowViewModels?.[normalizedMode];
+        if (Array.isArray(explicit)) return explicit.map(normalizeSummaryClientOrderRowView);
+        const currency = summary?.totals?.currency || 'UAH';
+        return summaryOrderRows(summary, normalizedMode)
+            .map(row => normalizeSummaryClientOrderRowView(summaryClientOrderRowViewFromRow(row, currency)));
+    }
+
+    function summaryClientOrderMetaHtml(viewModel = {}) {
+        const items = Array.isArray(viewModel.metaLines) ? viewModel.metaLines : [];
         if (!items.length) return '';
         return `<div class="summary-order-meta">${items.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
     }
 
-    function summaryClientOrderTextLines(rows = [], currency = 'UAH') {
-        return rows.flatMap((row, index) => {
-            const title = row?.title || row?.name || (row?.type === 'entry' ? 'Вхід' : 'Позиція');
+    function summaryClientOrderTextLines(rowViews = []) {
+        return rowViews.flatMap((row, index) => {
             const lines = [
-                `${index + 1}. ${title}`,
-                `   К-сть: ${summaryClientOrderQuantityLabel(row)}`,
-                `   Ціна: ${summaryClientOrderUnitPriceLabel(row, currency)}`,
-                `   Сума: ${summaryClientOrderSubtotalLabel(row, currency)}`
+                `${index + 1}. ${row.title}`,
+                `   К-сть: ${row.quantityLabel}`,
+                `   Ціна: ${row.unitPriceLabel}`,
+                `   Сума: ${row.subtotalLabel}`
             ];
-            const duration = summaryDurationLabel(row);
-            const serving = summaryOrderServingLabel(row);
-            const comment = orderRowComment(row);
-            if (duration !== '—') lines.push(`   Тривалість: ${duration}`);
-            if (serving !== '—') lines.push(`   Видача: ${serving}`);
-            if (comment) lines.push(`   Примітка: ${comment}`);
+            (Array.isArray(row.metaLines) ? row.metaLines : []).forEach(item => {
+                lines.push(`   ${item}`);
+            });
             return lines;
         });
     }
@@ -547,6 +580,10 @@
             return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
         }
         if (normalizeSummaryMode(mode) === 'client') {
+            const clientRows = summaryClientOrderRowViews(summary, mode);
+            if (!clientRows.length) {
+                return '<div class="summary-order-empty">Позиції замовлення відсутні.</div>';
+            }
             return `
             <table class="summary-order-table summary-order-table--client">
                 <colgroup>
@@ -564,15 +601,15 @@
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows.map(row => `
+                    ${clientRows.map(row => `
                         <tr>
                             <td class="name" data-label="Позиція">
-                                <span>${escapeHtml(row.title || row.name || 'Позиція')}</span>
+                                <span>${escapeHtml(row.title)}</span>
                                 ${summaryClientOrderMetaHtml(row)}
                             </td>
-                            <td class="qty" data-label="К-сть">${escapeHtml(summaryClientOrderQuantityLabel(row))}</td>
-                            <td class="money" data-label="Ціна">${escapeHtml(summaryClientOrderUnitPriceLabel(row, currency))}</td>
-                            <td class="money" data-label="Сума">${escapeHtml(summaryClientOrderSubtotalLabel(row, currency))}</td>
+                            <td class="qty" data-label="К-сть">${escapeHtml(row.quantityLabel)}</td>
+                            <td class="money" data-label="Ціна">${escapeHtml(row.unitPriceLabel)}</td>
+                            <td class="money" data-label="Сума">${escapeHtml(row.subtotalLabel)}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -921,6 +958,7 @@
         const contract = summaryModeContract(summary, mode);
         const sections = contract.sections || {};
         const rows = sections.orderRows ? summaryOrderRows(summary, mode) : [];
+        const clientOrderRows = sections.orderRows && mode === 'client' ? summaryClientOrderRowViews(summary, mode) : [];
         const scheduleRows = sections.schedule ? summaryScheduleRows(summary, mode) : [];
         const serviceEvents = sections.schedule && !scheduleRows.length ? summaryServiceEventRows(summary) : [];
         const responsibleRows = sections.responsible ? summaryResponsibleRows(summary, mode) : [];
@@ -964,7 +1002,9 @@
             ] : []),
             ...(sections.orderRows ? [
                 mode === 'kitchen' ? 'Кухня / видача:' : 'Замовлення:',
-                ...(rows.length && mode === 'client' ? summaryClientOrderTextLines(rows, currency) : rows.length ? rows.map((row, index) => {
+                ...(mode === 'client'
+                    ? (clientOrderRows.length ? summaryClientOrderTextLines(clientOrderRows) : ['Позиції відсутні'])
+                    : rows.length ? rows.map((row, index) => {
                 const comment = orderRowComment(row);
                 const servingTime = summaryServingTime(row);
                 const quantityLabel = summaryOrderQuantityLabel(row);

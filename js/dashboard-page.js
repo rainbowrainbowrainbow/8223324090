@@ -133,6 +133,35 @@ const DashboardPage = (() => {
         console.warn('[dashboard]', text);
     }
 
+    function normalizeDashboardApiResult(errorOrPayload = {}, fallbackMessage = 'Не вдалося зберегти налаштування dashboard') {
+        if (typeof normalizeApiErrorResult === 'function') {
+            return normalizeApiErrorResult(errorOrPayload, fallbackMessage);
+        }
+        if (errorOrPayload?.success) return errorOrPayload;
+        const payload = errorOrPayload instanceof Error
+            ? { error: errorOrPayload.message, offline: true }
+            : (errorOrPayload || {});
+        return {
+            ...payload,
+            success: false,
+            error: payload.error || payload.message || fallbackMessage,
+            offline: Boolean(payload.offline),
+            status: payload.status || null,
+            requestId: payload.requestId || payload.request_id || null
+        };
+    }
+
+    async function dashboardMutationJson(resp, fallbackMessage) {
+        if (typeof handleAuthError === 'function' && handleAuthError(resp)) {
+            return normalizeDashboardApiResult({ status: resp?.status || 401 }, fallbackMessage);
+        }
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok || payload?.success === false) {
+            return normalizeDashboardApiResult({ ...payload, status: resp.status }, fallbackMessage);
+        }
+        return payload;
+    }
+
     async function confirmDashboardAction(message, options = {}) {
         const {
             type = 'warning',
@@ -978,16 +1007,20 @@ const DashboardPage = (() => {
             boardMeta: patch.boardMeta || _config.boardMeta,
             boardState: patch.boardState || _config.boardState
         };
-        const resp = await fetch('/api/dashboard/config', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
-            },
-            body: JSON.stringify(payload)
-        });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const result = await resp.json();
+        let result;
+        try {
+            const resp = await fetch('/api/dashboard/config', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+                },
+                body: JSON.stringify(payload)
+            });
+            result = await dashboardMutationJson(resp, 'Не вдалося зберегти налаштування dashboard');
+        } catch (err) {
+            result = normalizeDashboardApiResult(err, 'Не вдалося зберегти налаштування dashboard');
+        }
         if (result.success && result.config) {
             _config = normalizeDashboardConfig(result.config);
         }
@@ -1005,11 +1038,14 @@ const DashboardPage = (() => {
         syncBoardToolbar();
         const lastSavedAt = new Date().toISOString();
         try {
-            await saveDashboardConfig({
+            const result = await saveDashboardConfig({
                 mode: _config.mode,
                 boardMeta: { ..._config.boardMeta, lastSavedAt, dirty: false },
                 boardState: _config.boardState
             });
+            if (!result?.success) {
+                throw new Error(result?.error || 'Dashboard board save failed');
+            }
             _boardDirty = false;
             _boardSaveStatus = 'saved';
             _config.boardMeta = normalizeBoardMeta({ ..._config.boardMeta, lastSavedAt, dirty: false });
@@ -1018,6 +1054,7 @@ const DashboardPage = (() => {
         } catch (err) {
             console.error('[dashboard:board] save failed:', err);
             _boardSaveStatus = 'error';
+            notifyDashboardIssue(err.message || 'Не вдалося зберегти dashboard board');
         }
         syncBoardToolbar();
     }
@@ -6968,9 +7005,11 @@ const DashboardPage = (() => {
 
         _config.widgets = selected;
 
-        try {
-            await saveDashboardConfig({ widgets: selected });
-        } catch {}
+        const result = await saveDashboardConfig({ widgets: selected });
+        if (!result?.success) {
+            notifyDashboardIssue(result?.error || 'Не вдалося зберегти onboarding');
+            return;
+        }
 
         const overlay = document.getElementById('onboardingOverlay');
         if (overlay) overlay.remove();
@@ -7412,15 +7451,15 @@ const DashboardPage = (() => {
             boardState: _config.boardState
         };
 
-        try {
-            await saveDashboardConfig({
-                widgets: selected,
-                presentationMode: _config.presentationMode,
-                sceneOptions: _config.sceneOptions,
-                boardState: _config.boardState
-            });
-        } catch (err) {
-            console.error('Save settings error:', err);
+        const result = await saveDashboardConfig({
+            widgets: selected,
+            presentationMode: _config.presentationMode,
+            sceneOptions: _config.sceneOptions,
+            boardState: _config.boardState
+        });
+        if (!result?.success) {
+            notifyDashboardIssue(result?.error || 'Не вдалося зберегти налаштування dashboard');
+            return;
         }
 
         const overlay = document.getElementById('settingsOverlay');

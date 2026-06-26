@@ -1,6 +1,11 @@
 'use strict';
 
-const { normalizeMenuPositions, normalizeServiceEvents, menuPositionsSubtotal } = require('./bookingPackage');
+const {
+    normalizeMenuPositions,
+    normalizeServiceEvents,
+    menuPositionsSubtotal,
+    formatMenuQuantityWithServingUnit
+} = require('./bookingPackage');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextCatalog,
@@ -113,6 +118,94 @@ function nullableNumber(value) {
 function money(value) {
     const n = nullableNumber(value);
     return n === null ? null : Math.round(n * 100) / 100;
+}
+
+function formatQuantityNumber(value) {
+    const number = nullableNumber(value);
+    if (number === null) return cleanText(value, 40) || '—';
+    return Number.isInteger(number)
+        ? String(number)
+        : new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(number);
+}
+
+function formatOrderMoneyLabel(value, currency = CURRENCY) {
+    const number = nullableNumber(value);
+    if (number === null) return '—';
+    const normalizedCurrency = String(currency || CURRENCY).trim().toUpperCase();
+    const suffix = normalizedCurrency === CURRENCY ? '₴' : normalizedCurrency;
+    return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(number)} ${suffix}`;
+}
+
+function orderRowTitle(row = {}) {
+    return cleanText(valueOf(row, 'title', 'name'), 200) || (row.type === 'entry' ? 'Вхід' : 'Позиція');
+}
+
+function orderRowDurationLabel(row = {}) {
+    if (!['program', 'activity'].includes(row?.type)) return '—';
+    const duration = nullableNumber(
+        row.durationMinutes
+        ?? row.duration_minutes
+        ?? row.meta?.durationMinutes
+        ?? row.meta?.duration_minutes
+        ?? row.meta?.duration
+    );
+    return duration === null || duration <= 0 ? '—' : `${Math.round(duration)} хв`;
+}
+
+function orderRowServingLabel(row = {}) {
+    if (['program', 'activity', 'entry'].includes(row?.type)) return '—';
+    return cleanText(row.meta?.servingTime || row.meta?.time || row.servingTime || row.serving_time, 40) || '—';
+}
+
+function orderRowQuantityLabel(row = {}) {
+    if (row?.type === 'entry') {
+        const quantityValue = nullableNumber(row.quantity);
+        return quantityValue === null ? (cleanText(row.quantity, 40) || '—') : `${formatQuantityNumber(quantityValue)} дітей`;
+    }
+    if (['program', 'activity', 'service_event'].includes(row?.type)) return '—';
+    return formatMenuQuantityWithServingUnit(
+        row.quantity,
+        row.meta?.servingUnit || row.servingUnit || row.serving_unit || row.meta?.priceUnit || row.priceUnit || row.price_unit
+    ) || '—';
+}
+
+function orderRowClientComment(row = {}) {
+    const type = String(row.type || '').trim().toLowerCase();
+    if (type === 'service_event') {
+        return row.meta?.time ? cleanText(`Час ${row.meta.time}`) : null;
+    }
+    return ['program', 'activity', 'entry', 'menu'].includes(type)
+        ? cleanText(row.comment, 500)
+        : null;
+}
+
+function buildBanquetOrderRowViewModel(row = {}, mode = 'client', currency = CURRENCY) {
+    const durationLabel = orderRowDurationLabel(row);
+    const servingLabel = orderRowServingLabel(row);
+    const comment = normalizeBanquetSummaryMode(mode) === 'client' ? orderRowClientComment(row) : cleanText(row.comment, 500);
+    const commentLabel = comment ? `Примітка: ${comment}` : null;
+    const metaLines = [];
+    if (durationLabel !== '—') metaLines.push(`Тривалість: ${durationLabel}`);
+    if (servingLabel !== '—') metaLines.push(`Видача: ${servingLabel}`);
+    if (commentLabel) metaLines.push(commentLabel);
+    return {
+        id: cleanText(row.id, 120),
+        type: cleanText(row.type, 60) || 'item',
+        title: orderRowTitle(row),
+        quantityLabel: orderRowQuantityLabel(row),
+        unitPriceLabel: formatOrderMoneyLabel(row.unitPrice, currency),
+        subtotalLabel: formatOrderMoneyLabel(row.subtotal, currency),
+        metaLines,
+        commentLabel
+    };
+}
+
+function buildBanquetOrderRowViewModels(orderRows = [], mode = 'client', currency = CURRENCY) {
+    const normalizedMode = normalizeBanquetSummaryMode(mode);
+    const rowTypes = banquetSummaryModeRowTypes(normalizedMode);
+    return (Array.isArray(orderRows) ? orderRows : [])
+        .filter(row => row && rowTypes.has(row.type))
+        .map(row => buildBanquetOrderRowViewModel(row, normalizedMode, currency));
 }
 
 function normalizeBanquetSummaryMode(mode) {
@@ -1554,6 +1647,9 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             tables: nullableNumber(firstNonNull(valueOf(kitchenBooking, 'banquetTables', 'banquet_tables'), valueOf(primaryBooking, 'banquetTables', 'banquet_tables')))
         },
         orderRows,
+        orderRowViews: {
+            client: buildBanquetOrderRowViewModels(orderRows, 'client', CURRENCY)
+        },
         serviceEvents: serviceEventRows,
         schedule,
         responsible,
@@ -1595,5 +1691,6 @@ module.exports = {
     banquetSummaryModeContract,
     banquetSummaryModeRowTypes,
     banquetSummaryModeAllowsComment,
+    buildBanquetOrderRowViewModels,
     buildBanquetSummary
 };

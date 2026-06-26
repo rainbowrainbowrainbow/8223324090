@@ -3,424 +3,39 @@
  * Validates HTML structure, JS function availability, onclick handlers
  * Run: node tests/ui-check.js
  */
-const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
-const eventCardsHelper = require('../js/event-cards');
-const inviteConfig = require('../js/invite-config');
-const inviteShare = require('../js/invite-share');
+const { createUiCheckContext } = require('./static/static-check-helpers');
+const { runInviteChecks } = require('./static/invite-checks');
+const { runBookingSummaryChecks } = require('./static/booking-summary-checks');
 
 const ROOT = path.join(__dirname, '..');
-let passed = 0, failed = 0;
+const ui = createUiCheckContext({ root: ROOT });
+const {
+    JSDOM,
+    check,
+    fileText,
+    cssTextWithImports,
+    cssRuleText,
+    cssRuleIncludingSelectorText,
+    cssAtRuleBlock,
+    hrSurfaceText,
+    htmlContains,
+    checkPage,
+    checkJSFile,
+    getHtmlScripts,
+    scriptIndex,
+    htmlScriptLoadsBefore,
+    getInlineScripts,
+    walkFiles,
+    sourceBlock
+} = ui;
 
-function check(label, condition) {
-    if (condition) { passed++; }
-    else { failed++; console.log(`  ❌ ${label}`); }
-}
-
-function fileText(filename) {
-    return fs.readFileSync(path.join(ROOT, filename), 'utf8');
-}
-
-function cssTextWithImports(filename, seen = new Set()) {
-    const normalized = filename.replace(/\\/g, '/');
-    if (seen.has(normalized)) return '';
-    seen.add(normalized);
-
-    const css = fileText(normalized);
-    const dir = path.posix.dirname(normalized);
-    const imports = [];
-    const importPattern = /@import\s+(?:url\()?["']?([^"')]+\.css(?:\?[^"')]+)?)["']?\)?\s*;?/g;
-    let match;
-
-    while ((match = importPattern.exec(css)) !== null) {
-        const rawRef = match[1].split('?')[0].replace(/^\/+/, '');
-        const imported = rawRef.startsWith('css/')
-            ? rawRef
-            : path.posix.normalize(path.posix.join(dir, rawRef));
-        imports.push(cssTextWithImports(imported, seen));
-    }
-
-    return [css, ...imports].filter(Boolean).join('\n');
-}
-
-function cssRuleText(css, selector) {
-    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = css.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\}`));
-    return match ? match[1] : '';
-}
-
-function cssRuleIncludingSelectorText(css, selector) {
-    const normalizedSelector = String(selector || '').trim().replace(/\s+/g, ' ');
-    let rule = '';
-    for (const match of css.matchAll(/([^{}]+)\{([\s\S]*?)\}/g)) {
-        const selectors = match[1].split(',').map(item => item.trim().replace(/\s+/g, ' '));
-        if (selectors.includes(normalizedSelector)) rule = match[2];
-    }
-    return rule;
-}
-
-function cssAtRuleBlock(css, atRulePrefix) {
-    const start = css.indexOf(atRulePrefix);
-    if (start === -1) return '';
-    const open = css.indexOf('{', start);
-    if (open === -1) return '';
-    let depth = 0;
-    for (let i = open; i < css.length; i++) {
-        if (css[i] === '{') depth++;
-        if (css[i] === '}') depth--;
-        if (depth === 0) return css.slice(open + 1, i);
-    }
-    return '';
-}
-
-function hrSurfaceText() {
-    return `${fileText('hr.html')}\n${fileText('css/hr-page.css')}`;
-}
-
-function htmlContains(filename, text) {
-    if (filename === 'hr.html') return hrSurfaceText().includes(text);
-    return fileText(filename).includes(text);
-}
-
-function checkPage(filename, checks) {
-    const filepath = path.join(ROOT, filename);
-    if (!fs.existsSync(filepath)) { console.log(`⚠️  ${filename} not found`); return; }
-    const html = fs.readFileSync(filepath, 'utf8');
-    const dom = new JSDOM(html, { url: `http://localhost:3000/${filename.replace('.html','')}`, runScripts: 'outside-only' });
-    const doc = dom.window.document;
-    console.log(`\n📄 ${filename}`);
-    checks(doc, html);
-    dom.window.close();
-}
-
-function checkJSFile(filename) {
-    const filepath = path.join(ROOT, filename);
-    if (!fs.existsSync(filepath)) { console.log(`⚠️  ${filename} not found`); return; }
-    const code = fs.readFileSync(filepath, 'utf8');
-    console.log(`\n📜 ${filename}`);
-
-    // Check syntax
-    try {
-        new Function(code);
-        check('Syntax valid', true);
-    } catch (e) {
-        check(`Syntax valid (${e.message})`, false);
-    }
-
-    // Check no ?.property = assignments
-    const badAssignments = code.match(/\?\.\w+\s*=[^=]/g);
-    check('No ?.prop = assignments', !badAssignments || badAssignments.length === 0);
-
-    // Check no misplaced <script> tags
-    check('No <script> in JS', !code.includes('<script>'));
-
-    return code;
-}
-
-function getHtmlScripts(html) {
-    return [...html.matchAll(/<script\s+src=["']([^"']+)["']/g)]
-        .map(m => m[1].split('?')[0]);
-}
-
-function scriptIndex(scripts, expected) {
-    return scripts.findIndex(src => src === expected || src.endsWith(`/${expected}`));
-}
-
-function htmlScriptLoadsBefore(htmlFile, dependency, consumer) {
-    const scripts = getHtmlScripts(fileText(htmlFile));
-    const dependencyIndex = scriptIndex(scripts, dependency);
-    const consumerIndex = scriptIndex(scripts, consumer);
-    return dependencyIndex >= 0 && consumerIndex >= 0 && dependencyIndex < consumerIndex;
-}
-
-function getInlineScripts(html) {
-    return [...html.matchAll(/<script(?!\s+src)[^>]*>([\s\S]*?)<\/script>/g)]
-        .map(m => m[1]);
-}
-
-function walkFiles(dir, matcher) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    return entries.flatMap(entry => {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) return walkFiles(full, matcher);
-        return matcher(full) ? [full] : [];
-    });
-}
-
-const eventCardSmokeDom = new JSDOM(`<main>${eventCardsHelper.renderEventCardImage({ title: 'Treasure quest' })}</main>`);
-const eventCardSmokeImage = eventCardSmokeDom.window.document.querySelector('.event-card-visual img');
-const eventCardPagesCss = cssTextWithImports('css/pages.css');
-const eventCardVisualRule = cssRuleText(eventCardPagesCss, '.event-card-visual');
-const eventCardImageRule = cssRuleText(eventCardPagesCss, '.event-card-visual img');
-const inviteHtml = fileText('invite.html');
-const inviteConfigCode = fileText('js/invite-config.js');
-const inviteShareCode = fileText('js/invite-share.js');
-const inviteBrowserSmokeCode = fileText('tests/browser/invite-browser-smoke.js');
 const bookingSummaryBrowserSmokeCode = fileText('tests/browser/booking-summary-browser-smoke.js');
-const inviteDom = new JSDOM(inviteHtml);
-const inviteHeroImage = inviteDom.window.document.querySelector('#inviteHeroImage');
-const inviteLogoImage = inviteDom.window.document.querySelector('.logo-img');
-const inviteSkipLink = inviteDom.window.document.querySelector('.skip-link');
-const inviteExpectedCardKeys = ['holiday-party', 'show-program', 'family-event', 'workshop', 'private-party', 'quest'];
-const inviteHeroWrapRule = cssRuleText(inviteHtml, '.invite-hero-wrap');
-const inviteHeroImageRule = cssRuleText(inviteHtml, '.invite-hero');
-const inviteLogoImageRule = cssRuleText(inviteHtml, '.logo-img');
-const inviteDetailRowRule = cssRuleText(inviteHtml, '.event-detail-row');
-const inviteDetailLabelRule = cssRuleText(inviteHtml, '.event-detail-label');
-const inviteDetailValueRule = cssRuleText(inviteHtml, '.event-detail-value');
-const inviteLocationMapRule = cssRuleText(inviteHtml, '.invite-section--location .map-link');
-const inviteVisitRowRule = cssRuleText(inviteHtml, '.invite-section--visit .invite-info-row');
-const inviteFooterRule = cssRuleText(inviteHtml, '.invite-footer');
-const inviteShareButtonsRule = cssRuleText(inviteHtml, '.share-buttons');
-const inviteShareButtonRule = cssRuleText(inviteHtml, '.share-btn');
-const inviteSkipLinkRule = cssRuleText(inviteHtml, '.skip-link');
-const inviteSkipLinkFocusRule = cssRuleIncludingSelectorText(inviteHtml, '.skip-link:focus-visible');
+const inviteShareCode = fileText('js/invite-share.js');
 
-function renderInviteSmokeDom(query) {
-    const dom = new JSDOM(inviteHtml, {
-        url: `http://localhost:3000/invite${query}`,
-        runScripts: 'outside-only'
-    });
-    dom.window.EventCards = eventCardsHelper;
-    dom.window.InviteConfig = inviteConfig;
-    getInlineScripts(inviteHtml).forEach(script => dom.window.eval(script));
-    return dom;
-}
-
-function inviteVisitTipValues(dom) {
-    return [...dom.window.document.querySelectorAll('[data-visit-tip] .value')]
-        .map(node => node.textContent.trim());
-}
-
-const inviteShowProgramDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program');
-const inviteQuestDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=16:00&program=Квест&room=Карта&card=quest');
-const inviteInvalidCardDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&program=Невідома%20подія&room=Поні&card=broken-card');
-const inviteShowProgramTips = inviteVisitTipValues(inviteShowProgramDom);
-const inviteQuestTips = inviteVisitTipValues(inviteQuestDom);
-const inviteInvalidCardTips = inviteVisitTipValues(inviteInvalidCardDom);
-const inviteShareSmokePayload = inviteShare.buildInviteSharePayload({
-    date: '2026-06-25',
-    time: '15:00',
-    end: '15:30',
-    program: 'Паперове Неон-шоу',
-    room: 'Поні',
-    card: 'show-program',
-    phone: '+380000000000',
-    comment: 'internal note'
-}, inviteConfig, 'https://crm.example');
-const inviteDetailsSmokeModel = inviteShare.buildBookingDetailsInviteModel({
-    booking: {
-        date: '2026-06-25',
-        time: '15:00',
-        programName: 'Паперове Неон-шоу',
-        label: 'Internal fallback label',
-        room: 'Поні',
-        phone: '+380000000000',
-        comment: 'private note',
-        price: 9999,
-        status: 'confirmed'
-    },
-    eventCardRecord: { title: 'Show program' },
-    endTimeLabel: '15:30'
-}, inviteConfig, 'https://crm.example', {
-    resolveEventCardKey: () => 'show-program',
-    EVENT_CARDS: { 'show-program': { key: 'show-program' } }
-});
-
-check('Event card visual smoke is static, ordered, and DB-free',
-    htmlScriptLoadsBefore('index.html', 'js/event-cards.js', 'js/invite-config.js')
-    && htmlScriptLoadsBefore('index.html', 'js/invite-config.js', 'js/invite-share.js')
-    && htmlScriptLoadsBefore('index.html', 'js/invite-share.js', 'js/booking.js')
-    && htmlScriptLoadsBefore('programs.html', 'js/event-cards.js', 'js/programs-page.js')
-    && htmlScriptLoadsBefore('leads.html', 'js/event-cards.js', 'js/leads-page.js')
-    && htmlScriptLoadsBefore('afisha.html', 'js/event-cards.js', 'js/afisha-page.js')
-    && eventCardSmokeImage?.closest('.event-card-visual')
-    && eventCardSmokeImage?.getAttribute('src')?.startsWith('/images/event-cards/')
-    && eventCardVisualRule.includes('aspect-ratio: 16 / 9')
-    && eventCardImageRule.includes('object-fit: cover'));
-eventCardSmokeDom.window.close();
-check('Invite page uses dynamic event-card header contract',
-    scriptIndex(getHtmlScripts(inviteHtml), 'js/event-cards.js') >= 0
-    && scriptIndex(getHtmlScripts(inviteHtml), 'js/invite-config.js') >= 0
-    && htmlScriptLoadsBefore('invite.html', 'js/event-cards.js', 'js/invite-config.js')
-    && inviteHeroImage?.getAttribute('src') === '/images/event-cards/event-card-holiday-party.png'
-    && inviteHeroImage?.getAttribute('src')?.startsWith('/images/event-cards/')
-    && inviteHeroImage?.getAttribute('alt') === 'Зображення типу заходу'
-    && !inviteHtml.includes('images/banners/banner-invite-v2.png')
-    && inviteHtml.includes("const end = params.get('end');")
-    && inviteHtml.includes("const arrival = params.get('arrival') || params.get('guestTime') || params.get('guest_time');")
-    && inviteHtml.includes("const eventType = params.get('type');")
-    && inviteHtml.includes("const category = params.get('category');")
-    && inviteHtml.includes("const requested = String(params.get('card') || '').trim();")
-    && inviteHtml.includes("new Set(['holiday-party', 'show-program', 'family-event', 'workshop', 'private-party', 'quest'])")
-    && inviteHtml.includes("const fallback = cards['holiday-party']")
-    && inviteHtml.includes("src: '/images/event-cards/event-card-holiday-party.png'")
-    && inviteHtml.includes('window.EventCards?.resolveEventCardKey?.({')
-    && inviteHtml.includes('return allowedKeys.has(resolved) && cards[resolved] ? cards[resolved] : fallback;')
-    && inviteHtml.includes("hero.dataset.card = card.key")
-    && inviteHtml.includes('const INVITE_CONFIG = window.InviteConfig || DEFAULT_INVITE_CONFIG;')
-    && inviteHtml.includes('renderInviteLocation();')
-    && inviteHtml.includes("title.textContent = program || 'Запрошення'")
-    && inviteHtml.includes('renderInviteContact();')
-    && inviteHtml.includes('formatInviteTimeRange(time, end)')
-    && inviteHtml.includes('onclick="shareInvite(event)"')
-    && inviteHtml.includes('onclick="copyLink(event)"')
-    && inviteHtml.includes('function writeClipboardText(text)')
-    && inviteHtml.includes('function fallbackCopy()')
-    && inviteHtml.includes('const shareTitle = inviteConfigText(INVITE_CONFIG.shareTitle')
-    && inviteHtml.includes('const address = inviteLocationAddress();')
-    && inviteHtml.includes('navigator.share({ title: shareTitle, text: text, url: window.location.href })')
-    && !inviteHtml.includes('Парк Закревського Періоду — вул. Закревського 31/2, 3 поверх')
-    && inviteHtml.includes('navigator.clipboard && typeof navigator.clipboard.writeText === \'function\'')
-    && inviteHtml.includes('Promise.race([clipboardWrite, clipboardTimeout]).catch(fallbackCopy)')
-    && inviteHtml.includes("new Error('Clipboard timeout')")
-    && inviteHtml.includes('document.execCommand(\'copy\')')
-    && inviteHeroWrapRule.includes('aspect-ratio: 16 / 9')
-    && inviteHeroImageRule.includes('object-fit: cover'));
-check('Invite share helper builds safe public URL and config-based share payload',
-    typeof inviteShare.buildInviteParams === 'function'
-    && typeof inviteShare.buildInviteUrl === 'function'
-    && typeof inviteShare.buildInviteSharePayload === 'function'
-    && typeof inviteShare.buildBookingDetailsInviteModel === 'function'
-    && inviteShareCode.includes("const SAFE_INVITE_KEYS = Object.freeze(['date', 'time', 'end', 'program', 'room', 'card'])")
-    && inviteShareSmokePayload.fullInviteUrl === 'https://crm.example/invite?date=2026-06-25&time=15%3A00&end=15%3A30&program=%D0%9F%D0%B0%D0%BF%D0%B5%D1%80%D0%BE%D0%B2%D0%B5+%D0%9D%D0%B5%D0%BE%D0%BD-%D1%88%D0%BE%D1%83&room=%D0%9F%D0%BE%D0%BD%D1%96&card=show-program'
-    && inviteShareSmokePayload.inviteUrl.startsWith('/invite?date=2026-06-25&time=15%3A00&end=15%3A30')
-    && inviteShareSmokePayload.messengerText.includes(inviteConfig.location.rows[0].value)
-    && inviteShareSmokePayload.shareTitle === inviteConfig.shareTitle
-    && !inviteShareSmokePayload.fullInviteUrl.includes('phone')
-    && !inviteShareSmokePayload.fullInviteUrl.includes('comment')
-    && !inviteShareSmokePayload.messengerText.includes('internal note')
-    && !inviteShareSmokePayload.shortText.includes('+380000000000')
-    && inviteDetailsSmokeModel.cardKey === 'show-program'
-    && inviteDetailsSmokeModel.payload.fullInviteUrl === inviteShareSmokePayload.fullInviteUrl
-    && inviteDetailsSmokeModel.previewChips.includes('Паперове Неон-шоу')
-    && inviteDetailsSmokeModel.previewChips.includes('15:00 - 15:30')
-    && inviteDetailsSmokeModel.publicData.card === 'show-program'
-    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('phone')
-    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('comment')
-    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('price')
-    && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('status'));
-check('Invite event details use labeled rows for date, activity time, program, and room',
-    inviteHtml.includes("const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));")
-    && inviteHtml.includes("renderEventDetailRow('📅', 'Дата', date)")
-    && inviteHtml.includes("renderEventDetailRow('🕐', 'Прихід гостей', arrival)")
-    && inviteHtml.includes("renderEventDetailRow('⏱', 'Час активності', timeRange)")
-    && inviteHtml.includes("renderEventDetailRow('🎉', 'Активність', program)")
-    && inviteHtml.includes("renderEventDetailRow('📍', 'Кімната', room)")
-    && inviteHtml.includes('function renderEventDetailRow(icon, label, value)')
-    && inviteDetailRowRule.includes('display: grid')
-    && inviteDetailRowRule.includes('grid-template-columns: 28px minmax(0, 1fr)')
-    && inviteDetailRowRule.includes('border-radius: 16px')
-    && inviteDetailLabelRule.includes('text-transform: uppercase')
-    && inviteDetailValueRule.includes('display: block')
-    && inviteDetailValueRule.includes('overflow-wrap: anywhere')
-    && !inviteHtml.includes('<div class="event-detail-row">📅 <strong>')
-    && !inviteHtml.includes('<div class="event-detail-row">🕐 <strong>')
-    && !inviteHtml.includes('<div class="event-detail-row">⏱ <strong>')
-    && !inviteHtml.includes("if (timeRange) html += '<div class=\"event-detail-row\">"));
-check('Invite page uses Event Genix company logo instead of legacy mascot avatar',
-    inviteLogoImage?.getAttribute('src') === 'images/brand/event-genix-logo.png'
-    && inviteLogoImage?.getAttribute('alt') === 'Логотип Event Genix'
-    && fs.existsSync(path.join(ROOT, 'images', 'brand', 'event-genix-logo.png'))
-    && inviteLogoImageRule.includes('object-fit: contain')
-    && inviteLogoImageRule.includes('object-position: center')
-    && inviteLogoImageRule.includes('background: #FFFFFF')
-    && !inviteHtml.includes('src="images/logo-new.png"')
-    && !inviteHtml.includes('images/branding/event-genix-logo.png')
-    && !inviteHtml.includes('dinosaur')
-    && !inviteHtml.includes('Динозавр'));
-check('Invite lower flow focuses on guest visit details instead of generic service marketing',
-    inviteExpectedCardKeys.every(key => Array.isArray(inviteConfig.visit?.tips?.[key]) && inviteConfig.visit.tips[key].length >= 1)
-    && inviteConfig.brandName === 'Event Genix'
-    && inviteConfig.location?.rows?.some(row => row.label === 'Адреса' && row.value.includes('Закревського'))
-    && inviteConfig.location?.rows?.some(row => row.label === 'Орієнтир' && row.value.includes('Лісова'))
-    && inviteConfig.location?.mapUrl?.startsWith('https://maps.google.com/')
-    && inviteConfig.contact?.rows?.some(row => row.label === 'Контакт' && row.value === 'Зв\'яжіться з нами' && !row.href)
-    && !inviteConfigCode.includes('tel:+380XXXXXXXXX')
-    && !inviteHtml.includes('tel:+380XXXXXXXXX')
-    && inviteHtml.includes('id="inviteLocationSection"')
-    && inviteHtml.includes('id="inviteVisitSection"')
-    && inviteHtml.includes('id="inviteContactSection"')
-    && inviteHtml.includes('function renderInviteLocation()')
-    && inviteHtml.includes('function renderInviteContact()')
-    && inviteHtml.includes('function renderInviteInfoRow(item, attributes)')
-    && inviteHtml.includes('renderInviteVisitTips(card.key)')
-    && inviteHtml.includes('const configTips = INVITE_CONFIG.visit?.tips || {};')
-    && inviteHtml.includes("const tips = configTips[cardKey] || configTips['holiday-party'] || fallbackTips['holiday-party'];")
-    && !inviteHtml.includes('const INVITE_VISIT_TIPS = {')
-    && !inviteHtml.includes('м. Лісова / м. Чернігівська')
-    && !inviteHtml.includes('вул. Закревського 31/2, 3 поверх')
-    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('Як нас знайти')
-    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('вул. Закревського 31/2, 3 поверх')
-    && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection .map-link')?.getAttribute('href') === inviteConfig.location.mapUrl
-    && inviteShowProgramDom.window.document.querySelector('#inviteVisitSection')?.textContent.includes('Перед візитом')
-    && inviteShowProgramDom.window.document.querySelector('#inviteContactSection')?.textContent.includes('Контакти')
-    && inviteHtml.includes('Поділитися запрошенням')
-    && inviteHtml.includes('onclick="shareInvite(event)"')
-    && inviteHtml.includes('onclick="copyLink(event)"')
-    && inviteLocationMapRule.includes('margin-top: 12px')
-    && inviteVisitRowRule.includes('align-items: flex-start')
-    && inviteFooterRule.includes('padding: 16px 30px 20px')
-    && inviteShareButtonsRule.includes('flex-wrap: wrap')
-    && inviteShareButtonRule.includes('min-height: 40px')
-    && !inviteHtml.includes('Що вас чекає')
-    && !inviteHtml.includes('features-list')
-    && !inviteHtml.includes('feature-item')
-    && !inviteHtml.includes('images/icon-quest.png')
-    && !inviteHtml.includes('images/icon-animation.png')
-    && !inviteHtml.includes('images/icon-show.png')
-    && !inviteHtml.includes('images/icon-masterclass.png')
-    && !inviteHtml.includes('images/icon-photo.png')
-    && !inviteHtml.includes('images/icon-pinata.png'));
-check('Invite personalized guest tips render by card and fall back safely',
-    inviteShowProgramDom.window.document.querySelector('#inviteHeroImage')?.dataset.card === 'show-program'
-    && inviteShowProgramTips.some(text => text.includes('до початку шоу'))
-    && inviteShowProgramTips.some(text => text.includes('плануєте зйомку'))
-    && inviteQuestDom.window.document.querySelector('#inviteHeroImage')?.dataset.card === 'quest'
-    && inviteQuestTips.some(text => text.includes('короткого інструктажу'))
-    && inviteQuestTips.some(text => text.includes('проходити завдання'))
-    && inviteInvalidCardDom.window.document.querySelector('#inviteHeroImage')?.dataset.card === 'holiday-party'
-    && inviteInvalidCardTips.some(text => text.includes('до початку події'))
-    && inviteInvalidCardDom.window.document.querySelector('#inviteTitle')?.textContent.includes('Невідома подія')
-    && inviteInvalidCardDom.window.document.querySelector('#inviteVisitSection')?.querySelectorAll('[data-visit-tip]').length >= 2);
-check('Invite browser smoke covers real public invite render without joining npm test',
-    pkg.scripts?.['test:browser:invite'] === 'npx --yes --package playwright node tests/browser/invite-browser-smoke.js'
-    && pkg.scripts?.test === 'npm run verify'
-    && !pkg.scripts?.verify?.includes('test:browser:invite')
-    && inviteBrowserSmokeCode.includes("const INVITE_PATH = '/invite?date=2026-06-25&time=15:00&end=15:30&program=")
-    && inviteBrowserSmokeCode.includes('card=show-program')
-    && inviteBrowserSmokeCode.includes("if (relativePath === 'invite') relativePath = 'invite.html';")
-    && inviteBrowserSmokeCode.includes("page.setViewportSize({ width: 390, height: 844 })")
-    && inviteBrowserSmokeCode.includes('assertNoHorizontalOverflow(page)')
-    && inviteBrowserSmokeCode.includes("page.locator('.logo-img')")
-    && inviteBrowserSmokeCode.includes('event-card-show-program.png')
-    && inviteBrowserSmokeCode.includes('const labels = labelText.map(item => item.trim());')
-    && inviteBrowserSmokeCode.includes('date label is visible')
-    && inviteBrowserSmokeCode.includes('activity label is visible')
-    && inviteBrowserSmokeCode.includes('room label is visible')
-    && inviteBrowserSmokeCode.includes('generic service grid title is absent')
-    && inviteBrowserSmokeCode.includes("const shareButtons = page.locator('.share-btn')")
-    && inviteBrowserSmokeCode.includes('assertSkipLinkHiddenByDefault(page)'));
-inviteShowProgramDom.window.close();
-inviteQuestDom.window.close();
-inviteInvalidCardDom.window.close();
-check('Invite skip link stays accessible without showing as a broken page link',
-    inviteSkipLink?.getAttribute('href') === '#invite-details'
-    && inviteHtml.includes('id="invite-details"')
-    && inviteSkipLinkRule.includes('position: fixed')
-    && inviteSkipLinkRule.includes('width: 1px')
-    && inviteSkipLinkRule.includes('height: 1px')
-    && inviteSkipLinkRule.includes('clip-path: inset(50%)')
-    && inviteSkipLinkRule.includes('overflow: hidden')
-    && inviteSkipLinkRule.includes('z-index: 1000')
-    && inviteSkipLinkFocusRule.includes('width: auto')
-    && inviteSkipLinkFocusRule.includes('height: auto')
-    && inviteSkipLinkFocusRule.includes('clip-path: none')
-    && inviteSkipLinkFocusRule.includes('background: #FFFFFF')
-    && inviteSkipLinkFocusRule.includes('outline: 3px solid'));
-inviteDom.window.close();
+runInviteChecks(ui);
 
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS
@@ -1052,492 +667,7 @@ checkPage('timeline-settings.html', (doc, html) => {
     check('Timeline settings loads context and page controllers', getHtmlScripts(html).includes('js/timeline-context.js') && getHtmlScripts(html).includes('js/timeline-settings-page.js'));
 });
 
-checkPage('booking-summary.html', (doc, html) => {
-    const pageCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-summary-page.js'), 'utf8');
-    const banquetSummaryServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'banquetSummary.js'), 'utf8');
-    const banquetSummaryPdfCode = fs.readFileSync(path.join(ROOT, 'services', 'banquetSummaryPdf.js'), 'utf8');
-    const pageCss = fs.readFileSync(path.join(ROOT, 'css', 'booking-summary.css'), 'utf8');
-    const printCss = cssAtRuleBlock(pageCss, '@media print');
-    const mobileCss = cssAtRuleBlock(pageCss, '@media (max-width: 760px)');
-    const printHtmlRule = cssRuleIncludingSelectorText(printCss, 'html');
-    const printDarkHtmlRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"]');
-    const printBodyRule = cssRuleIncludingSelectorText(printCss, 'body.booking-summary-page');
-    const printDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] body.booking-summary-page');
-    const printDirectDarkBodyRule = cssRuleIncludingSelectorText(printCss, 'html[data-theme="dark"] > body.booking-summary-page');
-    const printDirectBodyRule = cssRuleIncludingSelectorText(printCss, 'html > body.booking-summary-page');
-    const printToolbarRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toolbar');
-    const printStateRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-state');
-    const printToastRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-toast');
-    const printDocumentRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-document');
-    const printA4PageRule = cssRuleIncludingSelectorText(printCss, '.booking-summary-a4-page');
-    const mobilePrintRootRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-print-root');
-    const mobileA4PageRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-a4-page');
-    const printSectionHeadingRule = cssRuleIncludingSelectorText(printCss, '.summary-section h2');
-    const printTableHeadRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table thead');
-    const printTableRowRule = cssRuleIncludingSelectorText(printCss, '.summary-order-table tr');
-    const printServiceEventRule = cssRuleIncludingSelectorText(printCss, '.summary-service-event');
-    const printTermsRule = cssRuleIncludingSelectorText(printCss, '.summary-terms');
-    const printTermsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--terms');
-    const printTermsItemRule = cssRuleIncludingSelectorText(printCss, '.summary-terms li');
-    const printCommentsRule = cssRuleIncludingSelectorText(printCss, '.summary-comments');
-    const printCommentsSectionRule = cssRuleIncludingSelectorText(printCss, '.summary-section--comments');
-    const printCommentRowRule = cssRuleIncludingSelectorText(printCss, '.summary-comment-row');
-    const summaryToolbarRule = cssRuleText(pageCss, '.booking-summary-toolbar');
-    const summaryActionsRule = cssRuleText(pageCss, '.booking-summary-actions');
-    const summaryButtonRule = cssRuleText(pageCss, '.booking-summary-btn');
-    const summarySecondaryButtonRule = cssRuleText(pageCss, '.booking-summary-btn-secondary');
-    const summaryPrimaryButtonRule = cssRuleText(pageCss, '.booking-summary-btn-primary');
-    const summaryCloseButtonRule = cssRuleText(pageCss, '.booking-summary-close');
-    const mobileSummaryActionsRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-actions');
-    const mobileSummaryCloseRule = cssRuleIncludingSelectorText(mobileCss, '.booking-summary-close');
-    const banquetHeroRule = cssRuleText(pageCss, '.banquet-hero');
-    const bookingCardRule = cssRuleText(pageCss, '.booking-card');
-    const bookingIdRule = cssRuleText(pageCss, '.booking-id');
-    const metaRowRule = cssRuleText(pageCss, '.meta-row');
-    const termsSectionRule = cssRuleText(pageCss, '.summary-section--terms');
-    const printTermsSpacingRule = cssRuleText(printCss, '.summary-section--terms');
-    const summaryBriefRule = cssRuleText(pageCss, '.summary-brief');
-    const summaryBriefGridRule = cssRuleText(pageCss, '.summary-brief-grid');
-    const summaryBriefItemRule = cssRuleText(pageCss, '.summary-brief-item');
-    const mobileHeroRule = cssRuleIncludingSelectorText(mobileCss, '.banquet-hero');
-    const mobileBriefGridRule = cssRuleIncludingSelectorText(mobileCss, '.summary-brief-grid');
-    const printHeroRule = cssRuleIncludingSelectorText(printCss, '.banquet-hero');
-    const printBriefGridRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-grid');
-    const printBriefColumnRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-column');
-    const printBriefItemRule = cssRuleIncludingSelectorText(printCss, '.summary-brief-item');
-    const printTriggerCount = (pageCode.match(/window\.print\s*\(/g) || []).length;
-    const renderTermsBody = pageCode.match(/function renderTerms\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function renderDocument/)?.[1] || '';
-    const renderDocumentBody = pageCode.match(/function renderDocument\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    function summaryText/)?.[1] || '';
-    const summaryTextBody = pageCode.match(/function summaryText\(summary\) \{([\s\S]*?)\r?\n    \}\r?\n\r?\n    async function copyText/)?.[1] || '';
-    const pdfExportButtons = Array.from(doc.querySelectorAll('[data-booking-summary-pdf-mode]'));
-    const frontendBanquetTermsHardcode = /(banquet_own_cake_fee|banquet_cork_fee|banquet_menu_correction_deadline_days|banquet_date_change_deadline_days|Cork Fee|Свій торт|500грн|500 грн|100грн|100 грн|3 доби|5 діб)/;
-    check('Booking summary page exposes preview shell and actions',
-        !doc.getElementById('bookingSummaryBack')
-        && !!doc.getElementById('bookingSummaryClose')
-        && !!doc.getElementById('bookingSummaryCopy')
-        && !!doc.getElementById('bookingSummaryClientPdf')
-        && !!doc.getElementById('bookingSummaryPrint')
-        && pdfExportButtons.length === 1
-        && pdfExportButtons[0]?.getAttribute('data-booking-summary-pdf-mode') === 'client'
-        && doc.getElementById('bookingSummaryClose')?.getAttribute('aria-label') === 'Закрити банкетний лист'
-        && doc.getElementById('bookingSummaryClose')?.getAttribute('title') === 'Закрити'
-        && doc.getElementById('bookingSummaryClientPdf')?.textContent?.trim() === 'PDF для клієнта'
-        && !html.includes('data-booking-summary-pdf-mode="kitchen"')
-        && !html.includes('data-booking-summary-pdf-mode="staff"')
-        && !html.includes('Для кухні')
-        && !html.includes('Для персоналу')
-        && !html.includes('Експорт PDF')
-        && !html.includes('Повернутись')
-        && pageCode.includes("el('bookingSummaryClientPdf')?.addEventListener('click', () => exportSummaryPdf('client'))")
-        && !pageCode.includes("document.querySelectorAll('[data-booking-summary-pdf-mode]')")
-        && html.includes('booking-summary-shell')
-        && html.includes('booking-summary-btn-primary')
-        && !banquetSummaryPdfCode.includes('drawFinalBrand')
-        && !!doc.getElementById('bookingSummaryWarnings')
-        && !!doc.getElementById('bookingSummaryPrintRoot')
-        && !!doc.getElementById('bookingSummaryDocument'));
-    check('Booking summary toolbar uses compact unified button hierarchy',
-        summaryToolbarRule.includes('padding: 12px 20px')
-        && summaryToolbarRule.includes('gap: 16px')
-        && summaryActionsRule.includes('flex-wrap: nowrap')
-        && summaryButtonRule.includes('min-height: 38px')
-        && summaryButtonRule.includes('white-space: nowrap')
-        && summaryButtonRule.includes('transition:')
-        && summarySecondaryButtonRule.includes('background: rgba(15, 23, 42, 0.72)')
-        && summaryPrimaryButtonRule.includes('box-shadow: 0 10px 26px rgba(20, 184, 166, 0.22)')
-        && summaryCloseButtonRule.includes('width: 38px')
-        && summaryCloseButtonRule.includes('border-radius: 999px')
-        && pageCss.includes('.booking-summary-btn:disabled')
-        && pageCss.includes('.booking-summary-btn:active')
-        && pageCss.includes('.booking-summary-btn-primary:hover')
-        && pageCss.includes('.booking-summary-close:active')
-        && mobileSummaryActionsRule.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px')
-        && mobileSummaryCloseRule.includes('grid-column: 3')
-        && printToolbarRule.includes('display: none !important')
-        && !pageCss.includes('.booking-summary-export'));
-    check('Booking summary browser smoke covers client document surface without joining npm test',
-        pkg.scripts?.['test:browser:booking-summary'] === 'npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js'
-        && pkg.scripts?.test === 'npm run verify'
-        && !pkg.scripts?.verify?.includes('test:browser:booking-summary')
-        && bookingSummaryBrowserSmokeCode.includes("const SUMMARY_PATH = '/booking-summary.html?id=BK-SMOKE-001&mode=client&businessContext=event_genix'")
-        && bookingSummaryBrowserSmokeCode.includes('routeBookingSummaryApi(page)')
-        && bookingSummaryBrowserSmokeCode.includes('banquet-summary.pdf')
-        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryDocument:not([hidden])')
-        && bookingSummaryBrowserSmokeCode.includes('.booking-summary-toolbar')
-        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryClose[aria-label="Закрити банкетний лист"]')
-        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryClientPdf[data-booking-summary-pdf-mode="client"]')
-        && bookingSummaryBrowserSmokeCode.includes('#bookingSummaryPrint')
-        && bookingSummaryBrowserSmokeCode.includes('Для кухні')
-        && bookingSummaryBrowserSmokeCode.includes('Для персоналу')
-        && bookingSummaryBrowserSmokeCode.includes('.banquet-final-brand')
-        && bookingSummaryBrowserSmokeCode.includes('Позиція')
-        && bookingSummaryBrowserSmokeCode.includes('К-сть')
-        && bookingSummaryBrowserSmokeCode.includes('Ціна')
-        && bookingSummaryBrowserSmokeCode.includes('Сума')
-        && bookingSummaryBrowserSmokeCode.includes('assertPrintCssHidesToolbar(page)')
-        && bookingSummaryBrowserSmokeCode.includes("page.setViewportSize({ width: 390, height: 844 })")
-        && bookingSummaryBrowserSmokeCode.includes('assertNoHorizontalOverflow(page)'));
-    check('Booking summary page uses banquet sheet naming without changing internal route contracts',
-        doc.title === 'Event Genix | Банкетний лист'
-        && doc.querySelector('meta[name="description"]')?.getAttribute('content') === 'Preview і друк банкетного листа Event Genix'
-        && doc.querySelector('.booking-summary-toolbar')?.getAttribute('aria-label') === 'Дії з банкетним листом'
-        && doc.querySelector('.booking-summary-toolbar h1')?.textContent?.trim() === 'Банкетний лист'
-        && doc.getElementById('bookingSummaryState')?.textContent?.includes('Завантаження банкетного листа...')
-        && doc.getElementById('bookingSummaryDocument')?.getAttribute('aria-label') === 'Документ банкетного листа'
-        && pageCode.includes("summary.document?.title || 'БАНКЕТНИЙ ЛИСТ'")
-        && pageCode.includes("summary.venue?.name || 'Банкетний лист'")
-        && pageCode.includes('Потрібно увійти в CRM, щоб відкрити банкетний лист.')
-        && pageCode.includes('Не вдалося завантажити банкетний лист')
-        && pageCode.includes('Банкетний лист ще не завантажений')
-        && pageCode.includes('Текст банкетного листа скопійовано')
-        && banquetSummaryServiceCode.includes("title: 'БАНКЕТНИЙ ЛИСТ'")
-        && pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
-        && !html.includes('Вижимка банкету')
-        && !html.includes('вижимк')
-        && !pageCode.includes('Вижимка банкету')
-        && !pageCode.includes('вижимк')
-        && !banquetSummaryServiceCode.includes("title: 'Вижимка банкету'"));
-    check('Booking summary page renders canonical comments section and copy text',
-        pageCode.includes('function summaryCommentRows(summary, mode = summaryMode(summary))')
-        && pageCode.includes('function renderComments(summary, mode = summaryMode(summary))')
-        && pageCode.includes('function summaryModeAllowsComment(summary, type, mode = summaryMode(summary))')
-        && renderDocumentBody.includes("briefItem('Дата банкету', formatDate(event.date))")
-        && renderDocumentBody.includes("briefItem('Прихід гостей', event.time)")
-        && !renderDocumentBody.includes("briefItem('Дата', formatDate(event.date))")
-        && !renderDocumentBody.includes("briefItem('Час', event.time)")
-        && summaryTextBody.includes('`Дата банкету: ${formatDate(event.date)}`')
-        && summaryTextBody.includes('`Прихід гостей: ${formatValue(event.time)}`')
-        && !summaryTextBody.includes('Дата' + '/час:')
-        && renderDocumentBody.includes('summary-section--comments')
-        && renderDocumentBody.includes('${renderComments(summary, mode)}')
-        && renderDocumentBody.indexOf('summary-section--comments') > renderDocumentBody.indexOf('summary-section--service-events')
-        && renderDocumentBody.indexOf('summary-section--comments') < renderDocumentBody.indexOf('summary-section--finance')
-        && summaryTextBody.includes('const comments = sections.comments ? summaryCommentRows(summary, mode) : []')
-        && summaryTextBody.includes('Примітки:')
-        && summaryTextBody.includes('comments.map(comment => `- ${comment.label}: ${comment.text}`)')
-        && pageCss.includes('.summary-comments')
-        && pageCss.includes('.summary-comment-row')
-        && printCommentsSectionRule.includes('break-inside: avoid')
-        && printCommentsRule.includes('break-inside: avoid')
-        && printCommentRowRule.includes('break-inside: avoid')
-        && banquetSummaryServiceCode.includes('function buildSummaryComments')
-        && banquetSummaryServiceCode.includes('function inlineCommentKeysFromRows(rows = [])')
-        && banquetSummaryServiceCode.includes('comments: summaryComments')
-        && banquetSummaryServiceCode.includes("add('kitchen', 'Кухня'")
-        && banquetSummaryServiceCode.includes("add('activity', 'Коментар до активності'")
-        && banquetSummaryServiceCode.includes("add('internal', 'Внутрішній коментар'"));
-    check('Booking summary sheet uses clear menu quantity wording',
-        pageCode.includes('function summaryMenuQuantityLabel(row = {})')
-        && pageCode.includes('function formatCurrencyLabel(currency = \'UAH\')')
-        && pageCode.includes("return normalized.toUpperCase() === 'UAH' ? '₴' : normalized")
-        && pageCode.includes('function normalizeSummaryMenuServingUnitDisplay')
-        && pageCode.includes('function summaryOrderQuantityLabel(row = {})')
-        && pageCode.includes("['program', 'activity', 'service_event'].includes(row?.type)")
-        && pageCode.includes('function summaryDurationLabel(row = {})')
-        && pageCode.includes('function summaryClientOrderQuantityLabel(row = {})')
-        && pageCode.includes('function summaryClientOrderUnitPriceLabel(row = {}, currency = \'UAH\')')
-        && pageCode.includes('function summaryClientOrderSubtotalLabel(row = {}, currency = \'UAH\')')
-        && pageCode.includes('function summaryClientOrderMetaHtml(row = {})')
-        && pageCode.includes('function summaryClientOrderTextLines(rows = [], currency = \'UAH\')')
-        && pageCode.includes('`   К-сть: ${summaryClientOrderQuantityLabel(row)}`')
-        && pageCode.includes('`   Ціна: ${summaryClientOrderUnitPriceLabel(row, currency)}`')
-        && pageCode.includes('`   Сума: ${summaryClientOrderSubtotalLabel(row, currency)}`')
-        && pageCode.includes("if (duration !== '—') lines.push(`   Тривалість: ${duration}`);")
-        && pageCode.includes("if (serving !== '—') lines.push(`   Видача: ${serving}`);")
-        && pageCode.includes('if (comment) lines.push(`   Примітка: ${comment}`);')
-        && pageCode.includes('<table class="summary-order-table summary-order-table--client">')
-        && pageCode.includes('<th>Позиція</th>')
-        && pageCode.includes('<th class="qty">К-сть</th>')
-        && pageCode.includes('<th class="money">Ціна</th>')
-        && pageCode.includes('<th class="money">Сума</th>')
-        && pageCode.includes('data-label="Позиція"')
-        && pageCode.includes('data-label="Ціна"')
-        && pageCode.includes('data-label="Сума"')
-        && pageCode.includes('${summaryClientOrderMetaHtml(row)}')
-        && pageCode.includes('summaryClientOrderUnitPriceLabel(row, currency)')
-        && pageCode.includes('summaryClientOrderSubtotalLabel(row, currency)')
-        && pageCode.includes('<th class="duration">Тривалість</th>')
-        && pageCode.includes('<td class="duration">${escapeHtml(summaryDurationLabel(row))}</td>')
-        && pageCode.includes("function summaryOrderServingLabel(row = {})")
-        && pageCode.includes('function summaryEntryFullAmountLabel(row = {}, currency = \'UAH\')')
-        && pageCode.includes('по ${unit}')
-        && pageCode.includes('<col style="width:86px">')
-        && pageCode.includes('<col style="width:118px">')
-        && pageCode.includes('<td class="qty">${escapeHtml(summaryOrderQuantityLabel(row))}</td>')
-        && summaryTextBody.includes("rows.length && mode === 'client' ? summaryClientOrderTextLines(rows, currency)")
-        && summaryTextBody.includes('const durationLabel = summaryDurationLabel(row)')
-        && summaryTextBody.includes('const quantityLabel = summaryOrderQuantityLabel(row)')
-        && summaryTextBody.includes("row?.type === 'program' || row?.type === 'activity'")
-        && summaryTextBody.includes('${durationLabel} — ${formatMoney(row.subtotal, currency)}')
-        && summaryTextBody.includes('${summaryEntryFullAmountLabel(row, currency)}')
-        && summaryTextBody.includes('— ${quantityLabel} × ${formatMoney(row.unitPrice, currency)}')
-        && !summaryTextBody.includes('formatValue(row.quantity)} x')
-        && banquetSummaryServiceCode.includes('servingUnit: item.servingUnit || null')
-        && banquetSummaryServiceCode.includes('durationMinutes: durationMinutesOfBooking(mainBooking)')
-        && banquetSummaryServiceCode.includes('durationMinutes: durationMinutesOfBooking(booking)')
-        && pageCss.includes('.summary-order-table--client')
-        && pageCss.includes('.summary-order-table .money')
-        && pageCss.includes('.summary-order-meta')
-        && pageCss.includes('grid-template-columns: 84px minmax(0, 1fr)')
-        && pageCss.includes('.summary-order-table .duration')
-        && pageCss.includes('.summary-order-table .qty')
-        && pageCss.includes('white-space: normal'));
-    check('Booking summary page loads standalone controller and print CSS',
-        getHtmlScripts(html).includes('js/booking-summary-page.js')
-        && html.includes('css/booking-summary.css')
-        && !!printCss
-        && printCss.includes('size: A4'));
-    check('Booking summary preview uses a stable A4 wrapper contract',
-        doc.getElementById('bookingSummaryPrintRoot')?.classList.contains('booking-summary-print-root')
-        && doc.getElementById('bookingSummaryDocument')?.classList.contains('booking-summary-document')
-        && doc.getElementById('bookingSummaryDocument')?.classList.contains('booking-summary-a4-page')
-        && pageCode.includes("el('bookingSummaryPrintRoot')")
-        && pageCss.includes('.booking-summary-print-root')
-        && pageCss.includes('.booking-summary-a4-page')
-        && pageCss.includes('aspect-ratio: 210 / 297')
-        && pageCss.includes('width: min(100%, 210mm)')
-        && mobilePrintRootRule.includes('overflow-x: visible')
-        && mobileA4PageRule.includes('width: 100%')
-        && mobileA4PageRule.includes('max-width: 210mm'));
-    check('Booking summary print resets dark theme and screen chrome',
-        printHtmlRule.includes('background: #fff !important')
-        && printDarkHtmlRule.includes('background-image: none !important')
-        && printBodyRule.includes('background-color: #fff !important')
-        && printDarkBodyRule.includes('color-scheme: light !important')
-        && printDirectDarkBodyRule.includes('background-image: none !important')
-        && printDirectBodyRule.includes('background-color: #fff !important')
-        && printToolbarRule.includes('display: none !important')
-        && printStateRule.includes('display: none !important')
-        && printToastRule.includes('display: none !important')
-        && printDocumentRule.includes('border-radius: 0 !important')
-        && printDocumentRule.includes('background: var(--summary-panel) !important')
-        && printDocumentRule.includes('box-shadow: none !important')
-        && printDocumentRule.includes('color: #000 !important'));
-    check('Booking summary print pagination keeps dense summaries on one A4 canvas and protects row breaks',
-        pageCode.includes('summary-section--orders')
-        && pageCode.includes('summary-section--service-events')
-        && pageCode.includes('summary-section--comments')
-        && pageCode.includes('summary-section--finance')
-        && pageCode.includes('summary-section--terms')
-        && printCss.includes('.summary-section--comments')
-        && printCss.includes('.summary-section--finance')
-        && printCss.includes('.summary-section--terms')
-        && printCss.includes('orphans: 2')
-        && printCss.includes('widows: 2')
-        && pageCss.includes('--summary-a4-width: 210mm')
-        && pageCss.includes('--summary-a4-height: 297mm')
-        && pageCss.includes('min-height: var(--summary-a4-height)')
-        && pageCss.includes('margin: 0')
-        && pageCss.includes('padding: var(--summary-a4-pad-top) var(--summary-a4-pad-x) var(--summary-a4-pad-bottom)')
-        && pageCss.includes('grid-column: auto !important')
-        && !pageCss.includes('.banquet-final-brand')
-        && pageCss.includes('padding: 3px 4px')
-        && printSectionHeadingRule.includes('break-after: avoid')
-        && printSectionHeadingRule.includes('page-break-after: avoid')
-        && printTableHeadRule.includes('display: table-header-group')
-        && printTableRowRule.includes('break-inside: avoid')
-        && printTermsItemRule.includes('page-break-inside: avoid')
-        && printServiceEventRule.includes('break-inside: avoid')
-        && termsSectionRule.includes('margin-top: 12px')
-        && printTermsSpacingRule.includes('margin-top: 12px')
-        && printA4PageRule.includes('aspect-ratio: auto'));
-    check('Booking summary terms stay backend-driven across preview, copy text, and print',
-        renderDocumentBody.includes('summary-section--terms')
-        && renderDocumentBody.includes('${renderTerms(summary)}')
-        && renderDocumentBody.includes('summary.terms?.title')
-        && renderTermsBody.includes('const terms = summary?.terms || {}')
-        && renderTermsBody.includes('const items = Array.isArray(terms.items) ? terms.items.filter(Boolean) : []')
-        && renderTermsBody.includes('items.map(item => `<li>${escapeHtml(item)}</li>`).join')
-        && renderTermsBody.includes('Умови банкету не заповнені')
-        && summaryTextBody.includes('const terms = sections.terms && Array.isArray(summary.terms?.items) ? summary.terms.items : []')
-        && summaryTextBody.includes('terms.map(item => `- ${item}`)')
-        && summaryTextBody.includes("terms.length ? terms.map")
-        && !frontendBanquetTermsHardcode.test(pageCode)
-        && !frontendBanquetTermsHardcode.test(pageCss));
-    check('Booking summary terms distinguish manual terms from auto price-rule snapshots',
-        banquetSummaryServiceCode.includes('function termsSnapshotSourceOf')
-        && banquetSummaryServiceCode.includes('function isPriceRuleTermsSnapshot')
-        && banquetSummaryServiceCode.includes("source: 'manual'")
-        && banquetSummaryServiceCode.includes("source: 'snapshot_fallback'")
-        && banquetSummaryServiceCode.includes("source: defaults.source || 'price_rules'")
-        && banquetSummaryServiceCode.includes('priceRuleSnapshot')
-        && !frontendBanquetTermsHardcode.test(pageCode)
-        && !frontendBanquetTermsHardcode.test(pageCss));
-    check('Booking summary print keeps banquet terms section and list items unbroken',
-        printTermsSectionRule.includes('break-inside: avoid')
-        && printTermsSectionRule.includes('page-break-inside: avoid')
-        && printTermsRule.includes('break-inside: avoid')
-        && printTermsRule.includes('page-break-inside: avoid')
-        && printTermsItemRule.includes('break-inside: avoid')
-        && printTermsItemRule.includes('page-break-inside: avoid'));
-    check('Booking summary print keeps comments section unbroken',
-        printCommentsSectionRule.includes('break-inside: avoid')
-        && printCommentsSectionRule.includes('page-break-inside: avoid')
-        && printCommentsRule.includes('break-inside: avoid')
-        && printCommentsRule.includes('page-break-inside: avoid')
-        && printCommentRowRule.includes('break-inside: avoid')
-        && printCommentRowRule.includes('page-break-inside: avoid'));
-    check('Booking summary print trigger stays browser-native without app-owned header or footer promises',
-        printTriggerCount === 1
-        && pageCode.includes('function printSummaryDocument()')
-        && pageCode.includes('const originalTitle = document.title')
-        && pageCode.includes('document.title = printTitle')
-        && pageCode.includes('document.title = originalTitle')
-        && pageCode.includes("window.addEventListener('afterprint', restoreTitle")
-        && pageCode.includes('setTimeout(restoreTitle, 1000)')
-        && pageCode.includes('window.print()')
-        && !pageCode.includes('page.pdf')
-        && !pageCode.includes('jsPDF')
-        && !pageCode.includes('html2pdf')
-        && !pageCode.includes('displayHeaderFooter')
-        && !pageCss.includes('headerTemplate')
-        && !pageCss.includes('footerTemplate')
-        && !pageCss.includes('@top-')
-        && !pageCss.includes('@bottom-'));
-    check('Booking summary page consumes the banquet summary API and exports clean server PDFs',
-        pageCode.includes('/bookings/${encodeURIComponent(id)}/banquet-summary')
-        && pageCode.includes('/bookings/${encodeURIComponent(currentSummaryRequest.id)}/banquet-summary.pdf')
-        && pageCode.includes("const groupId = params.get('groupId') || '';")
-        && pageCode.includes("requestParams.set('groupId', groupId)")
-        && pageCode.includes("Accept: 'application/pdf'")
-        && pageCode.includes('response.blob()')
-        && pageCode.includes('URL.createObjectURL(blob)')
-        && pageCode.includes('data-booking-summary-pdf-mode')
-        && pageCode.includes('totals.orderTotal')
-        && printTriggerCount === 1
-        && pageCode.includes('bookingSummaryWarnings')
-        && pageCode.includes('navigator.clipboard')
-        && !pageCode.includes('jsPDF')
-        && !pageCode.includes('html2pdf'));
-    check('Booking summary header labels generated account as manager, not author',
-        pageCode.includes('<span>Менеджер:</span>')
-        && pageCode.includes('<b>${escapeHtml(formatValue(manager))}</b>')
-        && !pageCode.includes('<span>Автор: ${escapeHtml(formatValue(summary.document?.generatedBy))}</span>')
-        && !pageCode.includes('Автор:')
-        && !pageCode.includes("compactFact('Менеджер', event.manager)"));
-    check('Booking summary uses render-time generated label and keeps booking creation clear',
-        !banquetSummaryServiceCode.includes('generatedAt: new Date().toISOString()')
-        && !renderDocumentBody.includes('summary.document?.generatedAt')
-        && renderDocumentBody.includes('const renderedAt = new Date()')
-        && renderDocumentBody.includes('formatGeneratedAtShort(renderedAt)')
-        && renderDocumentBody.includes('<span>Сформовано:</span>')
-        && !summaryTextBody.includes('Сформовано')
-        && !renderDocumentBody.includes("briefItem('Оформлено'")
-        && !summaryTextBody.includes('Дата оформлення')
-        && renderDocumentBody.includes("briefItem('Бронь створено', formatDateTime(event.createdAt))")
-        && summaryTextBody.includes('`Бронь створено: ${formatDateTime(event.createdAt)}`'));
-    check('Booking summary keeps booking id as one visual hero chip and copy-text line',
-        renderDocumentBody.includes('<div class="booking-id">${escapeHtml(summary.bookingId ||')
-        && pageCode.includes('`Booking ID: ${summary.bookingId ||')
-        && !renderDocumentBody.includes('Booking ID:')
-        && !pageCode.includes("briefItem('Booking ID'"));
-    check('Booking summary hero header uses official premium logo masthead and right booking card',
-        fs.existsSync(path.join(ROOT, 'images', 'banquet-logo.png'))
-        && renderDocumentBody.includes('<header class="banquet-hero"')
-        && renderDocumentBody.includes('class="brand-logo-frame"')
-        && renderDocumentBody.includes('class="brand-logo"')
-        && renderDocumentBody.includes('images/banquet-logo.png')
-        && !renderDocumentBody.includes('aria-hidden="true">EG')
-        && !renderDocumentBody.includes('>EG</')
-        && !renderDocumentBody.includes('BANQUET_HERO_LOGO_SRC')
-        && !renderDocumentBody.includes('BANQUET_TOP_PLATE_SRC')
-        && !renderDocumentBody.includes('BANQUET_CORNER_SRC')
-        && !renderDocumentBody.includes('BANQUET_FINAL_LOGO_SRC')
-        && !renderDocumentBody.includes('class="banquet-top-plate"')
-        && !renderDocumentBody.includes('class="banquet-corner-art"')
-        && !renderDocumentBody.includes('class="banquet-final-brand"')
-        && renderDocumentBody.includes('<aside class="booking-card"')
-        && renderDocumentBody.includes('<div class="brand-copy">')
-        && renderDocumentBody.includes('venue.addressLine1')
-        && renderDocumentBody.includes('venue.addressLine2')
-        && renderDocumentBody.includes('venue.phone')
-        && pageCss.includes('--summary-official-ink')
-        && pageCss.includes('--summary-official-accent')
-        && pageCss.includes('.brand-logo-frame')
-        && pageCss.includes('.brand-logo')
-        && pageCss.includes('.banquet-top-plate,')
-        && pageCss.includes('.banquet-corner-art')
-        && pageCss.includes('display: none !important')
-        && pageCss.includes('.brand-logo[hidden]')
-        && pageCss.includes('.brand-logo-frame.is-logo-missing .brand-logo')
-        && !pageCss.includes('.banquet-final-brand')
-        && pageCss.includes('grid-template-columns: 24mm minmax(0, 1fr) minmax(48mm, 58mm)')
-        && pageCss.includes('border-left: 0')
-        && pageCss.includes('.brand-logo-frame')
-        && pageCss.includes('width: 24mm')
-        && pageCss.includes('border: 1px solid var(--summary-official-line)')
-        && pageCss.includes('object-fit: contain')
-        && pageCss.includes('display: block !important')
-        && metaRowRule.includes('grid-template-columns')
-        && pageCss.includes('grid-template-columns: 21mm minmax(0, 1fr)')
-        && pageCss.includes('min-height: 33mm')
-        && !pageCss.includes('--summary-doc-meta-offset')
-        && !pageCss.includes('padding-top: var(--summary-doc-meta-offset)')
-        && !printCss.includes('--summary-doc-meta-offset'));
-    check('Booking summary sheet uses two-column brief and keeps table only for ordered rows',
-        pageCode.includes('function briefItem')
-        && pageCode.includes('function briefColumn')
-        && pageCode.includes('summary-brief-grid')
-        && pageCode.includes('summary-brief-column')
-        && pageCode.includes('summary-brief-label')
-        && pageCode.includes('summary-brief-value')
-        && pageCode.includes('function summaryFinanceRows(summary)')
-        && pageCode.includes('function fallbackSummaryFinanceRows(summary)')
-        && pageCode.includes('<table class="summary-finance-table">')
-        && pageCode.includes('Загальна сума')
-        && !pageCode.includes('До сплати')
-        && !pageCode.includes('Сума бронювання')
-        && pageCode.includes('<table class="summary-order-table summary-order-table--client">')
-        && !pageCode.includes('function compactFact')
-        && !pageCode.includes('function compactLine')
-        && !pageCode.includes('compactLine([')
-        && !pageCode.includes('summary-brief-line')
-        && !pageCode.includes("compactFact('Менеджер', event.manager)")
-        && !pageCode.includes('summary-info-grid')
-        && !pageCode.includes('summary-total-card')
-        && pageCode.includes('<td class="money" data-label="Ціна">')
-        && pageCss.includes('.summary-brief-grid')
-        && pageCss.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
-        && summaryBriefRule.includes('--summary-brief-label-width: 118px')
-        && summaryBriefRule.includes('break-inside: avoid')
-        && summaryBriefGridRule.includes('min-width: 0')
-        && summaryBriefItemRule.includes('grid-template-columns: minmax(var(--summary-brief-label-width), 34%) minmax(0, 1fr)')
-        && pageCss.includes('.summary-brief-column')
-        && pageCss.includes('.summary-brief-label')
-        && pageCss.includes('.summary-brief-value')
-        && mobileBriefGridRule.includes('grid-template-columns: 1fr')
-        && printCss.includes('--summary-brief-label-width: 106px')
-        && printBriefGridRule.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)')
-        && printBriefGridRule.includes('page-break-inside: avoid')
-        && printBriefColumnRule.includes('break-inside: avoid')
-        && printBriefItemRule.includes('page-break-inside: avoid')
-        && pageCss.includes('.summary-finance-table')
-        && pageCss.includes('.summary-finance-row--due')
-        && pageCss.includes('.summary-order-table thead')
-        && pageCss.includes('break-inside: avoid')
-        && !pageCss.includes('.summary-brief-line')
-        && !pageCss.includes('.summary-info-grid')
-        && !pageCss.includes('.summary-total-card'));
-    check('Booking summary details rows use birthday, children, and conditional program contract',
-        pageCode.includes('function formatBirthday(value)')
-        && pageCode.includes('function summaryCelebrants(summary = {})')
-        && pageCode.includes('function summaryCelebrantsNames(summary = {})')
-        && renderDocumentBody.includes("briefItem('Діти', counts.children)")
-        && renderDocumentBody.includes("programLabel ? briefItem('Програма', programLabel) : ''")
-        && renderDocumentBody.includes('briefItem(celebrantsNameLabel, celebrantsNameDisplay)')
-        && renderDocumentBody.includes('briefItem(celebrantsBirthdayLabel, celebrantsBirthdayDisplay)')
-        && renderDocumentBody.includes("celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник'")
-        && renderDocumentBody.includes("celebrants.length > 1 ? 'ДН дітей' : 'Дата народження'")
-        && summaryTextBody.includes('const programLabel = event.hasRealProgram ? (event.programDisplayName || event.programName) : null;')
-        && summaryTextBody.includes('`${celebrantsNameLabel}: ${formatValue(celebrantsNameDisplay)}`')
-        && summaryTextBody.includes('`${celebrantsBirthdayLabel}: ${formatValue(celebrantsBirthdayDisplay)}`')
-        && summaryTextBody.includes('`Дітей: ${formatValue(counts.children)}`')
-        && summaryTextBody.includes('...(programLabel ? [`Програма: ${formatValue(programLabel)}`] : [])')
-        && !renderDocumentBody.includes("briefItem('Учасники'")
-        && !renderDocumentBody.includes("briefItem('Програма', event.programName)")
-        && !summaryTextBody.includes('`Програма: ${formatValue(event.programName)}`'));
-    check('Banquet summary backend and PDF preserve full customer children display', banquetSummaryServiceCode.includes('celebrants: normalizedCustomer.children') && banquetSummaryServiceCode.includes('childrenDisplay: customerChildrenFullDisplay(children)') && banquetSummaryPdfCode.includes('function summaryCelebrants(summary = {})') && banquetSummaryPdfCode.includes("celebrants.length > 1 ? 'Діти клієнта' : 'Іменинник'") && banquetSummaryPdfCode.includes("celebrants.length > 1 ? 'ДН дітей' : 'Дата народження'"));
-});
+runBookingSummaryChecks(ui, { bookingSummaryBrowserSmokeCode });
 
 checkPage('sound.html', (doc, html) => {
     const soundCode = fs.readFileSync(path.join(ROOT, 'js', 'sound-page.js'), 'utf8');
@@ -1629,6 +759,7 @@ const authRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'auth.js'), 'utf
 const profileAvatarStorageCode = fs.readFileSync(path.join(ROOT, 'services', 'profileAvatarStorage.js'), 'utf8');
 const serverCode = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const taskCreateCode = fs.readFileSync(path.join(ROOT, 'js', 'task-create.js'), 'utf8');
+const taskUiSharedCode = fs.readFileSync(path.join(ROOT, 'js', 'task-ui-shared.js'), 'utf8');
 const tasksPageCodeForProfileChecks = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 const tasksHtmlForProfileChecks = fs.readFileSync(path.join(ROOT, 'tasks.html'), 'utf8');
 const soundEngineCodeForProfileChecks = fs.readFileSync(path.join(ROOT, 'js', 'sound-engine.js'), 'utf8');
@@ -1685,6 +816,27 @@ const taskPriorityStates = ['urgent', 'high', 'normal', 'low'];
 const tasksPriorityStyleSurface = `${tasksHtmlForProfileChecks}\n${profilePagesCss}`;
 check('Urgent tasks are visibly highlighted across profile and tasks surfaces', profileCode.includes('data-task-priority="${escapeHtml(priority)}"') && profileCode.includes('priority-${priority}') && profileCode.includes('profile-task-priority--${escapeHtml(priority)}') && profileCode.includes('cabinet-task-priority-select--${escapeHtml(selected)}') && legacyProfileGameCode.includes('urgent-priority high-priority') && legacyProfileGameCode.includes('prof-inbox-item danger${urgentCls}') && tasksPageCodeForProfileChecks.includes("data-priority=\"${escapeHtml(t.priority || 'normal')}\"") && tasksPageCodeForProfileChecks.includes('task-priority-select--${escapeHtml(current)}') && profilePagesCss.includes('.profile-task-row[data-task-priority="urgent"]') && profilePagesCss.includes('.profile-task-priority--urgent') && profilePagesCss.includes('body.dark-mode .profile-task-row[data-task-priority="urgent"]') && profilePagesCss.includes('.cabinet-task-card.priority-urgent') && profilePagesCss.includes('.cabinet-task-priority-select--urgent') && profilePagesCss.includes('.task-card[data-priority="urgent"]') && profilePagesCss.includes('.task-priority-select--urgent') && darkModeCss.includes('body.dark-mode .prof-task-row.urgent-priority') && darkModeCss.includes('body.dark-mode .task-card[data-priority="urgent"]'));
 check('Task priority colors cover urgent, high, normal and low across Tasks and Profile', taskPriorityStates.every(priority => tasksPageCodeForProfileChecks.includes(`{ value: '${priority}'`)) && taskPriorityStates.every(priority => profileCode.includes(`{ value: '${priority}'`)) && taskPriorityStates.every(priority => tasksPriorityStyleSurface.includes(`.task-card[data-priority="${priority}"]`)) && taskPriorityStates.every(priority => tasksPriorityStyleSurface.includes(`.task-priority-select--${priority}`)) && taskPriorityStates.every(priority => profilePagesCss.includes(`.profile-task-row[data-task-priority="${priority}"]`) || profilePagesCss.includes(`.cabinet-task-card[data-task-priority="${priority}"]`)) && taskPriorityStates.every(priority => profilePagesCss.includes(`.cabinet-task-priority-select--${priority}`)) && ['high', 'normal', 'low'].every(priority => tasksPriorityStyleSurface.includes(`body.dark-mode .task-card[data-priority="${priority}"]`) || tasksPriorityStyleSurface.includes(`html[data-theme="dark"] .task-card[data-priority="${priority}"]`)) && ['high', 'normal', 'low'].every(priority => profilePagesCss.includes(`body.dark-mode .profile-task-row[data-task-priority="${priority}"]`) || profilePagesCss.includes(`body.dark-mode .cabinet-task-card[data-task-priority="${priority}"]`)));
+check('Tasks and Profile share task UI priority/status helpers',
+    taskUiSharedCode.includes('global.TaskUiShared = Object.freeze')
+    && taskUiSharedCode.includes('normalizeTaskPriority')
+    && taskUiSharedCode.includes('taskPriorityLabel')
+    && taskUiSharedCode.includes('taskPriorityRank')
+    && taskUiSharedCode.includes('normalizeTaskStatus')
+    && taskUiSharedCode.includes('taskMutationFailure')
+    && taskUiSharedCode.includes('taskOfflineFailure')
+    && taskUiSharedCode.includes('applyPriorityClasses')
+    && taskUiSharedCode.includes("if (value === 'critical') return 'urgent';")
+    && taskUiSharedCode.includes("if (value === 'medium') return 'normal';")
+    && tasksHtmlForProfileChecks.includes('js/task-ui-shared.js')
+    && profilePageHtml.includes('js/task-ui-shared.js')
+    && tasksHtmlForProfileChecks.indexOf('js/task-ui-shared.js') < tasksHtmlForProfileChecks.indexOf('js/tasks-page.js')
+    && profilePageHtml.indexOf('js/task-ui-shared.js') < profilePageHtml.indexOf('js/profile-page.js')
+    && tasksPageCodeForProfileChecks.includes('window.TaskUiShared?.normalizeTaskPriority')
+    && tasksPageCodeForProfileChecks.includes('window.TaskUiShared?.taskMutationFailure')
+    && tasksPageCodeForProfileChecks.includes('window.TaskUiShared?.applyPriorityClasses')
+    && profileCode.includes('window.TaskUiShared?.normalizeTaskPriority')
+    && profileCode.includes('window.TaskUiShared?.normalizeTaskMutationResult')
+    && profileCode.includes('window.TaskUiShared?.applyPriorityClasses'));
 check('Task status and priority mutations fail visibly and rollback quick priority controls',
     tasksPageCodeForProfileChecks.includes('function taskMutationFailure(payload = {}, response = null')
     && tasksPageCodeForProfileChecks.includes('function taskMutationOfflineFailure(error, fallback =')
@@ -1735,7 +887,7 @@ const criticalJS = [
     'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
     'js/booking-drawer-state.js', 'js/booking-banquet-selector.js', 'js/booking-save-path.js',
     'js/invite-config.js', 'js/invite-share.js',
-    'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js',
+    'js/booking-package-renderer.js', 'js/booking-banquet-detail.js', 'js/booking.js', 'js/booking-summary-page.js', 'js/timeline-interaction-model.js',
     'js/timeline-cache.js', 'js/timeline-resource-identity.js', 'js/timeline-banquet-inspector-helpers.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
@@ -2860,6 +2012,22 @@ check('Shared API wrappers preserve backend requestId metadata',
     && apiCode.includes('requestId,')
     && apiCode.includes('function apiAuthFailure(response = null)')
     && apiCode.includes('function apiOfflineFailure(err, fallback ='));
+check('Next critical frontend mutations use normalized API error result contract',
+    apiCode.includes('function normalizeApiErrorResult')
+    && /async function apiSaveTimelineResource[\s\S]*normalizeApiErrorResult\(\{ \.\.\.body, status: response\.status \}/.test(apiCode)
+    && /async function apiUpdateTimelineResource[\s\S]*normalizeApiErrorResult\(\{ \.\.\.body, status: response\.status \}/.test(apiCode)
+    && /async function apiCreateProduct[\s\S]*normalizeApiErrorResult\(\{ \.\.\.body, status: response\.status \}/.test(apiCode)
+    && /async function apiUpdateProductTechCard[\s\S]*normalizeApiErrorResult\(\{ \.\.\.body, status: response\.status \}/.test(apiCode)
+    && profileCode.includes("return normalizeApiErrorResult(e, 'Помилка запиту')")
+    && profileCode.includes("return normalizeApiErrorResult({ ...payload, status: r.status }, 'Помилка запиту')")
+    && dashboardPageCode.includes('function normalizeDashboardApiResult')
+    && dashboardPageCode.includes('async function dashboardMutationJson')
+    && dashboardPageCode.includes("notifyDashboardIssue(result?.error || 'Не вдалося зберегти налаштування dashboard')")
+    && centerCode.includes('function centerApiFailure')
+    && centerCode.includes('async function centerMutationJson')
+    && /async function apiSaveGoals[\s\S]*centerMutationJson\(r, 'Не вдалося зберегти цілі'\)/.test(centerCode)
+    && /async function apiCreateDiscount[\s\S]*centerMutationJson\(response, 'Не вдалося створити промокод'\)/.test(centerCode)
+    && /async function apiDeleteProposal[\s\S]*centerApiFailure\(err, 'Не вдалося видалити пропозицію'\)/.test(centerCode));
 check('Critical booking mutations use normalized failure contract and user-visible guards',
     /async function apiCreateBooking[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося створити бронювання/.test(apiCode)
     && /async function apiCreateBookingFull[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося створити бронювання з повʼязаними подіями/.test(apiCode)
@@ -2948,6 +2116,8 @@ const bookingCode = [
     fs.readFileSync(path.join(ROOT, 'js', 'booking-save-path.js'), 'utf8'),
     fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8')
 ].join('\n');
+const bookingPackageRendererCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-package-renderer.js'), 'utf8');
+const bookingBanquetDetailCode = fs.readFileSync(path.join(ROOT, 'js', 'booking-banquet-detail.js'), 'utf8');
 const bookingDetailEditControlsStart = bookingCode.indexOf('const secondaryActionHtml = [');
 const bookingDetailEditControlsEnd = bookingCode.indexOf('const bookingDetailIdLabel', bookingDetailEditControlsStart);
 const bookingDetailEditControlsBlock = bookingDetailEditControlsStart >= 0 && bookingDetailEditControlsEnd > bookingDetailEditControlsStart
@@ -2960,16 +2130,10 @@ const bookingDetailStandardEnd = bookingCode.indexOf('// v24.3.1: CRM', bookingD
 const bookingDetailStandardBlock = bookingDetailStandardStart >= 0 && bookingDetailStandardEnd > bookingDetailStandardStart
     ? bookingCode.slice(bookingDetailStandardStart, bookingDetailStandardEnd)
     : '';
-function sourceBlock(source, startToken, endToken) {
-    const start = source.indexOf(startToken);
-    if (start < 0) return '';
-    const end = source.indexOf(endToken, start + startToken.length);
-    return end > start ? source.slice(start, end) : source.slice(start);
-}
-const renderBookingPackageMenuRowsBlock = sourceBlock(bookingCode, 'function renderBookingPackageMenuRows', 'function normalizeBookingPackageEntertainmentRows');
-const renderBookingPackageEntertainmentRowsBlock = sourceBlock(bookingCode, 'function renderBookingPackageEntertainmentRows', 'function formatBookingEntryQuantityLabel');
-const renderBookingPackageDetailBlock = sourceBlock(bookingCode, 'function renderBookingPackageDetail', 'function shouldHideBookingWorkspaceScenarioDetail');
-const renderBanquetMenuSectionBlock = sourceBlock(bookingCode, 'function renderBanquetMenuSection', 'function renderBanquetServiceSection');
+const renderBookingPackageMenuRowsBlock = sourceBlock(bookingPackageRendererCode, 'function renderBookingPackageMenuRows', 'function normalizeBookingPackageEntertainmentRows');
+const renderBookingPackageEntertainmentRowsBlock = sourceBlock(bookingPackageRendererCode, 'function renderBookingPackageEntertainmentRows', 'function formatBookingEntryQuantityLabel');
+const renderBookingPackageDetailBlock = sourceBlock(bookingPackageRendererCode, 'function renderBookingPackageDetail', 'const api = {');
+const renderBanquetMenuSectionBlock = sourceBlock(bookingBanquetDetailCode, 'function renderBanquetMenuSection', 'function renderBanquetServiceSection');
 const bookingInviteParamsBlock = sourceBlock(bookingCode, 'const inviteModel = window.InviteShare', 'const invitePayload = inviteModel.payload');
 const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'let banquetSnapshot');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
@@ -3297,28 +2461,34 @@ check('Booking detail removes room timeline visibility notice',
     && bookingCode.includes('async function showBookingInRoomTimeline(bookingId, dateKey = \'\')')
     && bookingCode.includes("window.showBookingInRoomTimeline = showBookingInRoomTimeline"));
 check('Booking detail banquet package, comments, and invite controls stay compact and accurate',
-    bookingCode.includes('booking-detail-package-entry-title')
-    && bookingCode.includes('Загальна сума')
-    && !bookingCode.includes('<div>Разом пакет</div>')
-    && bookingCode.includes('function bookingPackageBusinessRowsSummary')
-    && bookingCode.includes("if (entryCharge) parts.push('Вхід')")
-    && bookingCode.includes('function renderBookingPackageMenuRows(positions = [], options = {})')
-    && bookingCode.includes('function renderBookingPackageEntertainmentRows(rows = [], options = {})')
-    && bookingCode.includes('const showHeaderSummary = options.showHeaderSummary !== false')
-    && bookingCode.includes('showHeaderSummary: false')
-    && bookingCode.includes('showServingTitles: false')
-    && bookingCode.includes('showEntertainmentTitle: false')
-    && bookingCode.includes('showEntertainmentTableHead: false')
-    && bookingCode.includes('showEntertainmentKindBadge: false')
-    && !bookingCode.includes('${escapeHtml(String(group.items.length))} позицій')
-    && !bookingCode.includes('${escapeHtml(String(entertainmentRows.length))} позицій')
-    && bookingCode.indexOf('${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}') < bookingCode.indexOf('${renderBanquetMenuSection(packageBooking, entertainmentMembers)}')
-    && bookingCode.includes('function renderBookingPackageEntertainmentRows')
-    && bookingCode.includes('booking-detail-package-serving-group--entertainment')
-    && bookingCode.includes('booking-menu-position-kind--entertainment')
-    && bookingCode.includes('booking-detail-package-table-row--entertainment')
-    && bookingCode.includes('const entertainmentSubtotal = entertainmentRows.reduce')
-    && bookingCode.includes('const displayTotal = bookingPackageMoneyValue(packageTotal) + bookingPackageMoneyValue(entertainmentSubtotal)')
+    htmlScriptLoadsBefore('index.html', 'js/booking-package-renderer.js', 'js/booking-banquet-detail.js')
+    && htmlScriptLoadsBefore('index.html', 'js/booking-banquet-detail.js', 'js/booking.js')
+    && bookingPackageRendererCode.includes('booking-detail-package-entry-title')
+    && bookingPackageRendererCode.includes('Загальна сума')
+    && !bookingPackageRendererCode.includes('<div>Разом пакет</div>')
+    && bookingPackageRendererCode.includes('function bookingPackageBusinessRowsSummary')
+    && bookingPackageRendererCode.includes("if (entryCharge) parts.push('Вхід')")
+    && bookingPackageRendererCode.includes('function renderBookingPackageMenuRows(positions = [], options = {})')
+    && bookingPackageRendererCode.includes('function renderBookingPackageEntertainmentRows(rows = [], options = {})')
+    && bookingPackageRendererCode.includes('const api = {')
+    && bookingPackageRendererCode.includes('root.BookingPackageRenderer = Object.assign(root.BookingPackageRenderer || {}, api)')
+    && bookingCode.includes('function bookingPackageRendererCall(')
+    && bookingCode.includes('window.BookingPackageRenderer.renderBookingPackageSummary = renderBookingPackageSummary')
+    && renderBookingPackageDetailBlock.includes('const showHeaderSummary = options.showHeaderSummary !== false')
+    && bookingBanquetDetailCode.includes('showHeaderSummary: false')
+    && bookingBanquetDetailCode.includes('showServingTitles: false')
+    && bookingBanquetDetailCode.includes('showEntertainmentTitle: false')
+    && bookingBanquetDetailCode.includes('showEntertainmentTableHead: false')
+    && bookingBanquetDetailCode.includes('showEntertainmentKindBadge: false')
+    && !bookingPackageRendererCode.includes('${escapeHtml(String(group.items.length))} позицій')
+    && !bookingPackageRendererCode.includes('${escapeHtml(String(entertainmentRows.length))} позицій')
+    && bookingBanquetDetailCode.indexOf('${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}') < bookingBanquetDetailCode.indexOf('${renderBanquetMenuSection(packageBooking, entertainmentMembers)}')
+    && bookingPackageRendererCode.includes('function renderBookingPackageEntertainmentRows')
+    && bookingPackageRendererCode.includes('booking-detail-package-serving-group--entertainment')
+    && bookingPackageRendererCode.includes('booking-menu-position-kind--entertainment')
+    && bookingPackageRendererCode.includes('booking-detail-package-table-row--entertainment')
+    && bookingPackageRendererCode.includes('const entertainmentSubtotal = entertainmentRows.reduce')
+    && bookingPackageRendererCode.includes('const displayTotal = bookingPackageMoneyValue(packageTotal) + bookingPackageMoneyValue(entertainmentSubtotal)')
     && panelCss.includes('.booking-detail-package-serving-group--entertainment')
     && panelCss.includes('.booking-menu-position-kind--entertainment')
     && panelCss.includes('.booking-detail-package-table-row--entertainment')
@@ -3393,9 +2563,9 @@ check('Booking detail menu polish blocks legacy banquet menu clutter',
     Boolean(bookingDetailStandardBlock)
     && !bookingDetailStandardBlock.includes('<span class="label">Сума:</span>')
     && renderBookingPackageDetailBlock.includes('booking-detail-package')
-    && bookingCode.includes('booking-detail-package-table')
-    && bookingCode.includes('booking-detail-package-table-row')
-    && bookingCode.includes('booking-detail-package-entry-row')
+    && bookingPackageRendererCode.includes('booking-detail-package-table')
+    && bookingPackageRendererCode.includes('booking-detail-package-table-row')
+    && bookingPackageRendererCode.includes('booking-detail-package-entry-row')
     && renderBookingPackageEntertainmentRowsBlock.includes('booking-detail-package-table-row--entertainment')
     && renderBookingPackageDetailBlock.includes('const showHeaderSummary = options.showHeaderSummary !== false')
     && renderBookingPackageDetailBlock.includes('businessRowsSummary = showHeaderSummary')
@@ -3413,8 +2583,8 @@ check('Booking detail menu polish blocks legacy banquet menu clutter',
     && !renderBanquetMenuSectionBlock.includes('<small>Позиції меню</small>')
     && !renderBanquetMenuSectionBlock.includes('РОЗВАГИ')
     && bookingCode.includes('function renderFullBanquetDetail')
-    && bookingCode.includes('renderBanquetMenuSection(packageBooking, entertainmentMembers)')
-    && bookingCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)'));
+    && bookingBanquetDetailCode.includes('renderBanquetMenuSection(packageBooking, entertainmentMembers)')
+    && bookingBanquetDetailCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)'));
 check('Booking status actions use narrow endpoints and edit_booking visibility',
     apiCode.includes('async function apiMarkBookingPreliminary(id, payload = {})')
     && apiCode.includes('/preliminary')
@@ -3504,6 +2674,10 @@ check('Booking banquet modal UX regression guard keeps compact defaults',
     && globalModalsCss.includes('.booking-detail-advanced-actions'));
 check('Booking detail modal renders full banquet group details with controlled manual attach',
     bookingCode.includes('function renderFullBanquetDetail')
+    && bookingCode.includes('function bookingBanquetDetailRendererCall')
+    && bookingBanquetDetailCode.includes('root.BookingBanquetDetail = Object.assign(root.BookingBanquetDetail || {}, api)')
+    && bookingBanquetDetailCode.includes('function renderFullBanquetDetail')
+    && bookingBanquetDetailCode.includes('renderBookingPackageDetailSafe')
     && bookingCode.includes('apiGetBanquetByBooking(booking.id)')
     && bookingCode.includes('banquetSnapshotPrimaryBooking')
     && bookingCode.includes('function createBanquetGroupFromBookingDetails')
@@ -3517,33 +2691,33 @@ check('Booking detail modal renders full banquet group details with controlled m
     && bookingCode.includes('function bookingDetailCanOwnBanquetPackage')
     && bookingCode.includes('bookingDetailIsRoot(booking)')
     && bookingCode.includes('bookingDetailCanOwnBanquetPackage(booking)')
-    && bookingCode.includes('bookingDetailEntertainmentMembers(primaryMembers, activityMembers)')
+    && bookingBanquetDetailCode.includes('bookingDetailEntertainmentMembers(primaryMembers, activityMembers)')
     && bookingCode.includes('function bookingDetailEntertainmentRowsFromMembers')
-    && bookingCode.includes('bookingDetailEntertainmentRowsFromMembers(entertainmentMembers, packageBooking)')
-    && bookingCode.includes('const visiblePrimaryMembers = primaryMembers.filter')
-    && bookingCode.includes('const visibleActivityMembers = activityMembers.filter')
-    && bookingCode.includes("if ((!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) && !entertainmentRows.length) return")
-    && bookingCode.includes('includeServiceEvents: false')
-    && bookingCode.includes("renderBanquetWorkSection('Банкет'")
-    && bookingCode.includes('renderBanquetMenuSection(packageBooking, entertainmentMembers)')
-    && bookingCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)')
+    && bookingBanquetDetailCode.includes('bookingDetailEntertainmentRowsFromMembers(entertainmentMembers, packageBooking)')
+    && bookingBanquetDetailCode.includes('const visiblePrimaryMembers = primaryMembers.filter')
+    && bookingBanquetDetailCode.includes('const visibleActivityMembers = activityMembers.filter')
+    && bookingBanquetDetailCode.includes("if ((!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) && !entertainmentRows.length) return")
+    && bookingBanquetDetailCode.includes('includeServiceEvents: false')
+    && bookingBanquetDetailCode.includes("renderBanquetWorkSection('Банкет'")
+    && bookingBanquetDetailCode.includes('renderBanquetMenuSection(packageBooking, entertainmentMembers)')
+    && bookingBanquetDetailCode.includes('renderBanquetServiceSection(packageBooking, serviceManualMembers)')
     && bookingCode.includes('function fullBanquetDetailCommentItems')
-    && bookingCode.includes('function renderFullBanquetCommentsSection')
-    && bookingCode.includes("renderBanquetWorkSection('Примітки'")
-    && bookingCode.includes('booking-banquet-comments booking-banquet-comments--compact')
-    && bookingCode.includes('renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })')
+    && bookingBanquetDetailCode.includes('function renderFullBanquetCommentsSection')
+    && bookingBanquetDetailCode.includes("renderBanquetWorkSection('Примітки'")
+    && bookingBanquetDetailCode.includes('booking-banquet-comments booking-banquet-comments--compact')
+    && bookingBanquetDetailCode.includes('renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })')
     && /role === 'kitchen'\s*\?\s*\(bookingDetailWorkspaceComment\(booking, 'kitchen'\) \|\| bookingDetailLegacyComment\(booking\)\)/.test(bookingCode)
     && bookingCode.includes("add('kitchen', 'Кухня'")
     && bookingCode.includes("add('activity', `Активність —")
     && bookingCode.includes("add('internal', 'Внутрішній коментар'")
-    && bookingCode.includes('renderBanquetActivitiesSection(visibleActivityMembers)')
-    && bookingCode.includes('renderBanquetWarningsSection(warnings)')
-    && bookingCode.includes('renderBanquetTechnicalSection({')
-    && !bookingCode.includes('group-first')
-    && !bookingCode.includes('Service / manual')
-    && !bookingCode.includes('Кухня / меню не прив')
-    && !bookingCode.includes('Технічні linked_to children')
-    && bookingCode.includes('Кандидати підібрані тільки за тим самим бізнес-контекстом і датою')
+    && bookingBanquetDetailCode.includes('renderBanquetActivitiesSection(visibleActivityMembers)')
+    && bookingBanquetDetailCode.includes('renderBanquetWarningsSection(warnings)')
+    && bookingBanquetDetailCode.includes('renderBanquetTechnicalSection({')
+    && !bookingBanquetDetailCode.includes('group-first')
+    && !bookingBanquetDetailCode.includes('Service / manual')
+    && !bookingBanquetDetailCode.includes('Кухня / меню не прив')
+    && !bookingBanquetDetailCode.includes('Технічні linked_to children')
+    && bookingBanquetDetailCode.includes('Кандидати підібрані тільки за тим самим бізнес-контекстом і датою')
     && timelineConstructorCss.includes('.booking-banquet-full-detail')
     && timelineConstructorCss.includes('.booking-banquet-section--work')
     && timelineConstructorCss.includes('.booking-banquet-service-row')
@@ -3849,15 +3023,15 @@ check('Booking kitchen menu supports serving times and banquet service events wi
     && bookingCode.includes('Видати о')
     && bookingCode.includes('Додати подію')
     && !bookingCode.includes('<option value="cake">Винос торта</option>')
-    && bookingCode.includes('Не вказано час видачі')
-    && bookingCode.includes('function groupedBookingMenuPositions')
-    && bookingCode.includes('booking-detail-package-serving-group')
-    && bookingCode.includes('booking-detail-package-table')
-    && bookingCode.includes('booking-detail-package-table-row')
-    && bookingCode.includes('booking-detail-package-service-row')
-    && bookingCode.includes('booking-banquet-service-row--checklist')
-    && !bookingCode.includes("<strong>${escapeHtml(BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Подія')}</strong>")
-    && bookingCode.includes('Час видачі не вказано')
+    && bookingPackageRendererCode.includes('Не вказано час видачі')
+    && bookingPackageRendererCode.includes('function groupedBookingMenuPositions')
+    && bookingPackageRendererCode.includes('booking-detail-package-serving-group')
+    && bookingPackageRendererCode.includes('booking-detail-package-table')
+    && bookingPackageRendererCode.includes('booking-detail-package-table-row')
+    && bookingPackageRendererCode.includes('booking-detail-package-service-row')
+    && bookingBanquetDetailCode.includes('booking-banquet-service-row--checklist')
+    && !bookingBanquetDetailCode.includes("<strong>${escapeHtml(BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Подія')}</strong>")
+    && bookingPackageRendererCode.includes('Час видачі не вказано')
     && htmlContains('index.html', 'Страви й торти додаються з каталогу')
     && htmlContains('services/bookingPackage.js', 'BOOKING_PACKAGE_SCHEMA_VERSION = 2')
     && htmlContains('services/bookingPackage.js', 'normalizeServiceEvents')
@@ -3888,7 +3062,7 @@ check('Booking menu quantity wording separates portion count from packed serving
     && bookingCode.includes('function formatBookingMenuPositionQuantity')
     && bookingCode.includes('по ${unit}')
     && bookingCode.includes('formatBookingMenuPositionQuantity(item))} × ${escapeHtml(formatPrice(item.unitPrice))}')
-    && bookingCode.includes('<span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>')
+    && bookingPackageRendererCode.includes('<span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>')
     && bookingCode.includes('const price = item.unitPrice ? ` × ${item.unitPrice} грн` :')
     && bookingCode.includes("const unit = normalizeBookingMenuServingUnitDisplay(product.servingUnit || product.priceUnit || '')")
     && bookingCode.includes('const cartQuantityLabel = formatBookingMenuPositionQuantity(item)')
@@ -4051,6 +3225,7 @@ check('Timeline product sales/export permission state does not fight visibility 
 // RESULTS
 // ═══════════════════════════════════════════════════
 
+const { passed, failed } = ui.results();
 console.log(`\n${'═'.repeat(50)}`);
 console.log(`✅ Passed: ${passed}`);
 console.log(`❌ Failed: ${failed}`);

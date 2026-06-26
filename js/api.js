@@ -71,6 +71,38 @@ function apiOfflineFailure(err, fallback = 'Немає звʼязку з сер�
     };
 }
 
+function normalizeApiErrorResult(errorOrPayload = {}, fallbackMessage = 'API error') {
+    if (errorOrPayload && errorOrPayload.success === true) return errorOrPayload;
+
+    const isError = errorOrPayload instanceof Error;
+    const payload = typeof errorOrPayload === 'string'
+        ? { error: errorOrPayload }
+        : (isError
+            ? {
+                error: errorOrPayload.message,
+                message: errorOrPayload.message,
+                offline: true,
+                details: errorOrPayload.message ? { message: errorOrPayload.message } : null
+            }
+            : (errorOrPayload || {}));
+    const status = payload.status || payload.response?.status || null;
+    const requestId = payload.requestId || payload.request_id || payload.details?.requestId || payload.details?.request_id || null;
+    const formattedPayload = {
+        ...payload,
+        status,
+        requestId
+    };
+
+    return {
+        ...payload,
+        success: false,
+        error: formatApiErrorPayload(formattedPayload, fallbackMessage),
+        offline: Boolean(payload.offline || (isError && !status)),
+        status,
+        requestId
+    };
+}
+
 async function apiErrorFromResponse(response, fallback = 'API error') {
     const payload = await response.json().catch(() => ({}));
     return apiErrorFromPayload({ ...payload, status: response.status }, fallback);
@@ -1993,15 +2025,15 @@ async function apiSaveTimelineResource(resource) {
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(resource || {}))
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error', status: response.status };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         return await response.json();
     } catch (err) {
         console.error('API saveTimelineResource error:', err);
-        return { success: false, error: err.message, offline: true };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2012,15 +2044,15 @@ async function apiUpdateTimelineResource(resourceId, resource) {
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(resource || {}))
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error', status: response.status };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         return await response.json();
     } catch (err) {
         console.error('API updateTimelineResource error:', err);
-        return { success: false, error: err.message, offline: true };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2030,15 +2062,15 @@ async function apiDeleteTimelineResource(resourceId) {
             method: 'DELETE',
             headers: getTimelineAuthHeaders(false)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error', status: response.status };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         return await response.json();
     } catch (err) {
         console.error('API deleteTimelineResource error:', err);
-        return { success: false, error: err.message, offline: true };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2336,16 +2368,16 @@ async function apiCreateProduct(product) {
             headers: getAuthHeaders(),
             body: JSON.stringify(product)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         const data = await response.json();
         return { success: true, product: data };
     } catch (err) {
         console.error('API createProduct error:', err);
-        return { success: false, error: err.message };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2359,16 +2391,16 @@ async function apiUpdateProduct(id, product) {
             headers: getAuthHeaders(),
             body: JSON.stringify(product)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         const data = await response.json();
         return { success: true, product: data };
     } catch (err) {
         console.error('API updateProduct error:', err);
-        return { success: false, error: err.message };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2382,16 +2414,16 @@ async function apiUpdateProductDocument(id, payload) {
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         const data = await response.json();
         return { success: true, product: data };
     } catch (err) {
         console.error('API updateProductDocument error:', err);
-        return { success: false, error: err.message };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2407,15 +2439,15 @@ async function apiDeleteProduct(id, options = {}) {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         return await response.json();
     } catch (err) {
         console.error('API deleteProduct error:', err);
-        return { success: false, error: err.message };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 
@@ -2447,15 +2479,15 @@ async function apiUpdateProductTechCard(id, payload = {}) {
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
         });
-        if (handleAuthError(response)) return { success: false };
+        if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return normalizeApiErrorResult({ ...body, status: response.status }, 'API error');
         }
         return await response.json();
     } catch (err) {
         console.error('API updateProductTechCard error:', err);
-        return { success: false, error: err.message };
+        return normalizeApiErrorResult(err, 'API error');
     }
 }
 

@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.31 - CRM Refactor Hardening
+
+### CRM refactor boundaries / Mutation reliability / Booking-summary parity / (Клешня, 26.06.2026) [codex]
+- **Static UI guards розділено за доменами** - великий `tests/ui-check.js` розвантажено через `tests/static/`, зберігаючи той самий entrypoint `npm run test:ui` і contract checks.
+- **Booking package renderer винесено з монолітного `booking.js`** - меню, входи й розваги банкетного package тепер рендеряться через `js/booking-package-renderer.js` без зміни UI contract.
+- **Full banquet detail renderer ізольовано** - великі секції деталей банкету винесено в `js/booking-banquet-detail.js`, щоб modal lifecycle у `booking.js` не змішувався з HTML рендером.
+- **Task UI rules стали спільними для Tasks і Profile / Мій день** - priority/status normalization, labels, ranks і failure payload shape винесено в `js/task-ui-shared.js`.
+- **Mutation errors у критичних frontend flows уніфіковано** - booking/task/settings/dashboard/profile/center save-like операції краще зберігають `success:false`, `error`, `offline`, `status` і `requestId`, не показуючи fake success.
+- **Банкетний HTML/PDF/Text вирівняно через order row view-model** - `services/banquetSummary.js` готує `orderRowViews.client`, а HTML, server PDF і copy text використовують однакові labels для позиції, кількості, ціни, суми й приміток.
+- **Regression coverage посилено** - contract тести й static guards перевіряють нові module boundaries, shared task helpers, booking-summary renderer parity і browser smoke для client banquet surface.
+- **Релізні маркери піднято до `0.77.31`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.30 - Invite Reliability Polish
 
 ### Invite reliability / Mutation errors / QA guards / (Клешня, 25.06.2026) [codex]

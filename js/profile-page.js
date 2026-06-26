@@ -118,13 +118,13 @@ const CABINET_TASK_CATEGORIES = [
     ['checklist', 'Чек-лісти']
 ];
 
-const CABINET_TASK_PRIORITIES = [
+const CABINET_TASK_PRIORITIES = window.TaskUiShared?.TASK_PRIORITY_OPTIONS || [
     { value: 'urgent', label: 'Терміново', hint: 'Піднімає задачу вгору і створює нагадування без руху' },
     { value: 'high', label: 'Високий', hint: 'Вище звичайних задач' },
     { value: 'normal', label: 'Звичайний', hint: 'Стандартний пріоритет' },
     { value: 'low', label: 'Низький', hint: 'Можна виконати пізніше' }
 ];
-const CABINET_TASK_PRIORITY_VALUES = CABINET_TASK_PRIORITIES.map(item => item.value);
+const CABINET_TASK_PRIORITY_VALUES = window.TaskUiShared?.TASK_PRIORITY_VALUES || CABINET_TASK_PRIORITIES.map(item => item.value);
 
 const CABINET_TASK_SOUND_THEMES = [
     { value: 'subtle', label: 'Мʼякий' },
@@ -1127,69 +1127,61 @@ async function apiGetScoped(path) {
 async function apiPost(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(body) });
-        if (handleAuthError(r)) return null;
+        if (handleAuthError(r)) return normalizeApiErrorResult({ status: r?.status || 401 }, 'Помилка запиту');
         const payload = await r.json().catch(() => ({}));
         if (!r.ok) {
-            return {
-                success: false,
-                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
-                requestId: payload.requestId || payload.request_id || null,
-                status: r.status
-            };
+            return normalizeApiErrorResult({ ...payload, status: r.status }, 'Помилка запиту');
         }
         return payload;
-    } catch (e) { console.error('API POST', path, e); return null; }
+    } catch (e) {
+        console.error('API POST', path, e);
+        return normalizeApiErrorResult(e, 'Помилка запиту');
+    }
 }
 
 async function apiPut(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(body) });
-        if (handleAuthError(r)) return null;
+        if (handleAuthError(r)) return normalizeApiErrorResult({ status: r?.status || 401 }, 'Помилка запиту');
         const payload = await r.json().catch(() => ({}));
         if (!r.ok) {
-            return {
-                success: false,
-                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
-                requestId: payload.requestId || payload.request_id || null,
-                status: r.status
-            };
+            return normalizeApiErrorResult({ ...payload, status: r.status }, 'Помилка запиту');
         }
         return payload;
-    } catch (e) { console.error('API PUT', path, e); return null; }
+    } catch (e) {
+        console.error('API PUT', path, e);
+        return normalizeApiErrorResult(e, 'Помилка запиту');
+    }
 }
 
 async function apiPatch(path, body) {
     try {
         const r = await fetch(`/api${path}`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify(body) });
-        if (handleAuthError(r)) return null;
+        if (handleAuthError(r)) return normalizeApiErrorResult({ status: r?.status || 401 }, 'Помилка запиту');
         const payload = await r.json().catch(() => ({}));
         if (!r.ok) {
-            return {
-                success: false,
-                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
-                requestId: payload.requestId || payload.request_id || null,
-                status: r.status
-            };
+            return normalizeApiErrorResult({ ...payload, status: r.status }, 'Помилка запиту');
         }
         return payload;
-    } catch (e) { console.error('API PATCH', path, e); return null; }
+    } catch (e) {
+        console.error('API PATCH', path, e);
+        return normalizeApiErrorResult(e, 'Помилка запиту');
+    }
 }
 
 async function apiDelete(path) {
     try {
         const r = await fetch(`/api${path}`, { method: 'DELETE', headers: getAuthHeaders(false) });
-        if (handleAuthError(r)) return null;
+        if (handleAuthError(r)) return normalizeApiErrorResult({ status: r?.status || 401 }, 'Помилка запиту');
         const payload = await r.json().catch(() => ({}));
         if (!r.ok) {
-            return {
-                success: false,
-                error: window.CrmApiErrors?.format?.(payload, 'Помилка запиту') || payload.error || payload.message || 'Помилка запиту',
-                requestId: payload.requestId || payload.request_id || null,
-                status: r.status
-            };
+            return normalizeApiErrorResult({ ...payload, status: r.status }, 'Помилка запиту');
         }
         return payload;
-    } catch (e) { console.error('API DELETE', path, e); return null; }
+    } catch (e) {
+        console.error('API DELETE', path, e);
+        return normalizeApiErrorResult(e, 'Помилка запиту');
+    }
 }
 
 // ==========================================
@@ -3129,6 +3121,9 @@ function closeCabinetCompletedDayDividers(except = null) {
 }
 
 function normalizeCabinetPriority(priority = '') {
+    if (window.TaskUiShared?.normalizeTaskPriority) {
+        return window.TaskUiShared.normalizeTaskPriority(priority);
+    }
     const value = String(priority || '').trim().toLowerCase();
     if (value === 'critical') return 'urgent';
     if (value === 'medium') return 'normal';
@@ -3137,6 +3132,11 @@ function normalizeCabinetPriority(priority = '') {
 
 function setCabinetPriorityClass(element, priority = 'normal') {
     if (!element) return normalizeCabinetPriority(priority);
+    if (window.TaskUiShared?.applyPriorityClasses) {
+        return window.TaskUiShared.applyPriorityClasses(element, priority, {
+            priorityClassPrefix: 'priority-'
+        });
+    }
     const normalized = normalizeCabinetPriority(priority);
     CABINET_TASK_PRIORITY_VALUES.forEach(value => element.classList.remove(`priority-${value}`));
     element.classList.add(`priority-${normalized}`);
@@ -3145,6 +3145,11 @@ function setCabinetPriorityClass(element, priority = 'normal') {
 
 function setCabinetPrioritySelectVisual(select, priority = 'normal') {
     if (!select) return normalizeCabinetPriority(priority);
+    if (window.TaskUiShared?.applyPriorityClasses) {
+        return window.TaskUiShared.applyPriorityClasses(select, priority, {
+            selectClassPrefix: 'cabinet-task-priority-select--'
+        });
+    }
     const normalized = normalizeCabinetPriority(priority);
     CABINET_TASK_PRIORITY_VALUES.forEach(value => select.classList.remove(`cabinet-task-priority-select--${value}`));
     select.classList.add(`cabinet-task-priority-select--${normalized}`);
@@ -3161,6 +3166,9 @@ function setCabinetPrioritySelectBusy(select, busy) {
 }
 
 function cabinetTaskMutationFailure(payload = {}, fallback = 'Не вдалося оновити задачу') {
+    if (window.TaskUiShared?.taskMutationFailure) {
+        return window.TaskUiShared.taskMutationFailure(payload, null, fallback);
+    }
     return {
         success: false,
         error: window.CrmApiErrors?.format?.(payload, fallback) || payload.error || payload.message || fallback,
@@ -3171,6 +3179,9 @@ function cabinetTaskMutationFailure(payload = {}, fallback = 'Не вдалос�
 }
 
 function cabinetTaskOfflineFailure(error, fallback = 'Немає звʼязку з сервером. Перевірте інтернет і спробуйте ще раз.') {
+    if (window.TaskUiShared?.taskOfflineFailure) {
+        return window.TaskUiShared.taskOfflineFailure(error, fallback);
+    }
     return {
         success: false,
         error: fallback,
@@ -3182,6 +3193,9 @@ function cabinetTaskOfflineFailure(error, fallback = 'Немає звʼязку 
 }
 
 function normalizeCabinetTaskMutationResult(result, fallback = 'Не вдалося оновити задачу') {
+    if (window.TaskUiShared?.normalizeTaskMutationResult) {
+        return window.TaskUiShared.normalizeTaskMutationResult(result, fallback);
+    }
     if (result?.success) return result;
     if (result && result.success === false) return cabinetTaskMutationFailure(result, fallback);
     return cabinetTaskOfflineFailure(null, fallback);
@@ -3196,21 +3210,37 @@ function applyCabinetTaskPriorityVisualState(taskId, priority = 'normal', source
     if (sourceCard) cards.add(sourceCard);
     document.querySelectorAll(`.cabinet-task-card[data-task-id="${id}"]`).forEach(card => cards.add(card));
     cards.forEach(card => {
-        setCabinetPriorityClass(card, normalized);
-        card.dataset.taskPriority = normalized;
-        setCabinetPrioritySelectVisual(card.querySelector('[data-cabinet-task-priority-select]'), normalized);
+        if (window.TaskUiShared?.applyPriorityClasses) {
+            window.TaskUiShared.applyPriorityClasses(card, normalized, {
+                priorityClassPrefix: 'priority-',
+                dataAttribute: 'taskPriority'
+            });
+            window.TaskUiShared.applyPriorityClasses(card.querySelector('[data-cabinet-task-priority-select]'), normalized, {
+                selectClassPrefix: 'cabinet-task-priority-select--'
+            });
+        } else {
+            setCabinetPriorityClass(card, normalized);
+            card.dataset.taskPriority = normalized;
+            setCabinetPrioritySelectVisual(card.querySelector('[data-cabinet-task-priority-select]'), normalized);
+        }
     });
     setCabinetPrioritySelectVisual(sourceSelect, normalized);
     return normalized;
 }
 
 function cabinetTaskPriorityRank(task = {}) {
+    if (window.TaskUiShared?.taskPriorityRank) {
+        return window.TaskUiShared.taskPriorityRank(task);
+    }
     const priority = normalizeCabinetPriority(task.priority || task.taskPriority || task.priority_level);
     const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
     return rank[priority] ?? rank.normal;
 }
 
 function cabinetTaskPriorityLabel(priority = '') {
+    if (window.TaskUiShared?.taskPriorityLabel) {
+        return window.TaskUiShared.taskPriorityLabel(priority);
+    }
     const normalized = normalizeCabinetPriority(priority);
     const configured = CABINET_TASK_PRIORITIES.find(item => item.value === normalized);
     if (configured) return configured.label;

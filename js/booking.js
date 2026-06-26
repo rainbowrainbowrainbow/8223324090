@@ -4370,6 +4370,10 @@ function renderBookingPackageSummary() {
     updateBookingSubmitState();
 }
 
+if (typeof window !== 'undefined' && window.BookingPackageRenderer) {
+    window.BookingPackageRenderer.renderBookingPackageSummary = renderBookingPackageSummary;
+}
+
 function getBookingPackageFromBooking(booking) {
     const extraData = booking?.extraData || booking?.extra_data || {};
     const packageData = booking?.bookingPackage
@@ -4444,283 +4448,62 @@ function hydrateBookingWorkspace(booking) {
     renderBookingPackageSummary();
 }
 
+function bookingPackageRendererCall(name, args) {
+    const root = typeof window !== 'undefined' ? window : globalThis;
+    const renderer = root.BookingPackageRenderer;
+    const fn = renderer && renderer[name];
+    if (typeof fn !== 'function') {
+        throw new Error(`BookingPackageRenderer.${name} is not available`);
+    }
+    return fn.apply(renderer, Array.from(args || []));
+}
+
 function bookingServingTimeLabel(value) {
-    return value || 'Час видачі не вказано';
+    return bookingPackageRendererCall('bookingServingTimeLabel', arguments);
 }
 
 function groupedBookingMenuPositions(positions = []) {
-    const groups = new Map();
-    positions.forEach(item => {
-        const key = item.servingTime || '__missing__';
-        if (!groups.has(key)) {
-            groups.set(key, {
-                key,
-                servingTime: item.servingTime || null,
-                items: []
-            });
-        }
-        groups.get(key).items.push(item);
-    });
-    return Array.from(groups.values()).sort((a, b) => {
-        if (!a.servingTime && !b.servingTime) return 0;
-        if (!a.servingTime) return 1;
-        if (!b.servingTime) return -1;
-        return a.servingTime.localeCompare(b.servingTime);
-    });
+    return bookingPackageRendererCall('groupedBookingMenuPositions', arguments);
 }
 
 function renderBookingPackageMenuRows(positions = [], options = {}) {
-    if (!positions.length) return '';
-    const showServingTitles = options.showServingTitles !== false;
-    return groupedBookingMenuPositions(positions).map(group => `
-        <div class="booking-detail-package-serving-group${group.servingTime ? '' : ' booking-detail-package-serving-group--missing'}">
-            ${showServingTitles ? `
-            <div class="booking-detail-package-serving-title">
-                <span>${escapeHtml(bookingServingTimeLabel(group.servingTime))}</span>
-                <small>Позиції меню</small>
-            </div>
-            ` : ''}
-            <div class="booking-detail-package-table" role="table" aria-label="Позиції меню ${escapeHtml(bookingServingTimeLabel(group.servingTime))}">
-                <div class="booking-detail-package-table-head" role="row">
-                    <span role="columnheader">Позиція</span>
-                    <span role="columnheader">К-сть</span>
-                    <span role="columnheader">Ціна</span>
-                    <span role="columnheader">Сума</span>
-                </div>
-            ${group.items.map(item => `
-                <div class="booking-detail-package-table-row" role="row">
-                    <div class="booking-detail-package-item" role="cell">
-                        <span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}
-                        ${item.note || item.servingNote ? `<small>${item.note ? escapeHtml(item.note) : ''}${item.note && item.servingNote ? ' · ' : ''}${item.servingNote ? escapeHtml(item.servingNote) : ''}</small>` : ''}
-                    </div>
-                    <span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>
-                    <span role="cell">${escapeHtml(formatPrice(item.unitPrice || 0))}</span>
-                    <strong role="cell">${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
-                </div>
-            `).join('')}
-            </div>
-        </div>
-    `).join('');
+    return bookingPackageRendererCall('renderBookingPackageMenuRows', arguments);
 }
 
 function normalizeBookingPackageEntertainmentRows(rows = []) {
-    return (Array.isArray(rows) ? rows : [])
-        .map((row, index) => {
-            const title = String(row?.title || row?.label || row?.programName || row?.program_name || row?.bookingId || '').trim();
-            if (!title) return null;
-            const subtotal = bookingPackageMoneyValue(row.subtotal ?? row.price ?? row.amount ?? 0);
-            const unitPrice = bookingPackageMoneyValue(row.unitPrice ?? row.unit_price ?? subtotal);
-            return {
-                id: String(row.id || row.bookingId || row.booking_id || `entertainment:${index + 1}`),
-                title,
-                time: String(row.time || '').trim(),
-                room: String(row.room || '').trim(),
-                durationLabel: String(row.durationLabel || row.duration_label || '').trim(),
-                unitPrice,
-                subtotal,
-                includedInPackage: row.includedInPackage === true || row.included_in_package === true
-            };
-        })
-        .filter(Boolean);
+    return bookingPackageRendererCall('normalizeBookingPackageEntertainmentRows', arguments);
 }
 
 function renderBookingPackageEntertainmentRows(rows = [], options = {}) {
-    const entertainmentRows = normalizeBookingPackageEntertainmentRows(rows);
-    if (!entertainmentRows.length) return '';
-    const showEntertainmentTitle = options.showEntertainmentTitle !== false;
-    const showEntertainmentTableHead = options.showEntertainmentTableHead !== false;
-    const showEntertainmentKindBadge = options.showEntertainmentKindBadge !== false;
-    return `
-        <div class="booking-detail-package-serving-group booking-detail-package-serving-group--entertainment">
-            ${showEntertainmentTitle ? `
-            <div class="booking-detail-package-serving-title">
-                <span>Розваги</span>
-                <small>Розважальні позиції</small>
-            </div>
-            ` : ''}
-            <div class="booking-detail-package-table" role="table" aria-label="Розважальні позиції">
-                ${showEntertainmentTableHead ? `
-                <div class="booking-detail-package-table-head" role="row">
-                    <span role="columnheader">Позиція</span>
-                    <span role="columnheader">К-сть</span>
-                    <span role="columnheader">Ціна</span>
-                    <span role="columnheader">Сума</span>
-                </div>
-                ` : ''}
-                ${entertainmentRows.map(row => {
-                    const meta = [row.time, row.room, row.durationLabel].filter(Boolean).join(' · ');
-                    const priceLabel = row.unitPrice > 0 ? formatPrice(row.unitPrice) : '—';
-                    const subtotalLabel = row.subtotal > 0 ? formatPrice(row.subtotal) : '—';
-                    return `
-                        <div class="booking-detail-package-table-row booking-detail-package-table-row--entertainment" role="row">
-                            <div class="booking-detail-package-item" role="cell">
-                                ${showEntertainmentKindBadge ? '<span class="booking-menu-position-kind booking-menu-position-kind--entertainment">РОЗВАГИ</span>' : ''}${escapeHtml(row.title)}
-                                ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
-                            </div>
-                            <span role="cell">${escapeHtml(row.durationLabel || '1 програма')}</span>
-                            <span role="cell">${escapeHtml(priceLabel)}</span>
-                            <strong role="cell">${escapeHtml(subtotalLabel)}</strong>
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-        </div>
-    `;
+    return bookingPackageRendererCall('renderBookingPackageEntertainmentRows', arguments);
 }
 
 function formatBookingEntryQuantityLabel(quantity) {
-    const value = Number(quantity);
-    if (!Number.isFinite(value) || value <= 0) return '';
-    return `${formatBookingMenuQuantityNumber(value)} дітей`;
+    return bookingPackageRendererCall('formatBookingEntryQuantityLabel', arguments);
 }
 
 function bookingPackageMoneyValue(value) {
-    const amount = Number(value);
-    if (!Number.isFinite(amount) || amount < 0) return 0;
-    return Math.round(amount * 100) / 100;
+    return bookingPackageRendererCall('bookingPackageMoneyValue', arguments);
 }
 
 function bookingPackageEntryChargeFromPackage(bookingPackage = {}) {
-    if (!bookingPackage || typeof bookingPackage !== 'object') return null;
-    const raw = bookingPackage.entryCharge || bookingPackage.entry_charge || null;
-    const entrySubtotal = bookingPackageMoneyValue(
-        bookingPackage.entrySubtotal
-        ?? bookingPackage.entry_subtotal
-        ?? (raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw.subtotal ?? raw.entrySubtotal ?? raw.entry_subtotal) : 0)
-    );
-    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-        const subtotal = bookingPackageMoneyValue(raw.subtotal ?? raw.entrySubtotal ?? raw.entry_subtotal ?? entrySubtotal);
-        if (subtotal <= 0) return null;
-        return {
-            title: raw.title || 'Вхід',
-            quantity: raw.quantity ?? raw.qty ?? null,
-            unitPrice: raw.unitPrice ?? raw.unit_price ?? null,
-            subtotal,
-            ruleCode: raw.ruleCode || raw.rule_code || null,
-            dateType: raw.dateType || raw.date_type || null,
-            fallback: false
-        };
-    }
-    if (entrySubtotal <= 0) return null;
-    return {
-        title: 'Вхід',
-        quantity: null,
-        unitPrice: null,
-        subtotal: entrySubtotal,
-        ruleCode: null,
-        dateType: null,
-        fallback: true
-    };
+    return bookingPackageRendererCall('bookingPackageEntryChargeFromPackage', arguments);
 }
 
 function formatBookingPackageEntryAmount(entryCharge = {}) {
-    const subtotal = bookingPackageMoneyValue(entryCharge.subtotal || 0);
-    const quantityLabel = formatBookingEntryQuantityLabel(entryCharge.quantity);
-    const unitPrice = bookingPackageMoneyValue(entryCharge.unitPrice ?? entryCharge.unit_price ?? 0);
-    if (quantityLabel && unitPrice > 0) {
-        return `${quantityLabel} × ${formatPrice(unitPrice)} = ${formatPrice(subtotal)}`;
-    }
-    return formatPrice(subtotal);
+    return bookingPackageRendererCall('formatBookingPackageEntryAmount', arguments);
 }
 
 function renderBookingPackageEntryRow(bookingPackage = {}) {
-    const entryCharge = bookingPackageEntryChargeFromPackage(bookingPackage);
-    if (!entryCharge) return '';
-    const label = formatBookingPackageEntryAmount(entryCharge);
-    const details = entryCharge.fallback
-        ? 'Деталі кількості та ціни не збережені у пакеті.'
-        : label;
-    return `
-        <div class="booking-detail-package-row booking-detail-package-entry-row">
-            <div><span class="booking-detail-package-entry-title">${escapeHtml(entryCharge.title || 'Вхід')}</span><small>${escapeHtml(details)}</small></div>
-            <strong>${escapeHtml(formatPrice(entryCharge.subtotal))}</strong>
-        </div>
-    `;
+    return bookingPackageRendererCall('renderBookingPackageEntryRow', arguments);
 }
 
-function bookingPackageBusinessRowsSummary({ menuCount = 0, legacyMenu = false, entryCharge = null, entertainmentRows = [] } = {}) {
-    const parts = [];
-    const normalizedMenuCount = Number(menuCount);
-    const normalizedEntertainmentCount = Array.isArray(entertainmentRows) ? entertainmentRows.length : 0;
-    if (Number.isFinite(normalizedMenuCount) && normalizedMenuCount > 0) {
-        parts.push(`Меню: ${normalizedMenuCount}`);
-    } else if (legacyMenu) {
-        parts.push('Меню');
-    }
-    if (entryCharge) parts.push('Вхід');
-    if (normalizedEntertainmentCount > 0) parts.push(`Розваги: ${normalizedEntertainmentCount}`);
-    return parts.join(' · ');
+function bookingPackageBusinessRowsSummary(options = {}) {
+    return bookingPackageRendererCall('bookingPackageBusinessRowsSummary', arguments);
 }
 
 function renderBookingPackageDetail(booking, options = {}) {
-    const bookingPackage = getBookingPackageFromBooking(booking);
-    const positions = bookingPackage?.menuPositions || [];
-    const serviceEvents = bookingPackage?.serviceEvents || [];
-    const entertainmentRows = normalizeBookingPackageEntertainmentRows(options.entertainmentRows || options.entertainment_rows || []);
-    if (!bookingPackage && !booking?.banquetMenu && !entertainmentRows.length) return '';
-    const title = options.title || 'Меню / сервісні позиції';
-    const modifier = options.compact ? ' booking-detail-package--compact' : '';
-    const includeServiceEvents = options.includeServiceEvents !== false;
-    const showHeaderSummary = options.showHeaderSummary !== false;
-    const missingServingTimes = bookingMenuMissingServingTimeCount(positions);
-    const rows = positions.length
-        ? renderBookingPackageMenuRows(positions, {
-            showServingTitles: options.showServingTitles !== false
-        })
-        : (booking?.banquetMenu ? `<div class="booking-detail-package-row"><div>${escapeHtml(booking.banquetMenu)}</div><strong>—</strong></div>` : '');
-    const entertainmentHtml = renderBookingPackageEntertainmentRows(entertainmentRows, {
-        showEntertainmentTitle: options.showEntertainmentTitle !== false,
-        showEntertainmentTableHead: options.showEntertainmentTableHead !== false,
-        showEntertainmentKindBadge: options.showEntertainmentKindBadge !== false
-    });
-    const entryCharge = bookingPackageEntryChargeFromPackage(bookingPackage);
-    const entryRow = entryCharge ? renderBookingPackageEntryRow(bookingPackage) : '';
-    const businessRowsSummary = showHeaderSummary
-        ? bookingPackageBusinessRowsSummary({
-            menuCount: positions.length,
-            legacyMenu: !positions.length && Boolean(booking?.banquetMenu),
-            entryCharge,
-            entertainmentRows
-        })
-        : '';
-    const entertainmentSubtotal = entertainmentRows.reduce((total, row) => (
-        row.includedInPackage ? total : total + bookingPackageMoneyValue(row.subtotal)
-    ), 0);
-    const packageTotal = bookingPackage?.finalTotal ?? booking.price ?? 0;
-    const displayTotal = bookingPackageMoneyValue(packageTotal) + bookingPackageMoneyValue(entertainmentSubtotal);
-    const eventRows = includeServiceEvents && serviceEvents.length
-        ? `
-            <div class="booking-detail-package-subtitle">Подачі / сервіс</div>
-            <div class="booking-detail-package-service-list">
-            ${serviceEvents.map(event => `
-                <div class="booking-detail-package-service-row">
-                    <span class="booking-detail-package-service-dot" aria-hidden="true"></span>
-                    <div>
-                        <strong>${event.time ? `${escapeHtml(event.time)} · ` : ''}${escapeHtml(event.title || BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Подія')}</strong>
-                        ${event.note ? `<small>${escapeHtml(event.note)}</small>` : ''}
-                    </div>
-                </div>
-            `).join('')}
-            </div>
-        `
-        : '';
-    return `
-        <div class="booking-detail-package${modifier}">
-            <div class="booking-detail-package-header">
-                <span>${escapeHtml(title)}</span>
-                ${businessRowsSummary ? `<small>${escapeHtml(businessRowsSummary)}</small>` : ''}
-            </div>
-            ${missingServingTimes ? `<div class="booking-summary-note">Не вказано час видачі для ${escapeHtml(String(missingServingTimes))} позицій.</div>` : ''}
-            ${rows}
-            ${entertainmentHtml}
-            ${entryRow}
-            ${eventRows}
-            <div class="booking-detail-package-row booking-detail-package-total">
-                <div>Загальна сума</div>
-                <strong>${escapeHtml(formatPrice(displayTotal))}</strong>
-            </div>
-        </div>
-    `;
+    return bookingPackageRendererCall('renderBookingPackageDetail', arguments);
 }
 
 function shouldHideBookingWorkspaceScenarioDetail(booking = {}) {
@@ -9818,59 +9601,69 @@ function bookingDetailDepositWarnings(anchorBooking = {}, snapshot = null, proje
     return warnings;
 }
 
-function renderBanquetDepositStatusSection(anchorBooking = {}, snapshot = null, projection = { loading: true }) {
-    const primaryBooking = banquetSnapshotPrimaryBooking(snapshot, anchorBooking) || anchorBooking;
-    const anchorId = bookingDetailId(anchorBooking);
-    const primaryBookingId = bookingDetailId(primaryBooking) || anchorId;
-    const groupId = bookingDetailBanquetGroupId(anchorBooking, snapshot);
-    const tone = bookingDetailDepositTone(projection);
-    const deposit = projection?.deposit || null;
-    const display = projection?.display || {};
-    const canViewMoney = bookingDetailCanViewDepositMoney();
-    const detailRows = [];
-    if (projection?.loading) {
-        detailRows.push(['Стан', 'Завантажуємо з бухгалтерського запису']);
-    } else if (projection?.success === false) {
-        detailRows.push(['Помилка', projection.error || 'Не вдалося завантажити завдаток']);
-    } else if (deposit && canViewMoney) {
-        const amount = display.amount ?? deposit.amount;
-        const receivedDate = bookingDetailDepositDateLabel(bookingDetailDepositReceivedDate(deposit));
-        const method = bookingDetailDepositPaymentLabel(display.paymentMethod || deposit.paymentMethod);
-        if (amount !== null && amount !== undefined && amount !== '') detailRows.push(['Сума', formatPrice(amount)]);
-        if (receivedDate) detailRows.push(['Дата отримання', receivedDate]);
-        if (method) detailRows.push(['Спосіб', method]);
-    } else if (deposit && !canViewMoney) {
-        detailRows.push(['Деталі', 'Фінансові дані приховані для вашої ролі']);
-    } else {
-        detailRows.push(['Стан', 'Canonical запис завдатку ще не створено']);
+function bookingBanquetDetailRendererCall(name, args) {
+    const root = typeof window !== 'undefined' ? window : globalThis;
+    const renderer = root.BookingBanquetDetail;
+    const fn = renderer && renderer[name];
+    if (typeof fn !== 'function') {
+        console.warn(`[BookingBanquetDetail] ${name} is not available`);
+        return '';
     }
-    const warnings = bookingDetailDepositWarnings(anchorBooking, snapshot, projection);
-    return `
-        <div id="bookingBanquetDepositStatus"
-             class="booking-banquet-deposit booking-banquet-deposit--${escapeHtml(tone)}"
-             data-banquet-deposit-status
-             data-booking-id="${escapeHtml(primaryBookingId || '')}"
-             data-anchor-booking-id="${escapeHtml(anchorId || '')}"
-             data-group-id="${escapeHtml(groupId || '')}">
-            <div class="booking-banquet-deposit__main">
-                <div>
-                    <div class="booking-banquet-deposit__label">Завдаток</div>
-                    <div class="booking-banquet-deposit__status">${escapeHtml(bookingDetailDepositStatusLabel(projection))}</div>
-                </div>
-                <span class="booking-banquet-deposit__pill">${escapeHtml(groupId ? `Група #${groupId}` : `Бронь #${primaryBookingId || '-'}`)}</span>
-            </div>
-            <div class="booking-banquet-deposit__grid">
-                ${detailRows.map(([label, value]) => `
-                    <div class="booking-banquet-deposit__item">
-                        <span>${escapeHtml(label)}</span>
-                        <strong>${escapeHtml(String(value || '-'))}</strong>
-                    </div>
-                `).join('')}
-            </div>
-            ${warnings.length ? `<div class="booking-banquet-deposit__warnings">${warnings.map(message => `<div>${escapeHtml(message)}</div>`).join('')}</div>` : ''}
-        </div>
-    `;
+    return fn.apply(renderer, Array.from(args || []));
 }
+
+function renderBanquetDepositStatusSection(anchorBooking = {}, snapshot = null, projection = { loading: true }) {
+    return bookingBanquetDetailRendererCall('renderBanquetDepositStatusSection', arguments);
+}
+
+function renderBanquetMemberCard(member = {}, roleOverride = null, options = {}) {
+    return bookingBanquetDetailRendererCall('renderBanquetMemberCard', arguments);
+}
+
+function renderBanquetMemberSection(title, members, emptyText) {
+    return bookingBanquetDetailRendererCall('renderBanquetMemberSection', arguments);
+}
+
+function renderBanquetWorkSection(title, bodyHtml, modifier = '') {
+    return bookingBanquetDetailRendererCall('renderBanquetWorkSection', arguments);
+}
+
+function renderBanquetMenuSection(packageBooking, entertainmentMembers = []) {
+    return bookingBanquetDetailRendererCall('renderBanquetMenuSection', arguments);
+}
+
+function renderBanquetServiceSection(packageBooking, serviceManualMembers = []) {
+    return bookingBanquetDetailRendererCall('renderBanquetServiceSection', arguments);
+}
+
+function renderBanquetActivitiesSection(activityMembers = []) {
+    return bookingBanquetDetailRendererCall('renderBanquetActivitiesSection', arguments);
+}
+
+function renderFullBanquetCommentsSection(context = {}) {
+    return bookingBanquetDetailRendererCall('renderFullBanquetCommentsSection', arguments);
+}
+
+function renderBanquetWarningsSection(warnings = []) {
+    return bookingBanquetDetailRendererCall('renderBanquetWarningsSection', arguments);
+}
+
+function renderBanquetTechnicalSection(options = {}) {
+    return bookingBanquetDetailRendererCall('renderBanquetTechnicalSection', arguments);
+}
+
+function renderBanquetCreateAction(anchorBooking = {}) {
+    return bookingBanquetDetailRendererCall('renderBanquetCreateAction', arguments);
+}
+
+function renderBanquetAttachCandidates(snapshot, anchorBooking = {}, allBookings = []) {
+    return bookingBanquetDetailRendererCall('renderBanquetAttachCandidates', arguments);
+}
+
+function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot = null) {
+    return bookingBanquetDetailRendererCall('renderFullBanquetDetail', arguments);
+}
+
 
 function banquetWarningText(warning = {}) {
     const code = String(warning.code || '').trim();
@@ -9905,77 +9698,6 @@ function buildBanquetDetailWarnings(snapshot, anchorBooking = {}) {
         }
     }
     return [...new Set(warnings)].filter(Boolean);
-}
-
-function renderBanquetMemberCard(member = {}, roleOverride = null, options = {}) {
-    const booking = member.booking || member;
-    const bookingId = bookingDetailId(booking);
-    if (!bookingId) return '';
-    const role = roleOverride || member.role || (member.isPrimary ? 'primary' : 'manual');
-    const technicalChildren = member.technicalChildren || [];
-    const showTechnicalMeta = Boolean(options.showTechnicalMeta);
-    const showRoleBadge = options.showRoleBadge ?? showTechnicalMeta;
-    const showPackage = options.showPackage ?? (role === 'kitchen' || bookingDetailIsKitchenCandidate(booking));
-    const showTechnicalChildren = options.showTechnicalChildren ?? showTechnicalMeta;
-    const packageHtml = showPackage
-        ? renderBookingPackageDetail(booking, { title: 'Меню цієї броні', compact: true })
-        : '';
-    const childrenHtml = showTechnicalChildren && technicalChildren.length ? `
-        <div class="booking-banquet-children">
-            <div class="booking-banquet-subtitle">Технічні записи</div>
-            ${technicalChildren.map(child => `
-                <div class="booking-banquet-child">
-                    <span>${escapeHtml(bookingDetailTitle(child))}</span>
-                    <small>${escapeHtml(bookingDetailStatusLabel(child))}${child.price ? ` · ${escapeHtml(formatPrice(child.price))}` : ''}</small>
-                </div>
-            `).join('')}
-        </div>
-    ` : '';
-    const metaParts = [
-        showTechnicalMeta ? `#${bookingId}` : '',
-        booking.room ? booking.room : '',
-        booking.customerName ? booking.customerName : ''
-    ].filter(Boolean);
-    return `
-        <div class="booking-banquet-member booking-banquet-member--${escapeHtml(role)}${showTechnicalMeta ? ' booking-banquet-member--technical' : ''}">
-            <div class="booking-banquet-member-main">
-                <div>
-                    <div class="booking-banquet-member-title">${escapeHtml(bookingDetailTitle(booking))}</div>
-                    ${metaParts.length ? `<div class="booking-banquet-member-meta">${escapeHtml(metaParts.join(' · '))}</div>` : ''}
-                </div>
-                <div class="booking-banquet-member-badges">
-                    ${showRoleBadge ? `<span class="booking-banquet-role">${escapeHtml(bookingDetailRoleLabel(role))}</span>` : ''}
-                    <span class="booking-banquet-status">${escapeHtml(bookingDetailStatusLabel(booking))}</span>
-                    ${booking.price ? `<span class="booking-banquet-price">${escapeHtml(formatPrice(booking.price))}</span>` : ''}
-                </div>
-            </div>
-            ${packageHtml}
-            ${childrenHtml}
-        </div>
-    `;
-}
-
-function renderBanquetMemberSection(title, members, emptyText) {
-    const rows = (members || []).filter(Boolean);
-    return `
-        <div class="booking-banquet-section">
-            <div class="booking-banquet-section-title">${escapeHtml(title)}</div>
-            ${rows.length
-                ? rows.map(member => renderBanquetMemberCard(member)).join('')
-                : `<div class="booking-banquet-empty">${escapeHtml(emptyText)}</div>`}
-        </div>
-    `;
-}
-
-function renderBanquetWorkSection(title, bodyHtml, modifier = '') {
-    const content = String(bodyHtml || '').trim();
-    if (!content) return '';
-    return `
-        <div class="booking-banquet-section booking-banquet-section--work${modifier ? ` booking-banquet-section--${escapeHtml(modifier)}` : ''}">
-            <div class="booking-banquet-section-title">${escapeHtml(title)}</div>
-            ${content}
-        </div>
-    `;
 }
 
 function bookingDetailHasMenuOverview(booking = {}) {
@@ -10098,65 +9820,6 @@ function bookingDetailHeaderScheduleSummary(packageBooking = {}) {
     `;
 }
 
-function renderBanquetMenuSection(packageBooking, entertainmentMembers = []) {
-    const entertainmentRows = bookingDetailEntertainmentRowsFromMembers(entertainmentMembers, packageBooking);
-    if ((!packageBooking || !bookingDetailHasMenuOverview(packageBooking)) && !entertainmentRows.length) return '';
-    return renderBanquetWorkSection(
-        'Меню',
-        renderBookingPackageDetail(packageBooking || {}, {
-            title: 'Меню',
-            compact: true,
-            includeServiceEvents: false,
-            showHeaderSummary: false,
-            showServingTitles: false,
-            showEntertainmentTitle: false,
-            showEntertainmentTableHead: false,
-            showEntertainmentKindBadge: false,
-            entertainmentRows
-        }),
-        'menu'
-    );
-}
-
-function renderBanquetServiceSection(packageBooking, serviceManualMembers = []) {
-    const bookingPackage = packageBooking ? getBookingPackageFromBooking(packageBooking) : null;
-    const serviceEvents = bookingPackage?.serviceEvents || [];
-    const eventRows = serviceEvents.map(event => `
-        <div class="booking-banquet-service-row booking-banquet-service-row--checklist">
-            <span class="booking-banquet-service-check" aria-hidden="true"></span>
-            <div class="booking-banquet-service-main">
-                <strong>${event.time ? `${escapeHtml(event.time)} · ` : ''}${escapeHtml(event.title || BOOKING_SERVICE_EVENT_TYPES[event.type] || 'Сервіс')}</strong>
-                ${event.note ? `<small>${escapeHtml(event.note)}</small>` : ''}
-            </div>
-        </div>
-    `).join('');
-    const manualRows = (serviceManualMembers || [])
-        .map(member => renderBanquetMemberCard(member, member.role || 'service', {
-            showPackage: false,
-            showRoleBadge: false,
-            showTechnicalMeta: false,
-            showTechnicalChildren: false
-        }))
-        .join('');
-    return renderBanquetWorkSection(
-        'Подачі / сервіс',
-        `${eventRows}${manualRows}`,
-        'service'
-    );
-}
-
-function renderBanquetActivitiesSection(activityMembers = []) {
-    const rows = (activityMembers || [])
-        .map(member => renderBanquetMemberCard(member, 'activity', {
-            showPackage: false,
-            showRoleBadge: false,
-            showTechnicalMeta: false,
-            showTechnicalChildren: false
-        }))
-        .join('');
-    return renderBanquetWorkSection('Активності', rows, 'activities');
-}
-
 function uniqueBanquetCommentSources(entries = []) {
     const result = [];
     const seen = new Set();
@@ -10220,238 +9883,6 @@ function fullBanquetDetailCommentItems({ anchorBooking = {}, primaryMembers = []
     });
 
     return items;
-}
-
-function renderFullBanquetCommentsSection(context = {}) {
-    const comments = fullBanquetDetailCommentItems(context);
-    if (!comments.length) return '';
-    const rows = comments.map(comment => `
-        <div class="booking-banquet-comment-row booking-banquet-comment-row--${escapeHtml(comment.type)}">
-            <strong>${escapeHtml(comment.label)}</strong>
-            <span>${escapeHtml(comment.text)}</span>
-        </div>
-    `).join('');
-    return renderBanquetWorkSection('Примітки', `<div class="booking-banquet-comments booking-banquet-comments--compact">${rows}</div>`, 'comments');
-}
-
-function renderBanquetWarningsSection(warnings = []) {
-    const rows = (warnings || [])
-        .filter(Boolean)
-        .map(message => `<div class="booking-banquet-warning">⚠ ${escapeHtml(message)}</div>`)
-        .join('');
-    return renderBanquetWorkSection('Попередження', rows, 'warnings');
-}
-
-function renderBanquetTechnicalSection({
-    snapshot,
-    members = [],
-    technicalChildren = [],
-    controlsHtml = '',
-    hasGroup = false,
-    isLegacy = false
-} = {}) {
-    const groupId = snapshot?.group?.id || snapshot?.groupId;
-    const source = snapshot?.source || (isLegacy ? 'legacy_booking_banquet_links' : '');
-    const memberRows = (members || []).map(member => {
-        const booking = member.booking || member;
-        const bookingId = bookingDetailId(booking);
-        if (!bookingId) return '';
-        const role = member.role || (member.isPrimary ? 'primary' : 'manual');
-        return `
-            <div class="booking-banquet-technical-row">
-                <span>${escapeHtml(bookingId)}</span>
-                <span>${escapeHtml(bookingDetailRoleLabel(role))}</span>
-                <span>${escapeHtml(bookingDetailTitle(booking))}</span>
-            </div>
-        `;
-    }).join('');
-    const childRows = (technicalChildren || []).map(child => `
-        <div class="booking-banquet-technical-row booking-banquet-technical-row--muted">
-            <span>${escapeHtml(bookingDetailId(child) || '-')}</span>
-            <span>Технічний запис</span>
-            <span>${escapeHtml(bookingDetailTitle(child))}</span>
-        </div>
-    `).join('');
-    const metaRows = [
-        groupId ? ['groupId', groupId] : null,
-        source ? ['source', source] : null,
-        snapshot?.group?.status ? ['status', snapshot.group.status] : null
-    ].filter(Boolean).map(([label, value]) => `
-        <div class="booking-banquet-technical-meta-row">
-            <span>${escapeHtml(label)}</span>
-            <code>${escapeHtml(String(value))}</code>
-        </div>
-    `).join('');
-    const body = `${metaRows}${memberRows || childRows ? `<div class="booking-banquet-technical-grid">${memberRows}${childRows}</div>` : ''}${controlsHtml}`;
-    if (!body.trim() && !hasGroup) return '';
-    return `
-        <details class="booking-banquet-technical">
-            <summary>Технічне</summary>
-            <div class="booking-banquet-technical-body">
-                ${body}
-            </div>
-        </details>
-    `;
-}
-
-function renderBanquetCreateAction(anchorBooking = {}) {
-    if (isViewer() || !bookingDetailIsRoot(anchorBooking)) return '';
-    return `
-        <div class="booking-banquet-action-row">
-            <button type="button"
-                    class="btn-secondary btn-sm booking-banquet-create-btn"
-                    onclick="createBanquetGroupFromBookingDetails('${escapeHtml(bookingDetailId(anchorBooking))}')">
-                Створити банкетну групу
-            </button>
-            <span>Створення нічого не обʼєднує автоматично. Інші броні додаються вручну.</span>
-        </div>
-    `;
-}
-
-function renderBanquetAttachCandidates(snapshot, anchorBooking = {}, allBookings = []) {
-    const groupId = snapshot?.groupId || snapshot?.group?.id;
-    if (isViewer() || !groupId) return '';
-    const anchorId = bookingDetailId(anchorBooking);
-    const anchorContext = bookingDetailContext(anchorBooking);
-    const anchorDate = bookingDetailDate(anchorBooking);
-    const anchorCustomerId = bookingDetailCustomerId(anchorBooking);
-    const memberIds = banquetSnapshotMemberIds(snapshot);
-    const candidates = (allBookings || [])
-        .filter(candidate => {
-            const candidateId = bookingDetailId(candidate);
-            if (!candidateId || candidateId === anchorId) return false;
-            if (!bookingDetailIsRoot(candidate)) return false;
-            if (memberIds.has(candidateId)) return false;
-            if (bookingDetailContext(candidate) !== anchorContext) return false;
-            if (bookingDetailDate(candidate) !== anchorDate) return false;
-            if (String(candidate.status || '').toLowerCase() === 'cancelled') return false;
-            return true;
-        })
-        .sort((a, b) => {
-            const aSameCustomer = anchorCustomerId && bookingDetailCustomerId(a) === anchorCustomerId ? 0 : 1;
-            const bSameCustomer = anchorCustomerId && bookingDetailCustomerId(b) === anchorCustomerId ? 0 : 1;
-            if (aSameCustomer !== bSameCustomer) return aSameCustomer - bSameCustomer;
-            return `${a.time || ''}${a.id || ''}`.localeCompare(`${b.time || ''}${b.id || ''}`);
-        })
-        .slice(0, 12);
-    if (!candidates.length) {
-        return '';
-    }
-    return `
-        <div class="booking-banquet-candidates">
-            <div class="booking-banquet-section-title">Додати бронь до банкету</div>
-            <div class="booking-banquet-candidate-hint">Кандидати підібрані тільки за тим самим бізнес-контекстом і датою. Збіг клієнта підсвічено, але менеджер додає бронь вручну.</div>
-            ${candidates.map(candidate => {
-                const candidateId = bookingDetailId(candidate);
-                const defaultRole = bookingDetailDefaultAttachRole(candidate);
-                const sameCustomer = anchorCustomerId && bookingDetailCustomerId(candidate) === anchorCustomerId;
-                const label = candidate.groupName || candidate.label || candidate.programName || candidate.room || candidateId;
-                return `
-                    <div class="booking-banquet-candidate">
-                        <div class="booking-banquet-candidate-main">
-                            <strong>${escapeHtml(bookingDetailTitle(candidate))}</strong>
-                            <small>${escapeHtml(label)} · ${escapeHtml(bookingDetailStatusLabel(candidate))}${candidate.price ? ` · ${escapeHtml(formatPrice(candidate.price))}` : ''}</small>
-                            <span class="booking-banquet-candidate-badge booking-banquet-candidate-badge--${sameCustomer ? 'match' : 'manual'}">${sameCustomer ? 'той самий клієнт' : 'перевірити клієнта'}</span>
-                        </div>
-                        <select class="booking-banquet-candidate-role" data-banquet-candidate-role="${escapeHtml(candidateId)}">
-                            <option value="kitchen" ${defaultRole === 'kitchen' ? 'selected' : ''}>Кухня</option>
-                            <option value="activity" ${defaultRole === 'activity' ? 'selected' : ''}>Активність</option>
-                            <option value="service" ${defaultRole === 'service' ? 'selected' : ''}>Сервіс</option>
-                            <option value="manual" ${defaultRole === 'manual' ? 'selected' : ''}>Manual</option>
-                        </select>
-                        <button type="button"
-                                class="btn-secondary btn-sm"
-                                onclick="attachBookingToBanquetGroupFromDetails('${escapeHtml(String(groupId))}', '${escapeHtml(candidateId)}', '${escapeHtml(anchorId)}')">
-                            Додати
-                        </button>
-                    </div>
-                `;
-            }).join('')}
-        </div>
-    `;
-}
-
-function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot = null) {
-    const hasGroup = banquetSnapshotHasGroup(snapshot);
-    const isLegacy = snapshot?.legacyFallback || snapshot?.source === 'legacy_booking_banquet_links';
-    const isSingle = snapshot?.source === 'single_booking' || !snapshot;
-    const members = Array.isArray(snapshot?.members) ? snapshot.members : [];
-    const shouldShow = hasGroup
-        || isLegacy
-        || bookingDetailIsRoot(anchorBooking)
-        || bookingDetailIsKitchenCandidate(anchorBooking)
-        || members.length > 1;
-    if (!shouldShow) return '';
-
-    const primaryMembers = members.filter(member => member.isPrimary);
-    const primaryIds = new Set(primaryMembers.map(member => String(member.bookingId)));
-    const kitchenMembers = members.filter(member => !primaryIds.has(String(member.bookingId)) && (member.role === 'kitchen' || member.isKitchenCandidate));
-    const activityMembers = members.filter(member => !primaryIds.has(String(member.bookingId)) && member.role === 'activity' && !member.isKitchenCandidate);
-    const entertainmentMembers = bookingDetailEntertainmentMembers(primaryMembers, activityMembers);
-    const entertainmentIds = new Set(entertainmentMembers.map(member => bookingDetailId(member.booking || member)).filter(Boolean).map(String));
-    const visiblePrimaryMembers = primaryMembers.filter(member => {
-        const bookingId = String(member.bookingId || bookingDetailId(member.booking || member) || '');
-        return !bookingId || !entertainmentIds.has(bookingId);
-    });
-    const visibleActivityMembers = activityMembers.filter(member => {
-        const bookingId = String(member.bookingId || bookingDetailId(member.booking || member) || '');
-        return !bookingId || !entertainmentIds.has(bookingId);
-    });
-    const serviceManualMembers = members.filter(member => !primaryIds.has(String(member.bookingId)) && ['service', 'manual'].includes(member.role) && !member.isKitchenCandidate);
-    const technicalChildren = members.flatMap(member => (member.technicalChildren || []).map(child => ({ ...child, parentId: member.bookingId })));
-    const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members);
-    const warnings = buildBanquetDetailWarnings(snapshot, anchorBooking)
-        .filter(message => hasGroup || isLegacy || message !== banquetWarningText({ code: 'kitchen_booking_missing' }));
-    const sourceLabel = hasGroup
-        ? 'Обʼєднано в банкетну групу'
-        : (isLegacy ? 'Показано старі звʼязки банкету' : 'Банкетна група ще не створена');
-    const groupMeta = hasGroup && snapshot.group
-        ? [
-            snapshot.group.groupName,
-            snapshot.group.date,
-            snapshot.group.room,
-            snapshot.group.status
-        ].filter(Boolean).join(' · ')
-        : '';
-    const primaryBody = visiblePrimaryMembers.length
-        ? visiblePrimaryMembers.map(member => renderBanquetMemberCard(member, 'primary', {
-            showPackage: false,
-            showRoleBadge: false,
-            showTechnicalMeta: false,
-            showTechnicalChildren: false
-        })).join('')
-        : (isSingle ? '<div class="booking-banquet-summary-note">Група ще не створена. Ця бронь показана як основа банкету.</div>' : '');
-    const technicalControls = [
-        !hasGroup ? renderBanquetCreateAction(anchorBooking) : '',
-        hasGroup ? renderBanquetAttachCandidates(snapshot, anchorBooking, allBookings) : '',
-        !hasGroup ? renderBookingBanquetLinksDetail(anchorBooking, allBookings) : ''
-    ].filter(Boolean).join('');
-    return `
-        <div class="booking-banquet-full-detail">
-            <div class="booking-banquet-full-header">
-                <div>
-                    <div class="booking-banquet-full-title">Банкет</div>
-                    <div class="booking-banquet-full-source">${escapeHtml(sourceLabel)}${groupMeta ? ` · ${escapeHtml(groupMeta)}` : ''}</div>
-                </div>
-                ${hasGroup ? `<span class="booking-banquet-group-pill">Активний</span>` : `<span class="booking-banquet-group-pill booking-banquet-group-pill--muted">${isLegacy ? 'Legacy' : 'Потребує групи'}</span>`}
-            </div>
-            ${renderBanquetDepositStatusSection(anchorBooking, snapshot)}
-            ${renderBanquetWorkSection('Банкет', primaryBody, 'summary')}
-            ${renderFullBanquetCommentsSection({ anchorBooking, primaryMembers, kitchenMembers, activityMembers, serviceManualMembers, members })}
-            ${renderBanquetMenuSection(packageBooking, entertainmentMembers)}
-            ${renderBanquetServiceSection(packageBooking, serviceManualMembers)}
-            ${renderBanquetActivitiesSection(visibleActivityMembers)}
-            ${renderBanquetWarningsSection(warnings)}
-            ${renderBanquetTechnicalSection({
-                snapshot,
-                members,
-                technicalChildren,
-                controlsHtml: technicalControls,
-                hasGroup,
-                isLegacy
-            })}
-        </div>
-    `;
 }
 
 function renderEducationLessonDetail(booking) {

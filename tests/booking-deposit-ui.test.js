@@ -19,6 +19,7 @@ function functionBlock(source, name) {
 test('booking banquet detail renders backend-backed deposit status field', () => {
     const api = read('js/api.js');
     const booking = read('js/booking.js');
+    const banquetDetail = read('js/booking-banquet-detail.js');
     const css = read('css/timeline.css');
 
     assert.match(api, /function apiGetBanquetDepositByBooking\(bookingId\)/);
@@ -26,9 +27,11 @@ test('booking banquet detail renders backend-backed deposit status field', () =>
     assert.match(api, /function apiGetBanquetDepositByGroup\(groupId\)/);
     assert.match(api, /\/banquets\/\$\{encodeURIComponent\(groupId\)\}\/deposit/);
 
+    assert.match(banquetDetail, /function renderBanquetDepositStatusSection\(anchorBooking = \{\}, snapshot = null, projection = \{ loading: true \}\)/);
+    assert.match(banquetDetail, /renderBanquetDepositStatusSection\(anchorBooking, snapshot\)/);
+    assert.match(banquetDetail, /id="bookingBanquetDepositStatus"/);
     assert.match(booking, /function renderBanquetDepositStatusSection\(anchorBooking = \{\}, snapshot = null, projection = \{ loading: true \}\)/);
-    assert.match(booking, /renderBanquetDepositStatusSection\(anchorBooking, snapshot\)/);
-    assert.match(booking, /id="bookingBanquetDepositStatus"/);
+    assert.match(booking, /bookingBanquetDetailRendererCall\('renderBanquetDepositStatusSection', arguments\)/);
     assert.match(booking, /loadBanquetDepositStatusForDetails\(booking, banquetSnapshot\)/);
     assert.match(css, /\.booking-banquet-deposit/);
 });

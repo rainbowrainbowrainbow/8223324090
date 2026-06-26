@@ -90,24 +90,34 @@ const WORKFLOW_LABELS = {
 
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
-const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
+const STATUS_LABELS = window.TaskUiShared?.STATUS_LABELS || { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
 const KANBAN_STATUSES = ['todo', 'in_progress', 'done'];
-const PRIORITY_ICONS = { urgent: '🔥', high: '', normal: '', low: '' };
-const TASK_PRIORITY_OPTIONS = [
+const PRIORITY_ICONS = window.TaskUiShared?.PRIORITY_ICONS || { urgent: '🔥', high: '', normal: '', low: '' };
+const TASK_PRIORITY_OPTIONS = window.TaskUiShared?.TASK_PRIORITY_OPTIONS || [
     { value: 'urgent', label: 'Терміново' },
     { value: 'high', label: 'Високий' },
     { value: 'normal', label: 'Звичайний' },
     { value: 'low', label: 'Низький' }
 ];
-const TASK_PRIORITY_VALUES = TASK_PRIORITY_OPTIONS.map(item => item.value);
+const TASK_PRIORITY_VALUES = window.TaskUiShared?.TASK_PRIORITY_VALUES || TASK_PRIORITY_OPTIONS.map(item => item.value);
 
 function normalizeTaskPriorityValue(value = 'normal') {
+    if (window.TaskUiShared?.normalizeTaskPriority) {
+        return window.TaskUiShared.normalizeTaskPriority(value);
+    }
     const normalized = String(value || 'normal').toLowerCase().trim();
+    if (normalized === 'critical') return 'urgent';
+    if (normalized === 'medium') return 'normal';
     return TASK_PRIORITY_VALUES.includes(normalized) ? normalized : 'normal';
 }
 
 function setTaskPrioritySelectVisual(select, priority = 'normal') {
     if (!select) return normalizeTaskPriorityValue(priority);
+    if (window.TaskUiShared?.applyPriorityClasses) {
+        return window.TaskUiShared.applyPriorityClasses(select, priority, {
+            selectClassPrefix: 'task-priority-select--'
+        });
+    }
     const normalized = normalizeTaskPriorityValue(priority);
     TASK_PRIORITY_VALUES.forEach(value => select.classList.remove(`task-priority-select--${value}`));
     select.classList.add(`task-priority-select--${normalized}`);
@@ -122,6 +132,9 @@ function setTaskPrioritySelectBusy(select, busy) {
 }
 
 function taskMutationFailure(payload = {}, response = null, fallback = 'Не вдалося оновити задачу') {
+    if (window.TaskUiShared?.taskMutationFailure) {
+        return window.TaskUiShared.taskMutationFailure(payload, response, fallback);
+    }
     return {
         success: false,
         error: window.CrmApiErrors?.format?.(payload, fallback) || payload.error || payload.message || fallback,
@@ -132,6 +145,9 @@ function taskMutationFailure(payload = {}, response = null, fallback = 'Не в�
 }
 
 function taskMutationOfflineFailure(error, fallback = 'Немає звʼязку з сервером. Перевірте інтернет і спробуйте ще раз.') {
+    if (window.TaskUiShared?.taskOfflineFailure) {
+        return window.TaskUiShared.taskOfflineFailure(error, fallback);
+    }
     return {
         success: false,
         error: fallback,
@@ -143,6 +159,9 @@ function taskMutationOfflineFailure(error, fallback = 'Немає звʼязку
 }
 
 function normalizeTaskMutationResult(result, fallback = 'Не вдалося оновити задачу') {
+    if (window.TaskUiShared?.normalizeTaskMutationResult) {
+        return window.TaskUiShared.normalizeTaskMutationResult(result, fallback);
+    }
     if (result?.success) return result;
     if (result && result.success === false) return taskMutationFailure(result, null, fallback);
     return taskMutationOfflineFailure(null, fallback);
@@ -153,10 +172,20 @@ function applyTaskPriorityVisualState(taskId, priority = 'normal') {
     const normalized = normalizeTaskPriorityValue(priority);
     if (!id) return normalized;
     document.querySelectorAll(`.task-card[data-task-id="${id}"]`).forEach(card => {
-        TASK_PRIORITY_VALUES.forEach(value => card.classList.remove(`priority-${value}`));
-        card.classList.add(`priority-${normalized}`);
-        card.dataset.priority = normalized;
-        setTaskPrioritySelectVisual(card.querySelector('[data-task-priority-select]'), normalized);
+        if (window.TaskUiShared?.applyPriorityClasses) {
+            window.TaskUiShared.applyPriorityClasses(card, normalized, {
+                priorityClassPrefix: 'priority-',
+                dataAttribute: 'priority'
+            });
+            window.TaskUiShared.applyPriorityClasses(card.querySelector('[data-task-priority-select]'), normalized, {
+                selectClassPrefix: 'task-priority-select--'
+            });
+        } else {
+            TASK_PRIORITY_VALUES.forEach(value => card.classList.remove(`priority-${value}`));
+            card.classList.add(`priority-${normalized}`);
+            card.dataset.priority = normalized;
+            setTaskPrioritySelectVisual(card.querySelector('[data-task-priority-select]'), normalized);
+        }
     });
     return normalized;
 }
@@ -5180,8 +5209,6 @@ async function openTaskDetail(taskId) {
             depositProjection = { success: false, error: 'У задачі немає id завдатку' };
         }
 
-        const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано' };
-        const PRIORITY_LABELS = { low: 'Низький', normal: 'Звичайний', high: 'Високий', urgent: 'Терміново' };
         const statusColor = t.status === 'done' ? '#10B981' : t.status === 'in_progress' ? '#3B82F6' : '#F59E0B';
         const prioColor = t.priority === 'urgent' ? '#E11D48' : t.priority === 'high' ? '#EF4444' : t.priority === 'low' ? '#94A3B8' : '#6B7280';
         const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';

@@ -60,6 +60,38 @@ function centerScopedApiUrl(path) {
     return typeof apiUrl === 'function' ? apiUrl(path) : path;
 }
 
+function centerApiFailure(errorOrPayload = {}, fallbackMessage = 'API error') {
+    if (typeof normalizeApiErrorResult === 'function') {
+        return normalizeApiErrorResult(errorOrPayload, fallbackMessage);
+    }
+    if (errorOrPayload?.success) return errorOrPayload;
+    const payload = errorOrPayload instanceof Error
+        ? { error: errorOrPayload.message, offline: true }
+        : (errorOrPayload || {});
+    return {
+        ...payload,
+        success: false,
+        error: payload.error || payload.message || fallbackMessage,
+        offline: Boolean(payload.offline),
+        status: payload.status || null,
+        requestId: payload.requestId || payload.request_id || null
+    };
+}
+
+async function centerMutationJson(response, fallbackMessage = 'API error') {
+    if (typeof handleAuthError === 'function' && handleAuthError(response)) {
+        return centerApiFailure({ status: response?.status || 401 }, fallbackMessage);
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.success === false) {
+        return centerApiFailure({ ...body, status: response.status }, fallbackMessage);
+    }
+    if (body && typeof body === 'object' && !Array.isArray(body) && body.success !== true) {
+        return { success: true, ...body };
+    }
+    return body;
+}
+
 function centerBookingIsBanquet(booking = {}) {
     const category = String(booking.category || booking.bookingCategory || '').toLowerCase();
     return category === 'banquet'
@@ -119,11 +151,10 @@ async function apiUpdatePrice(code, data) {
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        if (handleAuthError(response)) return { success: false };
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося оновити ціну');
     } catch (err) {
         console.error('API update price error:', err);
-        return { success: false, error: err.message };
+        return centerApiFailure(err, 'Не вдалося оновити ціну');
     }
 }
 
@@ -134,11 +165,10 @@ async function apiCreatePrice(data) {
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        if (handleAuthError(response)) return { success: false };
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося створити ціну');
     } catch (err) {
         console.error('API create price error:', err);
-        return { success: false, error: err.message };
+        return centerApiFailure(err, 'Не вдалося створити ціну');
     }
 }
 
@@ -148,11 +178,10 @@ async function apiDeletePrice(code) {
             method: 'DELETE',
             headers: getAuthHeaders()
         });
-        if (handleAuthError(response)) return { success: false };
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося видалити ціну');
     } catch (err) {
         console.error('API delete price error:', err);
-        return { success: false, error: err.message };
+        return centerApiFailure(err, 'Не вдалося видалити ціну');
     }
 }
 
@@ -213,11 +242,10 @@ async function apiRecalculateLoyalty() {
             method: 'POST',
             headers: getAuthHeaders()
         });
-        if (!response.ok) throw new Error('API error');
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося перерахувати лояльність');
     } catch (err) {
         console.error('API recalculate loyalty error:', err);
-        return { success: false };
+        return centerApiFailure(err, 'Не вдалося перерахувати лояльність');
     }
 }
 
@@ -239,10 +267,10 @@ async function apiCreateDiscount(data) {
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося створити промокод');
     } catch (err) {
         console.error('API create discount error:', err);
-        return { error: err.message };
+        return centerApiFailure(err, 'Не вдалося створити промокод');
     }
 }
 
@@ -252,10 +280,10 @@ async function apiDeleteDiscount(id) {
             method: 'DELETE',
             headers: getAuthHeaders()
         });
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося видалити промокод');
     } catch (err) {
         console.error('API delete discount error:', err);
-        return { error: err.message };
+        return centerApiFailure(err, 'Не вдалося видалити промокод');
     }
 }
 
@@ -277,10 +305,10 @@ async function apiCreateProposal(data) {
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося створити пропозицію');
     } catch (err) {
         console.error('API create proposal error:', err);
-        return { error: err.message };
+        return centerApiFailure(err, 'Не вдалося створити пропозицію');
     }
 }
 
@@ -290,10 +318,10 @@ async function apiDeleteProposal(id) {
             method: 'DELETE',
             headers: getAuthHeaders()
         });
-        return await response.json();
+        return await centerMutationJson(response, 'Не вдалося видалити пропозицію');
     } catch (err) {
         console.error('API delete proposal error:', err);
-        return { error: err.message };
+        return centerApiFailure(err, 'Не вдалося видалити пропозицію');
     }
 }
 
@@ -1188,7 +1216,7 @@ async function recalculateLoyalty() {
         showNotification(`Оновлено ${result.updated} клієнтів`, 'success');
         loadLoyalty();
     } else {
-        showNotification('Помилка перерахунку', 'error');
+        showNotification(result.error || 'Помилка перерахунку', 'error');
     }
 }
 
@@ -1481,8 +1509,8 @@ async function apiCenterGoals() {
 async function apiSaveGoals(data) {
     try {
         const r = await fetch(`${API_BASE}/center/goals`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
-        return await r.json();
-    } catch (err) { console.error('API save goals error:', err); return { success: false }; }
+        return await centerMutationJson(r, 'Не вдалося зберегти цілі');
+    } catch (err) { console.error('API save goals error:', err); return centerApiFailure(err, 'Не вдалося зберегти цілі'); }
 }
 
 async function apiCenterBriefing() {
@@ -1647,7 +1675,7 @@ async function saveGoals() {
         document.getElementById('goalsFormInline')?.remove();
         loadGoals();
     } else {
-        showNotification('Помилка збереження', 'error');
+        showNotification(result.error || 'Помилка збереження', 'error');
     }
 }
 

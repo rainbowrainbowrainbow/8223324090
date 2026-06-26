@@ -135,6 +135,26 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.orderRows[3].type, 'menu');
     assert.equal(summary.orderRows[4].type, 'service_event');
     assert.equal(summary.orderRows[4].meta.time, '17:10');
+    assert.deepEqual(summary.orderRowViews.client.map(row => row.type), ['program', 'activity', 'menu', 'menu']);
+    const pizzaOrderView = summary.orderRowViews.client.find(row => row.title === 'Піца');
+    assert.match(pizzaOrderView.id, /^menu:/);
+    assert.deepEqual({
+        type: pizzaOrderView.type,
+        title: pizzaOrderView.title,
+        quantityLabel: pizzaOrderView.quantityLabel,
+        unitPriceLabel: pizzaOrderView.unitPriceLabel,
+        subtotalLabel: pizzaOrderView.subtotalLabel,
+        metaLines: pizzaOrderView.metaLines,
+        commentLabel: pizzaOrderView.commentLabel
+    }, {
+        type: 'menu',
+        title: 'Піца',
+        quantityLabel: '2 порції по 100 г',
+        unitPriceLabel: '300 ₴',
+        subtotalLabel: '600 ₴',
+        metaLines: ['Видача: 16:30', 'Примітка: без грибів'],
+        commentLabel: 'Примітка: без грибів'
+    });
     assert.equal(summary.serviceEvents.length, 1);
     assert.equal(summary.serviceEvents[0].title, 'Винос торта');
     assert.equal(summary.serviceEvents[0].meta.time, '17:10');

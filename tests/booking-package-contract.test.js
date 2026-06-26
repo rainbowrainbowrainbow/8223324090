@@ -508,9 +508,11 @@ function createBookingMenuCatalogHarness() {
 
 function createBanquetModalDetailHarness() {
     const bookingJs = read('js', 'booking.js');
+    const packageRendererJs = read('js', 'booking-package-renderer.js');
+    const banquetDetailJs = read('js', 'booking-banquet-detail.js');
     const quantityHelperStart = bookingJs.indexOf('const BOOKING_MENU_PORTION_UNITS');
     const quantityHelperEnd = bookingJs.indexOf('function isBookingMenuCatalogProduct');
-    const packageStart = bookingJs.indexOf('function bookingServingTimeLabel(');
+    const packageStart = bookingJs.indexOf('function bookingPackageRendererCall(');
     const packageEnd = bookingJs.indexOf('function renderBookingWorkspaceDetail(');
     const banquetStart = bookingJs.indexOf('function bookingDetailId(');
     const banquetEnd = bookingJs.indexOf('function renderEducationLessonDetail(');
@@ -549,6 +551,8 @@ function createBanquetModalDetailHarness() {
         isViewer: () => true
     };
     vm.createContext(context);
+    vm.runInContext(packageRendererJs, context, { filename: 'js/booking-package-renderer.js' });
+    vm.runInContext(banquetDetailJs, context, { filename: 'js/booking-banquet-detail.js' });
     vm.runInContext(`${bookingJs.slice(quantityHelperStart, quantityHelperEnd)}\n${bookingJs.slice(packageStart, packageEnd)}\n${bookingJs.slice(banquetStart, banquetEnd)}`, context, { filename: 'js/booking.js' });
     return context;
 }
@@ -1559,6 +1563,12 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.doesNotMatch(pdfService, /function drawFinalBrand/);
     assert.doesNotMatch(pageCode, /<span>Booking ID:/);
     assert.match(pageCode, /function summaryModeContract\(summary = currentSummary, mode = summaryMode\(summary\)\)/);
+    assert.match(summaryService, /function buildBanquetOrderRowViewModels\(orderRows = \[\], mode = 'client', currency = CURRENCY\)/);
+    assert.match(summaryService, /orderRowViews:\s*\{\s*client: buildBanquetOrderRowViewModels\(orderRows, 'client', CURRENCY\)/);
+    assert.match(pdfService, /view\.orderRowViews = normalizedMode === 'client'/);
+    assert.match(pdfService, /buildBanquetOrderRowViewModels\(rows, mode, currency\)/);
+    assert.match(pageCode, /function summaryClientOrderRowViews\(summary = \{\}, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /summary\?\.orderRowViews\?\.\[normalizedMode\]/);
     assert.match(pageCode, /function summaryScheduleRows\(summary, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /function renderSchedule\(summary, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /summary-section--schedule/);
@@ -1679,20 +1689,21 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.equal(client.config.showFinance, true);
     assert.equal(client.config.showTerms, true);
     assert.deepEqual(client.modeContract.orderRowTypes, ['program', 'activity', 'entry', 'menu']);
+    assert.deepEqual(client.orderRowViews.map(row => row.type), ['program', 'entry', 'menu']);
     assert.deepEqual(client.orderTableColumns.map(column => column.label), ['Позиція', 'К-сть', 'Ціна', 'Сума']);
     const clientProgramPdfRow = client.orderTableRows.find(row => String(row[0]).includes('Паперове шоу'));
     const clientEntryPdfRow = client.orderTableRows.find(row => row[0] === 'Вхід');
     const clientMenuPdfRow = client.orderTableRows.find(row => String(row[0]).includes('Піца'));
     assert.equal(clientProgramPdfRow[2], '—');
-    assert.match(clientProgramPdfRow[3], /^2\s*900 грн$/);
+    assert.match(clientProgramPdfRow[3], /^2\s*900 ₴$/);
     assert.equal(clientEntryPdfRow[0], 'Вхід');
     assert.equal(clientEntryPdfRow[1], '12 дітей');
-    assert.equal(clientEntryPdfRow[2], '300 грн');
-    assert.match(clientEntryPdfRow[3], /^3\s*600 грн$/);
+    assert.equal(clientEntryPdfRow[2], '300 ₴');
+    assert.match(clientEntryPdfRow[3], /^3\s*600 ₴$/);
     assert.match(clientMenuPdfRow[0], /Видача: 15:00/);
     assert.match(clientMenuPdfRow[0], /Примітка: Без цибулі/);
-    assert.equal(clientMenuPdfRow[2], '250 грн');
-    assert.equal(clientMenuPdfRow[3], '750 грн');
+    assert.equal(clientMenuPdfRow[2], '250 ₴');
+    assert.equal(clientMenuPdfRow[3], '750 ₴');
 
     const kitchen = buildBanquetSummaryPdfView(sampleSummary, 'kitchen');
     assert.deepEqual(kitchen.rows.map(row => row.type), ['menu']);
@@ -2319,6 +2330,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
 
 test('booking create flow bridges room-source kitchen without an existing banquet group', () => {
     const bookingJs = readBookingSurface();
+    const bookingPackageRendererJs = read('js', 'booking-package-renderer.js');
     const apiJs = read('js', 'api.js');
     const bridgeStart = bookingJs.indexOf('const activityFirstKitchenBridge = validateActivityFirstKitchenBridge');
     const bridgeCall = bookingJs.indexOf('apiCreateBanquetMemberBookingFromSource', bridgeStart);
@@ -2366,11 +2378,13 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /apiGetCenterPriceRule\(code\)/);
     assert.match(bookingJs, /if \(loadedRules\.length && options\.render !== false && shouldRenderBookingEntryPreviewAfterLoad\(\)\)/);
     assert.match(bookingJs, /function bookingMenuPositionIsEntry\(/);
-    assert.match(bookingJs, /function bookingPackageEntryChargeFromPackage\(/);
-    assert.match(bookingJs, /function formatBookingPackageEntryAmount\(/);
-    assert.match(bookingJs, /function renderBookingPackageEntryRow\(/);
+    assert.match(bookingPackageRendererJs, /function bookingPackageEntryChargeFromPackage\(/);
+    assert.match(bookingPackageRendererJs, /function formatBookingPackageEntryAmount\(/);
+    assert.match(bookingPackageRendererJs, /function renderBookingPackageEntryRow\(/);
+    assert.match(bookingJs, /function bookingPackageRendererCall\(/);
+    assert.match(bookingJs, /function renderBookingPackageEntryRow\(bookingPackage = \{\}\) \{\s*return bookingPackageRendererCall\('renderBookingPackageEntryRow', arguments\);/);
     assert.match(bookingJs, /booking-summary-row--subtotal/);
-    assert.match(bookingJs, /booking-detail-package-entry-row/);
+    assert.match(bookingPackageRendererJs, /booking-detail-package-entry-row/);
     assert.match(bookingJs, /entrySubtotal: kitchenEnabled \? \(packageTotals\.entrySubtotal \|\| 0\) : 0/);
     assert.match(bookingJs, /entryCharge: formData\.entryCharge \|\| null/);
     assert.match(bookingJs, /finalTotal: toBookingMoney\(programBasePrice \+ positionsSubtotal \+ entryEstimate\.entrySubtotal\)/);
@@ -3400,7 +3414,13 @@ test('booking modal banquet root header shows planned schedule instead of techni
 
 test('booking modal banquet overview separates work summary from technical metadata', () => {
     const bookingJs = read('js', 'booking.js');
+    const bookingPackageRendererJs = read('js', 'booking-package-renderer.js');
+    const bookingBanquetDetailJs = read('js', 'booking-banquet-detail.js');
     assert.match(bookingJs, /function renderFullBanquetDetail\(/);
+    assert.match(bookingJs, /function bookingBanquetDetailRendererCall\(/);
+    assert.match(bookingBanquetDetailJs, /function renderFullBanquetDetail\(/);
+    assert.match(bookingBanquetDetailJs, /root\.BookingBanquetDetail = Object\.assign\(root\.BookingBanquetDetail \|\| \{\}, api\)/);
+    assert.match(bookingBanquetDetailJs, /renderBookingPackageDetailSafe/);
     assert.match(bookingJs, /function bookingDetailHasMenuOverview\(/);
     assert.match(bookingJs, /function bookingDetailHasServiceOverview\(/);
     assert.match(bookingJs, /function bookingDetailCanOwnBanquetPackage\(/);
@@ -3416,24 +3436,25 @@ test('booking modal banquet overview separates work summary from technical metad
     assert.match(bookingJs, /bookingDetailIsRoot\(booking\)[\s\S]*bookingDetailHasMenuOverview\(booking\)[\s\S]*bookingDetailHasServiceOverview\(booking\)/);
     assert.match(bookingJs, /candidates\.find\(booking => booking && bookingDetailCanOwnBanquetPackage\(booking\)\)/);
     assert.match(bookingJs, /function bookingDetailEntertainmentRowsFromMembers\(/);
-    assert.match(bookingJs, /bookingDetailEntertainmentMembers\(primaryMembers, activityMembers\)/);
-    assert.match(bookingJs, /if \(\(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) && !entertainmentRows\.length\) return '';/);
-    assert.match(bookingJs, /renderBanquetWorkSection\('Банкет'/);
-    assert.match(bookingJs, /renderBanquetMenuSection\(packageBooking, entertainmentMembers\)/);
-    assert.match(bookingJs, /renderBanquetServiceSection\(packageBooking, serviceManualMembers\)/);
-    assert.match(bookingJs, /renderBanquetActivitiesSection\(visibleActivityMembers\)/);
-    assert.match(bookingJs, /renderBanquetWarningsSection\(warnings\)/);
-    assert.match(bookingJs, /renderBanquetTechnicalSection\(\{/);
-    assert.match(bookingJs, /includeServiceEvents: false/);
-    assert.match(bookingJs, /booking-detail-package-table/);
-    assert.match(bookingJs, /booking-detail-package-table-row/);
-    assert.match(bookingJs, /booking-detail-package-service-row/);
-    assert.match(bookingJs, /booking-banquet-service-row--checklist/);
-    assert.match(bookingJs, /\$\{event\.time \? `\$\{escapeHtml\(event\.time\)\} · ` : ''\}/);
+    assert.match(bookingJs, /function bookingDetailEntertainmentMembers\(/);
+    assert.match(bookingBanquetDetailJs, /bookingDetailEntertainmentMembers\(primaryMembers, activityMembers\)/);
+    assert.match(bookingBanquetDetailJs, /if \(\(!packageBooking \|\| !bookingDetailHasMenuOverview\(packageBooking\)\) && !entertainmentRows\.length\) return '';/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetWorkSection\('Банкет'/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetMenuSection\(packageBooking, entertainmentMembers\)/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetServiceSection\(packageBooking, serviceManualMembers\)/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetActivitiesSection\(visibleActivityMembers\)/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetWarningsSection\(warnings\)/);
+    assert.match(bookingBanquetDetailJs, /renderBanquetTechnicalSection\(\{/);
+    assert.match(bookingBanquetDetailJs, /includeServiceEvents: false/);
+    assert.match(bookingPackageRendererJs, /booking-detail-package-table/);
+    assert.match(bookingPackageRendererJs, /booking-detail-package-table-row/);
+    assert.match(bookingPackageRendererJs, /booking-detail-package-service-row/);
+    assert.match(bookingBanquetDetailJs, /booking-banquet-service-row--checklist/);
+    assert.match(bookingBanquetDetailJs, /\$\{event\.time \? `\$\{escapeHtml\(event\.time\)\} · ` : ''\}/);
     assert.match(bookingJs, /booking-customer-block--priority/);
-    assert.doesNotMatch(bookingJs, /group-first/);
-    assert.doesNotMatch(bookingJs, /Service \/ manual/);
-    assert.doesNotMatch(bookingJs, /Кухня \/ меню не прив/);
-    assert.doesNotMatch(bookingJs, /Технічні linked_to children/);
-    assert.doesNotMatch(bookingJs, /<strong>\$\{escapeHtml\(BOOKING_SERVICE_EVENT_TYPES\[event\.type\] \|\| 'Подія'\)\}<\/strong>/);
+    assert.doesNotMatch(bookingBanquetDetailJs, /group-first/);
+    assert.doesNotMatch(bookingBanquetDetailJs, /Service \/ manual/);
+    assert.doesNotMatch(bookingBanquetDetailJs, /Кухня \/ меню не прив/);
+    assert.doesNotMatch(bookingBanquetDetailJs, /Технічні linked_to children/);
+    assert.doesNotMatch(bookingBanquetDetailJs, /<strong>\$\{escapeHtml\(BOOKING_SERVICE_EVENT_TYPES\[event\.type\] \|\| 'Подія'\)\}<\/strong>/);
 });

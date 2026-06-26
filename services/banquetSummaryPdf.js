@@ -8,7 +8,8 @@ const {
     normalizeBanquetSummaryMode,
     banquetSummaryModeContract,
     banquetSummaryModeRowTypes,
-    banquetSummaryModeAllowsComment
+    banquetSummaryModeAllowsComment,
+    buildBanquetOrderRowViewModels
 } = require('./banquetSummary');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -378,6 +379,9 @@ function buildBanquetSummaryPdfView(summary = {}, mode = 'client', options = {})
             : [],
         schedule: buildScheduleItems(summary, scheduleRows, normalizedMode)
     };
+    view.orderRowViews = normalizedMode === 'client'
+        ? normalizedOrderRowViews(summary, normalizedMode, rows, summary.totals?.currency || 'UAH')
+        : [];
     view.orderTableColumns = buildOrderTableColumns(view);
     view.orderTableRows = buildOrderTableRows(view, summary);
     view.financeRows = config.showFinance ? financeRowsForSummary(summary) : [];
@@ -617,15 +621,17 @@ function rowAmount(row = {}, currency) {
     return formatMoney(row.subtotal, currency);
 }
 
-function clientOrderTitleCell(row = {}, mode = 'client') {
-    const details = [];
-    const duration = rowDurationLabel(row);
-    const serving = rowServingTime(row);
-    const comment = rowCommentForMode(row, mode);
-    if (duration !== '—') details.push(`Тривалість: ${duration}`);
-    if (serving !== '—') details.push(`Видача: ${serving}`);
-    if (comment) details.push(`Примітка: ${comment}`);
-    const title = row.title || row.name || 'Позиція';
+function normalizedOrderRowViews(summary = {}, mode = 'client', rows = [], currency = 'UAH') {
+    const explicit = summary.orderRowViews?.[mode] || summary.orderRowViewModels?.[mode];
+    if (Array.isArray(explicit)) return explicit;
+    return buildBanquetOrderRowViewModels(rows, mode, currency);
+}
+
+function clientOrderTitleCell(viewModel = {}) {
+    const details = Array.isArray(viewModel.metaLines)
+        ? viewModel.metaLines.map(item => cleanText(item)).filter(Boolean)
+        : [];
+    const title = cleanText(viewModel.title, 'Позиція');
     return details.length ? `${title}\n${details.join(' · ')}` : title;
 }
 
@@ -763,11 +769,11 @@ function drawComments(doc, comments = []) {
 function buildOrderTableRows(view, summary = {}) {
     const currency = summary.totals?.currency || 'UAH';
     if (view.mode === 'client') {
-        return view.rows.map(row => [
-            clientOrderTitleCell(row, view.mode),
-            rowQuantityLabel(row),
-            formatMoney(row.unitPrice, currency),
-            formatMoney(row.subtotal, currency)
+        return view.orderRowViews.map(row => [
+            clientOrderTitleCell(row),
+            pdfText(row.quantityLabel),
+            pdfText(row.unitPriceLabel),
+            pdfText(row.subtotalLabel)
         ]);
     }
     return view.rows.map((row, index) => {

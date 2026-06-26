@@ -96,6 +96,7 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     const summary = qualitySummary();
     const clientView = buildBanquetSummaryPdfView(summary, 'client');
     const programRow = clientView.rows.find(row => row.type === 'program');
+    const menuOrderView = summary.orderRowViews.client.find(row => row.type === 'menu');
     const programTableRow = clientView.orderTableRows.find(row => String(row[0]).includes('Паперове неон-шоу'));
     const entryTableRow = clientView.orderTableRows.find(row => row[0] === 'Вхід');
     const menuTableRow = clientView.orderTableRows.find(row => String(row[0]).includes('Піца'));
@@ -105,6 +106,8 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(summary.document.generatedAt, undefined);
     assert.equal(clientView.mode, 'client');
     assert.equal(clientView.modeLabel, 'Для клієнта');
+    assert.equal(summary.orderRowViews.client.length, 3);
+    assert.equal(clientView.orderRowViews, summary.orderRowViews.client);
     assert.equal(summary.bookingId, 'BK-PDF-QUALITY');
     assert.equal(summary.event.createdAt, '2026-06-22T10:15:00.000Z');
 
@@ -114,17 +117,18 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
     assert.equal(summary.comments.some(comment => comment.text === 'Передзвонити перед святом'), true);
 
     assert.deepEqual(clientView.orderTableColumns.map(column => column.label), ['Позиція', 'К-сть', 'Ціна', 'Сума']);
+    assert.deepEqual(menuOrderView.metaLines, ['Видача: 15:15', 'Примітка: Без цибулі']);
     assert.ok(programTableRow, 'program row is rendered in PDF table view');
     assert.match(programTableRow[0], /Тривалість: 60 хв/);
     assert.match(programTableRow[0], /Примітка: Хоче більше жартів 2/);
     assert.equal(programTableRow[1], '—');
-    assert.match(programTableRow[2], /^1\s*500 грн$/);
-    assert.match(programTableRow[3], /^1\s*500 грн$/);
+    assert.match(programTableRow[2], /^1\s*500 ₴$/);
+    assert.match(programTableRow[3], /^1\s*500 ₴$/);
     assert.equal(programTableRow.includes('1 порція'), false);
-    assert.deepEqual(entryTableRow, ['Вхід', '2 дітей', '300 грн', '600 грн']);
-    assert.equal(menuTableRow[1], '2 порція');
-    assert.equal(menuTableRow[2], '250 грн');
-    assert.equal(menuTableRow[3], '500 грн');
+    assert.deepEqual(entryTableRow, ['Вхід', '2 дітей', '300 ₴', '600 ₴']);
+    assert.equal(menuTableRow[1], '2 порції');
+    assert.equal(menuTableRow[2], '250 ₴');
+    assert.equal(menuTableRow[3], '500 ₴');
     assert.match(menuTableRow[0], /Видача: 15:15/);
     assert.match(menuTableRow[0], /Примітка: Без цибулі/);
     assert.equal(clientView.orderTableRows.flat().includes('1 порція'), false);

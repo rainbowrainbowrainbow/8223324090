@@ -3250,7 +3250,62 @@ const hrTodayDateRule = hrHtmlForContracts.match(/\n\s*\.hr-today-date\s*\{([\s\
 const hrTodayDateMobileRule = hrHtmlForContracts.match(/@media \(max-width: 768px\)\s*\{[\s\S]*?\.hr-today-date\s*\{([\s\S]*?)\}/)?.[1] || '';
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
 check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*36px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
-check('HR Pulse Today has premium hero, search, and department segmentation on the Today surface', htmlContains('hr.html', 'class="hr-today-hero"') && htmlContains('hr.html', 'images/hr-pulse/today-honeycomb.png') && htmlContains('hr.html', 'id="todayDate"') && htmlContains('hr.html', 'id="todaySearch"') && htmlContains('hr.html', 'id="todayDepartmentSegments"') && htmlContains('hr.html', 'class="hr-today-controls"') && hrCode.includes('let todayFilters') && hrCode.includes('function renderTodayDepartmentSegments') && hrCode.includes('function filteredTodayItems') && hrCode.includes('function todaySearchHaystack') && hrCode.includes('function summarizeTodayItems') && hrCode.includes("todayFilters.department !== 'all'") && hrCode.includes('departmentLabel(item.department)') && htmlContains('hr.html', 'body.dark-mode .hr-today-controls') && htmlContains('hr.html', '.hr-today-segments') && htmlContains('hr.html', '.hr-today-hero') && htmlContains('hr.html', '.hr-today-hero .hr-today-date') && htmlContains('hr.html', '#tab-today .hr-summary-card') && htmlContains('hr.html', 'grid-template-columns: repeat(2, minmax(0, 1fr));') && hrRouteCode.includes('SELECT id, name, department, position, color, role_type, photo_url') && hrRouteCode.includes('FROM staff') && hrRouteCode.includes("record.status === 'unscheduled'") && hrRouteCode.includes('department: s.department') && hrRouteCode.includes('position: s.position'));
+check('HR Pulse Today has premium hero, search, department segmentation, and live honeycomb board on the Today surface',
+    fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'today-honeycomb-empty.png'))
+    && htmlContains('hr.html', 'class="hr-today-hero"')
+    && htmlContains('hr.html', 'images/hr-pulse/today-honeycomb-empty.png')
+    && htmlContains('hr.html', 'id="todayDate"')
+    && htmlContains('hr.html', 'id="todaySearch"')
+    && htmlContains('hr.html', 'id="todayDepartmentSegments"')
+    && htmlContains('hr.html', 'id="todayHoneycombBoard"')
+    && htmlContains('hr.html', 'class="hr-today-controls"')
+    && hrCode.includes('let todayFilters')
+    && hrCode.includes('function renderTodayDepartmentSegments')
+    && hrCode.includes('function filteredTodayItems')
+    && hrCode.includes('function todaySearchHaystack')
+    && hrCode.includes('function summarizeTodayItems')
+    && hrCode.includes('function todayStaffPhotoUrl')
+    && hrCode.includes('function todayAttendanceStatus')
+    && hrCode.includes('function todayIsBirthday')
+    && hrCode.includes('function renderTodayHoneycombTile')
+    && hrCode.includes('function renderTodayHoneycombBoard')
+    && hrCode.includes('renderTodayHoneycombBoard(visibleItems)')
+    && hrCode.includes("todayFilters.department !== 'all'")
+    && hrCode.includes('departmentLabel(item.department)')
+    && htmlContains('hr.html', 'body.dark-mode .hr-today-controls')
+    && htmlContains('hr.html', '.hr-today-segments')
+    && htmlContains('hr.html', '.hr-today-hero')
+    && htmlContains('hr.html', '.hr-today-hero .hr-today-date')
+    && htmlContains('hr.html', '#tab-today .hr-summary-card')
+    && htmlContains('hr.html', 'grid-template-columns: repeat(2, minmax(0, 1fr));')
+    && hrPageCss.includes('.hr-today-honeycomb-board')
+    && hrPageCss.includes('.hr-today-hex-tile')
+    && hrPageCss.includes('.hr-today-hex-photo')
+    && hrPageCss.includes('.hr-today-hex-alert')
+    && hrPageCss.includes('.hr-today-hex-birthday')
+    && hrPageCss.includes('.hr-today-hex-name')
+    && hrPageCss.includes('clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);')
+    && hrPageCss.includes('.hr-today-hex-tile.is-present')
+    && hrPageCss.includes('.hr-today-hex-tile.is-late')
+    && hrPageCss.includes('.hr-today-hex-tile.is-absent')
+    && hrPageCss.includes('.hr-today-hex-tile.is-done')
+    && hrPageCss.includes('.hr-today-hex-tile.is-special')
+    && hrPageCss.includes('.hr-today-hex-tile.is-missing-photo')
+    && hrPageCss.includes('.hr-today-hex-tile.is-birthday')
+    && hrPageCss.includes('.hr-today-hex-tile.is-birthday::before')
+    && hrCode.includes('is-missing-photo')
+    && hrCode.includes('hr-today-hex-alert')
+    && hrCode.includes('is_birthday_today')
+    && hrCode.includes('data-birthday="${isBirthday ?')
+    && hrRouteCode.includes('SELECT id, name, department, position, color, role_type, photo_url, birth_date')
+    && hrRouteCode.includes('is_birthday_today')
+    && hrRouteCode.includes('birth_date: s.birth_date')
+    && hrRouteCode.includes('photo_url: s.photo_url')
+    && hrRouteCode.includes('has_photo: Boolean')
+    && hrRouteCode.includes('FROM staff')
+    && hrRouteCode.includes("record.status === 'unscheduled'")
+    && hrRouteCode.includes('department: s.department')
+    && hrRouteCode.includes('position: s.position'));
 check('HR Pulse Reports keeps premium hero, controls, export, and report tables', htmlContains('hr.html', 'class="hr-reports-hero"') && htmlContains('hr.html', 'images/hr-pulse/reports-kpi.png') && htmlContains('hr.html', 'id="reportMonth"') && htmlContains('hr.html', 'id="reportExport"') && htmlContains('hr.html', 'id="reportSummary"') && htmlContains('hr.html', 'id="reportHead"') && htmlContains('hr.html', 'id="reportBody"') && hrCode.includes("document.getElementById('reportExport')?.addEventListener('click', exportCSV)") && hrCode.includes('hr-report-stat--presence') && hrCode.includes('hr-report-stat--late') && hrCode.includes('hr-report-stat--absence') && hrCode.includes('hr-report-stat--overtime') && hrCode.includes('hr-report-stat--tasks') && hrCode.includes('hr-report-stat--kpi') && hrCode.includes('hr-report-stat--overdue') && hrPageCss.includes('.hr-reports-hero') && hrPageCss.includes('.hr-report-controls') && hrPageCss.includes('#tab-reports .hr-report-table') && hrPageCss.includes('body.dark-mode #tab-reports .hr-report-table'));
 check('HR Pulse Today moves arrived people to review bottom with color indication', hrCode.includes('const TODAY_ARRIVED_STATUSES') && hrCode.includes('function isTodayItemArrived') && hrCode.includes('function sortTodayItemsForReview') && hrCode.includes('return sortTodayItemsForReview(filtered);') && hrCode.includes('hr-staff-row--arrived') && hrCode.includes('data-attendance-state="${arrived ?') && htmlContains('hr.html', '.hr-staff-row--arrived') && htmlContains('hr.html', 'body.dark-mode .hr-staff-row.hr-staff-row--arrived'));
 check('HR operational routes exclude blacklist and unscheduled reserve from live lists', hrRouteCode.includes('function operationalStaffForDateWhere') && hrRouteCode.includes("COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'") && hrRouteCode.includes("COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'") && hrRouteCode.includes("router.put('/staff/:id/pool-status'") && hrRouteCode.includes('cleanupFutureStaffOperationalSchedule(client, req.params.id') && staffRouteCode.includes('function activeOperationalStaffForDateWhere') && staffRouteCode.includes("router.get('/face-descriptors'") && staffRouteCode.includes("WHERE ${activeOperationalStaffForDateWhere('s', 'hs', 'tr')}") && staffRouteCode.includes("conditions.push(\"COALESCE(hr_pool_status, 'core') <> 'blacklisted'\")"));
@@ -3262,7 +3317,28 @@ check('HR Team uses Pulse-style bucket navigation and control panel', pagesCss.i
 check('HR Team profile modal uses compact dropdown picker for secondary professions', htmlContains('hr.html', 'id="editSecondaryProfessionPicker"') && htmlContains('hr.html', 'hr-profession-picker') && htmlContains('hr.html', 'id="editSecondaryProfessionChips"') && htmlContains('hr.html', 'id="editSecondaryProfessionOptions"') && htmlContains('hr.html', 'Основна професія') && hrCode.includes('function bindSecondaryProfessionPicker') && hrCode.includes('function setSecondaryProfessionPickerOpen') && hrCode.includes('data-secondary-add') && hrCode.includes('data-secondary-remove') && hrCode.includes('setSelectedSecondaryProfessionKeys') && hrCode.includes('syncHiddenSecondaryProfessionSelect') && htmlContains('css/hr-page.css', '.hr-profession-picker.is-open .hr-profession-options') && htmlContains('css/hr-page.css', 'position: absolute') && htmlContains('css/hr-page.css', 'max-height: 220px'));
 check('HR Team cards separate professions, statuses, actions, and move flow', htmlContains('hr.html', '.hr-team-card-head') && htmlContains('hr.html', '.hr-team-profession-area') && htmlContains('hr.html', '.hr-team-status-row') && htmlContains('hr.html', '.hr-team-actions') && htmlContains('hr.html', '.hr-team-move') && hrCode.includes('function buildStaffMovePayload') && hrCode.includes('function openStaffMoveMenu') && hrCode.includes('window.openStaffMoveMenu = openStaffMoveMenu') && hrCode.includes("body.hr_pool_status = 'reserve'") && hrCode.includes("body.role_type = 'intern'") && hrCode.includes('preferredWorkerRoleForStaff') && hrCode.includes('function setStaffProfileActive') && hrCode.includes("normalizedTarget === 'dismissed'") && hrCode.includes('через offboarding') && hrCode.includes('Звільнення:') && hrRouteCode.includes("termination_date = NULL") && hrRouteCode.includes("UPDATE employee_profiles") && hrRouteCode.includes("UPDATE users") && hrRouteCode.includes("staff_rehire") && pagesCss.includes('.hr-team-card.inactive') && !htmlContains('hr.html', '.hr-team-card.inactive { opacity: 0.5;'));
 check('HR Team profile action lives in card header and opens from avatar or name', hrCode.includes('const profileClick = `openStaffEdit(${Number(s.id)})`;') && hrCode.includes('hr-team-profile-trigger') && hrCode.includes('hr-team-name-button') && hrCode.includes('hr-team-edit hr-team-edit--top') && htmlContains('css/hr-page.css', '.hr-team-profile-trigger') && htmlContains('css/hr-page.css', '.hr-team-name-button') && htmlContains('css/hr-page.css', '.hr-team-edit--top'));
-check('HR staff profile opens with team identity card and editable name/phone row', htmlContains('hr.html', 'class="hr-staff-profile-hero"') && htmlContains('hr.html', 'id="editStaffHeaderName"') && htmlContains('hr.html', 'id="editStaffName"') && htmlContains('hr.html', 'id="editPhone"') && hrCode.includes('function syncStaffProfileHeaderName') && hrCode.includes("name: document.getElementById('editStaffName')?.value || null") && hrRouteCode.includes("queueStaffUpdate('name'") && htmlContains('css/hr-page.css', '.hr-staff-profile-card') && htmlContains('css/hr-page.css', '.hr-staff-profile-quick-fields') && htmlContains('css/hr-page.css', '.hr-staff-profile-quick-fields input') && htmlContains('css/hr-page.css', 'body.dark-mode .hr-staff-profile-quick-fields input'));
+check('HR staff profile opens with team identity card and editable name/phone/photo row',
+    htmlContains('hr.html', 'class="hr-staff-profile-hero"')
+    && htmlContains('hr.html', 'id="editStaffHeaderName"')
+    && htmlContains('hr.html', 'id="editStaffName"')
+    && htmlContains('hr.html', 'id="editPhone"')
+    && htmlContains('hr.html', 'id="editPhotoPreview"')
+    && htmlContains('hr.html', 'id="editPhotoUrl"')
+    && hrCode.includes('function syncStaffProfileHeaderName')
+    && hrCode.includes('function updateStaffPhotoPreview')
+    && hrCode.includes('function clearStaffPhotoUrl')
+    && hrCode.includes("name: document.getElementById('editStaffName')?.value || null")
+    && hrCode.includes("photo_url: document.getElementById('editPhotoUrl')?.value?.trim() || null")
+    && hrRouteCode.includes("queueStaffUpdate('name'")
+    && hrRouteCode.includes('function normalizeStaffPhotoUrl')
+    && hrRouteCode.includes("queueStaffUpdate('photo_url'")
+    && hrRouteCode.includes("'photo_url'")
+    && htmlContains('css/hr-page.css', '.hr-staff-profile-card')
+    && htmlContains('css/hr-page.css', '.hr-staff-profile-quick-fields')
+    && htmlContains('css/hr-page.css', '.hr-staff-profile-quick-fields input')
+    && htmlContains('css/hr-page.css', '.hr-staff-photo-editor')
+    && htmlContains('css/hr-page.css', '.hr-staff-photo-preview')
+    && htmlContains('css/hr-page.css', 'body.dark-mode .hr-staff-profile-quick-fields input'));
 check('HR/invite/changelog polish prevents long labels from overflowing compact surfaces',
     hrPageCss.includes('.hr-profession-card-head > div')
     && hrPageCss.includes('.hr-profession-chip')

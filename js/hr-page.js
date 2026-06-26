@@ -1453,6 +1453,88 @@ function filteredTodayItems(items = []) {
     return sortTodayItemsForReview(filtered);
 }
 
+function todayStaffPhotoUrl(item = {}) {
+    const photoUrl = String(item.photo_url || item.photoUrl || '').trim();
+    if (!photoUrl) return '';
+    const lower = photoUrl.toLowerCase();
+    return lower.startsWith('https://') || photoUrl.startsWith('/uploads/') || photoUrl.startsWith('/images/') ? photoUrl : '';
+}
+
+function todayAttendanceStatus(item = {}) {
+    const rec = item.record;
+    if (!rec) return item.shift ? 'absent' : 'special';
+    const status = String(rec.status || '').trim();
+    if (rec.clock_out || status === 'early_leave' || status === 'auto_closed') return 'done';
+    if (status === 'late') return 'late';
+    if (['present', 'clocked_in', 'unscheduled'].includes(status)) return 'present';
+    if (['sick', 'vacation', 'day_off'].includes(status)) return 'special';
+    if (status === 'no_show') return 'absent';
+    return 'absent';
+}
+
+function todayIsBirthday(item = {}) {
+    return item.is_birthday_today === true
+        || item.isBirthdayToday === true
+        || item.is_birthday_today === 'true'
+        || item.isBirthdayToday === 'true';
+}
+
+function renderTodayHoneycombTile(item = {}) {
+    const staffId = Number(item.staff_id || item.id);
+    const safeStaffId = Number.isFinite(staffId) ? staffId : 0;
+    const name = item.staff_name || item.name || 'Співробітник';
+    const photoUrl = todayStaffPhotoUrl(item);
+    const status = todayAttendanceStatus(item);
+    const hasPhoto = Boolean(photoUrl);
+    const isBirthday = todayIsBirthday(item);
+    const canOpenProfile = Boolean(canManage && safeStaffId && typeof openStaffEdit === 'function');
+    const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
+    const statusLabel = STATUS_LABELS[item.record?.status] || (status === 'absent' ? 'Відсутній' : status);
+    const titleParts = [
+        name,
+        roleLabel,
+        departmentLabel(item.department),
+        isBirthday ? `День народження: ${name}` : '',
+        statusLabel
+    ].filter(Boolean);
+    const className = [
+        'hr-today-hex-tile',
+        `is-${status}`,
+        hasPhoto ? 'has-photo' : 'is-missing-photo',
+        isBirthday ? 'is-birthday' : ''
+    ].filter(Boolean).join(' ');
+    const titleText = titleParts.join(' · ');
+    const visual = hasPhoto
+        ? `<span class="hr-today-hex-photo"><img src="${escapeHtml(photoUrl)}" alt="" loading="lazy" decoding="async"></span>`
+        : `<span class="hr-today-hex-alert" aria-hidden="true">!</span>`;
+    const birthday = isBirthday
+        ? `<span class="hr-today-hex-birthday" aria-label="День народження">ДН</span>`
+        : '';
+    const nameLabel = `<span class="hr-today-hex-name">${escapeHtml(name)}</span>`;
+    if (canOpenProfile) {
+        return `<button type="button" class="${className}" data-staff-id="${safeStaffId}" data-attendance-status="${escapeHtml(status)}" data-birthday="${isBirthday ? 'true' : 'false'}" title="${escapeHtml(titleText)}" aria-label="${escapeHtml(titleText)}" onclick="openStaffEdit(${safeStaffId})">
+            ${visual}
+            ${birthday}
+            ${nameLabel}
+        </button>`;
+    }
+    return `<div class="${className}" data-staff-id="${safeStaffId}" data-attendance-status="${escapeHtml(status)}" data-birthday="${isBirthday ? 'true' : 'false'}" title="${escapeHtml(titleText)}" aria-label="${escapeHtml(titleText)}">
+        ${visual}
+        ${birthday}
+        ${nameLabel}
+    </div>`;
+}
+
+function renderTodayHoneycombBoard(items = []) {
+    const root = document.getElementById('todayHoneycombBoard');
+    if (!root) return;
+    if (!items.length) {
+        root.innerHTML = '<div class="hr-today-honeycomb-empty">Немає співробітників для цього фільтра</div>';
+        return;
+    }
+    root.innerHTML = items.map(renderTodayHoneycombTile).join('');
+}
+
 function bindTodayFilterControls() {
     const search = document.getElementById('todaySearch');
     if (search) {
@@ -1514,6 +1596,7 @@ function renderToday(data) {
     renderTodayDepartmentSegments(allItems);
     const visibleItems = filteredTodayItems(allItems);
     renderTodayFilterInfo(allItems, visibleItems);
+    renderTodayHoneycombBoard(visibleItems);
 
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
     document.getElementById('todaySummary').innerHTML = `
@@ -4325,6 +4408,41 @@ function activeEditStaffId() {
     return document.getElementById('editStaffId')?.value;
 }
 
+function updateStaffPhotoPreview(urlOverride) {
+    const preview = document.getElementById('editPhotoPreview');
+    if (!preview) return;
+    const rawUrl = urlOverride !== undefined
+        ? urlOverride
+        : document.getElementById('editPhotoUrl')?.value;
+    const photoUrl = String(rawUrl || '').trim();
+    preview.replaceChildren();
+    preview.classList.toggle('has-photo', Boolean(photoUrl));
+    if (!photoUrl) {
+        preview.textContent = '!';
+        return;
+    }
+    const img = document.createElement('img');
+    img.src = photoUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.addEventListener('error', () => {
+        preview.classList.remove('has-photo');
+        preview.replaceChildren();
+        preview.textContent = '!';
+    }, { once: true });
+    preview.appendChild(img);
+}
+
+function clearStaffPhotoUrl() {
+    const input = document.getElementById('editPhotoUrl');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+    updateStaffPhotoPreview('');
+}
+
 function formatStaffDateValue(value) {
     if (!value) return 'без дати';
     const date = new Date(value);
@@ -5040,6 +5158,9 @@ async function openStaffEdit(staffId, options = {}) {
     syncStaffProfileHeaderName(s.name || '');
     populateStaffProfessionControls(s);
     document.getElementById('editPhone').value = s.phone || '';
+    const editPhotoUrl = document.getElementById('editPhotoUrl');
+    if (editPhotoUrl) editPhotoUrl.value = s.photo_url || '';
+    updateStaffPhotoPreview(s.photo_url || '');
     document.getElementById('editBirthDate').value = s.birth_date ? s.birth_date.substring(0, 10) : '';
     document.getElementById('editAddress').value = s.address || '';
     document.getElementById('editEmergencyContact').value = s.emergency_contact || '';
@@ -5113,6 +5234,7 @@ async function saveStaffEdit() {
         role_type: document.getElementById('editRoleType')?.value,
         secondary_professions: normalizeProfessionList(readStaffSecondaryProfessionSelection(), [document.getElementById('editRoleType')?.value]),
         phone: document.getElementById('editPhone')?.value || null,
+        photo_url: document.getElementById('editPhotoUrl')?.value?.trim() || null,
         birth_date: document.getElementById('editBirthDate')?.value || null,
         address: document.getElementById('editAddress')?.value || null,
         emergency_contact: document.getElementById('editEmergencyContact')?.value || null,

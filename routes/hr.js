@@ -173,6 +173,20 @@ function cleanStaffDate(value) {
     return normalized && /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeStaffPhotoUrl(value) {
+    if (value === null || value === undefined) return { ok: true, value: null };
+    const normalized = String(value).replace(/\u0000/g, '').trim();
+    if (!normalized) return { ok: true, value: null };
+    if (normalized.length > 500) {
+        return { ok: false, error: 'URL фото має бути до 500 символів' };
+    }
+    const lower = normalized.toLowerCase();
+    if (lower.startsWith('https://') || normalized.startsWith('/uploads/') || normalized.startsWith('/images/')) {
+        return { ok: true, value: normalized };
+    }
+    return { ok: false, error: 'Фото має бути https URL або шляхом /uploads/... чи /images/...' };
+}
+
 function normalizeStaffCertificationStatus(value) {
     const status = cleanStaffText(value, 32) || 'active';
     return ['active', 'expired', 'revoked'].includes(status) ? status : 'active';
@@ -2529,7 +2543,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', requireHrManage, async (req, res) => {
     try {
-        const { name, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
+        const { name, phone, emergency_contact, emergency_phone, role_type, hourly_rate, rate_unit, birth_date, photo_url, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason, company_structure_node_id } = req.body;
         const hasBodyField = field => Object.prototype.hasOwnProperty.call(req.body || {}, field);
         const hasSecondaryProfessions = hasBodyField('secondary_professions') || hasBodyField('secondaryProfessions');
         const hasProfessionRates = hasBodyField('profession_rates') || hasBodyField('professionRates');
@@ -2548,6 +2562,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             hourly_rate: hasBodyField('hourly_rate'),
             rate_unit: hasBodyField('rate_unit') || hasBodyField('rateUnit'),
             birth_date: hasBodyField('birth_date'),
+            photo_url: hasBodyField('photo_url') || hasBodyField('photoUrl'),
             notes: hasBodyField('notes'),
             telegram_id: hasBodyField('telegram_id'),
             telegram_username: hasBodyField('telegram_username'),
@@ -2561,7 +2576,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         const beforeStaffResult = await pool.query(
             `SELECT id, name, phone, emergency_contact, emergency_phone, role_type,
                     COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
-                    hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit, company_structure_node_id, birth_date, address, notes, telegram_id, telegram_username,
+                    hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit, company_structure_node_id, birth_date, photo_url, address, notes, telegram_id, telegram_username,
                     contract_type, skills, hr_pool_status, blacklist_reason, blacklisted_at
              FROM staff
              WHERE id = $1`,
@@ -2634,6 +2649,11 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         if (fieldPresence.hourly_rate) queueStaffUpdate('hourly_rate', numberOrNull(hourly_rate));
         if (fieldPresence.rate_unit) queueStaffUpdate('rate_unit', normalizeStaffRateUnit(rate_unit ?? req.body.rateUnit));
         if (fieldPresence.birth_date) queueStaffUpdate('birth_date', birth_date || null);
+        if (fieldPresence.photo_url) {
+            const normalizedPhotoUrl = normalizeStaffPhotoUrl(hasBodyField('photo_url') ? photo_url : req.body.photoUrl);
+            if (!normalizedPhotoUrl.ok) return res.status(400).json({ success: false, error: normalizedPhotoUrl.error });
+            queueStaffUpdate('photo_url', normalizedPhotoUrl.value);
+        }
         if (fieldPresence.notes) queueStaffUpdate('notes', textOrNull(notes));
         if (fieldPresence.telegram_id) queueStaffUpdate('telegram_id', textOrNull(telegram_id));
         if (fieldPresence.telegram_username) queueStaffUpdate('telegram_username', textOrNull(telegram_username));
@@ -2708,7 +2728,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
         }
         const changedFields = [
             'phone', 'emergency_contact', 'emergency_phone', 'role_type', 'secondary_professions',
-            'hourly_rate', 'rate_unit', 'company_structure_node_id', 'birth_date', 'address', 'notes', 'telegram_id', 'telegram_username',
+            'hourly_rate', 'rate_unit', 'company_structure_node_id', 'birth_date', 'photo_url', 'address', 'notes', 'telegram_id', 'telegram_username',
             'contract_type', 'skills', 'hr_pool_status', 'blacklist_reason', 'blacklisted_at'
         ];
         const changes = buildStaffProfileChanges(beforeStaff, result.rows[0], changedFields);
@@ -3486,7 +3506,12 @@ router.get('/today', async (req, res) => {
     try {
         const today = todayKyiv();
         const staff = await pool.query(
-            `SELECT id, name, department, position, color, role_type, photo_url
+            `SELECT id, name, department, position, color, role_type, photo_url, birth_date,
+                    (
+                        birth_date IS NOT NULL
+                        AND EXTRACT(MONTH FROM birth_date::date) = EXTRACT(MONTH FROM $1::date)
+                        AND EXTRACT(DAY FROM birth_date::date) = EXTRACT(DAY FROM $1::date)
+                    ) AS is_birthday_today
              FROM staff
              WHERE COALESCE(is_active, true) = true
                AND COALESCE(is_freelance, false) = false
@@ -3535,6 +3560,9 @@ router.get('/today', async (req, res) => {
                 staff_color: s.color,
                 role_type: s.role_type,
                 photo_url: s.photo_url,
+                birth_date: s.birth_date,
+                has_photo: Boolean(String(s.photo_url || '').trim()),
+                is_birthday_today: Boolean(s.is_birthday_today),
                 shift: shift ? { planned_start: shift.planned_start, planned_end: shift.planned_end, shift_type: shift.shift_type } : null,
                 record: record ? {
                     id: record.id,

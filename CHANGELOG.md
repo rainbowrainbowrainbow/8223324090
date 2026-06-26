@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.36 - HR Pulse Honeycomb Photos
+
+### HR Pulse honeycomb / Фото співробітників / День народження / (Клешня, 26.06.2026) [codex]
+- **`/hr#today` отримав live honeycomb board** - після пошуку й сегментів відділів з'явились соти команди, які синхронно реагують на фільтри.
+- **Фото співробітників підтягуються з HR-профілю** - у профілі додано блок `Фото для пульсу` з preview, URL-полем і очищенням без нової БД-схеми.
+- **Backend contract розширено без зміни правил Today** - `/api/hr/today` додатково віддає `birth_date`, `has_photo` і `is_birthday_today`, а `photo_url` лишається сумісним зі старими споживачами.
+- **Без фото показується `!`** - соти з відсутнім фото мають окремий missing-photo state, щоб HR швидко бачив, кому треба прикріпити зображення.
+- **Дні народження видно окремо від статусу зміни** - birthday badge/hat додається поверх соти й не перезаписує `present`, `late`, `absent`, `done` або `special`.
+- **Новий honeycomb hero asset додано без видалення старого** - Today hero використовує `today-honeycomb-empty.png`, а старий `today-honeycomb.png` лишився в репозиторії.
+- **Regression coverage оновлено** - `tests/ui-check.js` перевіряє новий asset, `todayHoneycombBoard`, honeycomb renderer, CSS states, missing-photo alert, birthday API contract і поле фото в профілі.
+- **Релізні маркери піднято до `0.77.36`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.35 - Client Banquet PDF Readability Density
 
 ### Client banquet PDF readability / A4 density / Pagination QA / (Клешня, 26.06.2026) [codex]

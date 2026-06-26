@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.35",
+  "version": "0.77.36",
   "eventGenix": {
-    "releaseLabel": "Client Banquet PDF Readability Density"
+    "releaseLabel": "HR Pulse Honeycomb Photos"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

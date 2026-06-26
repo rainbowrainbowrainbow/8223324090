@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.35">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.35">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.35">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.35">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.35">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.35">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.35">
+    <link rel="stylesheet" href="css/base.css?v=0.77.36">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.36">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.36">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.36">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.36">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.36">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.36">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.77.35">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.77.36">
 </head>
 <body data-page-group="hr">
     <script>
@@ -84,7 +84,7 @@
             <div id="tab-today" class="hr-tab-content active">
                 <section class="hr-today-hero" aria-label="Операційний пульс команди">
                     <div class="hr-today-hero-media" aria-hidden="true">
-                        <img src="images/hr-pulse/today-honeycomb.png" alt="" loading="lazy" decoding="async">
+                        <img src="images/hr-pulse/today-honeycomb-empty.png" alt="" loading="lazy" decoding="async">
                     </div>
                     <div class="hr-today-hero-overlay" aria-hidden="true"></div>
                     <div class="hr-today-hero-content">
@@ -103,6 +103,7 @@
                     </div>
                     <div id="todayDepartmentSegments" class="hr-today-segments" aria-label="Відділи"></div>
                 </div>
+                <div id="todayHoneycombBoard" class="hr-today-honeycomb-board" aria-label="Соти сьогоднішньої команди"></div>
                 <div id="todaySummary" class="hr-summary"></div>
                 <div id="todayList" class="hr-staff-list"></div>
             </div>
@@ -572,6 +573,19 @@
                     </label>
                 </div>
             </div>
+            <div class="form-group hr-staff-photo-field">
+                <label for="editPhotoUrl">Фото для пульсу</label>
+                <div class="hr-staff-photo-editor">
+                    <div id="editPhotoPreview" class="hr-staff-photo-preview" aria-hidden="true">!</div>
+                    <div class="hr-staff-photo-controls">
+                        <input type="text" id="editPhotoUrl" maxlength="500" inputmode="url" autocomplete="off" placeholder="/uploads/... або https://..." oninput="updateStaffPhotoPreview()">
+                        <div class="hr-staff-photo-actions">
+                            <small class="form-hint">Використовується у сотах пульсу. Дозволено https, /uploads або /images.</small>
+                            <button type="button" class="btn-secondary" onclick="clearStaffPhotoUrl()">Очистити фото</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="form-group">
                 <label>Основна професія</label>
                 <select id="editRoleType">
@@ -994,15 +1008,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.77.35"></script>
-    <script src="js/config.js?v=0.77.35"></script>
-    <script src="js/notification.js?v=0.77.35"></script>
-    <script src="js/api.js?v=0.77.35"></script>
-    <script src="js/auth.js?v=0.77.35"></script>
-    <script src="js/components/sidebar.js?v=0.77.35"></script>
+    <script src="js/ui.js?v=0.77.36"></script>
+    <script src="js/config.js?v=0.77.36"></script>
+    <script src="js/notification.js?v=0.77.36"></script>
+    <script src="js/api.js?v=0.77.36"></script>
+    <script src="js/auth.js?v=0.77.36"></script>
+    <script src="js/components/sidebar.js?v=0.77.36"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.77.35"></script>
-    <script src="js/hr-page.js?v=0.77.35"></script>
-    <script src="js/alerts.js?v=0.77.35"></script>
+    <script src="js/ws.js?v=0.77.36"></script>
+    <script src="js/hr-page.js?v=0.77.36"></script>
+    <script src="js/alerts.js?v=0.77.36"></script>
 </body>
 </html>

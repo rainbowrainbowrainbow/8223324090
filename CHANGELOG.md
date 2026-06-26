@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.34 - HR Pulse Premium Visuals
+
+### HR Pulse premium switcher / Today dashboard / Staff schedule / Reports / (Клешня, 26.06.2026) [codex]
+- **Пульс компанії отримав premium switcher** - вкладки `Сьогодні`, `Графік` і `Звіти` тепер мають декоративні media-картки з окремими зображеннями, темним overlay і видимим keyboard focus.
+- **`/hr#today` перероблено у pulse dashboard** - додано hero з `today-honeycomb.png`, дата лишилась сумісною з поточним рендером, а пошук, сегменти відділів і список співробітників збережені.
+- **`/staff` приведено до premium schedule command center** - той самий HR Pulse switcher, hero на `schedule-operations.png`, компактні toolbar/chips і покращена читабельність графіка без зміни логіки таблиці.
+- **`/hr#reports` отримав analytics mood** - hero на `reports-kpi.png`, premium KPI cards, покращені controls, таблиці й role report section без зміни CSV export і backend reports API.
+- **Responsive, dark mode і accessibility відполіровано** - додано mobile guards, focus-visible states, overlay contrast, no-overflow правила і reduced-motion поведінку для нових media-елементів.
+- **Regression coverage оновлено** - `tests/ui-check.js` тепер перевіряє premium assets, три вкладки pulse nav, active `/staff`, Today controls, Reports controls і декоративні images з порожнім `alt`.
+- **API, БД, авторизацію, env і деплой-конфіг не змінювали** - реліз торкається тільки HR/Staff frontend UI, статичних assets, tests і version markers.
+- **Релізні маркери піднято до `0.77.34`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.33 - Client Banquet PDF Readability
 
 ### Banquet PDF readability / Client order table / Visual QA / (Клешня, 26.06.2026) [codex]

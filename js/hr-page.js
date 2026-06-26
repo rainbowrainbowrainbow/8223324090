@@ -121,14 +121,27 @@ const STAFF_DEPARTMENT_LABELS = {
     security: 'Охорона'
 };
 
+function withPulseVisual(item, visual) {
+    return { ...item, ...visual };
+}
+
 const HR_NAV_GROUPS = [
     {
         id: 'pulse',
         label: 'Пульс компанії',
         items: [
-            { id: 'today', label: 'Сьогодні' },
-            { id: 'schedule', label: 'Графік', href: '/staff' },
-            { id: 'reports', label: 'Звіти' }
+            withPulseVisual(
+                { id: 'today', label: 'Сьогодні' },
+                { image: 'images/hr-pulse/today-honeycomb.png', tone: 'people' }
+            ),
+            withPulseVisual(
+                { id: 'schedule', label: 'Графік', href: '/staff' },
+                { image: 'images/hr-pulse/schedule-operations.png', tone: 'schedule' }
+            ),
+            withPulseVisual(
+                { id: 'reports', label: 'Звіти' },
+                { image: 'images/hr-pulse/reports-kpi.png', tone: 'reports' }
+            )
         ]
     },
     {
@@ -1180,8 +1193,23 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                 ${group.items.map(item => {
                     const tabId = item.tab || item.id;
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
+                    const tabClass = pulseMode ? 'hr-tab hr-pulse-card' : 'hr-tab';
+                    const toneAttr = pulseMode && item.tone ? ` data-pulse-tone="${escapeHtml(item.tone)}"` : '';
+                    const media = pulseMode && item.image ? `
+                        <span class="hr-pulse-card-media" aria-hidden="true">
+                            <img src="${escapeHtml(item.image)}" alt="" loading="lazy" decoding="async">
+                        </span>
+                    ` : '';
+                    const content = pulseMode ? `
+                        ${media}
+                        <span class="hr-pulse-card-overlay" aria-hidden="true"></span>
+                        <span class="hr-pulse-card-content">
+                            <span class="hr-pulse-card-label">${escapeHtml(item.label)}</span>
+                            ${countBadge}
+                        </span>
+                    ` : `${escapeHtml(item.label)}${countBadge}`;
                     return `
-                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${escapeHtml(item.label)}${countBadge}</button>
+                    <button type="button" class="${tabClass}" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}${toneAttr}>${content}</button>
                 `;
                 }).join('')}
             </div>
@@ -6448,13 +6476,13 @@ function renderReports(data) {
     const taskDoneRate = totalTasksAssigned > 0 ? Math.round(totalTasksDone / totalTasksAssigned * 100) : 0;
 
     document.getElementById('reportSummary').innerHTML = `
-        <div class="hr-report-stat"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${totalOvertime.toFixed(0)}г</div><div class="stat-label">Переробка</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${totalTasksDone}/${totalTasksAssigned}</div><div class="stat-label">Задачі виконано</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${taskDoneRate}%</div><div class="stat-label">KPI задач</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${totalTasksOverdue}</div><div class="stat-label">Прострочені</div></div>
+        <div class="hr-report-stat hr-report-stat--presence"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>
+        <div class="hr-report-stat hr-report-stat--late"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
+        <div class="hr-report-stat hr-report-stat--absence"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
+        <div class="hr-report-stat hr-report-stat--overtime"><div class="stat-value">${totalOvertime.toFixed(0)}г</div><div class="stat-label">Переробка</div></div>
+        <div class="hr-report-stat hr-report-stat--tasks"><div class="stat-value">${totalTasksDone}/${totalTasksAssigned}</div><div class="stat-label">Задачі виконано</div></div>
+        <div class="hr-report-stat hr-report-stat--kpi"><div class="stat-value">${taskDoneRate}%</div><div class="stat-label">KPI задач</div></div>
+        <div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">${totalTasksOverdue}</div><div class="stat-label">Прострочені</div></div>
     `;
 
     // Table
@@ -6487,10 +6515,10 @@ async function loadRoleAssignmentsReport() {
     const head = document.getElementById('roleReportHead');
     const body = document.getElementById('roleReportBody');
     if (!summaryRoot || !head || !body) return;
-    summaryRoot.innerHTML = '<div class="hr-report-stat"><div class="stat-value">...</div><div class="stat-label">Ролі</div></div>';
+    summaryRoot.innerHTML = '<div class="hr-report-stat hr-report-stat--roles"><div class="stat-value">...</div><div class="stat-label">Ролі</div></div>';
     const data = await hrFetch('/role-assignments/report').catch(() => null);
     if (!data?.success) {
-        summaryRoot.innerHTML = `<div class="hr-report-stat"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(data?.error || 'Не вдалося завантажити ролі')}</div></div>`;
+        summaryRoot.innerHTML = `<div class="hr-report-stat hr-report-stat--overdue"><div class="stat-value">!</div><div class="stat-label">${escapeHtml(data?.error || 'Не вдалося завантажити ролі')}</div></div>`;
         head.innerHTML = '';
         body.innerHTML = '';
         return;
@@ -6498,12 +6526,12 @@ async function loadRoleAssignmentsReport() {
     const s = data.summary || {};
     const rows = data.data || [];
     summaryRoot.innerHTML = `
-        <div class="hr-report-stat"><div class="stat-value">${Number(s.staff_count || 0)}</div><div class="stat-label">Працівників</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${Number(s.role_count || 0)}</div><div class="stat-label">Ролей</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${Number(s.pending_admissions || 0)}</div><div class="stat-label">Очікують допуск</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${Number(s.blocked_admissions || 0)}</div><div class="stat-label">Заблоковані</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${Number(s.internships_in_progress || 0)}</div><div class="stat-label">Стажування</div></div>
-        <div class="hr-report-stat"><div class="stat-value">${Number(s.suspended_roles || 0)}</div><div class="stat-label">Призупинені</div></div>
+        <div class="hr-report-stat hr-report-stat--people"><div class="stat-value">${Number(s.staff_count || 0)}</div><div class="stat-label">Працівників</div></div>
+        <div class="hr-report-stat hr-report-stat--roles"><div class="stat-value">${Number(s.role_count || 0)}</div><div class="stat-label">Ролей</div></div>
+        <div class="hr-report-stat hr-report-stat--pending"><div class="stat-value">${Number(s.pending_admissions || 0)}</div><div class="stat-label">Очікують допуск</div></div>
+        <div class="hr-report-stat hr-report-stat--blocked"><div class="stat-value">${Number(s.blocked_admissions || 0)}</div><div class="stat-label">Заблоковані</div></div>
+        <div class="hr-report-stat hr-report-stat--internship"><div class="stat-value">${Number(s.internships_in_progress || 0)}</div><div class="stat-label">Стажування</div></div>
+        <div class="hr-report-stat hr-report-stat--suspended"><div class="stat-value">${Number(s.suspended_roles || 0)}</div><div class="stat-label">Призупинені</div></div>
     `;
     head.innerHTML = `<tr>
         <th>Працівник</th><th>Роль</th><th>Тип</th><th>Статус</th><th>Допуск</th><th>Стажування</th></tr>`;

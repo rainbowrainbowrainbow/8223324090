@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.33">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.33">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.33">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.33">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.33">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.33">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.33">
+    <link rel="stylesheet" href="css/base.css?v=0.77.34">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.34">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.34">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.34">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.34">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.34">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.34">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.77.33">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.77.34">
 </head>
 <body data-page-group="hr">
     <script>
@@ -82,7 +82,20 @@
 
             <!-- TAB 1: TODAY -->
             <div id="tab-today" class="hr-tab-content active">
-                <div id="todayDate" class="hr-today-date"></div>
+                <section class="hr-today-hero" aria-label="Операційний пульс команди">
+                    <div class="hr-today-hero-media" aria-hidden="true">
+                        <img src="images/hr-pulse/today-honeycomb.png" alt="" loading="lazy" decoding="async">
+                    </div>
+                    <div class="hr-today-hero-overlay" aria-hidden="true"></div>
+                    <div class="hr-today-hero-content">
+                        <div class="hr-today-hero-copy">
+                            <span class="hr-today-hero-eyebrow">Пульс компанії</span>
+                            <h3>Сьогодні на зміні</h3>
+                            <p>Живий зріз присутності, запізнень і доступності команди.</p>
+                        </div>
+                        <div id="todayDate" class="hr-today-date"></div>
+                    </div>
+                </section>
                 <div class="hr-today-controls" aria-label="Фільтри сьогоднішнього пульсу">
                     <div class="hr-today-filter-row">
                         <input type="search" id="todaySearch" class="hr-today-search" aria-label="Пошук у сьогоднішньому пульсі" placeholder="Пошук: ПІБ, професія, відділ, статус...">
@@ -277,10 +290,26 @@
 
             <!-- TAB 4: REPORTS -->
             <div id="tab-reports" class="hr-tab-content">
-                <div class="hr-report-controls">
-                    <select id="reportMonth" class="hr-team-select"></select>
-                    <button type="button" id="reportExport" class="btn-export">📥 Експорт CSV</button>
-                </div>
+                <section class="hr-reports-hero" aria-label="Аналітика HR Pulse">
+                    <div class="hr-reports-hero-media" aria-hidden="true">
+                        <img src="images/hr-pulse/reports-kpi.png" alt="" loading="lazy" decoding="async">
+                    </div>
+                    <div class="hr-reports-hero-overlay" aria-hidden="true"></div>
+                    <div class="hr-reports-hero-content">
+                        <div class="hr-reports-hero-copy">
+                            <span class="hr-reports-hero-eyebrow">Аналітичний центр</span>
+                            <h2>Звіти</h2>
+                            <p>Місячний HR-зріз присутності, запізнень, задач, KPI та рольових допусків команди.</p>
+                        </div>
+                        <div class="hr-report-controls" aria-label="Фільтри звіту">
+                            <label class="hr-report-control-field" for="reportMonth">
+                                <span>Період</span>
+                                <select id="reportMonth" class="hr-team-select"></select>
+                            </label>
+                            <button type="button" id="reportExport" class="btn-export">📥 Експорт CSV</button>
+                        </div>
+                    </div>
+                </section>
                 <div id="reportSummary" class="hr-report-summary"></div>
                 <div class="hr-report-table-wrap">
                     <table class="hr-report-table">
@@ -965,15 +994,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.77.33"></script>
-    <script src="js/config.js?v=0.77.33"></script>
-    <script src="js/notification.js?v=0.77.33"></script>
-    <script src="js/api.js?v=0.77.33"></script>
-    <script src="js/auth.js?v=0.77.33"></script>
-    <script src="js/components/sidebar.js?v=0.77.33"></script>
+    <script src="js/ui.js?v=0.77.34"></script>
+    <script src="js/config.js?v=0.77.34"></script>
+    <script src="js/notification.js?v=0.77.34"></script>
+    <script src="js/api.js?v=0.77.34"></script>
+    <script src="js/auth.js?v=0.77.34"></script>
+    <script src="js/components/sidebar.js?v=0.77.34"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.77.33"></script>
-    <script src="js/hr-page.js?v=0.77.33"></script>
-    <script src="js/alerts.js?v=0.77.33"></script>
+    <script src="js/ws.js?v=0.77.34"></script>
+    <script src="js/hr-page.js?v=0.77.34"></script>
+    <script src="js/alerts.js?v=0.77.34"></script>
 </body>
 </html>

@@ -72,6 +72,7 @@ function numericRuleValue(rule) {
 }
 
 const MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+const MENU_ADDON_UNITS = new Set(['додаток', 'додатки', 'додатків']);
 
 function formatMenuQuantityNumber(value) {
     const quantity = toQuantity(value);
@@ -90,6 +91,18 @@ function menuPortionWord(value) {
     return 'порцій';
 }
 
+function menuAddonWord(value) {
+    const quantity = toQuantity(value);
+    if (!Number.isInteger(quantity)) return 'додатки';
+    const absolute = Math.abs(quantity);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (lastTwo >= 11 && lastTwo <= 14) return 'додатків';
+    if (last === 1) return 'додаток';
+    if (last >= 2 && last <= 4) return 'додатки';
+    return 'додатків';
+}
+
 function normalizeMenuServingUnitDisplay(value) {
     const text = cleanText(value, 80);
     if (!text) return '';
@@ -104,6 +117,11 @@ function isPortionServingUnit(value) {
     return !unit || MENU_PORTION_UNITS.has(unit);
 }
 
+function isAddonServingUnit(value) {
+    const unit = normalizeMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+    return MENU_ADDON_UNITS.has(unit);
+}
+
 function isPackServingUnit(value) {
     return /^\d+(?:[,.]\d+)?\s*(кг|г|гр|мг|л|мл)$/iu.test(normalizeMenuServingUnitDisplay(value));
 }
@@ -112,6 +130,7 @@ function formatMenuQuantityWithServingUnit(quantity, servingUnit) {
     const quantityLabel = formatMenuQuantityNumber(quantity);
     const unit = normalizeMenuServingUnitDisplay(servingUnit);
     if (isPortionServingUnit(unit)) return `${quantityLabel} ${menuPortionWord(quantity)}`;
+    if (isAddonServingUnit(unit)) return `${quantityLabel} ${menuAddonWord(quantity)}`;
     if (isPackServingUnit(unit)) return `${quantityLabel} ${menuPortionWord(quantity)} по ${unit}`;
     return `${quantityLabel} ${unit}`.trim();
 }

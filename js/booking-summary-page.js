@@ -119,13 +119,22 @@
     }
 
     function formatMoney(value, currency = 'UAH') {
-        const n = Number(value);
+        const n = summaryMoneyAmount(value);
         if (!Number.isFinite(n)) return '—';
         return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(n)} ${formatCurrencyLabel(currency)}`;
     }
 
+    function summaryMoneyAmount(value) {
+        if (value === undefined || value === null || value === '') return NaN;
+        const normalized = typeof value === 'string'
+            ? value.replace(/\s+/g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+            : value;
+        if (typeof normalized === 'string' && !/[0-9]/.test(normalized)) return NaN;
+        return Number(normalized);
+    }
+
     function summaryMoney(value) {
-        const n = Number(value);
+        const n = summaryMoneyAmount(value);
         return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
     }
 
@@ -135,6 +144,7 @@
     }
 
     const SUMMARY_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+    const SUMMARY_MENU_ADDON_UNITS = new Set(['додаток', 'додатки', 'додатків']);
 
     function summaryMenuQuantityNumber(value) {
         const number = Number(String(value ?? '').replace(',', '.'));
@@ -156,6 +166,18 @@
         return 'порцій';
     }
 
+    function summaryMenuAddonWord(value) {
+        const number = Number(String(value ?? '').replace(',', '.'));
+        const absolute = Math.abs(number);
+        const integer = Math.floor(absolute);
+        if (!Number.isInteger(number)) return 'додатки';
+        const mod10 = integer % 10;
+        const mod100 = integer % 100;
+        if (mod10 === 1 && mod100 !== 11) return 'додаток';
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'додатки';
+        return 'додатків';
+    }
+
     function normalizeSummaryMenuServingUnitDisplay(value) {
         const raw = String(value || '').trim();
         if (!raw) return '';
@@ -170,6 +192,11 @@
         return !normalized || SUMMARY_MENU_PORTION_UNITS.has(normalized);
     }
 
+    function isSummaryMenuAddonServingUnit(value) {
+        const normalized = normalizeSummaryMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+        return SUMMARY_MENU_ADDON_UNITS.has(normalized);
+    }
+
     function isSummaryMenuPackServingUnit(value) {
         return /^\d+(?:[.,]\d+)?\s*(г|гр|гр\.|грам|грами|грамів|кг|kg)$/i.test(String(value || '').trim());
     }
@@ -181,6 +208,7 @@
         const rawUnit = meta.servingUnit || row.servingUnit || row.serving_unit || meta.priceUnit || row.priceUnit || row.price_unit || '';
         if (isSummaryMenuPortionServingUnit(rawUnit)) return `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
         const unit = normalizeSummaryMenuServingUnitDisplay(rawUnit);
+        if (isSummaryMenuAddonServingUnit(unit)) return `${quantity} ${summaryMenuAddonWord(row.quantity)}`;
         if (isSummaryMenuPackServingUnit(rawUnit) && unit) return `${quantity} ${summaryMenuPortionWord(row.quantity)} по ${unit}`;
         return unit ? `${quantity} ${unit}` : `${quantity} ${summaryMenuPortionWord(row.quantity)}`;
     }
@@ -534,13 +562,24 @@
             type: String(row?.type || 'item'),
             title: formatValue(row?.title || row?.name || 'Позиція'),
             quantityLabel: formatValue(row?.quantityLabel),
-            unitPriceLabel: formatValue(row?.unitPriceLabel),
-            subtotalLabel: formatValue(row?.subtotalLabel),
+            unitPriceLabel: summaryMoneyLabel(row?.unitPriceLabel),
+            subtotalLabel: summaryMoneyLabel(row?.subtotalLabel),
             metaLines: (Array.isArray(row?.metaLines) ? row.metaLines : [])
                 .map(item => String(item || '').trim())
                 .filter(Boolean),
             commentLabel: String(row?.commentLabel || '').trim() || null
         };
+    }
+
+    function summaryMoneyLabel(value, currency = 'UAH') {
+        if (value === undefined || value === null || value === '') return '—';
+        const raw = String(value).trim();
+        const amount = summaryMoney(raw);
+        if (amount !== null) {
+            const suffix = /\/\s*дит/i.test(raw) ? '/дит' : '';
+            return `${formatMoney(amount, currency)}${suffix}`;
+        }
+        return raw.replace(/\bUAH\b/gi, formatCurrencyLabel(currency));
     }
 
     function summaryClientOrderRowViews(summary = {}, mode = summaryMode(summary)) {

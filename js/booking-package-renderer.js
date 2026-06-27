@@ -33,22 +33,15 @@ function groupedBookingMenuPositions(positions = []) {
 function renderBookingPackageMenuRows(positions = [], options = {}) {
     if (!positions.length) return '';
     const showServingTitles = options.showServingTitles !== false;
-    return groupedBookingMenuPositions(positions).map(group => `
-        <div class="booking-detail-package-serving-group${group.servingTime ? '' : ' booking-detail-package-serving-group--missing'}">
-            ${showServingTitles ? `
-            <div class="booking-detail-package-serving-title">
-                <span>${escapeHtml(bookingServingTimeLabel(group.servingTime))}</span>
-                <small>Позиції меню</small>
-            </div>
-            ` : ''}
-            <div class="booking-detail-package-table" role="table" aria-label="Позиції меню ${escapeHtml(bookingServingTimeLabel(group.servingTime))}">
+    const tableHead = `
                 <div class="booking-detail-package-table-head" role="row">
                     <span role="columnheader">Позиція</span>
                     <span role="columnheader">К-сть</span>
                     <span role="columnheader">Ціна</span>
                     <span role="columnheader">Сума</span>
                 </div>
-            ${group.items.map(item => `
+    `;
+    const rowHtml = item => `
                 <div class="booking-detail-package-table-row" role="row">
                     <div class="booking-detail-package-item" role="cell">
                         <span class="booking-menu-position-kind">${escapeHtml(bookingKitchenTypeLabel(item.kitchenType))}</span>${escapeHtml(item.title)}
@@ -58,7 +51,29 @@ function renderBookingPackageMenuRows(positions = [], options = {}) {
                     <span role="cell">${escapeHtml(formatPrice(item.unitPrice || 0))}</span>
                     <strong role="cell">${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
                 </div>
-            `).join('')}
+    `;
+    const groups = groupedBookingMenuPositions(positions);
+    if (!showServingTitles) {
+        return `
+        <div class="booking-detail-package-serving-group">
+            <div class="booking-detail-package-table" role="table" aria-label="Позиції меню">
+                ${tableHead}
+                ${groups.flatMap(group => group.items).map(rowHtml).join('')}
+            </div>
+        </div>
+        `;
+    }
+    return groups.map(group => `
+        <div class="booking-detail-package-serving-group${group.servingTime ? '' : ' booking-detail-package-serving-group--missing'}">
+            ${showServingTitles ? `
+            <div class="booking-detail-package-serving-title">
+                <span>${escapeHtml(bookingServingTimeLabel(group.servingTime))}</span>
+                <small>Позиції меню</small>
+            </div>
+            ` : ''}
+            <div class="booking-detail-package-table" role="table" aria-label="Позиції меню ${escapeHtml(bookingServingTimeLabel(group.servingTime))}">
+                ${tableHead}
+                ${group.items.map(rowHtml).join('')}
             </div>
         </div>
     `).join('');
@@ -77,12 +92,23 @@ function normalizeBookingPackageEntertainmentRows(rows = []) {
                 time: String(row.time || '').trim(),
                 room: String(row.room || '').trim(),
                 durationLabel: String(row.durationLabel || row.duration_label || '').trim(),
+                quantityLabel: String(row.quantityLabel || row.quantity_label || '').trim(),
+                unitPriceLabel: String(row.unitPriceLabel || row.unit_price_label || '').trim(),
+                subtotalLabel: String(row.subtotalLabel || row.subtotal_label || '').trim(),
                 unitPrice,
                 subtotal,
                 includedInPackage: row.includedInPackage === true || row.included_in_package === true
             };
         })
         .filter(Boolean);
+}
+
+function formatBookingPackageMoneyLabel(value, fallbackValue = 0, options = {}) {
+    const raw = String(value ?? '').trim();
+    const suffix = options.perChild || /\/\s*дит/i.test(raw) ? '/дит' : '';
+    const amount = raw ? bookingPackageMoneyValue(raw) : bookingPackageMoneyValue(fallbackValue);
+    if (amount > 0) return `${formatPrice(amount)}${suffix}`;
+    return raw || '—';
 }
 
 function renderBookingPackageEntertainmentRows(rows = [], options = {}) {
@@ -110,15 +136,16 @@ function renderBookingPackageEntertainmentRows(rows = [], options = {}) {
                 ` : ''}
                 ${entertainmentRows.map(row => {
                     const meta = [row.time, row.room, row.durationLabel].filter(Boolean).join(' · ');
-                    const priceLabel = row.unitPrice > 0 ? formatPrice(row.unitPrice) : '—';
-                    const subtotalLabel = row.subtotal > 0 ? formatPrice(row.subtotal) : '—';
+                    const quantityLabel = row.quantityLabel || '1 програма';
+                    const priceLabel = formatBookingPackageMoneyLabel(row.unitPriceLabel, row.unitPrice);
+                    const subtotalLabel = formatBookingPackageMoneyLabel(row.subtotalLabel, row.subtotal);
                     return `
                         <div class="booking-detail-package-table-row booking-detail-package-table-row--entertainment" role="row">
                             <div class="booking-detail-package-item" role="cell">
                                 ${showEntertainmentKindBadge ? '<span class="booking-menu-position-kind booking-menu-position-kind--entertainment">РОЗВАГИ</span>' : ''}${escapeHtml(row.title)}
                                 ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
                             </div>
-                            <span role="cell">${escapeHtml(row.durationLabel || '1 програма')}</span>
+                            <span role="cell">${escapeHtml(quantityLabel)}</span>
                             <span role="cell">${escapeHtml(priceLabel)}</span>
                             <strong role="cell">${escapeHtml(subtotalLabel)}</strong>
                         </div>
@@ -136,7 +163,10 @@ function formatBookingEntryQuantityLabel(quantity) {
 }
 
 function bookingPackageMoneyValue(value) {
-    const amount = Number(value);
+    const normalized = typeof value === 'string'
+        ? value.replace(/\s+/g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+        : value;
+    const amount = Number(normalized);
     if (!Number.isFinite(amount) || amount < 0) return 0;
     return Math.round(amount * 100) / 100;
 }
@@ -222,6 +252,7 @@ function renderBookingPackageDetail(booking, options = {}) {
     const title = options.title || 'Меню / сервісні позиції';
     const modifier = options.compact ? ' booking-detail-package--compact' : '';
     const includeServiceEvents = options.includeServiceEvents !== false;
+    const showPackageHeader = options.showPackageHeader !== false;
     const showHeaderSummary = options.showHeaderSummary !== false;
     const missingServingTimes = bookingMenuMissingServingTimeCount(positions);
     const rows = positions.length
@@ -267,10 +298,12 @@ function renderBookingPackageDetail(booking, options = {}) {
         : '';
     return `
         <div class="booking-detail-package${modifier}">
+            ${showPackageHeader ? `
             <div class="booking-detail-package-header">
                 <span>${escapeHtml(title)}</span>
                 ${businessRowsSummary ? `<small>${escapeHtml(businessRowsSummary)}</small>` : ''}
             </div>
+            ` : ''}
             ${missingServingTimes ? `<div class="booking-summary-note">Не вказано час видачі для ${escapeHtml(String(missingServingTimes))} позицій.</div>` : ''}
             ${rows}
             ${entertainmentHtml}

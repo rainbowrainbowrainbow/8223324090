@@ -647,6 +647,9 @@ test('booking package quantity display separates portion count from packed servi
     assert.equal(formatMenuQuantityWithServingUnit(3, 'порція'), '3 порції');
     assert.equal(formatMenuQuantityWithServingUnit(1, ''), '1 порція');
     assert.equal(formatMenuQuantityWithServingUnit(2.5, ''), '2,5 порції');
+    assert.equal(formatMenuQuantityWithServingUnit(1, 'додаток'), '1 додаток');
+    assert.equal(formatMenuQuantityWithServingUnit(4, 'додаток'), '4 додатки');
+    assert.equal(formatMenuQuantityWithServingUnit(6, 'додаток'), '6 додатків');
     assert.equal(formatMenuQuantityWithServingUnit(5, 'шт'), '5 шт');
     assert.equal(normalized.quantity, 5);
     assert.equal(normalized.servingUnit, '100г');
@@ -689,8 +692,92 @@ test('booking frontend quantity display helper matches menu package wording cont
     assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(3, 'порція'), '3 порції');
     assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(1, ''), '1 порція');
     assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(2.5, ''), '2,5 порції');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(1, 'додаток'), '1 додаток');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(4, 'додаток'), '4 додатки');
+    assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(6, 'додаток'), '6 додатків');
     assert.equal(ctx.formatBookingMenuQuantityWithServingUnit(5, 'шт'), '5 шт');
     assert.doesNotMatch(ctx.formatBookingMenuPositionQuantity(cake), /5 100г|5 100 г/);
+});
+
+test('booking summary page quantity display declines menu addon units', async () => {
+    const summary = {
+        bookingId: 'BK-ADDON-UNITS',
+        mode: 'client',
+        venue: { name: 'Event Genix' },
+        event: { date: '2026-06-27', time: '12:30', room: 'Марвел', hasRealProgram: false },
+        customer: { name: 'Тестовий клієнт' },
+        counts: { children: 6, adults: 0, tables: 1 },
+        orderRows: [
+            { id: 'addon:1', type: 'menu', title: 'Соус', quantity: 1, unitPrice: 40, subtotal: 40, meta: { servingUnit: 'додаток' } },
+            { id: 'addon:4', type: 'menu', title: 'Куряче філе запечене', quantity: 4, unitPrice: 40, subtotal: 160, meta: { servingUnit: 'додаток' } },
+            { id: 'addon:6', type: 'menu', title: 'Ананас консервований', quantity: 6, unitPrice: 40, subtotal: 240, meta: { servingUnit: 'додаток' } }
+        ],
+        serviceEvents: [],
+        schedule: [],
+        responsible: { rows: [] },
+        comments: [],
+        warnings: [],
+        totals: { orderTotal: 440, bookingPrice: 440, currency: 'UAH' },
+        finance: { rows: [{ key: 'total', label: 'Загальна сума', amount: 440, currency: 'UAH', role: 'total' }] },
+        terms: { items: [] }
+    };
+
+    const { document } = await renderBookingSummaryFixture(summary);
+    const tableText = document.querySelector('.summary-order-table')?.textContent || '';
+
+    assert.match(tableText, /1\s*додаток/);
+    assert.match(tableText, /4\s*додатки/);
+    assert.match(tableText, /6\s*додатків/);
+    assert.doesNotMatch(tableText, /4\s*додаток|6\s*додаток/);
+});
+
+test('booking summary page normalizes explicit client order money labels', async () => {
+    const summary = {
+        bookingId: 'BK-MONEY-LABELS',
+        mode: 'client',
+        venue: { name: 'Event Genix' },
+        event: { date: '2026-06-27', time: '12:30', room: 'Марвел', hasRealProgram: false },
+        customer: { name: 'Тестовий клієнт' },
+        counts: { children: 11, adults: 0, tables: 1 },
+        orderRows: [
+            { id: 'activity:candy', type: 'activity', title: 'Цукерки(90)', unitPrice: 370, subtotal: 4070 },
+            { id: 'total:probe', type: 'total_probe', title: 'Загальна сума', unitPrice: 11230, subtotal: 11230 }
+        ],
+        orderRowViews: {
+            client: [
+                {
+                    type: 'activity',
+                    title: 'Цукерки(90)',
+                    quantityLabel: '11 дітей',
+                    unitPriceLabel: '370 UAH/дит',
+                    subtotalLabel: '4070'
+                },
+                {
+                    type: 'total_probe',
+                    title: 'Загальна сума',
+                    quantityLabel: '1',
+                    unitPriceLabel: '11230 UAH',
+                    subtotalLabel: '11230 ₴'
+                }
+            ]
+        },
+        serviceEvents: [],
+        schedule: [],
+        responsible: { rows: [] },
+        comments: [],
+        warnings: [],
+        totals: { orderTotal: 11230, bookingPrice: 11230, currency: 'UAH' },
+        finance: { rows: [{ key: 'total', label: 'Загальна сума', amount: 11230, currency: 'UAH', role: 'total' }] },
+        terms: { items: [] }
+    };
+
+    const { document } = await renderBookingSummaryFixture(summary);
+    const tableText = document.querySelector('.summary-order-table')?.textContent || '';
+
+    assert.match(tableText, /370\s*₴\/дит/);
+    assert.match(tableText, /4\s*070\s*₴/);
+    assert.match(tableText, /11\s*230\s*₴/);
+    assert.doesNotMatch(tableText, /UAH|11230|4070/);
 });
 
 test('booking form menu position rows use clear quantity wording', () => {
@@ -3174,6 +3261,12 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.match(menuText, /АН\(60\)/);
     assert.match(menuText, /Бульбашкове шоу/);
     assert.match(menuText, /8\s*680/);
+    const animationRow = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'))
+        .find(row => (row.textContent || '').includes('АН(60)'));
+    assert.ok(animationRow, 'flat activity row renders inside menu');
+    assert.match(animationRow.querySelector('[role="cell"]:nth-child(2)')?.textContent || '', /1\s*програма/);
+    assert.match(animationRow.querySelector('[role="cell"]:nth-child(3)')?.textContent || '', /1\s*500\s*₴/);
+    assert.match(animationRow.querySelector('[role="cell"]:nth-child(4)')?.textContent || '', /1\s*500\s*₴/);
     assert.equal(document.querySelectorAll('.booking-banquet-section--service .booking-banquet-service-row--checklist').length, 2);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /12:00\s*·\s*Підготувати кімнату/);
     assert.match(document.querySelector('.booking-banquet-section--service')?.textContent || '', /15:45\s*·\s*Напої/);
@@ -3197,6 +3290,168 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.equal(document.querySelector('details.booking-banquet-technical')?.hasAttribute('open'), false);
 });
 
+function renderScreenshotBanquetMenuRegressionFixture() {
+    const context = createBanquetModalDetailHarness();
+    const kitchen = {
+        id: 'BK-SCREENSHOT-KITCHEN',
+        businessContext: 'event_genix',
+        date: '2026-06-27',
+        time: '12:30',
+        room: 'Марвел',
+        label: 'Кухня',
+        status: 'confirmed',
+        price: 7160,
+        extraData: {
+            bookingPackage: {
+                finalTotal: 7160,
+                menuPositions: [
+                    {
+                        id: 'menu-pickles',
+                        title: 'Асорті домашніх різносолів',
+                        kitchenType: 'menu',
+                        quantity: 4,
+                        servingUnit: 'порції',
+                        unitPrice: 400,
+                        subtotal: 1600,
+                        servingTime: '12:30'
+                    },
+                    {
+                        id: 'menu-chicken',
+                        title: 'Куряче філе запечене',
+                        kitchenType: 'menu',
+                        quantity: 4,
+                        servingUnit: 'додаток',
+                        unitPrice: 40,
+                        subtotal: 160,
+                        servingTime: '12:30'
+                    },
+                    {
+                        id: 'menu-pineapple',
+                        title: 'Ананас консервований',
+                        kitchenType: 'menu',
+                        quantity: 6,
+                        servingUnit: 'додаток',
+                        unitPrice: 40,
+                        subtotal: 240,
+                        servingTime: '12:30'
+                    },
+                    {
+                        id: 'menu-potatoes',
+                        title: 'Картопляне пюре',
+                        kitchenType: 'menu',
+                        quantity: 3,
+                        servingUnit: 'порції',
+                        unitPrice: 90,
+                        subtotal: 270,
+                        servingTime: '14:30'
+                    },
+                    {
+                        id: 'menu-spaghetti',
+                        title: 'Спагеті',
+                        kitchenType: 'menu',
+                        quantity: 6,
+                        servingUnit: 'порцій',
+                        unitPrice: 65,
+                        subtotal: 390,
+                        servingTime: '14:30'
+                    }
+                ],
+                entryCharge: {
+                    title: 'Вхід',
+                    quantity: 15,
+                    unitPrice: 300,
+                    subtotal: 4500
+                },
+                entrySubtotal: 4500
+            }
+        }
+    };
+    const candyActivity = {
+        id: 'BK-SCREENSHOT-CANDY',
+        businessContext: 'event_genix',
+        date: '2026-06-27',
+        time: '12:30',
+        duration: 90,
+        room: 'Марвел',
+        label: 'Цукерки(90)',
+        programName: 'МК Цукерки',
+        programId: 'mk_candy',
+        category: 'masterclass',
+        kidsCount: 11,
+        unitPrice: 370,
+        isPerChild: true,
+        status: 'confirmed',
+        price: 4070
+    };
+    const snapshot = {
+        source: 'group',
+        groupId: 'BQ-SCREENSHOT-MENU',
+        group: {
+            id: 'BQ-SCREENSHOT-MENU',
+            groupName: 'Скріншот меню',
+            date: '2026-06-27',
+            room: 'Марвел',
+            status: 'active'
+        },
+        members: [
+            { bookingId: kitchen.id, role: 'primary', isPrimary: true, isKitchenCandidate: true, booking: kitchen },
+            { bookingId: candyActivity.id, role: 'activity', booking: candyActivity }
+        ],
+        warnings: []
+    };
+
+    const html = context.renderFullBanquetDetail(kitchen, [], snapshot);
+    const dom = new JSDOM(`<main>${html}</main>`);
+    const document = dom.window.document;
+    const menuSection = document.querySelector('.booking-banquet-section--menu');
+    const menuText = menuSection?.textContent || '';
+
+    return { document, menuSection, menuText };
+}
+
+test('banquet menu regression keeps one table header across serving groups', () => {
+    const { menuSection, menuText } = renderScreenshotBanquetMenuRegressionFixture();
+
+    assert.ok(menuSection, 'banquet menu section renders');
+    assert.match(menuText, /Асорті домашніх різносолів/);
+    assert.match(menuText, /Куряче філе запечене/);
+    assert.match(menuText, /Ананас консервований/);
+    assert.match(menuText, /Картопляне пюре/);
+    assert.match(menuText, /Спагеті/);
+    assert.match(menuText, /Цукерки\(90\)/);
+    assert.match(menuText, /Вхід/);
+    assert.match(menuText, /1\s*600\s*₴/);
+    assert.match(menuText, /4\s*500\s*₴/);
+    assert.match(menuText, /4\s*070\s*₴/);
+    assert.match(menuText, /11\s*230\s*₴/);
+    assert.doesNotMatch(menuText, /UAH|11230|4070|4500|1600/);
+    assert.equal(menuSection.querySelectorAll('.booking-detail-package-table-head').length, 1);
+});
+
+test('banquet menu regression shows per-child activity quantity instead of duration', () => {
+    const { menuSection } = renderScreenshotBanquetMenuRegressionFixture();
+
+    const candyRow = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'))
+        .find(row => (row.textContent || '').includes('Цукерки(90)'));
+    assert.ok(candyRow, 'per-child candy activity row renders inside menu');
+    const candyQuantityCell = candyRow.querySelector('[role="cell"]:nth-child(2)');
+    const candyPriceCell = candyRow.querySelector('[role="cell"]:nth-child(3)');
+    const candySubtotalCell = candyRow.querySelector('[role="cell"]:nth-child(4)');
+    const candyMetaText = candyRow.querySelector('.booking-detail-package-item small')?.textContent || '';
+    assert.doesNotMatch(candyQuantityCell?.textContent || '', /90\s*хв/);
+    assert.match(candyQuantityCell?.textContent || '', /11\s*дітей/);
+    assert.match(candyPriceCell?.textContent || '', /370\s*₴\/дит/);
+    assert.match(candySubtotalCell?.textContent || '', /4\s*070\s*₴/);
+    assert.match(candyMetaText, /90\s*хв/);
+});
+
+test('banquet menu warning highlights per-child activity and entry children mismatch', () => {
+    const { document } = renderScreenshotBanquetMenuRegressionFixture();
+    const warningsText = document.querySelector('.booking-banquet-section--warnings')?.textContent || '';
+
+    assert.match(warningsText, /Цукерки\(90\): ціна відповідає 11 дітям, але Вхід рахується на 15 дітей/);
+});
+
 test('booking modal puts primary banquet activity into unified menu without duplicate banquet card', () => {
     const context = createBanquetModalDetailHarness();
     const activity = {
@@ -3209,6 +3464,7 @@ test('booking modal puts primary banquet activity into unified menu without dupl
         label: 'Мафія(90)',
         programName: 'Мафія',
         programId: 'mafia',
+        kidsCount: 8,
         status: 'confirmed',
         price: 2700
     };
@@ -3294,6 +3550,12 @@ test('booking modal puts primary banquet activity into unified menu without dupl
     assert.doesNotMatch(menuText, /Розважальні позиції/);
     assert.doesNotMatch(menuText, /1\s*позиці/);
     assert.match(menuText, /9\s*300/);
+    const flatActivityRow = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'))
+        .find(row => (row.textContent || '').includes('Мафія(90)'));
+    assert.ok(flatActivityRow, 'flat activity row renders inside menu');
+    assert.match(flatActivityRow.querySelector('[role="cell"]:nth-child(2)')?.textContent || '', /1\s*програма/);
+    assert.match(flatActivityRow.querySelector('[role="cell"]:nth-child(3)')?.textContent || '', /2\s*700\s*₴/);
+    assert.equal(document.querySelector('.booking-banquet-section--warnings'), null);
 });
 
 test('booking modal banquet root header shows planned schedule instead of technical time range', () => {

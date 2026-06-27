@@ -3274,10 +3274,11 @@ const hrTodayDateMobileRule = hrHtmlForContracts.match(/@media \(max-width: 768p
 const hrTodayHoneycombBoardRule = cssRuleText(hrPageCss, '.hr-today-honeycomb-board');
 const hrTodayHoneycombMobileBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 768px)');
 const hrTodayHoneycombMobileBoardRule = cssRuleText(hrTodayHoneycombMobileBlock, '.hr-today-honeycomb-board');
+const hrTodayHexTileRule = cssRuleText(hrPageCss, '.hr-today-hex-tile');
 const hrTodayHexNameRule = cssRuleText(hrPageCss, '.hr-today-hex-name');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
 check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*36px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
-check('HR Pulse Today has premium hero, search, department segmentation, and live honeycomb board on the Today surface',
+check('HR Pulse Today has premium hero, search, department segmentation, and compact live staff board on the Today surface',
     fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'today-honeycomb-empty.png'))
     && htmlContains('hr.html', 'class="hr-today-hero"')
     && htmlContains('hr.html', 'images/hr-pulse/today-honeycomb-empty.png')
@@ -3311,15 +3312,20 @@ check('HR Pulse Today has premium hero, search, department segmentation, and liv
     && hrPageCss.includes('.hr-today-honeycomb-board')
     && hrPageCss.includes('.hr-today-hex-tile')
     && hrPageCss.includes('.hr-today-hex-photo')
-    && hrPageCss.includes('.hr-today-hex-alert')
     && hrPageCss.includes('.hr-today-hex-birthday')
     && hrPageCss.includes('.hr-today-hex-name')
+    && /display:\s*flex;/.test(hrTodayHexTileRule)
+    && /border-left:\s*3px solid/.test(hrTodayHexTileRule)
+    && !hrPageCss.includes('.hr-today-hex-alert')
+    && !hrCode.includes('hr-today-hex-alert')
+    && !hrCode.includes('aria-hidden="true">!</span>')
+    && !hrPageCss.includes('.hr-today-hex-tile:not(.has-photo)::before')
     && /overflow-x:\s*hidden;/.test(hrTodayHoneycombBoardRule)
     && /overflow-y:\s*auto;/.test(hrTodayHoneycombBoardRule)
     && /max-height:\s*[^;]+;/.test(hrTodayHoneycombBoardRule)
     && /max-height:\s*[^;]+;/.test(hrTodayHoneycombMobileBoardRule)
     && /text-overflow:\s*ellipsis;/.test(hrTodayHexNameRule)
-    && hrPageCss.includes('clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);')
+    && !hrPageCss.includes('clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);')
     && hrPageCss.includes('.hr-today-hex-tile.is-present')
     && hrPageCss.includes('.hr-today-hex-tile.is-late')
     && hrPageCss.includes('.hr-today-hex-tile.is-absent')
@@ -3327,9 +3333,7 @@ check('HR Pulse Today has premium hero, search, department segmentation, and liv
     && hrPageCss.includes('.hr-today-hex-tile.is-special')
     && hrPageCss.includes('.hr-today-hex-tile.is-missing-photo')
     && hrPageCss.includes('.hr-today-hex-tile.is-birthday')
-    && hrPageCss.includes('.hr-today-hex-tile.is-birthday::before')
     && hrCode.includes('is-missing-photo')
-    && hrCode.includes('hr-today-hex-alert')
     && hrCode.includes('is_birthday_today')
     && hrCode.includes('data-birthday="${isBirthday ?')
     && hrRouteCode.includes('SELECT id, name, department, position, color, role_type, photo_url, birth_date')

@@ -1378,31 +1378,28 @@ body.dark-mode .hr-org-detail {
 }
 
 .hr-today-honeycomb-board {
-    --hex-size: clamp(72px, 6.4vw, 104px);
+    --hex-size: 168px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hex-size)), 1fr));
-    gap: 12px 10px;
+    gap: 8px;
     align-items: start;
     box-sizing: border-box;
     max-width: 100%;
-    max-height: 420px;
+    max-height: 360px;
     min-width: 0;
     margin: 0 0 18px;
-    padding: 14px;
+    padding: 10px;
     overflow: hidden auto;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-color: rgba(34,211,238,0.34) transparent;
+    scrollbar-color: rgba(148,163,184,0.32) transparent;
     scrollbar-width: thin;
     -webkit-overflow-scrolling: touch;
-    border: 1px solid rgba(34,211,238,0.16);
-    border-radius: 20px;
-    background:
-        radial-gradient(circle at 12% 0%, rgba(34,211,238,0.14), transparent 34%),
-        radial-gradient(circle at 92% 8%, rgba(168,85,247,0.12), transparent 36%),
-        linear-gradient(135deg, rgba(15,23,42,0.88), rgba(15,23,42,0.72));
-    box-shadow: 0 18px 42px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.08);
+    border: 1px solid rgba(148,163,184,0.16);
+    border-radius: 14px;
+    background: rgba(248,250,252,0.54);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.64);
 }
 .hr-today-honeycomb-board::-webkit-scrollbar {
     width: 8px;
@@ -1413,11 +1410,11 @@ body.dark-mode .hr-org-detail {
 .hr-today-honeycomb-board::-webkit-scrollbar-thumb {
     border: 2px solid transparent;
     border-radius: 999px;
-    background: rgba(34,211,238,0.32);
+    background: rgba(148,163,184,0.30);
     background-clip: padding-box;
 }
 .hr-today-honeycomb-board::-webkit-scrollbar-thumb:hover {
-    background: rgba(34,211,238,0.46);
+    background: rgba(148,163,184,0.46);
     background-clip: padding-box;
 }
 .hr-today-honeycomb-empty {
@@ -1433,55 +1430,57 @@ body.dark-mode .hr-org-detail {
 .hr-today-hex-tile {
     --hex-tone: 148, 163, 184;
     position: relative;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     width: 100%;
-    max-width: min(100%, var(--hex-size));
+    max-width: 100%;
     min-width: 0;
-    aspect-ratio: 1.08 / 1;
+    min-height: 40px;
     box-sizing: border-box;
-    margin: 0 auto;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
+    margin: 0;
+    padding: 8px 10px;
+    overflow: visible;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-left: 3px solid rgba(var(--hex-tone),0.78);
+    border-radius: 12px;
     appearance: none;
-    clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
-    background:
-        radial-gradient(circle at 50% 28%, rgba(var(--hex-tone),0.24), transparent 58%),
-        linear-gradient(145deg, rgba(15,23,42,0.90), rgba(15,23,42,0.64));
-    color: #E2E8F0;
+    background: rgba(255,255,255,0.72);
+    color: var(--gray-800);
     font-family: inherit;
-    box-shadow: 0 12px 26px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(var(--hex-tone),0.44), inset 0 1px 0 rgba(255,255,255,0.12);
+    box-shadow: 0 8px 18px rgba(15,23,42,0.06);
     cursor: default;
     isolation: isolate;
-    transition: filter var(--speed-fast) var(--ease-smooth), box-shadow var(--speed-fast) var(--ease-smooth);
+    transition: border-color var(--speed-fast) var(--ease-smooth), background var(--speed-fast) var(--ease-smooth), box-shadow var(--speed-fast) var(--ease-smooth), transform var(--speed-fast) var(--ease-smooth);
 }
 button.hr-today-hex-tile {
     cursor: pointer;
 }
 .hr-today-hex-tile:hover,
 .hr-today-hex-tile:focus-visible {
-    filter: brightness(1.08);
-    box-shadow: 0 16px 34px rgba(0,0,0,0.30), inset 0 0 0 2px rgba(var(--hex-tone),0.68), inset 0 1px 0 rgba(255,255,255,0.16);
+    transform: translateY(-1px);
+    border-color: rgba(var(--hex-tone),0.34);
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 12px 24px rgba(15,23,42,0.10);
 }
 .hr-today-hex-tile:focus-visible {
-    outline: 3px solid rgba(34,211,238,0.30);
-    outline-offset: 3px;
+    outline: 3px solid rgba(var(--hex-tone),0.22);
+    outline-offset: 2px;
 }
 .hr-today-hex-photo {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
+    position: relative;
+    z-index: 1;
     display: block;
-    background: rgba(15,23,42,0.70);
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.08);
+    box-shadow: inset 0 0 0 1px rgba(var(--hex-tone),0.28);
 }
 .hr-today-hex-photo::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-        linear-gradient(180deg, rgba(15,23,42,0.02), rgba(15,23,42,0.34));
-    box-shadow: inset 0 0 0 1px rgba(var(--hex-tone),0.34);
+    content: none;
 }
 .hr-today-hex-photo img {
     display: block;
@@ -1490,72 +1489,40 @@ button.hr-today-hex-tile {
     object-fit: cover;
 }
 .hr-today-hex-tile.has-photo {
-    box-shadow: 0 14px 30px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(var(--hex-tone),0.54), inset 0 1px 0 rgba(255,255,255,0.16);
+    padding-left: 9px;
 }
 .hr-today-hex-tile.has-photo .hr-today-hex-photo::after {
-    background:
-        linear-gradient(180deg, rgba(15,23,42,0.00), rgba(15,23,42,0.24));
-    box-shadow: inset 0 0 0 1px rgba(var(--hex-tone),0.42);
-}
-.hr-today-hex-alert {
-    z-index: 1;
-    display: grid;
-    place-items: center;
-    width: 30%;
-    aspect-ratio: 1;
-    border: 1px solid rgba(34,211,238,0.30);
-    border-radius: 999px;
-    background: rgba(2,6,23,0.34);
-    color: rgba(103,232,249,0.82);
-    font-size: clamp(18px, 2vw, 25px);
-    font-weight: 950;
-    line-height: 1;
-    box-shadow: 0 0 12px rgba(34,211,238,0.08), inset 0 1px 0 rgba(255,255,255,0.08);
+    content: none;
 }
 .hr-today-hex-birthday {
-    position: absolute;
-    z-index: 3;
-    top: 9%;
-    right: 16%;
-    min-width: 28px;
-    min-height: 22px;
+    z-index: 2;
+    flex: 0 0 auto;
+    min-width: 24px;
+    min-height: 20px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 3px 6px;
+    padding: 2px 6px;
     border: 1px solid rgba(251,191,36,0.58);
     border-radius: 999px;
-    background: linear-gradient(135deg, rgba(245,158,11,0.96), rgba(236,72,153,0.84));
-    color: #FFFFFF;
-    font-size: 9px;
-    font-weight: 950;
+    background: rgba(245,158,11,0.14);
+    color: #92400E;
+    font-size: 10px;
+    font-weight: 900;
     line-height: 1;
-    box-shadow: 0 10px 20px rgba(245,158,11,0.26);
 }
 .hr-today-hex-name {
-    position: absolute;
-    z-index: 2;
-    left: 14%;
-    right: 14%;
-    bottom: 12%;
-    box-sizing: border-box;
-    max-width: 72%;
+    z-index: 1;
     min-width: 0;
-    min-height: 18px;
     display: block;
-    padding: 3px 5px;
     overflow: hidden;
-    border-radius: 999px;
-    background: rgba(2,6,23,0.58);
-    color: #F8FAFC;
-    font-size: clamp(8px, 0.72vw, 10px);
-    font-weight: 950;
-    line-height: 1.15;
-    text-align: center;
+    color: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
-    backdrop-filter: blur(8px);
 }
 .hr-today-hex-tile.is-present { --hex-tone: 16, 185, 129; }
 .hr-today-hex-tile.is-late { --hex-tone: 245, 158, 11; }
@@ -1563,40 +1530,17 @@ button.hr-today-hex-tile {
 .hr-today-hex-tile.is-done { --hex-tone: 59, 130, 246; }
 .hr-today-hex-tile.is-special { --hex-tone: 139, 92, 246; }
 .hr-today-hex-tile.is-missing-photo {
-    background:
-        radial-gradient(circle at 50% 36%, rgba(34,211,238,0.10), transparent 56%),
-        linear-gradient(145deg, rgba(15,23,42,0.86), rgba(15,23,42,0.66));
-    box-shadow: 0 10px 22px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(var(--hex-tone),0.24), inset 0 1px 0 rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.64);
 }
 .hr-today-hex-tile.is-birthday {
-    box-shadow: 0 18px 38px rgba(245,158,11,0.20), inset 0 0 0 2px rgba(251,191,36,0.60), inset 0 1px 0 rgba(255,255,255,0.18);
+    border-color: rgba(245,158,11,0.24);
+    border-left-color: rgba(245,158,11,0.86);
+    background: rgba(255,251,235,0.78);
 }
-.hr-today-hex-tile.is-birthday::before {
-    content: "";
-    position: absolute;
-    z-index: 4;
-    top: 5%;
-    left: 28%;
-    width: 24%;
-    height: 24%;
-    clip-path: polygon(50% 0, 100% 100%, 0 100%);
-    background: linear-gradient(135deg, #FDE68A, #F59E0B 46%, #EC4899);
-    filter: drop-shadow(0 6px 10px rgba(245,158,11,0.32));
-    transform: rotate(-13deg);
-    pointer-events: none;
-}
-.hr-today-hex-tile.is-birthday::after {
-    content: "";
-    position: absolute;
-    z-index: 4;
-    top: 3%;
-    left: 37%;
-    width: 7%;
-    aspect-ratio: 1;
-    border-radius: 999px;
-    background: #FFFFFF;
-    box-shadow: 0 0 12px rgba(255,255,255,0.48);
-    pointer-events: none;
+.hr-today-hex-tile.is-birthday .hr-today-hex-birthday {
+    border-color: rgba(251,191,36,0.58);
+    background: rgba(245,158,11,0.16);
+    color: #92400E;
 }
 
 .hr-staff-list {
@@ -3882,45 +3826,43 @@ body.dark-mode .hr-today-hero .hr-today-date {
     box-shadow: 0 16px 34px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.10);
 }
 body.dark-mode .hr-today-honeycomb-board {
-    border-color: rgba(34,211,238,0.18);
-    background:
-        radial-gradient(circle at 14% 0%, rgba(34,211,238,0.12), transparent 34%),
-        radial-gradient(circle at 90% 6%, rgba(168,85,247,0.12), transparent 36%),
-        linear-gradient(135deg, rgba(7,13,26,0.94), rgba(17,24,39,0.76));
-    box-shadow: 0 20px 46px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-color: rgba(148,163,184,0.16);
+    background: rgba(15,23,42,0.52);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
 body.dark-mode .hr-today-honeycomb-empty {
     color: rgba(226,232,240,0.72);
 }
 body.dark-mode .hr-today-hex-tile {
-    background:
-        radial-gradient(circle at 50% 28%, rgba(var(--hex-tone),0.20), transparent 58%),
-        linear-gradient(145deg, rgba(15,23,42,0.94), rgba(15,23,42,0.70));
+    border-color: rgba(148,163,184,0.14);
+    border-left-color: rgba(var(--hex-tone),0.78);
+    background: rgba(15,23,42,0.72);
     color: #F8FAFC;
-    box-shadow: 0 14px 30px rgba(0,0,0,0.34), inset 0 0 0 1px rgba(var(--hex-tone),0.42), inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.18);
 }
 body.dark-mode .hr-today-hex-tile:hover,
 body.dark-mode .hr-today-hex-tile:focus-visible {
-    box-shadow: 0 18px 38px rgba(0,0,0,0.42), inset 0 0 0 2px rgba(var(--hex-tone),0.66), inset 0 1px 0 rgba(255,255,255,0.10);
+    border-color: rgba(var(--hex-tone),0.28);
+    background: rgba(15,23,42,0.88);
+    box-shadow: 0 14px 28px rgba(0,0,0,0.24);
 }
 body.dark-mode .hr-today-hex-name {
-    background: rgba(2,6,23,0.68);
     color: #F8FAFC;
 }
-body.dark-mode .hr-today-hex-alert {
-    border-color: rgba(103,232,249,0.24);
-    background: rgba(2,6,23,0.38);
-    color: rgba(103,232,249,0.76);
-    box-shadow: 0 0 12px rgba(34,211,238,0.07), inset 0 1px 0 rgba(255,255,255,0.07);
-}
 body.dark-mode .hr-today-hex-tile.has-photo {
-    box-shadow: 0 16px 34px rgba(0,0,0,0.38), inset 0 0 0 1px rgba(var(--hex-tone),0.56), inset 0 1px 0 rgba(255,255,255,0.10);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.18);
 }
 body.dark-mode .hr-today-hex-tile.is-missing-photo {
-    background:
-        radial-gradient(circle at 50% 36%, rgba(34,211,238,0.09), transparent 56%),
-        linear-gradient(145deg, rgba(15,23,42,0.88), rgba(15,23,42,0.68));
-    box-shadow: 0 10px 24px rgba(0,0,0,0.26), inset 0 0 0 1px rgba(var(--hex-tone),0.22), inset 0 1px 0 rgba(255,255,255,0.06);
+    background: rgba(15,23,42,0.66);
+}
+body.dark-mode .hr-today-hex-tile.is-birthday {
+    border-color: rgba(245,158,11,0.24);
+    border-left-color: rgba(245,158,11,0.84);
+    background: rgba(69,41,9,0.34);
+}
+body.dark-mode .hr-today-hex-birthday {
+    background: rgba(245,158,11,0.18);
+    color: #FDE68A;
 }
 body.dark-mode #tab-today .hr-summary-card {
     border-color: rgba(148,163,184,0.16);
@@ -4501,48 +4443,28 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         border-radius: 999px;
     }
     .hr-today-honeycomb-board {
-        --hex-size: 68px;
+        --hex-size: 148px;
         grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hex-size)), 1fr));
-        gap: 9px 7px;
+        gap: 7px;
         max-height: 320px;
         margin-bottom: 14px;
-        padding: 10px;
-        border-radius: 16px;
+        padding: 8px;
+        border-radius: 12px;
     }
     .hr-today-hex-tile {
-        max-width: min(100%, var(--hex-size));
+        min-height: 38px;
+        max-width: 100%;
         min-width: 0;
-    }
-    .hr-today-hex-alert {
-        font-size: 18px;
+        padding: 7px 9px;
     }
     .hr-today-hex-birthday {
-        top: 8%;
-        right: 14%;
-        min-width: 24px;
-        min-height: 19px;
-        padding: 3px 5px;
-        font-size: 8px;
-    }
-    .hr-today-hex-tile.is-birthday::before {
-        top: 6%;
-        left: 27%;
-        width: 22%;
-        height: 22%;
-    }
-    .hr-today-hex-tile.is-birthday::after {
-        top: 4%;
-        left: 36%;
-        width: 6%;
+        min-width: 22px;
+        min-height: 18px;
+        padding: 2px 5px;
+        font-size: 9px;
     }
     .hr-today-hex-name {
-        left: 13%;
-        right: 13%;
-        bottom: 11%;
-        max-width: 74%;
-        min-height: 16px;
-        padding: 2px 4px;
-        font-size: 7.5px;
+        font-size: 12px;
     }
     #tab-today .hr-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));

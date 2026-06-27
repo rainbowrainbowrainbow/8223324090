@@ -156,6 +156,7 @@ function renderBanquetMenuSection(packageBooking, entertainmentMembers = []) {
             title: 'Меню',
             compact: true,
             includeServiceEvents: false,
+            showPackageHeader: false,
             showHeaderSummary: false,
             showServingTitles: false,
             showEntertainmentTitle: false,

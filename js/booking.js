@@ -2076,6 +2076,7 @@ function toBookingMoney(value) {
 }
 
 const BOOKING_MENU_PORTION_UNITS = new Set(['порція', 'порції', 'порцій', 'порц', 'portion', 'portions']);
+const BOOKING_MENU_ADDON_UNITS = new Set(['додаток', 'додатки', 'додатків']);
 
 function formatBookingMenuQuantityNumber(value) {
     const quantity = Math.max(Number(value || 1), 0.1);
@@ -2096,6 +2097,19 @@ function bookingMenuPortionWord(value) {
     return 'порцій';
 }
 
+function bookingMenuAddonWord(value) {
+    const quantity = Math.max(Number(value || 1), 0.1);
+    const rounded = Math.round(quantity * 100) / 100;
+    if (!Number.isInteger(rounded)) return 'додатки';
+    const absolute = Math.abs(rounded);
+    const lastTwo = absolute % 100;
+    const last = absolute % 10;
+    if (lastTwo >= 11 && lastTwo <= 14) return 'додатків';
+    if (last === 1) return 'додаток';
+    if (last >= 2 && last <= 4) return 'додатки';
+    return 'додатків';
+}
+
 function normalizeBookingMenuServingUnitDisplay(value) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     if (!text) return '';
@@ -2107,6 +2121,11 @@ function isBookingMenuPortionServingUnit(value) {
     return !unit || BOOKING_MENU_PORTION_UNITS.has(unit);
 }
 
+function isBookingMenuAddonServingUnit(value) {
+    const unit = normalizeBookingMenuServingUnitDisplay(value).toLowerCase().replace(/\.$/, '');
+    return BOOKING_MENU_ADDON_UNITS.has(unit);
+}
+
 function isBookingMenuPackServingUnit(value) {
     return /^\d+(?:[,.]\d+)?\s*(кг|г|гр|мг|л|мл)$/iu.test(normalizeBookingMenuServingUnitDisplay(value));
 }
@@ -2115,6 +2134,7 @@ function formatBookingMenuQuantityWithServingUnit(quantity, servingUnit) {
     const quantityLabel = formatBookingMenuQuantityNumber(quantity);
     const unit = normalizeBookingMenuServingUnitDisplay(servingUnit);
     if (isBookingMenuPortionServingUnit(unit)) return `${quantityLabel} ${bookingMenuPortionWord(quantity)}`;
+    if (isBookingMenuAddonServingUnit(unit)) return `${quantityLabel} ${bookingMenuAddonWord(quantity)}`;
     if (isBookingMenuPackServingUnit(unit)) return `${quantityLabel} ${bookingMenuPortionWord(quantity)} по ${unit}`;
     return `${quantityLabel} ${unit}`.trim();
 }
@@ -9352,6 +9372,59 @@ function bookingDetailDurationLabel(booking = {}) {
     return `${duration} хв`;
 }
 
+function bookingDetailActivityProduct(booking = {}) {
+    const programId = String(booking.programId || booking.program_id || '').trim();
+    if (!programId || typeof getProductsSync !== 'function') return null;
+    const products = getProductsSync();
+    if (!Array.isArray(products)) return null;
+    return products.find(product => String(product?.id || '').trim() === programId) || null;
+}
+
+function bookingDetailActivityPositiveNumber() {
+    for (const value of arguments) {
+        const number = Number(String(value ?? '').replace(',', '.'));
+        if (Number.isFinite(number) && number > 0) return number;
+    }
+    return 0;
+}
+
+function bookingDetailActivityPerChildFlag(booking = {}, product = null) {
+    return Boolean(
+        booking.perChild
+        || booking.per_child
+        || booking.isPerChild
+        || booking.is_per_child
+        || product?.perChild
+        || product?.isPerChild
+        || product?.is_per_child
+    );
+}
+
+function bookingDetailActivityExplicitUnitPrice(booking = {}) {
+    return bookingDetailActivityPositiveNumber(
+        booking.unitPrice,
+        booking.unit_price,
+        booking.pricePerChild,
+        booking.price_per_child
+    );
+}
+
+function bookingDetailActivityUnitPrice(booking = {}, product = null, subtotal = 0, kidsCount = 0) {
+    const explicit = bookingDetailActivityExplicitUnitPrice(booking);
+    if (explicit > 0) return bookingPackageMoneyValue(explicit);
+    const productPrice = bookingDetailActivityPositiveNumber(product?.price);
+    if (bookingDetailActivityPerChildFlag(booking, product) && productPrice > 0) return bookingPackageMoneyValue(productPrice);
+    if (bookingDetailActivityPerChildFlag(booking, product) && kidsCount > 0 && subtotal > 0) return bookingPackageMoneyValue(subtotal / kidsCount);
+    return bookingPackageMoneyValue(subtotal);
+}
+
+function bookingDetailActivityUsesPerChild(booking = {}, product = null, subtotal = 0, kidsCount = 0, unitPrice = 0) {
+    if (bookingDetailActivityPerChildFlag(booking, product)) return true;
+    const explicit = bookingDetailActivityExplicitUnitPrice(booking);
+    if (explicit > 0 && kidsCount > 0 && bookingPackageMoneyValue(unitPrice * kidsCount) === bookingPackageMoneyValue(subtotal)) return true;
+    return false;
+}
+
 function bookingDetailEntertainmentRowsFromMembers(entertainmentMembers = [], packageBooking = null) {
     const packageBookingId = bookingDetailId(packageBooking);
     const packageData = packageBooking ? getBookingPackageFromBooking(packageBooking) : null;
@@ -9365,6 +9438,16 @@ function bookingDetailEntertainmentRowsFromMembers(entertainmentMembers = [], pa
             const subtotal = samePackageBooking && packageProgramBasePrice > 0
                 ? packageProgramBasePrice
                 : bookingPackageMoneyValue(booking.price ?? booking.amount ?? 0);
+            const product = bookingDetailActivityProduct(booking);
+            const kidsCount = bookingDetailActivityPositiveNumber(booking.kidsCount, booking.kids_count);
+            const unitPrice = bookingDetailActivityUnitPrice(booking, product, subtotal, kidsCount);
+            const perChild = bookingDetailActivityUsesPerChild(booking, product, subtotal, kidsCount, unitPrice);
+            const quantityLabel = perChild && kidsCount > 0
+                ? `${formatBookingMenuQuantityNumber(kidsCount)} дітей`
+                : '1 програма';
+            const unitPriceLabel = perChild && unitPrice > 0
+                ? `${formatPrice(unitPrice)}/дит`
+                : formatPrice(subtotal);
             return {
                 id: bookingId || bookingDetailTitle(booking),
                 bookingId,
@@ -9372,8 +9455,11 @@ function bookingDetailEntertainmentRowsFromMembers(entertainmentMembers = [], pa
                 time: booking.time || '',
                 room: bookingDetailRoomName(booking),
                 durationLabel: bookingDetailDurationLabel(booking),
-                unitPrice: subtotal,
+                quantityLabel,
+                unitPrice,
+                unitPriceLabel,
                 subtotal,
+                subtotalLabel: formatPrice(subtotal),
                 includedInPackage: samePackageBooking
             };
         })
@@ -9768,6 +9854,36 @@ function banquetWarningText(warning = {}) {
     return map[code] || warning.message || code || '';
 }
 
+function bookingDetailPerChildActivityEntryMismatchWarnings(snapshot, anchorBooking = {}) {
+    const members = Array.isArray(snapshot?.members) ? snapshot.members : [];
+    const primaryMembers = members.filter(member => member.isPrimary);
+    const primaryIds = new Set(primaryMembers.map(member => String(member.bookingId || member.booking?.id || '')).filter(Boolean));
+    const kitchenMembers = members.filter(member => !primaryIds.has(String(member.bookingId || member.booking?.id || ''))
+        && (member.role === 'kitchen' || member.isKitchenCandidate));
+    const activityMembers = members.filter(member => !primaryIds.has(String(member.bookingId || member.booking?.id || ''))
+        && member.role === 'activity'
+        && !member.isKitchenCandidate);
+    const packageBooking = banquetPackageBookingFromMembers(anchorBooking, primaryMembers, kitchenMembers, members);
+    const packageData = packageBooking ? getBookingPackageFromBooking(packageBooking) : null;
+    const entryCharge = bookingPackageEntryChargeFromPackage(packageData);
+    const entryQuantity = bookingDetailActivityPositiveNumber(entryCharge?.quantity, packageData?.entryCharge?.quantity, packageData?.entry_charge?.quantity);
+    if (!entryQuantity) return [];
+
+    return bookingDetailEntertainmentMembers(primaryMembers, activityMembers)
+        .map(member => {
+            const booking = member?.booking || member;
+            if (!booking) return '';
+            const kidsCount = bookingDetailActivityPositiveNumber(booking.kidsCount, booking.kids_count);
+            if (!kidsCount || kidsCount === entryQuantity) return '';
+            const subtotal = bookingPackageMoneyValue(booking.price ?? booking.amount ?? 0);
+            const product = bookingDetailActivityProduct(booking);
+            const unitPrice = bookingDetailActivityUnitPrice(booking, product, subtotal, kidsCount);
+            if (!bookingDetailActivityUsesPerChild(booking, product, subtotal, kidsCount, unitPrice)) return '';
+            return `${bookingDetailActivityCommentTitle(booking)}: ціна відповідає ${formatBookingMenuQuantityNumber(kidsCount)} дітям, але Вхід рахується на ${formatBookingMenuQuantityNumber(entryQuantity)} дітей.`;
+        })
+        .filter(Boolean);
+}
+
 function buildBanquetDetailWarnings(snapshot, anchorBooking = {}) {
     const warnings = [];
     const hasGroupOrLegacy = banquetSnapshotHasGroup(snapshot) || snapshot?.legacyFallback || snapshot?.source === 'legacy_booking_banquet_links';
@@ -9775,6 +9891,7 @@ function buildBanquetDetailWarnings(snapshot, anchorBooking = {}) {
         const message = banquetWarningText(warning);
         if (message) warnings.push(message);
     }
+    warnings.push(...bookingDetailPerChildActivityEntryMismatchWarnings(snapshot, anchorBooking));
     const members = snapshot?.members || [];
     for (const member of members) {
         const booking = member.booking || {};

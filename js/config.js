@@ -251,9 +251,18 @@ const CATEGORY_NAMES_SHORT = {
 // ФОРМАТУВАННЯ ЦІНИ
 // ==========================================
 
+function normalizePriceAmount(amount) {
+    if (amount === null || amount === undefined || amount === '') return 0;
+    const normalized = typeof amount === 'string'
+        ? amount.replace(/\s+/g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+        : amount;
+    const value = Number(normalized);
+    return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
+}
+
 function formatPrice(amount) {
-    if (amount === null || amount === undefined) return '0 ₴';
-    return Number(amount).toLocaleString('uk-UA') + ' ₴';
+    const value = normalizePriceAmount(amount);
+    return `${new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 2 }).format(value)} ₴`;
 }
 
 // ==========================================

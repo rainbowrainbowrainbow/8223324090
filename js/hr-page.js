@@ -1518,7 +1518,7 @@ function renderTodayHoneycombTile(item = {}) {
     const titleText = titleParts.join(' · ');
     const visual = hasPhoto
         ? `<span class="hr-today-hex-photo"><img src="${escapeHtml(photoUrl)}" alt="" loading="lazy" decoding="async"></span>`
-        : `<span class="hr-today-hex-alert" aria-hidden="true">!</span>`;
+        : '';
     const birthday = isBirthday
         ? `<span class="hr-today-hex-birthday" aria-label="День народження">ДН</span>`
         : '';

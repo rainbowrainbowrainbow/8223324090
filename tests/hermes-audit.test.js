@@ -143,5 +143,6 @@ test('Hermes audit redaction helpers hide sensitive headers and classify write a
 
     assert.equal(hermesActionType({ method: 'POST', path: '/hermes/tasks' }), 'tasks.create');
     assert.equal(hermesActionType({ method: 'POST', originalUrl: '/api/hermes/tasks/1/reassign?x=1' }), 'tasks.reassign');
+    assert.equal(hermesActionType({ method: 'POST', path: '/tasks/1/reassign', originalUrl: '/api/hermes/tasks/1/reassign?x=1' }), 'tasks.reassign');
     assert.equal(hermesActionType({ method: 'POST', path: '/hermes/tasks/1/reschedule' }), 'tasks.reschedule');
 });

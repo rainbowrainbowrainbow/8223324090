@@ -32,7 +32,7 @@ function isHermesAuditRequest(req = {}) {
 }
 
 function hermesActionType(req = {}) {
-    const path = String(req.path || req.originalUrl || '').split('?')[0].replace(/^\/api(?=\/)/, '');
+    const path = String(req.originalUrl || req.path || '').split('?')[0].replace(/^\/api(?=\/)/, '');
     if (req.method === 'POST' && /^\/hermes\/tasks\/?$/.test(path)) return 'tasks.create';
     if (req.method === 'POST' && /^\/hermes\/tasks\/[^/]+\/complete\/?$/.test(path)) return 'tasks.complete';
     if (req.method === 'POST' && /^\/hermes\/tasks\/[^/]+\/reassign\/?$/.test(path)) return 'tasks.reassign';
@@ -97,7 +97,7 @@ function apiAudit(req, res, next) {
         if (res.statusCode === 401 || (res.statusCode === 403 && !isHermesAuditRequest(req))) return;
 
         const action = `api:${req.method}`.substring(0, 50);
-        const target = req.path.substring(0, 100);
+        const target = (isHermesAuditRequest(req) ? requestEndpoint(req) : req.path).substring(0, 100);
         const meta = buildAuditMeta(req, res, {
             latencyMs: Math.max(0, Date.now() - startedAt)
         });

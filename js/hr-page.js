@@ -1479,10 +1479,22 @@ function todayIsBirthday(item = {}) {
         || item.isBirthdayToday === 'true';
 }
 
+function todayCompactStaffName(name = '') {
+    const fullName = String(name || '').replace(/\s+/g, ' ').trim();
+    if (!fullName) return '';
+    const parts = fullName.split(' ');
+    if (parts.length < 2) return fullName;
+    const lastName = parts[0];
+    const firstName = parts[1];
+    const initial = Array.from(firstName || '')[0] || '';
+    return initial ? `${lastName} ${initial}.` : lastName;
+}
+
 function renderTodayHoneycombTile(item = {}) {
     const staffId = Number(item.staff_id || item.id);
     const safeStaffId = Number.isFinite(staffId) ? staffId : 0;
     const name = item.staff_name || item.name || 'Співробітник';
+    const displayName = todayCompactStaffName(name);
     const photoUrl = todayStaffPhotoUrl(item);
     const status = todayAttendanceStatus(item);
     const hasPhoto = Boolean(photoUrl);
@@ -1510,7 +1522,7 @@ function renderTodayHoneycombTile(item = {}) {
     const birthday = isBirthday
         ? `<span class="hr-today-hex-birthday" aria-label="День народження">ДН</span>`
         : '';
-    const nameLabel = `<span class="hr-today-hex-name">${escapeHtml(name)}</span>`;
+    const nameLabel = `<span class="hr-today-hex-name">${escapeHtml(displayName || name)}</span>`;
     if (canOpenProfile) {
         return `<button type="button" class="${className}" data-staff-id="${safeStaffId}" data-attendance-status="${escapeHtml(status)}" data-birthday="${isBirthday ? 'true' : 'false'}" title="${escapeHtml(titleText)}" aria-label="${escapeHtml(titleText)}" onclick="openStaffEdit(${safeStaffId})">
             ${visual}

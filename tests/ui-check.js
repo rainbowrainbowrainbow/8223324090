@@ -3248,6 +3248,10 @@ const hrPulseNavRule = hrHtmlForContracts.match(/\n\s*\.hr-nav--pulse(?:\s*,\s*\
 const hrPulseMobileNavRule = hrHtmlForContracts.match(/@media \(max-width: 768px\)\s*\{[\s\S]*?\.hr-nav--pulse\s*\{([\s\S]*?)\}/)?.[1] || '';
 const hrTodayDateRule = hrHtmlForContracts.match(/\n\s*\.hr-today-date\s*\{([\s\S]*?)\}/)?.[1] || '';
 const hrTodayDateMobileRule = hrHtmlForContracts.match(/@media \(max-width: 768px\)\s*\{[\s\S]*?\.hr-today-date\s*\{([\s\S]*?)\}/)?.[1] || '';
+const hrTodayHoneycombBoardRule = cssRuleText(hrPageCss, '.hr-today-honeycomb-board');
+const hrTodayHoneycombMobileBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 768px)');
+const hrTodayHoneycombMobileBoardRule = cssRuleText(hrTodayHoneycombMobileBlock, '.hr-today-honeycomb-board');
+const hrTodayHexNameRule = cssRuleText(hrPageCss, '.hr-today-hex-name');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
 check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*36px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
 check('HR Pulse Today has premium hero, search, department segmentation, and live honeycomb board on the Today surface',
@@ -3267,9 +3271,12 @@ check('HR Pulse Today has premium hero, search, department segmentation, and liv
     && hrCode.includes('function todayStaffPhotoUrl')
     && hrCode.includes('function todayAttendanceStatus')
     && hrCode.includes('function todayIsBirthday')
+    && hrCode.includes('function todayCompactStaffName')
     && hrCode.includes('function renderTodayHoneycombTile')
     && hrCode.includes('function renderTodayHoneycombBoard')
     && hrCode.includes('renderTodayHoneycombBoard(visibleItems)')
+    && hrCode.includes('const displayName = todayCompactStaffName(name)')
+    && hrCode.includes('escapeHtml(displayName || name)')
     && hrCode.includes("todayFilters.department !== 'all'")
     && hrCode.includes('departmentLabel(item.department)')
     && htmlContains('hr.html', 'body.dark-mode .hr-today-controls')
@@ -3284,6 +3291,11 @@ check('HR Pulse Today has premium hero, search, department segmentation, and liv
     && hrPageCss.includes('.hr-today-hex-alert')
     && hrPageCss.includes('.hr-today-hex-birthday')
     && hrPageCss.includes('.hr-today-hex-name')
+    && /overflow-x:\s*hidden;/.test(hrTodayHoneycombBoardRule)
+    && /overflow-y:\s*auto;/.test(hrTodayHoneycombBoardRule)
+    && /max-height:\s*[^;]+;/.test(hrTodayHoneycombBoardRule)
+    && /max-height:\s*[^;]+;/.test(hrTodayHoneycombMobileBoardRule)
+    && /text-overflow:\s*ellipsis;/.test(hrTodayHexNameRule)
     && hrPageCss.includes('clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);')
     && hrPageCss.includes('.hr-today-hex-tile.is-present')
     && hrPageCss.includes('.hr-today-hex-tile.is-late')
@@ -3305,7 +3317,13 @@ check('HR Pulse Today has premium hero, search, department segmentation, and liv
     && hrRouteCode.includes('FROM staff')
     && hrRouteCode.includes("record.status === 'unscheduled'")
     && hrRouteCode.includes('department: s.department')
-    && hrRouteCode.includes('position: s.position'));
+    && hrRouteCode.includes('position: s.position')
+    && !htmlContains('hr.html', 'todayHoneycombMenu')
+    && !htmlContains('hr.html', 'todayHoneycombTabs')
+    && !hrCode.includes('todayHoneycombMenu')
+    && !hrCode.includes('todayHoneycombTabs')
+    && !hrPageCss.includes('hr-today-honeycomb-menu')
+    && !hrPageCss.includes('hr-today-honeycomb-tabs'));
 check('HR Pulse Reports keeps premium hero, controls, export, and report tables', htmlContains('hr.html', 'class="hr-reports-hero"') && htmlContains('hr.html', 'images/hr-pulse/reports-kpi.png') && htmlContains('hr.html', 'id="reportMonth"') && htmlContains('hr.html', 'id="reportExport"') && htmlContains('hr.html', 'id="reportSummary"') && htmlContains('hr.html', 'id="reportHead"') && htmlContains('hr.html', 'id="reportBody"') && hrCode.includes("document.getElementById('reportExport')?.addEventListener('click', exportCSV)") && hrCode.includes('hr-report-stat--presence') && hrCode.includes('hr-report-stat--late') && hrCode.includes('hr-report-stat--absence') && hrCode.includes('hr-report-stat--overtime') && hrCode.includes('hr-report-stat--tasks') && hrCode.includes('hr-report-stat--kpi') && hrCode.includes('hr-report-stat--overdue') && hrPageCss.includes('.hr-reports-hero') && hrPageCss.includes('.hr-report-controls') && hrPageCss.includes('#tab-reports .hr-report-table') && hrPageCss.includes('body.dark-mode #tab-reports .hr-report-table'));
 check('HR Pulse Today moves arrived people to review bottom with color indication', hrCode.includes('const TODAY_ARRIVED_STATUSES') && hrCode.includes('function isTodayItemArrived') && hrCode.includes('function sortTodayItemsForReview') && hrCode.includes('return sortTodayItemsForReview(filtered);') && hrCode.includes('hr-staff-row--arrived') && hrCode.includes('data-attendance-state="${arrived ?') && htmlContains('hr.html', '.hr-staff-row--arrived') && htmlContains('hr.html', 'body.dark-mode .hr-staff-row.hr-staff-row--arrived'));
 check('HR operational routes exclude blacklist and unscheduled reserve from live lists', hrRouteCode.includes('function operationalStaffForDateWhere') && hrRouteCode.includes("COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'") && hrRouteCode.includes("COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'") && hrRouteCode.includes("router.put('/staff/:id/pool-status'") && hrRouteCode.includes('cleanupFutureStaffOperationalSchedule(client, req.params.id') && staffRouteCode.includes('function activeOperationalStaffForDateWhere') && staffRouteCode.includes("router.get('/face-descriptors'") && staffRouteCode.includes("WHERE ${activeOperationalStaffForDateWhere('s', 'hs', 'tr')}") && staffRouteCode.includes("conditions.push(\"COALESCE(hr_pool_status, 'core') <> 'blacklisted'\")"));

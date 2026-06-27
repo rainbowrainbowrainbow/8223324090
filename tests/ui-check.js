@@ -3220,6 +3220,13 @@ check('Task/customer/finance edit surfaces use shared dirty guard', tasksCode.in
 check('Design/catalog overlays guard dirty dismiss paths', designsPageCode.includes('attemptCloseEditableSurface(overlay') && designsHtml.includes('guardedEditableOverlayClose') && designsHtml.includes('closeAutomationModal(false)'));
 check('Staff and HR edit modals use guarded close paths', staffCode.includes('attemptCloseEditableSurface(overlay') && hrCode.includes('closeHrEditableModal') && hrCode.includes('showHrEditableModal'));
 check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surfaces', htmlContains('hr.html', 'id="hrNav"') && htmlContains('hr.html', 'id="hrPageTitle"') && hrCode.includes('const HR_NAV_GROUPS') && hrCode.includes('const HR_STRUCTURE_WORKSPACE_TABS') && hrCode.includes('const HR_PAYROLL_WORKSPACE_TABS') && hrCode.includes('const HR_OTHER_WORKSPACE_TABS') && hrCode.includes('const HR_PULSE_WORKSPACE_TABS') && hrCode.includes('function isHrStructureWorkspaceTab') && hrCode.includes('function isHrPayrollWorkspaceTab') && hrCode.includes('function isHrOtherWorkspaceTab') && hrCode.includes('function isHrPulseWorkspaceTab') && hrCode.includes('function hrWorkspaceGroupId') && hrCode.includes('function updateHrPageTitle') && hrCode.includes('function bindHrNavClicks') && hrCode.includes("other: { tab: 'vacancies' }") && hrCode.includes("href: '/training#onboarding'") && hrCode.includes("window.location.replace('/training#onboarding')") && hrCode.includes("payroll: { tab: 'salary' }") && hrCode.includes("id: 'pulse'") && hrCode.includes("label: 'Пульс компанії'") && hrCode.includes("{ id: 'today', label: 'Сьогодні' }") && hrCode.includes("{ id: 'schedule', label: 'Графік', href: '/staff' }") && hrCode.includes("{ id: 'reports', label: 'Звіти' }") && sidebarCode.includes("label: 'Пульс компанії'") && sidebarCode.includes("label: 'ЗП та KPI'") && sidebarCode.includes("label: 'Вакансії'") && hrCode.includes("label: 'Команда'") && hrCode.includes("label: 'Структура компанії'") && hrCode.includes("{ id: 'salary', label: 'Зарплата' }") && hrCode.includes("{ id: 'zrs', label: 'ЗРС' }") && hrCode.includes("{ id: 'kpi', label: 'KPI' }") && !hrCode.includes("{ id: 'onboarding', label: 'Онбординг' }") && hrCode.includes("{ id: 'vacancies', label: 'Вакансії' }") && !hrCode.includes("{ id: 'costumes', label: 'Костюми'") && hrCode.includes("{ id: 'checklists', label: 'Чеклисти' }") && hrCode.includes("label: 'ЗП та KPI'") && hrCode.includes("label: 'Вакансії'") && hrCode.includes("note: 'найм, відгуки, співбесіди, шаблони платформ'") && hrCode.includes("workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse'") && hrCode.includes("workspaceGroupId === 'other' ? 'Навігація вакансій'") && hrCode.includes("nav.classList.toggle('hr-nav--structure-only'") && hrCode.includes("nav.classList.toggle('hr-nav--pulse'") && hrCode.includes("workspaceMode || pulseMode ? ' hidden' : ''") && hrCode.includes('if (header) header.hidden = pulseMode') && htmlContains('hr.html', '.hr-nav {') && htmlContains('hr.html', 'flex-direction: column') && htmlContains('hr.html', '.hr-nav--structure-only') && htmlContains('hr.html', '.hr-nav--structure-only .hr-nav-group-title') && htmlContains('hr.html', '.hr-nav--pulse .hr-nav-items') && htmlContains('hr.html', 'grid-template-columns: repeat(3, minmax(0, 1fr));') && htmlContains('hr.html', 'data-vacancy-tab="responses"') && htmlContains('hr.html', 'data-vacancy-tab="interviews"') && htmlContains('hr.html', 'data-vacancy-tab="templates"') && hrCode.includes('function formatVacancyPlatformText') && hrRouteCode.includes("router.get('/vacancy-platforms'") && hrRouteCode.includes("router.post('/vacancy-platforms/format-preview'") && !htmlContains('hr.html', 'data-tab="ai-team"') && !htmlContains('hr.html', 'data-tab="ratings"') && !htmlContains('hr.html', 'id="tab-leaves"'));
+const hrPulseNavSurfaceRule = cssRuleText(hrPageCss, '.hr-nav--pulse');
+const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
+const hrPulseCardMediaRule = cssRuleText(hrPageCss, '.hr-pulse-card-media');
+const hrPulseCardMediaImgRule = cssRuleText(hrPageCss, '.hr-pulse-card-media img');
+const hrReportsHeroRule = cssRuleText(hrPageCss, '.hr-reports-hero');
+const hrReportsHeroMediaRule = cssRuleText(hrPageCss, '.hr-reports-hero-media');
+const hrReportsHeroMediaImgRule = cssRuleText(hrPageCss, '.hr-reports-hero-media img');
 check('HR Pulse premium switcher keeps assets, routing, and accessible decorative media',
     fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'today-honeycomb.png'))
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'schedule-operations.png'))
@@ -3241,6 +3248,22 @@ check('HR Pulse premium switcher keeps assets, routing, and accessible decorativ
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card')
     && hrPageCss.includes('.hr-pulse-card-media img')
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible')
+    && /overflow:\s*hidden;/.test(hrPulseNavSurfaceRule)
+    && /contain:\s*layout paint;/.test(hrPulseNavSurfaceRule)
+    && /overflow:\s*hidden;/.test(hrPulseCardRule)
+    && /contain:\s*layout paint;/.test(hrPulseCardRule)
+    && /overflow:\s*hidden;/.test(hrPulseCardMediaRule)
+    && /contain:\s*paint;/.test(hrPulseCardMediaRule)
+    && /position:\s*absolute;/.test(hrPulseCardMediaImgRule)
+    && /inset:\s*0;/.test(hrPulseCardMediaImgRule)
+    && /max-width:\s*none;/.test(hrPulseCardMediaImgRule)
+    && /overflow:\s*hidden;/.test(hrReportsHeroRule)
+    && /contain:\s*layout paint;/.test(hrReportsHeroRule)
+    && /overflow:\s*hidden;/.test(hrReportsHeroMediaRule)
+    && /contain:\s*paint;/.test(hrReportsHeroMediaRule)
+    && /position:\s*absolute;/.test(hrReportsHeroMediaImgRule)
+    && /inset:\s*0;/.test(hrReportsHeroMediaImgRule)
+    && /max-width:\s*none;/.test(hrReportsHeroMediaImgRule)
     && hrPageCss.includes('@media (max-width: 480px)')
     && hrPageCss.includes('@media (prefers-reduced-motion: reduce)'));
 check('Warehouse owns the costume entry point instead of HR temporary navigation', htmlContains('warehouse.html', 'data-page-tab="costumes"') && htmlContains('warehouse.html', 'id="costumesTab"') && htmlContains('warehouse.html', 'id="warehouseCostumesList"') && htmlContains('warehouse.html', 'id="addCostumeBtn"') && htmlContains('warehouse.html', "switchPageTab('costumes')") && warehouseCode.includes("if (tab === 'costumes')") && warehouseCode.includes('loadWarehouseCostumes') && warehouseCode.includes('apiGetWarehouseCostumes') && !warehouseCode.includes("window.location.href = '/art?tab=costumes'") && warehouseCode.includes("hash === 'procurement' || hash === 'pinata' || hash === 'contractors' || hash === 'costumes'") && hrCode.includes("window.location.replace('/warehouse#costumes')") && !hrCode.includes("href: '/art?tab=costumes'"));

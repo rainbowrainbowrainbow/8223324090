@@ -69,7 +69,8 @@
     border-radius: 18px;
     background: linear-gradient(135deg, rgba(15,23,42,0.04), rgba(99,102,241,0.08));
     box-shadow: 0 16px 34px rgba(15,23,42,0.08);
-    overflow: visible;
+    overflow: hidden;
+    contain: layout paint;
 }
 .hr-nav--pulse + #tab-today.active {
     position: relative;
@@ -147,6 +148,7 @@
     text-align: center;
     box-shadow: 0 18px 36px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.16);
     transform: translateZ(0);
+    contain: layout paint;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="people"] {
     --hr-pulse-accent: 34, 211, 238;
@@ -164,16 +166,29 @@
     pointer-events: none;
 }
 .hr-pulse-card-media {
+    position: absolute;
+    inset: 0;
     z-index: 0;
-    background: #0B1220;
-}
-.hr-pulse-card-media img {
+    display: block;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    background: #0B1220;
+    border-radius: inherit;
+    contain: paint;
+}
+.hr-pulse-card-media img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-width: 100%;
+    max-width: none;
+    max-height: none;
     object-fit: cover;
     display: block;
     opacity: 0.70;
-    transform: scale(1.02);
+    transform: none;
     transition: opacity var(--speed-fast) var(--ease-smooth), transform var(--speed-fast) var(--ease-smooth);
 }
 .hr-pulse-card-overlay {
@@ -2836,6 +2851,7 @@ button.hr-today-hex-tile {
     background: #071120;
     box-shadow: 0 26px 58px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.12);
     isolation: isolate;
+    contain: layout paint;
 }
 
 .hr-reports-hero-media,
@@ -2846,14 +2862,27 @@ button.hr-today-hex-tile {
 }
 
 .hr-reports-hero-media {
+    position: absolute;
+    inset: 0;
     z-index: 0;
-    background: #071120;
-}
-
-.hr-reports-hero-media img {
     display: block;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    background: #071120;
+    border-radius: inherit;
+    contain: paint;
+}
+
+.hr-reports-hero-media img {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 100%;
+    max-width: none;
+    max-height: none;
     object-fit: cover;
     object-position: center;
     opacity: 0.78;

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.37 - HR Pulse Media Containment
+
+### HR Pulse media containment / Reports hero / Cache refresh / (Клешня, 27.06.2026) [codex]
+- **Pulse-картки більше не випускають зображення за межі кнопок** - media layer для `Сьогодні`, `Графік` і `Звіти` отримав жорстке clipping/containment, щоб великі PNG не перекривали екран.
+- **Hero звітів зафіксовано в межах секції** - `reports-kpi.png` тепер прив'язаний до `.hr-reports-hero` через bounded media layer і не може рендеритись natural-size поверх контенту.
+- **Зображення в media-шарах позиціонуються явно** - декоративні `<img>` мають absolute inset, `object-fit: cover`, `max-width: none` і clipping у батьківському контейнері.
+- **Regression guardrails посилено** - `tests/ui-check.js` перевіряє containment для pulse switcher і reports hero, щоб full-screen image overlay не повернувся.
+- **Cache refresh виконано через patch-реліз** - asset tags, Service Worker, first screen, package metadata і `/api/version` синхронізовано до `0.77.37`.
+
+---
+
 ## v0.77.36 - HR Pulse Honeycomb Photos
 
 ### HR Pulse honeycomb / Фото співробітників / День народження / (Клешня, 26.06.2026) [codex]

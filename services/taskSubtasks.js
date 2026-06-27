@@ -122,6 +122,10 @@ function sortSubtaskRows(rows = []) {
         .sort((a, b) => (a.sortOrder - b.sortOrder) || ((a.id || 0) - (b.id || 0)));
 }
 
+function shouldOpenClient(db) {
+    return typeof db?.connect === 'function' && typeof db?.release !== 'function';
+}
+
 function normalizeSubtaskRows(value) {
     let rows = value;
     if (typeof value === 'string') {
@@ -173,7 +177,7 @@ async function reorderTaskSubtasks(db, taskId, orderInput) {
         throw createSubtaskOrderError('Duplicate subtask ids are not allowed', 400);
     }
 
-    const client = typeof db.connect === 'function' ? await db.connect() : null;
+    const client = shouldOpenClient(db) ? await db.connect() : null;
     const query = client || db;
     try {
         if (client) await query.query('BEGIN');
@@ -238,7 +242,7 @@ async function createTaskSubtasks(db, taskId, subtasks, options = {}) {
 
 async function replaceTaskSubtasks(db, taskId, subtasks, options = {}) {
     const items = normalizeSubtasksInput(subtasks, options);
-    const client = typeof db.connect === 'function' ? await db.connect() : null;
+    const client = shouldOpenClient(db) ? await db.connect() : null;
     const query = client || db;
     try {
         if (client) await query.query('BEGIN');

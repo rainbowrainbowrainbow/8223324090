@@ -8,6 +8,7 @@ const {
     normalizeSubtaskInput,
     normalizeSubtaskReorderIds,
     normalizeSubtasksInput,
+    replaceTaskSubtasks,
     reorderTaskSubtasks,
     subtaskCompletionState,
     subtaskPayloadFromBody,
@@ -80,6 +81,49 @@ test('reorders task subtasks transactionally with canonical sort_order', async (
     assert.deepEqual(result.map(item => item.sortOrder), [0, 1, 2]);
     assert.equal(statements[0].text, 'BEGIN');
     assert.equal(statements.at(-1).text, 'COMMIT');
+});
+
+test('replaces subtasks on an already connected transactional client without reconnecting', async () => {
+    const statements = [];
+    let nextId = 10;
+    const client = {
+        async connect() {
+            throw new Error('connected client must not be connected again');
+        },
+        async query(text, params = []) {
+            statements.push({ text, params });
+            if (/SELECT id FROM task_subtasks WHERE task_id = \$1/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/DELETE FROM task_subtasks WHERE task_id = \$1/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/INSERT INTO task_subtasks/i.test(text)) {
+                const [taskId, title, isDone, sortOrder, sourceType] = params;
+                return {
+                    rows: [{
+                        id: nextId++,
+                        task_id: taskId,
+                        title,
+                        is_done: isDone,
+                        sort_order: sortOrder,
+                        source_type: sourceType
+                    }]
+                };
+            }
+            if (/UPDATE tasks/i.test(text)) {
+                return { rows: [] };
+            }
+            throw new Error(`Unexpected query: ${text}`);
+        },
+        release() {}
+    };
+
+    const result = await replaceTaskSubtasks(client, 88, ['First', 'Second'], { sourceType: 'manual' });
+
+    assert.deepEqual(result.map(item => item.title), ['First', 'Second']);
+    assert.equal(statements.some(statement => statement.text === 'BEGIN'), false);
+    assert.equal(statements.some(statement => statement.text === 'COMMIT'), false);
 });
 
 test('calculates equal-weight subtask progress', () => {

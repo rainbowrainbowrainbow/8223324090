@@ -1738,6 +1738,28 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.77.36 — HR Pulse Honeycomb Photos</h4>
+                    <ul>
+                        <li><b>Today отримав live honeycomb board</b> — після пошуку й сегментів відділів з'явились соти команди, які реагують на фільтри.</li>
+                        <li><b>Фото співробітників підтягуються з HR-профілю</b> — додано preview, URL-поле і очищення без нової БД-схеми.</li>
+                        <li><b>Дні народження видно окремо</b> — birthday badge додається поверх соти й не перезаписує робочий статус.</li>
+                        <li><b>Без фото показується missing-photo state</b> — HR швидше бачить, кому треба прикріпити зображення.</li>
+                        <li><b>Regression guards оновлено</b> — UI smoke перевіряє honeycomb board, CSS states, birthday API contract і поле фото в профілі.</li>
+                        <li><b>Version markers синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.36</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.35 — Client Banquet PDF Readability Density</h4>
+                    <ul>
+                        <li><b>Клієнтський банкетний лист став читабельнішим</b> — основний текст, розклад і таблиця замовлення збільшені у preview, print і server PDF.</li>
+                        <li><b>A4 spacing ущільнено</b> — ключові блоки отримали компактніші spacing tokens, щоб типовий банкет лишався на одній сторінці.</li>
+                        <li><b>Довгі банкети переносяться контрольовано</b> — HTML/print дозволяє чисту другу сторінку, а PDFKit повторює table header.</li>
+                        <li><b>Server PDF вирівняно з HTML</b> — type scale і spacing constants підняли readable floors без зміни фінансової логіки.</li>
+                        <li><b>QA coverage посилено</b> — додано layout audit, fixtures, metrics JSON, print artifacts і PDF fixture matrix.</li>
+                        <li><b>Version markers синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.35</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.34 — HR Pulse Premium Visuals</h4>
                     <ul>
                         <li><b>Пульс компанії отримав premium switcher</b> — вкладки <code>Сьогодні</code>, <code>Графік</code> і <code>Звіти</code> тепер мають декоративні media-картки, overlay і видимий keyboard focus.</li>

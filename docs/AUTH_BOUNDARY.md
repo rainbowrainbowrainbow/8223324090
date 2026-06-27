@@ -33,6 +33,7 @@ focused tests.
 | `GET /report-bot/summary` | report-bot | Report bot read endpoint is guarded inside the route by bot API key policy. |
 | `GET /report-bot/accounts` | report-bot | Report bot account lookup is guarded inside the route by bot API key policy. |
 | `GET /report-bot/submissions` | report-bot | Report bot submission lookup is guarded inside the route by bot API key policy. |
+| `ANY /hermes/*` | hermes | Hermes integration is public only at the central JWT boundary; `routes/hermes.js` validates `x-api-key` or Bearer secret and loads the configured actor before any response. |
 | `POST /personal-accounts/sync` | personal-accounts | Report-bot personal-account sync uses bot/API-key authorization inside the route. |
 | `GET /personal-accounts/my` | personal-accounts | Report-bot personal account lookup uses bot/API-key authorization inside the route. |
 | `POST /personal-accounts/:accountId/grant` | personal-accounts | Report-bot personal-account grant uses bot/API-key authorization inside the route. |

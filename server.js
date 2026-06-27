@@ -241,6 +241,7 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
 app.use('/api/graduation', require('./routes/graduation'));
 app.use('/api/agents', require('./routes/agents'));
+app.use('/api/hermes', require('./routes/hermes'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/crm-assistant', require('./routes/crm-assistant'));

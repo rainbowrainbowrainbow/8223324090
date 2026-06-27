@@ -2,6 +2,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const { apiAuthBoundary, isPublicApiRequest, isQueryTokenAuthAllowed } = require('../middleware/apiAuthBoundary');
+const { createHermesRouter } = require('../routes/hermes');
 
 function strictJwt(req, res, next) {
     const auth = req.headers.authorization;
@@ -40,6 +41,31 @@ async function request(baseUrl, method, path, body, headers = {}) {
     return { status: res.status, data, text };
 }
 
+function hermesBoundaryTestAuth(req, res, next) {
+    const key = String(req.headers['x-api-key'] || '').trim();
+    if (!key) {
+        return res.status(401).json({
+            success: false,
+            code: 'HERMES_AUTH_REQUIRED'
+        });
+    }
+    if (key !== 'unit-hermes-key') {
+        return res.status(401).json({
+            success: false,
+            code: 'HERMES_AUTH_INVALID'
+        });
+    }
+
+    req.user = { id: 42, username: 'hermes.actor', role: 'director' };
+    req.integration = {
+        id: 'hermes-event-genix-crm',
+        source: 'hermes',
+        authMode: 'x-api-key',
+        actorUserId: 42
+    };
+    return next();
+}
+
 describe('API auth boundary middleware', () => {
     let server;
     let baseUrl;
@@ -58,6 +84,7 @@ describe('API auth boundary middleware', () => {
         app.post('/api/leads/webhook/maysternya-availability', (req, res) => res.json({ ok: true, public: true, webhook: 'maysternya-availability' }));
         app.get('/api/leads/webhook/status', (req, res) => res.json({ ok: true, public: true, readiness: true }));
         app.post('/api/omni/webhook/telegram', (req, res) => res.json({ ok: true, public: true, provider: 'telegram' }));
+        app.use('/api/hermes', createHermesRouter({ authMiddleware: hermesBoundaryTestAuth }));
         app.get('/api/bookings', (req, res) => res.json({ ok: true, protected: true }));
         app.get('/api/graduation/catalog/export', (req, res) => {
             res.json({ ok: true, auth: req.headers.authorization, user: req.user?.username });
@@ -82,6 +109,7 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/leads/webhook/status' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/telegram' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
+        assert.equal(isPublicApiRequest({ method: 'GET', path: '/hermes/capabilities' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/status/public' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/health' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/ready' }), true);
@@ -150,6 +178,40 @@ describe('API auth boundary middleware', () => {
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.provider, 'telegram');
+    });
+
+    it('lets Hermes reach route-level custom-secret auth without becoming open', async () => {
+        const missing = await request(baseUrl, 'GET', '/api/hermes/capabilities');
+        assert.equal(missing.status, 401);
+        assert.equal(missing.data.code, 'HERMES_AUTH_REQUIRED');
+
+        const wrong = await request(baseUrl, 'GET', '/api/hermes/capabilities', undefined, {
+            'x-api-key': 'wrong-key'
+        });
+        assert.equal(wrong.status, 401);
+        assert.equal(wrong.data.code, 'HERMES_AUTH_INVALID');
+
+        const ok = await request(baseUrl, 'GET', '/api/hermes/capabilities', undefined, {
+            'x-api-key': 'unit-hermes-key'
+        });
+        assert.equal(ok.status, 200, JSON.stringify(ok.data));
+        assert.equal(ok.data.integrationId, 'hermes-event-genix-crm');
+        assert.equal(ok.data.auth, 'x-api-key');
+        assert.equal(ok.data.maxLimit, 50);
+        assert.equal(ok.data.pagination, 'cursor');
+        assert.equal(ok.data.mutationsRequireConfirmation, true);
+        assert.equal(ok.data.mutationsRequireIdempotencyKey, true);
+        assert.deepEqual(ok.data.supportedActions, [
+            'tasks.read',
+            'tasks.detail',
+            'tasks.history',
+            'tasks.create',
+            'tasks.complete',
+            'tasks.reassign',
+            'tasks.reschedule'
+        ]);
+        assert.equal(ok.data.mutationActionsAvailable, true);
+        assert.deepEqual(ok.data.plannedMutationActions, []);
     });
 
     it('rejects generic protected endpoints without auth', async () => {

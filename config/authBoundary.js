@@ -77,6 +77,11 @@ const PUBLIC_API_ROUTES = [
         reason: 'Report bot submission lookup is guarded inside the route by bot API key policy.'
     },
     {
+        prefix: '/hermes/',
+        owner: 'hermes',
+        reason: 'Hermes integration is custom-secret guarded: the central JWT boundary lets requests reach routes/hermes.js, which validates x-api-key or Bearer secret before any response.'
+    },
+    {
         method: 'POST',
         path: '/personal-accounts/sync',
         owner: 'personal-accounts',

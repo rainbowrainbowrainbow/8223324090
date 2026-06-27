@@ -1838,7 +1838,8 @@ test('banquet summary print edge fixture keeps long A4 output printable', async 
     assert.match(pageCss, /\.summary-order-table tr[\s\S]*break-inside: avoid/);
     assert.match(pageCss, /\.summary-section--terms[\s\S]*break-inside: avoid/);
 
-    assert.match(pdfService, /const pageAdded = ensureSpace\(doc, height \+ 2\)/);
+    assert.match(pdfService, /const rowHeightBudget = Math\.min\(height \+ 2, pageContentHeight\(doc\)\)/);
+    assert.match(pdfService, /const pageAdded = ensureSpace\(doc, rowHeightBudget\)/);
     assert.match(pdfService, /pageAdded && !options\.header/);
     assert.match(pdfService, /drawRow\(headerCells, headerOptions\)/);
     assert.match(pdfService, /heightOfString\(pdfText\(text\)/);

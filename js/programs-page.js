@@ -1030,6 +1030,49 @@ function menuImageOptionHtml(options = [], selected = '') {
     return options.map(option => `<option value="${escapeHtml(option.value)}"${option.value === selected ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
 }
 
+function menuImageDraftStatusLabel(status = '') {
+    const normalized = String(status || '').trim().toLowerCase();
+    const labels = {
+        draft: 'Чернетка',
+        generating: 'Генерується',
+        ready: 'Готово до перегляду',
+        failed: 'Помилка',
+        approved: 'Підтверджено',
+        rejected: 'Відхилено',
+        applied: 'Застосовано'
+    };
+    return labels[normalized] || 'Чернетка';
+}
+
+function menuImageDraftStatusClass(status = '') {
+    const normalized = String(status || '').trim().toLowerCase();
+    return ['generating', 'ready', 'failed', 'approved', 'rejected', 'applied'].includes(normalized)
+        ? ` ${normalized}`
+        : '';
+}
+
+function menuImagePromptPreview(prompt = '') {
+    const text = String(prompt || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.length > 220 ? `${text.slice(0, 220)}...` : text;
+}
+
+function renderKitchenMenuImagePreview(label, imageUrl, meta, emptyText) {
+    const hasImage = Boolean(imageUrl);
+    return `
+        <div class="kitchen-menu-image-preview${hasImage ? ' has-image' : ''}">
+            <div class="kitchen-menu-image-preview-head">
+                <strong>${escapeHtml(label)}</strong>
+                ${meta ? `<span>${escapeHtml(meta)}</span>` : ''}
+            </div>
+            <div class="kitchen-menu-image-frame">
+                ${hasImage ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="" onerror="this.closest('.kitchen-menu-image-preview')?.classList.add('is-image-missing'); this.removeAttribute('src');">` : ''}
+                <span>${escapeHtml(emptyText || 'Фото ще немає')}</span>
+            </div>
+        </div>
+    `;
+}
+
 function buildKitchenMenuImagePrompt(product = {}, settings = {}) {
     const allergens = getProductAllergenLabels(product).join(', ');
     const lines = [
@@ -1072,14 +1115,23 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
     const size = MENU_IMAGE_SIZE_OPTIONS.some(item => item.value === draft.size) ? draft.size : '1536x1024';
     const style = MENU_IMAGE_STYLE_OPTIONS.some(item => item.value === draft.style) ? draft.style : 'catalog';
     const productId = escapeJsString(product.id);
-    const sourceImage = productMenuImageUrl(product);
-    const hasPreparedPrompt = Boolean(draft.prompt);
-    const hasGeneratedPhoto = Boolean(draft.imageUrl && draft.generatedAt);
-    const statusLabel = hasGeneratedPhoto ? 'фото готове' : (hasPreparedPrompt ? 'prompt готовий' : 'draft');
-    const statusClass = hasGeneratedPhoto ? ' ready' : (hasPreparedPrompt ? ' prepared' : '');
-    const sourceLabel = hasGeneratedPhoto
-        ? `Згенеровано ${escapeHtml(draft.model || 'OpenAI')}`
-        : (sourceImage ? 'Підтягнуто з каталогу' : 'Fallback, потрібна генерація');
+    const appliedImage = product.iconUrl || product.icon_url || '';
+    const currentImage = appliedImage || productMenuImageUrl(product);
+    const status = String(draft.status || (draft.imageUrl ? 'ready' : 'draft')).trim().toLowerCase();
+    const hasDraft = Boolean(draft.imageUrl || draft.prompt || draft.error || draft.generatedAt || draft.preparedAt);
+    const hasDraftImage = Boolean(draft.imageUrl);
+    const statusLabel = menuImageDraftStatusLabel(status);
+    const statusClass = menuImageDraftStatusClass(status);
+    const promptPreview = menuImagePromptPreview(draft.prompt);
+    const canApply = hasDraftImage && ['ready', 'approved'].includes(status);
+    const canReject = hasDraft && !['generating', 'rejected', 'applied'].includes(status);
+    const sourceLabel = appliedImage
+        ? 'Поточне фото застосовано в продукті'
+        : (currentImage ? 'Поточне фото з fallback-каталогу' : 'Поточне фото ще не задане');
+    const appliedMeta = appliedImage ? 'iconUrl' : (currentImage ? 'fallback' : '');
+    const draftMeta = hasDraftImage
+        ? `${draft.provider || 'openai'} · ${draft.size || size} · ${draft.generatedAt || ''}`
+        : (draft.error ? `Помилка: ${draft.error}` : 'AI draft ще не створено');
     return `
         <div class="kitchen-menu-image-studio" data-menu-image-product="${escapeHtml(product.id)}">
             <div class="kitchen-menu-image-head">
@@ -1088,6 +1140,10 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                     <span>${sourceLabel}</span>
                 </div>
                 <span class="kitchen-menu-image-status${statusClass}">${statusLabel}</span>
+            </div>
+            <div class="kitchen-menu-image-previews">
+                ${renderKitchenMenuImagePreview('Поточне фото', currentImage, appliedMeta, 'Немає поточного фото')}
+                ${renderKitchenMenuImagePreview('AI draft', draft.imageUrl || '', draftMeta, 'Згенеруйте чернетку')}
             </div>
             <div class="kitchen-menu-image-controls">
                 <label>
@@ -1098,16 +1154,25 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                     <span>Стиль</span>
                     <select data-menu-image-style>${menuImageOptionHtml(MENU_IMAGE_STYLE_OPTIONS, style)}</select>
                 </label>
-                <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" onclick="generateKitchenMenuImage('${productId}', this)">
-                    ${hasGeneratedPhoto ? 'Перегенерувати фото' : 'Згенерувати фото'}
-                </button>
+                <div class="kitchen-menu-image-actions">
+                    <button type="button" class="btn-page-secondary kitchen-menu-image-generate-btn" data-menu-image-action="generate" onclick="generateKitchenMenuImage('${productId}', this)">
+                        ${hasDraft ? 'Перегенерувати чернетку' : 'Згенерувати чернетку'}
+                    </button>
+                    <button type="button" class="btn-page-primary" data-menu-image-action="apply" onclick="applyKitchenMenuImageDraft('${productId}', this)"${canApply ? '' : ' disabled'}>
+                        Застосувати
+                    </button>
+                    <button type="button" class="btn-page-secondary" data-menu-image-action="reject" onclick="rejectKitchenMenuImageDraft('${productId}', this)"${canReject ? '' : ' disabled'}>
+                        Відхилити
+                    </button>
+                </div>
             </div>
-            ${hasGeneratedPhoto ? `
+            ${hasDraft ? `
                 <p class="kitchen-menu-image-meta">
-                    ${escapeHtml(draft.provider || 'openai')} · ${escapeHtml(draft.size || size)} · ${escapeHtml(draft.generatedAt || '')}
+                    ${escapeHtml(draft.error ? `Помилка: ${draft.error}` : (draft.generatedAt ? `Згенеровано: ${draft.generatedAt}` : 'Чернетка підготовлена'))}
                 </p>
             ` : ''}
-            ${hasPreparedPrompt ? `
+            ${promptPreview ? `
+                <p class="kitchen-menu-image-prompt-preview">${escapeHtml(promptPreview)}</p>
                 <details class="kitchen-menu-image-prompt">
                     <summary>Prompt для фото</summary>
                     <textarea readonly>${escapeHtml(draft.prompt)}</textarea>
@@ -1136,6 +1201,19 @@ async function openKitchenMenuAiFromCard(productId, initialStep = 'nameDescripti
     });
 }
 
+function setKitchenMenuImageStudioBusy(panel, busy) {
+    if (!panel) return;
+    panel.querySelectorAll('button, select').forEach(control => {
+        if (busy) {
+            control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
+            control.disabled = true;
+        } else {
+            control.disabled = control.dataset.menuImageWasDisabled === '1';
+            delete control.dataset.menuImageWasDisabled;
+        }
+    });
+}
+
 async function generateKitchenMenuImage(productId, trigger = null) {
     if (!guardProductWrite('генерувати фото меню')) return;
     const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
@@ -1148,8 +1226,8 @@ async function generateKitchenMenuImage(productId, trigger = null) {
     const style = panel?.querySelector?.('[data-menu-image-style]')?.value || 'catalog';
     const originalText = trigger?.textContent || '';
     if (trigger) {
-        trigger.disabled = true;
-        trigger.textContent = 'Генерується...';
+        setKitchenMenuImageStudioBusy(panel, true);
+        trigger.textContent = 'Генерується draft...';
     }
     try {
         if (typeof apiGenerateProductMenuImage !== 'function') {
@@ -1162,13 +1240,81 @@ async function generateKitchenMenuImage(productId, trigger = null) {
         });
         if (!result?.success) throw new Error(result?.error || 'Не вдалося згенерувати фото меню');
         if (result.product) updateProductInState(result.product);
-        showNotification('Фото меню згенеровано й збережено в картці продукту', 'success');
+        showNotification('AI draft фото меню готовий до перегляду', 'success');
         renderProducts();
     } catch (err) {
         showNotification(err.message || 'Не вдалося згенерувати фото меню', 'error');
     } finally {
         if (trigger?.isConnected) {
-            trigger.disabled = false;
+            setKitchenMenuImageStudioBusy(panel, false);
+            trigger.textContent = originalText;
+        }
+    }
+}
+
+async function applyKitchenMenuImageDraft(productId, trigger = null) {
+    if (!guardProductWrite('застосувати фото меню')) return;
+    const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
+    if (!product || getKitchenType(product) !== 'menu') {
+        showNotification('Image studio доступний тільки для меню-позицій', 'error');
+        return;
+    }
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const originalText = trigger?.textContent || '';
+    if (trigger) {
+        setKitchenMenuImageStudioBusy(panel, true);
+        trigger.textContent = 'Застосовується...';
+    }
+    try {
+        if (typeof apiApplyProductMenuImage !== 'function') {
+            throw new Error('Menu image apply API is not available');
+        }
+        const result = await apiApplyProductMenuImage(productId, {
+            businessContext: getProductApiBusinessContext()
+        });
+        if (!result?.success) throw new Error(result?.error || 'Не вдалося застосувати фото меню');
+        if (result.product) updateProductInState(result.product);
+        showNotification('Фото меню застосовано до продукту', 'success');
+        renderProducts();
+    } catch (err) {
+        showNotification(err.message || 'Не вдалося застосувати фото меню', 'error');
+    } finally {
+        if (trigger?.isConnected) {
+            setKitchenMenuImageStudioBusy(panel, false);
+            trigger.textContent = originalText;
+        }
+    }
+}
+
+async function rejectKitchenMenuImageDraft(productId, trigger = null) {
+    if (!guardProductWrite('відхилити фото меню')) return;
+    const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
+    if (!product || getKitchenType(product) !== 'menu') {
+        showNotification('Image studio доступний тільки для меню-позицій', 'error');
+        return;
+    }
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const originalText = trigger?.textContent || '';
+    if (trigger) {
+        setKitchenMenuImageStudioBusy(panel, true);
+        trigger.textContent = 'Відхиляється...';
+    }
+    try {
+        if (typeof apiRejectProductMenuImage !== 'function') {
+            throw new Error('Menu image reject API is not available');
+        }
+        const result = await apiRejectProductMenuImage(productId, {
+            businessContext: getProductApiBusinessContext()
+        });
+        if (!result?.success) throw new Error(result?.error || 'Не вдалося відхилити фото меню');
+        if (result.product) updateProductInState(result.product);
+        showNotification('AI draft фото меню відхилено. Поточне фото не змінено', 'success');
+        renderProducts();
+    } catch (err) {
+        showNotification(err.message || 'Не вдалося відхилити фото меню', 'error');
+    } finally {
+        if (trigger?.isConnected) {
+            setKitchenMenuImageStudioBusy(panel, false);
             trigger.textContent = originalText;
         }
     }

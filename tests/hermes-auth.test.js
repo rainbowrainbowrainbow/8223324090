@@ -362,7 +362,12 @@ describe('Hermes capabilities route auth', () => {
                 'tasks.create',
                 'tasks.complete',
                 'tasks.reassign',
-                'tasks.reschedule'
+                'tasks.reschedule',
+                'menu_photos.read',
+                'menu_photos.candidates',
+                'menu_photos.draft',
+                'menu_photos.apply',
+                'menu_photos.reject'
             ]);
             assert.equal(res.data.mutationActionsAvailable, true);
             assert.deepEqual(res.data.plannedMutationActions, []);

@@ -2540,7 +2540,7 @@ async function apiGenerateProductMenuImage(id, payload = {}) {
         if (!guardCrmBusinessWrite('генерувати фото меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'генерувати фото меню') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/generate`, {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/draft`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2553,6 +2553,70 @@ async function apiGenerateProductMenuImage(id, payload = {}) {
         return body;
     } catch (err) {
         console.error('API generateProductMenuImage error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetProductMenuImageStatus(id, options = {}) {
+    try {
+        const params = new URLSearchParams();
+        addProductBusinessContextParam(params, getProductBusinessContextValue(options));
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/status${qs}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error', code: body.code };
+        }
+        return body;
+    } catch (err) {
+        console.error('API getProductMenuImageStatus error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiApplyProductMenuImage(id, payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('застосувати фото меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'застосувати фото меню') };
+        }
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/apply`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error', code: body.code };
+        }
+        return body;
+    } catch (err) {
+        console.error('API applyProductMenuImage error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiRejectProductMenuImage(id, payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('відхилити фото меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'відхилити фото меню') };
+        }
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/reject`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error', code: body.code };
+        }
+        return body;
+    } catch (err) {
+        console.error('API rejectProductMenuImage error:', err);
         return { success: false, error: err.message };
     }
 }

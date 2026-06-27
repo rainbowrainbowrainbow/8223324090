@@ -383,6 +383,7 @@ function createBookingMenuCatalogHarness() {
                     domain: 'kitchen',
                     category: 'menu',
                     name: 'Сік яблучний',
+                    iconUrl: '/uploads/catalog-images/items/menu-juice-generated.png',
                     price: 80,
                     menuSection: 'Напої',
                     servingUnit: 'л',
@@ -394,6 +395,7 @@ function createBookingMenuCatalogHarness() {
                     domain: 'kitchen',
                     category: 'cake',
                     name: 'Cake',
+                    icon_url: '/uploads/catalog-images/items/cake-generated.png',
                     price: 120,
                     menuSection: 'Торти',
                     servingUnit: '100г',
@@ -827,7 +829,9 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="promo"/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="allergens"/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="pairings"/);
-    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/juice\.webp/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/uploads\/catalog-images\/items\/menu-juice-generated\.png/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/juice\.webp/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/uploads\/catalog-images\/items\/cake-generated\.png/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
     ctx.setBookingMenuCatalogOpen(true);
     assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), true);
@@ -835,14 +839,14 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     const fallbackImg = doc.querySelector('.booking-menu-catalog-thumb.uses-fallback-image img[data-menu-catalog-fallback="1"]');
     assert.ok(fallbackImg, 'fallback image is rendered when product has no configured photo');
 
-    const manifestImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img[src="/images/kitchen-menu/juice.webp"]');
-    assert.ok(manifestImg, 'manifest image is rendered when configured');
-    ctx.bookingMenuCatalogHandleImageError(manifestImg);
-    assert.equal(manifestImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-fallback-image'), true);
-    assert.equal(manifestImg.getAttribute('src'), '/images/kitchen-menu/fallback-burger-wide.jpg');
-    assert.equal(manifestImg.dataset.menuCatalogFallback, '1');
-    ctx.bookingMenuCatalogHandleImageError(manifestImg);
-    assert.equal(manifestImg.closest('.booking-menu-catalog-thumb').classList.contains('is-image-missing'), true);
+    const generatedImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img[src="/uploads/catalog-images/items/menu-juice-generated.png"]');
+    assert.ok(generatedImg, 'product iconUrl is rendered before manifest fallback');
+    ctx.bookingMenuCatalogHandleImageError(generatedImg);
+    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-fallback-image'), true);
+    assert.equal(generatedImg.getAttribute('src'), '/images/kitchen-menu/fallback-burger-wide.jpg');
+    assert.equal(generatedImg.dataset.menuCatalogFallback, '1');
+    ctx.bookingMenuCatalogHandleImageError(generatedImg);
+    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('is-image-missing'), true);
 
     ctx.upsertBookingMenuCatalogProduct('cake_custom', 1);
     assert.equal(ctx.getBookingMenuPositions().length, 1);
@@ -2139,6 +2143,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.doesNotMatch(bookingJs, /if \(mobileCart\) mobileCart\.textContent = `Вибрано · \$\{summary\.subtotalText\}`;/);
     assert.match(bookingJs, /function bookingMenuImageManifestUrl/);
     assert.match(bookingJs, /window\.KITCHEN_MENU_IMAGES/);
+    assert.match(bookingJs, /\|\| product\.iconUrl/);
+    assert.match(bookingJs, /\|\| product\.icon_url/);
     assert.match(bookingJs, /bookingMenuCatalogHandleImageError/);
     assert.match(bookingJs, /function setBookingMenuCatalogCartOpen/);
     assert.match(bookingJs, /function isBookingMenuCatalogMobileCartLayout/);

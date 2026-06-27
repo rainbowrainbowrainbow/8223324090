@@ -1,12 +1,15 @@
 # Hermes Integration Contract
 
-This document defines the CRM-side contract for the Hermes task integration.
-The `/api/hermes/capabilities` endpoint, read-only task endpoints, task create,
-complete, reassign, and reschedule endpoints are implemented for v1.
+This document defines the CRM-side contract for the Hermes task and menu photo
+integration. The `/api/hermes/capabilities` endpoint, read-only task endpoints,
+task create, complete, reassign, and reschedule endpoints are implemented for
+v1. Menu/product photo draft, apply, and reject endpoints are implemented as a
+safe MVP workflow.
 
 ## Scope
 
-Hermes v1 is a pull/read/action integration for Event Genix CRM tasks.
+Hermes v1 is a pull/read/action integration for Event Genix CRM tasks and
+reviewable kitchen menu/product photo drafts.
 
 Hermes will call Event Genix CRM directly over HTTPS. CRM will not push events
 to Hermes in v1, and no Hermes callback or webhook endpoint is required for the
@@ -21,10 +24,15 @@ The integration is intentionally narrow:
 - Complete a task after Hermes-side user confirmation.
 - Reassign a task after Hermes-side user confirmation.
 - Reschedule a task after Hermes-side user confirmation.
+- Read kitchen menu/product photo status.
+- Generate a menu/product photo draft after Hermes-side user confirmation.
+- Apply or reject a ready menu/product photo draft after Hermes-side user
+  confirmation.
 
 The integration must not expose generic CRM access, raw database rows, delete
 operations, bulk operations, auth/session management, finance actions, admin
-actions, or unrestricted task updates.
+actions, unrestricted task updates, provider secrets, raw image provider
+responses, or unconfirmed bulk photo generation.
 
 ## Hermes Environment Assumptions
 
@@ -44,8 +52,8 @@ changes that requirement.
 
 ## Endpoint Contract
 
-All endpoints live under `/api/hermes`; v1 read and task action endpoints are
-implemented.
+All endpoints live under `/api/hermes`; v1 task action endpoints and menu photo
+draft endpoints are implemented.
 
 | Method | Path | Purpose | Mutation |
 | --- | --- | --- | --- |
@@ -57,6 +65,11 @@ implemented.
 | `POST` | `/api/hermes/tasks/:id/complete` | Complete task | Yes |
 | `POST` | `/api/hermes/tasks/:id/reassign` | Reassign task owner | Yes |
 | `POST` | `/api/hermes/tasks/:id/reschedule` | Reschedule task deadline | Yes |
+| `GET` | `/api/hermes/menu-photos/candidates` | Kitchen menu photo candidates | No |
+| `GET` | `/api/hermes/menu-photos/:productId` | Kitchen menu photo status | No |
+| `POST` | `/api/hermes/menu-photos/:productId/draft` | Generate a reviewable photo draft | Yes |
+| `POST` | `/api/hermes/menu-photos/:productId/apply` | Apply a ready photo draft | Yes |
+| `POST` | `/api/hermes/menu-photos/:productId/reject` | Reject a photo draft | Yes |
 
 Implementation must use the existing task policy, execution, and business
 context services instead of duplicating authorization logic:
@@ -207,7 +220,12 @@ Example:
     "tasks.create",
     "tasks.complete",
     "tasks.reassign",
-    "tasks.reschedule"
+    "tasks.reschedule",
+    "menu_photos.read",
+    "menu_photos.candidates",
+    "menu_photos.draft",
+    "menu_photos.apply",
+    "menu_photos.reject"
   ],
   "mutationActionsAvailable": true,
   "plannedMutationActions": [],
@@ -379,6 +397,107 @@ Response shape:
   }
 }
 ```
+
+## Menu Photo Contract
+
+Hermes menu photo actions are limited to active kitchen menu products:
+
+- `COALESCE(products.domain, 'program') = 'kitchen'`
+- `products.kitchen_type = 'menu'`
+- active products only
+- hidden products are treated as not found
+
+The applied/current photo remains `products.icon_url`. Generated results are
+stored first as a draft under `products.ai_card_draft.imageStudio`; Hermes must
+not directly overwrite `icon_url` during draft generation.
+
+Draft statuses:
+
+- `draft`
+- `generating`
+- `ready`
+- `failed`
+- `approved`
+- `rejected`
+- `applied`
+
+Read endpoints:
+
+```http
+GET /api/hermes/menu-photos/candidates?limit=50&businessContext=event_genix
+GET /api/hermes/menu-photos/:productId?businessContext=event_genix
+```
+
+Safe product response shape:
+
+```json
+{
+  "success": true,
+  "product": {
+    "id": "menu-001",
+    "code": "menu-001",
+    "name": "Cheese plate",
+    "businessContext": "event_genix",
+    "currentImageUrl": "/uploads/catalog-images/items/current.png",
+    "draft": {
+      "status": "ready",
+      "imageUrl": "/uploads/catalog-images/items/generated.png",
+      "prompt": "Create one product catalog photo...",
+      "provider": "openai",
+      "model": "gpt-image-1-mini",
+      "size": "1536x1024",
+      "style": "catalog",
+      "generatedAt": "2026-06-27T08:00:00.000Z",
+      "approvedAt": null,
+      "approvedBy": null,
+      "appliedAt": null,
+      "appliedBy": null,
+      "rejectedAt": null,
+      "rejectedBy": null,
+      "previousImageUrl": "/uploads/catalog-images/items/current.png",
+      "error": null
+    },
+    "crm_url": "https://crm.example.com/programs.html#kitchen-menu:menu-001"
+  }
+}
+```
+
+Menu photo mutation endpoints:
+
+```http
+POST /api/hermes/menu-photos/:productId/draft
+POST /api/hermes/menu-photos/:productId/apply
+POST /api/hermes/menu-photos/:productId/reject
+```
+
+`draft` allowed body:
+
+```json
+{
+  "size": "1536x1024",
+  "style": "catalog"
+}
+```
+
+`reject` allowed body:
+
+```json
+{
+  "reason": "Wrong dish or plating"
+}
+```
+
+`apply` accepts an empty JSON body. It succeeds only when the draft has an
+`imageUrl` and status `ready`, `approved`, or `applied`.
+
+Menu photo mutations use the same Hermes auth, confirmation, idempotency, and
+writable single-business-scope rules as task mutations. Draft generation may
+return a controlled `failed` response if OpenAI or upload storage is
+unavailable; the current applied image must remain unchanged in that case.
+
+Hermes menu photo responses must not expose provider API keys, raw provider
+responses, cookies, request headers, full product rows, kitchen tech notes, or
+unfiltered request bodies.
 
 ## Mutation Contracts
 

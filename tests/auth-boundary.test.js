@@ -208,7 +208,12 @@ describe('API auth boundary middleware', () => {
             'tasks.create',
             'tasks.complete',
             'tasks.reassign',
-            'tasks.reschedule'
+            'tasks.reschedule',
+            'menu_photos.read',
+            'menu_photos.candidates',
+            'menu_photos.draft',
+            'menu_photos.apply',
+            'menu_photos.reject'
         ]);
         assert.equal(ok.data.mutationActionsAvailable, true);
         assert.deepEqual(ok.data.plannedMutationActions, []);

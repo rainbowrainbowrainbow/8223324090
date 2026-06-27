@@ -171,9 +171,96 @@
     color: #047857 !important;
 }
 
+.kitchen-menu-image-status.generating {
+    background: rgba(59, 130, 246, 0.14);
+    color: #2563eb !important;
+}
+
 .kitchen-menu-image-status.prepared {
     background: rgba(59, 130, 246, 0.14);
     color: #2563eb !important;
+}
+
+.kitchen-menu-image-status.approved,
+.kitchen-menu-image-status.applied {
+    background: rgba(20, 184, 166, 0.16);
+    color: #0f766e !important;
+}
+
+.kitchen-menu-image-status.failed,
+.kitchen-menu-image-status.rejected {
+    background: rgba(239, 68, 68, 0.13);
+    color: #dc2626 !important;
+}
+
+.kitchen-menu-image-previews {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.kitchen-menu-image-preview {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.kitchen-menu-image-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.kitchen-menu-image-preview-head strong {
+    color: var(--text-primary, #0f172a);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.kitchen-menu-image-preview-head span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--gray-500, #64748b);
+    font-size: 10px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kitchen-menu-image-frame {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.08);
+}
+
+.kitchen-menu-image-frame img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.kitchen-menu-image-frame span {
+    padding: 8px;
+    color: var(--gray-500, #64748b);
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+}
+
+.kitchen-menu-image-preview.has-image .kitchen-menu-image-frame span {
+    display: none;
+}
+
+.kitchen-menu-image-preview.is-image-missing .kitchen-menu-image-frame span {
+    display: block;
 }
 
 .kitchen-menu-image-controls label {
@@ -200,7 +287,20 @@
     font-size: 12px;
 }
 
-.kitchen-menu-image-controls button:disabled {
+.kitchen-menu-image-actions {
+    display: flex;
+    flex: 2 1 260px;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 6px;
+}
+
+.kitchen-menu-image-actions button {
+    flex: 1 1 120px;
+}
+
+.kitchen-menu-image-controls button:disabled,
+.kitchen-menu-image-controls select:disabled {
     cursor: wait;
     opacity: 0.72;
 }
@@ -215,6 +315,14 @@
 .kitchen-menu-image-prompt {
     display: grid;
     gap: 6px;
+}
+
+.kitchen-menu-image-prompt-preview {
+    margin: -2px 0 0;
+    color: var(--gray-600, #475569);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
 }
 
 .kitchen-menu-image-prompt summary {
@@ -251,8 +359,25 @@ body.dark-mode .kitchen-menu-image-head strong {
     color: #f8fafc;
 }
 
+body.dark-mode .kitchen-menu-image-preview-head strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .kitchen-menu-image-frame {
+    background: rgba(15, 23, 42, 0.86);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-mode .kitchen-menu-image-prompt-preview {
+    color: rgba(226, 232, 240, 0.82);
+}
+
 @media (max-width: 720px) {
     .kitchen-menu-product-card .kitchen-product-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .kitchen-menu-image-previews {
         grid-template-columns: minmax(0, 1fr);
     }
 

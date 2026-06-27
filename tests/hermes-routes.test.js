@@ -120,6 +120,35 @@ function taskRow(id, overrides = {}) {
     };
 }
 
+function productRow(id, overrides = {}) {
+    return {
+        id: String(id),
+        code: `menu-${id}`,
+        name: `Menu item ${id}`,
+        label: `Menu item ${id}`,
+        business_context: 'event_genix',
+        icon_url: '/uploads/catalog-images/items/current.png',
+        ai_card_draft: {},
+        domain: 'kitchen',
+        kitchen_type: 'menu',
+        menu_section: 'cold-snacks',
+        serving_unit: 'portion',
+        weight_value: '250 g',
+        ingredients: 'Cheese, greens',
+        short_description: 'Internal product description',
+        description: 'Detailed internal product description',
+        allergens: ['milk'],
+        tech_card: 'Internal kitchen notes',
+        price: 650,
+        legacy_price: null,
+        availability_status: 'active',
+        is_active: true,
+        created_at: '2026-06-27T07:00:00.000Z',
+        updated_at: '2026-06-27T07:00:00.000Z',
+        ...overrides
+    };
+}
+
 function createFakePool(options = {}) {
     const calls = [];
     const hiddenIds = new Set(options.hiddenIds || []);
@@ -200,7 +229,11 @@ function createHermesCreateFakePool(options = {}) {
     const tasks = new Map(
         (options.tasks || []).map(([id, task]) => [Number(id), { ...task }])
     );
+    const products = new Map(
+        (options.products || []).map(([id, product]) => [String(id), { ...product }])
+    );
     const hiddenIds = new Set(options.hiddenIds || []);
+    const hiddenProductIds = new Set((options.hiddenProductIds || []).map(String));
     const subtaskStates = new Map(
         Object.entries(options.subtaskStates || {}).map(([id, state]) => [Number(id), state])
     );
@@ -316,6 +349,64 @@ function createHermesCreateFakePool(options = {}) {
         if (/FROM tasks t WHERE COALESCE\(t\.status, 'todo'\) NOT IN/i.test(compact)) {
             if (options.duplicate) return { rows: [taskRow(501, options.duplicate)], rowCount: 1 };
             return { rows: [], rowCount: 0 };
+        }
+
+        if (/FROM products p/i.test(compact) && /WHERE p\.id = \$1/i.test(compact)) {
+            const id = String(params[0]);
+            const context = String(params[1] || 'event_genix');
+            const product = products.get(id);
+            if (
+                hiddenProductIds.has(id)
+                || !product
+                || String(product.business_context || 'event_genix') !== context
+                || product.domain !== 'kitchen'
+                || product.kitchen_type !== 'menu'
+                || product.is_active === false
+                || product.availability_status === 'hidden'
+            ) {
+                return { rows: [], rowCount: 0 };
+            }
+            return { rows: [clone(product)], rowCount: 1 };
+        }
+
+        if (/FROM products p/i.test(compact)) {
+            const requested = Array.isArray(params[0]) ? params[0].map(String) : [String(params[0] || 'event_genix')];
+            const limit = Number(params.at(-1) || 50);
+            const rows = Array.from(products.values())
+                .filter(product => requested.includes(String(product.business_context || 'event_genix')))
+                .filter(product => product.domain === 'kitchen' && product.kitchen_type === 'menu')
+                .filter(product => product.is_active !== false && product.availability_status !== 'hidden')
+                .filter(product => !hiddenProductIds.has(String(product.id)))
+                .slice(0, limit)
+                .map(clone);
+            return { rows, rowCount: rows.length };
+        }
+
+        if (compact.startsWith('UPDATE products SET ai_card_draft =')) {
+            const id = String(params[2]);
+            const context = String(params[3] || 'event_genix');
+            const product = products.get(id);
+            if (!product || String(product.business_context || 'event_genix') !== context) {
+                return { rows: [], rowCount: 0 };
+            }
+            product.ai_card_draft = JSON.parse(params[0]);
+            product.updated_by = params[1];
+            product.updated_at = '2026-06-27T08:40:00.000Z';
+            return { rows: [], rowCount: 1 };
+        }
+
+        if (compact.startsWith('UPDATE products SET icon_url =')) {
+            const id = String(params[3]);
+            const context = String(params[4] || 'event_genix');
+            const product = products.get(id);
+            if (!product || String(product.business_context || 'event_genix') !== context) {
+                return { rows: [], rowCount: 0 };
+            }
+            product.icon_url = params[0];
+            product.ai_card_draft = JSON.parse(params[1]);
+            product.updated_by = params[2];
+            product.updated_at = '2026-06-27T08:45:00.000Z';
+            return { rows: [], rowCount: 1 };
         }
 
         if (compact.startsWith('INSERT INTO tasks')) {
@@ -462,6 +553,7 @@ function createHermesCreateFakePool(options = {}) {
         createdTasks,
         historyEvents,
         tasks,
+        products,
         async query(text, params = []) {
             return query(text, params);
         },
@@ -522,6 +614,11 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('tasks.complete'));
         assert.ok(res.data.supportedActions.includes('tasks.reassign'));
         assert.ok(res.data.supportedActions.includes('tasks.reschedule'));
+        assert.ok(res.data.supportedActions.includes('menu_photos.read'));
+        assert.ok(res.data.supportedActions.includes('menu_photos.candidates'));
+        assert.ok(res.data.supportedActions.includes('menu_photos.draft'));
+        assert.ok(res.data.supportedActions.includes('menu_photos.apply'));
+        assert.ok(res.data.supportedActions.includes('menu_photos.reject'));
         assert.deepEqual(res.data.plannedMutationActions, []);
     });
 
@@ -713,6 +810,193 @@ describe('Hermes read-only task routes', () => {
         assert.equal(hidden.status, 404);
         assert.equal(hidden.data.code, 'HERMES_TASK_NOT_FOUND');
         assert.equal(afterHistoryQueries, beforeHistoryQueries);
+    });
+});
+
+describe('Hermes menu photo routes', () => {
+    it('lists menu photo candidates with safe product fields', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [[
+                'dish-1',
+                productRow('dish-1', {
+                    icon_url: null,
+                    ai_card_draft: {
+                        imageStudio: {
+                            status: 'ready',
+                            imageUrl: '/uploads/catalog-images/items/draft.png',
+                            prompt: 'Create one clean product photo',
+                            provider: 'openai',
+                            model: 'gpt-image-1-mini',
+                            size: '1536x1024',
+                            style: 'catalog',
+                            generatedAt: '2026-06-27T08:00:00.000Z'
+                        }
+                    }
+                })
+            ]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/menu-photos/candidates?limit=5&businessContext=event_genix');
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.items.length, 1);
+            assert.deepEqual(Object.keys(res.data.items[0]).sort(), [
+                'businessContext',
+                'code',
+                'crm_url',
+                'currentImageUrl',
+                'draft',
+                'id',
+                'name'
+            ].sort());
+            assert.equal(res.data.items[0].id, 'dish-1');
+            assert.equal(res.data.items[0].currentImageUrl, null);
+            assert.equal(res.data.items[0].draft.status, 'ready');
+            assert.equal(JSON.stringify(res.data).includes('Internal kitchen notes'), false);
+            assert.equal(JSON.stringify(res.data).includes('allergens'), false);
+        });
+    });
+
+    it('returns 404 for hidden or inaccessible menu photo products', async () => {
+        const fakePool = createHermesCreateFakePool({
+            hiddenProductIds: ['dish-hidden'],
+            products: [['dish-hidden', productRow('dish-hidden')]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/menu-photos/dish-hidden?businessContext=event_genix');
+
+            assert.equal(res.status, 404, res.text);
+            assert.equal(res.data.code, 'HERMES_MENU_PHOTO_NOT_FOUND');
+        });
+    });
+
+    it('creates a failed draft safely when OpenAI image generation is unavailable', async () => {
+        const previousKey = process.env.OPENAI_API_KEY;
+        delete process.env.OPENAI_API_KEY;
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-2', productRow('dish-2', {
+                icon_url: '/uploads/catalog-images/items/current-dish-2.png'
+            })]]
+        });
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                const res = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-2/draft', {
+                    size: '1536x1024',
+                    style: 'catalog'
+                }, mutationHeaders('menu-photo-draft-no-key'));
+
+                assert.equal(res.status, 503, res.text);
+                assert.equal(res.data.success, false);
+                assert.equal(res.data.code, 'openai_not_configured');
+                assert.equal(res.data.product.currentImageUrl, '/uploads/catalog-images/items/current-dish-2.png');
+                assert.equal(res.data.product.draft.status, 'failed');
+                assert.equal(fakePool.products.get('dish-2').icon_url, '/uploads/catalog-images/items/current-dish-2.png');
+                assert.equal(fakePool.products.get('dish-2').ai_card_draft.imageStudio.status, 'failed');
+                assert.match(fakePool.products.get('dish-2').ai_card_draft.imageStudio.prompt, /Menu item:/);
+            });
+        } finally {
+            if (previousKey === undefined) {
+                delete process.env.OPENAI_API_KEY;
+            } else {
+                process.env.OPENAI_API_KEY = previousKey;
+            }
+        }
+    });
+
+    it('applies a ready draft through an idempotent Hermes mutation', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [[
+                'dish-3',
+                productRow('dish-3', {
+                    icon_url: '/uploads/catalog-images/items/current-dish-3.png',
+                    ai_card_draft: {
+                        imageStudio: {
+                            status: 'ready',
+                            imageUrl: '/uploads/catalog-images/items/generated-dish-3.png',
+                            prompt: 'Create one clean product photo',
+                            provider: 'openai',
+                            model: 'gpt-image-1-mini',
+                            size: '1536x1024',
+                            style: 'catalog',
+                            generatedAt: '2026-06-27T08:00:00.000Z'
+                        }
+                    }
+                })
+            ]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const first = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-3/apply', {}, mutationHeaders('menu-photo-apply'));
+            const retry = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-3/apply', {}, mutationHeaders('menu-photo-apply'));
+
+            assert.equal(first.status, 200, first.text);
+            assert.equal(retry.status, 200, retry.text);
+            assert.deepEqual(retry.data, first.data);
+            assert.equal(first.data.product.currentImageUrl, '/uploads/catalog-images/items/generated-dish-3.png');
+            assert.equal(first.data.product.draft.status, 'applied');
+            assert.equal(fakePool.products.get('dish-3').icon_url, '/uploads/catalog-images/items/generated-dish-3.png');
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 1);
+        });
+    });
+
+    it('rejects a ready draft without changing the applied image', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [[
+                'dish-4',
+                productRow('dish-4', {
+                    icon_url: '/uploads/catalog-images/items/current-dish-4.png',
+                    ai_card_draft: {
+                        imageStudio: {
+                            status: 'ready',
+                            imageUrl: '/uploads/catalog-images/items/generated-dish-4.png',
+                            prompt: 'Create one clean product photo',
+                            provider: 'openai',
+                            model: 'gpt-image-1-mini',
+                            size: '1536x1024',
+                            style: 'catalog',
+                            generatedAt: '2026-06-27T08:00:00.000Z'
+                        }
+                    }
+                })
+            ]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-4/reject', {
+                reason: 'Wrong plating'
+            }, mutationHeaders('menu-photo-reject'));
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.product.currentImageUrl, '/uploads/catalog-images/items/current-dish-4.png');
+            assert.equal(res.data.product.draft.status, 'rejected');
+            assert.equal(res.data.product.draft.error, 'Wrong plating');
+            assert.equal(fakePool.products.get('dish-4').icon_url, '/uploads/catalog-images/items/current-dish-4.png');
+            assert.equal(fakePool.products.get('dish-4').ai_card_draft.imageStudio.status, 'rejected');
+        });
+    });
+
+    it('rejects menu photo mutations in read-only all-business scope', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-5', productRow('dish-5')]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/menu-photos/dish-5/apply?businessScope=all',
+                {},
+                mutationHeaders('menu-photo-read-only')
+            );
+
+            assert.equal(res.status, 403, res.text);
+            assert.equal(res.data.code, 'business_scope_read_only');
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+        });
     });
 });
 

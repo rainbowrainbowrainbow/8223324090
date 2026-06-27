@@ -33,6 +33,7 @@ test('detailed menu tech-card schema extends products and stock requirements wit
 
 test('products API exposes detailed tech-card persistence and explicit warehouse write-off', () => {
     const productsRoute = read('routes/products.js');
+    const menuPhotoService = read('services/menuPhotoGeneration.js');
 
     assert.match(productsRoute, /PRODUCT_TECH_CARD_MODES/);
     assert.match(productsRoute, /techCardMode: normalizeTechCardMode/);
@@ -53,12 +54,26 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /OPENAI_MENU_AI_MODEL/);
     assert.match(productsRoute, /\/responses/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
-    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'/);
-    assert.match(productsRoute, /OPENAI_MENU_IMAGE_MODEL/);
-    assert.match(productsRoute, /gpt-image-1-mini/);
-    assert.match(productsRoute, /\/images\/generations/);
-    assert.match(productsRoute, /uploadImageFromUrl/);
-    assert.match(productsRoute, /icon_url = \$1/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/draft'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'[\s\S]+handleMenuImageDraftRequest/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/apply'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/reject'/);
+    assert.match(productsRoute, /router\.get\('\/:id\/menu-image\/status'/);
+    assert.match(productsRoute, /status: 'ready'/);
+    assert.match(productsRoute, /status: 'failed'/);
+    const draftHandlerStart = productsRoute.indexOf('async function handleMenuImageDraftRequest');
+    const draftHandlerEnd = productsRoute.indexOf("// POST /api/products/:id/menu-image/draft", draftHandlerStart);
+    assert.ok(draftHandlerStart >= 0 && draftHandlerEnd > draftHandlerStart, 'menu image draft handler should stay discoverable');
+    const draftHandler = productsRoute.slice(draftHandlerStart, draftHandlerEnd);
+    assert.match(draftHandler, /persistProductMenuImageDraft/);
+    assert.doesNotMatch(draftHandler, /SET\s+icon_url\s*=/, 'draft/generate handler must not immediately overwrite icon_url');
+    assert.match(productsRoute, /SET ai_card_draft = \$1::jsonb/);
+    assert.match(productsRoute, /SET icon_url = \$1,[\s\S]+ai_card_draft = \$2::jsonb/);
+    assert.match(menuPhotoService, /OPENAI_MENU_IMAGE_MODEL/);
+    assert.match(menuPhotoService, /gpt-image-1-mini/);
+    assert.match(menuPhotoService, /\/images\/generations/);
+    assert.match(menuPhotoService, /uploadFromUrl/);
+    assert.match(menuPhotoService, /generateAndStoreMenuPhotoDraft/);
     assert.match(productsRoute, /router\.get\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /router\.put\('\/:id\/ai-card-draft'/);
     assert.match(productsRoute, /AI-assisted menu card draft, never canonical truth/);
@@ -112,10 +127,16 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(programsJs, /openMenuAiReviewWizard/);
     assert.match(programsJs, /renderKitchenCardVisual/);
     assert.match(programsJs, /renderKitchenMenuAiActions/);
+    assert.match(programsJs, /renderKitchenMenuImagePreview/);
+    assert.match(programsJs, /menuImageDraftStatusLabel/);
     assert.match(programsJs, /generateKitchenMenuImage/);
+    assert.match(programsJs, /applyKitchenMenuImageDraft/);
+    assert.match(programsJs, /rejectKitchenMenuImageDraft/);
     assert.match(programsJs, /saveKitchenMenuImageDraft/);
     assert.match(programsJs, /buildKitchenMenuImagePrompt/);
-    assert.match(programsJs, /Згенерувати фото/);
+    assert.match(programsJs, /data-menu-image-action="generate"/);
+    assert.match(programsJs, /data-menu-image-action="apply"/);
+    assert.match(programsJs, /data-menu-image-action="reject"/);
     assert.match(programsJs, /approveMenuAiBlock/);
     assert.match(programsJs, /regenerateMenuAiBlock/);
     assert.match(programsJs, /applyMenuAiReviewFinal/);
@@ -132,6 +153,9 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(apiJs, /apiWriteOffProductTechCard/);
     assert.match(apiJs, /apiGenerateProductMenuAiDraft/);
     assert.match(apiJs, /apiGenerateProductMenuImage/);
+    assert.match(apiJs, /apiGetProductMenuImageStatus/);
+    assert.match(apiJs, /apiApplyProductMenuImage/);
+    assert.match(apiJs, /apiRejectProductMenuImage/);
     assert.match(apiJs, /apiGetProductMenuAiDraft/);
     assert.match(apiJs, /apiSaveProductMenuAiDraft/);
 });

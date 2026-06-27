@@ -1,7 +1,23 @@
 # Kitchen Menu Image Assets
 
-The booking menu catalog supports real product photos without changing the
-database or the booking payload.
+The booking menu catalog supports real product photos from the product API and
+keeps static manifest images as a fallback bridge.
+
+## Source Priority
+
+Booking menu cards resolve images in this order:
+
+1. Applied product photo from `/api/products`: `products.icon_url`, exposed to
+   frontend code as `iconUrl` or legacy `icon_url`.
+2. Static manifest image from `js/kitchen-menu-images.js`, generated from files
+   in `images/kitchen-menu/`.
+3. Existing safe fallback image/emoji state.
+
+Generated menu photos are not applied automatically. Product admins or Hermes
+first create a draft under `products.ai_card_draft.imageStudio`; only an
+explicit `apply` action copies the approved draft URL into `products.icon_url`.
+The generated image files are stored through `services/imageStorage.js` under
+`/uploads/catalog-images/items`.
 
 ## Workflow
 
@@ -16,8 +32,8 @@ database or the booking payload.
 node scripts/sync-kitchen-menu-images.js
 ```
 
-5. Reload the CRM. Products with matched files will use photos; everything else
-   keeps the emoji fallback.
+5. Reload the CRM. Products without `products.icon_url` but with matched files
+   will use manifest photos; everything else keeps the safe fallback.
 
 ## Filename Rules
 
@@ -45,5 +61,8 @@ fallbacks until images are added.
   optimized assets.
 - Keep images square or close to square. The UI crops with `object-fit: cover`.
 - Recommended size: 512x512 or 768x768.
-- This is a frontend manifest bridge. A future product-admin image field can
-  replace it without changing `bookingPackage.menuPositions`.
+- The static manifest is a fallback bridge. It must not override an applied
+  product photo from `products.icon_url`.
+- AI/Hermes generated drafts use a card-friendly horizontal prompt and may
+  store larger source files in `/uploads/catalog-images/items`; the card UI
+  should crop safely without manually patching individual images.

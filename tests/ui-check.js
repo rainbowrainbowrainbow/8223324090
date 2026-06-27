@@ -2240,6 +2240,7 @@ const programsPageCode = fs.readFileSync(path.join(ROOT, 'js/programs-page.js'),
 const programsHtml = fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8');
 const programsCss = fs.readFileSync(path.join(ROOT, 'css/pages-products.css'), 'utf8');
 const productsRoute = fs.readFileSync(path.join(ROOT, 'routes/products.js'), 'utf8');
+const menuPhotoServiceCode = fs.readFileSync(path.join(ROOT, 'services/menuPhotoGeneration.js'), 'utf8');
 const indexHtmlForBookingPanel = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const bookingPanelStart = indexHtmlForBookingPanel.indexOf('<aside id="bookingPanel"');
 const bookingPanelEnd = indexHtmlForBookingPanel.indexOf('</aside>', bookingPanelStart);
@@ -2839,6 +2840,8 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && bookingCode.includes('function bookingMenuCatalogVisualHtml')
     && bookingCode.includes('function bookingMenuImageManifestUrl')
     && bookingCode.includes('window.KITCHEN_MENU_IMAGES')
+    && bookingCode.includes('|| product.iconUrl')
+    && bookingCode.includes('|| product.icon_url')
     && bookingCode.includes('bookingMenuCatalogHandleImageError')
     && bookingCode.includes('function setBookingMenuCatalogCartOpen')
     && bookingCode.includes('function isBookingMenuCatalogMobileCartLayout')
@@ -3148,15 +3151,36 @@ check('Products menu tab owns menu-card images, AI review entrypoints, and image
     && programsPageCode.includes('function renderKitchenCardVisual')
     && programsPageCode.includes('function renderKitchenMenuAiActions')
     && programsPageCode.includes('function renderKitchenMenuImageStudio')
+    && programsPageCode.includes('function renderKitchenMenuImagePreview')
+    && programsPageCode.includes('function menuImageDraftStatusLabel')
     && programsPageCode.includes('function generateKitchenMenuImage')
+    && programsPageCode.includes('function applyKitchenMenuImageDraft')
+    && programsPageCode.includes('function rejectKitchenMenuImageDraft')
     && programsPageCode.includes('function saveKitchenMenuImageDraft')
+    && programsPageCode.includes('data-menu-image-action="apply"')
+    && programsPageCode.includes('data-menu-image-action="reject"')
     && programsPageCode.includes('buildKitchenMenuImagePrompt')
     && programsPageCode.includes('apiGenerateProductMenuImage')
+    && programsPageCode.includes('apiApplyProductMenuImage')
+    && programsPageCode.includes('apiRejectProductMenuImage')
     && programsPageCode.includes('imageStudio')
+    && programsCss.includes('.kitchen-menu-image-previews')
+    && programsCss.includes('.kitchen-menu-image-preview')
+    && programsCss.includes('.kitchen-menu-image-actions')
+    && programsCss.includes('.kitchen-menu-image-status.failed')
+    && programsCss.includes('.kitchen-menu-image-status.rejected')
     && apiCode.includes('function apiGenerateProductMenuImage')
+    && apiCode.includes('/menu-image/draft')
+    && apiCode.includes('function apiGetProductMenuImageStatus')
+    && apiCode.includes('function apiApplyProductMenuImage')
+    && apiCode.includes('function apiRejectProductMenuImage')
+    && productsRoute.includes("router.post('/:id/menu-image/draft'")
     && productsRoute.includes("router.post('/:id/menu-image/generate'")
-    && productsRoute.includes('/images/generations')
-    && productsRoute.includes('OPENAI_MENU_IMAGE_MODEL')
+    && productsRoute.includes("router.post('/:id/menu-image/apply'")
+    && productsRoute.includes("router.post('/:id/menu-image/reject'")
+    && productsRoute.includes("router.get('/:id/menu-image/status'")
+    && menuPhotoServiceCode.includes('/images/generations')
+    && menuPhotoServiceCode.includes('OPENAI_MENU_IMAGE_MODEL')
     && bookingCode.includes('BOOKING_MENU_CATALOG_ADMIN_REVIEW_ACTIONS_ENABLED = false'));
 check('Timeline booking no longer exposes silent booking toggle',
     !bookingPanelHtml.includes('bookingSkipNotificationSection')

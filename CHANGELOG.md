@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.39 - Hermes Menu Photo Drafts
+
+### Hermes menu photos / Product image drafts / Booking catalog / Deploy / (Клешня, 27.06.2026) [codex]
+- **Фото меню тепер проходять через безпечну чернетку** - генерація створює `imageStudio` draft у продукті й більше не перезаписує поточне фото без підтвердження.
+- **Booking catalog читає застосовані product photos** - картки меню беруть `products.icon_url` перед static manifest fallback, тому згенеровані й підтверджені фото видно там, де оператор обирає позиції.
+- **Менеджер бачить поточне і draft-фото окремо** - у products image studio додано Generate/Regenerate, Apply і Reject з українськими станами й без випадкової заміни якісних ручних фото.
+- **Hermes отримав контрольований контракт для фото** - `/api/hermes/menu-photos/*` підтримує candidates, read, draft, apply і reject через існуючі auth, confirmation та idempotency rails.
+- **Документацію й regression guards оновлено** - provider contract, source priority, Hermes contract і Phase 2 bulk queue plan фіксують draft-first flow, storage path і технічні борги.
+- **Релізні маркери піднято до `0.77.39`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.38 - Banquet Menu and HR Today Polish
 
 ### Banquet menu contracts / Activity rows / HR Today board / Deploy / (Клешня, 27.06.2026) [codex]

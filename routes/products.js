@@ -38,15 +38,20 @@ const {
     normalizePriceDate
 } = require('../services/productPricing');
 const {
-    uploadFromUrl: uploadImageFromUrl,
-    makeFilename: makeImageFilename
-} = require('../services/imageStorage');
+    MENU_IMAGE_STUDIO_SIZES,
+    MENU_IMAGE_STUDIO_STYLES,
+    MENU_IMAGE_STUDIO_LEGACY_SIZE_MAP,
+    normalizeMenuImageSize,
+    normalizeMenuImageStyle,
+    buildMenuImagePrompt,
+    generateAndStoreMenuPhotoDraft,
+    resolveMenuImageOpenAIModel
+} = require('../services/menuPhotoGeneration');
 
 const log = createLogger('Products');
 
 const PRODUCT_PRICE_JOIN = buildProductPriceJoin;
 const MENU_AI_DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
-const MENU_IMAGE_DEFAULT_OPENAI_MODEL = 'gpt-image-1-mini';
 
 function getOpenAIApiBase() {
     return String(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -57,13 +62,6 @@ function resolveMenuAiOpenAIModel() {
         || process.env.OPENAI_ASSISTANT_MODEL
         || MENU_AI_DEFAULT_OPENAI_MODEL;
     return String(configured || MENU_AI_DEFAULT_OPENAI_MODEL).trim().replace(/^openai\//i, '') || MENU_AI_DEFAULT_OPENAI_MODEL;
-}
-
-function resolveMenuImageOpenAIModel() {
-    const configured = process.env.OPENAI_MENU_IMAGE_MODEL
-        || process.env.OPENAI_IMAGE_MODEL
-        || MENU_IMAGE_DEFAULT_OPENAI_MODEL;
-    return String(configured || MENU_IMAGE_DEFAULT_OPENAI_MODEL).trim().replace(/^openai\//i, '') || MENU_IMAGE_DEFAULT_OPENAI_MODEL;
 }
 
 function requireMenuAiOpenAIKey() {
@@ -120,99 +118,6 @@ async function generateMenuAiDraftWithOpenAI(prompt) {
     return { text, model };
 }
 
-function menuImageStyleInstruction(style) {
-    const map = {
-        catalog: 'Clean commercial menu catalog photo, appetizing food styling, bright but natural colors, dark neutral CRM-friendly background.',
-        realistic: 'Photorealistic restaurant food photography, natural light, real ingredients visible, no exaggerated effects.',
-        'clean-dark': 'Premium food photo on a clean dark slate background, high contrast, polished CRM card composition.'
-    };
-    return map[normalizeMenuImageStyle(style)] || map.catalog;
-}
-
-function buildMenuImagePrompt(product = {}, options = {}) {
-    const size = normalizeMenuImageSize(options.size);
-    const style = normalizeMenuImageStyle(options.style);
-    const allergens = normalizeAllergenList(product.allergens || []).map(item => item.label).filter(Boolean).join(', ');
-    const lines = [
-        `Menu item: ${product.name || product.label || product.code || product.id || 'Untitled menu item'}`,
-        product.code ? `CRM code: ${product.code}` : '',
-        product.menu_section ? `Menu section: ${product.menu_section}` : '',
-        product.weight_value ? `Weight/output: ${product.weight_value}` : '',
-        product.serving_unit ? `Serving unit: ${product.serving_unit}` : '',
-        Number(product.price || product.legacy_price || 0) > 0 ? `Price in CRM: ${Number(product.price || product.legacy_price || 0)} UAH` : '',
-        product.short_description ? `Short description: ${product.short_description}` : '',
-        product.description ? `Description: ${product.description}` : '',
-        product.ingredients ? `Ingredients: ${product.ingredients}` : '',
-        allergens ? `Known allergens: ${allergens}` : '',
-        product.tech_card ? `Kitchen tech notes: ${product.tech_card}` : '',
-        `Target size: ${size}`,
-        `Style preset: ${style}`,
-        menuImageStyleInstruction(style),
-        'Create one product image for a Ukrainian children entertainment center CRM menu card.',
-        'Show only the dish. No people, no hands, no logo, no watermark, no packaging, no readable text.',
-        'The dish must be clear at small card size: centered composition, readable silhouette, useful for operators and clients.',
-        'Do not invent printed labels or decorations. If details are unknown, keep the food presentation generic and realistic.'
-    ];
-    return lines.filter(Boolean).join('\n');
-}
-
-async function generateMenuImageWithOpenAI({ prompt, size, style } = {}) {
-    const apiKey = requireMenuAiOpenAIKey();
-    const model = resolveMenuImageOpenAIModel();
-    const normalizedSize = normalizeMenuImageSize(size);
-    const body = {
-        model,
-        prompt,
-        n: 1,
-        size: normalizedSize
-    };
-
-    if (/^gpt-image-/i.test(model)) {
-        body.quality = 'medium';
-        body.output_format = 'png';
-        body.background = 'opaque';
-        body.moderation = 'auto';
-    } else {
-        body.response_format = 'b64_json';
-    }
-
-    const response = await fetch(`${getOpenAIApiBase()}/images/generations`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-        const detail = await response.text().catch(() => '');
-        const safeDetail = detail ? `: ${detail.slice(0, 500)}` : '';
-        const err = new Error(`OpenAI menu image generation failed (${response.status})${safeDetail}`);
-        err.status = response.status;
-        throw err;
-    }
-
-    const payload = await response.json();
-    const image = payload?.data?.[0] || {};
-    const b64 = image.b64_json || image.image_base64 || image.b64;
-    const imageUrl = cleanNullableString(image.url, 2000);
-    if (!b64 && !imageUrl) throw new Error('OpenAI menu image generation returned no image data');
-    return {
-        model,
-        provider: 'openai',
-        size: normalizedSize,
-        style: normalizeMenuImageStyle(style),
-        sourceUrl: b64 ? `data:image/png;base64,${b64}` : imageUrl,
-        revisedPrompt: cleanNullableString(image.revised_prompt || image.revisedPrompt, 5000)
-    };
-}
-
-function buildMenuImageFilename(product = {}) {
-    const label = product.code || product.name || product.label || product.id || 'menu-dish';
-    return makeImageFilename('menu', label, 'png');
-}
-
 function buildProductPriceRuleCode(productId) {
     const rawId = String(productId || 'product');
     const slug = rawId.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'item';
@@ -251,12 +156,7 @@ const productProgramIconRateLimit = createWriteRateLimiter('product-program-icon
 const MENU_AI_BLOCK_KEYS = ['nameDescription', 'allergens', 'ingredients', 'priceCost'];
 const MENU_AI_BLOCK_KEY_SET = new Set(MENU_AI_BLOCK_KEYS);
 const MENU_AI_STATUS_VALUES = new Set(['draft', 'needs_changes', 'approved', 'applied']);
-const MENU_IMAGE_STUDIO_SIZES = new Set(['1536x1024', '1024x1024', '1024x1536']);
-const MENU_IMAGE_STUDIO_LEGACY_SIZE_MAP = {
-    '1536x864': '1536x1024',
-    '1024x576': '1536x1024'
-};
-const MENU_IMAGE_STUDIO_STYLES = new Set(['catalog', 'realistic', 'clean-dark']);
+const MENU_IMAGE_STATUS_VALUES = new Set(['draft', 'generating', 'ready', 'failed', 'approved', 'rejected', 'applied']);
 const MENU_ALLERGEN_CATALOG = [
     { key: 'gluten', label: 'Глютен', aliases: ['пшениця', 'борошно', 'wheat'] },
     { key: 'milk', label: 'Молоко', aliases: ['молочні', 'лактоза', 'вершки', 'сир'] },
@@ -539,15 +439,9 @@ function normalizeAiStatus(value, fallback = 'draft') {
     return MENU_AI_STATUS_VALUES.has(status) ? status : fallback;
 }
 
-function normalizeMenuImageSize(value) {
-    const raw = String(value || '').trim();
-    const mapped = MENU_IMAGE_STUDIO_LEGACY_SIZE_MAP[raw] || raw;
-    return MENU_IMAGE_STUDIO_SIZES.has(mapped) ? mapped : '1536x1024';
-}
-
-function normalizeMenuImageStyle(value) {
-    const raw = String(value || '').trim();
-    return MENU_IMAGE_STUDIO_STYLES.has(raw) ? raw : 'catalog';
+function normalizeMenuImageStatus(value, fallback = 'draft') {
+    const status = String(value || fallback).trim().toLowerCase();
+    return MENU_IMAGE_STATUS_VALUES.has(status) ? status : fallback;
 }
 
 function normalizeMenuAiBlock(key, block = {}) {
@@ -569,21 +463,34 @@ function normalizeMenuImageStudio(value = {}) {
     const imageUrl = cleanNullableString(raw.imageUrl || raw.image_url, 2000);
     const prompt = cleanNullableString(raw.prompt, 5000);
     const preparedAt = raw.preparedAt || raw.prepared_at || null;
-    if (!imageUrl && !prompt && !preparedAt) return {};
+    const generatedAt = raw.generatedAt || raw.generated_at || null;
+    const approvedAt = raw.approvedAt || raw.approved_at || null;
+    const appliedAt = raw.appliedAt || raw.applied_at || null;
+    const rejectedAt = raw.rejectedAt || raw.rejected_at || null;
+    const error = cleanNullableString(raw.error, 500);
+    const status = normalizeMenuImageStatus(raw.status, 'draft');
+    if (!imageUrl && !prompt && !preparedAt && !generatedAt && !approvedAt && !appliedAt && !rejectedAt && !error && status === 'draft') return {};
     return {
         version: 1,
-        status: normalizeAiStatus(raw.status, 'draft'),
+        status,
         source: cleanNullableString(raw.source, 40) || 'products-menu',
         size: normalizeMenuImageSize(raw.size),
         style: normalizeMenuImageStyle(raw.style),
         imageUrl,
         prompt,
         preparedAt,
-        generatedAt: raw.generatedAt || raw.generated_at || null,
+        generatedAt,
+        approvedAt,
+        approvedBy: cleanNullableString(raw.approvedBy || raw.approved_by, 100),
+        appliedAt,
+        appliedBy: cleanNullableString(raw.appliedBy || raw.applied_by, 100),
+        previousImageUrl: cleanNullableString(raw.previousImageUrl || raw.previous_image_url, 2000),
+        rejectedAt,
+        rejectedBy: cleanNullableString(raw.rejectedBy || raw.rejected_by, 100),
         provider: cleanNullableString(raw.provider, 40),
         model: cleanNullableString(raw.model, 100),
         storage: safeJsonObject(raw.storage || {}),
-        error: cleanNullableString(raw.error, 500)
+        error
     };
 }
 
@@ -1488,8 +1395,92 @@ router.post('/menu-ai-draft', productMenuAiRateLimit, requireRole(...PRODUCT_MUT
     }
 });
 
-// POST /api/products/:id/menu-image/generate — real menu dish image generation, stored as product icon_url
-router.post('/:id/menu-image/generate', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+function requireMenuImageProduct(product) {
+    if (!product) return { ok: false, status: 404, error: 'Product not found' };
+    if (product.domain !== 'kitchen' || product.kitchen_type !== 'menu') {
+        return {
+            ok: false,
+            status: 400,
+            error: 'Image generation is available only for kitchen menu items'
+        };
+    }
+    return { ok: true };
+}
+
+function currentMenuAiDraftForProduct(product = {}) {
+    return normalizeMenuAiDraft(product.ai_card_draft || {}, {
+        source: product.ai_card_draft?.source || 'stored',
+        status: product.ai_card_draft?.status || 'draft',
+        aiAvailable: product.ai_card_draft?.aiAvailable !== false
+    });
+}
+
+function buildProductMenuImageDraft(product, imageStudioPatch = {}, options = {}) {
+    const currentDraft = options.currentDraft || currentMenuAiDraftForProduct(product);
+    const imageStudio = normalizeMenuImageStudio({
+        ...(currentDraft.imageStudio || {}),
+        ...imageStudioPatch
+    });
+    return normalizeMenuAiDraft({
+        ...currentDraft,
+        imageStudio
+    }, {
+        source: currentDraft.source || 'stored',
+        status: currentDraft.status || 'draft',
+        aiAvailable: currentDraft.aiAvailable !== false,
+        generatedAt: currentDraft.generatedAt,
+        imageStudio
+    });
+}
+
+function menuImageDraftLockKey(businessContext, productId) {
+    return ['products.menu-image-draft', businessContext || DEFAULT_BUSINESS_CONTEXT, productId].join('|');
+}
+
+function menuImagePublicError(err) {
+    const message = String(err?.message || '');
+    const openAiUnavailable = err?.code === 'openai_not_configured' || /OPENAI_API_KEY is not configured/i.test(message);
+    if (openAiUnavailable) {
+        return {
+            status: 503,
+            code: 'openai_not_configured',
+            error: 'OPENAI_API_KEY is not configured'
+        };
+    }
+    if (err?.code === 'menu_image_upload_failed') {
+        return {
+            status: 502,
+            code: 'menu_image_upload_failed',
+            error: 'Generated image could not be saved to CRM uploads'
+        };
+    }
+    if (err?.status === 429 || err?.code === 'openai_rate_limited') {
+        return {
+            status: 429,
+            code: 'menu_image_generation_rate_limited',
+            error: 'Menu image generation is temporarily rate limited'
+        };
+    }
+    return {
+        status: 502,
+        code: 'menu_image_generation_failed',
+        error: 'Menu image generation failed'
+    };
+}
+
+async function persistProductMenuImageDraft(productId, businessContext, username, draft) {
+    await pool.query(
+        `UPDATE products
+         SET ai_card_draft = $1::jsonb,
+             updated_at = NOW(),
+             updated_by = $2
+         WHERE id = $3
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+        [JSON.stringify(draft), username, productId, businessContext]
+    );
+}
+
+async function handleMenuImageDraftRequest(req, res) {
     const { id } = req.params;
     if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
 
@@ -1498,62 +1489,181 @@ router.post('/:id/menu-image/generate', productMenuImageRateLimit, requireRole(.
         if (!businessContext) return;
 
         const product = await getProductWithPriceRule(pool, id, businessContext);
-        if (!product) return res.status(404).json({ success: false, error: 'Product not found' });
-        if (product.domain !== 'kitchen' || product.kitchen_type !== 'menu') {
-            return res.status(400).json({ success: false, error: 'Image generation is available only for kitchen menu items' });
-        }
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
 
-        const currentDraft = normalizeMenuAiDraft(product.ai_card_draft || {}, {
-            source: product.ai_card_draft?.source || 'stored',
-            status: product.ai_card_draft?.status || 'draft',
-            aiAvailable: product.ai_card_draft?.aiAvailable !== false
-        });
+        const currentDraft = currentMenuAiDraftForProduct(product);
         const incomingSettings = safeJsonObject(req.body?.settings || req.body || {});
         const size = normalizeMenuImageSize(incomingSettings.size || currentDraft.imageStudio?.size);
         const style = normalizeMenuImageStyle(incomingSettings.style || currentDraft.imageStudio?.style);
         const prompt = buildMenuImagePrompt(product, { size, style });
-        const generation = await generateMenuImageWithOpenAI({ prompt, size, style });
-        const savedUrl = await uploadImageFromUrl(generation.sourceUrl, buildMenuImageFilename(product));
-        if (!savedUrl) {
-            return res.status(502).json({
+        const preparedAt = new Date().toISOString();
+        const generatingStudio = normalizeMenuImageStudio({
+            ...currentDraft.imageStudio,
+            version: 1,
+            status: 'generating',
+            source: 'openai',
+            size,
+            style,
+            imageUrl: null,
+            prompt,
+            preparedAt: currentDraft.imageStudio?.preparedAt || preparedAt,
+            generatedAt: null,
+            provider: 'openai',
+            model: resolveMenuImageOpenAIModel(),
+            previousImageUrl: product.icon_url || null,
+            error: null
+        });
+        const generatingDraft = buildProductMenuImageDraft(product, generatingStudio, { currentDraft });
+        await persistProductMenuImageDraft(id, businessContext, req.user.username, generatingDraft);
+
+        let imageStudio;
+        try {
+            imageStudio = await generateAndStoreMenuPhotoDraft(product, { size, style, prompt });
+        } catch (err) {
+            const publicError = menuImagePublicError(err);
+            const failedStudio = normalizeMenuImageStudio({
+                ...generatingStudio,
+                status: 'failed',
+                imageUrl: null,
+                prompt: err.prompt || prompt,
+                size: err.size || size,
+                style: err.style || style,
+                generatedAt: new Date().toISOString(),
+                provider: generatingStudio.provider || 'openai',
+                model: generatingStudio.model || resolveMenuImageOpenAIModel(),
+                previousImageUrl: product.icon_url || null,
+                error: publicError.error
+            });
+            const failedDraft = buildProductMenuImageDraft(product, failedStudio, { currentDraft });
+            await persistProductMenuImageDraft(id, businessContext, req.user.username, failedDraft);
+            const fresh = await getProductWithPriceRule(pool, id, businessContext).catch(() => null);
+            return res.status(publicError.status).json({
                 success: false,
-                error: 'Generated image could not be saved to CRM uploads',
-                code: 'menu_image_upload_failed'
+                status: 'failed',
+                error: publicError.error,
+                code: publicError.code,
+                draft: failedDraft,
+                product: fresh ? mapProductRow(fresh) : null
             });
         }
 
-        const generatedAt = new Date().toISOString();
-        const imageStudio = normalizeMenuImageStudio({
-            ...currentDraft.imageStudio,
-            version: 1,
-            status: 'applied',
-            source: 'openai',
-            size: generation.size,
-            style: generation.style,
-            imageUrl: savedUrl,
-            prompt: generation.revisedPrompt || prompt,
-            preparedAt: currentDraft.imageStudio?.preparedAt || generatedAt,
-            generatedAt,
-            provider: generation.provider,
-            model: generation.model,
-            storage: {
-                provider: 'local',
-                publicUrl: savedUrl
-            },
+        const readyStudio = normalizeMenuImageStudio({
+            ...generatingStudio,
+            ...imageStudio,
+            status: 'ready',
+            previousImageUrl: product.icon_url || null,
             error: null
         });
-        const draft = normalizeMenuAiDraft({
-            ...currentDraft,
-            imageStudio
-        }, {
-            source: currentDraft.source || 'stored',
-            status: currentDraft.status || 'draft',
-            aiAvailable: currentDraft.aiAvailable !== false,
-            generatedAt: currentDraft.generatedAt || generatedAt,
-            imageStudio
-        });
+        const readyDraft = buildProductMenuImageDraft(product, readyStudio, { currentDraft });
+        await persistProductMenuImageDraft(id, businessContext, req.user.username, readyDraft);
 
-        await pool.query(
+        const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        res.json({
+            success: true,
+            status: 'ready',
+            provider: readyStudio.provider,
+            model: readyStudio.model,
+            imageUrl: readyStudio.imageUrl,
+            prompt: readyStudio.prompt,
+            draft: readyDraft,
+            product: mapProductRow(fresh)
+        });
+    } catch (err) {
+        log.error('Generate product menu image draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+}
+
+// POST /api/products/:id/menu-image/draft - generate a reviewable menu image draft only
+router.post('/:id/menu-image/draft', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleMenuImageDraftRequest);
+
+// POST /api/products/:id/menu-image/generate - compatibility alias; no immediate icon_url overwrite
+router.post('/:id/menu-image/generate', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleMenuImageDraftRequest);
+
+router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const product = await getProductWithPriceRule(pool, id, businessContext);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        const draft = currentMenuAiDraftForProduct(product);
+        res.json({
+            success: true,
+            status: draft.imageStudio?.status || 'draft',
+            imageUrl: draft.imageStudio?.imageUrl || null,
+            appliedImageUrl: product.icon_url || null,
+            draft,
+            product: mapProductRow(product)
+        });
+    } catch (err) {
+        log.error('Get product menu image status error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/menu-image/apply', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+
+    const businessContext = requireProductBusinessContext(req, res);
+    if (!businessContext) return;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [menuImageDraftLockKey(businessContext, id)]);
+        const locked = await client.query(
+            `SELECT *
+             FROM products
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [id, businessContext]
+        );
+        const product = locked.rows[0];
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) {
+            await client.query('ROLLBACK');
+            return res.status(check.status).json({ success: false, error: check.error });
+        }
+
+        const currentDraft = currentMenuAiDraftForProduct(product);
+        const imageStudio = currentDraft.imageStudio || {};
+        if (!imageStudio.imageUrl) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'No ready menu image draft to apply',
+                code: 'menu_image_draft_missing'
+            });
+        }
+        if (!['ready', 'approved', 'applied'].includes(imageStudio.status)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'Menu image draft is not ready to apply',
+                code: 'menu_image_draft_not_ready'
+            });
+        }
+
+        const now = new Date().toISOString();
+        const alreadyApplied = product.icon_url === imageStudio.imageUrl && imageStudio.status === 'applied';
+        const appliedStudio = normalizeMenuImageStudio({
+            ...imageStudio,
+            status: 'applied',
+            approvedAt: imageStudio.approvedAt || now,
+            approvedBy: imageStudio.approvedBy || req.user.username,
+            appliedAt: alreadyApplied ? (imageStudio.appliedAt || now) : now,
+            appliedBy: req.user.username,
+            previousImageUrl: alreadyApplied ? (imageStudio.previousImageUrl || product.icon_url || null) : (product.icon_url || null),
+            error: null
+        });
+        const draft = buildProductMenuImageDraft(product, appliedStudio, { currentDraft });
+        await client.query(
             `UPDATE products
              SET icon_url = $1,
                  ai_card_draft = $2::jsonb,
@@ -1561,27 +1671,103 @@ router.post('/:id/menu-image/generate', productMenuImageRateLimit, requireRole(.
                  updated_by = $3
              WHERE id = $4
                AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5`,
-            [savedUrl, JSON.stringify(draft), req.user.username, id, businessContext]
+            [appliedStudio.imageUrl, JSON.stringify(draft), req.user.username, id, businessContext]
         );
+        await client.query('COMMIT');
 
         const fresh = await getProductWithPriceRule(pool, id, businessContext);
         res.json({
             success: true,
-            provider: generation.provider,
-            model: generation.model,
-            imageUrl: savedUrl,
-            prompt: imageStudio.prompt,
+            status: 'applied',
+            imageUrl: appliedStudio.imageUrl,
             draft,
             product: mapProductRow(fresh)
         });
     } catch (err) {
-        log.error('Generate product menu image error', err);
-        const status = /OPENAI_API_KEY is not configured/i.test(err.message || '') ? 503 : (err.status === 429 ? 429 : 502);
-        res.status(status).json({
-            success: false,
-            error: err.message || 'Menu image generation failed',
-            code: status === 503 ? 'openai_not_configured' : 'menu_image_generation_failed'
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Apply product menu image draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+router.post('/:id/menu-image/reject', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+
+    const businessContext = requireProductBusinessContext(req, res);
+    if (!businessContext) return;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [menuImageDraftLockKey(businessContext, id)]);
+        const locked = await client.query(
+            `SELECT *
+             FROM products
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+             FOR UPDATE`,
+            [id, businessContext]
+        );
+        const product = locked.rows[0];
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) {
+            await client.query('ROLLBACK');
+            return res.status(check.status).json({ success: false, error: check.error });
+        }
+
+        const currentDraft = currentMenuAiDraftForProduct(product);
+        const imageStudio = currentDraft.imageStudio || {};
+        if (!Object.keys(imageStudio).length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'No menu image draft to reject',
+                code: 'menu_image_draft_missing'
+            });
+        }
+        if (imageStudio.status === 'applied' && product.icon_url === imageStudio.imageUrl) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: 'Applied menu image cannot be rejected; generate a new draft first',
+                code: 'menu_image_already_applied'
+            });
+        }
+
+        const rejectedStudio = normalizeMenuImageStudio({
+            ...imageStudio,
+            status: 'rejected',
+            rejectedAt: new Date().toISOString(),
+            rejectedBy: req.user.username,
+            error: cleanNullableString(req.body?.reason, 500)
         });
+        const draft = buildProductMenuImageDraft(product, rejectedStudio, { currentDraft });
+        await client.query(
+            `UPDATE products
+             SET ai_card_draft = $1::jsonb,
+                 updated_at = NOW(),
+                 updated_by = $2
+             WHERE id = $3
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+            [JSON.stringify(draft), req.user.username, id, businessContext]
+        );
+        await client.query('COMMIT');
+
+        const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        res.json({
+            success: true,
+            status: 'rejected',
+            draft,
+            product: mapProductRow(fresh)
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Reject product menu image draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

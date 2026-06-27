@@ -2645,6 +2645,8 @@ function bookingMenuProductImageUrl(product = {}) {
         || product.cover_url
         || product.thumbnailUrl
         || product.thumbnail_url
+        || product.iconUrl
+        || product.icon_url
         || ''
     );
     return explicitUrl || bookingMenuImageManifestUrl(product);

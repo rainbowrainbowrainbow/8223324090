@@ -15,6 +15,18 @@
 | CRM assistant audio/transcription | OpenAI direct | `OPENAI_API_KEY`, `OPENAI_TRANSCRIPTION_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` | Voice input/output для assistant rail. |
 | Kitchen menu AI review drafts | OpenAI direct | `OPENAI_API_KEY`, `OPENAI_API_BASE`, `OPENAI_MENU_AI_MODEL` | `/api/products/menu-ai-draft` викликає OpenAI Responses API для review-only чернеток меню. Default model: `gpt-5.4-mini`. За відсутності ключа API повертає fallback-чернетку без зміни booking source of truth. |
 
+## Kitchen Menu Image Drafts
+
+- Provider: direct OpenAI image generation.
+- Env: `OPENAI_API_KEY`, `OPENAI_API_BASE`, `OPENAI_MENU_IMAGE_MODEL`; fallback model env is `OPENAI_IMAGE_MODEL`.
+- Backend owner: `services/menuPhotoGeneration.js`.
+- Product API entrypoints: `/api/products/:id/menu-image/draft`, `/api/products/:id/menu-image/apply`, `/api/products/:id/menu-image/reject`, `/api/products/:id/menu-image/status`.
+- Hermes API entrypoints: `/api/hermes/menu-photos/:productId/draft`, `/api/hermes/menu-photos/:productId/apply`, `/api/hermes/menu-photos/:productId/reject`.
+- Prompt source: generated from product name, code, kitchen type, menu section, serving unit, weight/output, ingredients, description, requested size, and style template.
+- Storage: generated files are copied through `services/imageStorage.js` into `/uploads/catalog-images/items`.
+- Draft state: CRM stores provider/model/size/style/prompt/status/image URL under `products.ai_card_draft.imageStudio`.
+- Approval: draft generation must not write `products.icon_url`; only explicit `apply` copies the approved draft URL to `products.icon_url`.
+
 ## Provider Diagnostics
 
 - `/api/settings/ai/providers` повертає server-side карту provider-ів без секретів: OpenRouter shared text rail, Kie media rail, direct OpenAI assistant/menu rail і legacy direct exceptions.

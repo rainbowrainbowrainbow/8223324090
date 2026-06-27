@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.38",
+  "version": "0.77.39",
   "eventGenix": {
-    "releaseLabel": "Banquet Menu and HR Today Polish"
+    "releaseLabel": "Hermes Menu Photo Drafts"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

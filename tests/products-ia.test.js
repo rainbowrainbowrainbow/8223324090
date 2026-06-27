@@ -92,11 +92,19 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /function renderKitchenCardVisual/);
     assert.match(pageJs, /function renderKitchenMenuAiActions/);
     assert.match(pageJs, /function renderKitchenMenuImageStudio/);
+    assert.match(pageJs, /function renderKitchenMenuImagePreview/);
+    assert.match(pageJs, /function menuImageDraftStatusLabel/);
     assert.match(pageJs, /function generateKitchenMenuImage/);
+    assert.match(pageJs, /function applyKitchenMenuImageDraft/);
+    assert.match(pageJs, /function rejectKitchenMenuImageDraft/);
     assert.match(pageJs, /function saveKitchenMenuImageDraft/);
+    assert.match(pageJs, /data-menu-image-action="apply"/);
+    assert.match(pageJs, /data-menu-image-action="reject"/);
     assert.match(pageJs, /imageStudio/);
     assert.match(pageJs, /buildKitchenMenuImagePrompt/);
     assert.match(pageJs, /apiGenerateProductMenuImage/);
+    assert.match(pageJs, /apiApplyProductMenuImage/);
+    assert.match(pageJs, /apiRejectProductMenuImage/);
     assert.match(pageJs, /applyMenuAiReviewFinal/);
     assert.match(pageJs, /techCard/);
     assert.match(pageJs, /ingredients/);
@@ -123,6 +131,7 @@ test('products frontend wires document linkage and catalog entry points', () => 
 
 test('products API reuses existing catalog engine and validates source documents', () => {
     const productsRoute = read('routes/products.js');
+    const menuPhotoService = read('services/menuPhotoGeneration.js');
     const migration = read('db/migrations/191_products_source_document_linkage.sql');
     const kitchenMigration = read('db/migrations/199_products_kitchen_fields.sql');
     const menuMigration = read('db/migrations/200_products_menu_structure_fields.sql');
@@ -160,9 +169,13 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(productsRoute, /normalizeMenuImageStudio/);
     assert.match(productsRoute, /MENU_IMAGE_STUDIO_SIZES/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
-    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'/);
-    assert.match(productsRoute, /OPENAI_MENU_IMAGE_MODEL/);
-    assert.match(productsRoute, /\/images\/generations/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/draft'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'[\s\S]+handleMenuImageDraftRequest/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/apply'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/reject'/);
+    assert.match(productsRoute, /router\.get\('\/:id\/menu-image\/status'/);
+    assert.match(menuPhotoService, /OPENAI_MENU_IMAGE_MODEL/);
+    assert.match(menuPhotoService, /\/images\/generations/);
     assert.match(kitchenMigration, /domain VARCHAR\(30\)/);
     assert.match(kitchenMigration, /kitchen_type VARCHAR\(30\)/);
     assert.match(kitchenMigration, /cake_decoration TEXT/);

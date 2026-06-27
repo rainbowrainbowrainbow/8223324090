@@ -11,6 +11,7 @@ const {
     normalizeUserId
 } = require('../services/taskPolicy');
 const {
+    DEFAULT_TASK_BUSINESS_CONTEXT,
     activeTaskBusinessContext,
     ensureTaskBusinessScope,
     ensureWritableTaskBusinessScope,
@@ -42,6 +43,13 @@ const {
 } = require('../services/hermesTaskMapper');
 const { requireHermesMutationGuard } = require('../services/hermesMutationGuard');
 const { withHermesIdempotency } = require('../services/hermesIdempotency');
+const {
+    buildMenuImagePrompt,
+    generateAndStoreMenuPhotoDraft,
+    normalizeMenuImageSize,
+    normalizeMenuImageStyle,
+    resolveMenuImageOpenAIModel
+} = require('../services/menuPhotoGeneration');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Hermes');
@@ -53,7 +61,12 @@ const SUPPORTED_ACTIONS = [
     'tasks.create',
     'tasks.complete',
     'tasks.reassign',
-    'tasks.reschedule'
+    'tasks.reschedule',
+    'menu_photos.read',
+    'menu_photos.candidates',
+    'menu_photos.draft',
+    'menu_photos.apply',
+    'menu_photos.reject'
 ];
 
 const PLANNED_MUTATION_ACTIONS = [];
@@ -109,6 +122,26 @@ const HERMES_RESCHEDULE_ALLOWED_FIELDS = new Set([
     'snooze_minutes',
     'snoozeHours',
     'snooze_hours'
+]);
+
+const HERMES_MENU_PHOTO_DRAFT_ALLOWED_FIELDS = new Set([
+    'settings',
+    'size',
+    'style'
+]);
+
+const HERMES_MENU_PHOTO_REJECT_ALLOWED_FIELDS = new Set([
+    'reason'
+]);
+
+const HERMES_MENU_PHOTO_STATUSES = new Set([
+    'draft',
+    'generating',
+    'ready',
+    'failed',
+    'approved',
+    'rejected',
+    'applied'
 ]);
 
 const MAX_HERMES_SUBTASKS = 50;
@@ -263,6 +296,26 @@ function isDateOnly(value) {
 
 function isPlainObject(value) {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function safeJsonObject(value) {
+    if (isPlainObject(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+        try {
+            const parsed = JSON.parse(value);
+            return isPlainObject(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+}
+
+function cleanNullableString(value, maxLength = 1000) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    return text.slice(0, maxLength);
 }
 
 function pushParam(params, value) {
@@ -508,6 +561,270 @@ function hermesMutationTaskBody(req, businessScope, task, meta = {}) {
     };
 }
 
+function parseMenuPhotoProductId(value) {
+    const id = cleanNullableString(value, 80);
+    return id && !/\s/.test(id) ? id : null;
+}
+
+function normalizeHermesMenuPhotoStatus(value, fallback = 'draft') {
+    const status = String(value || fallback).trim().toLowerCase();
+    return HERMES_MENU_PHOTO_STATUSES.has(status) ? status : fallback;
+}
+
+function normalizeHermesMenuImageStudio(value = {}) {
+    const raw = safeJsonObject(value);
+    const imageUrl = cleanNullableString(raw.imageUrl || raw.image_url, 2000);
+    const prompt = cleanNullableString(raw.prompt, 5000);
+    const preparedAt = raw.preparedAt || raw.prepared_at || null;
+    const generatedAt = raw.generatedAt || raw.generated_at || null;
+    const approvedAt = raw.approvedAt || raw.approved_at || null;
+    const appliedAt = raw.appliedAt || raw.applied_at || null;
+    const rejectedAt = raw.rejectedAt || raw.rejected_at || null;
+    const error = cleanNullableString(raw.error, 500);
+    const status = normalizeHermesMenuPhotoStatus(raw.status, 'draft');
+    if (!imageUrl && !prompt && !preparedAt && !generatedAt && !approvedAt && !appliedAt && !rejectedAt && !error && status === 'draft') {
+        return {};
+    }
+    return {
+        version: 1,
+        status,
+        source: cleanNullableString(raw.source, 40) || 'products-menu',
+        imageUrl,
+        prompt,
+        provider: cleanNullableString(raw.provider, 40),
+        model: cleanNullableString(raw.model, 100),
+        size: normalizeMenuImageSize(raw.size),
+        style: normalizeMenuImageStyle(raw.style),
+        preparedAt,
+        generatedAt,
+        approvedAt,
+        approvedBy: cleanNullableString(raw.approvedBy || raw.approved_by, 100),
+        appliedAt,
+        appliedBy: cleanNullableString(raw.appliedBy || raw.applied_by, 100),
+        rejectedAt,
+        rejectedBy: cleanNullableString(raw.rejectedBy || raw.rejected_by, 100),
+        previousImageUrl: cleanNullableString(raw.previousImageUrl || raw.previous_image_url, 2000),
+        storage: safeJsonObject(raw.storage),
+        error
+    };
+}
+
+function currentHermesMenuPhotoDraft(product = {}) {
+    return safeJsonObject(product.ai_card_draft || product.aiCardDraft || {});
+}
+
+function buildHermesMenuPhotoDraft(product = {}, imageStudioPatch = {}, options = {}) {
+    const currentDraft = safeJsonObject(options.currentDraft || currentHermesMenuPhotoDraft(product));
+    const currentImageStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
+    const imageStudio = normalizeHermesMenuImageStudio({
+        ...currentImageStudio,
+        ...imageStudioPatch
+    });
+    return {
+        ...currentDraft,
+        version: Number(currentDraft.version || 1) || 1,
+        status: cleanNullableString(currentDraft.status, 40) || 'draft',
+        source: cleanNullableString(currentDraft.source, 40) || 'stored',
+        aiAvailable: currentDraft.aiAvailable !== false,
+        generatedAt: currentDraft.generatedAt || currentDraft.generated_at || new Date().toISOString(),
+        imageStudio
+    };
+}
+
+function toHermesMenuPhotoDraft(imageStudio = {}) {
+    const normalized = normalizeHermesMenuImageStudio(imageStudio);
+    return {
+        status: normalized.status || 'draft',
+        imageUrl: normalized.imageUrl || null,
+        prompt: normalized.prompt || null,
+        provider: normalized.provider || null,
+        model: normalized.model || null,
+        size: normalized.size || null,
+        style: normalized.style || null,
+        generatedAt: normalized.generatedAt || null,
+        approvedAt: normalized.approvedAt || null,
+        approvedBy: normalized.approvedBy || null,
+        appliedAt: normalized.appliedAt || null,
+        appliedBy: normalized.appliedBy || null,
+        rejectedAt: normalized.rejectedAt || null,
+        rejectedBy: normalized.rejectedBy || null,
+        previousImageUrl: normalized.previousImageUrl || null,
+        error: normalized.error || null
+    };
+}
+
+function hermesMenuPhotoCrmUrl(req, product = {}) {
+    const baseUrl = getCrmBaseUrl(req).replace(/\/+$/, '');
+    const id = product.id ? encodeURIComponent(String(product.id)) : '';
+    return baseUrl ? `${baseUrl}/programs.html#kitchen-menu${id ? `:${id}` : ''}` : null;
+}
+
+function toHermesMenuPhotoProduct(product = {}, req) {
+    const draft = currentHermesMenuPhotoDraft(product);
+    return {
+        id: String(product.id),
+        code: cleanNullableString(product.code, 120),
+        name: cleanNullableString(product.name || product.label || product.code || product.id, 220),
+        businessContext: cleanNullableString(product.business_context || DEFAULT_TASK_BUSINESS_CONTEXT, 80),
+        currentImageUrl: cleanNullableString(product.icon_url, 2000),
+        draft: toHermesMenuPhotoDraft(draft.imageStudio || draft.image_studio || {}),
+        crm_url: hermesMenuPhotoCrmUrl(req, product)
+    };
+}
+
+function menuPhotoSelectSql(whereSql, options = {}) {
+    return `SELECT
+                p.id,
+                p.code,
+                p.name,
+                p.label,
+                p.business_context,
+                p.icon_url,
+                p.ai_card_draft,
+                p.domain,
+                p.kitchen_type,
+                p.menu_section,
+                p.serving_unit,
+                p.weight_value,
+                p.ingredients,
+                p.short_description,
+                p.description,
+                p.allergens,
+                p.tech_card,
+                p.price,
+                p.legacy_price,
+                p.availability_status,
+                p.is_active,
+                p.created_at,
+                p.updated_at
+            FROM products p
+            WHERE ${whereSql}
+              AND COALESCE(p.domain, 'program') = 'kitchen'
+              AND p.kitchen_type = 'menu'
+              AND COALESCE(p.is_active, true) = true
+              AND COALESCE(p.availability_status, 'active') <> 'hidden'
+            ${options.orderBy || ''}
+            ${options.limitSql || ''}
+            ${options.forUpdate ? 'FOR UPDATE' : ''}`;
+}
+
+async function selectHermesMenuPhotoProduct(query, productId, scopeOrContext, options = {}) {
+    const params = [];
+    const whereParts = [
+        `p.id = ${pushParam(params, productId)}`,
+        pushTaskBusinessScopeCondition(params, scopeOrContext, 'p')
+    ];
+    const result = await query.query(
+        menuPhotoSelectSql(whereParts.join('\n              AND '), {
+            forUpdate: options.forUpdate === true
+        }),
+        params
+    );
+    return result.rows[0] || null;
+}
+
+async function listHermesMenuPhotoCandidates(query, businessScope, limit) {
+    const params = [];
+    const whereParts = [
+        pushTaskBusinessScopeCondition(params, businessScope, 'p')
+    ];
+    const limitRef = pushParam(params, limit);
+    const result = await query.query(
+        menuPhotoSelectSql(whereParts.join('\n              AND '), {
+            orderBy: `ORDER BY
+                CASE WHEN NULLIF(p.icon_url, '') IS NULL THEN 0 ELSE 1 END ASC,
+                CASE COALESCE(p.ai_card_draft->'imageStudio'->>'status', 'draft')
+                    WHEN 'failed' THEN 0
+                    WHEN 'draft' THEN 1
+                    ELSE 2
+                END ASC,
+                COALESCE(p.updated_at, p.created_at) DESC,
+                p.name ASC`,
+            limitSql: `LIMIT ${limitRef}`
+        }),
+        params
+    );
+    return result.rows || [];
+}
+
+async function persistHermesMenuPhotoDraft(query, productId, businessContext, username, draft) {
+    await query.query(
+        `UPDATE products
+         SET ai_card_draft = $1::jsonb,
+             updated_at = NOW(),
+             updated_by = $2
+         WHERE id = $3
+           AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $4`,
+        [JSON.stringify(draft), username, productId, businessContext]
+    );
+}
+
+function menuPhotoPublicError(err) {
+    const message = String(err?.message || '');
+    if (err?.code === 'openai_not_configured' || /OPENAI_API_KEY is not configured/i.test(message)) {
+        return {
+            status: 503,
+            code: 'openai_not_configured',
+            error: 'OPENAI_API_KEY is not configured'
+        };
+    }
+    if (err?.code === 'menu_image_upload_failed') {
+        return {
+            status: 502,
+            code: 'menu_image_upload_failed',
+            error: 'Generated image could not be saved to CRM uploads'
+        };
+    }
+    if (err?.status === 429 || err?.code === 'openai_rate_limited') {
+        return {
+            status: 429,
+            code: 'menu_image_generation_rate_limited',
+            error: 'Menu image generation is temporarily rate limited'
+        };
+    }
+    return {
+        status: 502,
+        code: 'menu_image_generation_failed',
+        error: 'Menu image generation failed'
+    };
+}
+
+function normalizeHermesMenuPhotoDraftPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_MENU_PHOTO_DRAFT_ALLOWED_FIELDS, 'HERMES_UNSUPPORTED_MENU_PHOTO_FIELD');
+    const settings = safeJsonObject(body.settings || {});
+    return {
+        size: body.size || settings.size || null,
+        style: body.style || settings.style || null
+    };
+}
+
+function normalizeHermesMenuPhotoRejectPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_MENU_PHOTO_REJECT_ALLOWED_FIELDS, 'HERMES_UNSUPPORTED_MENU_PHOTO_FIELD');
+    return {
+        reason: cleanNullableString(body.reason, 500)
+    };
+}
+
+function hermesMenuPhotoBody(req, businessScope, product, meta = {}) {
+    return {
+        success: true,
+        product: toHermesMenuPhotoProduct(product, req),
+        meta: {
+            businessScope: taskBusinessScopeMeta(businessScope),
+            sourceSurface: 'hermes',
+            source: HERMES_INTEGRATION_ID,
+            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
+            ...meta
+        }
+    };
+}
+
 function getKleshnya() {
     return require('../services/kleshnya');
 }
@@ -625,6 +942,340 @@ function createHermesRouter(options = {}) {
 
     router.get('/capabilities', (req, res) => {
         res.json(buildCapabilitiesPayload());
+    });
+
+    router.get('/menu-photos/candidates', async (req, res) => {
+        try {
+            const businessScope = ensureTaskBusinessScope(req, res);
+            if (!businessScope) return;
+            const limit = parseLimit(req.query.limit);
+            const rows = await listHermesMenuPhotoCandidates(query, businessScope, limit);
+
+            res.json({
+                success: true,
+                items: rows.map(product => toHermesMenuPhotoProduct(product, req)),
+                pagination: toHermesPagination({
+                    nextCursor: null,
+                    hasMore: false,
+                    limit
+                }),
+                meta: {
+                    businessScope: taskBusinessScopeMeta(businessScope)
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_REQUEST', err.message);
+            }
+            log.error('Hermes menu photo candidates error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo candidates failed');
+        }
+    });
+
+    router.get('/menu-photos/:productId', async (req, res) => {
+        try {
+            const productId = parseMenuPhotoProductId(req.params.productId);
+            if (!productId) {
+                return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+            }
+            const businessScope = ensureTaskBusinessScope(req, res);
+            if (!businessScope) return;
+            const product = await selectHermesMenuPhotoProduct(query, productId, businessScope);
+            if (!product) {
+                return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+            }
+
+            res.json({
+                success: true,
+                product: toHermesMenuPhotoProduct(product, req),
+                meta: {
+                    businessScope: taskBusinessScopeMeta(businessScope)
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_REQUEST', err.message);
+            }
+            log.error('Hermes menu photo detail error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo detail failed');
+        }
+    });
+
+    router.post('/menu-photos/:productId/draft', requireHermesMutationGuard, async (req, res) => {
+        const productId = parseMenuPhotoProductId(req.params.productId);
+        if (!productId) {
+            return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+        }
+
+        let payload;
+        let businessScope;
+        try {
+            payload = normalizeHermesMenuPhotoDraftPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', err.message);
+            }
+            log.error('Hermes menu photo draft preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo draft failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const businessContext = activeTaskBusinessContext(businessScope);
+                const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext);
+                if (!product) {
+                    throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+                }
+
+                const currentDraft = currentHermesMenuPhotoDraft(product);
+                const currentStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
+                const size = normalizeMenuImageSize(payload.size || currentStudio.size);
+                const style = normalizeMenuImageStyle(payload.style || currentStudio.style);
+                const prompt = buildMenuImagePrompt(product, { size, style });
+                const preparedAt = new Date().toISOString();
+                const generatingStudio = normalizeHermesMenuImageStudio({
+                    ...currentStudio,
+                    status: 'generating',
+                    source: 'openai',
+                    size,
+                    style,
+                    imageUrl: null,
+                    prompt,
+                    preparedAt: currentStudio.preparedAt || preparedAt,
+                    generatedAt: null,
+                    provider: 'openai',
+                    model: resolveMenuImageOpenAIModel(),
+                    previousImageUrl: product.icon_url || null,
+                    error: null
+                });
+                const generatingDraft = buildHermesMenuPhotoDraft(product, generatingStudio, { currentDraft });
+                await persistHermesMenuPhotoDraft(mutationPool, productId, businessContext, req.user?.username || 'hermes', generatingDraft);
+
+                try {
+                    const generatedStudio = await generateAndStoreMenuPhotoDraft(product, { size, style, prompt });
+                    const readyStudio = normalizeHermesMenuImageStudio({
+                        ...generatingStudio,
+                        ...generatedStudio,
+                        status: 'ready',
+                        previousImageUrl: product.icon_url || null,
+                        error: null
+                    });
+                    const readyDraft = buildHermesMenuPhotoDraft(product, readyStudio, { currentDraft });
+                    await persistHermesMenuPhotoDraft(mutationPool, productId, businessContext, req.user?.username || 'hermes', readyDraft);
+
+                    return {
+                        status: 200,
+                        body: hermesMenuPhotoBody(req, businessScope, {
+                            ...product,
+                            ai_card_draft: readyDraft
+                        }, {
+                            status: 'ready'
+                        })
+                    };
+                } catch (err) {
+                    const publicError = menuPhotoPublicError(err);
+                    const failedStudio = normalizeHermesMenuImageStudio({
+                        ...generatingStudio,
+                        status: 'failed',
+                        imageUrl: null,
+                        prompt: err.prompt || prompt,
+                        size: err.size || size,
+                        style: err.style || style,
+                        generatedAt: new Date().toISOString(),
+                        provider: generatingStudio.provider || 'openai',
+                        model: generatingStudio.model || resolveMenuImageOpenAIModel(),
+                        previousImageUrl: product.icon_url || null,
+                        error: publicError.error
+                    });
+                    const failedDraft = buildHermesMenuPhotoDraft(product, failedStudio, { currentDraft });
+                    await persistHermesMenuPhotoDraft(mutationPool, productId, businessContext, req.user?.username || 'hermes', failedDraft);
+
+                    return {
+                        status: publicError.status,
+                        body: {
+                            success: false,
+                            status: 'failed',
+                            error: publicError.error,
+                            code: publicError.code,
+                            product: toHermesMenuPhotoProduct({
+                                ...product,
+                                ai_card_draft: failedDraft
+                            }, req),
+                            meta: {
+                                businessScope: taskBusinessScopeMeta(businessScope),
+                                sourceSurface: 'hermes',
+                                source: HERMES_INTEGRATION_ID,
+                                idempotencyKey: req.hermesMutation?.idempotencyKey || null
+                            }
+                        }
+                    };
+                }
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/menu-photos/:productId/draft'
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MENU_PHOTO_MUTATION_FAILED', err.message);
+            }
+            log.error('Hermes menu photo draft error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo draft failed');
+        }
+    });
+
+    router.post('/menu-photos/:productId/apply', requireHermesMutationGuard, async (req, res) => {
+        const productId = parseMenuPhotoProductId(req.params.productId);
+        if (!productId) {
+            return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+        }
+
+        let businessScope;
+        try {
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', err.message);
+            }
+            log.error('Hermes menu photo apply preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo apply failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const businessContext = activeTaskBusinessContext(businessScope);
+                const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext, { forUpdate: true });
+                if (!product) {
+                    throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+                }
+
+                const currentDraft = currentHermesMenuPhotoDraft(product);
+                const imageStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
+                if (!imageStudio.imageUrl) {
+                    throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_MISSING', 'No ready menu image draft to apply');
+                }
+                if (!['ready', 'approved', 'applied'].includes(imageStudio.status)) {
+                    throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_NOT_READY', 'Menu image draft is not ready to apply');
+                }
+
+                const now = new Date().toISOString();
+                const alreadyApplied = product.icon_url === imageStudio.imageUrl && imageStudio.status === 'applied';
+                const appliedStudio = normalizeHermesMenuImageStudio({
+                    ...imageStudio,
+                    status: 'applied',
+                    approvedAt: imageStudio.approvedAt || now,
+                    approvedBy: imageStudio.approvedBy || req.user?.username || 'hermes',
+                    appliedAt: alreadyApplied ? (imageStudio.appliedAt || now) : now,
+                    appliedBy: req.user?.username || 'hermes',
+                    previousImageUrl: alreadyApplied ? (imageStudio.previousImageUrl || product.icon_url || null) : (product.icon_url || null),
+                    error: null
+                });
+                const draft = buildHermesMenuPhotoDraft(product, appliedStudio, { currentDraft });
+                await mutationPool.query(
+                    `UPDATE products
+                     SET icon_url = $1,
+                         ai_card_draft = $2::jsonb,
+                         updated_at = NOW(),
+                         updated_by = $3
+                     WHERE id = $4
+                       AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $5`,
+                    [appliedStudio.imageUrl, JSON.stringify(draft), req.user?.username || 'hermes', productId, businessContext]
+                );
+
+                return {
+                    status: 200,
+                    body: hermesMenuPhotoBody(req, businessScope, {
+                        ...product,
+                        icon_url: appliedStudio.imageUrl,
+                        ai_card_draft: draft
+                    }, {
+                        status: 'applied'
+                    })
+                };
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/menu-photos/:productId/apply',
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MENU_PHOTO_MUTATION_FAILED', err.message);
+            }
+            log.error('Hermes menu photo apply error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo apply failed');
+        }
+    });
+
+    router.post('/menu-photos/:productId/reject', requireHermesMutationGuard, async (req, res) => {
+        const productId = parseMenuPhotoProductId(req.params.productId);
+        if (!productId) {
+            return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+        }
+
+        let payload;
+        let businessScope;
+        try {
+            payload = normalizeHermesMenuPhotoRejectPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', err.message);
+            }
+            log.error('Hermes menu photo reject preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo reject failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const businessContext = activeTaskBusinessContext(businessScope);
+                const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext, { forUpdate: true });
+                if (!product) {
+                    throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+                }
+
+                const currentDraft = currentHermesMenuPhotoDraft(product);
+                const imageStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
+                if (!Object.keys(imageStudio).length) {
+                    throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_MISSING', 'No menu image draft to reject');
+                }
+                if (imageStudio.status === 'applied' && product.icon_url === imageStudio.imageUrl) {
+                    throw hermesHttpError(409, 'HERMES_MENU_PHOTO_ALREADY_APPLIED', 'Applied menu image cannot be rejected; generate a new draft first');
+                }
+
+                const rejectedStudio = normalizeHermesMenuImageStudio({
+                    ...imageStudio,
+                    status: 'rejected',
+                    rejectedAt: new Date().toISOString(),
+                    rejectedBy: req.user?.username || 'hermes',
+                    error: payload.reason
+                });
+                const draft = buildHermesMenuPhotoDraft(product, rejectedStudio, { currentDraft });
+                await persistHermesMenuPhotoDraft(mutationPool, productId, businessContext, req.user?.username || 'hermes', draft);
+
+                return {
+                    status: 200,
+                    body: hermesMenuPhotoBody(req, businessScope, {
+                        ...product,
+                        ai_card_draft: draft
+                    }, {
+                        status: 'rejected'
+                    })
+                };
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/menu-photos/:productId/reject',
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MENU_PHOTO_MUTATION_FAILED', err.message);
+            }
+            log.error('Hermes menu photo reject error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo reject failed');
+        }
     });
 
     router.post('/tasks', requireHermesMutationGuard, async (req, res) => {

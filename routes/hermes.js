@@ -50,6 +50,7 @@ const {
     normalizeMenuImageStyle,
     resolveMenuImageOpenAIModel
 } = require('../services/menuPhotoGeneration');
+const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Hermes');
@@ -58,6 +59,7 @@ const SUPPORTED_ACTIONS = [
     'tasks.read',
     'tasks.detail',
     'tasks.history',
+    'tasks.my_cabinet',
     'tasks.create',
     'tasks.complete',
     'tasks.reassign',
@@ -286,8 +288,92 @@ function parseLimit(value) {
 }
 
 function parsePositiveInt(value) {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    const text = String(value ?? '').trim();
+    if (!/^\d+$/.test(text)) return null;
+    const parsed = Number.parseInt(text, 10);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function envText(env, key) {
+    return String(env?.[key] || '').trim();
+}
+
+function parseHermesOwnerAllowlist(env = process.env) {
+    const raw = envText(env, 'EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS');
+    if (!raw) return { enabled: false, ids: new Set() };
+    const ids = raw
+        .split(/[,;\s]+/)
+        .map(parsePositiveInt)
+        .filter(Boolean);
+    return { enabled: true, ids: new Set(ids) };
+}
+
+function resolveHermesCabinetOwnerId(req, env = process.env) {
+    const hasQueryOwner = req.query?.ownerUserId !== undefined && String(req.query.ownerUserId || '').trim() !== '';
+    const rawOwner = hasQueryOwner
+        ? String(req.query.ownerUserId || '').trim()
+        : envText(env, 'EVENT_GENIX_CRM_AGENT_OWNER_USER_ID');
+
+    if (!rawOwner) {
+        throw hermesHttpError(400, 'HERMES_OWNER_REQUIRED', 'ownerUserId is required');
+    }
+
+    const ownerUserId = parsePositiveInt(rawOwner);
+    if (!ownerUserId) {
+        throw hermesHttpError(400, 'HERMES_INVALID_OWNER', 'ownerUserId must be a positive integer');
+    }
+
+    const allowlist = parseHermesOwnerAllowlist(env);
+    if (allowlist.enabled && !allowlist.ids.has(ownerUserId)) {
+        throw hermesHttpError(403, 'HERMES_OWNER_NOT_ALLOWED', 'ownerUserId is not allowed for Hermes my-cabinet access');
+    }
+
+    return ownerUserId;
+}
+
+async function loadHermesCabinetOwner(queryable, ownerUserId) {
+    const result = await queryable.query(
+        `SELECT id, username, name, role, business_contexts, default_business_context, is_active
+         FROM users
+         WHERE id = $1
+         LIMIT 1`,
+        [ownerUserId]
+    );
+    const owner = result.rows[0] || null;
+    if (!owner || owner.is_active === false) {
+        throw hermesHttpError(404, 'HERMES_OWNER_NOT_FOUND', 'Hermes my-cabinet owner was not found');
+    }
+    return {
+        ...owner,
+        defaultBusinessContext: owner.default_business_context,
+        businessContexts: owner.business_contexts
+    };
+}
+
+function businessScopeRequestForUser(req, user) {
+    return {
+        ...req,
+        user,
+        query: req.query || {},
+        body: req.body || {},
+        headers: req.headers || {}
+    };
+}
+
+function assertHermesActorCanReadOwnerBusinessScope(actorScope = {}, ownerScope = {}) {
+    const actorAllowed = new Set(
+        (Array.isArray(actorScope.allowedContexts) && actorScope.allowedContexts.length
+            ? actorScope.allowedContexts
+            : actorScope.selectedContexts || [actorScope.activeContext])
+            .filter(Boolean)
+    );
+    const ownerContexts = (Array.isArray(ownerScope.selectedContexts) && ownerScope.selectedContexts.length
+        ? ownerScope.selectedContexts
+        : [ownerScope.activeContext]).filter(Boolean);
+
+    if (actorAllowed.size && ownerContexts.some(context => !actorAllowed.has(context))) {
+        throw hermesHttpError(403, 'business_context_unavailable', 'Business scope is not available for this Hermes integration');
+    }
 }
 
 function isDateOnly(value) {
@@ -908,7 +994,8 @@ function applyListFilters(req, queryParts) {
     }
 }
 
-function buildCapabilitiesPayload() {
+function buildCapabilitiesPayload(env = process.env) {
+    const ownerAllowlist = parseHermesOwnerAllowlist(env);
     return {
         success: true,
         integrationId: HERMES_INTEGRATION_ID,
@@ -921,6 +1008,11 @@ function buildCapabilitiesPayload() {
         supportedActions: SUPPORTED_ACTIONS,
         mutationActionsAvailable: true,
         plannedMutationActions: PLANNED_MUTATION_ACTIONS,
+        myCabinet: {
+            available: true,
+            defaultOwnerConfigured: Boolean(envText(env, 'EVENT_GENIX_CRM_AGENT_OWNER_USER_ID')),
+            ownerAllowlistEnabled: ownerAllowlist.enabled
+        },
         webhooks: {
             crmToHermesEnabled: false
         }
@@ -931,6 +1023,7 @@ function createHermesRouter(options = {}) {
     const router = express.Router();
     const authMiddleware = options.authMiddleware || hermesAuth;
     const query = options.pool || pool;
+    const env = options.env || process.env;
     const rateLimiter = options.rateLimiter !== undefined
         ? options.rateLimiter
         : (options.rateLimit === false ? null : createHermesRateLimiter(options.rateLimit || {}));
@@ -941,7 +1034,44 @@ function createHermesRouter(options = {}) {
     router.use(authMiddleware);
 
     router.get('/capabilities', (req, res) => {
-        res.json(buildCapabilitiesPayload());
+        res.json(buildCapabilitiesPayload(env));
+    });
+
+    router.get('/my-cabinet', async (req, res) => {
+        try {
+            const ownerUserId = resolveHermesCabinetOwnerId(req, env);
+            const owner = await loadHermesCabinetOwner(query, ownerUserId);
+            const actorScope = ensureTaskBusinessScope(req, res);
+            if (!actorScope) return;
+            const ownerScope = ensureTaskBusinessScope(businessScopeRequestForUser(req, owner), res);
+            if (!ownerScope) return;
+            assertHermesActorCanReadOwnerBusinessScope(actorScope, ownerScope);
+
+            const projection = await buildTaskCabinetProjection({
+                pool: query,
+                user: owner,
+                businessScope: ownerScope,
+                ensurePreferences: false
+            });
+
+            res.json({
+                ...projection,
+                meta: {
+                    ...(projection.meta || {}),
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    ownerUserId,
+                    businessContext: activeTaskBusinessContext(ownerScope),
+                    projection: 'tasks.my_cabinet'
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MY_CABINET_FAILED', err.message);
+            }
+            log.error('Hermes my-cabinet projection error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes my-cabinet projection failed');
+        }
     });
 
     router.get('/menu-photos/candidates', async (req, res) => {

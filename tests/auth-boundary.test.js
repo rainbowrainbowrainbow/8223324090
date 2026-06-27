@@ -205,6 +205,7 @@ describe('API auth boundary middleware', () => {
             'tasks.read',
             'tasks.detail',
             'tasks.history',
+            'tasks.my_cabinet',
             'tasks.create',
             'tasks.complete',
             'tasks.reassign',

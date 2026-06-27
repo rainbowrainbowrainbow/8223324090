@@ -58,6 +58,7 @@ draft endpoints are implemented.
 | Method | Path | Purpose | Mutation |
 | --- | --- | --- | --- |
 | `GET` | `/api/hermes/capabilities` | Integration discovery and limits | No |
+| `GET` | `/api/hermes/my-cabinet` | Read-only My Cabinet/My Day task projection | No |
 | `GET` | `/api/hermes/tasks` | Bounded task list | No |
 | `GET` | `/api/hermes/tasks/:id` | Task detail | No |
 | `GET` | `/api/hermes/tasks/:id/history` | Task action history | No |
@@ -144,9 +145,11 @@ document does not define real values.
 Planned CRM-side env names:
 
 ```bash
-HERMES_API_KEY=<server-side-secret>
-HERMES_ACTOR_USER_ID=<crm-user-id>
-HERMES_ALLOWED_BUSINESS_CONTEXTS=<optional-comma-list>
+HERMES_API_KEY=<secret>
+HERMES_ACTOR_USER_ID=<crm_user_id_for_hermes_actor>
+HERMES_ALLOWED_BUSINESS_CONTEXTS=event_genix
+EVENT_GENIX_CRM_AGENT_OWNER_USER_ID=4
+EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS=4
 ```
 
 Planned Hermes-side local configuration names:
@@ -217,6 +220,7 @@ Example:
     "tasks.read",
     "tasks.detail",
     "tasks.history",
+    "tasks.my_cabinet",
     "tasks.create",
     "tasks.complete",
     "tasks.reassign",
@@ -229,11 +233,89 @@ Example:
   ],
   "mutationActionsAvailable": true,
   "plannedMutationActions": [],
+  "myCabinet": {
+    "available": true,
+    "defaultOwnerConfigured": true,
+    "ownerAllowlistEnabled": true
+  },
   "webhooks": {
     "crmToHermesEnabled": false
   }
 }
 ```
+
+## My Cabinet Task Projection
+
+Endpoint:
+
+```http
+GET /api/hermes/my-cabinet?ownerUserId=4&businessContext=event_genix
+```
+
+Example:
+
+```bash
+curl -s "https://<crm-host>/api/hermes/my-cabinet?ownerUserId=4&businessContext=event_genix" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: Hermes-Agent/Event-Genix-CRM-Integration" \
+  -H "X-Integration-Id: hermes-event-genix-crm" \
+  -H "x-api-key: <secret>"
+```
+
+This is the stable read-only Hermes path for the same task projection shown by
+the CRM UI in `/api/tasks/my-cabinet` and the left sidebar "My Day" counters.
+It must use Hermes `x-api-key` auth, not a personal CRM password, JWT, cookie,
+or stored browser session.
+
+Owner resolution:
+
+- `ownerUserId` query param wins when present.
+- Otherwise CRM reads `EVENT_GENIX_CRM_AGENT_OWNER_USER_ID`.
+- If `EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS` is set, the resolved owner must
+  be in that comma/space separated allowlist.
+
+Controlled owner errors:
+
+- `400 HERMES_OWNER_REQUIRED`
+- `400 HERMES_INVALID_OWNER`
+- `403 HERMES_OWNER_NOT_ALLOWED`
+- `404 HERMES_OWNER_NOT_FOUND`
+
+Response shape matches the core `/api/tasks/my-cabinet` payload:
+
+```json
+{
+  "success": true,
+  "focus": [],
+  "today": [],
+  "next": [],
+  "deferred": [],
+  "waiting": [],
+  "private": [],
+  "overdue": [],
+  "inbox": [],
+  "completedHistory": [],
+  "all": [],
+  "preferences": {},
+  "stats": {
+    "openTaskCount": 0,
+    "activeOpenCount": 0,
+    "todayDone": 0,
+    "taskQuick": {}
+  },
+  "meta": {
+    "sourceSurface": "hermes",
+    "source": "hermes-event-genix-crm",
+    "ownerUserId": 4,
+    "businessContext": "event_genix",
+    "projection": "tasks.my_cabinet"
+  }
+}
+```
+
+Hermes reads existing task preferences for the owner. It must not create,
+complete, reassign, reschedule, or otherwise mutate tasks through this endpoint.
 
 ## Task List Contract
 

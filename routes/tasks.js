@@ -99,6 +99,10 @@ const {
 const {
     emitTaskAssignedToOwner: emitCanonicalTaskAssignedToOwner
 } = require('../services/taskNotifications');
+const {
+    buildTaskCabinetProjection,
+    ensureTaskPreferences
+} = require('../services/taskCabinetProjection');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
@@ -1358,24 +1362,12 @@ router.post('/dedup-cleanup', requireRole('admin'), async (req, res) => {
     }
 });
 
-// GET /api/tasks/:id — single task
-async function ensureTaskPreferences(userId) {
-    const result = await pool.query(
-        `INSERT INTO task_user_preferences (user_id)
-         VALUES ($1)
-         ON CONFLICT (user_id) DO UPDATE SET updated_at = task_user_preferences.updated_at
-         RETURNING *`,
-        [userId]
-    );
-    return result.rows[0];
-}
-
 // GET /api/tasks/preferences — personal task OS preferences
 router.get('/preferences', async (req, res) => {
     try {
         const userId = normalizeUserId(req.user);
         if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
-        const prefs = await ensureTaskPreferences(userId);
+        const prefs = await ensureTaskPreferences(pool, userId);
         res.json({ success: true, preferences: prefs });
     } catch (err) {
         log.error('Task preferences lookup error', err);
@@ -1388,7 +1380,7 @@ router.patch('/preferences', async (req, res) => {
     try {
         const userId = normalizeUserId(req.user);
         if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
-        await ensureTaskPreferences(userId);
+        await ensureTaskPreferences(pool, userId);
 
         const allowed = {
             focus_limit: value => Math.max(1, Math.min(9, parseInt(value, 10) || 3)),
@@ -1413,7 +1405,7 @@ router.patch('/preferences', async (req, res) => {
             }
         });
         if (!sets.length) {
-            const prefs = await ensureTaskPreferences(userId);
+            const prefs = await ensureTaskPreferences(pool, userId);
             return res.json({ success: true, preferences: prefs });
         }
         values.push(userId);
@@ -1557,261 +1549,15 @@ router.get('/my-cabinet', async (req, res) => {
     try {
         const businessScope = requireTaskReadScope(req, res);
         if (!businessScope) return;
-        const userId = normalizeUserId(req.user);
-        if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
-
-        const ownParams = [];
-        const ownMatch = buildTaskOwnerMatch(req.user, ownParams, 't');
-        const ownBusinessCondition = appendTaskBusinessScopeSql(ownParams, businessScope, 't');
-        const today = todayKyivDate();
-        const tomorrow = addDays(today, 1);
-        const nextWeek = addDays(today, 7);
-        const completedHistoryLimit = 36;
-
-        const result = await pool.query(
-            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
-                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                    COALESCE(st.total, 0)::int AS subtask_count,
-                    COALESCE(st.done, 0)::int AS subtask_done_count
-             FROM tasks t
-             LEFT JOIN users u ON u.id = t.owner_user_id
-             LEFT JOIN (
-                SELECT task_id,
-                       COUNT(*)::int AS total,
-                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                FROM task_subtasks
-                GROUP BY task_id
-             ) st ON st.task_id = t.id
-             LEFT JOIN (
-                SELECT task_id,
-                       json_agg(json_build_object(
-                           'id', id,
-                           'task_id', task_id,
-                           'title', title,
-                           'is_done', is_done,
-                           'sort_order', sort_order,
-                           'source_type', COALESCE(source_type, 'manual'),
-                           'created_at', created_at,
-                           'completed_at', completed_at,
-                           'updated_at', updated_at
-                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
-                FROM task_subtasks
-                GROUP BY task_id
-             ) subtask_rows ON subtask_rows.task_id = t.id
-             WHERE ${ownMatch}
-               ${ownBusinessCondition}
-               AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-              ORDER BY
-                 ${taskPriorityOrderSql('t')},
-                 CASE WHEN COALESCE(st.total, 0) > 0 THEN 0 ELSE 1 END,
-                 CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
-                 COALESCE(t.focus_rank, 99),
-                 ${canonicalTaskOrderSql('t')},
-                 COALESCE(t.snoozed_until, t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC,
-                 t.created_at DESC,
-                 t.id DESC
-             LIMIT 160`,
-            ownParams
-        );
-        const rows = result.rows.map(normalizeTaskPayload);
-        const openCountResult = await pool.query(
-            `SELECT COUNT(*)::int AS open_count
-             FROM tasks t
-             WHERE ${ownMatch}
-               ${ownBusinessCondition}
-               AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`,
-            ownParams
-        );
-        const openTaskCount = Number(openCountResult.rows[0]?.open_count || rows.length);
-
-        const completedHistoryParams = [...ownParams, completedHistoryLimit];
-        const completedHistoryResult = await pool.query(
-            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
-                    COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                    COALESCE(st.total, 0)::int AS subtask_count,
-                    COALESCE(st.done, 0)::int AS subtask_done_count
-             FROM tasks t
-             LEFT JOIN users u ON u.id = t.owner_user_id
-             LEFT JOIN (
-                SELECT task_id,
-                       COUNT(*)::int AS total,
-                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
-                FROM task_subtasks
-                GROUP BY task_id
-             ) st ON st.task_id = t.id
-             LEFT JOIN (
-                SELECT task_id,
-                       json_agg(json_build_object(
-                           'id', id,
-                           'task_id', task_id,
-                           'title', title,
-                           'is_done', is_done,
-                           'sort_order', sort_order,
-                           'source_type', COALESCE(source_type, 'manual'),
-                           'created_at', created_at,
-                           'completed_at', completed_at,
-                           'updated_at', updated_at
-                       ) ORDER BY sort_order ASC, id ASC) AS subtasks
-                FROM task_subtasks
-                GROUP BY task_id
-             ) subtask_rows ON subtask_rows.task_id = t.id
-             WHERE ${ownMatch}
-               ${ownBusinessCondition}
-               AND COALESCE(t.status, 'todo') = 'done'
-             ORDER BY COALESCE(t.completed_at, t.updated_at, t.created_at) DESC, t.id DESC
-             LIMIT $${completedHistoryParams.length}`,
-            completedHistoryParams
-        );
-        const completedHistory = completedHistoryResult.rows.map(normalizeTaskPayload);
-        const now = new Date();
-
-        const buckets = {
-            focus: [],
-            today: [],
-            next: [],
-            deferred: [],
-            waiting: [],
-            private: [],
-            overdue: [],
-            inbox: []
-        };
-        rows.forEach(task => {
-            const dueDate = taskWorkloadDate(task);
-            const workflow = task.workflowState || 'todo';
-            const visibility = task.visibility || 'team';
-            const mode = task.taskMode || 'work';
-            if (Number(task.focusRank || 0) > 0) buckets.focus.push(task);
-            if (workflow === 'waiting' || task.taskKind === 'waiting') buckets.waiting.push(task);
-            if (visibility === 'private' || mode === 'private') buckets.private.push(task);
-            if (workflow === 'inbox') buckets.inbox.push(task);
-            if (isTaskDeferred(task, now)) {
-                buckets.deferred.push(task);
-                return;
-            }
-            if (dueDate && dueDate < today) buckets.overdue.push(task);
-            if (dueDate === today || !dueDate) buckets.today.push(task);
-            if (dueDate && dueDate >= tomorrow && dueDate <= nextWeek) buckets.next.push(task);
+        const projection = await buildTaskCabinetProjection({
+            pool,
+            user: req.user,
+            businessScope
         });
-
-        const quickParams = [];
-        const quickOwnerMatch = buildTaskOwnerMatch(req.user, quickParams, 't');
-        const quickBusinessCondition = appendTaskBusinessScopeSql(quickParams, businessScope, 't');
-        quickParams.push(today);
-        const quickDateSql = taskWorkloadDateSql('t');
-        const quickResult = await pool.query(
-            `SELECT
-                    (
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
-                        + COALESCE(SUM(COALESCE(st.done, 0)), 0)
-                    )::int AS done_total,
-                    (
-                        COUNT(*) FILTER (
-                            WHERE COALESCE(t.status, 'todo') = 'done'
-                              AND t.completed_at IS NOT NULL
-                              AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                        )
-                        + COALESCE(SUM(COALESCE(st.done_today, 0)), 0)
-                    )::int AS done_today,
-                    COUNT(*) FILTER (
-                        WHERE COALESCE(t.status, 'todo') = 'done'
-                          AND t.completed_at IS NOT NULL
-                          AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                    )::int AS parent_done_today,
-                    COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
-                    COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_done_total,
-                    COUNT(*) FILTER (
-                        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-                          AND (${quickDateSql} = $${quickParams.length}::date OR ${quickDateSql} IS NULL)
-                    )::int AS remaining_today,
-                    COUNT(*) FILTER (
-                        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-                          AND ${quickDateSql} < $${quickParams.length}::date
-                    )::int AS overdue_carryover,
-                    COUNT(*) FILTER (
-                        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-                          AND (${quickDateSql} <= $${quickParams.length}::date OR ${quickDateSql} IS NULL)
-                    )::int AS active_my_day
-             FROM tasks t
-             LEFT JOIN (
-                SELECT task_id,
-                       COUNT(*) FILTER (WHERE is_done = true)::int AS done,
-                       COUNT(*) FILTER (
-                           WHERE is_done = true
-                             AND completed_at IS NOT NULL
-                             AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${quickParams.length}::date
-                       )::int AS done_today
-                FROM task_subtasks
-                GROUP BY task_id
-             ) st ON st.task_id = t.id
-             WHERE ${quickOwnerMatch}
-               ${quickBusinessCondition}`,
-            quickParams
-        );
-        const quickStats = quickResult.rows[0] || {};
-        const remainingToday = Number(quickStats.remaining_today || 0);
-        const overdueCarryover = Number(quickStats.overdue_carryover || 0);
-        const activeMyDay = Number(quickStats.active_my_day || 0) || remainingToday + overdueCarryover || buckets.today.length + buckets.overdue.length;
-        const prefs = await ensureTaskPreferences(userId);
-        res.json({
-            success: true,
-            focus: buckets.focus.slice(0, prefs.focus_limit || 3),
-            today: buckets.today,
-            next: buckets.next,
-            deferred: buckets.deferred,
-            waiting: buckets.waiting,
-            private: buckets.private,
-            overdue: buckets.overdue,
-            inbox: buckets.inbox,
-            completedHistory,
-            all: rows,
-            preferences: prefs,
-            stats: {
-                todayDone: quickStats.done_today || 0,
-                todayPlanned: remainingToday || buckets.today.length,
-                todayWorkloadCount: remainingToday || buckets.today.length,
-                overdueCarryover,
-                overdueCarryoverCount: overdueCarryover,
-                activeMyDay,
-                activeMyDayCount: activeMyDay,
-                openTaskCount,
-                activeOpenCount: openTaskCount,
-                taskQuick: {
-                    completed: quickStats.done_today || 0,
-                    completedToday: quickStats.done_today || 0,
-                    completedTotal: quickStats.done_total || 0,
-                    completedParentToday: quickStats.parent_done_today || 0,
-                    completedSubtasksToday: quickStats.subtask_done_today || 0,
-                    completedSubtasksTotal: quickStats.subtask_done_total || 0,
-                    completedHistoryShown: completedHistory.length,
-                    completedHistoryOverflow: Math.max(0, Number(quickStats.done_total || 0) - completedHistory.length),
-                    remaining: activeMyDay,
-                    todayRemaining: remainingToday || buckets.today.length,
-                    overdueCarryover,
-                    activeMyDay,
-                    open: openTaskCount,
-                    openTotal: openTaskCount,
-                    sidebarOpenWorkload: openTaskCount,
-                    sidebarScope: 'all_open_owned_tasks_in_business_scope',
-                    scope: 'completed_units_today_and_active_my_day_or_undated',
-                    completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks'
-                },
-                waitingCount: buckets.waiting.length,
-                deferredCount: buckets.deferred.length,
-                overdueCount: buckets.overdue.length,
-                privateCount: buckets.private.length,
-                inboxCount: buckets.inbox.length,
-                focusCount: buckets.focus.length
-            },
-            meta: {
-                canonicalOwnerField: 'tasks.owner_user_id',
-                projection: 'my_cabinet',
-                privacyRule: 'private/me_only tasks are owner-only',
-                businessScope: taskBusinessScopeMeta(businessScope)
-            }
-        });
+        res.json(projection);
     } catch (err) {
         log.error('My cabinet task projection error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
     }
 });
 

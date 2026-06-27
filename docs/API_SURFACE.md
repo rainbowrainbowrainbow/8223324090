@@ -55,7 +55,7 @@ focused route tests in the same pack.
 | `/api/gamification` | `routes/gamification.js` | gamification |
 | `/api/graduation` | `routes/graduation.js` | graduation |
 | `/api/guardian` | `routes/guardian.js` | guardian |
-| `/api/hermes` | `routes/hermes.js` | Hermes task and menu photo integration |
+| `/api/hermes` | `routes/hermes.js` | Hermes task, My Cabinet, and menu photo integration |
 | `/api/history` | `routes/history.js` | history |
 | `/api/hr` | `routes/hr.js` | hr |
 | `/api/kleshnya` | `routes/kleshnya.js` | kleshnya |

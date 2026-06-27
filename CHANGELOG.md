@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.42 - Hermes My Cabinet Access
+
+### Hermes my-cabinet release / Strict owner validation / Docs / (Клешня, 27.06.2026) [codex]
+- **Hermes отримав release-ready read-only доступ до "Мого дня"** - `GET /api/hermes/my-cabinet` повертає task projection для дозволеного owner без CRM JWT, cookies або password.
+- **Projection logic винесено в спільний service** - `/api/tasks/my-cabinet` і Hermes route використовують `services/taskCabinetProjection.js`, а UI payload лишається сумісним.
+- **Owner доступ закрито allowlist/default правилами** - підтримано `ownerUserId`, `EVENT_GENIX_CRM_AGENT_OWNER_USER_ID`, `EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS` і контрольовані Hermes error codes.
+- **Strict validation закрила malformed owner ids** - значення на кшталт `4abc`, `4.5`, `0` або `-1` більше не можуть пройти як валідний `ownerUserId`.
+- **Read-only гарантії покрито тестами й docs** - Hermes шлях не пише в `task_user_preferences`, capabilities рекламують `tasks.my_cabinet`, а документація містить тільки placeholder secrets.
+- **Релізні маркери піднято до `0.77.42`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.41 - HR Staff Media Containment
 
 ### HR Pulse /staff media containment / Cache refresh / Visual guardrails / (Клешня, 27.06.2026) [codex]

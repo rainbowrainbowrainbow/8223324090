@@ -359,6 +359,7 @@ describe('Hermes capabilities route auth', () => {
                 'tasks.read',
                 'tasks.detail',
                 'tasks.history',
+                'tasks.my_cabinet',
                 'tasks.create',
                 'tasks.complete',
                 'tasks.reassign',

@@ -1,6 +1,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { createHermesRouter } = require('../routes/hermes');
 const { createHermesAuthMiddleware } = require('../middleware/hermesAuth');
 
@@ -203,6 +204,134 @@ function createFakePool(options = {}) {
                 return { rows: listRows };
             }
             throw new Error(`Unexpected query: ${text}`);
+        }
+    };
+}
+
+function cabinetOwner(overrides = {}) {
+    return {
+        id: 4,
+        username: 'owner.user',
+        name: 'Owner User',
+        role: 'creator',
+        business_contexts: ['event_genix'],
+        default_business_context: 'event_genix',
+        is_active: true,
+        ...overrides
+    };
+}
+
+function createCabinetFakePool(options = {}) {
+    const calls = [];
+    const owner = options.owner === undefined ? cabinetOwner() : options.owner;
+    const taskRows = options.taskRows || [
+        taskRow(4101, {
+            title: 'Focus task',
+            owner_user_id: 4,
+            owner_name: 'Owner User',
+            owner_username: 'owner.user',
+            assigned_to: 'Owner User',
+            owner: 'Owner User',
+            date: null,
+            focus_rank: 1
+        }),
+        taskRow(4102, {
+            title: 'Waiting task',
+            owner_user_id: 4,
+            owner_name: 'Owner User',
+            owner_username: 'owner.user',
+            assigned_to: 'Owner User',
+            owner: 'Owner User',
+            date: null,
+            workflow_state: 'waiting',
+            task_kind: 'waiting'
+        })
+    ];
+    const completedRows = options.completedRows || [
+        taskRow(4199, {
+            title: 'Completed task',
+            owner_user_id: 4,
+            owner_name: 'Owner User',
+            owner_username: 'owner.user',
+            assigned_to: 'Owner User',
+            owner: 'Owner User',
+            status: 'done',
+            completed_at: '2026-06-27T08:00:00.000Z'
+        })
+    ];
+    const preferences = options.preferences === undefined
+        ? {
+            id: 40,
+            user_id: 4,
+            focus_limit: 3,
+            digest_mode: 'important_only',
+            default_task_mode: 'personal',
+            default_privacy: 'me_only',
+            show_private_in_tasks_page: false,
+            enable_telegram_reminders: true,
+            enable_evening_review: true,
+            task_sound_enabled: true,
+            task_sound_volume: '0.400',
+            task_sound_theme: 'subtle',
+            created_at: '2026-06-27T07:00:00.000Z',
+            updated_at: '2026-06-27T07:00:00.000Z'
+        }
+        : options.preferences;
+    const quickStats = options.quickStats || {
+        done_total: 4,
+        done_today: 2,
+        parent_done_today: 1,
+        subtask_done_today: 1,
+        subtask_done_total: 2,
+        remaining_today: taskRows.length,
+        overdue_carryover: 0,
+        active_my_day: taskRows.length
+    };
+
+    return {
+        calls,
+        async query(text, params = []) {
+            const compact = text.replace(/\s+/g, ' ').trim();
+            calls.push({ text, params, compact });
+
+            if (/^UPDATE employee_profiles SET last_activity_at/i.test(compact)
+                || /^UPDATE users SET last_seen_at/i.test(compact)) {
+                return { rows: [], rowCount: 0 };
+            }
+
+            if (/SELECT is_active, session_revoked_at FROM users WHERE id = \$1/i.test(compact)) {
+                return owner ? { rows: [{ is_active: owner.is_active, session_revoked_at: null }] } : { rows: [] };
+            }
+
+            if (/FROM users WHERE id = \$1/i.test(compact)) {
+                return owner ? { rows: [owner], rowCount: 1 } : { rows: [], rowCount: 0 };
+            }
+
+            if (/INSERT INTO task_user_preferences/i.test(compact)) {
+                return { rows: [preferences], rowCount: 1 };
+            }
+
+            if (/FROM task_user_preferences/i.test(compact)) {
+                return preferences ? { rows: [preferences], rowCount: 1 } : { rows: [], rowCount: 0 };
+            }
+
+            if (/COUNT\(\*\)::int AS open_count/i.test(compact)) {
+                return { rows: [{ open_count: taskRows.length }], rowCount: 1 };
+            }
+
+            if (/AS done_total/i.test(compact) && /AS active_my_day/i.test(compact)) {
+                return { rows: [quickStats], rowCount: 1 };
+            }
+
+            if (/COALESCE\(t\.status, 'todo'\) = 'done'/i.test(compact)) {
+                return { rows: completedRows, rowCount: completedRows.length };
+            }
+
+            if (/FROM tasks t/i.test(compact)) {
+                return { rows: taskRows, rowCount: taskRows.length };
+            }
+
+            throw new Error(`Unexpected cabinet fake query: ${compact}`);
         }
     };
 }
@@ -582,6 +711,42 @@ async function withHermesCreateServer(fakePool, testFn, options = {}) {
     }
 }
 
+function hermesApiHeaders(extra = {}) {
+    return {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Hermes-Agent/Event-Genix-CRM-Integration',
+        'X-Integration-Id': 'hermes-event-genix-crm',
+        'x-api-key': 'unit-hermes-key',
+        ...extra
+    };
+}
+
+async function withHermesCabinetServer(testFn, options = {}) {
+    const actorPool = createHermesActorPool(options.actor || {});
+    const fakePool = createCabinetFakePool(options.poolOptions || {});
+    const app = express();
+    app.use(express.json());
+    app.use('/api/hermes', createHermesRouter({
+        authMiddleware: createHermesAuthMiddleware({
+            env: {
+                HERMES_API_KEY: 'unit-hermes-key',
+                HERMES_ACTOR_USER_ID: '7',
+                ...(options.authEnv || {})
+            },
+            pool: actorPool
+        }),
+        pool: fakePool,
+        env: options.routeEnv || {}
+    }));
+    const { server, baseUrl } = await listen(app);
+    try {
+        await testFn({ baseUrl, fakePool, actorPool });
+    } finally {
+        await close(server);
+    }
+}
+
 describe('Hermes read-only task routes', () => {
     let server;
     let baseUrl;
@@ -610,6 +775,7 @@ describe('Hermes read-only task routes', () => {
         assert.deepEqual(res.data.webhooks, {
             crmToHermesEnabled: false
         });
+        assert.ok(res.data.supportedActions.includes('tasks.my_cabinet'));
         assert.ok(res.data.supportedActions.includes('tasks.create'));
         assert.ok(res.data.supportedActions.includes('tasks.complete'));
         assert.ok(res.data.supportedActions.includes('tasks.reassign'));
@@ -619,7 +785,231 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('menu_photos.draft'));
         assert.ok(res.data.supportedActions.includes('menu_photos.apply'));
         assert.ok(res.data.supportedActions.includes('menu_photos.reject'));
+        assert.deepEqual(res.data.myCabinet, {
+            available: true,
+            defaultOwnerConfigured: false,
+            ownerAllowlistEnabled: false
+        });
         assert.deepEqual(res.data.plannedMutationActions, []);
+    });
+
+    it('protects Hermes my-cabinet with x-api-key auth', async () => {
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const missing = await request(cabinetBaseUrl, 'GET', '/api/hermes/my-cabinet?ownerUserId=4');
+            const wrong = await request(
+                cabinetBaseUrl,
+                'GET',
+                '/api/hermes/my-cabinet?ownerUserId=4',
+                undefined,
+                hermesApiHeaders({ 'x-api-key': 'wrong-key' })
+            );
+
+            assert.equal(missing.status, 401);
+            assert.equal(missing.data.code, 'HERMES_AUTH_REQUIRED');
+            assert.equal(wrong.status, 401);
+            assert.equal(wrong.data.code, 'HERMES_AUTH_INVALID');
+        }, {
+            routeEnv: {
+                EVENT_GENIX_CRM_AGENT_OWNER_USER_ID: '4',
+                EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '4'
+            }
+        });
+    });
+
+    it('validates Hermes my-cabinet owner input and allowlist', async () => {
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'GET', '/api/hermes/my-cabinet', undefined, hermesApiHeaders());
+            assert.equal(res.status, 400);
+            assert.equal(res.data.code, 'HERMES_OWNER_REQUIRED');
+        });
+
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'GET', '/api/hermes/my-cabinet?ownerUserId=abc', undefined, hermesApiHeaders());
+            assert.equal(res.status, 400);
+            assert.equal(res.data.code, 'HERMES_INVALID_OWNER');
+        }, {
+            routeEnv: {
+                EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '4'
+            }
+        });
+
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'GET', '/api/hermes/my-cabinet?ownerUserId=4abc', undefined, hermesApiHeaders());
+            assert.equal(res.status, 400);
+            assert.equal(res.data.code, 'HERMES_INVALID_OWNER');
+        }, {
+            routeEnv: {
+                EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '4'
+            }
+        });
+
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'GET', '/api/hermes/my-cabinet?ownerUserId=4', undefined, hermesApiHeaders());
+            assert.equal(res.status, 403);
+            assert.equal(res.data.code, 'HERMES_OWNER_NOT_ALLOWED');
+        }, {
+            routeEnv: {
+                EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '5'
+            }
+        });
+
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'GET', '/api/hermes/my-cabinet?ownerUserId=4', undefined, hermesApiHeaders());
+            assert.equal(res.status, 404);
+            assert.equal(res.data.code, 'HERMES_OWNER_NOT_FOUND');
+        }, {
+            routeEnv: {
+                EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '4'
+            },
+            poolOptions: {
+                owner: null
+            }
+        });
+    });
+
+    it('returns Hermes my-cabinet projection without writing preferences', async () => {
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl, fakePool: cabinetPool }) => {
+            const res = await request(
+                cabinetBaseUrl,
+                'GET',
+                '/api/hermes/my-cabinet?ownerUserId=4&businessContext=event_genix',
+                undefined,
+                hermesApiHeaders()
+            );
+
+            assert.equal(res.status, 200, JSON.stringify(res.data));
+            assert.equal(res.data.success, true);
+            assert.equal(Array.isArray(res.data.today), true);
+            assert.equal(Array.isArray(res.data.overdue), true);
+            assert.equal(Array.isArray(res.data.all), true);
+            assert.equal(Array.isArray(res.data.completedHistory), true);
+            assert.equal(res.data.stats.openTaskCount, 2);
+            assert.equal(res.data.stats.activeOpenCount, 2);
+            assert.equal(res.data.stats.todayDone, 2);
+            assert.equal(res.data.stats.taskQuick.completedToday, 2);
+            assert.equal(res.data.meta.sourceSurface, 'hermes');
+            assert.equal(res.data.meta.source, 'hermes-event-genix-crm');
+            assert.equal(res.data.meta.ownerUserId, 4);
+            assert.equal(res.data.meta.businessContext, 'event_genix');
+            assert.equal(res.data.meta.projection, 'tasks.my_cabinet');
+            assert.equal(
+                cabinetPool.calls.some(call => /INSERT INTO task_user_preferences/i.test(call.text)),
+                false,
+                'Hermes read-only projection must not create task preference rows'
+            );
+            assert.equal(
+                cabinetPool.calls.some(call => /FROM task_user_preferences/i.test(call.text)),
+                true,
+                'Hermes projection should read existing task preferences'
+            );
+        }, {
+            routeEnv: {
+                EVENT_GENIX_CRM_AGENT_OWNER_USER_ID: '4',
+                EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '4'
+            }
+        });
+    });
+
+    it('matches the JWT my-cabinet projection counts for the same owner', async () => {
+        const secret = 'hermes-my-cabinet-route-parity-secret';
+        const originalJwtSecret = process.env.JWT_SECRET;
+        const dbPath = require.resolve('../db');
+        const authPath = require.resolve('../middleware/auth');
+        const tasksPath = require.resolve('../routes/tasks');
+        const originalDbCache = require.cache[dbPath];
+        const originalAuthCache = require.cache[authPath];
+        const originalTasksCache = require.cache[tasksPath];
+        const cabinetPool = createCabinetFakePool();
+        let server;
+
+        try {
+            process.env.JWT_SECRET = secret;
+            delete require.cache[authPath];
+            delete require.cache[tasksPath];
+            require.cache[dbPath] = {
+                id: dbPath,
+                filename: dbPath,
+                loaded: true,
+                exports: { pool: cabinetPool }
+            };
+
+            const tasksRouter = require('../routes/tasks');
+            const actorPool = createHermesActorPool();
+            const app = express();
+            app.use(express.json());
+            app.use('/api/tasks', tasksRouter);
+            app.use('/api/hermes', createHermesRouter({
+                authMiddleware: createHermesAuthMiddleware({
+                    env: {
+                        HERMES_API_KEY: 'unit-hermes-key',
+                        HERMES_ACTOR_USER_ID: '7'
+                    },
+                    pool: actorPool
+                }),
+                pool: cabinetPool,
+                env: {
+                    EVENT_GENIX_CRM_AGENT_OWNER_USER_ID: '4',
+                    EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS: '4'
+                }
+            }));
+            const listened = await listen(app);
+            server = listened.server;
+            const baseUrl = listened.baseUrl;
+            const token = jwt.sign({
+                id: 4,
+                username: 'owner.user',
+                name: 'Owner User',
+                role: 'creator',
+                business_contexts: ['event_genix'],
+                default_business_context: 'event_genix'
+            }, secret, { expiresIn: '1h' });
+
+            const ui = await request(baseUrl, 'GET', '/api/tasks/my-cabinet?businessContext=event_genix', undefined, {
+                Authorization: `Bearer ${token}`
+            });
+            const hermes = await request(
+                baseUrl,
+                'GET',
+                '/api/hermes/my-cabinet?ownerUserId=4&businessContext=event_genix',
+                undefined,
+                hermesApiHeaders()
+            );
+
+            assert.equal(ui.status, 200, JSON.stringify(ui.data));
+            assert.equal(hermes.status, 200, JSON.stringify(hermes.data));
+            assert.deepEqual(
+                {
+                    today: hermes.data.today.length,
+                    overdue: hermes.data.overdue.length,
+                    all: hermes.data.all.length,
+                    completedHistory: hermes.data.completedHistory.length,
+                    openTaskCount: hermes.data.stats.openTaskCount,
+                    activeOpenCount: hermes.data.stats.activeOpenCount,
+                    todayDone: hermes.data.stats.todayDone,
+                    taskQuickCompleted: hermes.data.stats.taskQuick.completedToday
+                },
+                {
+                    today: ui.data.today.length,
+                    overdue: ui.data.overdue.length,
+                    all: ui.data.all.length,
+                    completedHistory: ui.data.completedHistory.length,
+                    openTaskCount: ui.data.stats.openTaskCount,
+                    activeOpenCount: ui.data.stats.activeOpenCount,
+                    todayDone: ui.data.stats.todayDone,
+                    taskQuickCompleted: ui.data.stats.taskQuick.completedToday
+                }
+            );
+        } finally {
+            if (server) await close(server);
+            if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+            else process.env.JWT_SECRET = originalJwtSecret;
+            if (originalDbCache) require.cache[dbPath] = originalDbCache;
+            else delete require.cache[dbPath];
+            if (originalAuthCache) require.cache[authPath] = originalAuthCache;
+            else delete require.cache[authPath];
+            if (originalTasksCache) require.cache[tasksPath] = originalTasksCache;
+            else delete require.cache[tasksPath];
+        }
     });
 
     it('lists visible tasks with Hermes schema, hard limit, and cursor pagination', async () => {

@@ -488,7 +488,7 @@ test('banquet sheet renderer and copy text use clear menu quantity wording', asy
             manager: 'Manager'
         },
         customer: { name: 'Банкети Юрія', phone: '+380501112233' },
-        celebrant: { name: 'Сергій', birthday: 'Sat Oct 12 2018 00:00:00 GMT+0300' },
+        celebrant: { name: 'Сергій', birthday: '2018-10-12T00:00:00+03:00' },
         counts: { children: 12, adults: 2 },
         orderRows: [
             {

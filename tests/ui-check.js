@@ -37,6 +37,15 @@ const inviteShareCode = fileText('js/invite-share.js');
 
 runInviteChecks(ui);
 
+function cssImportVersionTagsAreCurrent(filename) {
+    const css = fileText(filename);
+    const imports = [...css.matchAll(/@import\s+(?:url\(\s*)?["']?([^"')\s;?]+\.css)(?:\?v=([^"')\s;]+))?["']?\s*\)?\s*;/g)];
+    return imports.length > 0 && imports.every(match => match[2] === pkg.version);
+}
+
+check('Aggregate CSS imports carry current asset versions',
+    ['css/pages.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
+
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS
 // ═══════════════════════════════════════════════════
@@ -596,6 +605,16 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule exposes managed replacement controls and state', !!doc.getElementById('schReplaceBtn') && !!doc.getElementById('schClearReplacementBtn') && !!doc.getElementById('schReplacementDetails') && staffCode.includes('async function replaceScheduleEntry') && staffCode.includes('async function clearScheduleReplacement') && staffCode.includes('function scheduleReplacementCandidates') && staffCode.includes('sch-replacement-badge') && staffPagesCss.includes('.sch-cell.is-replacement') && staffPagesCss.includes('.sch-replacement-details[hidden]'));
     const staffPulseTabs = [...doc.querySelectorAll('.staff-pulse-nav .staff-pulse-tab')];
     const staffPulseImages = [...doc.querySelectorAll('.staff-pulse-tab-media img')].map(img => img.getAttribute('src'));
+    const staffPulseNavRule = cssRuleText(staffPagesCss, '.staff-pulse-nav');
+    const staffPulseTabRule = cssRuleText(staffPagesCss, '.staff-pulse-tab');
+    const staffPulseTabMediaRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-media');
+    const staffPulseTabMediaImgRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-media img');
+    const staffScheduleCommandRule = cssRuleText(staffPagesCss, '.staff-schedule-command');
+    const staffScheduleCommandMediaRule = cssRuleText(staffPagesCss, '.staff-schedule-command-media');
+    const staffScheduleCommandMediaImgRule = cssRuleText(staffPagesCss, '.staff-schedule-command-media img');
+    const staffPulseBoundedContainer = rule => /position:\s*relative;/.test(rule) && /overflow:\s*hidden;/.test(rule) && /contain:\s*layout paint;/.test(rule);
+    const staffPulseMediaLayer = rule => /position:\s*absolute;/.test(rule) && /inset:\s*0;/.test(rule) && /width:\s*100%;/.test(rule) && /height:\s*100%;/.test(rule) && /overflow:\s*hidden;/.test(rule) && /contain:\s*paint;/.test(rule);
+    const staffPulseMediaImage = rule => /position:\s*absolute;/.test(rule) && /inset:\s*0;/.test(rule) && /width:\s*100%;/.test(rule) && /height:\s*100%;/.test(rule) && /max-width:\s*none;/.test(rule) && /max-height:\s*none;/.test(rule) && /object-fit:\s*cover;/.test(rule);
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && staffPulseTabs.length === 3
@@ -619,6 +638,16 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('body.dark-mode .staff-pulse-nav')
         && staffPagesCss.includes('@media (max-width: 480px)')
         && staffPagesCss.includes('@media (prefers-reduced-motion: reduce)'));
+    check('Staff HR Pulse switcher containers keep bounded containment',
+        staffPulseBoundedContainer(staffPulseNavRule)
+        && staffPulseBoundedContainer(staffPulseTabRule)
+        && staffPulseBoundedContainer(staffScheduleCommandRule));
+    check('Staff HR Pulse tab media cannot escape cards',
+        staffPulseMediaLayer(staffPulseTabMediaRule)
+        && staffPulseMediaImage(staffPulseTabMediaImgRule));
+    check('Staff schedule command media cannot escape hero container',
+        staffPulseMediaLayer(staffScheduleCommandMediaRule)
+        && staffPulseMediaImage(staffScheduleCommandMediaImgRule));
 });
 
 checkPage('leads.html', (doc, html) => {

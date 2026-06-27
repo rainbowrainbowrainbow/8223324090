@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.39",
+  "version": "0.77.41",
   "eventGenix": {
-    "releaseLabel": "Hermes Menu Photo Drafts"
+    "releaseLabel": "HR Staff Media Containment"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

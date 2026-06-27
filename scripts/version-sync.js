@@ -11,7 +11,7 @@
  * Synced/checked surfaces:
  *   1. package.json version + eventGenix.releaseLabel (source of truth)
  *   2. package-lock.json root package versions
- *   3. HTML/CSS/JS/image asset query strings in href/src attributes and quoted asset refs
+ *   3. HTML/CSS/JS/image asset query strings in href/src attributes, quoted asset refs, and CSS @import refs
  *   4. first-screen release badge, tagline, and changelog button
  *   5. index.html latest changelog modal entry version + label
  *   6. CHANGELOG.md latest heading version + label
@@ -136,6 +136,33 @@ function syncAssetVersions(file, version) {
         if (FIX) write(file, content);
     } else if (total > 0) {
         ok(file, 'asset ?v= tags');
+    }
+}
+
+function syncCssImportVersions(file, version) {
+    if (!exists(file)) return;
+
+    let content = read(file);
+    const cssImportRegex = /(@import\s+(?:url\(\s*)?["']?)([^"')\s;?]+\.css)(?:\?v=([^"')\s;]+))?(["']?\s*\)?\s*;)/g;
+    let wrong = 0;
+    let total = 0;
+    let firstWrong = null;
+
+    content = content.replace(cssImportRegex, (match, prefix, ref, found, suffix) => {
+        total++;
+        if (found !== version) {
+            wrong++;
+            if (!firstWrong) firstWrong = found || 'missing';
+            return FIX ? `${prefix}${ref}?v=${version}${suffix}` : match;
+        }
+        return match;
+    });
+
+    if (wrong > 0) {
+        report(file, `${wrong} CSS @import ?v= tags`, firstWrong, version);
+        if (FIX) write(file, content);
+    } else if (total > 0) {
+        ok(file, 'CSS @import ?v= tags');
     }
 }
 
@@ -365,6 +392,8 @@ syncAssetVersions('index.html', version);
 syncFirstScreenLabels('index.html', version, releaseLabel, { checkLatestModal: true, releaseLabelInText: true });
 syncFirstScreenLabels('dashboard.html', version, releaseLabel);
 syncServiceWorker(version);
+syncCssImportVersions('css/pages.css', version);
+syncCssImportVersions('css/sidebar-aurora.css', version);
 
 for (const file of collectVersionedAssetFiles()) {
     if (file !== 'index.html') syncAssetVersions(file, version);

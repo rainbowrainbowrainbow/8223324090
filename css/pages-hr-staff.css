@@ -470,6 +470,9 @@ body.dark-mode .hr-role-pill.bad {
         color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
     );
     box-shadow: var(--shadow-md);
+    overflow: hidden;
+    isolation: isolate;
+    contain: layout paint;
 }
 
 .staff-pulse-nav-items {
@@ -502,6 +505,7 @@ body.dark-mode .hr-role-pill.bad {
     box-shadow: 0 18px 36px rgba(15,23,42,0.18), inset 0 1px 0 color-mix(in srgb, var(--white) 16%, transparent);
     transition: all var(--speed-fast) var(--ease-smooth);
     transform: translateZ(0);
+    contain: layout paint;
 }
 
 .staff-pulse-tab[data-pulse-tone="people"] {
@@ -524,14 +528,27 @@ body.dark-mode .hr-role-pill.bad {
 }
 
 .staff-pulse-tab-media {
+    position: absolute;
+    inset: 0;
     z-index: 0;
-    background: #0B1220;
-}
-
-.staff-pulse-tab-media img {
     display: block;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    background: #0B1220;
+    border-radius: inherit;
+    contain: paint;
+}
+
+.staff-pulse-tab-media img {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 100%;
+    max-width: none;
+    max-height: none;
     object-fit: cover;
     opacity: 0.70;
     transform: scale(1.02);
@@ -624,6 +641,7 @@ body.dark-mode .hr-role-pill.bad {
     background: #08111F;
     box-shadow: 0 24px 54px rgba(15,23,42,0.18), inset 0 1px 0 color-mix(in srgb, var(--white) 12%, transparent);
     isolation: isolate;
+    contain: layout paint;
 }
 
 .staff-schedule-command-media,
@@ -634,14 +652,27 @@ body.dark-mode .hr-role-pill.bad {
 }
 
 .staff-schedule-command-media {
+    position: absolute;
+    inset: 0;
     z-index: 0;
-    background: #08111F;
-}
-
-.staff-schedule-command-media img {
     display: block;
     width: 100%;
     height: 100%;
+    overflow: hidden;
+    background: #08111F;
+    border-radius: inherit;
+    contain: paint;
+}
+
+.staff-schedule-command-media img {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 100%;
+    max-width: none;
+    max-height: none;
     object-fit: cover;
     opacity: 0.76;
 }

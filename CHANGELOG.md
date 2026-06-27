@@ -4,6 +4,29 @@
 
 ---
 
+## v0.77.41 - HR Staff Media Containment
+
+### HR Pulse /staff media containment / Cache refresh / Visual guardrails / (Клешня, 27.06.2026) [codex]
+- **`/staff` більше не випускає HR Pulse картинки за межі кнопок** - media layer для `Сьогодні`, `Графік`, `Звіти` і schedule command отримав bounded containment, clipping і `object-fit: cover`.
+- **CSS imports захищено від stale cache** - aggregate CSS entrypoints використовують versioned `@import`, а version-sync підтримує ці cache tags разом з HTML assets.
+- **Regression guardrails посилено для `/staff`** - `tests/ui-check.js` перевіряє containment contract для staff pulse nav, tab media, command media і картинок.
+- **Browser smoke підтвердив navigation flow** - перевірено `/hr#today`, `/hr#reports`, перехід через `Графік` на `/staff` у desktop, laptop і mobile viewport без natural-size overlays.
+- **Релізні маркери піднято до `0.77.41`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.40 - Hermes My Cabinet Access
+
+### Hermes my-cabinet read access / Task projection service / Agent auth / Release / (Клешня, 27.06.2026) [codex]
+- **Hermes отримав стабільний read-only доступ до "Мого дня"** - додано `GET /api/hermes/my-cabinet`, який повертає ту саму task projection, що й CRM sidebar/profile через `/api/tasks/my-cabinet`.
+- **Спільну task projection винесено в service** - `services/taskCabinetProjection.js` став єдиним джерелом buckets, `completedHistory`, `stats.taskQuick`, open workload counts і business-scope meta для UI та Hermes.
+- **Агент більше не потребує JWT, cookies або CRM password** - Hermes endpoint працює через існуючий `x-api-key` contract, `X-Integration-Id` і Hermes actor rails.
+- **Owner доступ захищено default/allowlist правилами** - підтримано `ownerUserId`, `EVENT_GENIX_CRM_AGENT_OWNER_USER_ID`, `EVENT_GENIX_CRM_ALLOWED_OWNER_USER_IDS` і контрольовані помилки `HERMES_OWNER_REQUIRED`, `HERMES_INVALID_OWNER`, `HERMES_OWNER_NOT_ALLOWED`, `HERMES_OWNER_NOT_FOUND`.
+- **Read-only поведінку зафіксовано тестами** - route coverage перевіряє auth, owner validation, parity з JWT `/api/tasks/my-cabinet` і те, що Hermes не створює записи `task_user_preferences`.
+- **Релізні маркери піднято до `0.77.40`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.39 - Hermes Menu Photo Drafts
 
 ### Hermes menu photos / Product image drafts / Booking catalog / Deploy / (Клешня, 27.06.2026) [codex]

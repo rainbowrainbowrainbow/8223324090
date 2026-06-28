@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.58 - Login Click Propagation Fix
+
+### Auth screen / Timeline toolbar delegated handler / Production hotfix / (Клешня, 28.06.2026) [codex]
+- **Login click flow відновлено** - delegated handler режимів графіка більше не перехоплює кліки поза toolbar.
+- **Root cause виправлено без зміни auth/API** - `body[data-schedule-view-mode]` лишився state marker, але click handler тепер шукає тільки controls всередині `[data-schedule-view-mode-selector]`.
+- **Форма авторизації знову доходить до submit handler** - клік по `Увійти` не зупиняється на document capture рівні.
+- **Regression guardrails оновлено** - UI smoke перевіряє scoped selector і забороняє повернення глобального `closest('[data-schedule-view-mode]')`.
+- **Релізні маркери піднято до `0.77.58`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.57 - Toolbar Micro Interactions
 
 ### Timeline toolbar / Micro-interactions / Digest loading / Overflow menu / (Клешня, 28.06.2026) [codex]

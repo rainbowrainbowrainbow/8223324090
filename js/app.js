@@ -539,7 +539,7 @@ function initTimelineListeners() {
     if (!window.__timelineScheduleModeDelegatedBound) {
         window.__timelineScheduleModeDelegatedBound = true;
         document.addEventListener('click', event => {
-            const button = event.target?.closest?.('[data-schedule-view-mode]');
+            const button = event.target?.closest?.('[data-schedule-view-mode-selector] [data-schedule-view-mode]');
             if (!button || !window.TimelineView?.setMode) return;
             event.preventDefault();
             event.stopPropagation();

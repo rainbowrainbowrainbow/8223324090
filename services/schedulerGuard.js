@@ -9,6 +9,16 @@ const log = createLogger('SchedulerGuard');
 
 const MAX_CONSECUTIVE_FAILURES = 10;
 const SUPPORTED_DEDUP = new Set(['daily', 'hourly', '5min', null]);
+const SCHEDULER_TIME_ZONE = 'Europe/Kyiv';
+const SCHEDULER_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    timeZone: SCHEDULER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+});
 
 function normalizeDedup(opts = {}) {
     const dedup = Object.prototype.hasOwnProperty.call(opts, 'dedup') ? opts.dedup : 'daily';
@@ -18,30 +28,42 @@ function normalizeDedup(opts = {}) {
     return dedup;
 }
 
-function getSchedulerDate(now = new Date()) {
-    return new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+function getSchedulerDateParts(now = new Date()) {
+    const parts = Object.fromEntries(
+        SCHEDULER_DATE_FORMATTER
+            .formatToParts(now)
+            .filter(part => part.type !== 'literal')
+            .map(part => [part.type, part.value])
+    );
+
+    return {
+        date: `${parts.year}-${parts.month}-${parts.day}`,
+        hour: parts.hour,
+        minute: parts.minute
+    };
 }
 
 function schedulerDedupKey(dedup, now = new Date()) {
     if (dedup === null) return null;
 
-    const schedulerDate = getSchedulerDate(now);
+    const schedulerDate = getSchedulerDateParts(now);
     if (dedup === 'daily') {
-        return schedulerDate.toISOString().slice(0, 10);
+        return schedulerDate.date;
     }
     if (dedup === 'hourly') {
-        return schedulerDate.toISOString().slice(0, 13);
+        return `${schedulerDate.date}T${schedulerDate.hour}`;
     }
     if (dedup === '5min') {
-        const minute = String(Math.floor(schedulerDate.getMinutes() / 5) * 5).padStart(2, '0');
-        return `${schedulerDate.toISOString().slice(0, 14)}${minute}`;
+        const minute = String(Math.floor(Number(schedulerDate.minute) / 5) * 5).padStart(2, '0');
+        return `${schedulerDate.date}T${schedulerDate.hour}:${minute}`;
     }
 
     throw new Error(`Unsupported scheduler dedup: ${String(dedup)}`);
 }
 
 function schedulerTrackingKey(dedup, now = new Date()) {
-    return schedulerDedupKey(dedup, now) || getSchedulerDate(now).toISOString().slice(0, 16);
+    const schedulerDate = getSchedulerDateParts(now);
+    return schedulerDedupKey(dedup, now) || `${schedulerDate.date}T${schedulerDate.hour}:${schedulerDate.minute}`;
 }
 
 /**

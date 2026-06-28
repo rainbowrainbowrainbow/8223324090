@@ -152,7 +152,7 @@ describe('schedulerGuard dedup contract', () => {
     });
 
     it('skips hourly jobs that already ran in the current hour', async () => {
-        state.rows.set('hourlyJob', { last_run_date: '2026-06-28T12', is_paused: false, consecutive_failures: 0 });
+        state.rows.set('hourlyJob', { last_run_date: '2026-06-28T15', is_paused: false, consecutive_failures: 0 });
         const { guardScheduler } = loadGuard();
         let calls = 0;
 
@@ -163,7 +163,7 @@ describe('schedulerGuard dedup contract', () => {
     });
 
     it('runs hourly jobs in a new hour and stores the current hour key', async () => {
-        state.rows.set('hourlyJob', { last_run_date: '2026-06-28T11', is_paused: false, consecutive_failures: 0 });
+        state.rows.set('hourlyJob', { last_run_date: '2026-06-28T14', is_paused: false, consecutive_failures: 0 });
         const { guardScheduler } = loadGuard();
         let calls = 0;
 
@@ -171,11 +171,11 @@ describe('schedulerGuard dedup contract', () => {
 
         assert.equal(calls, 1);
         assert.equal(state.successWrites.length, 1);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28T12');
+        assert.equal(state.successWrites[0].params[1], '2026-06-28T15');
     });
 
     it('runs null-dedup jobs every call while still writing tracking rows', async () => {
-        state.rows.set('noDedupJob', { last_run_date: '2026-06-28T12:07', is_paused: false, consecutive_failures: 0 });
+        state.rows.set('noDedupJob', { last_run_date: '2026-06-28T15:07', is_paused: false, consecutive_failures: 0 });
         const { guardScheduler } = loadGuard();
         let calls = 0;
         const guarded = guardScheduler('noDedupJob', async () => { calls++; }, { dedup: null });
@@ -185,8 +185,8 @@ describe('schedulerGuard dedup contract', () => {
 
         assert.equal(calls, 2);
         assert.equal(state.successWrites.length, 2);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28T12:07');
-        assert.equal(state.successWrites[1].params[1], '2026-06-28T12:07');
+        assert.equal(state.successWrites[0].params[1], '2026-06-28T15:07');
+        assert.equal(state.successWrites[1].params[1], '2026-06-28T15:07');
     });
 
     it('skips paused scheduler rows without writing success', async () => {
@@ -220,7 +220,7 @@ describe('schedulerGuard dedup contract', () => {
     });
 
     it('skips 5min jobs inside the current five-minute bucket', async () => {
-        state.rows.set('fiveMinJob', { last_run_date: '2026-06-28T12:05', is_paused: false, consecutive_failures: 0 });
+        state.rows.set('fiveMinJob', { last_run_date: '2026-06-28T15:05', is_paused: false, consecutive_failures: 0 });
         const { guardScheduler } = loadGuard();
         let calls = 0;
 
@@ -231,7 +231,7 @@ describe('schedulerGuard dedup contract', () => {
     });
 
     it('runs 5min jobs in the next five-minute bucket and stores the bucket key', async () => {
-        state.rows.set('fiveMinJob', { last_run_date: '2026-06-28T12:00', is_paused: false, consecutive_failures: 0 });
+        state.rows.set('fiveMinJob', { last_run_date: '2026-06-28T15:00', is_paused: false, consecutive_failures: 0 });
         const { guardScheduler } = loadGuard();
         let calls = 0;
 
@@ -239,7 +239,7 @@ describe('schedulerGuard dedup contract', () => {
 
         assert.equal(calls, 1);
         assert.equal(state.successWrites.length, 1);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28T12:05');
+        assert.equal(state.successWrites[0].params[1], '2026-06-28T15:05');
     });
 
     it('rejects unsupported dedup values before a job can run', () => {

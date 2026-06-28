@@ -97,12 +97,28 @@ through `PAGE_ACCESS` or a separate documented exception in
 `docs/ACCESS_SURFACE.md`. Do not add a new public root page by only placing an
 `.html` file in the repository root.
 
+## Repository Source Guard
+
+The broad root static mount must not expose repository source, config, scripts,
+tests, generated QA output, internal docs, or package metadata. Keep
+`middleware/staticDocGuard.js` in front of `express.static(...)` and cover this
+with `tests/static-doc-guard.test.js`.
+
+Allowed public static surfaces are the documented HTML pages, `landing/`,
+`js/`, `css/`, `images/`, `assets/`, `sounds/`, `uploads/`, `favicon.ico`,
+`logo.png`, and `manifest.json`. Internal paths such as `routes/`, `services/`,
+`middleware/`, `db/`, `config/`, `scripts/`, `tests/`, `docs/`, `utils/`,
+`lib/`, `data/`, `prompts/`, `output/`, `tmp/`, plus root `server.js`,
+`swagger.js`, `package.json`, and `package-lock.json` must return 404 from the
+static layer.
+
 ## Done Marker
 
 This pack is considered done when all of these remain true:
 
 - `npm run check:static-surface` passes.
 - `npm run cleanup:inventory` shows only documented root HTML pages.
-- Root markdown remains limited by `tests/static-doc-guard.test.js`.
+- Root markdown and repository source exposure remain limited by
+  `tests/static-doc-guard.test.js`.
 - Any future static page addition/removal updates `config/staticSurface.js`, this
   file, and focused tests in the same commit.

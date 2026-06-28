@@ -28,6 +28,7 @@ stale handoff notes.
 - Railway/Nixpacks should use Node 22 from the package engines or `.nvmrc`; a Railway build falling back to Node 18 is a configuration bug.
 - Do not run verification, install, or deploy work on Node 18 or Node 24 and report it as representative.
 - Run `npm run check:runtime` before trusting local results if there is any doubt.
+- If the host shell is on the wrong runtime, use `npx -y -p node@22 -p npm@10 -c "<command>"`, for example `npx -y -p node@22 -p npm@10 -c "npm test"`.
 
 ## Before Editing
 
@@ -94,8 +95,8 @@ Notes:
 
 - `package.json` is the release source of truth: `version` is the canonical number and `eventGenix.releaseLabel` is the canonical visible release label.
 - When the user asks for the current project version, run `npm run version:current` first. If it reports the branch is behind upstream, fast-forward with `git pull --ff-only` or clearly report that the local checkout is stale; do not answer from raw `package.json` alone.
-- Active release train: `0.60.x`. Mini updates increment the patch only (`0.60.2`, `0.60.3`, `0.60.4`, etc.) unless the user explicitly requests a new version-policy transition.
-- Do not return active release markers to old `43.x.x`, `0.44.x`, `0.45.x`, `0.46.x`, `0.47.x`, `0.48.x`, or `0.49.x` lines without an explicit version-policy task. Existing historical changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
+- Active release train follows `package.json`. At this update the current package version is `0.77.43`, so mini updates increment the `0.77.x` patch only unless the user explicitly requests a new version-policy transition.
+- Do not return active release markers to old `43.x.x`, `0.44.x`, `0.45.x`, `0.46.x`, `0.47.x`, `0.48.x`, `0.49.x`, or older `0.50.x`-`0.76.x` lines without an explicit version-policy task. Existing historical changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
 - `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
 - For user-visible or deployable product changes:
   - update `package.json` version intentionally;

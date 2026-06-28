@@ -319,15 +319,28 @@ async function addChatMessage(username, role, message, sessionId = null, skillUs
     return result.rows[0];
 }
 
+let isCleaningExpiredMessages = false;
+
 // Cleanup expired cached messages (called periodically)
 async function cleanupExpired() {
+    if (isCleaningExpiredMessages) {
+        return { skipped: true, reason: 'overlap', deleted: 0 };
+    }
+
+    isCleaningExpiredMessages = true;
+
     try {
         const result = await pool.query('DELETE FROM kleshnya_messages WHERE expires_at < NOW()');
-        if (result.rowCount > 0) {
-            log.info(`Cleaned up ${result.rowCount} expired kleshnya messages`);
+        const deleted = Number.isInteger(result?.rowCount) ? result.rowCount : 0;
+        if (deleted > 0) {
+            log.info(`Cleaned up ${deleted} expired kleshnya messages`);
         }
+        return { skipped: false, deleted };
     } catch (err) {
         log.error('Error cleaning up expired messages', err);
+        return { skipped: false, error: err.message, deleted: 0 };
+    } finally {
+        isCleaningExpiredMessages = false;
     }
 }
 

@@ -1978,6 +1978,8 @@ router.get('/alerts', async (req, res) => {
 
 // v39.7.0 — WebSocket alert push: broadcast alerts to all connected users periodically
 let _alertBroadcastTimer = null;
+let _alertBroadcastInitialTimer = null;
+let _alertBroadcastIntervalMs = null;
 let _lastAlertHash = '';
 
 async function broadcastAlerts() {
@@ -2037,19 +2039,53 @@ async function broadcastAlerts() {
         // Only broadcast if alerts changed
         const hash = JSON.stringify(alerts.map(a => a.id).sort());
         if (hash !== _lastAlertHash) {
-            _lastAlertHash = hash;
             broadcast('alert:updated', { alerts, count: alerts.length });
+            _lastAlertHash = hash;
         }
     } catch (err) {
-        // Silent — don't crash on periodic check
+        log.warn('Alert broadcast error:', err.message);
     }
 }
 
 function startAlertBroadcaster(intervalMs = 60000) {
-    if (_alertBroadcastTimer) clearInterval(_alertBroadcastTimer);
+    if (_alertBroadcastTimer) {
+        return {
+            started: false,
+            skipped: true,
+            reason: 'already_started',
+            intervalMs: _alertBroadcastIntervalMs
+        };
+    }
+
+    _alertBroadcastIntervalMs = intervalMs;
     _alertBroadcastTimer = setInterval(broadcastAlerts, intervalMs);
     // Initial broadcast after 5s delay
-    setTimeout(broadcastAlerts, 5000);
+    _alertBroadcastInitialTimer = setTimeout(broadcastAlerts, 5000);
+    return { started: true, intervalMs };
+}
+
+function stopAlertBroadcaster() {
+    if (_alertBroadcastTimer) clearInterval(_alertBroadcastTimer);
+    if (_alertBroadcastInitialTimer) clearTimeout(_alertBroadcastInitialTimer);
+    _alertBroadcastTimer = null;
+    _alertBroadcastInitialTimer = null;
+    _alertBroadcastIntervalMs = null;
+}
+
+function resetAlertBroadcasterForTest() {
+    stopAlertBroadcaster();
+    if (triggerAlertBroadcast._timer) clearTimeout(triggerAlertBroadcast._timer);
+    triggerAlertBroadcast._timer = null;
+    _lastAlertHash = '';
+}
+
+function alertBroadcasterState() {
+    return {
+        started: Boolean(_alertBroadcastTimer),
+        hasInitialTimer: Boolean(_alertBroadcastInitialTimer),
+        intervalMs: _alertBroadcastIntervalMs,
+        lastAlertHash: _lastAlertHash
+    };
 }
 
 function triggerAlertBroadcast() {
@@ -2062,8 +2098,12 @@ module.exports = router;
 module.exports.startAlertBroadcaster = startAlertBroadcaster;
 module.exports.triggerAlertBroadcast = triggerAlertBroadcast;
 module.exports.__boardTest = {
+    alertBroadcasterState,
     buildPersistedDashboardConfig,
+    broadcastAlerts,
     normalizeDashboardConfig,
     persistenceContract: DASHBOARD_CONFIG_PERSISTENCE,
-    sanitizeBoardState
+    resetAlertBroadcasterForTest,
+    sanitizeBoardState,
+    stopAlertBroadcaster
 };

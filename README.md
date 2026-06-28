@@ -20,6 +20,17 @@ Startup initializes the DB, runs migrations, mounts API/static routes, configure
 
 Use Node 22 before installing or verifying. The repo pins this in `package.json` `engines`, `.nvmrc`, and `.node-version`; Railway/Nixpacks should read the same baseline instead of falling back to Node 18.
 
+If your host shell is on a different major version, do not treat direct `npm`
+results as representative. Run the same command through the pinned runtime:
+
+```bash
+npx -y -p node@22 -p npm@10 -c "npm test"
+npx -y -p node@22 -p npm@10 -c "npm run check:runtime"
+```
+
+See [docs/LOCAL_RUNTIME_SETUP.md](docs/LOCAL_RUNTIME_SETUP.md) for the local
+runtime checklist.
+
 Check the active runtime:
 
 ```bash
@@ -125,7 +136,7 @@ npm run health
 Notes:
 - `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, auth-boundary ownership, static/CSS/API/storage/service-worker/scheduler/DB-startup surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
-- `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
+- `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline. If the host runtime is wrong, use `npx -y -p node@22 -p npm@10 -c "<command>"`.
 - `npm run check:version` checks version references without editing files.
 - `npm run check:access` verifies role metadata, backend/frontend page access, sidebar navigation access, static page access ownership, and documented modal/public/embedded exceptions.
 - `npm run check:auth-boundary` verifies that public API exceptions and approved `?token=` JWT routes stay documented and tested.
@@ -181,7 +192,14 @@ CI does not run PostgreSQL-backed API/integration suites, production deploy veri
 
 `package.json` is the single source of truth for product release metadata: `version` is the canonical release number and `eventGenix.releaseLabel` is the canonical visible release label. Use `npm run version:current` before answering "what version is current"; it refreshes upstream metadata and fails if the local branch is behind. The version sync helper is `scripts/version-sync.js`; it checks `package-lock.json`, login release badge, tagline, changelog CTA, latest changelog markers, asset cache tags, service-worker cache names, known inline asset references, and the `/api/version` route contract.
 
-The active release train is now `0.60.x`. Mini updates should increment patch only: `0.60.2`, `0.60.3`, `0.60.4`, etc. Existing `v43.*`, `v0.44.*`, `v0.45.*`, `v0.46.*`, `v0.47.*`, `v0.48.*`, `v0.49.*`, and older `v0.50.*`-`v0.59.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
+The active release train follows `package.json`. At this update the current
+package version is `0.77.43`, so mini updates stay on the `0.77.x` patch train
+unless the user explicitly requests a version-policy transition. Existing
+`v43.*`, `v0.44.*`, `v0.45.*`, `v0.46.*`, `v0.47.*`, `v0.48.*`, `v0.49.*`,
+and older `v0.50.*`-`v0.76.*` changelog entries, code comments, migration
+notes, and audit docs are historical records; do not use them as the active
+version source and do not return new release markers to those older lines
+without an explicit version-policy task.
 
 For user-visible or deployable product changes:
 
@@ -242,6 +260,7 @@ The current ownership map and intentional exceptions live in [docs/ACCESS_SURFAC
 ## Key Docs
 
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
+- [docs/LOCAL_RUNTIME_SETUP.md](docs/LOCAL_RUNTIME_SETUP.md) - local Node 22/npm 10 verification checklist
 - [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
 - [docs/CLEANUP_REGISTER.md](docs/CLEANUP_REGISTER.md) - active cleanup map, cleanup tracks, and backlog
 - [docs/ACCESS_SURFACE.md](docs/ACCESS_SURFACE.md) - role/page/sidebar/static access ownership and approved exceptions

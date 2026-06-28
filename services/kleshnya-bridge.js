@@ -207,8 +207,18 @@ async function getTelegramFileUrl(fileId) {
  * Called from scheduler every 30s.
  */
 const STALE_TIMEOUT_SEC = 90;
+let isProcessingStaleMessages = false;
 
 async function processStaleMessages(generateFn, addMessageFn, getChatHistoryFn, sendWsFn) {
+    if (isProcessingStaleMessages) {
+        return { skipped: true, reason: 'overlap', checked: 0, replied: 0, failed: 0 };
+    }
+
+    isProcessingStaleMessages = true;
+    let checked = 0;
+    let replied = 0;
+    let failed = 0;
+
     try {
         // Find messages that have been generating for too long
         const stale = await pool.query(
@@ -220,8 +230,11 @@ async function processStaleMessages(generateFn, addMessageFn, getChatHistoryFn, 
              ORDER BY kc.created_at ASC
              LIMIT 5`
         );
+        checked = stale.rows.length;
 
-        if (stale.rows.length === 0) return;
+        if (stale.rows.length === 0) {
+            return { skipped: false, checked, replied, failed };
+        }
 
         log.info(`Fallback: ${stale.rows.length} stale message(s) — switching to local engine`);
 
@@ -258,9 +271,11 @@ async function processStaleMessages(generateFn, addMessageFn, getChatHistoryFn, 
                     source: result.source || 'skills',
                     session_id: msg.session_id
                 });
+                replied++;
 
                 log.info(`Fallback: replied to msg ${msg.id} session ${msg.session_id} via local engine`);
             } catch (err) {
+                failed++;
                 log.error(`Fallback: error processing msg ${msg.id} — ${err.message}`);
                 // Still clear the flag so user isn't stuck
                 await pool.query(
@@ -269,8 +284,13 @@ async function processStaleMessages(generateFn, addMessageFn, getChatHistoryFn, 
                 ).catch(() => {});
             }
         }
+
+        return { skipped: false, checked, replied, failed };
     } catch (err) {
         log.error(`Fallback scheduler error: ${err.message}`);
+        return { skipped: false, error: err.message, checked: 0, replied: 0, failed: 0 };
+    } finally {
+        isProcessingStaleMessages = false;
     }
 }
 

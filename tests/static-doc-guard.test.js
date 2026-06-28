@@ -46,6 +46,36 @@ describe('static documentation exposure guard', () => {
         }
     });
 
+    it('blocks repository source, config, docs, and package metadata before broad root static serving', async () => {
+        const app = express();
+        app.use(staticDocGuard);
+        app.use(express.static(ROOT));
+        const baseUrl = await listen(app);
+
+        for (const blockedPath of [
+            '/server.js',
+            '/swagger.js',
+            '/package.json',
+            '/package-lock.json',
+            '/routes/auth.js',
+            '/services/scheduler.js',
+            '/middleware/auth.js',
+            '/db/index.js',
+            '/config/staticSurface.js',
+            '/scripts/check-runtime.js',
+            '/tests/static-doc-guard.test.js',
+            '/docs/AI_PROVIDER_CONTRACT.md',
+            '/utils/logger.js',
+            '/lib/marketing-agent.js',
+            '/data/battle-cards.json',
+            '/prompts/crm-assistant-system.md',
+            '/output/playwright/booking-summary-terms-print-qa/harness.html'
+        ]) {
+            const response = await fetch(`${baseUrl}${blockedPath}`);
+            assert.equal(response.status, 404, `${blockedPath} should not be public static content`);
+        }
+    });
+
     it('does not block intended public html or assets', async () => {
         const app = express();
         app.use(staticDocGuard);
@@ -59,6 +89,15 @@ describe('static documentation exposure guard', () => {
 
         const manifest = await fetch(`${baseUrl}/manifest.json`);
         assert.equal(manifest.status, 200);
+
+        const publicScript = await fetch(`${baseUrl}/js/api.js`);
+        assert.equal(publicScript.status, 200);
+
+        const publicStylesheet = await fetch(`${baseUrl}${'/css/' + 'pages.css'}`);
+        assert.equal(publicStylesheet.status, 200);
+
+        const publicAsset = await fetch(`${baseUrl}/assets/fonts/Nunito.ttf`);
+        assert.equal(publicAsset.status, 200);
 
         const uploadText = await fetch(`${baseUrl}/uploads/example.txt`);
         assert.equal(uploadText.status, 200);

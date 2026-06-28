@@ -6,9 +6,9 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_TASK_BUSINESS_CONTEXT, activeTaskBusinessContext } = require('./taskBusinessScope');
 const log = createLogger('TaskLifecycle');
+let isTaskLifecycleRunning = false;
 
-function calculateHealthScore(task) {
-    const now = new Date();
+function calculateHealthScore(task, now = new Date()) {
     let score = 100;
 
     // Overdue tasks lose 5 points per day
@@ -37,9 +37,16 @@ function calculateHealthScore(task) {
     return Math.max(0, Math.min(100, score));
 }
 
-async function runTaskLifecycle() {
+async function runTaskLifecycle(deps = {}) {
+    if (isTaskLifecycleRunning) {
+        return { skipped: true, checked: 0, updated: 0, archived: 0 };
+    }
+
+    isTaskLifecycleRunning = true;
     try {
-        const tasks = await pool.query(`
+        const query = deps.query || pool.query.bind(pool);
+        const now = deps.now || new Date();
+        const tasks = await query(`
             SELECT id, title, date, status, priority, updated_at, created_at, last_activity_at, business_context
             FROM tasks
             WHERE status NOT IN ('done', 'cancelled', 'archived')
@@ -50,11 +57,11 @@ async function runTaskLifecycle() {
         let updated = 0;
 
         for (const task of tasks.rows) {
-            const score = calculateHealthScore(task);
+            const score = calculateHealthScore(task, now);
             const businessContext = activeTaskBusinessContext(task.business_context || DEFAULT_TASK_BUSINESS_CONTEXT);
 
             if (score === 0) {
-                await pool.query(`
+                await query(`
                     UPDATE tasks SET
                         status = 'archived',
                         archived_at = NOW(),
@@ -65,7 +72,7 @@ async function runTaskLifecycle() {
                 `, [task.id, businessContext]);
                 archived++;
             } else {
-                await pool.query(
+                await query(
                     "UPDATE tasks SET health_score = $1 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3",
                     [score, task.id, businessContext]
                 );
@@ -74,10 +81,12 @@ async function runTaskLifecycle() {
         }
 
         log.info(`Lifecycle: ${tasks.rows.length} checked, ${updated} updated, ${archived} archived`);
-        return { checked: tasks.rows.length, updated, archived };
+        return { skipped: false, checked: tasks.rows.length, updated, archived };
     } catch (err) {
         log.error('Task lifecycle error', err);
-        return { error: err.message };
+        return { skipped: false, error: err.message };
+    } finally {
+        isTaskLifecycleRunning = false;
     }
 }
 

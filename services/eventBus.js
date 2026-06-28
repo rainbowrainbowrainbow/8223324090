@@ -444,6 +444,7 @@ async function processOutbox() {
         }
 
         let published = 0;
+        const eventsToProcess = [];
         for (const row of result.rows) {
             try {
                 // Publish to event_queue (the actual event store)
@@ -461,18 +462,12 @@ async function processOutbox() {
                     [row.id]
                 );
 
-                // Fire-and-forget: process rules for the newly created event
                 if (eqResult.rows.length > 0) {
-                    const event = {
+                    eventsToProcess.push({
                         id: eqResult.rows[0].id,
                         event_type: row.event_type,
                         payload: row.payload,
                         idempotency_key: row.idempotency_key
-                    };
-                    setImmediate(() => {
-                        processEventRules(event).catch(err =>
-                            log.error(`Outbox rule processing failed for event ${event.id}: ${err.message}`)
-                        );
                     });
                 }
 
@@ -487,6 +482,13 @@ async function processOutbox() {
         }
 
         await client.query('COMMIT');
+        for (const event of eventsToProcess) {
+            setImmediate(() => {
+                processEventRules(event).catch(err =>
+                    log.error(`Outbox rule processing failed for event ${event.id}: ${err.message}`)
+                );
+            });
+        }
         if (published > 0) {
             log.info(`Outbox relay: ${published}/${result.rows.length} events published`);
         }

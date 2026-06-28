@@ -4,6 +4,30 @@
 
 ---
 
+## v0.77.46 - Scheduler Reliability Hardening
+
+### Scheduler hardening / Notification coverage / Release / (Клешня, 28.06.2026) [codex]
+- **Scheduler jobs отримали пряме self-contained покриття** - додано тести для booking push reminders, scheduler guard contract, event bus outbox, Telegram retry queue, task lifecycle, marketing intervals, dashboard alert broadcaster, OpenClaw stale fallback і Kleshnya cleanup.
+- **Raw intervals стали безпечнішими в одному Node.js процесі** - overlap guards і structured results додані для високоризикових raw/starters шляхів без зміни їх timing, env vars, schema, CI або deploy config.
+- **Telegram/booking notification jobs зафіксовані без реальних відправок** - digest, reminder, backup alert, scheduled deletions, upcoming bookings, SLA breach і certificate reminders перевіряються через mocked DB/Telegram/backup/Kleshnya/eventBus.
+- **Scheduler governance синхронізовано з реальністю** - `config/schedulerSurface.js`, `docs/SCHEDULER_SURFACE.md` і `docs/CLEANUP_REGISTER.md` містять test anchors, actual raw interval risks і актуальний static-only debt.
+- **Verification baseline пройшов локально** - focused scheduler suites, `npm run check:scheduler-surface`, `npm run check:syntax` і повний `npm test` пройшли перед релізом.
+- **Релізні маркери піднято до `0.77.46`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.45 - HR Pulse Nav Visual Refresh
+
+### HR Pulse nav visuals / Light-dark assets / Staff parity / (Клешня, 28.06.2026) [codex]
+- **Кнопки `Сьогодні`, `Графік` і `Звіти` отримали власні візуали** - HR Pulse більше не використовує один спільний strip для трьох дій.
+- **Light і dark theme мають окремі PNG** - додано `today-nav-light.png`, `today-nav-dark.png`, `schedule-nav-light.png`, `schedule-nav-dark.png`, `reports-nav-light.png` і `reports-nav-dark.png`.
+- **`/staff` синхронізовано з HR Pulse** - верхній switcher сторінки графіка використовує ті самі theme-aware assets без зміни маршрутів `Сьогодні` / `Графік` / `Звіти`.
+- **CSS перемикає реальні файли, а не фільтр поверх одного asset-а** - у світлій темі видимі light PNG і темний label, у dark-mode видимі dark PNG і білий label.
+- **Regression guardrails оновлено** - UI smoke перевіряє шість нових asset-ів, decorative media, containment і dark-mode selectors.
+- **Релізні маркери піднято до `0.77.45`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.44 - HR Pulse Light Hero Polish
 
 ### HR Pulse light hero / Dark-mode fallback / UI guardrails / (Клешня, 28.06.2026) [codex]

@@ -291,6 +291,7 @@ async function deleteTelegramMessage(chatId, messageId) {
 const _retryQueue = [];
 const RETRY_MAX_QUEUE = 50;
 const RETRY_DELAYS = [30000, 60000, 120000]; // 30s, 1min, 2min
+let isProcessingRetryQueue = false;
 
 function bookingTelegramBusinessContext(booking = {}, extra = {}) {
     return normalizeTimelineContext(
@@ -384,30 +385,54 @@ function enqueueRetry(chatId, text, bookingId, businessContext = DEFAULT_TIMELIN
     log.info(`Notification queued for retry (queue size: ${_retryQueue.length})`);
 }
 
+function removeRetryItem(item) {
+    const idx = _retryQueue.indexOf(item);
+    if (idx >= 0) _retryQueue.splice(idx, 1);
+}
+
+async function updateRetriedBookingMessageId(messageId, bookingId, businessContext, query = pool.query.bind(pool)) {
+    await query(
+        `UPDATE bookings SET telegram_message_id = $1 WHERE id = $2 AND ${timelineBusinessContextSql('', '$3')}`,
+        [messageId, bookingId, normalizeTimelineContext(businessContext)]
+    ).catch(() => {});
+}
+
 // v19.15: Process retry queue — called by scheduler
-async function processRetryQueue() {
-    const now = Date.now();
-    const ready = _retryQueue.filter(item => item.nextRetry <= now);
-    for (const item of ready) {
+async function processRetryQueue(deps = {}) {
+    if (isProcessingRetryQueue) {
+        return { skipped: true, processed: 0, succeeded: 0, failed: 0, dropped: 0 };
+    }
+
+    isProcessingRetryQueue = true;
+    try {
+        const now = deps.now ?? Date.now();
+        const sendMessage = deps.sendTelegramMessage || sendTelegramMessage;
+        const updateBookingMessageId = deps.updateBookingMessageId || updateRetriedBookingMessageId;
+        const ready = _retryQueue.filter(item => item.nextRetry <= now);
+        const summary = { skipped: false, processed: 0, succeeded: 0, failed: 0, dropped: 0 };
+        for (const item of ready) {
+            summary.processed++;
         try {
-            const result = await sendTelegramMessage(item.chatId, item.text, { retries: 1 });
+            const result = await sendMessage(item.chatId, item.text, { retries: 1 });
             if (result && result.ok) {
                 // Success — remove from queue
-                const idx = _retryQueue.indexOf(item);
-                if (idx >= 0) _retryQueue.splice(idx, 1);
+                removeRetryItem(item);
+                summary.succeeded++;
                 log.info(`Retry succeeded for bookingId=${item.bookingId} (attempt ${item.attempt + 1})`);
                 if (result.result && item.bookingId) {
-                    await pool.query(
-                        `UPDATE bookings SET telegram_message_id = $1 WHERE id = $2 AND ${timelineBusinessContextSql('', '$3')}`,
-                        [result.result.message_id, item.bookingId, normalizeTimelineContext(item.businessContext)]
-                    ).catch(() => {});
+                    await updateBookingMessageId(
+                        result.result.message_id,
+                        item.bookingId,
+                        item.businessContext
+                    );
                 }
             } else {
                 item.attempt++;
+                summary.failed++;
                 if (item.attempt >= RETRY_DELAYS.length) {
                     // Max retries — give up
-                    const idx = _retryQueue.indexOf(item);
-                    if (idx >= 0) _retryQueue.splice(idx, 1);
+                    removeRetryItem(item);
+                    summary.dropped++;
                     log.error(`Retry exhausted for bookingId=${item.bookingId}, dropping notification`);
                 } else {
                     item.nextRetry = now + RETRY_DELAYS[item.attempt];
@@ -415,15 +440,39 @@ async function processRetryQueue() {
             }
         } catch (err) {
             item.attempt++;
+            summary.failed++;
             if (item.attempt >= RETRY_DELAYS.length) {
-                const idx = _retryQueue.indexOf(item);
-                if (idx >= 0) _retryQueue.splice(idx, 1);
+                removeRetryItem(item);
+                summary.dropped++;
                 log.error(`Retry error for bookingId=${item.bookingId}: ${err.message}, dropping`);
             } else {
                 item.nextRetry = now + RETRY_DELAYS[item.attempt];
             }
         }
+        }
+        return summary;
+    } finally {
+        isProcessingRetryQueue = false;
     }
+}
+
+function resetRetryQueueForTests(items = []) {
+    _retryQueue.length = 0;
+    isProcessingRetryQueue = false;
+    for (const item of items) {
+        _retryQueue.push({
+            chatId: item.chatId,
+            text: item.text,
+            bookingId: item.bookingId || null,
+            businessContext: normalizeTimelineContext(item.businessContext || DEFAULT_TIMELINE_CONTEXT),
+            attempt: Number(item.attempt || 0),
+            nextRetry: Number(item.nextRetry || 0)
+        });
+    }
+}
+
+function getRetryQueueSnapshotForTests() {
+    return _retryQueue.map(item => ({ ...item }));
 }
 
 async function ensureWebhook(appUrl) {
@@ -730,5 +779,12 @@ module.exports = {
     getTelegramRuntimeToken, getTelegramBotConfigStatus, downloadTelegramFileById,
     setWebhookFlag, getWebhookFlag, getBotUsername,
     drainTelegramRequests, getInFlightCount,
-    processRetryQueue
+    processRetryQueue,
+    __retryQueueTestHooks: {
+        enqueue: enqueueRetry,
+        enqueueRetry,
+        getSnapshot: getRetryQueueSnapshotForTests,
+        reset: resetRetryQueueForTests,
+        delays: RETRY_DELAYS
+    }
 };

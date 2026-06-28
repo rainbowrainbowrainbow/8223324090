@@ -553,7 +553,7 @@ app.get('/catalog/:slug/:token', async (req, res) => {
             }).join('')+'</div>';
             return `<div class="cat-page" style="--cat-bg1:${t.bg1};--cat-bg2:${t.bg2};--cat-bg3:${t.bg3};--cat-accent:${t.accent};--cat-price:${t.price}"><div class="cat-hero">${p.image_url?`<img class="cat-hero-img" src="${p.image_url}" alt="${esc(p.title)}">`:''}<div class="cat-hero-content"><h1 class="cat-title">${esc(p.title||'').toUpperCase()}</h1>${p.subtitle?`<p class="cat-subtitle">${esc(p.subtitle)}</p>`:''}</div></div>${statsHtml}<div class="cat-body">${itemsHtml?`<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>`:''}${p.description?`<div class="cat-desc">${esc(p.description)}</div>`:''}</div><div class="cat-footer"><div class="cat-footer-info"><span>📍 Парк Закревського · Київ</span><span>📞 0800 75 35 53</span></div></div></div>`;
         }).join('');
-        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.77.44"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
+        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.77.46"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
     } catch (err) {
         res.status(500).send('Помилка сервера');
     }
@@ -713,7 +713,7 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkTeamPulseReminder', checkTeamPulseReminder, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoOrdering', checkAutoOrdering, { dedup: 'hourly' }), 60000));
         // v30.7: HR push reminders (every minute) + cert expiry (daily)
-        schedulerIntervals.push(setInterval(guardScheduler('checkBookingPushReminders', checkBookingPushReminders), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkBookingPushReminders', checkBookingPushReminders, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkCertExpiryReminders', checkCertExpiryReminders, { dedup: 'daily' }), 60000));
         // v33.5: Stale catalog images refresh (daily at 03:00 Kyiv)
         schedulerIntervals.push(setInterval(guardScheduler('checkStaleCatalogImages', checkStaleCatalogImages, { dedup: 'daily' }), 60000));
@@ -786,28 +786,19 @@ initDatabase().then(() => {
 
         // v42.3: Marketing agent — auto-publish scheduled posts every 5 min
         try {
-            const { publishScheduled, generateWeeklyPlan } = require('./lib/marketing-agent');
+            const { runMarketingScheduledPublish, runMarketingWeeklyPlanScheduler } = require('./lib/marketing-agent');
             schedulerIntervals.push(setInterval(async () => {
-                try { await publishScheduled(); } catch (e) { log.warn('Marketing auto-publish error:', e.message); }
+                try { await runMarketingScheduledPublish(); } catch (e) { log.warn('Marketing auto-publish error:', e.message); }
             }, 5 * 60 * 1000));
             log.info('Marketing auto-publish scheduler started (5 min interval)');
 
             // Weekly plan auto-generation: every minute check if Wednesday 08:00 UTC (10:00 Kyiv)
-            let lastWeeklyGenDate = null;
             schedulerIntervals.push(setInterval(async () => {
-                const now = new Date();
-                const todayStr = now.toISOString().split('T')[0];
-                if (now.getUTCDay() !== 3) return; // Wednesday only
-                if (now.getUTCHours() !== 8 || now.getUTCMinutes() > 5) return; // 08:00-08:05 UTC
-                if (lastWeeklyGenDate === todayStr) return; // Already ran today
-                lastWeeklyGenDate = todayStr;
                 try {
-                    const nextWeekDate = new Date(now); nextWeekDate.setDate(nextWeekDate.getDate() + 7);
-                    const jan1 = new Date(nextWeekDate.getFullYear(), 0, 1);
-                    const dayNum = nextWeekDate.getUTCDay() || 7;
-                    const weekNum = Math.ceil((((new Date(Date.UTC(nextWeekDate.getFullYear(), nextWeekDate.getMonth(), nextWeekDate.getDate())) - jan1) / 86400000) + jan1.getUTCDay() + 1) / 7);
-                    const posts = await generateWeeklyPlan(weekNum, nextWeekDate.getFullYear(), ['instagram', 'telegram'], ['animation', 'quest', 'birthday', 'show', 'masterclass'], null);
-                    log.info(`Weekly plan auto-generated: ${posts.length} posts for week ${weekNum}`);
+                    const result = await runMarketingWeeklyPlanScheduler();
+                    if (!result.skipped) {
+                        log.info(`Weekly plan auto-generated: ${result.count} posts for week ${result.weekNumber}`);
+                    }
                 } catch (e) { log.warn('Weekly plan auto-gen skipped:', e.message); }
             }, 60 * 1000));
             log.info('Weekly plan auto-gen scheduler started (Wednesday 10:00 Kyiv)');

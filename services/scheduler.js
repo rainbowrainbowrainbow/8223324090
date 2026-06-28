@@ -2614,8 +2614,9 @@ async function checkBookingPushReminders() {
         const kyiv = getKyivDate();
         const todayStr = getKyivDateStr();
         const nowTime = getKyivTimeStr();
+        const minuteKey = todayStr + '_' + nowTime;
 
-        if (pushRemindersSentToday === todayStr + '_' + nowTime) return;
+        if (pushRemindersSentToday === minuteKey) return;
 
         // Check every minute, find bookings starting in ~30 minutes
         const nowMinutes = kyiv.getHours() * 60 + kyiv.getMinutes();
@@ -2639,11 +2640,10 @@ async function checkBookingPushReminders() {
 
         if (result.rows.length === 0) return;
 
-        pushRemindersSentToday = todayStr + '_' + nowTime;
-
         const chatId = await getConfiguredChatId();
         if (!chatId) return;
 
+        let sentMessages = 0;
         for (const booking of result.rows) {
             const hostIds = [booking.hosts];
             if (booking.second_animator && /^\d+$/.test(booking.second_animator)) {
@@ -2664,10 +2664,16 @@ async function checkBookingPushReminders() {
                     + `🕐 ${booking.time_start}\n`;
 
                 const targetChat = s.telegram_id || chatId;
-                await sendTelegramMessage(targetChat, text);
+                const sendResult = await sendTelegramMessage(targetChat, text);
+                if (sendResult && sendResult.ok !== false) {
+                    sentMessages++;
+                }
             }
         }
-        log.info(`Push reminders sent for ${result.rows.length} upcoming bookings`);
+        if (sentMessages > 0) {
+            pushRemindersSentToday = minuteKey;
+            log.info(`Push reminders sent for ${result.rows.length} upcoming bookings (${sentMessages} messages)`);
+        }
     } catch (err) {
         if (!err.message?.includes('does not exist')) {
             log.error('checkBookingPushReminders error', err);

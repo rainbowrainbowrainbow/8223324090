@@ -19,7 +19,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SERVER_PATH = path.join(ROOT, 'server.js');
 const PACKAGE_PATH = path.join(ROOT, 'package.json');
 const failures = [];
-const ALLOWED_DEDUP = new Set(['daily', 'hourly', '5min', 'daily-default', null]);
+const ALLOWED_DEDUP = new Set(['daily', 'hourly', '5min', null]);
 
 function fail(message) {
     failures.push(message);
@@ -183,11 +183,8 @@ for (const job of GUARDED_SCHEDULER_JOBS) {
 }
 
 const dailyDefaultJobs = GUARDED_SCHEDULER_JOBS.filter(job => job.dedup === 'daily-default');
-if (dailyDefaultJobs.length !== 1 || dailyDefaultJobs[0].name !== 'checkBookingPushReminders') {
-    fail('Only checkBookingPushReminders may use the documented guardScheduler default daily dedup exception');
-}
-if (!doc.includes('daily-default') || !doc.includes('checkBookingPushReminders')) {
-    fail(`${SCHEDULER_SURFACE_DOC}: must document the daily-default scheduler risk`);
+if (dailyDefaultJobs.length > 0) {
+    fail(`No scheduler job may rely on guardScheduler default daily dedup; make dedup explicit for: ${dailyDefaultJobs.map(job => job.name).join(', ')}`);
 }
 
 const rawServerSetIntervals = server.split(/\r?\n/)

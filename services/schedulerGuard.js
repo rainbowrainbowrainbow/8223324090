@@ -8,21 +8,56 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('SchedulerGuard');
 
 const MAX_CONSECUTIVE_FAILURES = 10;
+const SUPPORTED_DEDUP = new Set(['daily', 'hourly', '5min', null]);
+
+function normalizeDedup(opts = {}) {
+    const dedup = Object.prototype.hasOwnProperty.call(opts, 'dedup') ? opts.dedup : 'daily';
+    if (!SUPPORTED_DEDUP.has(dedup)) {
+        throw new Error(`Unsupported scheduler dedup: ${String(dedup)}`);
+    }
+    return dedup;
+}
+
+function getSchedulerDate(now = new Date()) {
+    return new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+}
+
+function schedulerDedupKey(dedup, now = new Date()) {
+    if (dedup === null) return null;
+
+    const schedulerDate = getSchedulerDate(now);
+    if (dedup === 'daily') {
+        return schedulerDate.toISOString().slice(0, 10);
+    }
+    if (dedup === 'hourly') {
+        return schedulerDate.toISOString().slice(0, 13);
+    }
+    if (dedup === '5min') {
+        const minute = String(Math.floor(schedulerDate.getMinutes() / 5) * 5).padStart(2, '0');
+        return `${schedulerDate.toISOString().slice(0, 14)}${minute}`;
+    }
+
+    throw new Error(`Unsupported scheduler dedup: ${String(dedup)}`);
+}
+
+function schedulerTrackingKey(dedup, now = new Date()) {
+    return schedulerDedupKey(dedup, now) || getSchedulerDate(now).toISOString().slice(0, 16);
+}
 
 /**
  * Wrap a scheduler function with:
- * 1. Duplicate execution prevention (skip if already ran for this date/hour)
+ * 1. Duplicate execution prevention (skip if already ran for this period)
  * 2. Error accumulation tracking (pause after N consecutive failures)
  * 3. Duration tracking
  *
  * @param {string} name - Scheduler name (matches scheduler_executions.scheduler_name)
  * @param {Function} fn - Original async scheduler function
  * @param {Object} opts - Options
- * @param {string} opts.dedup - 'daily' (once per day) or 'hourly' (once per hour)
+ * @param {string|null} opts.dedup - 'daily', 'hourly', '5min', or null for no skip
  * @returns {Function} Wrapped scheduler function
  */
 function guardScheduler(name, fn, opts = {}) {
-    const dedup = opts.dedup || 'daily';
+    const dedup = normalizeDedup(opts);
 
     return async function guardedScheduler() {
         const startMs = Date.now();
@@ -40,16 +75,7 @@ function guardScheduler(name, fn, opts = {}) {
                     return; // Silently skip paused schedulers
                 }
 
-                // Dedup check
-                const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
-                let currentKey;
-                if (dedup === 'daily') {
-                    currentKey = now.toISOString().slice(0, 10);
-                } else if (dedup === 'hourly') {
-                    currentKey = now.toISOString().slice(0, 13);
-                } else {
-                    currentKey = null; // no dedup
-                }
+                const currentKey = schedulerDedupKey(dedup);
 
                 if (currentKey && row.last_run_date === currentKey) {
                     return; // Already ran for this period
@@ -60,10 +86,7 @@ function guardScheduler(name, fn, opts = {}) {
             await fn();
 
             const durationMs = Date.now() - startMs;
-            const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
-            const dateKey = dedup === 'hourly'
-                ? now.toISOString().slice(0, 13)
-                : now.toISOString().slice(0, 10);
+            const dateKey = schedulerTrackingKey(dedup);
 
             // Record success
             await pool.query(
@@ -101,4 +124,4 @@ function guardScheduler(name, fn, opts = {}) {
     };
 }
 
-module.exports = { guardScheduler };
+module.exports = { guardScheduler, schedulerDedupKey };

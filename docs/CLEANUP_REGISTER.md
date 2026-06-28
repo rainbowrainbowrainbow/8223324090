@@ -507,9 +507,9 @@ remains open.
 - Current `server.js` scheduler startup now has an explicit manifest for
   guarded jobs, raw intervals/starters, dedup cadence, owners, side-effect
   classes, and test anchors.
-- `checkBookingPushReminders` is documented as a runtime-risk follow-up: it is
-  scheduled every minute but currently relies on `guardScheduler` default
-  `daily` dedup. Do not change it without notification-focused tests.
+- `checkBookingPushReminders` was documented as a runtime-risk follow-up: it is
+  scheduled every minute and previously relied on `guardScheduler` default
+  `daily` dedup. Any change must keep notification-focused tests.
 
 2026-06-24 scheduler guard update:
 
@@ -517,6 +517,147 @@ remains open.
   that still have only static coverage.
 - `npm run check:scheduler-surface` fails if the static-only list stops
   matching jobs without direct test anchors.
+
+2026-06-28 scheduler behavior update:
+
+- Added direct self-contained coverage for `checkBookingPushReminders`.
+- Made its scheduler registration explicitly no-dedup at guard level so the
+  60-second booking reminder scan is not silently daily-gated.
+- Removed `checkBookingPushReminders` from `STATIC_ONLY_SCHEDULER_JOBS`.
+- `npm run check:scheduler-surface` now rejects hidden
+  `guardScheduler` default daily dedup usage.
+
+2026-06-28 scheduler guard contract update:
+
+- Added direct self-contained coverage for `guardScheduler` dedup behavior.
+- `dedup: '5min'` now has real five-minute bucket behavior instead of acting
+  like no dedup.
+- Explicit `dedup: null` now remains no-skip behavior and writes a minute-level
+  tracking key for observability.
+- Unsupported dedup values now fail before the scheduler function can run.
+
+2026-06-28 event bus outbox relay update:
+
+- Added direct self-contained coverage for `processOutbox` without a live DB,
+  server, Telegram, push, webhook, or external side effects.
+- Locked down the outbox relay contract for empty queues, successful publish,
+  row-level failure retries, mixed batches, duplicate relay attempts, already
+  locked/published rows, retry-limit blocking, and idempotency-key duplicates.
+- `processOutbox` now schedules downstream rule processing only after a
+  successful transaction `COMMIT`, so rollback or commit failure cannot start
+  event rule side effects from an uncommitted relay transaction.
+- `eventBusProcessOutbox` was removed from `STATIC_ONLY_SCHEDULER_JOBS`; it
+  remains a raw interval and still has no `scheduler_executions` pause/error
+  accounting.
+
+2026-06-28 Telegram retry queue hardening:
+
+- Added direct self-contained coverage for `processRetryQueue` without real
+  Telegram sends, tokens, server startup, or live database access.
+- Locked down empty queue, enqueue metadata, retry success, retry failure,
+  retry exhaustion, overlap skip, and guard reset behavior.
+- `processRetryQueue` now has an in-process overlap guard with `finally` reset,
+  so overlapping raw interval ticks in one Node.js process cannot send the same
+  in-memory retry item twice.
+- `telegramRetryQueue` was removed from `STATIC_ONLY_SCHEDULER_JOBS`; it
+  remains an in-memory raw interval and is still not durable across restarts or
+  shared across multiple app instances.
+
+2026-06-28 task lifecycle raw scheduler hardening:
+
+- Added direct self-contained coverage for `runTaskLifecycle` without server
+  startup or live database access.
+- Locked down empty eligible task scans, health-score updates, automatic
+  `auto_expired` archives, repeated archive idempotency, overlap skip, guard
+  reset after errors, unchanged raw startup/daily timing, and absence of direct
+  Telegram/chat/push/webhook side effects.
+- `runTaskLifecycle` now has an in-process overlap guard with `finally` reset,
+  so overlapping raw startup/daily executions in one Node.js process cannot run
+  the lifecycle mutation loop twice at the same time.
+- `taskLifecycleStartup` and `taskLifecycleDaily` were removed from
+  `STATIC_ONLY_SCHEDULER_JOBS`; they remain raw scheduler paths and still have
+  no durable multi-instance lock or `scheduler_executions` pause/error
+  accounting.
+
+2026-06-28 marketing raw scheduler hardening:
+
+- Added direct self-contained coverage for `marketingPublishScheduled` and
+  `marketingWeeklyPlan` without server startup, live database access, real
+  publishers, Telegram, Instagram, OpenAI, webhooks, or external side effects.
+- Scheduler-facing marketing wrappers now guard same-process overlap for
+  scheduled publishing and weekly plan generation, with `finally` reset after
+  success or error.
+- The weekly plan wrapper keeps the Wednesday 08:00-08:05 UTC gate and marks
+  the in-memory daily run key only after successful generation, so a failed
+  generation can retry during the same window.
+- `marketingPublishScheduled` and `marketingWeeklyPlan` were removed from
+  `STATIC_ONLY_SCHEDULER_JOBS`; both remain raw intervals and still have no
+  durable multi-instance lock or `scheduler_executions` pause/error accounting.
+
+2026-06-28 dashboard alert broadcaster hardening:
+
+- Added direct self-contained coverage for `dashboardAlertBroadcaster` without
+  server startup, live database access, real WebSocket clients, or user-facing
+  broadcasts.
+- `startAlertBroadcaster(60000)` now keeps a single interval per Node.js
+  process and returns an `already_started` skip result on duplicate starter
+  calls instead of replacing the active interval or adding duplicate initial
+  timeouts.
+- Broadcaster tick errors are logged and contained, and the alert hash is
+  marked delivered only after a successful websocket broadcast.
+- `dashboardAlertBroadcaster` was removed from `STATIC_ONLY_SCHEDULER_JOBS`; it
+  remains a raw starter and still has no durable multi-instance lock or
+ `scheduler_executions` pause/error accounting.
+
+2026-06-28 OpenClaw stale message fallback hardening:
+
+- Added direct self-contained coverage for `openclawBridgeStaleMessages`
+  without server startup, live database access, real WebSocket clients,
+  OpenClaw, Telegram, AI, webhooks, or external side effects.
+- Locked down empty stale scans, one-message success, multiple-message order,
+  generator failure behavior, top-level DB select errors, overlap skip, guard
+  reset after errors, and unchanged `30000` raw interval timing.
+- `processStaleMessages()` now has an in-process overlap guard with `finally`
+  reset and returns structured results for success, overlap skip, and
+  top-level error paths instead of letting top-level scheduler errors escape.
+- `openclawBridgeStaleMessages` was removed from
+  `STATIC_ONLY_SCHEDULER_JOBS`; it remains a raw interval and still has no
+  durable multi-instance lock or `scheduler_executions` pause/error accounting.
+
+2026-06-28 Kleshnya greeting cleanup hardening:
+
+- Added direct self-contained coverage for `cleanupKleshnyaMessages` without
+  server startup, live database access, WebSocket clients, OpenClaw, Telegram,
+  AI, webhooks, or external side effects.
+- Locked down empty cleanup scans, expired-row delete counts, DB query failure
+  handling, overlap skip, guard reset after errors, and unchanged
+  `30 * 60 * 1000` raw interval timing.
+- `cleanupExpired()` now has an in-process overlap guard with `finally` reset
+  and returns structured results for success, overlap skip, and query error
+  paths.
+- `cleanupKleshnyaMessages` was removed from `STATIC_ONLY_SCHEDULER_JOBS`; it
+  remains a raw interval and still has no durable multi-instance lock or
+  `scheduler_executions` pause/error accounting.
+
+2026-06-28 Telegram and booking notification scheduler coverage pack:
+
+- Added direct self-contained coverage for `checkAutoDigest`,
+  `checkAutoReminder`, `checkAutoBackup`, `checkScheduledDeletions`,
+  `checkCertificateExpiry`, `checkTaskReminders`, `checkUpcomingBookings`,
+  `checkSLABreach`, `checkScheduledAnnouncements`, and
+  `checkCertExpiryReminders`.
+- The coverage pack mocks DB, Telegram sends/deletes, backup delivery,
+  Kleshnya task reminder delegation, Afisha distribution, and event bus
+  publishing. It does not start the server, use live database access, send real
+  Telegram messages, or call external services.
+- Locked down no-eligible-row/no-op behavior, eligible send or mutation paths,
+  Telegram failure containment where the job sends/deletes Telegram messages,
+  and DB/delegate failure containment.
+- The covered jobs were removed from `STATIC_ONLY_SCHEDULER_JOBS`; timing,
+  env vars, Telegram config, schema, CI, deploy config, and dependencies were
+  left unchanged.
+- `guardScheduler` remains the dedup owner for these jobs. This task did not
+  add job-internal dedup or durable multi-instance locks.
 
 ### 9. Documentation Cleanup
 

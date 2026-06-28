@@ -132,15 +132,27 @@ const HR_NAV_GROUPS = [
         items: [
             withPulseVisual(
                 { id: 'today', label: 'Сьогодні' },
-                { image: 'images/hr-pulse/pulse-strip-dark.png', tone: 'people' }
+                {
+                    lightImage: 'images/hr-pulse/today-nav-light.png',
+                    darkImage: 'images/hr-pulse/today-nav-dark.png',
+                    tone: 'people'
+                }
             ),
             withPulseVisual(
                 { id: 'schedule', label: 'Графік', href: '/staff' },
-                { image: 'images/hr-pulse/pulse-strip-dark.png', tone: 'schedule' }
+                {
+                    lightImage: 'images/hr-pulse/schedule-nav-light.png',
+                    darkImage: 'images/hr-pulse/schedule-nav-dark.png',
+                    tone: 'schedule'
+                }
             ),
             withPulseVisual(
                 { id: 'reports', label: 'Звіти' },
-                { image: 'images/hr-pulse/pulse-strip-dark.png', tone: 'reports' }
+                {
+                    lightImage: 'images/hr-pulse/reports-nav-light.png',
+                    darkImage: 'images/hr-pulse/reports-nav-dark.png',
+                    tone: 'reports'
+                }
             )
         ]
     },
@@ -1195,9 +1207,14 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
                     const tabClass = pulseMode ? 'hr-tab hr-pulse-card' : 'hr-tab';
                     const toneAttr = pulseMode && item.tone ? ` data-pulse-tone="${escapeHtml(item.tone)}"` : '';
-                    const media = pulseMode && item.image ? `
+                    const mediaImages = pulseMode ? [
+                        item.lightImage ? `<img class="hr-pulse-card-img hr-pulse-card-img--light" src="${escapeHtml(item.lightImage)}" alt="" loading="lazy" decoding="async">` : '',
+                        item.darkImage ? `<img class="hr-pulse-card-img hr-pulse-card-img--dark" src="${escapeHtml(item.darkImage)}" alt="" loading="lazy" decoding="async">` : '',
+                        !item.lightImage && !item.darkImage && item.image ? `<img class="hr-pulse-card-img" src="${escapeHtml(item.image)}" alt="" loading="lazy" decoding="async">` : ''
+                    ].filter(Boolean).join('') : '';
+                    const media = pulseMode && mediaImages ? `
                         <span class="hr-pulse-card-media" aria-hidden="true">
-                            <img src="${escapeHtml(item.image)}" alt="" loading="lazy" decoding="async">
+                            ${mediaImages}
                         </span>
                     ` : '';
                     const content = pulseMode ? `

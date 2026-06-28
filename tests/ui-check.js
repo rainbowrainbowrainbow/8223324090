@@ -621,9 +621,12 @@ checkPage('staff.html', (doc, html) => {
         && !!doc.querySelector('.staff-pulse-tab[href="/hr#today"][data-pulse-tone="people"]')
         && !!doc.querySelector('.staff-pulse-tab.active[href="/staff"][aria-current="page"][data-pulse-tone="schedule"]')
         && !!doc.querySelector('.staff-pulse-tab[href="/hr#reports"][data-pulse-tone="reports"]')
-        && staffPulseImages.includes('images/hr-pulse/today-honeycomb.png')
-        && staffPulseImages.includes('images/hr-pulse/schedule-operations.png')
-        && staffPulseImages.includes('images/hr-pulse/reports-kpi.png')
+        && staffPulseImages.includes('images/hr-pulse/today-nav-light.png')
+        && staffPulseImages.includes('images/hr-pulse/today-nav-dark.png')
+        && staffPulseImages.includes('images/hr-pulse/schedule-nav-light.png')
+        && staffPulseImages.includes('images/hr-pulse/schedule-nav-dark.png')
+        && staffPulseImages.includes('images/hr-pulse/reports-nav-light.png')
+        && staffPulseImages.includes('images/hr-pulse/reports-nav-dark.png')
         && [...doc.querySelectorAll('.staff-pulse-tab-media img')].every(img => img.getAttribute('alt') === '')
         && doc.querySelectorAll('.staff-pulse-tab-overlay[aria-hidden="true"]').length === 3
         && doc.querySelectorAll('.staff-pulse-tab-content .staff-pulse-tab-label').length === 3
@@ -633,6 +636,8 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-pulse-nav-items')
         && staffPagesCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
         && staffPagesCss.includes('.staff-pulse-tab-media')
+        && staffPagesCss.includes('.staff-pulse-tab-img--light')
+        && staffPagesCss.includes('.staff-pulse-tab-img--dark')
         && staffPagesCss.includes('.staff-pulse-tab:focus-visible')
         && staffPagesCss.includes('.staff-schedule-command')
         && staffPagesCss.includes('body.dark-mode .staff-pulse-nav')
@@ -3277,7 +3282,16 @@ const hrPulseNavSurfaceRule = cssRuleText(hrPageCss, '.hr-nav--pulse');
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardMediaRule = cssRuleText(hrPageCss, '.hr-pulse-card-media');
 const hrPulseCardMediaImgRule = cssRuleText(hrPageCss, '.hr-pulse-card-media img');
-const hrPulseStripImageUses = (hrCode.match(/image: 'images\/hr-pulse\/pulse-strip-dark\.png'/g) || []).length;
+const hrPulseNavAssets = [
+    'today-nav-light.png',
+    'today-nav-dark.png',
+    'schedule-nav-light.png',
+    'schedule-nav-dark.png',
+    'reports-nav-light.png',
+    'reports-nav-dark.png'
+];
+const hrPulseNavLightUses = (hrCode.match(/lightImage: 'images\/hr-pulse\/(?:today|schedule|reports)-nav-light\.png'/g) || []).length;
+const hrPulseNavDarkUses = (hrCode.match(/darkImage: 'images\/hr-pulse\/(?:today|schedule|reports)-nav-dark\.png'/g) || []).length;
 const hrReportsHeroRule = cssRuleText(hrPageCss, '.hr-reports-hero');
 const hrReportsHeroMediaRule = cssRuleText(hrPageCss, '.hr-reports-hero-media');
 const hrReportsHeroMediaImgRule = cssRuleText(hrPageCss, '.hr-reports-hero-media img');
@@ -3287,20 +3301,27 @@ check('HR Pulse premium switcher keeps assets, routing, and accessible decorativ
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'reports-kpi.png'))
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-light.png'))
+    && hrPulseNavAssets.every(asset => fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', asset)))
+    && hrPulseNavAssets.every(asset => hrCode.includes(`images/hr-pulse/${asset}`))
     && hrCode.includes('function withPulseVisual')
-    && hrPulseStripImageUses === 3
+    && hrPulseNavLightUses === 3
+    && hrPulseNavDarkUses === 3
     && hrCode.includes("tone: 'people'")
     && hrCode.includes("tone: 'schedule'")
     && hrCode.includes("tone: 'reports'")
     && hrCode.includes("data-href=\"${escapeHtml(item.href)}\"")
     && hrCode.includes('class="${tabClass}"')
     && hrCode.includes('hr-pulse-card-media')
+    && hrCode.includes('hr-pulse-card-img--light')
+    && hrCode.includes('hr-pulse-card-img--dark')
     && hrCode.includes('hr-pulse-card-overlay')
     && hrCode.includes('hr-pulse-card-content')
     && hrCode.includes('aria-hidden="true"')
     && hrCode.includes('alt=""')
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card')
     && hrPageCss.includes('.hr-pulse-card-media img')
+    && hrPageCss.includes('.hr-pulse-card-img--light')
+    && hrPageCss.includes('.hr-pulse-card-img--dark')
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible')
     && /overflow:\s*hidden;/.test(hrPulseNavSurfaceRule)
     && /contain:\s*layout paint;/.test(hrPulseNavSurfaceRule)

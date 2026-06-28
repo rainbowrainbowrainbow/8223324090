@@ -117,9 +117,32 @@ function installDbMock() {
             return { rows: [], rowCount: 1 };
         }
 
-        if (/SELECT status FROM tasks WHERE id = \$1/i.test(text)) {
+        if (/FROM users/i.test(text) && /telegram_username/i.test(text) && /telegram_chat_id/i.test(text)) {
+            return {
+                rows: [{
+                    id: 7,
+                    username: 'tester',
+                    name: 'Tester',
+                    role: 'animator',
+                    extra_roles: [],
+                    telegram_chat_id: '4200'
+                }],
+                rowCount: 1
+            };
+        }
+
+        if (/SELECT .* FROM tasks WHERE id = \$1/i.test(text)) {
             const status = state.tasks.get(params[0]);
-            return { rows: status ? [{ status }] : [], rowCount: status ? 1 : 0 };
+            return {
+                rows: status ? [{
+                    id: params[0],
+                    status,
+                    owner_user_id: 7,
+                    assigned_to: 'tester',
+                    owner: 'tester'
+                }] : [],
+                rowCount: status ? 1 : 0
+            };
         }
         if (/UPDATE tasks SET status = 'cancelled'/i.test(text)) {
             const taskId = params[0];
@@ -267,7 +290,9 @@ function installRouteDependencyMocks(dbState) {
             updateTaskStatus: async (taskId, newStatus) => {
                 dbState.tasks.set(taskId, newStatus);
                 return { id: taskId, status: newStatus };
-            }
+            },
+            acknowledgeTask: async taskId => ({ id: taskId, status: dbState.tasks.get(taskId) }),
+            isTelegramTaskActorAllowed: (task, actorUser) => Number(task.owner_user_id) === Number(actorUser.id)
         })
     ];
     return () => restores.reverse().forEach(restore => restore());

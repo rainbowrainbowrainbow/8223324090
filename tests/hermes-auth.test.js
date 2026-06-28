@@ -368,7 +368,9 @@ describe('Hermes capabilities route auth', () => {
                 'menu_photos.candidates',
                 'menu_photos.draft',
                 'menu_photos.apply',
-                'menu_photos.reject'
+                'menu_photos.reject',
+                'task_watchdog.preview',
+                'task_watchdog.callback_dry_run'
             ]);
             assert.equal(res.data.mutationActionsAvailable, true);
             assert.deepEqual(res.data.plannedMutationActions, []);

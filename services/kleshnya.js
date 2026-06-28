@@ -553,15 +553,89 @@ function getTaskInlineButtons(task) {
     const buttons = [];
     if (task.status === 'todo') {
         buttons.push([
+            { text: '👀 Бачив', callback_data: `task_ack:${task.id}:todo` },
             { text: '🔄 В роботу', callback_data: `task_confirm:${task.id}:todo` },
+        ]);
+        buttons.push([
             { text: '✅ Виконано', callback_data: `task_done:${task.id}:todo` }
         ]);
     } else if (task.status === 'in_progress') {
         buttons.push([
+            { text: '👀 Бачив', callback_data: `task_ack:${task.id}:in_progress` },
             { text: '✅ Виконано', callback_data: `task_done:${task.id}:in_progress` }
         ]);
     }
+
+    if (taskTelegramRescheduleButtonsEnabled()) {
+        buttons.push([
+            { text: '⏰ Перенести', callback_data: `task_reschedule:${task.id}:${task.status}` }
+        ]);
+    }
     return buttons.length > 0 ? buttons : null;
+}
+
+function taskTelegramRescheduleButtonsEnabled() {
+    return String(process.env.TASK_TELEGRAM_RESCHEDULE_BUTTONS || '').toLowerCase() === 'true';
+}
+
+function normalizeTaskActorLabel(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function isTelegramTaskActorAllowed(task = {}, actorUser = {}) {
+    const ownerUserId = Number(task.owner_user_id || task.ownerUserId || 0);
+    const actorUserId = Number(actorUser.id || actorUser.user_id || actorUser.userId || 0);
+    if (ownerUserId > 0) {
+        return actorUserId > 0 && actorUserId === ownerUserId;
+    }
+
+    const actorUsername = normalizeTaskActorLabel(actorUser.username);
+    if (!actorUsername) return false;
+    const allowedLabels = [task.assigned_to, task.owner]
+        .map(normalizeTaskActorLabel)
+        .filter(Boolean);
+    return allowedLabels.includes(actorUsername);
+}
+
+async function acknowledgeTask(taskId, actor = 'telegram', actorUserId = null) {
+    const taskResult = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
+    if (taskResult.rows.length === 0) throw new Error('Task not found');
+
+    const task = taskResult.rows[0];
+    await pool.query('UPDATE tasks SET last_reminded_at = NOW(), updated_at = NOW() WHERE id = $1', [taskId]);
+    const ackMeta = actorUserId ? `seen by user:${actorUserId}` : 'seen';
+    await logTaskAction(taskId, 'acknowledged', null, ackMeta, actor);
+
+    const updated = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
+    return updated.rows[0] || task;
+}
+
+function buildOwnerTaskDigestText(tasks = [], options = {}) {
+    const title = options.title || 'Задачі';
+    const ownerLabel = options.ownerLabel ? ` — ${esc(options.ownerLabel)}` : '';
+    const rows = Array.isArray(tasks) ? tasks : [];
+    if (!rows.length) {
+        return `📋 <b>${esc(title)}${ownerLabel}</b>\n\n✅ Немає відкритих задач.`;
+    }
+
+    const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
+    const statusIcon = { todo: '⬜', in_progress: '🔄' };
+    let text = `📋 <b>${esc(title)}${ownerLabel}</b>\n`;
+    text += `Відкритих: ${rows.length}\n\n`;
+
+    rows.slice(0, options.limit || 25).forEach((task, index) => {
+        const prefix = index === rows.length - 1 ? '└' : '├';
+        const pIcon = priorityIcon[task.priority] || '';
+        const sIcon = statusIcon[task.status] || '•';
+        text += `${prefix} ${sIcon}${pIcon} <b>#${task.id}</b> ${esc(task.title)}`;
+        if (task.deadline) text += ` ⏰${formatDeadline(task.deadline)}`;
+        text += '\n';
+    });
+
+    if (rows.length > (options.limit || 25)) {
+        text += `…і ще ${rows.length - (options.limit || 25)}\n`;
+    }
+    return text;
 }
 
 /**
@@ -801,5 +875,6 @@ module.exports = {
     logTaskAction, processReminders,
     getUserPoints, getAllPoints, resetMonthlyPoints,
     registerTelegramChatId, getOverdueTasks,
+    getTaskInlineButtons, acknowledgeTask, isTelegramTaskActorAllowed, buildOwnerTaskDigestText,
     POINTS, ESCALATION_MESSAGES
 };

@@ -4,6 +4,40 @@
 
 ---
 
+## v0.77.60 - Toolbar Command Center and Task Watchdog Dry Run
+
+### Timeline toolbar / View modes / Holidays overlay / Hermes task watchdog dry-run / Interaction QA / (Клешня, 28.06.2026) [codex]
+- **Toolbar зібрано в цілісний Schedule Command Center** - дата, статуси, режими, швидкі дії, масштаб і compact mode розкладені у зрозумілі left/center/right/utility зони.
+- **Режими перегляду відділено від overlay** - `День`, `Тиждень` і `Кімнати` лишаються взаємовиключним segmented control, а `Свята` працює як незалежний toggle.
+- **Active states стали чеснішими** - активний режим має сильніший teal-fill, а активні `Свята` показуються soft outline/background і не читаються як четвертий режим.
+- **Medium і small breakpoints стабілізовано** - toolbar не роздувається по висоті, groups мають row-level scroll без page overflow, `Дайджест` лишається швидше доступним за overflow.
+- **Interaction contracts закріплено тестами** - UI guard перевіряє date nav, status filters, view modes, holidays, scale, compact, digest, history, overflow і settings bindings.
+- **Login regression перевірено повторно** - invalid login submit доходить до `/api/auth/login`, а scoped schedule mode handler не перехоплює кліки поза toolbar.
+- **Digest double-click guard підтверджено** - async дія не запускається двічі, коли кнопка вже loading/disabled або має `aria-busy="true"`.
+- **Hermes Task Watchdog підготовлено як dry-run scope** - додано capability markers `task_watchdog.preview` і `task_watchdog.callback_dry_run` без Telegram sends, CRM writes, cron або deploy side effects.
+- **Task Watchdog preview routes закриті існуючим Hermes auth boundary** - auth-boundary tests оновлено під нові capability markers, custom-secret route не відкрито як public API.
+- **Telegram task callbacks посилено owner guard** - task buttons тепер перевіряють CRM actor ownership перед confirm/done/reject/ack, а stale status tokens і далі блокують повторні натискання.
+- **Task reminder UX підготовлено до acknowledgement flow** - додано `Бачив` callback без зміни статусу задачі, а `task_reschedule` лишається розпізнаним, але disabled-by-default placeholder без CRM write.
+- **Task reminder scheduler surface уточнено** - `checkTaskReminders` задекларовано як `5min` dedup замість hourly, без зміни production scheduler config.
+- **Міграцію `272_task_watchdog_events` додано як additive ledger** - SQL має governance headers і не змінює існуючі дані; застосування production DB лишається protected operation.
+- **Релізні маркери піднято до `0.77.60`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.59 - Toolbar View Mode Refinement
+
+### Timeline toolbar / View modes / Holidays overlay / Interaction QA / (Клешня, 28.06.2026) [codex]
+- **Toolbar зібрано в цілісний Schedule Command Center** - дата, статуси, режими, швидкі дії, масштаб і compact mode розкладені у зрозумілі left/center/right/utility зони.
+- **Режими перегляду відділено від overlay** - `День`, `Тиждень` і `Кімнати` лишаються взаємовиключним segmented control, а `Свята` працює як незалежний toggle.
+- **Active states стали чеснішими** - активний режим має сильніший teal-fill, а активні `Свята` показуються soft outline/background і не читаються як четвертий режим.
+- **Medium і small breakpoints стабілізовано** - toolbar не роздувається по висоті, groups мають row-level scroll без page overflow, `Дайджест` лишається швидше доступним за overflow.
+- **Interaction contracts закріплено тестами** - UI guard перевіряє date nav, status filters, view modes, holidays, scale, compact, digest, history, overflow і settings bindings.
+- **Login regression перевірено повторно** - invalid login submit доходить до `/api/auth/login`, а scoped schedule mode handler не перехоплює кліки поза toolbar.
+- **Digest double-click guard підтверджено** - async дія не запускається двічі, коли кнопка вже loading/disabled або має `aria-busy="true"`.
+- **Релізні маркери піднято до `0.77.59`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.58 - Login Click Propagation Fix
 
 ### Auth screen / Timeline toolbar delegated handler / Production hotfix / (Клешня, 28.06.2026) [codex]

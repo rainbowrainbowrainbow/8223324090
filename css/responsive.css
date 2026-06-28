@@ -3496,6 +3496,43 @@ body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarTogg
     opacity: 1 !important;
 }
 
+body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn {
+    min-width: 92px !important;
+    font-weight: 850 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible) {
+    color: rgba(226, 232, 240, 0.62) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn.active {
+    background: var(--toolbar-active-bg) !important;
+    border-color: rgba(236, 254, 255, 0.24) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: 0 10px 22px rgba(14, 165, 163, 0.18) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip {
+    min-width: 92px !important;
+    border-color: rgba(24, 199, 182, 0.24) !important;
+    background: rgba(30, 41, 59, 0.36) !important;
+    color: var(--toolbar-muted-text) !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip.active,
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip[aria-pressed="true"] {
+    background: rgba(20, 184, 166, 0.13) !important;
+    border-color: rgba(24, 199, 182, 0.52) !important;
+    color: #99f6e4 !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip.active::before,
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip[aria-pressed="true"]::before {
+    opacity: 1 !important;
+}
+
 body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip):disabled,
 body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem:disabled {
     cursor: not-allowed !important;
@@ -3767,5 +3804,353 @@ body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn 
     body.timeline-dashboard-page .schedule-command-center .toolbarToggleChip {
         padding: 0 10px !important;
         font-size: 11px !important;
+    }
+}
+
+/* v0.77.59: three-zone Schedule Command Center layout. */
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+    display: grid !important;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content);
+    grid-template-areas: "left center right";
+    align-items: center !important;
+    gap: 8px 12px !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    min-height: var(--toolbar-control-h) !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone {
+    display: flex !important;
+    align-items: center !important;
+    gap: var(--toolbar-gap) !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--left {
+    grid-area: left;
+    justify-content: flex-start !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {
+    grid-area: center;
+    justify-self: center;
+    justify-content: center !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right {
+    grid-area: right;
+    justify-self: end;
+    justify-content: flex-end !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility {
+    flex: 1 1 auto;
+    justify-content: flex-start !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right:not(:has(.action-buttons > :not(.hidden):not([hidden]):not(.timeline-hidden-by-config):not(.timeline-permission-hidden))) {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .status-filter-controls,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .view-mode-controls {
+    flex: 0 1 auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons {
+    display: inline-flex !important;
+    flex: 0 1 auto !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    width: auto !important;
+    margin-left: 0 !important;
+    justify-self: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility .v32-controls {
+    flex: 0 1 auto !important;
+    width: auto !important;
+    margin-left: 0 !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .admin-dropdown[data-menu-scope="timeline-actions"] {
+    margin-left: 0 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons #digestBtn {
+    order: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons #historyBtn {
+    order: 2;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons #adminDropdown {
+    order: 3;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn {
+    order: 4;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons :where(#undoBtn, #productSalesBtn, #exportTimelineBtn) {
+    order: 5;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--left .date-navigation-cluster {
+    flex-wrap: nowrap !important;
+    min-width: max-content !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--left .date-navigation-cluster .day-info {
+    order: 0 !important;
+    flex: 0 0 auto !important;
+}
+
+@media (min-width: 1537px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        grid-template-columns: minmax(0, max-content) minmax(460px, 1fr) minmax(0, max-content);
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {
+        overflow: visible !important;
+    }
+}
+
+@media (max-width: 1536px) and (min-width: 769px) {
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        --toolbar-control-h: 32px;
+        --toolbar-item-h: 28px;
+        --toolbar-gap: 5px;
+        gap: 4px !important;
+        padding: 7px 9px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        display: grid !important;
+        grid-template-columns: minmax(300px, max-content) minmax(0, 1fr);
+        grid-template-areas:
+            "left right"
+            "center center";
+        align-items: center !important;
+        gap: 5px 10px !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone {
+        flex: 0 1 auto !important;
+        width: auto !important;
+        max-width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--left .date-navigation-cluster .day-info {
+        display: none !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {
+        justify-self: stretch;
+        justify-content: flex-start !important;
+        gap: 6px !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        padding-bottom: 1px;
+        scrollbar-width: thin;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right {
+        justify-self: stretch;
+        justify-content: flex-start !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        padding-bottom: 1px;
+        scrollbar-width: thin;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons {
+        width: max-content !important;
+        max-width: none !important;
+        flex-wrap: nowrap !important;
+        gap: 5px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility .v32-controls {
+        max-width: 100%;
+        gap: 6px !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        padding-bottom: 1px;
+        scrollbar-width: thin;
+    }
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 6px !important;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain;
+        padding-bottom: 2px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone {
+        width: 100% !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        padding-bottom: 2px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center,
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right,
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility {
+        justify-content: flex-start !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {
+        gap: 6px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .status-filter-controls,
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .view-mode-controls {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        max-width: none !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .view-mode-controls .period-selector {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        max-width: none !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons,
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility .v32-controls {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        max-width: none !important;
+        flex-wrap: nowrap !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn {
+        order: 2;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #historyBtn {
+        order: 3;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #adminDropdown {
+        order: 4;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons :where(#undoBtn, #productSalesBtn, #exportTimelineBtn) {
+        order: 5;
+    }
+}
+
+@media (max-width: 430px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {
+        gap: 5px !important;
+    }
+}
+
+@media (min-width: 700px) and (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        --toolbar-control-h: 32px;
+        --toolbar-item-h: 28px;
+        --toolbar-gap: 5px;
+        gap: 4px !important;
+        padding: 7px 9px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        display: grid !important;
+        grid-template-columns: minmax(300px, max-content) minmax(0, 1fr);
+        grid-template-areas:
+            "left right"
+            "center center";
+        align-items: center !important;
+        gap: 5px 10px !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone {
+        flex: 0 1 auto !important;
+        width: auto !important;
+        max-width: 100% !important;
+        overflow-y: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--left .date-navigation-cluster .day-info {
+        display: none !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {
+        justify-self: stretch;
+        justify-content: flex-start !important;
+        gap: 6px !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        padding-bottom: 1px;
+        scrollbar-width: thin;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right {
+        justify-self: stretch;
+        justify-content: flex-start !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        padding-bottom: 1px;
+        scrollbar-width: thin;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons {
+        width: max-content !important;
+        max-width: none !important;
+        flex-wrap: nowrap !important;
+        gap: 5px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        padding-bottom: 1px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility {
+        width: auto !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+        padding-bottom: 0;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility .v32-controls {
+        gap: 6px !important;
+        flex-wrap: nowrap !important;
     }
 }

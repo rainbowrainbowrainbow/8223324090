@@ -51,6 +51,10 @@ const {
     resolveMenuImageOpenAIModel
 } = require('../services/menuPhotoGeneration');
 const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
+const {
+    createTaskWatchdogCallbackDryRunHandler,
+    createTaskWatchdogPreviewHandler
+} = require('../services/taskWatchdogRoutes');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Hermes');
@@ -68,7 +72,9 @@ const SUPPORTED_ACTIONS = [
     'menu_photos.candidates',
     'menu_photos.draft',
     'menu_photos.apply',
-    'menu_photos.reject'
+    'menu_photos.reject',
+    'task_watchdog.preview',
+    'task_watchdog.callback_dry_run'
 ];
 
 const PLANNED_MUTATION_ACTIONS = [];
@@ -1036,6 +1042,12 @@ function createHermesRouter(options = {}) {
     router.get('/capabilities', (req, res) => {
         res.json(buildCapabilitiesPayload(env));
     });
+
+    const taskWatchdogPreviewHandler = createTaskWatchdogPreviewHandler({ pool: query });
+    const taskWatchdogCallbackDryRunHandler = createTaskWatchdogCallbackDryRunHandler({ pool: query });
+
+    router.get('/task-watchdog/preview', taskWatchdogPreviewHandler);
+    router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
 
     router.get('/my-cabinet', async (req, res) => {
         try {

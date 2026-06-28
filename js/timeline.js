@@ -523,17 +523,18 @@ function updateTimelineViewControls() {
     document.body.classList.toggle('timeline-view-animators', current !== TIMELINE_VIEW_ROOMS);
     document.body.classList.toggle('timeline-holidays-visible', showHolidays);
     document.body.classList.toggle('timeline-holidays-hidden', !showHolidays);
-    document.body.dataset.scheduleViewMode = viewMode;
+    document.body.dataset.currentScheduleViewMode = viewMode;
+    delete document.body.dataset.scheduleViewMode;
     document.body.dataset.showHolidays = showHolidays ? 'true' : 'false';
     document.querySelectorAll('[data-schedule-view-mode-selector]').forEach(selector => {
         selector.classList.toggle('rooms-unavailable', !roomsAvailable);
     });
-    document.querySelectorAll('[data-schedule-view-mode="rooms"]').forEach(btn => {
+    document.querySelectorAll('[data-schedule-view-mode-selector] [data-schedule-view-mode="rooms"]').forEach(btn => {
         btn.classList.toggle('hidden', !roomsAvailable);
         btn.hidden = !roomsAvailable;
         btn.setAttribute('aria-hidden', roomsAvailable ? 'false' : 'true');
     });
-    document.querySelectorAll('[data-schedule-view-mode]').forEach(btn => {
+    document.querySelectorAll('[data-schedule-view-mode-selector] [data-schedule-view-mode]').forEach(btn => {
         const active = normalizeTimelineScheduleViewMode(btn.dataset.scheduleViewMode) === viewMode;
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');

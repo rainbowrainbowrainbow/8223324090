@@ -214,7 +214,9 @@ describe('API auth boundary middleware', () => {
             'menu_photos.candidates',
             'menu_photos.draft',
             'menu_photos.apply',
-            'menu_photos.reject'
+            'menu_photos.reject',
+            'task_watchdog.preview',
+            'task_watchdog.callback_dry_run'
         ]);
         assert.equal(ok.data.mutationActionsAvailable, true);
         assert.deepEqual(ok.data.plannedMutationActions, []);

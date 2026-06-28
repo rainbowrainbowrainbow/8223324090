@@ -237,20 +237,56 @@ function parseTaskCallback(data) {
 
 async function ensureTaskCallbackStatus(taskId, allowedStatuses, expectedStatus, callbackQueryId, message) {
     const allowed = expectedStatus ? [expectedStatus] : allowedStatuses;
-    const statusResult = await pool.query('SELECT status FROM tasks WHERE id = $1', [taskId]);
+    const statusResult = await pool.query('SELECT id, status, owner_user_id, assigned_to, owner FROM tasks WHERE id = $1', [taskId]);
     if (statusResult.rows.length === 0) {
         await answerCallback(callbackQueryId, 'Задачу не знайдено', { show_alert: true });
         await clearInlineKeyboard(message, 'task callback');
         return false;
     }
 
-    const currentStatus = statusResult.rows[0].status;
+    const task = statusResult.rows[0];
+    const currentStatus = task.status;
     if (!allowed.includes(currentStatus)) {
         await answerStaleCallback(callbackQueryId, message, 'Задачу вже оброблено');
         return false;
     }
 
-    return true;
+    return task;
+}
+
+async function resolveTaskCallbackActorUser(callbackFrom = {}) {
+    const fromUsername = callbackFrom.username || null;
+    const fromTelegramId = callbackFrom.id ? String(callbackFrom.id) : null;
+    if (!fromUsername && !fromTelegramId) return null;
+
+    const result = await pool.query(
+        `SELECT id, username, name, role, extra_roles, telegram_chat_id
+           FROM users
+          WHERE COALESCE(is_active, true) = true
+            AND (
+                ($1::text IS NOT NULL AND telegram_username = $1)
+                OR ($2::text IS NOT NULL AND telegram_chat_id::text = $2)
+            )
+          ORDER BY id
+          LIMIT 1`,
+        [fromUsername, fromTelegramId]
+    );
+    return result.rows[0] || null;
+}
+
+async function ensureTaskCallbackActorAllowed(task, callbackFrom, callbackQueryId) {
+    const actorUser = await resolveTaskCallbackActorUser(callbackFrom || {});
+    const { isTelegramTaskActorAllowed } = require('../services/kleshnya');
+    if (!actorUser || !isTelegramTaskActorAllowed(task, actorUser)) {
+        await answerCallback(callbackQueryId, 'Ця задача привʼязана до іншого виконавця', { show_alert: true });
+        log.warn('Blocked task callback from non-owner Telegram actor', {
+            taskId: task?.id,
+            taskOwnerUserId: task?.owner_user_id || null,
+            actorUserId: actorUser?.id || null
+        });
+        return { ok: false, actorUser: actorUser || null };
+    }
+    return { ok: true, actorUser };
 }
 
 router.get('/chats', authenticateToken, async (req, res) => {
@@ -664,16 +700,48 @@ router.post('/webhook', async (req, res) => {
                 await clearInlineKeyboard(message, 'cert_use');
                 return res.sendStatus(200);
 
+            } else if (data.startsWith('task_ack:')) {
+                // Task acknowledgement: suppress repeated reminders without completing/changing status.
+                const { taskId, expectedStatus } = parseTaskCallback(data);
+                if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                try {
+                    const task = await ensureTaskCallbackStatus(taskId, ['todo', 'in_progress'], expectedStatus, id, message);
+                    if (!task) return res.sendStatus(200);
+                    const permission = await ensureTaskCallbackActorAllowed(task, update.callback_query.from || {}, id);
+                    if (!permission.ok) return res.sendStatus(200);
+
+                    const cbFrom = update.callback_query.from || {};
+                    const actor = await resolveActorName(
+                        cbFrom.username || null,
+                        cbFrom.id || null,
+                        cbFrom.first_name || null
+                    );
+                    const { acknowledgeTask } = require('../services/kleshnya');
+                    await acknowledgeTask(taskId, actor, permission.actorUser?.id || null);
+                    await answerCallback(id, '👀 Бачив зафіксовано');
+                } catch (err) {
+                    log.error('task_ack error', err);
+                    await answerCallback(id, err.message === 'Task not found' ? 'Задачу не знайдено' : 'Помилка підтвердження', { show_alert: true });
+                }
+
             } else if (data.startsWith('task_confirm:')) {
                 // v10.0: Kleshnya task confirmation
                 const { taskId, expectedStatus } = parseTaskCallback(data);
                 if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 const { updateTaskStatus } = require('../services/kleshnya');
                 try {
-                    const canProcess = await ensureTaskCallbackStatus(taskId, ['todo'], expectedStatus, id, message);
-                    if (!canProcess) return res.sendStatus(200);
+                    const task = await ensureTaskCallbackStatus(taskId, ['todo'], expectedStatus, id, message);
+                    if (!task) return res.sendStatus(200);
+                    const permission = await ensureTaskCallbackActorAllowed(task, update.callback_query.from || {}, id);
+                    if (!permission.ok) return res.sendStatus(200);
 
-                    await updateTaskStatus(taskId, 'in_progress', 'telegram');
+                    const cbFrom = update.callback_query.from || {};
+                    const actor = await resolveActorName(
+                        cbFrom.username || null,
+                        cbFrom.id || null,
+                        cbFrom.first_name || null
+                    );
+                    await updateTaskStatus(taskId, 'in_progress', actor);
                     await answerCallback(id, 'Задачу підтверджено!');
                     await editCallbackMessageFinal(message, '✅ <b>Підтверджено</b>', 'task_confirm');
                 } catch (err) {
@@ -691,8 +759,10 @@ router.post('/webhook', async (req, res) => {
                 if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 const { updateTaskStatus } = require('../services/kleshnya');
                 try {
-                    const canProcess = await ensureTaskCallbackStatus(taskId, ['todo', 'in_progress'], expectedStatus, id, message);
-                    if (!canProcess) return res.sendStatus(200);
+                    const task = await ensureTaskCallbackStatus(taskId, ['todo', 'in_progress'], expectedStatus, id, message);
+                    if (!task) return res.sendStatus(200);
+                    const permission = await ensureTaskCallbackActorAllowed(task, update.callback_query.from || {}, id);
+                    if (!permission.ok) return res.sendStatus(200);
 
                     const cbFrom = update.callback_query.from;
                     const actor = await resolveActorName(
@@ -712,11 +782,31 @@ router.post('/webhook', async (req, res) => {
                     }
                 }
 
+            } else if (data.startsWith('task_reschedule:')) {
+                // Reschedule UX placeholder: callbacks are recognized but writes stay disabled by default.
+                const { taskId, expectedStatus } = parseTaskCallback(data);
+                if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                try {
+                    const task = await ensureTaskCallbackStatus(taskId, ['todo', 'in_progress'], expectedStatus, id, message);
+                    if (!task) return res.sendStatus(200);
+                    const permission = await ensureTaskCallbackActorAllowed(task, update.callback_query.from || {}, id);
+                    if (!permission.ok) return res.sendStatus(200);
+                    await answerCallback(id, '⏰ Перенесення через Telegram поки вимкнено. Змініть дату в CRM.', { show_alert: true });
+                } catch (err) {
+                    log.error('task_reschedule error', err);
+                    await answerCallback(id, 'Помилка перенесення', { show_alert: true });
+                }
+
             } else if (data.startsWith('task_reject:')) {
                 // v10.0: Kleshnya task rejection (fixed: cancelled instead of done)
                 const { taskId, expectedStatus } = parseTaskCallback(data);
                 if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 try {
+                    const task = await ensureTaskCallbackStatus(taskId, ['todo', 'in_progress'], expectedStatus, id, message);
+                    if (!task) return res.sendStatus(200);
+                    const permission = await ensureTaskCallbackActorAllowed(task, update.callback_query.from || {}, id);
+                    if (!permission.ok) return res.sendStatus(200);
+
                     const params = expectedStatus ? [taskId, expectedStatus] : [taskId];
                     const whereStatus = expectedStatus ? 'status = $2' : "status IN ('todo', 'in_progress')";
                     const cancelled = await pool.query(

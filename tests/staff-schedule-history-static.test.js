@@ -35,21 +35,40 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /entry \? normalizeScheduleStatus\(entry\.status\) : 'unset'/);
     });
 
-    it('keeps reception, pizzaiolo, and wardrobe visible in staff schedule subgroups', () => {
-        assert.match(staffPage, /key:\s*'reception',\s*label:\s*'Рецепція'/);
+    it('uses HR-card light staff rows and hides freelance placeholders from active schedule by default', () => {
+        const staffListRoute = routeBlock('/');
+        assert.match(staffListRoute, /include_freelance/);
+        assert.match(staffListRoute, /COALESCE\(is_freelance, false\) = false/);
+        assert.match(staffListRoute, /'hr_staff_card_light' AS card_source/);
+        assert.match(staffPage, /function renderStaffCardAvatar/);
+        assert.match(staffPage, /function renderStaffCardBadges/);
+        assert.match(staffPage, /class="emp-readiness"/);
+    });
+
+    it('groups reception, managers, and security into schedule display departments without changing stored departments', () => {
+        assert.match(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'\]/);
+        assert.match(staffPage, /const SCHEDULE_RECEPTION_ROLE_KEYS = new Set\(\['reception', 'manager', 'senior_manager'\]\)/);
+        assert.match(staffPage, /if \(SCHEDULE_RECEPTION_ROLE_KEYS\.has\(roleKey\)\) return 'reception'/);
+        assert.match(staffPage, /if \(department === 'security'\) return 'tech'/);
+        assert.match(staffPage, /reception:\s*\[\s*\{\s*key:\s*'reception',\s*label:\s*'Рецепція'/);
+        assert.match(staffPage, /key:\s*'manager,senior_manager',\s*label:\s*'Менеджери'/);
+        assert.match(staffPage, /tech:\s*\[\s*\{\s*departments:\s*'tech',\s*label:\s*'Технічний відділ'/);
+        assert.match(staffPage, /departments:\s*'security',\s*key:\s*'security',\s*label:\s*'Охорона'/);
         assert.match(staffPage, /key:\s*'pizzaiolo',\s*label:\s*'Піцайоло'/);
         assert.match(staffPage, /key:\s*'wardrobe',\s*label:\s*'Гардероб'/);
         assert.match(staffPage, /value:\s*'reception',\s*label:\s*'Рецепція'/);
         assert.match(staffPage, /value:\s*'pizzaiolo',\s*label:\s*'Піцайоло'/);
         assert.match(staffPage, /value:\s*'wardrobe',\s*label:\s*'Гардероб'/);
+        assert.doesNotMatch(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \[[^\]]*'security'/);
     });
 
     it('keeps canonical and legacy trampoline roles in the same schedule subgroup', () => {
         assert.match(staffPage, /key:\s*'trampoline_instructor,senior_instructor,instructor',\s*label:\s*'Батутисти'/);
         assert.match(staffPage, /trampoline:\s*\[\s*\{\s*key:\s*'trampoline_instructor,senior_instructor,instructor'/);
         assert.match(staffPage, /function staffMatchesDepartmentSubGroup/);
-        assert.equal((staffPage.match(/staffMatchesDepartmentSubGroup\(s, sg\)/g) || []).length, 2);
-        assert.equal((staffPage.match(/departmentSubGroupRoleKeySet\(subGroups\)/g) || []).length, 2);
+        assert.match(staffPage, /function departmentSubGroupDepartmentKeys/);
+        assert.match(staffPage, /function staffMatchesAnyDepartmentSubGroup/);
+        assert.match(staffPage, /deptStaff\.filter\(s => !staffMatchesAnyDepartmentSubGroup\(s, subGroups\)\)/);
         assert.match(staffPage, /placeholder:\s*'host, trampoline_instructor'/);
         assert.doesNotMatch(staffPage, /placeholder:\s*'host, instructor'/);
     });

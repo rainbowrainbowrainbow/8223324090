@@ -1319,13 +1319,26 @@ router.get('/schedule/check/:date', async (req, res) => {
 // GET /api/staff — list all staff (optionally filter by department)
 router.get('/', async (req, res) => {
     try {
-        const { department, active } = req.query;
+        const { department, active, include_freelance, includeFreelance } = req.query;
         let sql = `SELECT staff.*,
             (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
-            (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account
+            (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account,
+            (SELECT ep.user_id
+             FROM employee_profiles ep
+             WHERE ep.staff_id = staff.id AND ep.is_active = true AND ep.user_id IS NOT NULL
+             ORDER BY ep.id DESC
+             LIMIT 1) AS account_user_id,
+            (SELECT u.username
+             FROM employee_profiles ep
+             JOIN users u ON u.id = ep.user_id
+             WHERE ep.staff_id = staff.id AND ep.is_active = true AND ep.user_id IS NOT NULL
+             ORDER BY ep.id DESC
+             LIMIT 1) AS account_username,
+            'hr_staff_card_light' AS card_source
             FROM staff`;
         const params = [];
         const conditions = [];
+        const shouldIncludeFreelance = include_freelance === 'true' || includeFreelance === 'true';
 
         if (department) {
             params.push(department);
@@ -1337,6 +1350,9 @@ router.get('/', async (req, res) => {
             conditions.push(`is_active = $${params.length}`);
             if (activeRequested) {
                 conditions.push("COALESCE(hr_pool_status, 'core') <> 'blacklisted'");
+                if (!shouldIncludeFreelance) {
+                    conditions.push('COALESCE(is_freelance, false) = false');
+                }
             }
         }
 

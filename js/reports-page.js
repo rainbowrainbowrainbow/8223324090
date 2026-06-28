@@ -33,6 +33,7 @@ const ReportsPage = (() => {
     let _reportApprovalUsers = [];
     let _pendingOpenReportId = null;
     let _businessContext = 'event_genix';
+    let _staffOptions = [];
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -106,14 +107,14 @@ const ReportsPage = (() => {
             columns: [
                 { key: 'zone', label: 'Зона', type: 'text', placeholder: 'Reception / зал / кухня' },
                 { key: 'task', label: 'Що перевірити', type: 'text', placeholder: 'Каса, чистота, реквізит...' },
-                { key: 'owner', label: 'Відповідальний', type: 'text', placeholder: 'Імʼя' },
+                { key: 'owner', label: 'Відповідальний', type: 'staff', placeholder: 'Оберіть працівника', staffIdKey: 'owner_staff_id' },
                 { key: 'status', label: 'Статус', type: 'text', placeholder: 'OK / ризик / зробити' },
                 { key: 'note', label: 'Нотатка', type: 'text', placeholder: 'Що потрібно доробити?' }
             ],
             rows: [
-                { zone: 'Reception', task: 'Каса і чеки', owner: '', status: '', note: '' },
-                { zone: 'Зал', task: 'Чистота та безпека', owner: '', status: '', note: '' },
-                { zone: 'Склад', task: 'Реквізит і витратники', owner: '', status: '', note: '' }
+                { zone: 'Reception', task: 'Каса і чеки', owner: '', owner_staff_id: '', status: '', note: '' },
+                { zone: 'Зал', task: 'Чистота та безпека', owner: '', owner_staff_id: '', status: '', note: '' },
+                { zone: 'Склад', task: 'Реквізит і витратники', owner: '', owner_staff_id: '', status: '', note: '' }
             ]
         },
         {
@@ -125,7 +126,7 @@ const ReportsPage = (() => {
             purpose: 'Таблична заготовка для передачі зарплатного звіту у фінанси.',
             defaultReport: { type: 'expense', category: 'ЗП', hashtag: 'table-payroll', amountColumn: 'total' },
             columns: [
-                { key: 'employee', label: 'Працівник', type: 'text', placeholder: 'Імʼя' },
+                { key: 'employee', label: 'Працівник', type: 'staff', placeholder: 'Оберіть працівника', staffIdKey: 'employee_staff_id', roleKey: 'role' },
                 { key: 'role', label: 'Роль', type: 'text', placeholder: 'Аніматор / адміністратор' },
                 { key: 'hours', label: 'Години', type: 'number', placeholder: '0', total: 'sum' },
                 { key: 'rate', label: 'Ставка', type: 'number', placeholder: '0' },
@@ -133,8 +134,8 @@ const ReportsPage = (() => {
                 { key: 'total', label: 'До виплати', type: 'number', placeholder: '0', total: 'sum' }
             ],
             rows: [
-                { employee: '', role: '', hours: '', rate: '', bonus: '', total: '' },
-                { employee: '', role: '', hours: '', rate: '', bonus: '', total: '' }
+                { employee: '', employee_staff_id: '', role: '', hours: '', rate: '', bonus: '', total: '' },
+                { employee: '', employee_staff_id: '', role: '', hours: '', rate: '', bonus: '', total: '' }
             ]
         },
         {
@@ -364,6 +365,49 @@ const ReportsPage = (() => {
         return Number.isFinite(num) ? num : 0;
     }
 
+    function reportStaffIdKey(col = {}) {
+        return col.staffIdKey || `${col.key}_staff_id`;
+    }
+
+    function reportStaffRoleLabel(staff = {}) {
+        return String(staff.role_type || staff.roleType || staff.position || '').trim();
+    }
+
+    function reportStaffOptionLabel(staff = {}) {
+        const role = reportStaffRoleLabel(staff);
+        const dept = String(staff.department || '').trim();
+        return [staff.name, role, dept].filter(Boolean).join(' · ');
+    }
+
+    function emptyReportTableRow(columns = []) {
+        const row = {};
+        columns.forEach(col => {
+            row[col.key] = '';
+            if (col.type === 'staff') row[reportStaffIdKey(col)] = '';
+        });
+        return row;
+    }
+
+    function staffColumnBinding(template = {}, col = {}, key = '') {
+        const templateIdentity = String(template.code || template.id || template.layout || '').toLowerCase();
+        if (col.type === 'staff') return true;
+        if (templateIdentity.includes('payroll-staff') && key === 'employee') return true;
+        if (templateIdentity.includes('operations-checklist') && key === 'owner') return true;
+        return false;
+    }
+
+    function applyReportStaffSelection(row, col, staffId) {
+        if (!row || !col) return;
+        const idKey = reportStaffIdKey(col);
+        const normalizedId = String(staffId || '').trim();
+        const staff = _staffOptions.find(item => String(item.id) === normalizedId);
+        row[idKey] = normalizedId;
+        row[col.key] = staff ? staff.name : '';
+        if (col.roleKey && staff) {
+            row[col.roleKey] = reportStaffRoleLabel(staff);
+        }
+    }
+
     function normalizedComparable(value) {
         return String(value || '').trim().toLocaleLowerCase('uk-UA');
     }
@@ -434,13 +478,19 @@ const ReportsPage = (() => {
         }
         const columns = template.columns.map((col, index) => {
             const label = String(col.label || col.title || col.key || `Колонка ${index + 1}`).trim();
+            const key = slugifyKey(col.key || label, `col-${index + 1}`);
+            const bindStaff = staffColumnBinding(template, col, key);
             return {
-                key: slugifyKey(col.key || label, `col-${index + 1}`),
+                key,
                 label,
-                type: ['number', 'date', 'text', 'select'].includes(col.type) ? col.type : 'text',
+                type: bindStaff ? 'staff' : ['number', 'date', 'text', 'select'].includes(col.type) ? col.type : 'text',
                 placeholder: String(col.placeholder || ''),
                 total: col.total === 'sum' ? 'sum' : null,
-                options: Array.isArray(col.options) ? col.options.map(String).filter(Boolean) : []
+                options: Array.isArray(col.options) ? col.options.map(String).filter(Boolean) : [],
+                staffIdKey: bindStaff ? String(col.staffIdKey || col.staff_id_key || `${key}_staff_id`) : null,
+                roleKey: bindStaff && (col.roleKey || col.role_key || key === 'employee')
+                    ? String(col.roleKey || col.role_key || 'role')
+                    : null
             };
         });
         const seen = new Set();
@@ -452,7 +502,7 @@ const ReportsPage = (() => {
         });
         const rows = Array.isArray(template.rows) && template.rows.length
             ? template.rows
-            : [Object.fromEntries(columns.map(col => [col.key, '']))];
+            : [emptyReportTableRow(columns)];
 
         return {
             id: String(template.id || `${source}-${Date.now()}`),
@@ -478,6 +528,11 @@ const ReportsPage = (() => {
                 const normalizedRow = {};
                 columns.forEach(col => {
                     normalizedRow[col.key] = row?.[col.key] ?? '';
+                    if (col.type === 'staff') {
+                        const idKey = reportStaffIdKey(col);
+                        normalizedRow[idKey] = row?.[idKey] ?? row?.[col.staff_id_key] ?? '';
+                        if (col.roleKey && row?.[col.roleKey] !== undefined) normalizedRow[col.roleKey] = row[col.roleKey];
+                    }
                 });
                 return normalizedRow;
             })
@@ -598,6 +653,26 @@ const ReportsPage = (() => {
     // ==========================================
     // DATA LOADING
     // ==========================================
+
+    async function loadStaffOptions() {
+        try {
+            const data = await apiRequest('GET', '/api/staff?active=true');
+            const rows = Array.isArray(data.data) ? data.data : [];
+            _staffOptions = rows
+                .filter(staff => staff && staff.id && staff.name)
+                .map(staff => ({
+                    id: String(staff.id),
+                    name: String(staff.name),
+                    department: staff.department || '',
+                    position: staff.position || '',
+                    role_type: staff.role_type || '',
+                    roleType: staff.roleType || '',
+                    label: reportStaffOptionLabel(staff)
+                }));
+        } catch (_err) {
+            _staffOptions = [];
+        }
+    }
 
     async function loadSummary() {
         try {
@@ -819,7 +894,7 @@ const ReportsPage = (() => {
     async function setupReportTemplateWorkspace() {
         if (_reportTemplateWorkspaceReady) return;
         _reportTemplateWorkspaceReady = true;
-        await loadReportTemplates();
+        await Promise.all([loadStaffOptions(), loadReportTemplates()]);
 
         document.getElementById('reportTemplateUploadBtn')?.addEventListener('click', () => {
             document.getElementById('reportTemplateUpload')?.click();
@@ -1153,6 +1228,28 @@ const ReportsPage = (() => {
                 </select>
             `;
         }
+        if (col.type === 'staff') {
+            const idKey = reportStaffIdKey(col);
+            const currentId = String(row[idKey] || '').trim();
+            const currentName = String(row[col.key] || '').trim();
+            const hasCurrent = currentId && _staffOptions.some(staff => String(staff.id) === currentId);
+            const snapshotOption = currentId && !hasCurrent
+                ? `<option value="${esc(currentId)}" selected>${esc(currentName || `Staff #${currentId}`)} · snapshot</option>`
+                : !currentId && currentName
+                    ? `<option value="" selected>${esc(currentName)} · snapshot</option>`
+                    : '';
+            const placeholderSelected = !currentId && !currentName ? ' selected' : '';
+            return `
+                <select class="rpt-sheet-input rpt-sheet-select rpt-sheet-staff-select"
+                    data-staff-field="true"
+                    data-staff-id-key="${esc(idKey)}"
+                    ${common}>
+                    <option value=""${placeholderSelected}>${esc(col.placeholder || 'Оберіть працівника')}</option>
+                    ${snapshotOption}
+                    ${_staffOptions.map(staff => `<option value="${esc(staff.id)}" ${staff.id === currentId ? 'selected' : ''}>${esc(staff.label || staff.name)}</option>`).join('')}
+                </select>
+            `;
+        }
         return `
             <input class="rpt-sheet-input"
                 ${common}
@@ -1250,7 +1347,13 @@ const ReportsPage = (() => {
         const rowIndex = Number(input.dataset.rowIndex);
         const key = input.dataset.columnKey;
         if (!_reportTableState.rows[rowIndex] || !key) return;
-        _reportTableState.rows[rowIndex][key] = input.value;
+        const col = _reportTableState.columns.find(item => item.key === key);
+        if (col?.type === 'staff') {
+            applyReportStaffSelection(_reportTableState.rows[rowIndex], col, input.value);
+            renderReportTableWorkspace();
+        } else {
+            _reportTableState.rows[rowIndex][key] = input.value;
+        }
         refreshReportSheetTotals();
         setReportTableDirty(true, 'Є незбережені зміни в таблиці');
     }
@@ -1296,7 +1399,7 @@ const ReportsPage = (() => {
         const startCol = _reportTableState.columns.findIndex(col => col.key === input.dataset.columnKey);
         const matrix = text.trimEnd().split(/\r?\n/).map(line => line.split('\t'));
         while (_reportTableState.rows.length < startRow + matrix.length) {
-            _reportTableState.rows.push(Object.fromEntries(_reportTableState.columns.map(col => [col.key, ''])));
+            _reportTableState.rows.push(emptyReportTableRow(_reportTableState.columns));
         }
         matrix.forEach((line, rowOffset) => {
             line.forEach((cell, colOffset) => {
@@ -1312,7 +1415,7 @@ const ReportsPage = (() => {
 
     function addReportTemplateRow() {
         if (!_reportTableState || isReportTableLocked()) return;
-        const row = Object.fromEntries(_reportTableState.columns.map(col => [col.key, '']));
+        const row = emptyReportTableRow(_reportTableState.columns);
         _reportTableState.rows.push(row);
         renderReportTableWorkspace();
         setReportTableDirty(true, 'Додано рядок');

@@ -79,6 +79,103 @@ body.dark-mode .hr-kpi-refresh::before {
     background: color-mix(in srgb, var(--primary-light, var(--primary)) 16%, transparent);
 }
 
+/* Staff schedule virtual department groups */
+body[data-page-group="hr"] .dept-chip[data-dept="reception"] {
+    color: #0F766E;
+}
+
+body[data-page-group="hr"] .dept-chip[data-dept="reception"].active {
+    background: #0F766E;
+    color: #fff;
+}
+
+body[data-page-group="hr"] .dept-row[data-dept="reception"] td {
+    border-left: 4px solid #0F766E;
+}
+
+body.dark-mode[data-page-group="hr"] .dept-chip[data-dept="reception"],
+[data-theme="dark"] body[data-page-group="hr"] .dept-chip[data-dept="reception"] {
+    color: #5EEAD4;
+}
+
+/* Staff schedule HR-card light rows */
+body[data-page-group="hr"] .schedule-table .emp-avatar {
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--white, #fff) 28%, transparent);
+}
+
+body[data-page-group="hr"] .schedule-table .emp-avatar-photo {
+    background: var(--gray-100);
+    border-color: var(--gray-200);
+}
+
+body[data-page-group="hr"] .schedule-table .emp-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+body[data-page-group="hr"] .schedule-table .emp-readiness {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 14px;
+    flex-wrap: wrap;
+}
+
+body[data-page-group="hr"] .schedule-table .staff-card-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 14px;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 900;
+    letter-spacing: 0;
+    border: 1px solid transparent;
+}
+
+body[data-page-group="hr"] .schedule-table .staff-card-badge.ok {
+    color: #047857;
+    background: rgba(16, 185, 129, 0.10);
+    border-color: rgba(16, 185, 129, 0.20);
+}
+
+body[data-page-group="hr"] .schedule-table .staff-card-badge.warn {
+    color: #B45309;
+    background: rgba(245, 158, 11, 0.10);
+    border-color: rgba(245, 158, 11, 0.20);
+}
+
+body[data-page-group="hr"] .schedule-table .staff-card-badge.neutral {
+    color: var(--gray-500);
+    background: var(--gray-50);
+    border-color: var(--gray-100);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .staff-card-badge.ok,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .staff-card-badge.ok {
+    color: #86EFAC;
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(52, 211, 153, 0.28);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .staff-card-badge.warn,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .staff-card-badge.warn {
+    color: #FCD34D;
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(251, 191, 36, 0.26);
+}
+
+body.dark-mode[data-page-group="hr"] .schedule-table .staff-card-badge.neutral,
+[data-theme="dark"] body[data-page-group="hr"] .schedule-table .staff-card-badge.neutral {
+    color: #CBD5E1;
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
 /* Staff schedule shift load colors */
 body[data-page-group="hr"] .schedule-table .sch-cell[class*="shift-load-"] {
     position: relative;

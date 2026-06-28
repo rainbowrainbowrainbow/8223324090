@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.62 - Staff Reports Workspace Refinement
+
+### Staff schedule / Reports workspace / HR-card light rows / (Клешня, 28.06.2026) [codex]
+- **Staff schedule отримав легші HR-card рядки** - картки працівників у графіку показують фото/ініціали, рольову summary-лінію, CRM/photo readiness badges і HR pool marker без важкого візуального шуму.
+- **Freelance placeholders сховано з active schedule за замовчуванням** - `GET /api/staff?active=true` тепер відсікає `is_freelance`, якщо явно не передано `include_freelance=true`.
+- **Відділи графіка згруповано для реальної роботи** - reception, managers і security показуються у зручних display-групах без зміни збережених department values у БД.
+- **Reports workspace отримав staff-select поля** - payroll і operations templates зберігають canonical staff id (`*_staff_id`) разом із display snapshot і роллю працівника.
+- **Fallback для staff API у звітах збережено** - якщо `/api/staff` тимчасово недоступний, таблиці звітів лишаються придатними для ручного заповнення і збереження.
+- **Regression guardrails оновлено** - додано тести для staff grouping, freelance filtering, HR-card light rows і payroll staff-id payload.
+- **Релізні маркери піднято до `0.77.62`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.61 - Toolbar Command Center Follow-up
 
 ### Timeline toolbar / Responsive overlap / Quick actions row / (Клешня, 28.06.2026) [codex]

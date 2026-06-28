@@ -23,7 +23,7 @@ async function waitFor(predicate, message = 'condition') {
     assert.fail(`Timed out waiting for ${message}`);
 }
 
-async function setupReportsDom() {
+async function setupReportsDom(options = {}) {
     const html = fs.readFileSync(path.join(ROOT, 'reports.html'), 'utf8');
     const js = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
     const dom = new JSDOM(html, {
@@ -47,6 +47,15 @@ async function setupReportsDom() {
         requests.push({ url: target, options });
         if (target.startsWith('/api/reports/templates')) return jsonResponse({ success: true, templates: [], canManage: true });
         if (target.startsWith('/api/reports/drafts')) return jsonResponse({ success: true, drafts: [] });
+        if (target.startsWith('/api/staff?active=true')) {
+            if (options.staffApiFails) return jsonResponse({ success: false, error: 'staff_unavailable' }, 503);
+            return jsonResponse({
+                success: true,
+                data: [
+                    { id: 42, name: 'Оля Коваленко', department: 'animators', position: 'Аніматор', role_type: 'animator' }
+                ]
+            });
+        }
         if (target.startsWith('/api/reports/summary')) return jsonResponse({ today: { income: 0, expense: 0, newReports: 0 }, statuses: { new: 0 } });
         if (target.startsWith('/api/reports/accountants')) return jsonResponse([]);
         if (target.startsWith('/api/reports/hashtags')) {
@@ -183,6 +192,66 @@ test('reports create flow creates a real report without visible technical table 
     assert.match(document.getElementById('reportSheetModeChip').textContent, /#9001/);
     assert.equal(document.getElementById('hashtagDashboard').textContent.includes('table-finance'), false);
     assert.equal(document.getElementById('hashtagDashboard').textContent.includes('visible-ops'), true);
+});
+
+test('payroll report template stores canonical staff id with display snapshot', async () => {
+    const { window, requests } = await setupReportsDom();
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch');
+
+    const staffSelect = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
+    assert.ok(staffSelect);
+    staffSelect.value = '42';
+    staffSelect.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    const hours = document.querySelector('[data-row-index="0"][data-column-key="hours"]');
+    const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
+    hours.value = '8';
+    total.value = '1200';
+    [hours, total].forEach(input => input.dispatchEvent(new window.Event('input', { bubbles: true })));
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'payroll report create request');
+
+    const createRequest = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    const body = JSON.parse(createRequest.options.body);
+    const row = body.rawData.reportTableTemplate.rows[0];
+    assert.equal(row.employee, 'Оля Коваленко');
+    assert.equal(row.employee_staff_id, '42');
+    assert.equal(row.role, 'animator');
+    assert.equal(body.amount, 1200);
+});
+
+test('payroll report workspace keeps working when staff options API is unavailable', async () => {
+    const { window, requests } = await setupReportsDom({ staffApiFails: true });
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'payroll-staff';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /payroll/i.test(document.getElementById('reportSheetTitle').textContent), 'payroll template switch without staff options');
+
+    const staffSelect = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
+    assert.ok(staffSelect);
+    assert.match(staffSelect.textContent, /Оберіть працівника/);
+
+    const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
+    total.value = '500';
+    total.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'fallback payroll report create request');
+
+    const createRequest = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    const body = JSON.parse(createRequest.options.body);
+    const row = body.rawData.reportTableTemplate.rows[0];
+    assert.equal(row.employee, '');
+    assert.equal(row.employee_staff_id, '');
+    assert.equal(body.amount, 500);
 });
 
 test('standard park report totals dar subtotal and locks after close', async () => {

@@ -44,6 +44,7 @@ const StaffState = {
 const DEPT_ICONS = {
     animators: '🎭',
     trampoline: '🤸',
+    reception: '🛎️',
     admin: '💼',
     cafe: '☕',
     tech: '🔧',
@@ -89,11 +90,19 @@ const DEPT_SUB_GROUPS = {
         { key: 'accountant', label: 'Бухгалтери', icon: '💰' },
         { key: 'hr', label: 'HR', icon: '👥' }
     ],
+    reception: [
+        { key: 'reception', label: 'Рецепція', icon: '🛎️' },
+        { key: 'manager,senior_manager', label: 'Менеджери', icon: '💼' }
+    ],
     cafe: [
         { key: 'cook', label: 'Кухня', icon: '🍳' },
         { key: 'pizzaiolo', label: 'Піцайоло', icon: '🍕' },
         { key: 'barista', label: 'Бариста', icon: '☕' },
         { key: 'waiter', label: 'Офіціанти', icon: '🍽️' }
+    ],
+    tech: [
+        { departments: 'tech', label: 'Технічний відділ', icon: '🔧' },
+        { departments: 'security', key: 'security', label: 'Охорона', icon: '🛡️' }
     ],
     cleaning: [
         { key: 'cleaner,cleaning', label: 'Прибиральники', icon: '🧹' },
@@ -150,7 +159,16 @@ function departmentSubGroupRoleKeys(subGroup = {}) {
         .filter(Boolean);
 }
 
+function departmentSubGroupDepartmentKeys(subGroup = {}) {
+    return String(subGroup.departments || subGroup.department || '')
+        .split(',')
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+}
+
 function staffMatchesDepartmentSubGroup(staff = {}, subGroup = {}) {
+    const departmentKeys = departmentSubGroupDepartmentKeys(subGroup);
+    if (departmentKeys.length) return departmentKeys.includes(String(staff.department || '').trim());
     const roleKey = normalizeProfessionKey(staff.role_type);
     return Boolean(roleKey && departmentSubGroupRoleKeys(subGroup).includes(roleKey));
 }
@@ -161,6 +179,10 @@ function shouldRenderDepartmentSubGroups(deptStaff = [], subGroups = null) {
 
 function departmentSubGroupRoleKeySet(subGroups = []) {
     return new Set((subGroups || []).flatMap(departmentSubGroupRoleKeys));
+}
+
+function staffMatchesAnyDepartmentSubGroup(staff = {}, subGroups = []) {
+    return (subGroups || []).some(subGroup => staffMatchesDepartmentSubGroup(staff, subGroup));
 }
 
 function normalizeScheduleStatus(value) {
@@ -200,6 +222,39 @@ function professionLabel(key) {
     if (profession?.title) return profession.title;
     const option = STAFF_ROLE_OPTIONS.find(item => item.value === normalized);
     return option?.label || normalized;
+}
+
+function staffCardRoleSummary(staff = {}) {
+    const primary = staff.role_type ? professionLabel(staff.role_type) : '';
+    const secondary = staffSecondaryProfessions(staff)
+        .map(professionLabel)
+        .filter(Boolean)
+        .slice(0, 2);
+    const role = primary || staff.position || '';
+    return secondary.length ? `${role} + ${secondary.join(', ')}` : role;
+}
+
+function renderStaffCardAvatar(staff = {}, initials = '', fallbackColor = '#6366F1') {
+    const photoUrl = String(staff.photo_url || staff.photoUrl || '').trim();
+    if (photoUrl) {
+        return `<div class="emp-avatar emp-avatar-photo" title="HR фото"><img src="${escapeHtml(photoUrl)}" alt=""></div>`;
+    }
+    const isFreelance = staff.is_freelance;
+    return `<div class="emp-avatar" style="background:${escapeHtml(fallbackColor)}">${isFreelance ? '~' : escapeHtml(initials)}</div>`;
+}
+
+function renderStaffCardBadges(staff = {}) {
+    const accountBadge = staff.has_account
+        ? '<span class="staff-card-badge ok" title="CRM акаунт: є">CRM</span>'
+        : '<span class="staff-card-badge warn" title="CRM акаунт: не привʼязано">CRM</span>';
+    const faceBadge = staff.has_face_descriptor
+        ? '<span class="staff-card-badge ok" title="Фото для камери: є">📸</span>'
+        : '<span class="staff-card-badge warn" title="Фото для камери: немає">📸</span>';
+    const pool = String(staff.hr_pool_status || '').trim();
+    const poolBadge = pool && pool !== 'core'
+        ? `<span class="staff-card-badge neutral" title="HR пул: ${escapeHtml(pool)}">${escapeHtml(pool)}</span>`
+        : '';
+    return `${accountBadge}${faceBadge}${poolBadge}`;
 }
 
 function professionCatalogOptions() {
@@ -364,11 +419,85 @@ const LEGACY_DEPARTMENT_FALLBACK = {
     security: 'Охорона'
 };
 
+const SCHEDULE_DEPARTMENT_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'];
+const SCHEDULE_RECEPTION_ROLE_KEYS = new Set(['reception', 'manager', 'senior_manager']);
+const SCHEDULE_BACKEND_COPY_SAFE_DEPARTMENTS = new Set(['all', 'animators', 'trampoline', 'cafe', 'cleaning']);
+
 function getDepartmentOptionsFromStaffState() {
     const source = StaffState.departments && Object.keys(StaffState.departments).length
         ? StaffState.departments
         : LEGACY_DEPARTMENT_FALLBACK;
     return Object.entries(source).map(([value, label]) => ({ value, label }));
+}
+
+function scheduleDisplayDepartmentKey(staff = {}) {
+    const roleKey = normalizeProfessionKey(staff.role_type);
+    if (SCHEDULE_RECEPTION_ROLE_KEYS.has(roleKey)) return 'reception';
+    const department = String(staff.department || '').trim();
+    if (department === 'security') return 'tech';
+    return department || 'admin';
+}
+
+function scheduleDepartmentLabels() {
+    return {
+        ...LEGACY_DEPARTMENT_FALLBACK,
+        ...(StaffState.departments || {}),
+        reception: 'Рецепшен',
+        tech: 'Технічний відділ'
+    };
+}
+
+function scheduleDisplayDepartmentLabel(departmentKey) {
+    return scheduleDepartmentLabels()[departmentKey] || departmentKey;
+}
+
+function scheduleVisibleStaff(staffList = StaffState.staff) {
+    if (StaffState.activeDept === 'all') return staffList;
+    return staffList.filter(staff => scheduleDisplayDepartmentKey(staff) === StaffState.activeDept);
+}
+
+function scheduleDepartmentOptions() {
+    const labels = scheduleDepartmentLabels();
+    const counts = new Map();
+    for (const staff of StaffState.staff) {
+        const key = scheduleDisplayDepartmentKey(staff);
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const ordered = [];
+    const seen = new Set();
+    for (const key of SCHEDULE_DEPARTMENT_ORDER) {
+        if (!labels[key] && !counts.has(key)) continue;
+        ordered.push({ value: key, label: labels[key] || key, count: counts.get(key) || 0 });
+        seen.add(key);
+    }
+    for (const key of counts.keys()) {
+        if (seen.has(key)) continue;
+        ordered.push({ value: key, label: labels[key] || key, count: counts.get(key) || 0 });
+    }
+    return ordered;
+}
+
+function groupStaffByScheduleDepartment(staffList = StaffState.staff) {
+    const grouped = {};
+    for (const staff of staffList) {
+        const key = scheduleDisplayDepartmentKey(staff);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(staff);
+    }
+    return grouped;
+}
+
+function scheduleDepartmentRenderOrder(grouped = {}) {
+    const ordered = SCHEDULE_DEPARTMENT_ORDER.filter(key => grouped[key]);
+    const seen = new Set(ordered);
+    for (const key of Object.keys(grouped)) {
+        if (!seen.has(key)) ordered.push(key);
+    }
+    return ordered;
+}
+
+function isCopyWeekSafeForActiveScheduleDepartment() {
+    return SCHEDULE_BACKEND_COPY_SAFE_DEPARTMENTS.has(StaffState.activeDept);
 }
 
 const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -580,10 +709,12 @@ async function fetchScheduleHours(from, to) {
 
 function renderDeptFilter() {
     const container = document.getElementById('deptFilter');
-    const depts = StaffState.departments;
+    const options = scheduleDepartmentOptions();
+    if (StaffState.activeDept !== 'all' && !options.some(option => option.value === StaffState.activeDept)) {
+        StaffState.activeDept = 'all';
+    }
     let html = `<button class="dept-chip ${StaffState.activeDept === 'all' ? 'active' : ''}" data-dept="all">Всі</button>`;
-    for (const [key, label] of Object.entries(depts)) {
-        const count = StaffState.staff.filter(s => s.department === key).length;
+    for (const { value: key, label, count } of options) {
         html += `<button class="dept-chip ${StaffState.activeDept === key ? 'active' : ''}" data-dept="${key}">${DEPT_ICONS[key] || ''} ${label} (${count})</button>`;
     }
     container.innerHTML = html;
@@ -609,9 +740,7 @@ function renderWeekLabel() {
 function renderSummary() {
     const container = document.getElementById('scheduleSummary');
     const today = todayStr();
-    const filtered = StaffState.activeDept === 'all'
-        ? StaffState.staff
-        : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+    const filtered = scheduleVisibleStaff();
 
     let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0, unset = 0, replacements = 0;
     for (const s of filtered) {
@@ -644,9 +773,8 @@ function renderEmpRow(emp, dates, today) {
     const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
     const isFreelance = emp.is_freelance;
     const linkBadge = renderLinkBadge(emp);
-    const faceBadge = emp.has_face_descriptor
-        ? '<span class="link-badge linked" title="Фото для камери: є">📸</span>'
-        : '<span class="link-badge unlinked" title="Фото для камери: немає">📸❌</span>';
+    const cardBadges = renderStaffCardBadges(emp);
+    const roleSummary = staffCardRoleSummary(emp) || emp.position || '';
     const hrLink = renderHrCrosslink(emp);
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
     let html = `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
@@ -654,10 +782,11 @@ function renderEmpRow(emp, dates, today) {
         <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
              title="Відкрити HR профіль: ${escapeHtml(emp.name)}"
              aria-label="Відкрити HR профіль: ${escapeHtml(emp.name)}">
-            <div class="emp-avatar" style="background:${escapeHtml(avatarColor)}">${isFreelance ? '~' : escapeHtml(initials)}</div>
+            ${renderStaffCardAvatar(emp, initials, avatarColor)}
             <div class="emp-info">
                 <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
-                <span class="emp-position">${escapeHtml(emp.position)} ${linkBadge} ${faceBadge}</span>
+                <span class="emp-position">${escapeHtml(roleSummary)} ${linkBadge}</span>
+                <span class="emp-readiness">${cardBadges}</span>
                 <span class="emp-hours">${hoursLabel}</span>
             </div>
         </div>
@@ -730,24 +859,16 @@ function renderSchedule() {
 
     // Body — group by department
     const tbody = document.getElementById('scheduleBody');
-    const depts = StaffState.departments;
-    const filtered = StaffState.activeDept === 'all'
-        ? StaffState.staff
-        : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+    const filtered = scheduleVisibleStaff();
 
     // Group staff by department
-    const grouped = {};
-    for (const s of filtered) {
-        if (!grouped[s.department]) grouped[s.department] = [];
-        grouped[s.department].push(s);
-    }
+    const grouped = groupStaffByScheduleDepartment(filtered);
 
     let bodyHtml = '';
-    const deptOrder = ['animators', 'trampoline', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
 
-    for (const dept of deptOrder) {
+    for (const dept of scheduleDepartmentRenderOrder(grouped)) {
         if (!grouped[dept]) continue;
-        const deptLabel = depts[dept] || dept;
+        const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const icon = DEPT_ICONS[dept] || '';
         const deptStaff = grouped[dept];
         const subGroups = DEPT_SUB_GROUPS[dept];
@@ -768,8 +889,12 @@ function renderSchedule() {
                 }
             }
             // Render staff that didn't match any sub-group (edge case)
+            const unmatchedByGroup = deptStaff.filter(s => !staffMatchesAnyDepartmentSubGroup(s, subGroups));
             const allRoleKeys = departmentSubGroupRoleKeySet(subGroups);
-            const unmatched = deptStaff.filter(s => !allRoleKeys.has(normalizeProfessionKey(s.role_type)));
+            const unmatched = unmatchedByGroup.filter(s => {
+                const roleKey = normalizeProfessionKey(s.role_type);
+                return !roleKey || !allRoleKeys.has(roleKey);
+            });
             for (const emp of unmatched) {
                 bodyHtml += renderEmpRow(emp, dates, today);
             }
@@ -1183,9 +1308,7 @@ function goToday() {
 
 function openFillWeekModal() {
     const select = document.getElementById('fillStaffSelect');
-    const filtered = StaffState.activeDept === 'all'
-        ? StaffState.staff
-        : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+    const filtered = scheduleVisibleStaff();
 
     select.innerHTML = '<option value="all">Всі видимі працівники</option>';
     for (const emp of filtered) {
@@ -1249,9 +1372,7 @@ async function handleFillWeekSave() {
     // Determine which staff to fill
     let targetStaff;
     if (staffValue === 'all') {
-        targetStaff = StaffState.activeDept === 'all'
-            ? StaffState.staff
-            : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+        targetStaff = scheduleVisibleStaff();
     } else {
         targetStaff = StaffState.staff.filter(s => s.id === parseInt(staffValue));
     }
@@ -1299,7 +1420,12 @@ async function handleCopyWeek() {
 
     const deptLabel = StaffState.activeDept === 'all'
         ? 'всіх відділів'
-        : (StaffState.departments[StaffState.activeDept] || StaffState.activeDept);
+        : scheduleDisplayDepartmentLabel(StaffState.activeDept);
+
+    if (!isCopyWeekSafeForActiveScheduleDepartment()) {
+        showNotification('Для цієї категорії копіювання тижня тимчасово доступне тільки через "Всі", бо вона зібрана з кількох HR-відділів/ролей.', 'error');
+        return;
+    }
 
     if (!await confirmModal(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`, { type: 'warning', okText: 'Копіювати' })) return;
 
@@ -1376,10 +1502,7 @@ function toggleLoadView() {
 function renderLoadView() {
     const dates = getWeekDates(StaffState.weekStart);
     const today = todayStr();
-    const depts = StaffState.departments;
-    const filtered = StaffState.activeDept === 'all'
-        ? StaffState.staff
-        : StaffState.staff.filter(s => s.department === StaffState.activeDept);
+    const filtered = scheduleVisibleStaff();
 
     // Header
     const thead = document.getElementById('loadViewHead');
@@ -1439,14 +1562,14 @@ function renderLoadView() {
 
     // Department breakdown (if showing all departments)
     if (StaffState.activeDept === 'all') {
-        const deptOrder = ['animators', 'trampoline', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
+        const grouped = groupStaffByScheduleDepartment(StaffState.staff);
         bodyHtml += `<tr><td colspan="${dates.length + 2}" style="padding:8px 16px;font-weight:800;font-size:12px;color:var(--gray-500);background:var(--gray-50);border-top:2px solid var(--gray-200)">По відділах (на роботі + віддалено)</td></tr>`;
 
-        for (const dept of deptOrder) {
-            const deptStaff = StaffState.staff.filter(s => s.department === dept);
+        for (const dept of scheduleDepartmentRenderOrder(grouped)) {
+            const deptStaff = grouped[dept] || [];
             if (deptStaff.length === 0) continue;
             const icon = DEPT_ICONS[dept] || '';
-            const label = depts[dept] || dept;
+            const label = scheduleDisplayDepartmentLabel(dept);
             bodyHtml += `<tr class="load-row-status"><td>${icon} ${label}</td>`;
             for (const d of dates) {
                 const ds = formatDateStr(d);
@@ -1949,8 +2072,7 @@ async function handleExcelImport(e) {
 
 function handleExcelExport() {
     const dates = getWeekDates(StaffState.weekStart);
-    const depts = StaffState.departments;
-    const deptOrder = ['animators', 'trampoline', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
+    const grouped = groupStaffByScheduleDepartment(StaffState.staff);
 
     // Build CSV (BOM for Excel)
     let csv = '\ufeff';
@@ -1960,10 +2082,10 @@ function handleExcelExport() {
     }
     csv += '\n';
 
-    for (const dept of deptOrder) {
-        const deptStaff = StaffState.staff.filter(s => s.department === dept);
+    for (const dept of scheduleDepartmentRenderOrder(grouped)) {
+        const deptStaff = grouped[dept] || [];
         if (deptStaff.length === 0) continue;
-        const deptLabel = depts[dept] || dept;
+        const deptLabel = scheduleDisplayDepartmentLabel(dept);
         const subGroups = DEPT_SUB_GROUPS[dept];
 
         const renderStaffCsv = (emp, sgLabel) => {
@@ -1986,8 +2108,12 @@ function handleExcelExport() {
                 const sgStaff = deptStaff.filter(s => staffMatchesDepartmentSubGroup(s, sg));
                 for (const emp of sgStaff) renderStaffCsv(emp, sg.label);
             }
+            const unmatchedByGroup = deptStaff.filter(s => !staffMatchesAnyDepartmentSubGroup(s, subGroups));
             const allRoleKeys = departmentSubGroupRoleKeySet(subGroups);
-            const unmatched = deptStaff.filter(s => !allRoleKeys.has(normalizeProfessionKey(s.role_type)));
+            const unmatched = unmatchedByGroup.filter(s => {
+                const roleKey = normalizeProfessionKey(s.role_type);
+                return !roleKey || !allRoleKeys.has(roleKey);
+            });
             for (const emp of unmatched) renderStaffCsv(emp, '');
         } else {
             for (const emp of deptStaff) renderStaffCsv(emp, '');

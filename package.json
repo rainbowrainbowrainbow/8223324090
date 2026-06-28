@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.61",
+  "version": "0.77.62",
   "eventGenix": {
-    "releaseLabel": "Toolbar Command Center Follow-up"
+    "releaseLabel": "Staff Reports Workspace Refinement"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

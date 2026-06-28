@@ -132,15 +132,15 @@ const HR_NAV_GROUPS = [
         items: [
             withPulseVisual(
                 { id: 'today', label: 'Сьогодні' },
-                { image: 'images/hr-pulse/today-honeycomb.png', tone: 'people' }
+                { image: 'images/hr-pulse/pulse-strip-dark.png', tone: 'people' }
             ),
             withPulseVisual(
                 { id: 'schedule', label: 'Графік', href: '/staff' },
-                { image: 'images/hr-pulse/schedule-operations.png', tone: 'schedule' }
+                { image: 'images/hr-pulse/pulse-strip-dark.png', tone: 'schedule' }
             ),
             withPulseVisual(
                 { id: 'reports', label: 'Звіти' },
-                { image: 'images/hr-pulse/reports-kpi.png', tone: 'reports' }
+                { image: 'images/hr-pulse/pulse-strip-dark.png', tone: 'reports' }
             )
         ]
     },

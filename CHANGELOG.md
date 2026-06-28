@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.43 - HR Pulse Compact Strips
+
+### HR Pulse compact strips / Soft hero / Lighter live board / Release / (Клешня, 27.06.2026) [codex]
+- **Великі image-картки `Сьогодні`, `Графік` і `Звіти` замінено на тонкі плашки** - HR Pulse навігація стала компактнішою, з легшим active/hover/focus state і новим `pulse-strip-dark.png`.
+- **Hero `Пульс зміни` став легшим** - `/hr#today` отримав нижчий soft banner, оновлений текст і спокійніший overlay без важкого glow.
+- **Дата стала службовою міткою** - badge праворуч у hero зменшено, послаблено фон, border і shadow без зміни `todayDate` logic.
+- **Пошук, фільтри й live board стали менш візуально важкими** - controls, department chips, honeycomb board і staff tiles отримали прозоріші фони та слабші тіні.
+- **Regression guardrails оновлено під новий дизайн** - UI smoke перевіряє нові strip assets, accessibility для decorative media, компактну дату, scroll, ellipsis і status classes.
+- **Релізні маркери піднято до `0.77.43`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.42 - Hermes My Cabinet Access
 
 ### Hermes my-cabinet release / Strict owner validation / Docs / (Клешня, 27.06.2026) [codex]

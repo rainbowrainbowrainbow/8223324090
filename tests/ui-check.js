@@ -3277,6 +3277,7 @@ const hrPulseNavSurfaceRule = cssRuleText(hrPageCss, '.hr-nav--pulse');
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardMediaRule = cssRuleText(hrPageCss, '.hr-pulse-card-media');
 const hrPulseCardMediaImgRule = cssRuleText(hrPageCss, '.hr-pulse-card-media img');
+const hrPulseStripImageUses = (hrCode.match(/image: 'images\/hr-pulse\/pulse-strip-dark\.png'/g) || []).length;
 const hrReportsHeroRule = cssRuleText(hrPageCss, '.hr-reports-hero');
 const hrReportsHeroMediaRule = cssRuleText(hrPageCss, '.hr-reports-hero-media');
 const hrReportsHeroMediaImgRule = cssRuleText(hrPageCss, '.hr-reports-hero-media img');
@@ -3284,10 +3285,10 @@ check('HR Pulse premium switcher keeps assets, routing, and accessible decorativ
     fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'today-honeycomb.png'))
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'schedule-operations.png'))
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'reports-kpi.png'))
+    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
+    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-light.png'))
     && hrCode.includes('function withPulseVisual')
-    && hrCode.includes("image: 'images/hr-pulse/today-honeycomb.png'")
-    && hrCode.includes("image: 'images/hr-pulse/schedule-operations.png'")
-    && hrCode.includes("image: 'images/hr-pulse/reports-kpi.png'")
+    && hrPulseStripImageUses === 3
     && hrCode.includes("tone: 'people'")
     && hrCode.includes("tone: 'schedule'")
     && hrCode.includes("tone: 'reports'")
@@ -3310,6 +3311,7 @@ check('HR Pulse premium switcher keeps assets, routing, and accessible decorativ
     && /position:\s*absolute;/.test(hrPulseCardMediaImgRule)
     && /inset:\s*0;/.test(hrPulseCardMediaImgRule)
     && /max-width:\s*none;/.test(hrPulseCardMediaImgRule)
+    && /object-position:\s*center;/.test(hrPulseCardMediaImgRule)
     && /overflow:\s*hidden;/.test(hrReportsHeroRule)
     && /contain:\s*layout paint;/.test(hrReportsHeroRule)
     && /overflow:\s*hidden;/.test(hrReportsHeroMediaRule)
@@ -3330,11 +3332,13 @@ const hrTodayHoneycombMobileBoardRule = cssRuleText(hrTodayHoneycombMobileBlock,
 const hrTodayHexTileRule = cssRuleText(hrPageCss, '.hr-today-hex-tile');
 const hrTodayHexNameRule = cssRuleText(hrPageCss, '.hr-today-hex-name');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
-check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*36px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
+check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*32px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
 check('HR Pulse Today has premium hero, search, department segmentation, and compact live staff board on the Today surface',
-    fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'today-honeycomb-empty.png'))
+    fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
     && htmlContains('hr.html', 'class="hr-today-hero"')
-    && htmlContains('hr.html', 'images/hr-pulse/today-honeycomb-empty.png')
+    && htmlContains('hr.html', 'images/hr-pulse/pulse-strip-dark.png')
+    && htmlContains('hr.html', 'Команда сьогодні')
+    && htmlContains('hr.html', 'Пульс зміни')
     && htmlContains('hr.html', 'id="todayDate"')
     && htmlContains('hr.html', 'id="todaySearch"')
     && htmlContains('hr.html', 'id="todayDepartmentSegments"')

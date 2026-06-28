@@ -3077,7 +3077,15 @@ input[type="date"] {
     border: 1px solid rgba(148, 163, 184, 0.24);
     box-shadow: 0 20px 42px rgba(15, 23, 42, 0.14);
     backdrop-filter: blur(16px) saturate(1.08);
-    animation-duration: 0.16s;
+    opacity: 0;
+    transform: translateY(-4px);
+    animation: timelineActionMenuIn 140ms ease-out forwards;
+    will-change: opacity, transform;
+}
+
+@keyframes timelineActionMenuIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* v0.73.1: closed Timeline action menu must leave no toolbar ghost block. */
@@ -3105,6 +3113,7 @@ input[type="date"] {
     color: #334155;
     font-weight: 800;
     letter-spacing: 0;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
 .admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-item:hover {

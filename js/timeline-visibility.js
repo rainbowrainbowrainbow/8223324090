@@ -55,7 +55,7 @@
         visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn'),
         visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),
         visualBlock('history', 'Верхня панель', 'Історія змін', '#historyBtn'),
-        visualBlock('digest', 'Меню дій', 'Дайджест дня', '#digestBtn'),
+        visualBlock('digest', 'Верхня панель', 'Дайджест дня', '#digestBtn'),
         visualBlock('quickStats', 'Робоча зона', 'Швидка статистика', '#quickStatsBar'),
         visualBlock('assistantWidget', 'Робоча зона', 'Помічник', '#kleshnyaWidget'),
         visualBlock('warnings', 'Робоча зона', 'Попередження', '#warningBanner, #filterModeBanner'),
@@ -656,6 +656,7 @@
     function createConstructorButton() {
         if (document.getElementById('timelineConstructorBtn')) {
             state.toggleBtn = document.getElementById('timelineConstructorBtn');
+            state.toggleBtn.classList.add('toolbarIconButton', 'toolbarGhostButton');
             bindConstructorButton(state.toggleBtn);
             return;
         }
@@ -665,9 +666,9 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.id = 'timelineConstructorBtn';
-        button.className = 'timeline-constructor-btn hidden';
-        button.title = 'Налаштування таймлайну';
-        button.setAttribute('aria-label', 'Налаштування таймлайну');
+        button.className = 'timeline-constructor-btn toolbarIconButton toolbarGhostButton hidden';
+        button.title = 'Налаштування';
+        button.setAttribute('aria-label', 'Налаштування');
         button.setAttribute('aria-pressed', 'false');
         button.innerHTML = '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Налаштування</span>';
         bindConstructorButton(button);
@@ -943,7 +944,7 @@
         state.toggleBtn?.classList.toggle('is-active', state.constructorActive);
         state.toggleBtn?.setAttribute('aria-pressed', String(state.constructorActive));
         if (state.toggleBtn) {
-            state.toggleBtn.title = state.constructorActive ? 'Завершити налаштування таймлайну' : 'Налаштування таймлайну';
+            state.toggleBtn.title = state.constructorActive ? 'Завершити налаштування' : 'Налаштування';
             state.toggleBtn.setAttribute('aria-label', state.toggleBtn.title);
             state.toggleBtn.innerHTML = state.constructorActive
                 ? '<span class="timeline-constructor-btn-icon" aria-hidden="true">✓</span><span class="timeline-constructor-btn-label">Готово</span>'

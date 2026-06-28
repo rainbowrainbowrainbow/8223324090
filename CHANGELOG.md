@@ -4,6 +4,149 @@
 
 ---
 
+## v0.77.57 - Toolbar Micro Interactions
+
+### Timeline toolbar / Micro-interactions / Digest loading / Overflow menu / (Клешня, 28.06.2026) [codex]
+- **Hover transitions полегшено** - toolbar controls переходять тільки через background, border і color за 140ms, без scale або важкого glow.
+- **Pressed state лишився тихим** - active click використовує `translateY(1px)` без layout shift і без іграшкового bounce.
+- **Digest loading став акуратнішим** - під час async дії кнопка показує `Готуємо...` і маленький spinner, після завершення повертає `Дайджест`.
+- **Overflow menu відкривається плавніше** - контекстне меню `⋯` отримало короткий opacity/translate animation замість scale-heavy входу.
+- **Keyboard flow overflow покращено** - `ArrowDown` відкриває меню з фокусом на пункті, `ArrowUp/ArrowDown` рухаються між пунктами, `Escape` закриває через існуючий lifecycle.
+- **Dependencies не додавались** - micro-interactions реалізовані CSS і вже наявними JS handlers.
+- **Regression guardrails оновлено** - UI smoke перевіряє легкі transitions, spinner, digest label і keyboard-safe overflow behavior.
+- **Релізні маркери піднято до `0.77.57`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.56 - Toolbar Accessibility
+
+### Timeline toolbar / Accessibility / ARIA states / Digest loading / (Клешня, 28.06.2026) [codex]
+- **Segmented controls отримали явні pressed states** - статуси, режими перегляду і масштаб часу лишаються semantic `button`, але тепер синхронізують `aria-pressed` разом з active class.
+- **Overlay toggles розведено для screen reader** - `Свята` і `Компактно` мають незалежний `aria-pressed`, а compact checkbox додатково тримає `aria-checked`.
+- **Digest loading став доступним** - кнопка має `aria-busy`, `aria-disabled` і polite live status для станів відправки, готовності або недоступності.
+- **Подвійний запуск digest заблоковано** - повторний click ігнорується, якщо async дія вже loading, disabled або `aria-busy="true"`.
+- **Settings icon-only перевірено** - dynamic settings button зберігає `aria-label="Налаштування"`, `title="Налаштування"` і видимий focus-visible ring.
+- **Focus state лишився видимим** - toolbar controls мають border + shadow ring, не лише зміну кольору.
+- **Regression guardrails оновлено** - UI smoke перевіряє semantic buttons, ARIA states, digest live region, loading guard і focus ring CSS.
+- **Релізні маркери піднято до `0.77.56`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.55 - Toolbar Responsive Behavior
+
+### Timeline toolbar / Responsive behavior / Label shortening / Mobile scroll / (Клешня, 28.06.2026) [codex]
+- **Desktop wide лишився дворядковим** - Schedule Command Center зберігає 2 рядки, повні labels і видимі швидкі дії без зміни handlers.
+- **Medium breakpoint скорочує labels** - `Підтверджені` переходить у `Підтв.`, `Попередні` у `Попер.`, а `Історія змін` у `Історія`.
+- **Small screens отримали горизонтально-scrollable rows** - toolbar не роздуває всю сторінку по ширині, а groups скроляться всередині своїх рядків.
+- **Date picker не ламався** - date navigation cluster лишається окремою max-content групою з незмінним `#timelineDate`.
+- **`Дайджест` пріоритезовано перед overflow** - на small screens action group іде перед scale/overflow групою, тому digest доступний раніше за `⋯`.
+- **Settings лишився icon-only** - dynamic `timelineConstructorBtn` зберігає icon button behavior на всіх breakpoint.
+- **Regression guardrails оновлено** - UI smoke перевіряє full/short labels, breakpoints, scroll rules і small-screen order.
+- **Релізні маркери піднято до `0.77.55`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.54 - Toolbar Control Tokens
+
+### Timeline toolbar / Shared controls / Design tokens / Interaction states / (Клешня, 28.06.2026) [codex]
+- **Toolbar controls уніфіковано через shared classes** - `toolbarContainer`, `toolbarRow`, `toolbarGroup`, `segmentedControl`, `segmentedItem`, `toolbarButton`, `toolbarIconButton`, `toolbarToggleChip`, `toolbarGhostButton` і `toolbarAccentButton` додані поверх існуючих класів.
+- **Design tokens винесено в scoped CSS layer** - Schedule Command Center тепер використовує єдині token values для container/control backgrounds, borders, active gradient, inactive і muted text.
+- **Segmented controls отримали спільну геометрію** - статуси, режим перегляду і масштаб часу мають однаковий container rhythm, height, radius і item styling.
+- **Buttons, icon buttons і toggles вирівняно** - дата-навігація, `Зараз`, `Свята`, `Компактно`, `Дайджест`, overflow і settings використовують спільні variants без різної візуальної ваги.
+- **Interaction states покрито централізовано** - hover, active/pressed, focus-visible, disabled і loading/aria-busy стани задано в одному toolbar layer.
+- **Handlers і permissions не змінювались** - старі `id`, `data-*`, active classes і dynamic `timelineConstructorBtn` contract збережені.
+- **Regression guardrails оновлено** - UI smoke перевіряє shared classes, token values, segmented options, toggle chip і dynamic settings class.
+- **Релізні маркери піднято до `0.77.54`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.53 - Toolbar Scale Controls Polish
+
+### Timeline toolbar / Scale control / Compact mode chip / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Нижній лівий блок toolbar став легшим** - `Масштаб:` і `15 хв / 30 хв / 60 хв` більше не виглядають як окрема важка панель.
+- **Options масштабу збережено без зміни логіки** - ті самі `data-zoom="15"`, `data-zoom="30"` і `data-zoom="60"` продовжують працювати через існуючі handlers.
+- **Active scale state зроблено менш масивним** - активна опція лишається очевидною через teal chip, але без primary-heavy заливки.
+- **`Компактно` стало checkbox-style chip** - `#compactModeToggle` лишився тим самим input, а active/toggled стан показується через легкий checked indicator.
+- **Spacing нижнього рядка вирівняно** - між scale group і compact chip задано 12-16px ритм, controls тримають 36px висоту.
+- **Regression guardrails оновлено** - UI smoke перевіряє label `Масштаб:`, три zoom options, збережений checkbox і active CSS для compact chip.
+- **Релізні маркери піднято до `0.77.53`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.52 - Toolbar Status Filter Polish
+
+### Timeline toolbar / Status segmented control / Compact states / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Status segmented control став нижчим і чистішим** - `Всі`, `Підтверджені` і `Попередні` отримали менший padding, нижчу висоту і компактніший container.
+- **Active state лишився очевидним** - активний статус має teal chip, border і легку тінь без primary-heavy вигляду.
+- **Inactive states приглушено** - неактивні пункти стали muted і менш контрастними, щоб не конкурувати з active.
+- **Повні назви збережено на широкому екрані** - labels не скорочувались і лишаються `Всі`, `Підтверджені`, `Попередні`.
+- **Counts не додавались** - готових count-ів у самому toolbar немає, нових API або додаткових запитів не вводилось.
+- **Regression guardrails оновлено** - UI smoke перевіряє повні labels, відсутність count markup і compact/muted CSS для статусів.
+- **Релізні маркери піднято до `0.77.52`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.51 - Toolbar Date Navigation Cluster
+
+### Timeline toolbar / Date navigation / Compact controls / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Ліву групу дати перероблено у compact date navigation cluster** - порядок став `‹ дата · мета · Зараз ›`, без важкої окремої date panel.
+- **Дата стала головним елементом** - `#timelineDate` збережено як native date input, але тепер він сидить у compact date button із календарною іконкою.
+- **День і час роботи стали secondary metadata** - `Неділя · 10:00-20:00` показується тихішим текстом поруч із датою.
+- **`Зараз` лишився `Зараз`** - логіка переходу через існуючий `todayBtn` handler не змінювалась, а візуально кнопка стала compact accent/ghost.
+- **Навігація стала симетричною** - назад/вперед мають однаковий компактний розмір і не розтягують toolbar.
+- **Regression guardrails оновлено** - UI smoke перевіряє нову структуру cluster, date wrapper, metadata dot, текст `Зараз` і mobile overflow-safe поведінку.
+- **Релізні маркери піднято до `0.77.51`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.50 - Toolbar Settings Icon
+
+### Timeline toolbar / Settings action / Accessibility / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Кнопку `Налаштування` у toolbar зроблено compact icon-only** - на desktop лишається шестерня без видимого тексту, тому дія не конкурує з режимами, масштабом і дайджестом.
+- **Доступність збережено** - кнопка має `aria-label="Налаштування"`, `title="Налаштування"` і focus-visible стан із teal ring.
+- **Візуальний стиль полегшено** - settings action отримав ghost/outline фон, слабкий border, muted icon color і легкий teal hover/glow.
+- **Handler і permissions не змінювались** - `timelineConstructorBtn` і `bindConstructorButton` продовжують відкривати той самий settings center через існуючий `canUseAction('settings')`.
+- **Regression guardrails оновлено** - UI smoke перевіряє accessible labeling, icon-only hiding, compact 40px sizing і focus-visible CSS.
+- **Релізні маркери піднято до `0.77.50`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.49 - Toolbar Digest Action
+
+### Timeline toolbar / Digest action / Loading state / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **`Дайджест` винесено у праву частину нижнього toolbar** - дія більше не залежить від overflow-меню і доступна як швидка secondary accent кнопка.
+- **Існуючий handler збережено** - кнопка лишилась `#digestBtn`, тому запуск використовує той самий `sendDailyDigest` flow і `/api/telegram/digest/:date`.
+- **Async loading state додано без зміни API** - під час відправки кнопка стає disabled, показує `Відправка...` і блокує повторний click.
+- **Permissions і empty states збережено** - viewer visibility, timeline visibility settings і auto-hide порожнього меню дій продовжують працювати через існуючі механізми.
+- **Regression guardrails оновлено** - UI smoke перевіряє, що digest є direct action у `.action-buttons`, не дублюється у `v32-controls` і не повертається в dropdown.
+- **Релізні маркери піднято до `0.77.49`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.48 - Schedule View Overlay Split
+
+### Timeline toolbar / View mode split / Holiday overlay / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Режими графіка розділено від overlay `Свята`** - `День`, `Тиждень` і `Кімнати` тепер працюють як один взаємовиключний segmented control.
+- **`Свята` винесено в окремий toggle chip** - overlay має власний active/pressed стан і може бути активним разом із будь-яким режимом перегляду.
+- **State розділено на `viewMode` і `showHolidays`** - legacy `timelineView=animators|rooms` збережено для API, settings, cache keys і render contracts.
+- **Active styles стали однозначними** - mode buttons і overlay chip мають різні візуальні стани, тому `День + Свята`, `Тиждень + Свята` і `Кімнати + Свята` читаються як режим плюс overlay.
+- **Regression guardrails оновлено** - static UI і timeline resource tests перевіряють нову структуру controls та сумісність room/animator contracts.
+- **Релізні маркери піднято до `0.77.48`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.47 - Schedule Command Center
+
+### Timeline toolbar / Compact command center / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Toolbar графіка перероблено у дворядковий Schedule Command Center** - дата/навігація, статуси, День/Тиждень/Кімнати/Свята і службові дії отримали чітку ієрархію.
+- **Нижній рядок став легшим** - масштаб часу, compact toggle, дайджест, історія, overflow-дії та налаштування вирівняні в один компактний control strip.
+- **Висоту desktop toolbar зменшено без зміни логіки** - існуючі `id`, handlers, API, auth і бізнес-поведінка графіка збережені.
+- **Адаптивність збережено** - mobile/tablet layout отримав компактний scrollable command strip замість важкої другої панелі.
+- **Regression guardrails оновлено** - UI smoke перевіряє нову дворядкову структуру, direct digest action і primary history action.
+- **Релізні маркери піднято до `0.77.47`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.46 - Scheduler Reliability Hardening
 
 ### Scheduler hardening / Notification coverage / Release / (Клешня, 28.06.2026) [codex]

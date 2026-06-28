@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.46",
+  "version": "0.77.57",
   "eventGenix": {
-    "releaseLabel": "Scheduler Reliability Hardening"
+    "releaseLabel": "Toolbar Micro Interactions"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

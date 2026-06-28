@@ -769,8 +769,46 @@ function dailyDigestFailureMessage(result = {}, response = null) {
     return result.message || 'Не вдалося відправити дайджест дня.';
 }
 
+function setDailyDigestButtonLoading(isLoading) {
+    const btn = document.getElementById('digestBtn');
+    if (!btn) return;
+    const label = btn.querySelector('.timeline-control-icon + span') || btn.querySelector('span:not(.timeline-control-icon):not(.toolbar-sr-status)');
+    const status = document.getElementById('digestStatus');
+    if (isLoading) {
+        btn.dataset.digestPrevDisabled = btn.disabled ? '1' : '0';
+        btn.dataset.digestPrevTitle = btn.getAttribute('title') || '';
+        btn.dataset.digestPrevAriaLabel = btn.getAttribute('aria-label') || '';
+        btn.disabled = true;
+        btn.classList.add('is-loading');
+        btn.setAttribute('aria-busy', 'true');
+        btn.setAttribute('aria-disabled', 'true');
+        btn.setAttribute('aria-label', 'Дайджест відправляється');
+        btn.setAttribute('title', 'Дайджест відправляється...');
+        if (label) label.textContent = 'Готуємо...';
+        if (status) status.textContent = 'Дайджест відправляється';
+        return;
+    }
+    const wasDisabled = btn.dataset.digestPrevDisabled === '1';
+    const prevTitle = btn.dataset.digestPrevTitle || 'Надіслати дайджест в Telegram';
+    const prevAriaLabel = btn.dataset.digestPrevAriaLabel || 'Надіслати дайджест дня';
+    btn.disabled = wasDisabled;
+    btn.classList.remove('is-loading');
+    btn.setAttribute('aria-busy', 'false');
+    btn.setAttribute('aria-disabled', wasDisabled ? 'true' : 'false');
+    btn.setAttribute('aria-label', prevAriaLabel);
+    btn.setAttribute('title', prevTitle);
+    if (label) label.textContent = 'Дайджест';
+    if (status) status.textContent = wasDisabled ? 'Дайджест недоступний' : 'Дайджест готовий';
+    delete btn.dataset.digestPrevDisabled;
+    delete btn.dataset.digestPrevTitle;
+    delete btn.dataset.digestPrevAriaLabel;
+}
+
 async function sendDailyDigest() {
     const dateStr = formatDate(AppState.selectedDate);
+    const digestBtn = document.getElementById('digestBtn');
+    if (digestBtn?.classList.contains('is-loading') || digestBtn?.disabled || digestBtn?.getAttribute('aria-busy') === 'true') return;
+    setDailyDigestButtonLoading(true);
     try {
         const response = await fetch(`${API_BASE}/telegram/digest/${dateStr}`, {
             headers: getAuthHeaders(false)
@@ -791,6 +829,8 @@ async function sendDailyDigest() {
     } catch (err) {
         console.error('Digest send error:', err);
         showNotification('Не вдалося відправити дайджест. Перевірте Telegram налаштування або спробуйте пізніше.', 'error');
+    } finally {
+        setDailyDigestButtonLoading(false);
     }
 }
 

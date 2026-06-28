@@ -50,7 +50,7 @@ const TIMELINE_VISUAL_BLOCKS = Object.freeze([
   visualBlock('export', 'Верхня панель', 'Експорт'),
   visualBlock('actionMenu', 'Верхня панель', 'Меню дій'),
   visualBlock('history', 'Верхня панель', 'Історія змін'),
-  visualBlock('digest', 'Меню дій', 'Дайджест дня'),
+  visualBlock('digest', 'Верхня панель', 'Дайджест дня'),
   visualBlock('quickStats', 'Робоча зона', 'Швидка статистика'),
   visualBlock('assistantWidget', 'Робоча зона', 'Помічник'),
   visualBlock('warnings', 'Робоча зона', 'Попередження'),

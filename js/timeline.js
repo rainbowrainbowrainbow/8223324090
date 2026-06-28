@@ -11,6 +11,9 @@ let _renderGen = 0;
 let _leadConversionAutoOpenAttempted = false;
 const TIMELINE_VIEW_ANIMATORS = 'animators';
 const TIMELINE_VIEW_ROOMS = 'rooms';
+const TIMELINE_SCHEDULE_VIEW_DAY = 'day';
+const TIMELINE_SCHEDULE_VIEW_WEEK = 'week';
+const TIMELINE_SCHEDULE_VIEW_ROOMS = 'rooms';
 const TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service';
 const TIMELINE_BANQUET_SERVICE_LINE_LABEL = 'Банкет / кімната';
 const TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1';
@@ -408,6 +411,14 @@ function normalizeTimelineViewMode(value) {
         : TIMELINE_VIEW_ANIMATORS;
 }
 
+function timelinePeriodDayValue() {
+    return typeof TIMELINE_PERIOD_DAY !== 'undefined' ? TIMELINE_PERIOD_DAY : 1;
+}
+
+function timelinePeriodWeekValue() {
+    return typeof TIMELINE_PERIOD_WEEK !== 'undefined' ? TIMELINE_PERIOD_WEEK : 7;
+}
+
 function canUseRoomTimelineView() {
     const ctx = window.TimelineBusinessContext?.current?.();
     const presentation = window.TimelineBusinessContext?.presentation?.();
@@ -423,6 +434,14 @@ function timelineViewStorageKey() {
 
 function timelineViewChoiceStorageKey() {
     return window.TimelineBusinessContext?.storageKey?.('timeline_view_choice') || 'pzp_timeline_view_choice';
+}
+
+function timelineScheduleViewModeStorageKey() {
+    return window.TimelineBusinessContext?.storageKey?.('timeline_schedule_view_mode') || 'pzp_timeline_schedule_view_mode';
+}
+
+function timelineHolidaysStorageKey() {
+    return window.TimelineBusinessContext?.storageKey?.('timeline_show_holidays') || 'pzp_timeline_show_holidays';
 }
 
 function timelineViewFromUrl() {
@@ -459,25 +478,159 @@ function isRoomTimelineView() {
     return timelineCurrentView() === TIMELINE_VIEW_ROOMS;
 }
 
+function normalizeTimelineScheduleViewMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    if (mode === TIMELINE_SCHEDULE_VIEW_WEEK) return TIMELINE_SCHEDULE_VIEW_WEEK;
+    if (mode === TIMELINE_SCHEDULE_VIEW_ROOMS) return TIMELINE_SCHEDULE_VIEW_ROOMS;
+    return TIMELINE_SCHEDULE_VIEW_DAY;
+}
+
+function timelineShowHolidays() {
+    try {
+        const stored = localStorage.getItem(timelineHolidaysStorageKey());
+        if (stored === 'false') return false;
+        if (stored === 'true') return true;
+    } catch {}
+    return true;
+}
+
+function setTimelineShowHolidaysValue(visible) {
+    const next = visible !== false;
+    try { localStorage.setItem(timelineHolidaysStorageKey(), next ? 'true' : 'false'); } catch {}
+    return next;
+}
+
+function timelineCurrentScheduleViewMode() {
+    if (timelineCurrentView() === TIMELINE_VIEW_ROOMS) return TIMELINE_SCHEDULE_VIEW_ROOMS;
+    if (typeof AppState !== 'undefined' && AppState.multiDayMode) return TIMELINE_SCHEDULE_VIEW_WEEK;
+    return TIMELINE_SCHEDULE_VIEW_DAY;
+}
+
+function timelineViewModeState() {
+    return {
+        viewMode: timelineCurrentScheduleViewMode(),
+        showHolidays: timelineShowHolidays(),
+        timelineView: timelineCurrentView()
+    };
+}
+
 function updateTimelineViewControls() {
     const current = timelineCurrentView();
+    const viewMode = timelineCurrentScheduleViewMode();
+    const showHolidays = timelineShowHolidays();
+    const roomsAvailable = canUseRoomTimelineView();
     document.body.classList.toggle('timeline-view-rooms', current === TIMELINE_VIEW_ROOMS);
     document.body.classList.toggle('timeline-view-animators', current !== TIMELINE_VIEW_ROOMS);
-    const selector = document.getElementById('timelineViewSelector');
-    if (selector) selector.classList.toggle('hidden', !canUseRoomTimelineView());
-    document.querySelectorAll('[data-timeline-view]').forEach(btn => {
-        const active = normalizeTimelineViewMode(btn.dataset.timelineView) === current;
+    document.body.classList.toggle('timeline-holidays-visible', showHolidays);
+    document.body.classList.toggle('timeline-holidays-hidden', !showHolidays);
+    document.body.dataset.scheduleViewMode = viewMode;
+    document.body.dataset.showHolidays = showHolidays ? 'true' : 'false';
+    document.querySelectorAll('[data-schedule-view-mode-selector]').forEach(selector => {
+        selector.classList.toggle('rooms-unavailable', !roomsAvailable);
+    });
+    document.querySelectorAll('[data-schedule-view-mode="rooms"]').forEach(btn => {
+        btn.classList.toggle('hidden', !roomsAvailable);
+        btn.hidden = !roomsAvailable;
+        btn.setAttribute('aria-hidden', roomsAvailable ? 'false' : 'true');
+    });
+    document.querySelectorAll('[data-schedule-view-mode]').forEach(btn => {
+        const active = normalizeTimelineScheduleViewMode(btn.dataset.scheduleViewMode) === viewMode;
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    document.querySelectorAll('[data-timeline-view]').forEach(btn => {
+        const active = normalizeTimelineViewMode(btn.dataset.timelineView) === current;
+        btn.dataset.timelineViewActive = active ? 'true' : 'false';
+    });
+    document.querySelectorAll('[data-timeline-holidays-toggle]').forEach(btn => {
+        btn.classList.toggle('active', showHolidays);
+        btn.classList.toggle('is-overlay-active', showHolidays);
+        btn.setAttribute('aria-pressed', showHolidays ? 'true' : 'false');
+        btn.dataset.showHolidays = showHolidays ? 'true' : 'false';
+    });
+    if (typeof syncTimelinePeriodSelector === 'function') syncTimelinePeriodSelector();
+}
+
+async function setTimelineScheduleViewMode(mode, options = {}) {
+    const nextMode = normalizeTimelineScheduleViewMode(mode);
+    if (nextMode === TIMELINE_SCHEDULE_VIEW_ROOMS && !canUseRoomTimelineView()) {
+        updateTimelineViewControls();
+        return timelineCurrentScheduleViewMode();
+    }
+
+    const previousMode = timelineCurrentScheduleViewMode();
+    const previousPeriod = typeof AppState !== 'undefined' && AppState.multiDayMode
+        ? timelinePeriodWeekValue()
+        : timelinePeriodDayValue();
+    const nextPeriod = nextMode === TIMELINE_SCHEDULE_VIEW_WEEK ? timelinePeriodWeekValue() : timelinePeriodDayValue();
+    const nextTimelineView = nextMode === TIMELINE_SCHEDULE_VIEW_ROOMS
+        ? TIMELINE_VIEW_ROOMS
+        : TIMELINE_VIEW_ANIMATORS;
+
+    try { localStorage.setItem(timelineScheduleViewModeStorageKey(), nextMode); } catch {}
+    if (typeof normalizeTimelineModeState === 'function' && typeof AppState !== 'undefined') {
+        normalizeTimelineModeState(AppState);
+    }
+    if (typeof AppState !== 'undefined') {
+        AppState.multiDayMode = nextPeriod === timelinePeriodWeekValue();
+        AppState.daysToShow = AppState.multiDayMode ? timelinePeriodWeekValue() : timelinePeriodDayValue();
+    }
+
+    const periodChanged = previousPeriod !== nextPeriod;
+    const viewChanged = timelineCurrentView() !== nextTimelineView;
+    if (periodChanged && typeof markTimelineNavigationScrollReset === 'function') {
+        markTimelineNavigationScrollReset('schedule-view-mode-change');
+    }
+    if (viewChanged) {
+        await setTimelineView(nextTimelineView, { render: false, source: 'schedule-view-mode' });
+    } else {
+        updateTimelineViewControls();
+    }
+
+    if ((periodChanged || viewChanged || previousMode !== nextMode) && options.render !== false && typeof renderTimeline === 'function') {
+        await renderTimeline();
+    }
+    window.dispatchEvent(new CustomEvent('timeline:schedule-view-mode-changed', {
+        detail: { viewMode: nextMode, previousViewMode: previousMode, showHolidays: timelineShowHolidays() }
+    }));
+    return nextMode;
+}
+
+async function setTimelineHolidaysVisible(visible, options = {}) {
+    const previous = timelineShowHolidays();
+    const next = setTimelineShowHolidaysValue(visible);
+    updateTimelineViewControls();
+    if (previous !== next) {
+        window.dispatchEvent(new CustomEvent('timeline:holidays-toggle-changed', {
+            detail: { showHolidays: next, previousShowHolidays: previous, viewMode: timelineCurrentScheduleViewMode() }
+        }));
+        if (options.render === true && typeof renderTimeline === 'function') {
+            await renderTimeline();
+        }
+    }
+    return next;
+}
+
+function toggleTimelineHolidays(options = {}) {
+    return setTimelineHolidaysVisible(!timelineShowHolidays(), options);
 }
 
 async function setTimelineView(view, options = {}) {
     const next = normalizeTimelineViewMode(view);
     if (next === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return timelineCurrentView();
     const current = timelineCurrentView();
+    if (next === TIMELINE_VIEW_ROOMS && typeof AppState !== 'undefined') {
+        AppState.multiDayMode = false;
+        AppState.daysToShow = timelinePeriodDayValue();
+    }
     try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
     try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
+    try {
+        const nextMode = next === TIMELINE_VIEW_ROOMS
+            ? TIMELINE_SCHEDULE_VIEW_ROOMS
+            : (typeof AppState !== 'undefined' && AppState.multiDayMode ? TIMELINE_SCHEDULE_VIEW_WEEK : TIMELINE_SCHEDULE_VIEW_DAY);
+        localStorage.setItem(timelineScheduleViewModeStorageKey(), nextMode);
+    } catch {}
     updateTimelineViewControls();
     if (next !== current) {
         clearTimelineActiveBanquetContext('timeline_view_changed');
@@ -507,8 +660,13 @@ window.TimelineView = {
     current: timelineCurrentView,
     isRooms: isRoomTimelineView,
     set: setTimelineView,
+    setMode: setTimelineScheduleViewMode,
+    setHolidays: setTimelineHolidaysVisible,
+    toggleHolidays: toggleTimelineHolidays,
+    state: timelineViewModeState,
     updateControls: updateTimelineViewControls,
-    normalize: normalizeTimelineViewMode
+    normalize: normalizeTimelineViewMode,
+    normalizeMode: normalizeTimelineScheduleViewMode
 };
 
 // v7.0.1: Render debug (console only)
@@ -3367,9 +3525,15 @@ function resetStatusFilter() {
     AppState.statusFilter = 'all';
     const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('status_filter') : 'pzp_status_filter';
     localStorage.setItem(key, 'all');
-    document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
-    const allBtn = document.querySelector('.status-filter-btn[data-filter="all"]');
-    if (allBtn) allBtn.classList.add('active');
+    if (typeof syncTimelineStatusFilterButtons === 'function') {
+        syncTimelineStatusFilterButtons();
+    } else {
+        document.querySelectorAll('.status-filter-btn').forEach(b => {
+            const active = b.dataset.filter === 'all';
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
     applyStatusFilter();
     updateFilterBanner();
 }
@@ -3377,6 +3541,9 @@ function resetStatusFilter() {
 // v5.15: Filter booking blocks by status (CSS-only, no re-render)
 function applyStatusFilter() {
     const filter = AppState.statusFilter || 'all';
+    if (typeof syncTimelineStatusFilterButtons === 'function') {
+        syncTimelineStatusFilterButtons();
+    }
     document.querySelectorAll('.booking-block').forEach(block => {
         if (filter === 'all') {
             block.classList.remove('status-hidden');

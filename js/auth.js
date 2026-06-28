@@ -1445,7 +1445,12 @@ function showMainApp() {
 
     // Compact mode toggle
     const compactToggle = document.getElementById('compactModeToggle');
-    if (compactToggle) compactToggle.checked = AppState.compactMode;
+    if (typeof syncTimelineCompactToggleAria === 'function') {
+        syncTimelineCompactToggleAria();
+    } else if (compactToggle) {
+        compactToggle.checked = AppState.compactMode;
+        compactToggle.setAttribute('aria-checked', AppState.compactMode ? 'true' : 'false');
+    }
 
     // Zoom buttons
     updateZoomButtons();
@@ -1455,9 +1460,15 @@ function showMainApp() {
 
     // Status filter restore
     if (AppState.statusFilter && AppState.statusFilter !== 'all') {
-        document.querySelectorAll('.status-filter-btn').forEach(b => {
-            b.classList.toggle('active', b.dataset.filter === AppState.statusFilter);
-        });
+        if (typeof syncTimelineStatusFilterButtons === 'function') {
+            syncTimelineStatusFilterButtons();
+        } else {
+            document.querySelectorAll('.status-filter-btn').forEach(b => {
+                const active = b.dataset.filter === AppState.statusFilter;
+                b.classList.toggle('active', active);
+                b.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+        }
     }
 
     initializeTimeline();

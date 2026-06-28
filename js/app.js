@@ -95,15 +95,47 @@ function timelineStorageKey(name) {
     return `pzp_${name}`;
 }
 
+function syncTimelineStatusFilterButtons() {
+    const activeFilter = AppState.statusFilter || 'all';
+    document.querySelectorAll('.status-filter-btn').forEach(btn => {
+        const active = btn.dataset.filter === activeFilter;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function syncTimelineCompactToggleAria() {
+    const toggle = document.getElementById('compactModeToggle');
+    const chip = toggle?.closest?.('.timeline-compact-toggle');
+    const active = Boolean(AppState.compactMode);
+    if (toggle) {
+        toggle.checked = active;
+        toggle.setAttribute('aria-checked', active ? 'true' : 'false');
+    }
+    if (chip) {
+        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+}
+
 function syncTimelinePeriodSelector(root = document.getElementById('periodSelector')) {
     if (typeof normalizeTimelineModeState === 'function') {
         normalizeTimelineModeState(AppState);
     }
     if (!root) return;
     const activePeriod = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
-    root.querySelectorAll('.period-btn').forEach(btn => {
+    const timelineModeState = typeof window !== 'undefined' ? window.TimelineView?.state?.() : null;
+    const activeViewMode = timelineModeState?.viewMode
+        || (window.TimelineView?.isRooms?.() ? 'rooms' : (activePeriod === TIMELINE_PERIOD_WEEK ? 'week' : 'day'));
+    root.querySelectorAll('[data-schedule-view-mode]').forEach(btn => {
+        const active = btn.dataset.scheduleViewMode === activeViewMode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    root.querySelectorAll('.period-btn[data-period]:not([data-schedule-view-mode])').forEach(btn => {
         const period = Number.parseInt(btn.dataset.period, 10);
-        btn.classList.toggle('active', period === activePeriod);
+        const active = period === activePeriod;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 }
 
@@ -182,8 +214,8 @@ function loadPreferences() {
     }
     AppState.statusFilter = localStorage.getItem(timelineStorageKey('status_filter')) || 'all';
     CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
-    const compactToggle = document.getElementById('compactModeToggle');
-    if (compactToggle) compactToggle.checked = AppState.compactMode;
+    syncTimelineCompactToggleAria();
+    syncTimelineStatusFilterButtons();
     syncTimelinePeriodSelector();
     if (typeof applyTimelineResponsiveDensity === 'function') {
         applyTimelineResponsiveDensity();
@@ -483,9 +515,8 @@ function initTimelineListeners() {
     // v5.15: Status filter buttons
     document.querySelectorAll('.status-filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
             AppState.statusFilter = btn.dataset.filter;
+            syncTimelineStatusFilterButtons();
             localStorage.setItem(timelineStorageKey('status_filter'), AppState.statusFilter);
             applyStatusFilter();
         });
@@ -494,30 +525,43 @@ function initTimelineListeners() {
     // v5.19: Period selector (segmented control)
     const periodSelector = document.getElementById('periodSelector');
     if (periodSelector) {
-        periodSelector.querySelectorAll('.period-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
+        periodSelector.querySelectorAll('.period-btn[data-period]').forEach(btn => {
+            btn.addEventListener('click', event => {
+                if (window.TimelineView?.setMode && btn.dataset.scheduleViewMode) {
+                    event.preventDefault();
+                    window.TimelineView.setMode(btn.dataset.scheduleViewMode);
+                    return;
+                }
                 applyTimelinePeriod(btn.dataset.period, periodSelector);
             });
         });
     }
+    if (!window.__timelineScheduleModeDelegatedBound) {
+        window.__timelineScheduleModeDelegatedBound = true;
+        document.addEventListener('click', event => {
+            const button = event.target?.closest?.('[data-schedule-view-mode]');
+            if (!button || !window.TimelineView?.setMode) return;
+            event.preventDefault();
+            event.stopPropagation();
+            window.TimelineView.setMode(button.dataset.scheduleViewMode);
+        }, true);
+    }
     if (!window.__timelinePeriodDelegatedBound) {
         window.__timelinePeriodDelegatedBound = true;
         document.addEventListener('click', event => {
-            const button = event.target?.closest?.('.period-btn[data-period]');
+            const button = event.target?.closest?.('.period-btn[data-period]:not([data-schedule-view-mode])');
             if (!button) return;
             const root = button.closest('#periodSelector') || document.getElementById('periodSelector');
             event.preventDefault();
             applyTimelinePeriod(button.dataset.period, root);
         }, true);
     }
-    const timelineViewSelector = document.getElementById('timelineViewSelector');
-    if (timelineViewSelector && window.TimelineView) {
+    const holidaysToggle = document.getElementById('timelineHolidaysToggle');
+    if (holidaysToggle && window.TimelineView?.toggleHolidays) {
         window.TimelineView.updateControls?.();
-        timelineViewSelector.addEventListener('click', event => {
-            const button = event.target?.closest?.('[data-timeline-view]');
-            if (!button) return;
+        holidaysToggle.addEventListener('click', event => {
             event.preventDefault();
-            window.TimelineView.set?.(button.dataset.timelineView);
+            window.TimelineView.toggleHolidays?.();
         });
     }
 
@@ -1059,6 +1103,29 @@ function timelineActionMenuHasVisibleItems(content) {
         );
 }
 
+function getTimelineActionMenuVisibleItems(content = document.getElementById('dropdownContent')) {
+    if (!content) return [];
+    return Array.from(content.querySelectorAll('.dropdown-item'))
+        .filter(item =>
+            !item.classList.contains('hidden')
+            && !item.classList.contains('timeline-hidden-by-config')
+            && !item.hidden
+            && item.getAttribute('aria-hidden') !== 'true'
+            && !item.disabled
+        );
+}
+
+function focusTimelineActionMenuItem(step = 1) {
+    const { content } = getTimelineActionMenuElements();
+    const items = getTimelineActionMenuVisibleItems(content);
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = currentIndex === -1
+        ? (step > 0 ? 0 : items.length - 1)
+        : (currentIndex + step + items.length) % items.length;
+    items[nextIndex].focus({ preventScroll: true });
+}
+
 function setTimelineActionMenuOpen(open, reason = 'manual') {
     const { dropdown, toggle, content } = getTimelineActionMenuElements();
     if (!dropdown || !toggle || !content) return false;
@@ -1148,6 +1215,13 @@ function initUIControlListeners() {
                 const isOpen = Boolean(content && !content.hidden && !content.classList.contains('hidden'));
                 setTimelineActionMenuOpen(!isOpen, 'toggle');
             };
+            menuToggle.addEventListener('keydown', (e) => {
+                if (e.key !== 'ArrowDown') return;
+                e.preventDefault();
+                if (setTimelineActionMenuOpen(true, 'keyboard')) {
+                    focusTimelineActionMenuItem(1);
+                }
+            });
             menuToggle.addEventListener('touchend', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1170,6 +1244,13 @@ function initUIControlListeners() {
             const dropdown = document.getElementById('adminDropdown');
             if (dropdown && !dropdown.contains(e.target)) closeTimelineActionMenu('outside-click');
         });
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            const { content } = getTimelineActionMenuElements();
+            if (!content || content.hidden || content.classList.contains('hidden')) return;
+            e.preventDefault();
+            closeTimelineActionMenu('escape');
+        });
     }
     // Close dropdown when item clicked
     document.querySelectorAll('.dropdown-item').forEach(item => {
@@ -1177,6 +1258,15 @@ function initUIControlListeners() {
         item.dataset.timelineActionMenuItemBound = '1';
         item.addEventListener('click', () => {
             closeTimelineActionMenu('item-click');
+        });
+        item.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusTimelineActionMenuItem(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                focusTimelineActionMenuItem(-1);
+            }
         });
     });
 

@@ -2267,3 +2267,1505 @@
         max-width: calc(100vw - var(--eg-tablet-sidebar-rail-w)) !important;
     }
 }
+
+/* v0.77.47: compact two-row Schedule Command Center for timeline controls. */
+body.timeline-dashboard-page .schedule-command-center {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 7px !important;
+    width: 100% !important;
+    padding: 10px 12px !important;
+    margin-bottom: 14px !important;
+    overflow: visible !important;
+    border-radius: 14px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+}
+
+body.timeline-dashboard-page .schedule-command-row--primary {
+    justify-content: space-between;
+}
+
+body.timeline-dashboard-page .schedule-command-row--secondary {
+    justify-content: space-between;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.date-controls, .view-mode-controls, .v32-controls, .action-buttons) {
+    min-height: 34px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-controls, .period-selector, .zoom-controls) {
+    min-height: 34px !important;
+    padding: 2px !important;
+    gap: 2px !important;
+    border-radius: 10px !important;
+    background: var(--eg-panel-bg-soft, rgba(15, 23, 42, 0.06)) !important;
+    border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.22)) !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-controls {
+    flex: 0 0 auto;
+    min-width: max-content;
+    gap: 5px !important;
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 34px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+    flex: 0 1 auto;
+    width: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .view-mode-controls {
+    flex: 0 0 auto;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector {
+    flex: 0 0 auto;
+}
+
+body.timeline-dashboard-page .schedule-command-center .v32-controls {
+    flex: 1 1 auto;
+    display: flex !important;
+    align-items: center;
+    gap: 6px !important;
+    min-width: 0;
+}
+
+body.timeline-dashboard-page .schedule-command-center .period-selector,
+body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+    width: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons {
+    flex: 0 0 auto;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px !important;
+    margin-left: auto;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons:not(:has(> :not(.hidden):not([hidden]))),
+body.timeline-dashboard-page .schedule-command-center .action-buttons:not(:has(> :not(.hidden):not([hidden]):not(.timeline-hidden-by-config):not(.timeline-permission-hidden))),
+body.timeline-dashboard-page .schedule-command-center .admin-dropdown[data-menu-scope="timeline-actions"].is-empty {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center input[type="date"] {
+    width: 128px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    line-height: 1 !important;
+    background: transparent !important;
+    color: var(--eg-text-primary, #0f172a) !important;
+    box-shadow: none !important;
+    cursor: pointer;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-button-shell {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0 9px 0 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(20, 184, 166, 0.32);
+    background: var(--eg-surface-elevated, rgba(255, 255, 255, 0.74));
+    color: var(--eg-text-primary, #0f172a);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    cursor: pointer;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-button-shell:focus-within,
+body.timeline-dashboard-page .schedule-command-center .date-button-shell:hover {
+    border-color: rgba(20, 184, 166, 0.46);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.10);
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-button-calendar {
+    display: inline-grid;
+    place-items: center;
+    width: 15px;
+    min-width: 15px;
+    height: 15px;
+    color: var(--eg-accent-strong, #0f766e);
+    font-size: 13px;
+    line-height: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .day-info {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 5px;
+    min-width: 0;
+    height: 32px;
+    color: var(--eg-text-muted, #64748b);
+}
+
+body.timeline-dashboard-page .schedule-command-center .day-label {
+    max-width: 118px;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--eg-text-secondary, #475569) !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-meta-dot {
+    color: var(--eg-text-muted, #64748b);
+    font-size: 13px;
+    line-height: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .working-hours {
+    color: var(--eg-text-muted, #64748b) !important;
+    font-size: 12px !important;
+    font-weight: 750 !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn),
+body.timeline-dashboard-page .schedule-command-center :where(.btn-nav, .btn-today, .toggle-mini, .timeline-overlay-toggle, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 10px !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-btn.active {
+    background: var(--eg-surface-elevated, rgba(255, 255, 255, 0.84)) !important;
+    border-color: var(--eg-border-strong, rgba(15, 23, 42, 0.18)) !important;
+    color: var(--eg-text-primary, #0f172a) !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.32)) !important;
+    background: transparent !important;
+    color: var(--eg-text-secondary, #475569) !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle.active {
+    border-color: rgba(20, 184, 166, 0.44) !important;
+    background: rgba(20, 184, 166, 0.10) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    margin-right: 7px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.38;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle.active::before {
+    opacity: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .btn-nav {
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 !important;
+    font-size: 20px !important;
+    border-radius: 10px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .btn-today,
+body.timeline-dashboard-page .schedule-command-center .btn-today.is-today {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 11px !important;
+    border-radius: 10px !important;
+    background: rgba(20, 184, 166, 0.08) !important;
+    border: 1px solid rgba(20, 184, 166, 0.30) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .btn-today:hover,
+body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle:hover,
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn:hover,
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn:hover {
+    background: var(--eg-surface-elevated, rgba(255, 255, 255, 0.72)) !important;
+    border-color: var(--eg-border-strong, rgba(20, 184, 166, 0.28)) !important;
+    color: var(--eg-text-primary, #0f172a) !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .btn-today:hover {
+    background: rgba(20, 184, 166, 0.12) !important;
+    border-color: rgba(20, 184, 166, 0.46) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.10) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-label {
+    flex: 0 0 auto;
+    color: var(--eg-text-muted, #64748b);
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: var(--eg-text-secondary, #475569) !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn--digest {
+    border-color: rgba(20, 184, 166, 0.34) !important;
+    background: rgba(20, 184, 166, 0.09) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    min-width: 112px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn--digest:hover:not(:disabled) {
+    background: rgba(20, 184, 166, 0.14) !important;
+    border-color: rgba(20, 184, 166, 0.48) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn--digest:disabled,
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn--digest.is-loading {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn--digest.is-loading .timeline-control-icon {
+    opacity: 0.72;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-command-btn.hidden {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .admin-dropdown[data-menu-scope="timeline-actions"] {
+    margin-left: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+body.timeline-dashboard-page .schedule-command-center .btn-menu-toggle span:not(.timeline-control-icon) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    flex: 0 0 40px !important;
+    padding: 0 !important;
+    border-radius: 14px !important;
+    border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.24)) !important;
+    background: transparent !important;
+    color: var(--eg-text-muted, #64748b) !important;
+    box-shadow: none !important;
+    line-height: 1 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn.hidden {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn:hover {
+    background: rgba(20, 184, 166, 0.08) !important;
+    border-color: rgba(20, 184, 166, 0.42) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn:focus-visible {
+    outline: none !important;
+    border-color: rgba(20, 184, 166, 0.58) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-control-icon,
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn-icon {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    display: inline-grid;
+    place-items: center;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-control-icon--dots {
+    font-size: 18px;
+    font-weight: 900;
+    transform: translateY(-1px);
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn-icon {
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 17px;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.btn-history, .timeline-command-btn, .btn-menu-toggle, .toggle-mini, .btn-export, .btn-product-sales) span:not(.timeline-control-icon) {
+    color: inherit !important;
+    font: inherit !important;
+    line-height: 1 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center {
+    gap: 6px !important;
+    padding: 8px 10px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn),
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center :where(.btn-nav, .btn-today, .toggle-mini, .timeline-overlay-toggle, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 9px !important;
+    font-size: 11px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center .btn-nav,
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center .timeline-constructor-btn {
+    width: 28px !important;
+    min-width: 28px !important;
+    padding: 0 !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center .timeline-constructor-btn {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    flex-basis: 40px !important;
+    border-radius: 14px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center input[type="date"] {
+    height: 28px !important;
+    min-height: 28px !important;
+    width: 116px !important;
+    font-size: 12px !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center .date-button-shell {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 8px;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center .day-info {
+    height: 30px;
+}
+
+@media (max-width: 1180px) {
+    body.timeline-dashboard-page .schedule-command-row {
+        flex-wrap: wrap;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-controls {
+        flex: 1 1 100%;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+        flex: 1 1 min(360px, 100%);
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .view-mode-controls {
+        flex: 1 1 min(360px, 100%);
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center {
+        gap: 8px !important;
+        padding: 9px !important;
+        margin-bottom: 12px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-row {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-controls {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 6px !important;
+        width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: visible;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+        white-space: nowrap;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-controls::-webkit-scrollbar {
+        display: none;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center #prevDay,
+    body.timeline-dashboard-page .schedule-command-center #nextDay,
+    body.timeline-dashboard-page .schedule-command-center #todayBtn {
+        grid-area: auto !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-button-shell {
+        flex: 0 0 auto;
+        height: 34px;
+        min-height: 34px;
+        padding: 0 8px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center input[type="date"] {
+        grid-area: auto !important;
+        width: 126px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        font-size: 14px !important;
+        text-align: center !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-controls .btn-nav {
+        width: 34px !important;
+        min-width: 34px !important;
+        height: 34px !important;
+        min-height: 34px !important;
+        flex: 0 0 34px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .btn-today {
+        width: auto !important;
+        min-width: max-content !important;
+        height: 34px !important;
+        min-height: 34px !important;
+        flex: 0 0 auto;
+        padding: 0 10px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .day-info {
+        grid-area: auto !important;
+        justify-content: center;
+        min-width: max-content;
+        height: 34px;
+        flex: 0 0 auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls,
+    body.timeline-dashboard-page .schedule-command-center .view-mode-controls,
+    body.timeline-dashboard-page .schedule-command-center .v32-controls,
+    body.timeline-dashboard-page .schedule-command-center .action-buttons {
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls,
+    body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .view-mode-controls {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 6px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .period-selector {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle {
+        width: 100% !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .v32-controls {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-label,
+    body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+        grid-column: 1 / -1;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-label {
+        padding-left: 2px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toggle-mini,
+    body.timeline-dashboard-page .schedule-command-center .timeline-overlay-toggle,
+    body.timeline-dashboard-page .schedule-command-center .timeline-command-btn,
+    body.timeline-dashboard-page .schedule-command-center .btn-history,
+    body.timeline-dashboard-page .schedule-command-center .btn-undo,
+    body.timeline-dashboard-page .schedule-command-center .admin-dropdown[data-menu-scope="timeline-actions"],
+    body.timeline-dashboard-page .schedule-command-center .btn-menu-toggle {
+        width: 100% !important;
+        min-width: 0 !important;
+        justify-content: center !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        margin-left: 0;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn),
+    body.timeline-dashboard-page .schedule-command-center :where(.toggle-mini, .timeline-overlay-toggle, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
+        width: 100% !important;
+        height: 40px !important;
+        min-height: 40px !important;
+        padding: 0 8px !important;
+        font-size: 12px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn {
+        width: 100% !important;
+    }
+}
+
+@media (max-width: 390px) {
+    body.timeline-dashboard-page .schedule-command-center .toggle-mini-label {
+        display: none !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .day-label {
+        max-width: 105px;
+    }
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--primary {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--secondary {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        overflow-x: auto;
+        overflow-y: visible;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        padding-bottom: 2px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .view-mode-controls {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center;
+        gap: 6px !important;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .view-mode-controls .period-selector {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .v32-controls {
+        display: flex !important;
+        flex: 0 0 auto;
+        width: max-content !important;
+        min-width: max-content;
+        align-items: center;
+        flex-wrap: nowrap !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-label,
+    body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+        grid-column: auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+        display: inline-flex !important;
+        width: auto !important;
+        flex: 0 0 auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toggle-mini,
+    body.timeline-dashboard-page .schedule-command-center .timeline-command-btn,
+    body.timeline-dashboard-page .schedule-command-center .btn-history,
+    body.timeline-dashboard-page .schedule-command-center .btn-undo,
+    body.timeline-dashboard-page .schedule-command-center .admin-dropdown[data-menu-scope="timeline-actions"],
+    body.timeline-dashboard-page .schedule-command-center .btn-menu-toggle {
+        width: auto !important;
+        flex: 0 0 auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons {
+        display: inline-flex !important;
+        grid-template-columns: none !important;
+        width: auto !important;
+        flex: 0 0 auto;
+        margin-left: 0;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn),
+    body.timeline-dashboard-page .schedule-command-center :where(.toggle-mini, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
+        width: auto !important;
+        min-width: max-content !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn {
+        width: 40px !important;
+        min-width: 40px !important;
+        flex: 0 0 40px !important;
+        padding: 0 !important;
+    }
+}
+
+/* v0.77.52: compact muted timeline status segmented control. */
+body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+    min-height: 30px !important;
+    padding: 2px !important;
+    gap: 1px !important;
+    border-radius: 9px !important;
+    background: rgba(15, 23, 42, 0.04) !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .status-filter-controls .status-filter-btn {
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 9px !important;
+    border-radius: 7px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: var(--eg-text-muted, #64748b) !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    opacity: 0.68;
+}
+
+body.timeline-dashboard-page .schedule-command-center .status-filter-controls .status-filter-btn:hover:not(.active) {
+    background: rgba(15, 23, 42, 0.05) !important;
+    color: var(--eg-text-secondary, #475569) !important;
+    opacity: 0.92;
+}
+
+body.timeline-dashboard-page .schedule-command-center .status-filter-controls .status-filter-btn.active {
+    background: rgba(20, 184, 166, 0.12) !important;
+    border-color: rgba(20, 184, 166, 0.40) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+        min-height: 32px !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls .status-filter-btn {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: 28px !important;
+        min-height: 28px !important;
+        padding: 0 7px !important;
+        font-size: 11px !important;
+    }
+}
+
+/* v0.77.53: lighter bottom-left scale and compact-mode controls. */
+body.timeline-dashboard-page .schedule-command-center .v32-controls {
+    gap: 14px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .v32-controls .schedule-command-label {
+    margin-right: -8px;
+    color: var(--eg-text-muted, #64748b);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+    min-height: 36px !important;
+    padding: 2px !important;
+    gap: 1px !important;
+    border-radius: 9px !important;
+    background: rgba(15, 23, 42, 0.035) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .zoom-controls .zoom-btn {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 9px !important;
+    border-radius: 7px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: var(--eg-text-muted, #64748b) !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    opacity: 0.74;
+}
+
+body.timeline-dashboard-page .schedule-command-center .zoom-controls .zoom-btn:hover:not(.active) {
+    background: rgba(15, 23, 42, 0.045) !important;
+    color: var(--eg-text-secondary, #475569) !important;
+    opacity: 0.94;
+}
+
+body.timeline-dashboard-page .schedule-command-center .zoom-controls .zoom-btn.active {
+    background: rgba(20, 184, 166, 0.11) !important;
+    border-color: rgba(20, 184, 166, 0.38) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+    opacity: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 10px !important;
+    gap: 7px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(148, 163, 184, 0.22) !important;
+    background: transparent !important;
+    color: var(--eg-text-muted, #64748b) !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle:hover {
+    background: rgba(15, 23, 42, 0.045) !important;
+    border-color: rgba(20, 184, 166, 0.28) !important;
+    color: var(--eg-text-secondary, #475569) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle:has(input:checked) {
+    background: rgba(20, 184, 166, 0.10) !important;
+    border-color: rgba(20, 184, 166, 0.42) !important;
+    color: var(--eg-accent-strong, #0f766e) !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle-box {
+    position: relative;
+    width: 14px;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    opacity: 0.62;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle:has(input:checked) .timeline-compact-toggle-box {
+    background: currentColor;
+    opacity: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle:has(input:checked) .timeline-compact-toggle-box::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center .v32-controls {
+        gap: 12px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .v32-controls .schedule-command-label {
+        margin-right: -6px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .zoom-controls .zoom-btn {
+        height: 32px !important;
+        min-height: 32px !important;
+        padding: 0 8px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle {
+        width: auto !important;
+        min-width: max-content !important;
+        height: 36px !important;
+        min-height: 36px !important;
+        flex: 0 0 auto;
+        padding: 0 10px !important;
+    }
+}
+
+/* v0.77.54: shared Schedule Command Center toolbar controls. */
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+    --toolbar-container-bg: rgba(15, 23, 42, 0.92);
+    --toolbar-control-bg: rgba(30, 41, 59, 0.68);
+    --toolbar-border: rgba(148, 163, 184, 0.12);
+    --toolbar-active-bg: linear-gradient(135deg, #18c7b6, #0ea5a3);
+    --toolbar-active-text: #ecfeff;
+    --toolbar-inactive-text: rgba(226, 232, 240, 0.68);
+    --toolbar-muted-text: rgba(148, 163, 184, 0.82);
+    --toolbar-hover-bg: rgba(51, 65, 85, 0.76);
+    --toolbar-pressed-bg: rgba(20, 184, 166, 0.20);
+    --toolbar-focus-ring: rgba(24, 199, 182, 0.34);
+    --toolbar-control-h: 38px;
+    --toolbar-item-h: 34px;
+    --toolbar-radius: 12px;
+    --toolbar-item-radius: 10px;
+    --toolbar-gap: 8px;
+    background: var(--toolbar-container-bg) !important;
+    border: 1px solid var(--toolbar-border) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16) !important;
+    color: var(--toolbar-inactive-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarRow {
+    gap: var(--toolbar-gap) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--toolbar-gap) !important;
+    min-height: var(--toolbar-control-h) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup:empty {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .segmentedControl {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: var(--toolbar-control-h) !important;
+    height: var(--toolbar-control-h) !important;
+    padding: 2px !important;
+    gap: 2px !important;
+    border-radius: var(--toolbar-radius) !important;
+    border: 1px solid var(--toolbar-border) !important;
+    background: var(--toolbar-control-bg) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem) {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    height: var(--toolbar-control-h) !important;
+    min-height: var(--toolbar-control-h) !important;
+    padding: 0 12px !important;
+    border-radius: var(--toolbar-item-radius) !important;
+    border: 1px solid var(--toolbar-border) !important;
+    background: var(--toolbar-control-bg) !important;
+    color: var(--toolbar-inactive-text) !important;
+    box-shadow: none !important;
+    font-family: inherit !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+body.timeline-dashboard-page .schedule-command-center .segmentedItem {
+    height: var(--toolbar-item-h) !important;
+    min-height: var(--toolbar-item-h) !important;
+    padding: 0 11px !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    border-radius: 9px !important;
+    color: var(--toolbar-inactive-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarIconButton {
+    width: var(--toolbar-control-h) !important;
+    min-width: var(--toolbar-control-h) !important;
+    flex: 0 0 var(--toolbar-control-h) !important;
+    padding: 0 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGhostButton {
+    background: transparent !important;
+    color: var(--toolbar-inactive-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarAccentButton {
+    background: rgba(20, 184, 166, 0.14) !important;
+    border-color: rgba(24, 199, 182, 0.32) !important;
+    color: var(--toolbar-active-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarToggleChip {
+    border-color: var(--toolbar-border) !important;
+    background: var(--toolbar-control-bg) !important;
+    color: var(--toolbar-inactive-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem):hover:not(:disabled):not([aria-disabled="true"]):not(.active),
+body.timeline-dashboard-page .schedule-command-center .btn-menu-toggle[aria-expanded="true"] {
+    background: var(--toolbar-hover-bg) !important;
+    border-color: rgba(24, 199, 182, 0.32) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem):active:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--toolbar-pressed-bg) !important;
+    border-color: rgba(24, 199, 182, 0.44) !important;
+    color: var(--toolbar-active-text) !important;
+    transform: translateY(1px) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.segmentedItem.active, .toolbarToggleChip.active, .toolbarToggleChip:has(input:checked), .toolbarToggleChip[aria-pressed="true"]) {
+    background: var(--toolbar-active-bg) !important;
+    border-color: rgba(236, 254, 255, 0.20) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: 0 10px 22px rgba(14, 165, 163, 0.18) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem):focus-visible,
+body.timeline-dashboard-page .schedule-command-center .date-button-shell:focus-within {
+    outline: none !important;
+    border-color: rgba(24, 199, 182, 0.64) !important;
+    box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem):disabled,
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem)[aria-disabled="true"] {
+    cursor: not-allowed !important;
+    opacity: 0.46 !important;
+    filter: grayscale(0.18);
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem).is-loading,
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem)[aria-busy="true"] {
+    cursor: wait !important;
+    opacity: 0.72 !important;
+    position: relative;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem).is-loading::after,
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem)[aria-busy="true"]::after {
+    content: "";
+    width: 12px;
+    height: 12px;
+    margin-left: 4px;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    opacity: 0.9;
+    animation: scheduleToolbarSpinner 720ms linear infinite;
+}
+
+@keyframes scheduleToolbarSpinner {
+    to { transform: rotate(360deg); }
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-button-shell {
+    height: var(--toolbar-control-h) !important;
+    min-height: var(--toolbar-control-h) !important;
+    width: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center input[type="date"] {
+    height: var(--toolbar-item-h) !important;
+    min-height: var(--toolbar-item-h) !important;
+    color: var(--toolbar-active-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-button-calendar {
+    color: var(--toolbar-muted-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .day-info {
+    height: var(--toolbar-control-h) !important;
+    color: var(--toolbar-muted-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .day-label,
+body.timeline-dashboard-page .schedule-command-center .working-hours,
+body.timeline-dashboard-page .schedule-command-center .date-meta-dot,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-label {
+    color: var(--toolbar-muted-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-compact-toggle-box {
+    border-color: currentColor !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarToggleChip:has(input:checked) .timeline-compact-toggle-box::after {
+    border-color: var(--toolbar-active-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn {
+    width: var(--toolbar-control-h) !important;
+    min-width: var(--toolbar-control-h) !important;
+    height: var(--toolbar-control-h) !important;
+    min-height: var(--toolbar-control-h) !important;
+    flex: 0 0 var(--toolbar-control-h) !important;
+    border-radius: var(--toolbar-item-radius) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarIconButton .timeline-control-icon--dots {
+    font-size: 19px;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbar-sr-status {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem).hidden,
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem)[hidden],
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem).timeline-hidden-by-config,
+body.timeline-dashboard-page .schedule-command-center :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem).timeline-permission-hidden {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem {
+    height: var(--toolbar-item-h) !important;
+    min-height: var(--toolbar-item-h) !important;
+    padding: 0 11px !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    border-radius: 9px !important;
+    color: var(--toolbar-inactive-text) !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip),
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster .date-button-shell.toolbarButton {
+    height: var(--toolbar-control-h) !important;
+    min-height: var(--toolbar-control-h) !important;
+    border-radius: var(--toolbar-item-radius) !important;
+    border-color: var(--toolbar-border) !important;
+    color: var(--toolbar-inactive-text) !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarGhostButton, .toolbarToggleChip),
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster .date-button-shell.toolbarGhostButton {
+    background: transparent !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarAccentButton {
+    background: rgba(20, 184, 166, 0.14) !important;
+    border-color: rgba(24, 199, 182, 0.32) !important;
+    color: var(--toolbar-active-text) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarAccentButton:hover:not(:disabled) {
+    background: var(--toolbar-active-bg) !important;
+    border-color: rgba(236, 254, 255, 0.20) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem:hover:not(.active):not(:disabled),
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip):hover:not(.active):not(:disabled),
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster .date-button-shell.toolbarGhostButton:hover {
+    background: var(--toolbar-hover-bg) !important;
+    border-color: rgba(24, 199, 182, 0.32) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem.active,
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarToggleChip.active,
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarToggleChip[aria-pressed="true"],
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup .toolbarToggleChip:has(input:checked) {
+    background: var(--toolbar-active-bg) !important;
+    border-color: rgba(236, 254, 255, 0.20) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: 0 10px 22px rgba(14, 165, 163, 0.18) !important;
+    opacity: 1 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip):disabled,
+body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem:disabled {
+    cursor: not-allowed !important;
+    opacity: 0.46 !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page.timeline-compact-mode .schedule-command-center.toolbarContainer {
+    --toolbar-control-h: 34px;
+    --toolbar-item-h: 30px;
+    --toolbar-radius: 11px;
+    --toolbar-item-radius: 9px;
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        --toolbar-control-h: 40px;
+        --toolbar-item-h: 36px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarGroup {
+        min-height: var(--toolbar-control-h) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarIconButton,
+    body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn {
+        width: var(--toolbar-control-h) !important;
+        min-width: var(--toolbar-control-h) !important;
+        flex: 0 0 var(--toolbar-control-h) !important;
+    }
+}
+
+/* v0.77.55: responsive Schedule Command Center behavior. */
+body.timeline-dashboard-page .schedule-command-center .toolbar-label-short {
+    display: none;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer,
+body.timeline-dashboard-page .schedule-command-center .toolbarRow,
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup {
+    box-sizing: border-box;
+    max-width: 100%;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarRow,
+body.timeline-dashboard-page .schedule-command-center .toolbarGroup,
+body.timeline-dashboard-page .schedule-command-center .segmentedControl {
+    min-width: 0;
+}
+
+body.timeline-dashboard-page .schedule-command-center .toolbarButton,
+body.timeline-dashboard-page .schedule-command-center .toolbarIconButton,
+body.timeline-dashboard-page .schedule-command-center .toolbarToggleChip,
+body.timeline-dashboard-page .schedule-command-center .segmentedItem {
+    white-space: nowrap !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn {
+    font-size: 0 !important;
+}
+
+@media (min-width: 1181px) {
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarRow {
+        flex-wrap: nowrap !important;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbar-label-full {
+        display: inline;
+    }
+}
+
+@media (max-width: 1180px) and (min-width: 769px) {
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        --toolbar-control-h: 36px;
+        --toolbar-item-h: 32px;
+        --toolbar-gap: 6px;
+        padding: 9px 10px !important;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarRow {
+        flex-wrap: nowrap !important;
+        gap: var(--toolbar-gap) !important;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster {
+        flex: 0 1 auto;
+        min-width: 320px !important;
+        max-width: min(48vw, 520px);
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster .day-info {
+        min-width: 0;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster .day-label {
+        max-width: 92px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls,
+    body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector,
+    body.timeline-dashboard-page .schedule-command-center .zoom-controls {
+        flex: 0 1 auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem {
+        padding: 0 9px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbar-label-full {
+        display: none;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbar-label-short {
+        display: inline;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons {
+        margin-left: auto !important;
+    }
+}
+
+@media (max-width: 768px) {
+    html,
+    body.timeline-dashboard-page {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    body.timeline-dashboard-page .main-content {
+        min-width: 0;
+        max-width: 100%;
+        overflow-x: clip;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        --toolbar-control-h: 38px;
+        --toolbar-item-h: 34px;
+        --toolbar-gap: 6px;
+        gap: 7px !important;
+        padding: 8px !important;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarRow {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
+        gap: 6px !important;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        padding-bottom: 2px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarRow::-webkit-scrollbar,
+    body.timeline-dashboard-page .schedule-command-center .toolbarGroup::-webkit-scrollbar,
+    body.timeline-dashboard-page .schedule-command-center .segmentedControl::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarGroup,
+    body.timeline-dashboard-page .schedule-command-center .segmentedControl {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        max-width: none;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster {
+        flex: 0 0 auto !important;
+        min-width: max-content !important;
+        max-width: none;
+        overflow: visible !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-button-shell {
+        flex: 0 0 auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center input[type="date"] {
+        width: 126px !important;
+        min-width: 126px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .day-info {
+        flex: 0 0 auto;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .day-label {
+        max-width: 104px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbar-label-full {
+        display: none;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbar-label-short {
+        display: inline;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--secondary .action-buttons {
+        order: 1;
+        margin-left: 0 !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--secondary .v32-controls {
+        order: 2;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #digestBtn {
+        order: 1;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #productSalesBtn,
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #exportTimelineBtn {
+        order: 2;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn {
+        order: 3;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .v32-controls #menuToggleBtn {
+        order: 9;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn,
+    body.timeline-dashboard-page .schedule-command-center .toolbarIconButton {
+        width: var(--toolbar-control-h) !important;
+        min-width: var(--toolbar-control-h) !important;
+        flex: 0 0 var(--toolbar-control-h) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarButton,
+    body.timeline-dashboard-page .schedule-command-center .toolbarToggleChip {
+        min-width: max-content !important;
+    }
+}
+
+@media (max-width: 430px) {
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+        --toolbar-control-h: 36px;
+        --toolbar-item-h: 32px;
+        padding: 7px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-label {
+        font-size: 10px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .segmentedControl .segmentedItem {
+        padding: 0 8px !important;
+        font-size: 11px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .toolbarButton,
+    body.timeline-dashboard-page .schedule-command-center .toolbarToggleChip {
+        padding: 0 10px !important;
+        font-size: 11px !important;
+    }
+}

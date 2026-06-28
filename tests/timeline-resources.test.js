@@ -808,8 +808,9 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(booking, /shouldEditBookingInAnimatorView/);
     assert.match(booking, /openAnimationBookingInAnimatorView/);
     assert.match(booking, /openRoomBookingAnimationBridge/);
-    assert.match(html, /id="timelineViewSelector"/);
-    assert.match(html, /class="period-btn timeline-view-btn active" data-timeline-view="animators"/);
+    assert.match(html, /id="periodSelector"[^>]*data-schedule-view-mode-selector/);
+    assert.match(html, /data-schedule-view-mode="rooms" data-timeline-view="rooms"/);
+    assert.match(html, /id="timelineHolidaysToggle"[^>]*data-timeline-holidays-toggle/);
     assert.match(html, /<option value="animators" selected>Свята<\/option>/);
     assert.match(html, /id="settingsTimelineRoomFirstEnabled"/);
     assert.match(html, /id="settingsTimelineDefaultView"/);

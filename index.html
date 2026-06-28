@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.46">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.46">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.46">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.46">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.46">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.46">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.46">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.46">
-    <link rel="stylesheet" href="css/features.css?v=0.77.46">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.46">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.46">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.46">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.46">
+    <link rel="stylesheet" href="css/base.css?v=0.77.57">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.57">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.57">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.57">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.57">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.57">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.57">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.57">
+    <link rel="stylesheet" href="css/features.css?v=0.77.57">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.57">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.57">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.57">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.57">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.46">✨ 0.77.46</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.57">✨ 0.77.57</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.46 — Scheduler Reliability Hardening</p>
+                <p class="tagline">AI First CRM v0.77.57 — Toolbar Micro Interactions</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.46</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.57</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -115,56 +115,63 @@
         <!-- Основний контент - Таймлайн -->
         <main id="main-content" class="main-content">
             <!-- Панель керування -->
-            <div class="control-panel">
-                <div class="date-controls">
-                    <button id="prevDay" class="btn-nav" title="Попередній день" aria-label="Попередній день">◀</button>
-                    <input type="date" id="timelineDate">
-                    <div class="day-info">
-                        <span id="dayOfWeekLabel" class="day-label"></span>
-                        <span id="workingHours" class="working-hours">12:00-20:00</span>
+            <div class="control-panel schedule-command-center toolbarContainer" role="toolbar" aria-label="Schedule Command Center">
+                <div class="schedule-command-row schedule-command-row--primary toolbarRow">
+                    <div class="date-controls date-navigation-cluster toolbarGroup" aria-label="Навігація датою графіка">
+                        <button id="prevDay" class="btn-nav toolbarIconButton toolbarGhostButton" title="Попередній день" aria-label="Попередній день">‹</button>
+                        <label class="date-button-shell toolbarButton toolbarGhostButton" for="timelineDate" title="Вибрати дату графіка">
+                            <span class="date-button-calendar" aria-hidden="true">📅</span>
+                            <input type="date" id="timelineDate" aria-label="Дата графіка">
+                        </label>
+                        <div class="day-info" aria-live="polite">
+                            <span id="dayOfWeekLabel" class="day-label"></span>
+                            <span class="date-meta-dot" aria-hidden="true">·</span>
+                            <span id="workingHours" class="working-hours">12:00-20:00</span>
+                        </div>
+                        <button id="todayBtn" class="btn-today toolbarButton toolbarGhostButton" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">Зараз</button>
+                        <button id="nextDay" class="btn-nav toolbarIconButton toolbarGhostButton" title="Наступний день" aria-label="Наступний день">›</button>
                     </div>
-                    <button id="nextDay" class="btn-nav" title="Наступний день" aria-label="Наступний день">▶</button>
-                    <button id="todayBtn" class="btn-today" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">Зараз</button>
+                    <div class="status-filter-controls toolbarGroup segmentedControl">
+                        <button type="button" class="status-filter-btn segmentedItem active" data-filter="all" title="Показати всі бронювання" aria-label="Всі" aria-pressed="true">Всі</button>
+                        <button type="button" class="status-filter-btn segmentedItem" data-filter="confirmed" title="Тільки підтверджені" aria-label="Підтверджені" aria-pressed="false"><span class="toolbar-label-full">Підтверджені</span><span class="toolbar-label-short" aria-hidden="true">Підтв.</span></button>
+                        <button type="button" class="status-filter-btn segmentedItem" data-filter="preliminary" title="Тільки попередні" aria-label="Попередні" aria-pressed="false"><span class="toolbar-label-full">Попередні</span><span class="toolbar-label-short" aria-hidden="true">Попер.</span></button>
+                    </div>
+                    <div class="view-mode-controls toolbarGroup">
+                        <div class="period-selector timeline-view-mode-selector segmentedControl" id="periodSelector" aria-label="Режим перегляду" data-schedule-view-mode-selector>
+                            <button type="button" class="period-btn timeline-view-mode-btn segmentedItem active" data-period="1" data-schedule-view-mode="day" title="Один день" aria-pressed="true">День</button>
+                            <button type="button" class="period-btn timeline-view-mode-btn segmentedItem" data-period="7" data-schedule-view-mode="week" title="Тиждень" aria-pressed="false">Тиждень</button>
+                            <button type="button" class="period-btn timeline-view-mode-btn timeline-view-btn segmentedItem" data-schedule-view-mode="rooms" data-timeline-view="rooms" title="Бронювання по кімнатах" aria-pressed="false">Кімнати</button>
+                        </div>
+                        <button type="button" id="timelineHolidaysToggle" class="timeline-overlay-toggle timeline-holidays-toggle toolbarToggleChip active" data-timeline-holidays-toggle aria-pressed="true" title="Показати свята поверх вибраного режиму">Свята</button>
+                    </div>
                 </div>
-                <div class="status-filter-controls">
-                    <button class="status-filter-btn active" data-filter="all" title="Показати всі бронювання">Всі</button>
-                    <button class="status-filter-btn" data-filter="confirmed" title="Тільки підтверджені">Підтверджені</button>
-                    <button class="status-filter-btn" data-filter="preliminary" title="Тільки попередні">Попередні</button>
-                </div>
-                <div class="view-mode-controls">
-                    <div class="period-selector" id="periodSelector">
-                        <button class="period-btn active" data-period="1" title="Один день">День</button>
-                        <button class="period-btn" data-period="7" title="Тиждень">Тиждень</button>
-                    </div>
-                    <div class="period-selector timeline-view-selector" id="timelineViewSelector" aria-label="Вигляд таймлайну">
-                        <button type="button" class="period-btn timeline-view-btn" data-timeline-view="rooms" title="Бронювання по кімнатах">Кімнати</button>
-                        <button type="button" class="period-btn timeline-view-btn active" data-timeline-view="animators" title="Свята по аніматорах">Свята</button>
-                    </div>
-                </div>
-                <div class="v32-controls">
-                    <div class="zoom-controls">
-                        <button class="zoom-btn" data-zoom="15" title="Масштаб: 15 хвилин на клітинку">15хв</button>
-                        <button class="zoom-btn" data-zoom="30" title="Масштаб: 30 хвилин на клітинку">30хв</button>
-                        <button class="zoom-btn" data-zoom="60" title="Масштаб: 60 хвилин на клітинку">60хв</button>
-                    </div>
-                    <label class="toggle-mini" title="Компактний режим">
-                        <input type="checkbox" id="compactModeToggle">
-                        <span class="timeline-control-icon" aria-hidden="true">📐</span>
-                        <span class="toggle-mini-label">Компакт</span>
-                    </label>
-                    <button id="undoBtn" class="btn-undo hidden" title="Скасувати останню дію">↩ Скасувати</button>
-                    <button type="button" id="historyBtn" class="btn-history hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span>Історія змін</span></button>
-                    <div class="admin-dropdown" id="adminDropdown" data-menu-scope="timeline-actions">
-                        <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false"><span class="timeline-control-icon timeline-control-icon--dots" aria-hidden="true">⋯</span><span>Дії</span></button>
-                        <div class="dropdown-content hidden" id="dropdownContent" role="menu" aria-label="Контекстні дії таймлайну">
-                            <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест дня</button>
-                            <button type="button" id="exportPdfBtn" class="dropdown-item" role="menuitem" title="Друк / Зберегти як PDF">🖨 Друк розкладу</button>
+                <div class="schedule-command-row schedule-command-row--secondary toolbarRow">
+                    <div class="v32-controls toolbarGroup">
+                        <span class="schedule-command-label">Масштаб:</span>
+                        <div class="zoom-controls segmentedControl">
+                            <button type="button" class="zoom-btn segmentedItem" data-zoom="15" title="Масштаб: 15 хвилин на клітинку" aria-pressed="false">15 хв</button>
+                            <button type="button" class="zoom-btn segmentedItem" data-zoom="30" title="Масштаб: 30 хвилин на клітинку" aria-pressed="false">30 хв</button>
+                            <button type="button" class="zoom-btn segmentedItem" data-zoom="60" title="Масштаб: 60 хвилин на клітинку" aria-pressed="false">60 хв</button>
+                        </div>
+                        <label class="toggle-mini timeline-compact-toggle toolbarToggleChip" title="Компактний режим" aria-label="Компактний режим" aria-pressed="false">
+                            <input type="checkbox" id="compactModeToggle" aria-label="Компактний режим" aria-checked="false">
+                            <span class="timeline-compact-toggle-box" aria-hidden="true"></span>
+                            <span class="toggle-mini-label">Компактно</span>
+                        </label>
+                        <button id="undoBtn" class="btn-undo toolbarButton toolbarGhostButton hidden" title="Скасувати останню дію">↩ Скасувати</button>
+                        <button type="button" id="historyBtn" class="btn-history toolbarButton toolbarGhostButton hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span class="toolbar-label-full">Історія змін</span><span class="toolbar-label-short" aria-hidden="true">Історія</span></button>
+                        <div class="admin-dropdown toolbarGroup" id="adminDropdown" data-menu-scope="timeline-actions">
+                            <button type="button" id="menuToggleBtn" class="btn-menu-toggle toolbarIconButton toolbarGhostButton" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false"><span class="timeline-control-icon timeline-control-icon--dots" aria-hidden="true">⋯</span><span>Дії</span></button>
+                            <div class="dropdown-content hidden" id="dropdownContent" role="menu" aria-label="Контекстні дії таймлайну">
+                                <button type="button" id="exportPdfBtn" class="dropdown-item" role="menuitem" title="Друк / Зберегти як PDF">🖨 Друк розкладу</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="action-buttons">
-                    <button id="productSalesBtn" class="btn-product-sales hidden" title="Відкрити звіт продажів програм">📊 Продажі</button>
-                    <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">Експорт</button>
+                    <div class="action-buttons toolbarGroup">
+                        <button type="button" id="digestBtn" class="timeline-command-btn timeline-command-btn--digest toolbarButton toolbarAccentButton hidden" title="Надіслати дайджест в Telegram" aria-label="Надіслати дайджест дня" aria-disabled="false" aria-busy="false"><span class="timeline-control-icon" aria-hidden="true">✦</span><span>Дайджест</span><span id="digestStatus" class="toolbar-sr-status" aria-live="polite"></span></button>
+                        <button id="productSalesBtn" class="btn-product-sales toolbarButton toolbarGhostButton hidden" title="Відкрити звіт продажів програм">📊 Продажі</button>
+                        <button id="exportTimelineBtn" class="btn-export toolbarButton toolbarGhostButton" title="Експортувати таймлайн як картинку">Експорт</button>
+                    </div>
                 </div>
             </div>
 
@@ -1728,12 +1735,144 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.77.57 — Toolbar Micro Interactions</h4>
+                    <ul>
+                        <li><b>Hover transitions полегшено</b> — toolbar controls переходять тільки через background, border і color за 140ms, без scale або важкого glow.</li>
+                        <li><b>Pressed state лишився тихим</b> — active click використовує <code>translateY(1px)</code> без layout shift і без іграшкового bounce.</li>
+                        <li><b>Digest loading став акуратнішим</b> — під час async дії кнопка показує <code>Готуємо...</code> і маленький spinner, після завершення повертає <code>Дайджест</code>.</li>
+                        <li><b>Overflow menu відкривається плавніше</b> — контекстне меню <code>⋯</code> отримало короткий opacity/translate animation замість scale-heavy входу.</li>
+                        <li><b>Keyboard flow overflow покращено</b> — <code>ArrowDown</code> відкриває меню з фокусом на пункті, <code>ArrowUp/ArrowDown</code> рухаються між пунктами, <code>Escape</code> закриває через існуючий lifecycle.</li>
+                        <li><b>Dependencies не додавались</b> — micro-interactions реалізовані CSS і вже наявними JS handlers.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє легкі transitions, spinner, digest label і keyboard-safe overflow behavior.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.57</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.56 — Toolbar Accessibility</h4>
+                    <ul>
+                        <li><b>Segmented controls отримали явні pressed states</b> — статуси, режими перегляду і масштаб часу лишаються semantic <code>button</code>, але тепер синхронізують <code>aria-pressed</code> разом з active class.</li>
+                        <li><b>Overlay toggles розведено для screen reader</b> — <code>Свята</code> і <code>Компактно</code> мають незалежний <code>aria-pressed</code>, а compact checkbox додатково тримає <code>aria-checked</code>.</li>
+                        <li><b>Digest loading став доступним</b> — кнопка має <code>aria-busy</code>, <code>aria-disabled</code> і polite live status для станів відправки, готовності або недоступності.</li>
+                        <li><b>Подвійний запуск digest заблоковано</b> — повторний click ігнорується, якщо async дія вже loading, disabled або <code>aria-busy="true"</code>.</li>
+                        <li><b>Settings icon-only перевірено</b> — dynamic settings button зберігає <code>aria-label="Налаштування"</code>, <code>title="Налаштування"</code> і видимий focus-visible ring.</li>
+                        <li><b>Focus state лишився видимим</b> — toolbar controls мають border + shadow ring, не лише зміну кольору.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє semantic buttons, ARIA states, digest live region, loading guard і focus ring CSS.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.56</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.55 — Toolbar Responsive Behavior</h4>
+                    <ul>
+                        <li><b>Desktop wide лишився дворядковим</b> — Schedule Command Center зберігає 2 рядки, повні labels і видимі швидкі дії без зміни handlers.</li>
+                        <li><b>Medium breakpoint скорочує labels</b> — <code>Підтверджені</code> переходить у <code>Підтв.</code>, <code>Попередні</code> у <code>Попер.</code>, а <code>Історія змін</code> у <code>Історія</code>.</li>
+                        <li><b>Small screens отримали horizontal scroll rows</b> — toolbar не роздуває всю сторінку по ширині, а groups скроляться всередині своїх рядків.</li>
+                        <li><b>Date picker не ламався</b> — date navigation cluster лишається окремою max-content групою з незмінним <code>#timelineDate</code>.</li>
+                        <li><b><code>Дайджест</code> пріоритезовано перед overflow</b> — на small screens action group іде перед scale/overflow групою, тому digest доступний раніше за <code>⋯</code>.</li>
+                        <li><b>Settings лишився icon-only</b> — dynamic <code>timelineConstructorBtn</code> зберігає icon button behavior на всіх breakpoint.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє full/short labels, breakpoints, scroll rules і small-screen order.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.55</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.54 — Toolbar Control Tokens</h4>
+                    <ul>
+                        <li><b>Toolbar controls уніфіковано через shared classes</b> — <code>toolbarContainer</code>, <code>toolbarRow</code>, <code>toolbarGroup</code>, <code>segmentedControl</code>, <code>segmentedItem</code>, <code>toolbarButton</code>, <code>toolbarIconButton</code>, <code>toolbarToggleChip</code>, <code>toolbarGhostButton</code> і <code>toolbarAccentButton</code> додані поверх існуючих класів.</li>
+                        <li><b>Design tokens винесено в scoped CSS layer</b> — Schedule Command Center тепер використовує єдині token values для container/control backgrounds, borders, active gradient, inactive і muted text.</li>
+                        <li><b>Segmented controls отримали спільну геометрію</b> — статуси, режим перегляду і масштаб часу мають однаковий container rhythm, height, radius і item styling.</li>
+                        <li><b>Buttons, icon buttons і toggles вирівняно</b> — дата-навігація, <code>Зараз</code>, <code>Свята</code>, <code>Компактно</code>, <code>Дайджест</code>, overflow і settings використовують спільні variants без різної візуальної ваги.</li>
+                        <li><b>Interaction states покрито централізовано</b> — hover, active/pressed, focus-visible, disabled і loading/aria-busy стани задано в одному toolbar layer.</li>
+                        <li><b>Handlers і permissions не змінювались</b> — старі <code>id</code>, <code>data-*</code>, active classes і dynamic <code>timelineConstructorBtn</code> contract збережені.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє shared classes, token values, segmented options, toggle chip і dynamic settings class.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.54</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.53 — Toolbar Scale Controls Polish</h4>
+                    <ul>
+                        <li><b>Нижній лівий блок toolbar став легшим</b> — <code>Масштаб:</code> і <code>15 хв / 30 хв / 60 хв</code> більше не виглядають як окрема важка панель.</li>
+                        <li><b>Options масштабу збережено без зміни логіки</b> — ті самі <code>data-zoom="15"</code>, <code>data-zoom="30"</code> і <code>data-zoom="60"</code> продовжують працювати через існуючі handlers.</li>
+                        <li><b>Active scale state зроблено менш масивним</b> — активна опція лишається очевидною через teal chip, але без primary-heavy заливки.</li>
+                        <li><b><code>Компактно</code> стало checkbox-style chip</b> — <code>#compactModeToggle</code> лишився тим самим input, а active/toggled стан показується через легкий checked indicator.</li>
+                        <li><b>Spacing нижнього рядка вирівняно</b> — між scale group і compact chip задано 12-16px ритм, controls тримають 36px висоту.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє label <code>Масштаб:</code>, три zoom options, збережений checkbox і active CSS для compact chip.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.53</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.52 — Toolbar Status Filter Polish</h4>
+                    <ul>
+                        <li><b>Status segmented control став нижчим і чистішим</b> — <code>Всі</code>, <code>Підтверджені</code> і <code>Попередні</code> отримали менший padding, нижчу висоту і компактніший container.</li>
+                        <li><b>Active state лишився очевидним</b> — активний статус має teal chip, border і легку тінь без primary-heavy вигляду.</li>
+                        <li><b>Inactive states приглушено</b> — неактивні пункти стали muted і менш контрастними, щоб не конкурувати з active.</li>
+                        <li><b>Повні назви збережено на широкому екрані</b> — labels не скорочувались і лишаються <code>Всі</code>, <code>Підтверджені</code>, <code>Попередні</code>.</li>
+                        <li><b>Counts не додавались</b> — готових count-ів у самому toolbar немає, нових API або додаткових запитів не вводилось.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє повні labels, відсутність count markup і compact/muted CSS для статусів.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.52</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.51 — Toolbar Date Navigation Cluster</h4>
+                    <ul>
+                        <li><b>Ліву групу дати перероблено у compact date navigation cluster</b> — порядок став <code>‹ дата · мета · Зараз ›</code>, без важкої окремої date panel.</li>
+                        <li><b>Дата стала головним елементом</b> — <code>#timelineDate</code> збережено як native date input, але тепер він сидить у compact date button із календарною іконкою.</li>
+                        <li><b>День і час роботи стали secondary metadata</b> — <code>Неділя · 10:00-20:00</code> показується тихішим текстом поруч із датою.</li>
+                        <li><b><code>Зараз</code> лишився <code>Зараз</code></b> — логіка переходу через існуючий <code>todayBtn</code> handler не змінювалась, а візуально кнопка стала compact accent/ghost.</li>
+                        <li><b>Навігація стала симетричною</b> — назад/вперед мають однаковий компактний розмір і не розтягують toolbar.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє нову структуру cluster, date wrapper, metadata dot, текст <code>Зараз</code> і mobile overflow-safe поведінку.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.51</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.50 — Toolbar Settings Icon</h4>
+                    <ul>
+                        <li><b>Кнопку <code>Налаштування</code> у toolbar зроблено compact icon-only</b> — на desktop лишається шестерня без видимого тексту, тому дія не конкурує з режимами, масштабом і дайджестом.</li>
+                        <li><b>Доступність збережено</b> — кнопка має <code>aria-label="Налаштування"</code>, <code>title="Налаштування"</code> і focus-visible стан із teal ring.</li>
+                        <li><b>Візуальний стиль полегшено</b> — settings action отримав ghost/outline фон, слабкий border, muted icon color і легкий teal hover/glow.</li>
+                        <li><b>Handler і permissions не змінювались</b> — <code>timelineConstructorBtn</code> і <code>bindConstructorButton</code> продовжують відкривати той самий settings center через існуючий <code>canUseAction('settings')</code>.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє accessible labeling, icon-only hiding, compact 40px sizing і focus-visible CSS.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.50</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.49 — Toolbar Digest Action</h4>
+                    <ul>
+                        <li><b><code>Дайджест</code> винесено у праву частину нижнього toolbar</b> — дія більше не залежить від overflow-меню і доступна як швидка secondary accent кнопка.</li>
+                        <li><b>Існуючий handler збережено</b> — кнопка лишилась <code>#digestBtn</code>, тому запуск використовує той самий <code>sendDailyDigest</code> flow і <code>/api/telegram/digest/:date</code>.</li>
+                        <li><b>Async loading state додано без зміни API</b> — під час відправки кнопка стає disabled, показує <code>Відправка...</code> і блокує повторний click.</li>
+                        <li><b>Permissions і empty states збережено</b> — viewer visibility, timeline visibility settings і auto-hide порожнього меню дій продовжують працювати через існуючі механізми.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє, що digest є direct action у <code>.action-buttons</code>, не дублюється у <code>v32-controls</code> і не повертається в dropdown.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.49</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.48 — Schedule View Overlay Split</h4>
+                    <ul>
+                        <li><b>Режими графіка розділено від overlay “Свята”</b> — <code>День</code>, <code>Тиждень</code> і <code>Кімнати</code> тепер працюють як один взаємовиключний segmented control.</li>
+                        <li><b>“Свята” винесено в окремий toggle chip</b> — overlay має власний active/pressed стан і може бути активним разом із будь-яким режимом перегляду.</li>
+                        <li><b>State розділено на <code>viewMode</code> і <code>showHolidays</code></b> — legacy <code>timelineView=animators|rooms</code> збережено для API, settings і render contracts.</li>
+                        <li><b>Active styles стали однозначними</b> — mode buttons і overlay chip отримали різні візуальні стани, щоб <code>День + Свята</code> не виглядали як два режими одночасно.</li>
+                        <li><b>Regression guardrails оновлено</b> — static UI і timeline resource tests перевіряють нову структуру controls та сумісність room/animator contracts.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.48</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.77.47 — Schedule Command Center</h4>
+                    <ul>
+                        <li><b>Toolbar графіка перероблено у дворядковий Schedule Command Center</b> — дата/навігація, статуси, День/Тиждень/Кімнати/Свята і службові дії отримали чітку ієрархію.</li>
+                        <li><b>Нижній рядок став легшим</b> — масштаб часу, компактний режим, дайджест, історія, overflow-дії та налаштування вирівняні в один компактний control strip.</li>
+                        <li><b>Висоту desktop toolbar зменшено без зміни логіки</b> — існуючі <code>id</code>, handlers, API, auth і бізнес-поведінка графіка збережені.</li>
+                        <li><b>Адаптивність збережено</b> — mobile/tablet layout отримав компактний scrollable command strip замість важкої другої панелі.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI smoke перевіряє нову дворядкову структуру, direct digest action і primary history action.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.47</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.46 — Scheduler Reliability Hardening</h4>
                     <ul>
                         <li><b>Scheduler jobs отримали пряме покриття</b> — додано self-contained тести для booking push, scheduler guard, event bus outbox, Telegram retry, task lifecycle, marketing, dashboard alerts і Kleshnya flows.</li>
                         <li><b>Raw intervals стали безпечнішими в одному процесі</b> — overlap guards додані для Telegram retry queue, task lifecycle, marketing wrappers, dashboard alert broadcaster, OpenClaw stale replies і Kleshnya greeting cleanup.</li>
                         <li><b>Notification jobs зафіксовані тестами</b> — digest, reminder, backup alert, scheduled deletions, upcoming bookings, SLA breach і certificate reminders перевіряються без реальних Telegram відправок.</li>
-                        <li><b>Scheduler governance оновлено</b> — `config/schedulerSurface.js`, scheduler docs і cleanup register тепер містять test anchors та актуальний static-only debt.</li>
+                        <li><b>Scheduler governance оновлено</b> — <code>config/schedulerSurface.js</code>, scheduler docs і cleanup register тепер містять test anchors та актуальний static-only debt.</li>
                         <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.46</code>.</li>
                     </ul>
                 </div>
@@ -14885,41 +15024,41 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.46"></script>
-    <script src="js/timeline-visibility.js?v=0.77.46"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.46"></script>
-    <script src="js/config.js?v=0.77.46"></script>
-    <script src="js/api.js?v=0.77.46"></script>
-    <script src="js/ui.js?v=0.77.46"></script>
-    <script src="js/auth.js?v=0.77.46"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.46"></script>
-    <script src="js/timeline-cache.js?v=0.77.46"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.46"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.46"></script>
-    <script src="js/event-cards.js?v=0.77.46"></script>
-    <script src="js/invite-config.js?v=0.77.46"></script>
-    <script src="js/invite-share.js?v=0.77.46"></script>
-    <script src="js/timeline.js?v=0.77.46"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.46"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.46"></script>
-    <script src="js/booking-save-path.js?v=0.77.46"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.46"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.46"></script>
-    <script src="js/booking.js?v=0.77.46"></script>
-    <script src="js/settings.js?v=0.77.46"></script>
-    <script src="js/booking-form.js?v=0.77.46"></script>
-    <script src="js/booking-linked.js?v=0.77.46"></script>
-    <script src="js/settings-dashboard.js?v=0.77.46"></script>
-    <script src="js/settings-history.js?v=0.77.46"></script>
-    <script src="js/settings-afisha.js?v=0.77.46"></script>
-    <script src="js/settings-certificates.js?v=0.77.46"></script>
-    <script src="js/offline.js?v=0.77.46"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.46"></script>
-    <script src="js/search.js?v=0.77.46"></script>
-    <script src="js/ws.js?v=0.77.46"></script>
-    <script src="js/app.js?v=0.77.46"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.46"></script>
-    <script src="js/components/sidebar.js?v=0.77.46"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.46"></script>
+    <script src="js/timeline-context.js?v=0.77.57"></script>
+    <script src="js/timeline-visibility.js?v=0.77.57"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.57"></script>
+    <script src="js/config.js?v=0.77.57"></script>
+    <script src="js/api.js?v=0.77.57"></script>
+    <script src="js/ui.js?v=0.77.57"></script>
+    <script src="js/auth.js?v=0.77.57"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.57"></script>
+    <script src="js/timeline-cache.js?v=0.77.57"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.57"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.57"></script>
+    <script src="js/event-cards.js?v=0.77.57"></script>
+    <script src="js/invite-config.js?v=0.77.57"></script>
+    <script src="js/invite-share.js?v=0.77.57"></script>
+    <script src="js/timeline.js?v=0.77.57"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.57"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.57"></script>
+    <script src="js/booking-save-path.js?v=0.77.57"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.57"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.57"></script>
+    <script src="js/booking.js?v=0.77.57"></script>
+    <script src="js/settings.js?v=0.77.57"></script>
+    <script src="js/booking-form.js?v=0.77.57"></script>
+    <script src="js/booking-linked.js?v=0.77.57"></script>
+    <script src="js/settings-dashboard.js?v=0.77.57"></script>
+    <script src="js/settings-history.js?v=0.77.57"></script>
+    <script src="js/settings-afisha.js?v=0.77.57"></script>
+    <script src="js/settings-certificates.js?v=0.77.57"></script>
+    <script src="js/offline.js?v=0.77.57"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.57"></script>
+    <script src="js/search.js?v=0.77.57"></script>
+    <script src="js/ws.js?v=0.77.57"></script>
+    <script src="js/app.js?v=0.77.57"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.57"></script>
+    <script src="js/components/sidebar.js?v=0.77.57"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.77.57"></script>
 </body>
 </html>

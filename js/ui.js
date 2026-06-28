@@ -2539,7 +2539,13 @@ function toggleCompactMode(event) {
     const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('compact_mode') : 'pzp_compact_mode';
     localStorage.setItem(key, AppState.compactMode);
     applyTimelineResponsiveDensity();
-    if (toggle) toggle.checked = AppState.compactMode;
+    if (typeof syncTimelineCompactToggleAria === 'function') {
+        syncTimelineCompactToggleAria();
+    } else if (toggle) {
+        toggle.checked = AppState.compactMode;
+        toggle.setAttribute('aria-checked', AppState.compactMode ? 'true' : 'false');
+        toggle.closest?.('.timeline-compact-toggle')?.setAttribute('aria-pressed', AppState.compactMode ? 'true' : 'false');
+    }
     if (previousCompactMode !== Boolean(AppState.compactMode) && typeof markTimelineNavigationScrollReset === 'function') {
         markTimelineNavigationScrollReset('compact-change');
     }
@@ -2569,7 +2575,9 @@ function changeZoom(level) {
 
 function updateZoomButtons() {
     document.querySelectorAll('.zoom-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.zoom) === AppState.zoomLevel);
+        const active = parseInt(btn.dataset.zoom) === AppState.zoomLevel;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 }
 

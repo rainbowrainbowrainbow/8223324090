@@ -3335,8 +3335,16 @@ const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hr
 check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*32px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
 check('HR Pulse Today has premium hero, search, department segmentation, and compact live staff board on the Today surface',
     fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
+    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-light.png'))
     && htmlContains('hr.html', 'class="hr-today-hero"')
     && htmlContains('hr.html', 'images/hr-pulse/pulse-strip-dark.png')
+    && htmlContains('hr.html', 'images/hr-pulse/pulse-strip-light.png')
+    && htmlContains('hr.html', 'hr-today-hero-img--light')
+    && htmlContains('hr.html', 'hr-today-hero-img--dark')
+    && hrPageCss.includes('.hr-today-hero-media .hr-today-hero-img--light')
+    && hrPageCss.includes('.hr-today-hero-media .hr-today-hero-img--dark')
+    && hrPageCss.includes('body.dark-mode .hr-today-hero-media .hr-today-hero-img--dark')
+    && hrPageCss.includes('html[data-theme="dark"] body .hr-today-hero-media .hr-today-hero-img--dark')
     && htmlContains('hr.html', 'Команда сьогодні')
     && htmlContains('hr.html', 'Пульс зміни')
     && htmlContains('hr.html', 'id="todayDate"')

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.44 - HR Pulse Light Hero Polish
+
+### HR Pulse light hero / Dark-mode fallback / UI guardrails / (Клешня, 28.06.2026) [codex]
+- **Hero `Пульс зміни` отримав світліший default banner** - `/hr#today` тепер використовує `pulse-strip-light.png` у звичайній темі, щоб шапка не виглядала надто темною або важкою.
+- **Dark mode зберігає темний strip** - для `body.dark-mode` і `html[data-theme="dark"]` лишається `pulse-strip-dark.png`, із темним overlay, читабельним текстом і компактною дата-міткою.
+- **Дата й hero typography адаптовані під світлий фон** - eyebrow, заголовок, subtitle і date badge отримали легші кольори, слабші тіні та кращий contrast у default theme.
+- **Regression guardrails оновлено** - UI smoke перевіряє наявність light/dark hero images, dark-mode selectors і новий media contract.
+- **Релізні маркери піднято до `0.77.44`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.43 - HR Pulse Compact Strips
 
 ### HR Pulse compact strips / Soft hero / Lighter live board / Release / (Клешня, 27.06.2026) [codex]

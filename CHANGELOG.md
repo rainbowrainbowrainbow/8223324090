@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.61 - Toolbar Command Center Follow-up
+
+### Timeline toolbar / Responsive overlap / Quick actions row / (Клешня, 28.06.2026) [codex]
+- **Виправлено overlap режимів і overlay** - `Кімнати` і `Свята` більше не накладаються на desktop, medium і small ширинах.
+- **`Компактно` прибрано з toolbar** - видимий chip знято, але legacy `#compactModeToggle` лишився hidden state input для сумісності з існуючою JS-логікою.
+- **Quick actions опущено в нижній рядок** - `Дайджест`, `Історія`, overflow і settings тепер не конкурують із режимами перегляду.
+- **Settings gear відділено візуально** - icon-only settings action має окремий відступ у нижньому action row і зберігає accessibility contract.
+- **Responsive follow-up перевірено** - browser audit на 1440/900/390 підтвердив відсутність page overflow і накладання controls.
+- **Релізні маркери піднято до `0.77.61`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.60 - Toolbar Command Center and Task Watchdog Dry Run
 
 ### Timeline toolbar / View modes / Holidays overlay / Hermes task watchdog dry-run / Interaction QA / (Клешня, 28.06.2026) [codex]

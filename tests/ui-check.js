@@ -236,42 +236,44 @@ checkPage('index.html', (doc, html) => {
         && modalsCss.includes('.action-history-row')
         && modalsCss.includes('.action-history-modal')
         && htmlContains('js/settings.js', 'ActionHistoryView.renderList(items'));
-    check('Timeline toolbar uses a three-zone Schedule Command Center layout',
+    check('Timeline toolbar keeps top modes clear and moves actions to lower row',
         !!doc.querySelector('.control-panel.schedule-command-center.toolbarContainer[role="toolbar"]')
         && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--left.toolbarZone .date-controls.toolbarGroup')
         && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--center.toolbarZone .status-filter-controls.toolbarGroup.segmentedControl')
         && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--center.toolbarZone .view-mode-controls.toolbarGroup')
         && !!doc.querySelector('.schedule-command-zone--center #timelineHolidaysToggle.toolbarToggleChip[data-timeline-holidays-toggle]')
-        && !!doc.querySelector('.schedule-command-zone--right.toolbarZone .action-buttons.toolbarGroup')
         && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--utility.toolbarZone .v32-controls.toolbarGroup')
-        && !!doc.querySelector('.schedule-command-zone--right .action-buttons > #historyBtn')
-        && !!doc.querySelector('.schedule-command-zone--right .action-buttons #adminDropdown[data-menu-scope="timeline-actions"]')
+        && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--actions.toolbarZone .action-buttons.toolbarGroup')
+        && !!doc.querySelector('.schedule-command-zone--actions .action-buttons > #historyBtn')
+        && !!doc.querySelector('.schedule-command-zone--actions .action-buttons #adminDropdown[data-menu-scope="timeline-actions"]')
         && !doc.querySelector('.v32-controls #historyBtn')
         && !doc.querySelector('.v32-controls #adminDropdown')
+        && !doc.querySelector('.schedule-command-row--main .action-buttons')
         && htmlContains('css/responsive.css', 'v0.77.47: compact two-row Schedule Command Center')
         && htmlContains('css/responsive.css', 'v0.77.59: three-zone Schedule Command Center layout')
+        && htmlContains('css/responsive.css', 'v0.77.61: follow-up toolbar action row and non-overlapping view overlay')
         && htmlContains('css/responsive.css', '.schedule-command-row--main')
         && htmlContains('css/responsive.css', '.schedule-command-zone--left')
         && htmlContains('css/responsive.css', '.schedule-command-zone--center')
-        && htmlContains('css/responsive.css', '.schedule-command-zone--right')
         && htmlContains('css/responsive.css', '.schedule-command-zone--utility')
+        && htmlContains('css/responsive.css', '.schedule-command-zone--actions')
         && htmlContains('css/responsive.css', '@media (max-width: 1536px) and (min-width: 769px)')
         && htmlContains('css/responsive.css', 'grid-template-areas:')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons')
-        && htmlContains('css/responsive.css', 'margin-left: 0 !important;'));
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
+        && htmlContains('css/responsive.css', 'margin-left: 6px !important;'));
     check('Timeline medium toolbar stays compact across tablet breakpoints',
         htmlContains('css/responsive.css', '@media (max-width: 1536px) and (min-width: 769px)')
         && htmlContains('css/responsive.css', '@media (min-width: 700px) and (max-width: 768px)')
         && htmlContains('css/responsive.css', '--toolbar-control-h: 32px;')
         && htmlContains('css/responsive.css', '--toolbar-item-h: 28px;')
         && htmlContains('css/responsive.css', 'grid-template-areas:')
-        && htmlContains('css/responsive.css', '"left right"')
-        && htmlContains('css/responsive.css', '"center center"')
+        && htmlContains('css/responsive.css', '"left center"')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--left .date-navigation-cluster .day-info')
         && htmlContains('css/responsive.css', 'display: none !important;')
         && htmlContains('css/responsive.css', 'overflow-x: auto !important')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right {\n        justify-self: stretch;\n        justify-content: flex-start !important;')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {\n        justify-self: stretch !important;\n        justify-content: flex-start !important;')
         && htmlContains('css/responsive.css', 'gap: 5px !important;'));
     check('Timeline toolbar controls use shared classes and requested design tokens',
         doc.querySelectorAll('.schedule-command-center .segmentedControl').length >= 3
@@ -284,7 +286,8 @@ checkPage('index.html', (doc, html) => {
         && !!doc.querySelector('#menuToggleBtn.toolbarIconButton.toolbarGhostButton')
         && !!doc.querySelector('#digestBtn.toolbarButton.toolbarAccentButton')
         && !!doc.querySelector('#exportTimelineBtn.toolbarButton.toolbarGhostButton')
-        && !!doc.querySelector('.timeline-compact-toggle.toolbarToggleChip > #compactModeToggle[type="checkbox"]')
+        && !!doc.querySelector('#compactModeToggle.timeline-compact-state[type="checkbox"][hidden]')
+        && !doc.querySelector('.timeline-compact-toggle.toolbarToggleChip')
         && htmlContains('js/timeline-visibility.js', "toolbarIconButton toolbarGhostButton hidden")
         && htmlContains('css/responsive.css', 'v0.77.54: shared Schedule Command Center toolbar controls')
         && htmlContains('css/responsive.css', '--toolbar-container-bg: rgba(15, 23, 42, 0.92)')
@@ -305,7 +308,7 @@ checkPage('index.html', (doc, html) => {
         && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .timeline-view-mode-btn')).map(btn => `${btn.dataset.scheduleViewMode}:${btn.getAttribute('aria-pressed')}`).join('|') === 'day:true|week:false|rooms:false'
         && doc.querySelector('#timelineHolidaysToggle')?.getAttribute('aria-pressed') === 'true'
         && Array.from(doc.querySelectorAll('.zoom-controls .zoom-btn')).every(btn => btn.tagName === 'BUTTON' && btn.getAttribute('type') === 'button' && btn.hasAttribute('aria-pressed'))
-        && doc.querySelector('.timeline-compact-toggle')?.getAttribute('aria-pressed') === 'false'
+        && !doc.querySelector('.timeline-compact-toggle')
         && doc.querySelector('#compactModeToggle')?.getAttribute('aria-checked') === 'false'
         && doc.querySelector('#compactModeToggle')?.getAttribute('aria-label') === 'Компактний режим'
         && doc.querySelector('#digestBtn')?.getAttribute('aria-busy') === 'false'
@@ -406,15 +409,15 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'opacity: 0.68')
         && htmlContains('css/responsive.css', 'height: 26px !important;')
         && htmlContains('css/responsive.css', 'rgba(20, 184, 166, 0.12)'));
-    check('Timeline bottom-left scale controls are light and keep compact toggle logic',
+    check('Timeline bottom-left scale controls stay light without visible compact toggle',
         doc.querySelector('.schedule-command-row--utility .v32-controls .schedule-command-label')?.textContent.trim() === 'Масштаб:'
         && Array.from(doc.querySelectorAll('.schedule-command-row--utility .zoom-controls .zoom-btn')).map(btn => `${btn.dataset.zoom}:${btn.textContent.trim()}`).join('|') === '15:15 хв|30:30 хв|60:60 хв'
-        && !!doc.querySelector('.timeline-compact-toggle > #compactModeToggle[type="checkbox"]')
-        && !!doc.querySelector('.timeline-compact-toggle .timeline-compact-toggle-box[aria-hidden="true"]')
-        && doc.querySelector('.timeline-compact-toggle .toggle-mini-label')?.textContent.trim() === 'Компактно'
+        && !!doc.querySelector('#compactModeToggle.timeline-compact-state[type="checkbox"][hidden]')
+        && !doc.querySelector('.timeline-compact-toggle')
+        && !doc.querySelector('.toggle-mini-label')
         && htmlContains('css/responsive.css', 'v0.77.53: lighter bottom-left scale and compact-mode controls')
         && htmlContains('css/responsive.css', '.zoom-controls .zoom-btn.active')
-        && htmlContains('css/responsive.css', '.timeline-compact-toggle:has(input:checked)')
+        && htmlContains('css/responsive.css', '.timeline-compact-state[hidden]')
         && htmlContains('css/responsive.css', 'height: 36px !important;')
         && htmlContains('css/responsive.css', 'gap: 14px !important;'));
     check('Timeline settings toolbar action is compact icon-only with accessible labeling',
@@ -441,7 +444,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '@media (max-width: 768px)')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .toolbar-label-short')
         && htmlContains('css/responsive.css', 'overflow-x: auto !important')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--right .action-buttons')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility .v32-controls')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #digestBtn')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #adminDropdown')
@@ -450,6 +453,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'order: 3')
         && htmlContains('css/responsive.css', 'order: 4')
         && htmlContains('css/responsive.css', 'order: 2')
+        && htmlContains('css/responsive.css', '.schedule-command-zone--actions')
         && htmlContains('css/responsive.css', 'overflow-x: hidden'));
     check('Timeline small toolbar keeps digest before overflow with row-scoped scroll',
         htmlContains('css/responsive.css', '@media (max-width: 768px)')
@@ -464,6 +468,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'order: 3;')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
         && htmlContains('css/responsive.css', 'order: 4;')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions')
         && htmlContains('css/responsive.css', '.schedule-command-zone--center .status-filter-controls')
         && htmlContains('css/responsive.css', 'width: auto !important')
         && htmlContains('css/responsive.css', '.schedule-command-zone--center .view-mode-controls'));

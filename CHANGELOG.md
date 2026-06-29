@@ -4,18 +4,6 @@
 
 ---
 
-## v0.77.68 - Timeline Type Toolbar
-
-### Timeline toolbar / Timeline type model / Regression guards / (Клешня, 29.06.2026) [codex]
-- **Тип таймлайну зроблено явним** - замість неправильного switch `Свята / Без свят` додано segmented control `Банкети / Свята`.
-- **Період і тип графіка розділено** - `День / Тиждень` керують періодом, а `Банкети / Свята` перемикають банкетний та аніматорський таймлайн.
-- **Фільтри винесено у верхній рядок** - статуси, період і тип таймлайну зібрані в одному зрозумілому control layer.
-- **Прибрано дубль дати** - secondary metadata `Понеділок, 29.06 · 12:00-20:00` більше не дублює основний date picker.
-- **Regression guardrails оновлено** - UI checks перевіряють `Банкети / Свята`, відсутність `Без свят` і нову модель toolbar state.
-- **Релізні маркери піднято до `0.77.68`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
-
----
-
 ## v0.77.67 - HR Staff Schedule Operations Release
 
 ### HR/staff schedule / Reports payroll / Operations / Security / (Клешня, 29.06.2026) [codex]

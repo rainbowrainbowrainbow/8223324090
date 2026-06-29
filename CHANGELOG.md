@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.65 - Holidays Overlay Switch Polish
+
+### Timeline toolbar / Holidays switch / Responsive polish / (Клешня, 29.06.2026) [codex]
+- **`Свята` перероблено на справжній overlay switch** - кнопка отримала track/thumb indicator і більше не читається як четвертий режим поруч із `День`, `Тиждень`, `Кімнати`.
+- **View modes залишились взаємовиключним segmented control** - `Кімнати` зберігає сильний active state режиму, а `Свята` показує незалежний toggle state через `aria-pressed`.
+- **Overlap і page overflow перевірено на desktop, medium і mobile** - локальний browser smoke на 1440/900/390 підтвердив, що `Кімнати` і `Свята` не накладаються.
+- **Regression guardrails оновлено** - UI check тепер перевіряє `timeline-holidays-switch`, `timeline-holidays-switch-thumb`, label і CSS transform для активного switch.
+- **Релізні маркери піднято до `0.77.65`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.64 - Toolbar View Cluster and Automation Owner
 
 ### Timeline toolbar / View cluster / Booking automation owner forwarding / (Клешня, 29.06.2026) [codex]

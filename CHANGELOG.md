@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.69 - Timeline Header Filter Labels
+
+### Timeline header filters / Label visibility / Regression guard / (Клешня, 29.06.2026) [codex]
+- **Склеєні labels у верхньому toolbar виправлено** - у `timeline-header-filters` більше не показуються одночасно повна і коротка назви `Підтверджені` / `Підтв.` та `Попередні` / `Попер.`.
+- **Desktop і medium widths розведено явно** - на широкому екрані лишається повний label, а на `<=1536px` показується короткий label без дублювання тексту.
+- **CSS лишився scoped до header filters** - зміна не чіпає старий `schedule-command-center`, booking drawer, DB, API або auth.
+- **Regression guard додано** - `tests/ui-check.js` перевіряє, що header filter labels мають окремі full/short правила й не повертаються до подвійного тексту.
+- **Релізні маркери піднято до `0.77.69`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.68 - Timeline Header Filters Release
 
 ### Timeline header filters / Toolbar cleanup / Regression guards / (Клешня, 29.06.2026) [codex]

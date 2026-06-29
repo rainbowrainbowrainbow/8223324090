@@ -508,6 +508,23 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'order: 2')
         && htmlContains('css/responsive.css', '.schedule-command-zone--actions')
         && htmlContains('css/responsive.css', 'overflow-x: hidden'));
+    check('Timeline header filter labels expose full and short markup without duplicated CSS display',
+        !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter=confirmed] .toolbar-label-full')
+        && !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter=confirmed] .toolbar-label-short')
+        && !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter=preliminary] .toolbar-label-full')
+        && !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter=preliminary] .toolbar-label-short')
+        && htmlContains('css/responsive.css', 'v0.77.69: header filter labels must not render full and short text at once.'));
+    check('Timeline header filter label visibility CSS is scoped and breakpointed',
+        !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter="confirmed"] .toolbar-label-full')
+        && !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter="confirmed"] .toolbar-label-short')
+        && !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter="preliminary"] .toolbar-label-full')
+        && !!doc.querySelector('.timeline-header-filters .status-filter-btn[data-filter="preliminary"] .toolbar-label-short')
+        && htmlContains('css/responsive.css', 'v0.77.69: header filter labels must not render full and short text at once.')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short')
+        && htmlContains('css/responsive.css', '@media (max-width: 1536px)')
+        && htmlContains('css/responsive.css', 'display: none;')
+        && htmlContains('css/responsive.css', 'display: inline;'));
     check('Timeline small toolbar keeps digest before overflow with row-scoped scroll',
         htmlContains('css/responsive.css', '@media (max-width: 768px)')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone')

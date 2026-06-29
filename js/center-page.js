@@ -18,6 +18,8 @@ let proposals = [];
 let catalogProducts = [];
 let catalogFilter = 'all';
 let pricePositionsData = [];
+let operationsData = null;
+let operationsLoading = false;
 
 const BANQUET_TERMS_PRICE_RULES = Object.freeze([
     {
@@ -212,6 +214,18 @@ async function apiCenterReport() {
 // ==========================================
 // API CALLS — Loyalty & Discounts (v19.7)
 // ==========================================
+
+async function apiCenterOperationsToday() {
+    try {
+        const response = await fetch(`${API_BASE}/center/operations/today`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API center operations error:', err);
+        return null;
+    }
+}
 
 async function apiLoyaltyTiers() {
     try {
@@ -2348,6 +2362,286 @@ async function sendReportToTelegram() {
         showNotification('Помилка надсилання звіту', 'error');
     }
 }
+
+// ==========================================
+// RENDER: OPERATIONS CENTER
+// ==========================================
+
+function opsItems(value) {
+    return Array.isArray(value) ? value : [];
+}
+
+function opsText(value, fallback = '—') {
+    const text = String(value || '').trim();
+    return text || fallback;
+}
+
+function opsMoney(value) {
+    return Number(value || 0).toLocaleString('uk-UA') + ' грн';
+}
+
+function opsBadge(label, tone = 'info') {
+    return `<span class="center-ops-badge is-${escapeHtml(tone)}">${escapeHtml(label || 'info')}</span>`;
+}
+
+function opsRowMeta(parts) {
+    const safe = (parts || []).map(part => opsText(part, '')).filter(Boolean);
+    return safe.length ? `<div class="center-ops-row-meta">${safe.map(escapeHtml).join(' · ')}</div>` : '';
+}
+
+function renderOpsEmpty(title, detail = '') {
+    return `<div class="center-ops-empty"><strong>${escapeHtml(title)}</strong>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</div>`;
+}
+
+function renderOpsSummaryTile(label, value, detail = '', tone = 'info') {
+    return `<div class="center-ops-summary-item is-${escapeHtml(tone)}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${Number(value || 0)}</strong>
+        ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
+    </div>`;
+}
+
+function renderOpsIssue(issue = {}) {
+    const ref = issue.ref || {};
+    const action = ref.staffId
+        ? `<a href="/hr?employee=${encodeURIComponent(ref.staffId)}" class="center-ops-link">HR</a>`
+        : ref.reportId
+            ? `<a href="/reports?reportId=${encodeURIComponent(ref.reportId)}" class="center-ops-link">Звіт</a>`
+            : ref.bookingId
+                ? `<a href="/?bookingId=${encodeURIComponent(ref.bookingId)}" class="center-ops-link">Бронювання</a>`
+                : ref.taskId
+                    ? `<a href="/tasks?task=${encodeURIComponent(ref.taskId)}" class="center-ops-link">Задача</a>`
+                    : '';
+    return `<div class="center-ops-row center-ops-row--issue is-${escapeHtml(issue.severity || 'info')}">
+        <div class="center-ops-row-main">
+            <strong>${escapeHtml(issue.title || 'Issue')}</strong>
+            ${opsRowMeta([issue.detail])}
+        </div>
+        ${action}
+    </div>`;
+}
+
+function renderOpsBooking(booking = {}) {
+    const isPreliminary = booking.status === 'preliminary';
+    const paymentTone = Number(booking.debtAmount || 0) > 0 ? 'warning' : 'ok';
+    const paymentLabel = Number(booking.debtAmount || 0) > 0 ? `борг ${opsMoney(booking.debtAmount)}` : 'оплачено';
+    return `<div class="center-ops-row">
+        <div class="center-ops-time">${escapeHtml(booking.time || '—')}</div>
+        <div class="center-ops-row-main">
+            <strong>${escapeHtml(booking.programName || booking.label || booking.id)}</strong>
+            ${opsRowMeta([booking.room, booking.clientName, booking.status])}
+        </div>
+        <div class="center-ops-row-tags">
+            ${opsBadge(paymentLabel, paymentTone)}
+            ${isPreliminary ? opsBadge('не підтверджено', 'warning') : opsBadge('підтверджено', 'ok')}
+        </div>
+        <div class="center-ops-actions">
+            ${booking.customerPhone ? `<a href="tel:${escapeHtml(booking.customerPhone)}" class="center-ops-link">Дзвінок</a>` : ''}
+            ${isPreliminary ? `<button type="button" class="center-ops-link center-ops-link--button" onclick="confirmOperationsBooking('${escapeHtml(booking.id)}', this)">Підтвердити</button>` : ''}
+            <a href="/staff?date=${encodeURIComponent(booking.date || '')}" class="center-ops-link">Графік</a>
+        </div>
+    </div>`;
+}
+
+function renderOpsShift(shift = {}) {
+    const attendance = shift.attendance || {};
+    const actual = [shift.actualArrival, shift.actualLeave].filter(Boolean).join('-');
+    return `<div class="center-ops-row">
+        <div class="center-ops-avatar">${escapeHtml(String(shift.name || '?').slice(0, 2).toUpperCase())}</div>
+        <div class="center-ops-row-main">
+            <strong>${escapeHtml(shift.name || 'Працівник')}</strong>
+            ${opsRowMeta([shift.position || shift.roleType, `${shift.plannedStart || '—'}-${shift.plannedEnd || '—'}`, actual ? `факт ${actual}` : 'факт ще не зафіксовано'])}
+        </div>
+        <div class="center-ops-row-tags">
+            ${opsBadge(attendance.label || attendance.status || 'planned', attendance.severity || 'info')}
+        </div>
+        <a href="/hr?employee=${encodeURIComponent(shift.staffId || '')}" class="center-ops-link">HR</a>
+    </div>`;
+}
+
+function renderOpsTask(task = {}) {
+    return `<div class="center-ops-row ${task.isOverdue ? 'is-critical' : ''}">
+        <div class="center-ops-row-main">
+            <strong>${escapeHtml(task.title || 'Задача')}</strong>
+            ${opsRowMeta([task.priority, task.assignedTo || 'без відповідального', task.deadline ? formatDateTime(task.deadline) : task.date])}
+        </div>
+        ${opsBadge(task.status || 'todo', task.isOverdue ? 'critical' : 'info')}
+        <a href="/tasks?task=${encodeURIComponent(task.id || '')}" class="center-ops-link">Відкрити</a>
+    </div>`;
+}
+
+function renderOpsReport(report = {}) {
+    const tone = report.approvalStatus === 'rejected' ? 'critical' : report.approvalStatus === 'approved' ? 'ok' : 'warning';
+    return `<div class="center-ops-row">
+        <div class="center-ops-row-main">
+            <strong>Звіт #${escapeHtml(report.id || '')}</strong>
+            ${opsRowMeta([report.category || report.type, report.submittedBy, report.createdAt ? formatDateTime(report.createdAt) : ''])}
+        </div>
+        <div class="center-ops-row-tags">
+            ${opsBadge(report.status || 'new', 'info')}
+            ${opsBadge(report.approvalStatus || 'none', tone)}
+        </div>
+        <a href="/reports?reportId=${encodeURIComponent(report.id || '')}" class="center-ops-link">Звіт</a>
+    </div>`;
+}
+
+function renderOpsTimelineEvent(event = {}) {
+    return `<div class="center-ops-row center-ops-row--timeline">
+        <div class="center-ops-time">${escapeHtml(event.time || '—')}</div>
+        <div class="center-ops-row-main">
+            <strong>${escapeHtml(event.title || event.type || 'Подія')}</strong>
+            ${opsRowMeta([event.detail, event.status])}
+        </div>
+        ${event.bookingId ? `<a href="/?bookingId=${encodeURIComponent(event.bookingId)}" class="center-ops-link">Timeline</a>` : ''}
+    </div>`;
+}
+
+function renderOpsNotes(notes = []) {
+    if (!notes.length) return renderOpsEmpty('Нотаток передачі зміни немає');
+    return notes.map(note => `<div class="center-ops-note">
+        <strong>${escapeHtml(note.author || note.by || 'Зміна')}</strong>
+        <span>${escapeHtml(note.text || note.note || '')}</span>
+        ${note.createdAt ? `<small>${escapeHtml(formatDateTime(note.createdAt))}</small>` : ''}
+    </div>`).join('');
+}
+
+function renderOpsList(items, renderer, emptyTitle, emptyDetail = '') {
+    const list = opsItems(items);
+    return list.length ? list.map(renderer).join('') : renderOpsEmpty(emptyTitle, emptyDetail);
+}
+
+function renderOperationsCenter(data) {
+    const container = document.getElementById('operationsCenter');
+    if (!container) return;
+    if (!data?.success) {
+        setContainerState('operationsCenter', 'Не вдалося завантажити зміну', 'Перевірте /api/center/operations/today або повторіть пізніше.', 'error');
+        return;
+    }
+    const counts = data.counts || {};
+    const incidents = opsItems(data.incidents);
+    const blockerTone = Number(counts.incidents || 0) > 0 ? 'warning' : 'ok';
+    const generated = data.generatedAt ? formatDateTime(data.generatedAt) : '—';
+
+    container.innerHTML = `<div class="center-ops-shell">
+        <div class="center-ops-head">
+            <div>
+                <h2>Зміна сьогодні</h2>
+                <p>${escapeHtml(data.date || '')} · оновлено ${escapeHtml(generated)}</p>
+            </div>
+            <div class="center-ops-head-actions">
+                <a href="/staff" class="center-ops-link">Графік</a>
+                <a href="/tasks?source=center-ops" class="center-ops-link">Інцидент</a>
+                <a href="/reports" class="center-ops-link">Звіти</a>
+                <button type="button" class="center-ops-link center-ops-link--button" onclick="loadOperationsCenter({ force: true })">Оновити</button>
+            </div>
+        </div>
+
+        <div class="center-ops-summary">
+            ${renderOpsSummaryTile('Бронювання', counts.bookings, 'сьогодні', 'info')}
+            ${renderOpsSummaryTile('На зміні', counts.onShiftNow, `${counts.activeShifts || 0} заплановано`, 'ok')}
+            ${renderOpsSummaryTile('Запізнення', counts.lateStaff, 'потрібна реакція', counts.lateStaff ? 'warning' : 'ok')}
+            ${renderOpsSummaryTile('Невихід', counts.noShowStaff, 'критично', counts.noShowStaff ? 'critical' : 'ok')}
+            ${renderOpsSummaryTile('Оплати', counts.pendingPayments, 'до контролю', counts.pendingPayments ? 'warning' : 'ok')}
+            ${renderOpsSummaryTile('Блокери', counts.incidents, 'issues', blockerTone)}
+        </div>
+
+        <div class="center-ops-grid">
+            <section class="center-ops-panel center-ops-panel--wide">
+                <div class="center-ops-panel-title">
+                    <strong>Критичні питання</strong>
+                    ${opsBadge(`${incidents.length}`, blockerTone)}
+                </div>
+                <div class="center-ops-list">${renderOpsList(incidents, renderOpsIssue, 'Критичних питань немає')}</div>
+            </section>
+
+            <section class="center-ops-panel">
+                <div class="center-ops-panel-title"><strong>Хто зараз на зміні</strong></div>
+                <div class="center-ops-list">${renderOpsList(data.onShiftNow, renderOpsShift, 'Зараз немає активної зміни')}</div>
+            </section>
+
+            <section class="center-ops-panel">
+                <div class="center-ops-panel-title"><strong>Бронювання</strong></div>
+                <div class="center-ops-list">${renderOpsList(data.bookings, renderOpsBooking, 'Бронювань на сьогодні немає')}</div>
+            </section>
+
+            <section class="center-ops-panel">
+                <div class="center-ops-panel-title"><strong>Таймлайн</strong></div>
+                <div class="center-ops-list">${renderOpsList(data.timelineEvents, renderOpsTimelineEvent, 'Подій timeline ще немає')}</div>
+            </section>
+
+            <section class="center-ops-panel">
+                <div class="center-ops-panel-title"><strong>Відкриті задачі</strong></div>
+                <div class="center-ops-list">${renderOpsList(data.openTasks, renderOpsTask, 'Операційних задач немає')}</div>
+            </section>
+
+            <section class="center-ops-panel">
+                <div class="center-ops-panel-title"><strong>Звіти на перевірку</strong></div>
+                <div class="center-ops-list">${renderOpsList(data.pendingReports, renderOpsReport, 'Немає звітів на ревʼю')}</div>
+            </section>
+
+            <section class="center-ops-panel center-ops-panel--wide">
+                <div class="center-ops-panel-title">
+                    <strong>Передача зміни</strong>
+                    <a href="/tasks?source=center-ops&kind=handover" class="center-ops-link">Нова нотатка</a>
+                </div>
+                <div class="center-ops-notes">${renderOpsNotes(opsItems(data.handoverNotes))}</div>
+            </section>
+        </div>
+    </div>`;
+}
+
+async function loadOperationsCenter(options = {}) {
+    const container = document.getElementById('operationsCenter');
+    if (!container) return;
+    if (operationsLoading) return;
+    if (operationsData && !options.force) {
+        renderOperationsCenter(operationsData);
+        return;
+    }
+    operationsLoading = true;
+    setContainerLoading('operationsCenter', 'Оновлюємо стан зміни...');
+    const data = await apiCenterOperationsToday();
+    operationsLoading = false;
+    if (!data || !data.success) {
+        setContainerState('operationsCenter', 'Не вдалося завантажити зміну', 'API /api/center/operations/today не повернув актуальний стан.', 'error');
+        return;
+    }
+    operationsData = data;
+    renderOperationsCenter(data);
+}
+
+async function confirmOperationsBooking(id, button) {
+    if (!id) return;
+    const oldText = button?.textContent;
+    if (button) {
+        button.disabled = true;
+        button.textContent = '...';
+    }
+    try {
+        const response = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/confirm`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ source: 'center_operations' })
+        });
+        const result = await centerMutationJson(response, 'Не вдалося підтвердити бронювання');
+        if (!result.success) throw new Error(result.error || 'confirm failed');
+        if (typeof showNotification === 'function') showNotification('Бронювання підтверджено', 'success');
+        await loadOperationsCenter({ force: true });
+    } catch (err) {
+        console.error('Operations confirm booking error:', err);
+        if (typeof showNotification === 'function') showNotification('Не вдалося підтвердити бронювання', 'error');
+        if (button) {
+            button.disabled = false;
+            button.textContent = oldText || 'Підтвердити';
+        }
+    }
+}
+
+window.loadOperationsCenter = loadOperationsCenter;
+window.confirmOperationsBooking = confirmOperationsBooking;
+window.addEventListener('center:tab-change', event => {
+    if (event.detail?.tab === 'operations') loadOperationsCenter();
+});
 
 // ==========================================
 // DATA LOADING

@@ -501,7 +501,6 @@ function setTimelineShowHolidaysValue(visible) {
 }
 
 function timelineCurrentScheduleViewMode() {
-    if (timelineCurrentView() === TIMELINE_VIEW_ROOMS) return TIMELINE_SCHEDULE_VIEW_ROOMS;
     if (typeof AppState !== 'undefined' && AppState.multiDayMode) return TIMELINE_SCHEDULE_VIEW_WEEK;
     return TIMELINE_SCHEDULE_VIEW_DAY;
 }
@@ -542,16 +541,10 @@ function updateTimelineViewControls() {
     document.querySelectorAll('[data-timeline-view]').forEach(btn => {
         const active = normalizeTimelineViewMode(btn.dataset.timelineView) === current;
         btn.dataset.timelineViewActive = active ? 'true' : 'false';
-    });
-    document.querySelectorAll('[data-timeline-holidays-toggle]').forEach(btn => {
-        btn.classList.toggle('active', showHolidays);
-        btn.classList.toggle('is-overlay-active', showHolidays);
-        btn.setAttribute('aria-pressed', showHolidays ? 'true' : 'false');
-        btn.setAttribute('aria-label', showHolidays ? 'Свята увімкнено' : 'Свята вимкнено');
-        btn.title = showHolidays ? 'Свята показуються поверх вибраного режиму' : 'Свята приховано для вибраного режиму';
-        btn.dataset.showHolidays = showHolidays ? 'true' : 'false';
-        const label = btn.querySelector('.timeline-holidays-label');
-        if (label) label.textContent = showHolidays ? 'Свята' : 'Без свят';
+        if (btn.closest('[data-timeline-type-selector]')) {
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
     });
     if (typeof syncTimelinePeriodSelector === 'function') syncTimelinePeriodSelector();
 }
@@ -562,15 +555,31 @@ async function setTimelineScheduleViewMode(mode, options = {}) {
         updateTimelineViewControls();
         return timelineCurrentScheduleViewMode();
     }
+    if (nextMode === TIMELINE_SCHEDULE_VIEW_ROOMS) {
+        const previousMode = timelineCurrentScheduleViewMode();
+        const previousView = timelineCurrentView();
+        const nextView = await setTimelineView(TIMELINE_VIEW_ROOMS, { render: false, source: 'legacy-schedule-view-mode' });
+        const viewChanged = previousView !== nextView;
+        if (viewChanged && options.render !== false && typeof renderTimeline === 'function') {
+            await renderTimeline();
+        }
+        window.dispatchEvent(new CustomEvent('timeline:schedule-view-mode-changed', {
+            detail: {
+                viewMode: timelineCurrentScheduleViewMode(),
+                previousViewMode: previousMode,
+                timelineView: timelineCurrentView(),
+                previousTimelineView: previousView,
+                showHolidays: timelineShowHolidays()
+            }
+        }));
+        return timelineCurrentScheduleViewMode();
+    }
 
     const previousMode = timelineCurrentScheduleViewMode();
     const previousPeriod = typeof AppState !== 'undefined' && AppState.multiDayMode
         ? timelinePeriodWeekValue()
         : timelinePeriodDayValue();
     const nextPeriod = nextMode === TIMELINE_SCHEDULE_VIEW_WEEK ? timelinePeriodWeekValue() : timelinePeriodDayValue();
-    const nextTimelineView = nextMode === TIMELINE_SCHEDULE_VIEW_ROOMS
-        ? TIMELINE_VIEW_ROOMS
-        : TIMELINE_VIEW_ANIMATORS;
 
     try { localStorage.setItem(timelineScheduleViewModeStorageKey(), nextMode); } catch {}
     if (typeof normalizeTimelineModeState === 'function' && typeof AppState !== 'undefined') {
@@ -582,21 +591,21 @@ async function setTimelineScheduleViewMode(mode, options = {}) {
     }
 
     const periodChanged = previousPeriod !== nextPeriod;
-    const viewChanged = timelineCurrentView() !== nextTimelineView;
     if (periodChanged && typeof markTimelineNavigationScrollReset === 'function') {
         markTimelineNavigationScrollReset('schedule-view-mode-change');
     }
-    if (viewChanged) {
-        await setTimelineView(nextTimelineView, { render: false, source: 'schedule-view-mode' });
-    } else {
-        updateTimelineViewControls();
-    }
+    updateTimelineViewControls();
 
-    if ((periodChanged || viewChanged || previousMode !== nextMode) && options.render !== false && typeof renderTimeline === 'function') {
+    if ((periodChanged || previousMode !== nextMode) && options.render !== false && typeof renderTimeline === 'function') {
         await renderTimeline();
     }
     window.dispatchEvent(new CustomEvent('timeline:schedule-view-mode-changed', {
-        detail: { viewMode: nextMode, previousViewMode: previousMode, showHolidays: timelineShowHolidays() }
+        detail: {
+            viewMode: nextMode,
+            previousViewMode: previousMode,
+            timelineView: timelineCurrentView(),
+            showHolidays: timelineShowHolidays()
+        }
     }));
     return nextMode;
 }
@@ -624,16 +633,12 @@ async function setTimelineView(view, options = {}) {
     const next = normalizeTimelineViewMode(view);
     if (next === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return timelineCurrentView();
     const current = timelineCurrentView();
-    if (next === TIMELINE_VIEW_ROOMS && typeof AppState !== 'undefined') {
-        AppState.multiDayMode = false;
-        AppState.daysToShow = timelinePeriodDayValue();
-    }
     try { localStorage.setItem(timelineViewStorageKey(), next); } catch {}
     try { localStorage.setItem(timelineViewChoiceStorageKey(), TIMELINE_VIEW_USER_CHOICE_VERSION); } catch {}
     try {
-        const nextMode = next === TIMELINE_VIEW_ROOMS
-            ? TIMELINE_SCHEDULE_VIEW_ROOMS
-            : (typeof AppState !== 'undefined' && AppState.multiDayMode ? TIMELINE_SCHEDULE_VIEW_WEEK : TIMELINE_SCHEDULE_VIEW_DAY);
+        const nextMode = typeof AppState !== 'undefined' && AppState.multiDayMode
+            ? TIMELINE_SCHEDULE_VIEW_WEEK
+            : TIMELINE_SCHEDULE_VIEW_DAY;
         localStorage.setItem(timelineScheduleViewModeStorageKey(), nextMode);
     } catch {}
     updateTimelineViewControls();

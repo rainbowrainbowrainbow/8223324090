@@ -248,7 +248,7 @@ function mapTemplateRow(r) {
 }
 
 function normalizeTablePayload(raw) {
-    const payload = parseRawData(raw);
+    const payload = normalizeReportRawPayload(parseRawData(raw));
     const table = payload.reportTableTemplate || payload.table || payload;
     const columns = Array.isArray(table.columns) ? table.columns : [];
     const rows = Array.isArray(table.rows) ? table.rows : [];
@@ -259,12 +259,12 @@ function normalizeTablePayload(raw) {
     }
     return {
         payload,
-        table: {
+        table: normalizePayrollTable({
             ...table,
             title: table.title || payload.title || 'Табличний звіт',
             columns,
             rows
-        }
+        })
     };
 }
 
@@ -278,6 +278,153 @@ function calculateTableAmount(table, defaultReport = {}) {
     const amountColumn = defaultReport.amountColumn || table.defaultReport?.amountColumn;
     if (!amountColumn) return 0;
     return Math.max(0, Math.round((table.rows || []).reduce((sum, row) => sum + numericValue(row?.[amountColumn]), 0)));
+}
+
+function isPayrollTable(table = {}) {
+    const identity = [
+        table.id,
+        table.code,
+        table.layout,
+        table.category,
+        table.defaultReport?.hashtag
+    ].map(value => String(value || '').toLowerCase()).join(' ');
+    return identity.includes('payroll') || identity.includes('table-payroll');
+}
+
+function payrollStaffId(row = {}) {
+    return String(row.staff_id || row.employee_staff_id || row.staffId || '').trim();
+}
+
+function payrollDateKey(row = {}) {
+    return String(row.date || row.shift_date || row.work_date || '').slice(0, 10);
+}
+
+function payrollLookupKey(row = {}) {
+    const staffId = payrollStaffId(row);
+    const date = payrollDateKey(row);
+    return staffId && date ? `${staffId}_${date}` : '';
+}
+
+function pushPayrollIssue(issues, code) {
+    if (code && !issues.includes(code)) issues.push(code);
+}
+
+function normalizePayrollRows(table = {}) {
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    const duplicateCounts = {};
+    rows.forEach(row => {
+        const key = payrollLookupKey(row);
+        if (key) duplicateCounts[key] = (duplicateCounts[key] || 0) + 1;
+    });
+
+    const rowMeta = rows.map((row, index) => {
+        const next = { ...(row || {}) };
+        const issues = Array.isArray(next.reconciliation_issues) ? [...next.reconciliation_issues] : [];
+        const staffId = payrollStaffId(next);
+        const date = payrollDateKey(next);
+        const key = staffId && date ? `${staffId}_${date}` : '';
+        const hasAnyValue = Object.values(next).some(value => {
+            if (value === null || value === undefined) return false;
+            if (Array.isArray(value)) return value.length > 0;
+            if (typeof value === 'object') return Object.keys(value).length > 0;
+            return String(value).trim() !== '';
+        });
+
+        if (staffId) next.staff_id = staffId;
+        next.display_snapshot = next.display_snapshot || next.employee || next.name || '';
+        next.role_snapshot = next.role_snapshot || next.role || '';
+        next.planned_hours = numericValue(next.planned_hours);
+        next.actual_hours = numericValue(next.actual_hours);
+        next.paid_hours = numericValue(next.hours || next.paid_hours);
+        next.manual_amount = numericValue(next.manual_amount);
+        next.bonuses = numericValue(next.bonus || next.bonuses);
+        next.penalties = numericValue(next.penalty || next.penalties);
+        next.notes = next.notes || '';
+
+        if (!staffId && hasAnyValue) pushPayrollIssue(issues, 'missing_staff_id');
+        if (!date && hasAnyValue) pushPayrollIssue(issues, 'missing_payroll_date');
+        if (staffId && date && !next.planned_shift_ref) pushPayrollIssue(issues, 'no_shift');
+        if (next.planned_shift_ref && !next.attendance_ref) pushPayrollIssue(issues, 'no_attendance');
+        if (next.actual_hours > 0 && next.paid_hours > 0 && Math.abs(next.actual_hours - next.paid_hours) > 0.05) {
+            pushPayrollIssue(issues, 'actual_paid_hours_mismatch');
+        }
+        if (key && duplicateCounts[key] > 1) pushPayrollIssue(issues, 'duplicate_payroll_row');
+        if (hasAnyValue && numericValue(next.total || next.amount) <= 0) pushPayrollIssue(issues, 'amount_missing_or_zero');
+        if (String(next.staff_status || '').toLowerCase() === 'offboarded') pushPayrollIssue(issues, 'offboarded_staff');
+
+        const manualStatus = String(next.payroll_status || next.reconciliation_status || '').trim();
+        const status = manualStatus === 'approved'
+            ? 'approved'
+            : !hasAnyValue
+                ? 'draft'
+                : issues.length
+                    ? 'needs_review'
+                    : 'reconciled';
+        next.reconciliation_status = status;
+        next.reconciliation_issues = issues;
+
+        return {
+            index,
+            row: next,
+            status,
+            issues,
+            plannedHours: numericValue(next.planned_hours),
+            actualHours: numericValue(next.actual_hours),
+            paidHours: numericValue(next.paid_hours),
+            amount: numericValue(next.total || next.amount)
+        };
+    });
+
+    const totals = rowMeta.reduce((acc, item) => {
+        acc.planned += item.plannedHours;
+        acc.actual += item.actualHours;
+        acc.paid += item.paidHours;
+        acc.amount += item.amount;
+        return acc;
+    }, { planned: 0, actual: 0, paid: 0, amount: 0 });
+    Object.keys(totals).forEach(key => { totals[key] = Math.round(totals[key] * 100) / 100; });
+
+    const issueCounts = {};
+    rowMeta.forEach(item => item.issues.forEach(code => { issueCounts[code] = (issueCounts[code] || 0) + 1; }));
+    const nonDraft = rowMeta.filter(item => item.status !== 'draft');
+    const status = nonDraft.length === 0
+        ? 'draft'
+        : rowMeta.some(item => item.status === 'needs_review')
+            ? 'needs_review'
+            : rowMeta.every(item => item.status === 'approved')
+                ? 'approved'
+                : 'reconciled';
+
+    return {
+        rows: rowMeta.map(item => item.row),
+        payrollReconciliation: {
+            status,
+            totals,
+            issueCounts,
+            generatedAt: new Date().toISOString(),
+            source: 'reports_rawData_payroll_reconciliation_v1'
+        }
+    };
+}
+
+function normalizePayrollTable(table = {}) {
+    if (!isPayrollTable(table)) return table;
+    const normalized = normalizePayrollRows(table);
+    return {
+        ...table,
+        schemaVersion: Math.max(Number(table.schemaVersion || 1), 1),
+        rows: normalized.rows,
+        payrollReconciliation: normalized.payrollReconciliation
+    };
+}
+
+function normalizeReportRawPayload(rawData = {}) {
+    const payload = parseRawData(rawData);
+    if (!payload.reportTableTemplate) return payload;
+    return {
+        ...payload,
+        reportTableTemplate: normalizePayrollTable(payload.reportTableTemplate)
+    };
 }
 
 function normalizedComparable(value) {
@@ -1611,7 +1758,7 @@ router.post('/', async (req, res) => {
             photoUrl || null,
             ocrText || null,
             voiceTranscript || null,
-            rawData ? JSON.stringify(rawData) : '{}',
+            rawData ? JSON.stringify(normalizeReportRawPayload(rawData)) : '{}',
             JSON.stringify(sanitizeHashtags(hashtags || []))
         ]);
 
@@ -1678,7 +1825,7 @@ router.put('/:id', async (req, res) => {
         if (ocrText !== undefined) { params.push(ocrText); updates.push(`ocr_text = $${params.length}`); }
         if (hashtags !== undefined) { params.push(JSON.stringify(sanitizeHashtags(hashtags))); updates.push(`hashtags = $${params.length}`); }
         if (hashtagActive !== undefined) { params.push(!!hashtagActive); updates.push(`hashtag_active = $${params.length}`); }
-        if (rawData !== undefined) { params.push(JSON.stringify(rawData || {})); updates.push(`raw_data = $${params.length}`); }
+        if (rawData !== undefined) { params.push(JSON.stringify(normalizeReportRawPayload(rawData || {}))); updates.push(`raw_data = $${params.length}`); }
 
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });

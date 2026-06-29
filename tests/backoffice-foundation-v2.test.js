@@ -9,6 +9,14 @@ function readRepoFile(...parts) {
     return fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
 }
 
+function extractCenterOperationsRoute(source) {
+    const start = source.indexOf("router.get('/operations/today'");
+    const end = source.indexOf('// FINANCIAL RECONCILIATION', start);
+    assert.ok(start >= 0, 'center operations route must exist');
+    assert.ok(end > start, 'center operations route must stay before financial reconciliation');
+    return source.slice(start, end);
+}
+
 function readCssWithImports(file, seen = new Set()) {
     const normalized = file.replace(/\\/g, '/');
     if (seen.has(normalized)) return '';
@@ -35,6 +43,8 @@ describe('backoffice foundation v2 contracts', () => {
     const centerRoute = readRepoFile('routes', 'center.js');
     const centerPage = readRepoFile('js', 'center-page.js');
     const centerHtml = readRepoFile('center.html');
+    const centerOpsCss = readRepoFile('css', 'pages-center-operations.css');
+    const pagesCss = readRepoFile('css', 'pages.css');
     const productsRoute = readRepoFile('routes', 'products.js');
     const productPricingService = readRepoFile('services', 'productPricing.js');
     const designsPage = readRepoFile('js', 'designs-page.js');
@@ -94,6 +104,46 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(centerPage, /appendPricePositionsPanel/);
         assert.match(centerPage, /createPriceForProduct/);
         assert.match(centerHtml, /price-position-panel/);
+    });
+
+    it('adds a reception and managers operations center without changing access boundaries', () => {
+        const opsRoute = extractCenterOperationsRoute(centerRoute);
+
+        assert.match(opsRoute, /FROM bookings b/);
+        assert.match(opsRoute, /FROM staff_schedule ss/);
+        assert.match(opsRoute, /LEFT JOIN hr_time_records tr/);
+        assert.match(opsRoute, /LEFT JOIN staff_checkins sc/);
+        assert.match(opsRoute, /FROM tasks/);
+        assert.match(opsRoute, /FROM reports/);
+        assert.match(opsRoute, /reports metadata only; raw_data is intentionally omitted/);
+        assert.match(opsRoute, /pendingPayments/);
+        assert.match(opsRoute, /lateStaff/);
+        assert.match(opsRoute, /noShowStaff/);
+        assert.match(opsRoute, /handoverNotes: parseOperationsNotes/);
+        assert.doesNotMatch(opsRoute, /\br\.raw_data\b|raw_data\s+AS/i);
+        assert.doesNotMatch(opsRoute, /\bCREATE TABLE\b|\bALTER TABLE\b|\bINSERT INTO\b|\bUPDATE\b|\bDELETE FROM\b/);
+        assert.match(centerRoute, /router\.use\(requireMinRole\('manager'\)\)/);
+
+        assert.match(centerHtml, /data-tab="operations"/);
+        assert.match(centerHtml, /id="tabOperations"/);
+        assert.match(centerHtml, /id="operationsCenter"/);
+        assert.match(centerHtml, /center:tab-change/);
+        assert.match(centerHtml, /\['operations', 'finance', 'analytics', 'reports'\]/);
+
+        assert.match(centerPage, /apiCenterOperationsToday/);
+        assert.match(centerPage, /\/center\/operations\/today/);
+        assert.match(centerPage, /function renderOperationsCenter/);
+        assert.match(centerPage, /confirmOperationsBooking/);
+        assert.match(centerPage, /\/bookings\/\$\{encodeURIComponent\(id\)\}\/confirm/);
+        assert.match(centerPage, /\/hr\?employee=\$\{encodeURIComponent\(shift\.staffId/);
+        assert.match(centerPage, /\/reports\?reportId=\$\{encodeURIComponent\(report\.id/);
+        assert.match(centerPage, /\/tasks\?source=center-ops/);
+
+        assert.match(pagesCss, /pages-center-operations\.css/);
+        assert.match(centerOpsCss, /\.center-ops-summary/);
+        assert.match(centerOpsCss, /\.center-ops-grid/);
+        assert.match(centerOpsCss, /\.center-ops-row--issue/);
+        assert.match(centerOpsCss, /\.dark-mode \.center-ops-head/);
     });
 
     it('keeps design price sheet tied to Price Center instead of duplicated product prices', () => {

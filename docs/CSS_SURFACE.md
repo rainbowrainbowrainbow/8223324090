@@ -91,8 +91,10 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-core.css` | shared-ui | `shared` | active | Shared page containers, headers, cards, buttons, tables, search, login, fatal error, and empty-state styles imported by `pages.css`. |
 | `css/pages-leads.css` | shared-ui | `shared` | active | Sales funnel kanban stage hint controls and tooltip styles imported by `pages.css`. |
 | `css/pages-profile.css` | shared-ui | `shared` | active | Profile avatar crop controls and compact soon-tab menu styles imported by `pages.css`. |
+| `css/pages-reports.css` | reports | `page-scoped` | active | Reports workspace payroll reconciliation, discrepancy badges, and dark-mode report table review styles imported by `pages.css`. |
+| `css/pages-center-operations.css` | center | `page-scoped` | active | Center operations shift dashboard, staffing blockers, report/task rows, and handover notes imported by `pages.css`. |
 | `css/pages-products.css` | products | `page-scoped` | active | Products kitchen menu photo cards, product-side AI actions, and menu image prompt studio styles. |
-| `css/pages-hr-foundation.css` | shared-ui | `shared` | active | HR employee-card foundation, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by `pages.css`. |
+| `css/pages-hr-foundation.css` | shared-ui | `shared` | active | HR employee-card foundation, lifecycle checklist, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by `pages.css`. |
 | `css/pages-hr-staff.css` | shared-ui | `shared-large` | active-large | HR payroll toolbar, staff pulse navigation, schedule replacement controls, HR team tabs, team filters, and onboarding assignment styles imported by `pages.css`. |
 | `css/pages-task-taxonomy.css` | shared-ui | `shared` | active | Task print rules, taxonomy chips, operations summary, operational packs, and dark-mode taxonomy styles imported by `pages.css`. |
 | `css/pages-tasks.css` | shared-ui | `shared-large` | active-large | Task cards, task action surfaces, filters, work rows, dark-mode task controls, and responsive task shell styles imported by `pages.css`. |

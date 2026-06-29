@@ -34,6 +34,15 @@ const ReportsPage = (() => {
     let _pendingOpenReportId = null;
     let _businessContext = 'event_genix';
     let _staffOptions = [];
+    let _staffOptionsAvailable = false;
+    let _staffOptionsWarning = '';
+    let _payrollReviewFilter = 'all';
+    let _reportQualityFilter = 'all';
+    let _reportQualityIssueFilter = '';
+    let _payrollScheduleIndex = {};
+    let _payrollAttendanceIndex = {};
+    let _payrollReconciliationSignature = '';
+    let _payrollReconciliationLoading = false;
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -126,16 +135,22 @@ const ReportsPage = (() => {
             purpose: 'Таблична заготовка для передачі зарплатного звіту у фінанси.',
             defaultReport: { type: 'expense', category: 'ЗП', hashtag: 'table-payroll', amountColumn: 'total' },
             columns: [
+                { key: 'date', label: 'Дата', type: 'date', placeholder: '2026-06-28' },
                 { key: 'employee', label: 'Працівник', type: 'staff', placeholder: 'Оберіть працівника', staffIdKey: 'employee_staff_id', roleKey: 'role' },
                 { key: 'role', label: 'Роль', type: 'text', placeholder: 'Аніматор / адміністратор' },
-                { key: 'hours', label: 'Години', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'planned_hours', label: 'План', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'actual_hours', label: 'Факт', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'hours', label: 'Опл. години', type: 'number', placeholder: '0', total: 'sum' },
                 { key: 'rate', label: 'Ставка', type: 'number', placeholder: '0' },
                 { key: 'bonus', label: 'Бонус', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'penalty', label: 'Штраф', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'manual_amount', label: 'Ручна сума', type: 'number', placeholder: '0', total: 'sum' },
+                { key: 'notes', label: 'Нотатки', type: 'text', placeholder: 'Причина корекції / коментар' },
                 { key: 'total', label: 'До виплати', type: 'number', placeholder: '0', total: 'sum' }
             ],
             rows: [
-                { employee: '', employee_staff_id: '', role: '', hours: '', rate: '', bonus: '', total: '' },
-                { employee: '', employee_staff_id: '', role: '', hours: '', rate: '', bonus: '', total: '' }
+                { date: '', employee: '', employee_staff_id: '', role: '', planned_hours: '', actual_hours: '', hours: '', rate: '', bonus: '', penalty: '', manual_amount: '', notes: '', total: '' },
+                { date: '', employee: '', employee_staff_id: '', role: '', planned_hours: '', actual_hours: '', hours: '', rate: '', bonus: '', penalty: '', manual_amount: '', notes: '', total: '' }
             ]
         },
         {
@@ -365,6 +380,590 @@ const ReportsPage = (() => {
         return Number.isFinite(num) ? num : 0;
     }
 
+    function isPayrollTemplateLike(template = {}) {
+        const identity = [
+            template.id,
+            template.code,
+            template.layout,
+            template.category,
+            template.defaultReport?.hashtag
+        ].map(value => String(value || '').toLowerCase()).join(' ');
+        return identity.includes('payroll') || identity.includes('table-payroll');
+    }
+
+    function isPayrollTableState(state = _reportTableState) {
+        return !!state && isPayrollTemplateLike(state);
+    }
+
+    const PAYROLL_RECONCILIATION_FILTERS = [
+        { key: 'all', label: 'Всі' },
+        { key: 'needs_review', label: 'Review' },
+        { key: 'reconciled', label: 'OK' },
+        { key: 'draft', label: 'Draft' },
+        { key: 'approved', label: 'Approved' }
+    ];
+
+    const PAYROLL_RECONCILIATION_LABELS = {
+        draft: 'Draft',
+        needs_review: 'Review',
+        reconciled: 'OK',
+        approved: 'Approved'
+    };
+
+    const PAYROLL_ISSUE_LABELS = {
+        missing_staff_id: 'немає staff_id',
+        missing_payroll_date: 'немає дати',
+        staff_not_active_or_missing: 'не в активному HR pool',
+        no_shift: 'немає зміни',
+        no_attendance: 'немає факту',
+        actual_paid_hours_mismatch: 'факт != оплата',
+        duplicate_payroll_row: 'дубль payroll',
+        amount_missing_or_zero: 'сума 0',
+        offboarded_staff: 'offboarded'
+    };
+
+    const REPORT_QUALITY_FILTERS = [
+        { key: 'all', label: 'Всі' },
+        { key: 'needs_review', label: 'Review' },
+        { key: 'warning', label: 'Warnings' },
+        { key: 'ok', label: 'OK' }
+    ];
+
+    const REPORT_QUALITY_STATUS_LABELS = {
+        ok: 'OK',
+        warning: 'Warnings',
+        needs_review: 'Needs review'
+    };
+
+    const REPORT_QUALITY_ISSUE_LABELS = {
+        payroll_employee_missing: 'payroll: немає працівника',
+        payroll_employee_staff_id_missing: 'payroll: немає staff_id',
+        payroll_duplicate_employee_date: 'payroll: дубль працівник/дата',
+        payroll_amount_missing: 'payroll: сума порожня',
+        payroll_amount_zero: 'payroll: сума 0',
+        payroll_no_shift_link: 'payroll: немає зміни',
+        payroll_no_attendance_link: 'payroll: немає факту',
+        payroll_actual_hours_mismatch: 'payroll: факт != оплата',
+        payroll_offboarded_staff: 'payroll: offboarded staff',
+        payroll_staff_not_active_or_missing: 'payroll: staff не в active pool',
+        report_date_missing: 'немає дати звіту',
+        report_context_missing: 'немає department/context',
+        report_submitted_by_missing: 'немає submitted by',
+        report_required_sections_incomplete: 'обовʼязкові секції неповні',
+        report_totals_mismatch: 'підсумки не збігаються',
+        operations_owner_missing: 'operations: немає owner',
+        operations_owner_staff_id_missing: 'operations: owner без staff_id',
+        operations_task_status_missing: 'operations: немає статусу задачі',
+        operations_open_critical_task: 'operations: відкритий критичний пункт',
+        staff_options_unavailable: 'staff API недоступний'
+    };
+
+    const REPORT_QUALITY_ISSUE_STATUS = {
+        payroll_no_attendance_link: 'warning',
+        payroll_staff_not_active_or_missing: 'warning',
+        report_context_missing: 'warning',
+        report_submitted_by_missing: 'warning',
+        staff_options_unavailable: 'warning'
+    };
+
+    const REPORT_QUALITY_AUTOFILL_ZERO_KEYS = new Set(['manual_amount']);
+
+    function ensurePayrollColumn(columns, column, insertAfter = '') {
+        if (columns.some(col => col.key === column.key)) return;
+        if (insertAfter === '__first__') {
+            columns.unshift(column);
+            return;
+        }
+        const index = insertAfter ? columns.findIndex(col => col.key === insertAfter) : -1;
+        if (index >= 0) columns.splice(index + 1, 0, column);
+        else columns.push(column);
+    }
+
+    function upgradePayrollTemplate(template) {
+        if (!isPayrollTemplateLike(template)) return template;
+        const columns = Array.isArray(template.columns) ? [...template.columns] : [];
+        ensurePayrollColumn(columns, { key: 'date', label: 'Дата', type: 'date', placeholder: '2026-06-28' }, '__first__');
+        ensurePayrollColumn(columns, { key: 'planned_hours', label: 'План', type: 'number', placeholder: '0', total: 'sum' }, 'role');
+        ensurePayrollColumn(columns, { key: 'actual_hours', label: 'Факт', type: 'number', placeholder: '0', total: 'sum' }, 'planned_hours');
+        ensurePayrollColumn(columns, { key: 'hours', label: 'Опл. години', type: 'number', placeholder: '0', total: 'sum' }, 'actual_hours');
+        ensurePayrollColumn(columns, { key: 'penalty', label: 'Штраф', type: 'number', placeholder: '0', total: 'sum' }, 'bonus');
+        ensurePayrollColumn(columns, { key: 'manual_amount', label: 'Ручна сума', type: 'number', placeholder: '0', total: 'sum' }, 'penalty');
+        ensurePayrollColumn(columns, { key: 'notes', label: 'Нотатки', type: 'text', placeholder: 'Причина корекції / коментар' }, 'manual_amount');
+        const rows = (Array.isArray(template.rows) && template.rows.length ? template.rows : [emptyReportTableRow(columns)]).map(row => ({
+            date: row?.date || row?.shift_date || '',
+            employee: row?.employee || row?.name || '',
+            employee_staff_id: row?.employee_staff_id || row?.staff_id || '',
+            role: row?.role || row?.role_snapshot || '',
+            planned_hours: row?.planned_hours || '',
+            actual_hours: row?.actual_hours || '',
+            hours: row?.hours || row?.paid_hours || '',
+            rate: row?.rate || '',
+            bonus: row?.bonus || row?.bonuses || '',
+            penalty: row?.penalty || row?.penalties || '',
+            manual_amount: row?.manual_amount || '',
+            notes: row?.notes || '',
+            total: row?.total || row?.amount || '',
+            ...row
+        }));
+        return {
+            ...template,
+            layout: template.layout || 'payroll',
+            defaultReport: {
+                ...(template.defaultReport || {}),
+                type: template.defaultReport?.type === 'income' ? 'income' : 'expense',
+                category: template.defaultReport?.category || 'ЗП',
+                hashtag: template.defaultReport?.hashtag || 'table-payroll',
+                amountColumn: template.defaultReport?.amountColumn || 'total'
+            },
+            columns,
+            rows
+        };
+    }
+
+    function payrollStaffId(row = {}) {
+        return String(row.staff_id || row.employee_staff_id || row.staffId || '').trim();
+    }
+
+    function payrollDateKey(row = {}) {
+        return String(row.date || row.shift_date || row.work_date || '').slice(0, 10);
+    }
+
+    function payrollLookupKey(staffId, date) {
+        return `${staffId}_${date}`;
+    }
+
+    function payrollStaffOption(staffId) {
+        return _staffOptions.find(staff => String(staff.id) === String(staffId));
+    }
+
+    function timeToMinutes(value) {
+        const text = String(value || '').slice(0, 5);
+        const match = text.match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return null;
+        return Number(match[1]) * 60 + Number(match[2]);
+    }
+
+    function hoursBetween(start, end) {
+        const startMinutes = timeToMinutes(start);
+        const endMinutes = timeToMinutes(end);
+        if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
+        let diff = endMinutes - startMinutes;
+        if (diff < 0) diff += 24 * 60;
+        return Math.round((diff / 60) * 100) / 100;
+    }
+
+    function diffDateHours(start, end) {
+        if (!start || !end) return 0;
+        const startTime = new Date(start).getTime();
+        const endTime = new Date(end).getTime();
+        if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) return 0;
+        return Math.round(((endTime - startTime) / 3600000) * 100) / 100;
+    }
+
+    function schedulePlannedHours(entry = {}) {
+        if (!entry || !['working', 'work'].includes(String(entry.status || 'working'))) return 0;
+        return hoursBetween(entry.shift_start || entry.planned_start, entry.shift_end || entry.planned_end);
+    }
+
+    function attendanceActualHours(record = {}) {
+        const minutes = Number(record.total_worked_minutes || 0);
+        if (minutes > 0) return Math.round((minutes / 60) * 100) / 100;
+        return diffDateHours(record.clock_in || record.checkin_at, record.clock_out || record.checkout_at);
+    }
+
+    function payrollAttendanceStatus(record = null) {
+        if (!record) return '';
+        const raw = String(record.time_status || '').trim();
+        if (['sick', 'vacation', 'day_off', 'excused'].includes(raw)) return 'excused';
+        if (['absent', 'no_show'].includes(raw)) return 'absent';
+        if (raw === 'early_leave' || Number(record.early_leave_minutes || 0) > 0) return 'left_early';
+        if (raw === 'late' || Number(record.late_minutes || 0) > 0) return 'late';
+        if ((record.clock_in || record.checkin_at) && (record.clock_out || record.checkout_at)) return 'completed';
+        if (record.clock_in || record.checkin_at) return 'checked_in';
+        return raw || 'planned';
+    }
+
+    function payrollDateRange(state = _reportTableState) {
+        const dates = (state?.rows || []).map(payrollDateKey).filter(Boolean).sort();
+        if (!dates.length) return null;
+        return { from: dates[0], to: dates[dates.length - 1], signature: `${dates[0]}:${dates[dates.length - 1]}` };
+    }
+
+    async function loadPayrollReconciliationSources(state = _reportTableState) {
+        if (!isPayrollTableState(state)) return;
+        const range = payrollDateRange(state);
+        if (!range) {
+            _payrollScheduleIndex = {};
+            _payrollAttendanceIndex = {};
+            _payrollReconciliationSignature = '';
+            return;
+        }
+        if (_payrollReconciliationSignature === range.signature) return;
+        _payrollReconciliationLoading = true;
+        try {
+            const [scheduleData, attendanceData] = await Promise.all([
+                apiRequest('GET', `/api/staff/schedule?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).catch(() => ({ success: false, data: [] })),
+                apiRequest('GET', `/api/staff/attendance?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).catch(() => ({ success: false, data: [] }))
+            ]);
+            _payrollScheduleIndex = {};
+            (Array.isArray(scheduleData.data) ? scheduleData.data : []).forEach(entry => {
+                const staffId = String(entry.staff_id || '').trim();
+                const date = String(entry.date || '').slice(0, 10);
+                if (staffId && date) _payrollScheduleIndex[payrollLookupKey(staffId, date)] = entry;
+            });
+            _payrollAttendanceIndex = {};
+            (Array.isArray(attendanceData.data) ? attendanceData.data : []).forEach(record => {
+                const staffId = String(record.staff_id || '').trim();
+                const date = String(record.date || '').slice(0, 10);
+                if (staffId && date) _payrollAttendanceIndex[payrollLookupKey(staffId, date)] = record;
+            });
+            _payrollReconciliationSignature = range.signature;
+        } finally {
+            _payrollReconciliationLoading = false;
+        }
+    }
+
+    function queuePayrollReconciliationRefresh() {
+        const state = _reportTableState;
+        if (!isPayrollTableState(state) || _payrollReconciliationLoading) return;
+        const range = payrollDateRange(state);
+        if (!range || _payrollReconciliationSignature === range.signature) return;
+        loadPayrollReconciliationSources(state).then(() => {
+            if (state === _reportTableState && isPayrollTableState(state)) renderReportTableWorkspace();
+        }).catch(() => {});
+    }
+
+    function payrollIssue(code, issues) {
+        if (code && !issues.includes(code)) issues.push(code);
+    }
+
+    function normalizePayrollRows(state = _reportTableState, options = {}) {
+        if (!isPayrollTableState(state)) return { rows: [], rowMeta: [], totals: { planned: 0, actual: 0, paid: 0, amount: 0 }, status: 'draft', issueCounts: {} };
+        const duplicateCounts = {};
+        (state.rows || []).forEach(row => {
+            const staffId = payrollStaffId(row);
+            const date = payrollDateKey(row);
+            if (!staffId || !date) return;
+            const key = payrollLookupKey(staffId, date);
+            duplicateCounts[key] = (duplicateCounts[key] || 0) + 1;
+        });
+
+        const rowMeta = (state.rows || []).map((row, index) => {
+            const next = options.mutate ? row : { ...row };
+            const staffId = payrollStaffId(next);
+            const date = payrollDateKey(next);
+            const staff = staffId ? payrollStaffOption(staffId) : null;
+            const lookupKey = staffId && date ? payrollLookupKey(staffId, date) : '';
+            const schedule = lookupKey ? _payrollScheduleIndex[lookupKey] : null;
+            const attendance = lookupKey ? _payrollAttendanceIndex[lookupKey] : null;
+            const issues = [];
+            const hasAnyValue = state.columns.some(col => String(next?.[col.key] ?? '').trim() !== '');
+
+            if (staffId) next.staff_id = staffId;
+            if (staff) {
+                next.employee = staff.name || next.employee || '';
+                next.display_snapshot = staff.name || next.display_snapshot || next.employee || '';
+                next.role_snapshot = reportStaffRoleLabel(staff) || next.role_snapshot || next.role || '';
+                if (!next.role) next.role = next.role_snapshot;
+            } else {
+                next.display_snapshot = next.display_snapshot || next.employee || '';
+                next.role_snapshot = next.role_snapshot || next.role || '';
+            }
+
+            if (!staffId && hasAnyValue) payrollIssue('missing_staff_id', issues);
+            if (!date && hasAnyValue) payrollIssue('missing_payroll_date', issues);
+            if (staffId && _staffOptionsAvailable && !staff) payrollIssue('staff_not_active_or_missing', issues);
+            if (String(next.staff_status || '').toLowerCase() === 'offboarded') payrollIssue('offboarded_staff', issues);
+
+            const plannedHours = schedule ? schedulePlannedHours(schedule) : parseNumber(next.planned_hours);
+            const actualHours = attendance ? attendanceActualHours(attendance) : parseNumber(next.actual_hours);
+            const paidHours = parseNumber(next.hours || next.paid_hours);
+            const amount = parseNumber(next.total || next.amount);
+
+            next.planned_hours = plannedHours || next.planned_hours || '';
+            next.actual_hours = actualHours || next.actual_hours || '';
+            next.paid_hours = paidHours || '';
+            next.manual_amount = parseNumber(next.manual_amount) || 0;
+            next.bonuses = parseNumber(next.bonus || next.bonuses) || 0;
+            next.penalties = parseNumber(next.penalty || next.penalties) || 0;
+            next.notes = next.notes || '';
+
+            if (schedule) {
+                next.planned_shift_ref = {
+                    source: 'staff_schedule',
+                    id: schedule.id || null,
+                    hr_shift_id: schedule.hr_shift_id || null,
+                    date,
+                    status: schedule.status || null,
+                    start: schedule.shift_start || null,
+                    end: schedule.shift_end || null
+                };
+            } else if (staffId && date) {
+                next.planned_shift_ref = next.planned_shift_ref || null;
+                payrollIssue('no_shift', issues);
+            }
+
+            if (attendance) {
+                const attendanceStatus = payrollAttendanceStatus(attendance);
+                next.attendance_ref = {
+                    source: attendance.attendance_source || 'hr_time_records',
+                    time_record_id: attendance.time_record_id || null,
+                    checkin_id: attendance.checkin_id || null,
+                    date,
+                    status: attendanceStatus
+                };
+                next.attendance_status = attendanceStatus;
+            } else if (schedule) {
+                next.attendance_ref = next.attendance_ref || null;
+                next.attendance_status = next.attendance_status || '';
+                payrollIssue('no_attendance', issues);
+            }
+
+            if (paidHours > 0 && actualHours > 0 && Math.abs(paidHours - actualHours) > 0.05) {
+                payrollIssue('actual_paid_hours_mismatch', issues);
+            }
+            if (lookupKey && duplicateCounts[lookupKey] > 1) payrollIssue('duplicate_payroll_row', issues);
+            if (hasAnyValue && amount <= 0) payrollIssue('amount_missing_or_zero', issues);
+
+            const manualStatus = String(next.payroll_status || next.reconciliation_status || '').trim();
+            const status = manualStatus === 'approved'
+                ? 'approved'
+                : !hasAnyValue
+                    ? 'draft'
+                    : issues.length
+                        ? 'needs_review'
+                        : 'reconciled';
+            next.reconciliation_status = status;
+            next.reconciliation_issues = issues;
+
+            return {
+                index,
+                row: next,
+                staffId,
+                date,
+                status,
+                issues,
+                plannedHours,
+                actualHours,
+                paidHours,
+                amount
+            };
+        });
+
+        const totals = rowMeta.reduce((acc, item) => {
+            acc.planned += item.plannedHours || 0;
+            acc.actual += item.actualHours || 0;
+            acc.paid += item.paidHours || 0;
+            acc.amount += item.amount || 0;
+            return acc;
+        }, { planned: 0, actual: 0, paid: 0, amount: 0 });
+        Object.keys(totals).forEach(key => { totals[key] = Math.round(totals[key] * 100) / 100; });
+
+        const issueCounts = {};
+        rowMeta.forEach(item => item.issues.forEach(code => { issueCounts[code] = (issueCounts[code] || 0) + 1; }));
+        const nonDraft = rowMeta.filter(item => item.status !== 'draft');
+        const status = nonDraft.length === 0
+            ? 'draft'
+            : rowMeta.some(item => item.status === 'needs_review')
+                ? 'needs_review'
+                : rowMeta.every(item => item.status === 'approved')
+                    ? 'approved'
+                    : 'reconciled';
+
+        return {
+            rows: rowMeta.map(item => item.row),
+            rowMeta,
+            totals,
+            issueCounts,
+            status,
+            generatedAt: new Date().toISOString(),
+            source: 'reports_rawData_payroll_reconciliation_v1'
+        };
+    }
+
+    function isOperationsTableState(state = _reportTableState) {
+        const identity = [
+            state?.id,
+            state?.code,
+            state?.layout,
+            state?.category,
+            state?.defaultReport?.hashtag
+        ].map(value => String(value || '').toLowerCase()).join(' ');
+        if (identity.includes('operations-checklist') || identity.includes('table-ops')) return true;
+        const keys = new Set((state?.columns || []).map(col => col.key));
+        return String(state?.layout || '').toLowerCase() === 'checklist'
+            && keys.has('owner')
+            && keys.has('task')
+            && keys.has('status');
+    }
+
+    function reportQualityIssueStatus(code) {
+        return REPORT_QUALITY_ISSUE_STATUS[code] || 'needs_review';
+    }
+
+    function reportQualityStatusFromIssues(issues = []) {
+        if (issues.some(code => reportQualityIssueStatus(code) === 'needs_review')) return 'needs_review';
+        if (issues.length) return 'warning';
+        return 'ok';
+    }
+
+    function reportQualityHasRowValue(state = _reportTableState, row = {}) {
+        return (state?.columns || []).some(col => {
+            const value = row?.[col.key];
+            if (value === null || value === undefined || String(value).trim() === '') return false;
+            if (REPORT_QUALITY_AUTOFILL_ZERO_KEYS.has(col.key) && Number(value) === 0) return false;
+            return true;
+        });
+    }
+
+    function reportQualityAddIssue(rowIssues, rowIndex, code) {
+        if (!code) return;
+        if (!rowIssues.has(rowIndex)) rowIssues.set(rowIndex, new Set());
+        rowIssues.get(rowIndex).add(code);
+    }
+
+    function reportQualityAmountValue(state = _reportTableState, row = {}) {
+        const amountKey = state?.defaultReport?.amountColumn
+            || (state?.columns || []).find(col => col.key === 'total' || col.key === 'amount')?.key
+            || '';
+        if (!amountKey) return { key: '', raw: '', number: 0 };
+        return { key: amountKey, raw: row?.[amountKey], number: parseNumber(row?.[amountKey]) };
+    }
+
+    function reportQualityCriticalTaskOpen(row = {}) {
+        const text = [row.status, row.note, row.notes, row.task]
+            .map(value => String(value || '').toLocaleLowerCase('uk-UA'))
+            .join(' ');
+        if (!/(critical|urgent|blocker|крит|термінов|ризик|блок)/i.test(text)) return false;
+        return !/(ok|done|closed|resolved|готов|закрит|виріш|виконан)/i.test(text);
+    }
+
+    function buildReportQuality(state = _reportTableState, options = {}) {
+        if (!state) {
+            return {
+                status: 'needs_review',
+                issueCounts: { report_required_sections_incomplete: 1 },
+                rowMeta: [],
+                totals: { issueRows: 0, okRows: 0 },
+                blockingPolicy: 'informational_only_until_policy_confirmed',
+                generatedAt: new Date().toISOString(),
+                source: 'reports_rawData_quality_v1'
+            };
+        }
+
+        const rows = Array.isArray(state.rows) ? state.rows : [];
+        const rowIssues = new Map();
+        const reportIssues = new Set();
+        const meaningfulRows = rows
+            .map((row, index) => ({ row, index, hasValue: reportQualityHasRowValue(state, row) }))
+            .filter(item => item.hasValue);
+
+        if (!rows.length || !meaningfulRows.length || !Array.isArray(state.columns) || !state.columns.length) {
+            reportIssues.add('report_required_sections_incomplete');
+        }
+        if (!String(state.category || state.defaultReport?.category || '').trim()) {
+            reportIssues.add('report_context_missing');
+        }
+        if (!AppState.currentUser?.id && !AppState.currentUser?.username && !AppState.currentUser?.name) {
+            reportIssues.add('report_submitted_by_missing');
+        }
+        if (_staffOptionsWarning && (state.columns || []).some(col => col.type === 'staff')) {
+            reportIssues.add('staff_options_unavailable');
+        }
+
+        const dateColumn = (state.columns || []).find(col => col.key === 'date' || col.type === 'date');
+        if (dateColumn) {
+            meaningfulRows.forEach(({ row, index }) => {
+                if (!String(row?.[dateColumn.key] || '').trim()) {
+                    reportQualityAddIssue(rowIssues, index, 'report_date_missing');
+                }
+            });
+        }
+
+        const amountColumn = state.defaultReport?.amountColumn;
+        const previousAmount = Number(state.reportQuality?.totals?.amount);
+        if (amountColumn && Number.isFinite(previousAmount)) {
+            const currentAmount = rows.reduce((sum, row) => sum + parseNumber(row?.[amountColumn]), 0);
+            if (Math.abs(currentAmount - previousAmount) > 0.05) reportIssues.add('report_totals_mismatch');
+        }
+
+        if (isPayrollTableState(state)) {
+            const reconciliation = options.payrollReconciliation || normalizePayrollRows(state, { mutate: false });
+            const payrollIssueMap = {
+                missing_staff_id: 'payroll_employee_staff_id_missing',
+                missing_payroll_date: 'report_date_missing',
+                staff_not_active_or_missing: 'payroll_staff_not_active_or_missing',
+                no_shift: 'payroll_no_shift_link',
+                no_attendance: 'payroll_no_attendance_link',
+                actual_paid_hours_mismatch: 'payroll_actual_hours_mismatch',
+                duplicate_payroll_row: 'payroll_duplicate_employee_date',
+                amount_missing_or_zero: 'payroll_amount_zero',
+                offboarded_staff: 'payroll_offboarded_staff'
+            };
+            (reconciliation.rowMeta || []).forEach(meta => {
+                const row = meta.row || rows[meta.index] || {};
+                const hasValue = reportQualityHasRowValue(state, row);
+                if (!hasValue) return;
+                if (!String(row.employee || row.display_snapshot || '').trim()) {
+                    reportQualityAddIssue(rowIssues, meta.index, 'payroll_employee_missing');
+                }
+                if (!String(row.employee_staff_id || row.staff_id || '').trim()) {
+                    reportQualityAddIssue(rowIssues, meta.index, 'payroll_employee_staff_id_missing');
+                }
+                const amount = reportQualityAmountValue(state, row);
+                if (amount.key && (amount.raw === null || amount.raw === undefined || String(amount.raw).trim() === '')) {
+                    reportQualityAddIssue(rowIssues, meta.index, 'payroll_amount_missing');
+                } else if (amount.key && amount.number === 0) {
+                    reportQualityAddIssue(rowIssues, meta.index, 'payroll_amount_zero');
+                }
+                (meta.issues || []).forEach(code => {
+                    const qualityCode = payrollIssueMap[code];
+                    if (qualityCode) reportQualityAddIssue(rowIssues, meta.index, qualityCode);
+                });
+            });
+        }
+
+        if (isOperationsTableState(state)) {
+            const ownerCol = (state.columns || []).find(col => col.key === 'owner');
+            const ownerIdKey = ownerCol ? reportStaffIdKey(ownerCol) : 'owner_staff_id';
+            meaningfulRows.forEach(({ row, index }) => {
+                if (!String(row.owner || '').trim()) reportQualityAddIssue(rowIssues, index, 'operations_owner_missing');
+                if (!String(row[ownerIdKey] || '').trim()) reportQualityAddIssue(rowIssues, index, 'operations_owner_staff_id_missing');
+                if (!String(row.status || '').trim()) reportQualityAddIssue(rowIssues, index, 'operations_task_status_missing');
+                if (reportQualityCriticalTaskOpen(row)) reportQualityAddIssue(rowIssues, index, 'operations_open_critical_task');
+            });
+        }
+
+        const rowMeta = rows.map((row, index) => {
+            const issues = [...(rowIssues.get(index) || [])];
+            return {
+                index,
+                status: reportQualityStatusFromIssues(issues),
+                issues
+            };
+        });
+        const issueCounts = {};
+        [...reportIssues].forEach(code => { issueCounts[code] = (issueCounts[code] || 0) + 1; });
+        rowMeta.forEach(meta => meta.issues.forEach(code => { issueCounts[code] = (issueCounts[code] || 0) + 1; }));
+        const status = reportQualityStatusFromIssues(Object.keys(issueCounts));
+        const amount = state.defaultReport?.amountColumn
+            ? rows.reduce((sum, row) => sum + parseNumber(row?.[state.defaultReport.amountColumn]), 0)
+            : 0;
+        return {
+            status,
+            issueCounts,
+            rowMeta,
+            totals: {
+                issueRows: rowMeta.filter(meta => meta.issues.length).length,
+                okRows: rowMeta.filter(meta => !meta.issues.length).length,
+                amount: Math.round(amount * 100) / 100
+            },
+            blockingPolicy: 'informational_only_until_policy_confirmed',
+            generatedAt: new Date().toISOString(),
+            source: 'reports_rawData_quality_v1'
+        };
+    }
+
     function reportStaffIdKey(col = {}) {
         return col.staffIdKey || `${col.key}_staff_id`;
     }
@@ -376,7 +975,7 @@ const ReportsPage = (() => {
     function reportStaffOptionLabel(staff = {}) {
         const role = reportStaffRoleLabel(staff);
         const dept = String(staff.department || '').trim();
-        return [staff.name, role, dept].filter(Boolean).join(' · ');
+        return [staff.display_name || staff.name, role, dept].filter(Boolean).join(' · ');
     }
 
     function emptyReportTableRow(columns = []) {
@@ -405,6 +1004,12 @@ const ReportsPage = (() => {
         row[col.key] = staff ? staff.name : '';
         if (col.roleKey && staff) {
             row[col.roleKey] = reportStaffRoleLabel(staff);
+        }
+        if (isPayrollTableState() && col.key === 'employee') {
+            row.staff_id = normalizedId;
+            row.display_snapshot = staff ? staff.name : (row.employee || row.display_snapshot || '');
+            row.role_snapshot = staff ? reportStaffRoleLabel(staff) : (row.role || row.role_snapshot || '');
+            if (staff && !row.role) row.role = row.role_snapshot;
         }
     }
 
@@ -504,7 +1109,7 @@ const ReportsPage = (() => {
             ? template.rows
             : [emptyReportTableRow(columns)];
 
-        return {
+        const normalizedTemplate = {
             id: String(template.id || `${source}-${Date.now()}`),
             templateId: template.templateId || template.backendId || template.id || null,
             code: template.code || null,
@@ -537,6 +1142,7 @@ const ReportsPage = (() => {
                 return normalizedRow;
             })
         };
+        return upgradePayrollTemplate(normalizedTemplate);
     }
 
     function loadCustomReportTemplates() {
@@ -659,18 +1265,23 @@ const ReportsPage = (() => {
             const data = await apiRequest('GET', '/api/staff?active=true');
             const rows = Array.isArray(data.data) ? data.data : [];
             _staffOptions = rows
-                .filter(staff => staff && staff.id && staff.name)
+                .filter(staff => staff && staff.id && (staff.display_name || staff.name))
                 .map(staff => ({
                     id: String(staff.id),
-                    name: String(staff.name),
+                    name: String(staff.display_name || staff.name),
+                    display_name: String(staff.display_name || staff.name),
                     department: staff.department || '',
                     position: staff.position || '',
                     role_type: staff.role_type || '',
                     roleType: staff.roleType || '',
                     label: reportStaffOptionLabel(staff)
                 }));
+            _staffOptionsAvailable = true;
+            _staffOptionsWarning = '';
         } catch (_err) {
             _staffOptions = [];
+            _staffOptionsAvailable = false;
+            _staffOptionsWarning = 'Список працівників недоступний. Staff-поля працюють у snapshot fallback.';
         }
     }
 
@@ -945,6 +1556,26 @@ const ReportsPage = (() => {
         });
         table?.addEventListener('keydown', handleReportSheetKeyboard);
         table?.addEventListener('paste', handleReportSheetPaste);
+        document.getElementById('reportSheetSummary')?.addEventListener('click', event => {
+            const qualityIssueBtn = event.target.closest('[data-report-quality-issue-filter]');
+            if (qualityIssueBtn) {
+                _reportQualityIssueFilter = qualityIssueBtn.dataset.reportQualityIssueFilter || '';
+                _reportQualityFilter = _reportQualityIssueFilter ? 'issue' : 'all';
+                renderReportTableWorkspace();
+                return;
+            }
+            const qualityFilterBtn = event.target.closest('[data-report-quality-filter]');
+            if (qualityFilterBtn) {
+                _reportQualityFilter = qualityFilterBtn.dataset.reportQualityFilter || 'all';
+                _reportQualityIssueFilter = '';
+                renderReportTableWorkspace();
+                return;
+            }
+            const filterBtn = event.target.closest('[data-payroll-review-filter]');
+            if (!filterBtn) return;
+            _payrollReviewFilter = filterBtn.dataset.payrollReviewFilter || 'all';
+            renderReportTableWorkspace();
+        });
         window.addEventListener('beforeunload', event => {
             if (!_reportTableDirty || isReportTableLocked()) return;
             event.preventDefault();
@@ -1139,10 +1770,15 @@ const ReportsPage = (() => {
         _activeTemplateId = template.id;
         _editingDraftId = null;
         _editingTableReportId = null;
+        _payrollReviewFilter = 'all';
+        _reportQualityFilter = 'all';
+        _reportQualityIssueFilter = '';
+        _payrollReconciliationSignature = '';
         _reportTableState = {
             ...clone(template),
             rows: template.rows.map(row => ({ ...row })),
-            lifecycle: { status: 'open' }
+            lifecycle: { status: 'open' },
+            reportQuality: null
         };
         _reportTableDirty = false;
 
@@ -1151,11 +1787,139 @@ const ReportsPage = (() => {
         if (!options.silent) setTemplateStatus(`Шаблон "${template.title}" завантажено`);
     }
 
+    function renderPayrollRowBadge(meta) {
+        if (!meta) return '';
+        const label = PAYROLL_RECONCILIATION_LABELS[meta.status] || meta.status;
+        const issueTitle = meta.issues.map(code => PAYROLL_ISSUE_LABELS[code] || code).join(', ');
+        return `
+            <span class="rpt-payroll-row-status ${esc(meta.status)}" title="${esc(issueTitle || label)}">
+                ${esc(label)}
+            </span>
+            ${meta.issues.length ? `<span class="rpt-payroll-row-issues">${meta.issues.length}</span>` : ''}
+        `;
+    }
+
+    function renderQualityRowBadge(meta) {
+        if (!meta || !meta.issues?.length) return '';
+        const label = REPORT_QUALITY_STATUS_LABELS[meta.status] || meta.status;
+        const issueTitle = meta.issues.map(code => REPORT_QUALITY_ISSUE_LABELS[code] || code).join(', ');
+        return `
+            <span class="rpt-quality-row-status ${esc(meta.status)}" title="${esc(issueTitle || label)}">
+                ${esc(label)}
+            </span>
+            <span class="rpt-quality-row-issues">${meta.issues.length}</span>
+        `;
+    }
+
+    function payrollVisibleRowEntries(state, reconciliation) {
+        const entries = (state.rows || []).map((row, index) => ({
+            row,
+            rowIndex: index,
+            meta: reconciliation.rowMeta[index]
+        }));
+        if (_payrollReviewFilter === 'all') return entries;
+        return entries.filter(item => item.meta?.status === _payrollReviewFilter);
+    }
+
+    function qualityVisibleRowEntries(entries, quality) {
+        if (_reportQualityFilter === 'all' || !quality) return entries;
+        if (_reportQualityFilter === 'issue') {
+            return entries.filter(item => quality.rowMeta?.[item.rowIndex]?.issues?.includes(_reportQualityIssueFilter));
+        }
+        return entries.filter(item => {
+            const meta = quality.rowMeta?.[item.rowIndex];
+            return (meta?.status || 'ok') === _reportQualityFilter;
+        });
+    }
+
+    function renderPayrollReconciliationPanel(reconciliation) {
+        if (!reconciliation) return '';
+        const totals = reconciliation.totals || {};
+        const issueEntries = Object.entries(reconciliation.issueCounts || {});
+        const hasIssues = issueEntries.length > 0;
+        return `
+            <div class="rpt-payroll-reconciliation">
+                <div class="rpt-payroll-reconciliation-head">
+                    <div>
+                        <span class="rpt-template-chip">Payroll reconciliation</span>
+                        <strong class="rpt-payroll-status ${esc(reconciliation.status)}">${esc(PAYROLL_RECONCILIATION_LABELS[reconciliation.status] || reconciliation.status)}</strong>
+                    </div>
+                    <div class="rpt-payroll-filter" aria-label="Payroll review filter">
+                        ${PAYROLL_RECONCILIATION_FILTERS.map(filter => `
+                            <button type="button"
+                                class="rpt-payroll-filter-btn ${_payrollReviewFilter === filter.key ? 'active' : ''}"
+                                data-payroll-review-filter="${esc(filter.key)}">
+                                ${esc(filter.label)}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="rpt-payroll-metrics">
+                    <span>План <b>${totals.planned || 0}</b> год</span>
+                    <span>Факт <b>${totals.actual || 0}</b> год</span>
+                    <span>Оплата <b>${totals.paid || 0}</b> год</span>
+                    <span>Сума <b>${formatAmount(totals.amount || 0)}</b></span>
+                </div>
+                <div class="rpt-payroll-issues ${hasIssues ? '' : 'is-ok'}">
+                    ${hasIssues
+                        ? issueEntries.map(([code, count]) => `<span title="${esc(code)}">${esc(PAYROLL_ISSUE_LABELS[code] || code)} <b>${count}</b></span>`).join('')
+                        : '<span>Розбіжностей не знайдено</span>'}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderReportQualityPanel(quality, options = {}) {
+        if (!quality) return '';
+        const issueEntries = Object.entries(quality.issueCounts || {});
+        const hasIssues = issueEntries.length > 0;
+        const interactive = options.interactive !== false;
+        const compact = options.compact === true;
+        return `
+            <div class="rpt-report-quality ${compact ? 'compact' : ''}">
+                <div class="rpt-report-quality-head">
+                    <div>
+                        <span class="rpt-template-chip">Report quality</span>
+                        <strong class="rpt-report-quality-status ${esc(quality.status)}">${esc(REPORT_QUALITY_STATUS_LABELS[quality.status] || quality.status)}</strong>
+                    </div>
+                    ${interactive ? `<div class="rpt-report-quality-filter" aria-label="Report quality filter">
+                        ${REPORT_QUALITY_FILTERS.map(filter => `
+                            <button type="button"
+                                class="rpt-report-quality-filter-btn ${_reportQualityFilter === filter.key && !_reportQualityIssueFilter ? 'active' : ''}"
+                                data-report-quality-filter="${esc(filter.key)}">
+                                ${esc(filter.label)}
+                            </button>
+                        `).join('')}
+                    </div>` : ''}
+                </div>
+                <div class="rpt-report-quality-metrics">
+                    <span>Рядків з issues <b>${quality.totals?.issueRows || 0}</b></span>
+                    <span>OK <b>${quality.totals?.okRows || 0}</b></span>
+                    <span>Policy <b>informational</b></span>
+                </div>
+                <div class="rpt-report-quality-issues ${hasIssues ? '' : 'is-ok'}">
+                    ${hasIssues
+                        ? issueEntries.map(([code, count]) => interactive
+                            ? `<button type="button" class="rpt-report-quality-issue-btn ${_reportQualityIssueFilter === code ? 'active' : ''}" data-report-quality-issue-filter="${esc(code)}" title="${esc(code)}">${esc(REPORT_QUALITY_ISSUE_LABELS[code] || code)} <b>${count}</b></button>`
+                            : `<span title="${esc(code)}">${esc(REPORT_QUALITY_ISSUE_LABELS[code] || code)} <b>${count}</b></span>`
+                        ).join('')
+                        : '<span>Якість звіту OK</span>'}
+                </div>
+            </div>
+        `;
+    }
+
     function renderReportTableWorkspace() {
         const state = _reportTableState;
         const table = document.getElementById('reportSheetTable');
         if (!state || !table) return;
         const locked = isReportTableLocked(state);
+        const payrollReconciliation = isPayrollTableState(state) ? normalizePayrollRows(state, { mutate: true }) : null;
+        const reportQuality = buildReportQuality(state, { payrollReconciliation });
+        const baseRowEntries = payrollReconciliation
+            ? payrollVisibleRowEntries(state, payrollReconciliation)
+            : state.rows.map((row, rowIndex) => ({ row, rowIndex, meta: null }));
+        const rowEntries = qualityVisibleRowEntries(baseRowEntries, reportQuality);
 
         const title = document.getElementById('reportSheetTitle');
         const meta = document.getElementById('reportSheetMeta');
@@ -1188,9 +1952,13 @@ const ReportsPage = (() => {
         `;
         const body = `
             <tbody>
-                ${state.rows.map((row, rowIndex) => `
-                    <tr>
-                        <td class="rpt-sheet-row-index">${rowIndex + 1}</td>
+                ${rowEntries.length ? rowEntries.map(({ row, rowIndex, meta }) => `
+                    <tr class="${meta ? `has-payroll-${esc(meta.status)}` : ''} has-quality-${esc(reportQuality.rowMeta?.[rowIndex]?.status || 'ok')}">
+                        <td class="rpt-sheet-row-index">
+                            ${rowIndex + 1}
+                            ${renderPayrollRowBadge(meta)}
+                            ${renderQualityRowBadge(reportQuality.rowMeta?.[rowIndex])}
+                        </td>
                         ${state.columns.map(col => `
                             <td>
                                 ${renderReportSheetField(col, row, rowIndex, locked)}
@@ -1203,13 +1971,20 @@ const ReportsPage = (() => {
                             </div>
                         </td>`}
                     </tr>
-                `).join('')}
+                `).join('') : `
+                    <tr>
+                        <td colspan="${state.columns.length + (locked ? 1 : 2)}" class="rpt-sheet-empty-filter">
+                            Немає рядків для вибраного filter.
+                        </td>
+                    </tr>
+                `}
             </tbody>
         `;
         const totals = renderReportSheetTotals();
         table.innerHTML = head + body + totals;
-        renderReportSheetSummary();
+        renderReportSheetSummary(payrollReconciliation, reportQuality);
         refreshReportWorkspaceControls();
+        queuePayrollReconciliationRefresh();
     }
 
     function renderReportSheetField(col, row, rowIndex, locked) {
@@ -1314,12 +2089,17 @@ const ReportsPage = (() => {
         return rows;
     }
 
-    function renderReportSheetSummary() {
+    function renderReportSheetSummary(payrollReconciliation = null, reportQuality = null) {
         const container = document.getElementById('reportSheetSummary');
         if (!container || !_reportTableState) return;
         const rows = reportTableSubtotalRows();
-        container.classList.toggle('hidden', rows.length === 0);
-        container.innerHTML = rows.map(item => `
+        const qualityPanel = renderReportQualityPanel(reportQuality || buildReportQuality(_reportTableState, { payrollReconciliation }));
+        const payrollPanel = renderPayrollReconciliationPanel(payrollReconciliation);
+        const staffWarningPanel = _staffOptionsWarning && _reportTableState.columns.some(col => col.type === 'staff')
+            ? `<div class="rpt-sheet-warning-card" role="status">${esc(_staffOptionsWarning)}</div>`
+            : '';
+        container.classList.toggle('hidden', rows.length === 0 && !payrollPanel && !qualityPanel && !staffWarningPanel);
+        container.innerHTML = staffWarningPanel + qualityPanel + payrollPanel + rows.map(item => `
             <div class="rpt-sheet-summary-card ${item.kind === 'subtotal' ? 'accent' : ''}">
                 <span>${esc(item.label)}</span>
                 <strong>${formatAmount(item.amount)}</strong>
@@ -1338,7 +2118,8 @@ const ReportsPage = (() => {
             const key = cell.dataset.reportTotalKey;
             cell.textContent = totalsByKey.has(key) ? formatAmount(totalsByKey.get(key)) : '';
         });
-        renderReportSheetSummary();
+        const payrollReconciliation = isPayrollTableState() ? normalizePayrollRows(_reportTableState, { mutate: true }) : null;
+        renderReportSheetSummary(payrollReconciliation, buildReportQuality(_reportTableState, { payrollReconciliation }));
     }
 
     function handleReportSheetInput(event) {
@@ -1350,9 +2131,13 @@ const ReportsPage = (() => {
         const col = _reportTableState.columns.find(item => item.key === key);
         if (col?.type === 'staff') {
             applyReportStaffSelection(_reportTableState.rows[rowIndex], col, input.value);
+            _payrollReconciliationSignature = '';
             renderReportTableWorkspace();
         } else {
             _reportTableState.rows[rowIndex][key] = input.value;
+            if (isPayrollTableState() && ['date', 'hours', 'paid_hours', 'planned_hours', 'actual_hours', 'total', 'bonus', 'penalty', 'manual_amount'].includes(key)) {
+                _payrollReconciliationSignature = '';
+            }
         }
         refreshReportSheetTotals();
         setReportTableDirty(true, 'Є незбережені зміни в таблиці');
@@ -1494,6 +2279,10 @@ const ReportsPage = (() => {
         _editingDraftId = draft.id;
         _editingTableReportId = null;
         _activeTemplateId = String(table.id || draft.templateId || _activeTemplateId);
+        _payrollReviewFilter = 'all';
+        _reportQualityFilter = 'all';
+        _reportQualityIssueFilter = '';
+        _payrollReconciliationSignature = '';
         _reportTableState = {
             id: String(table.id || draft.templateId || `draft-${draft.id}`),
             templateId: draft.templateId || table.templateId || null,
@@ -1507,7 +2296,8 @@ const ReportsPage = (() => {
             defaultReport: table.defaultReport || {},
             columns: Array.isArray(table.columns) ? table.columns : [],
             rows: Array.isArray(table.rows) ? table.rows : [],
-            lifecycle: table.lifecycle || { status: draft.status === 'closed' ? 'closed' : 'open' }
+            lifecycle: table.lifecycle || { status: draft.status === 'closed' ? 'closed' : 'open' },
+            reportQuality: table.reportQuality || null
         };
         _reportTableDirty = false;
         renderReportTemplateCards();
@@ -1521,6 +2311,10 @@ const ReportsPage = (() => {
         _editingDraftId = null;
         _editingTableReportId = report.id;
         _activeTemplateId = String(table.id || _activeTemplateId);
+        _payrollReviewFilter = 'all';
+        _reportQualityFilter = 'all';
+        _reportQualityIssueFilter = '';
+        _payrollReconciliationSignature = '';
         _reportTableState = {
             id: String(table.id || `report-${report.id}`),
             templateId: table.templateId || null,
@@ -1534,7 +2328,8 @@ const ReportsPage = (() => {
             defaultReport: table.defaultReport || {},
             columns: Array.isArray(table.columns) ? table.columns : [],
             rows: Array.isArray(table.rows) ? table.rows : [],
-            lifecycle: closedLifecycleFromReport(report)
+            lifecycle: closedLifecycleFromReport(report),
+            reportQuality: table.reportQuality || null
         };
         _reportTableDirty = false;
         renderReportTemplateCards();
@@ -1663,6 +2458,11 @@ const ReportsPage = (() => {
 
     function buildReportTablePayload() {
         if (!_reportTableState) return null;
+        const payrollReconciliation = isPayrollTableState(_reportTableState)
+            ? normalizePayrollRows(_reportTableState, { mutate: true })
+            : null;
+        const reportQuality = buildReportQuality(_reportTableState, { payrollReconciliation });
+        _reportTableState.reportQuality = reportQuality;
         return {
             reportTableTemplate: {
                 id: _reportTableState.id,
@@ -1676,7 +2476,9 @@ const ReportsPage = (() => {
                 description: _reportTableState.description,
                 defaultReport: _reportTableState.defaultReport || {},
                 columns: _reportTableState.columns,
-                rows: _reportTableState.rows,
+                rows: payrollReconciliation ? payrollReconciliation.rows : _reportTableState.rows,
+                payrollReconciliation,
+                reportQuality,
                 lifecycle: _reportTableState.lifecycle || { status: 'open' },
                 generatedAt: new Date().toISOString()
             }
@@ -1688,6 +2490,7 @@ const ReportsPage = (() => {
         if (!state) return 0;
         const amountColumn = state.defaultReport?.amountColumn;
         if (!amountColumn) return 0;
+        if (isPayrollTableState(state)) normalizePayrollRows(state, { mutate: true });
         return Math.max(0, Math.round(state.rows.reduce((sum, row) => sum + parseNumber(row[amountColumn]), 0)));
     }
 
@@ -1699,6 +2502,7 @@ const ReportsPage = (() => {
             document.getElementById('reportSheetTitleInput')?.focus();
             return;
         }
+        if (isPayrollTableState()) await loadPayrollReconciliationSources(_reportTableState);
         const payload = buildReportTablePayload();
         const templateId = Number(_reportTableState.templateId);
         const body = {
@@ -1725,6 +2529,7 @@ const ReportsPage = (() => {
 
     async function downloadReportTableExport(format) {
         if (!_reportTableState) return;
+        if (isPayrollTableState()) await loadPayrollReconciliationSources(_reportTableState);
         const payload = buildReportTablePayload();
         const token = localStorage.getItem('pzp_token');
         const filename = `${slugifyKey(_reportTableState.title, 'report')}.${format}`;
@@ -1797,6 +2602,7 @@ const ReportsPage = (() => {
         if (_reportTableBusy || isReportTableLocked() || !validateReportTableForCreate()) return;
         const reportDefaults = _reportTableState.defaultReport || {};
         const amount = getTemplateReportAmount();
+        if (isPayrollTableState()) await loadPayrollReconciliationSources(_reportTableState);
         const payload = buildReportTablePayload();
         const description = `Табличний звіт: ${_reportTableState.title}`;
         const category = reportDefaults.category || _reportTableState.category || 'Інше';
@@ -1876,6 +2682,7 @@ const ReportsPage = (() => {
 
         const reportDefaults = _reportTableState.defaultReport || {};
         const amount = getTemplateReportAmount();
+        if (isPayrollTableState()) await loadPayrollReconciliationSources(_reportTableState);
         const payload = buildReportTablePayload();
         const description = `Табличний звіт: ${_reportTableState.title}`;
         const category = reportDefaults.category || _reportTableState.category || 'Інше';
@@ -1943,12 +2750,14 @@ const ReportsPage = (() => {
         const columns = table.columns.slice(0, 6);
         const rows = table.rows.slice(0, 4);
         const closed = isClosedReport(report);
+        const reportQuality = table.reportQuality || buildReportQuality(table, { payrollReconciliation: table.payrollReconciliation });
         return `
             <div class="rpt-raw-table-preview">
                 <div class="rpt-raw-table-preview-head">
                     <strong>${esc(table.title || 'Табличний звіт')}</strong>
                     <button type="button" class="rpt-template-action" onclick="event.stopPropagation();ReportsPage.editTableReport(${report.id})">${closed ? 'Переглянути' : 'Відкрити в редакторі'}</button>
                 </div>
+                ${renderReportQualityPanel(reportQuality, { interactive: false, compact: true })}
                 <table>
                     <thead>
                         <tr>${columns.map(col => `<th>${esc(col.label || col.key)}</th>`).join('')}</tr>

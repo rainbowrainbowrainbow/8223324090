@@ -540,6 +540,395 @@ async function loadStaffOffboardingReadiness(staffId, db = pool, options = {}) {
     };
 }
 
+function lifecycleChecklistItem(key, label, complete, options = {}) {
+    const applicable = options.applicable !== false;
+    const unknown = options.unknown === true;
+    const severity = complete ? 'ok' : (options.severity || 'warning');
+    let status = complete ? 'done' : (severity === 'critical' ? 'blocked' : 'missing');
+    if (!applicable) status = 'not_applicable';
+    if (unknown) status = 'unknown';
+    return {
+        key,
+        label,
+        complete: complete === true,
+        applicable,
+        status,
+        severity,
+        count: Number.isFinite(Number(options.count)) ? Number(options.count) : null,
+        detail: options.detail || null,
+        action: options.action || null,
+        source: options.source || null
+    };
+}
+
+function buildLifecycleSection(key, label, items = []) {
+    const countable = items.filter(item => item.applicable !== false && item.status !== 'unknown');
+    const done = countable.filter(item => item.complete).length;
+    const blocked = countable.filter(item => !item.complete && item.severity === 'critical').length;
+    const warning = countable.filter(item => !item.complete && item.severity === 'warning').length;
+    const unknown = items.filter(item => item.status === 'unknown').length;
+    const total = countable.length;
+    const status = blocked ? 'critical' : (warning ? 'warning' : (total && done < total ? 'info' : 'ok'));
+    return {
+        key,
+        label,
+        status,
+        total,
+        done,
+        missing: Math.max(0, total - done),
+        blocked,
+        warning,
+        unknown,
+        percent: total ? Math.round((done / total) * 100) : 100,
+        items
+    };
+}
+
+async function loadStaffLifecycleChecklist(staffId, db = pool, options = {}) {
+    const id = Number(staffId);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    const today = cleanStaffDate(options.today) || todayKyiv();
+    const staffResult = await db.query(
+        `SELECT id, name, department, position, role_type,
+                COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
+                hire_date, is_active, is_freelance, hr_pool_status, blacklist_reason,
+                termination_date, termination_reason, termination_recorded_at, termination_recorded_by
+         FROM staff
+         WHERE id = $1`,
+        [id]
+    );
+    const staff = staffResult.rows[0];
+    if (!staff) return null;
+    await attachTrainingReadiness([staff]);
+
+    const [
+        accountResult,
+        faceResult,
+        documentResult,
+        scheduleResult,
+        shiftResult,
+        openTimeResult,
+        payrollResult,
+        offboardingEventResult,
+        onboardingProgress,
+        offboardingReadiness
+    ] = await Promise.all([
+        db.query(
+            `SELECT
+                    COUNT(*) FILTER (
+                        WHERE ep.user_id IS NOT NULL
+                          AND COALESCE(ep.is_active, true) = true
+                          AND COALESCE(u.is_active, true) = true
+                    )::int AS active_account_count,
+                    COUNT(*) FILTER (WHERE ep.user_id IS NOT NULL)::int AS linked_account_count,
+                    COUNT(*) FILTER (
+                        WHERE ep.user_id IS NOT NULL
+                          AND (COALESCE(ep.is_active, true) = false OR COALESCE(u.is_active, true) = false)
+                    )::int AS disabled_account_count
+             FROM employee_profiles ep
+             LEFT JOIN users u ON u.id = ep.user_id
+             WHERE ep.staff_id = $1`,
+            [id]
+        ),
+        db.query(
+            `SELECT COUNT(*)::int AS face_descriptor_count
+             FROM staff_face_descriptors
+             WHERE staff_id = $1`,
+            [id]
+        ),
+        db.query(
+            `SELECT COUNT(*)::int AS document_count,
+                    COUNT(*) FILTER (WHERE status = 'active')::int AS active_document_count,
+                    COUNT(*) FILTER (WHERE status = 'archived')::int AS archived_document_count
+             FROM staff_documents
+             WHERE staff_id = $1`,
+            [id]
+        ),
+        db.query(
+            `SELECT COUNT(*) FILTER (
+                        WHERE LEFT(date::text, 10) >= $2
+                          AND COALESCE(status, 'working') NOT IN ('dayoff','day_off','vacation','sick','absent')
+                    )::int AS future_staff_schedule_count,
+                    MIN(LEFT(date::text, 10)) FILTER (
+                        WHERE COALESCE(status, 'working') NOT IN ('dayoff','day_off','vacation','sick','absent')
+                    ) AS first_staff_schedule_date
+             FROM staff_schedule
+             WHERE staff_id = $1`,
+            [id, today]
+        ),
+        db.query(
+            `SELECT COUNT(*) FILTER (WHERE shift_date >= $2::date)::int AS future_hr_shift_count,
+                    MIN(shift_date)::date AS first_hr_shift_date
+             FROM hr_shifts
+             WHERE staff_id = $1`,
+            [id, today]
+        ),
+        db.query(
+            `SELECT COUNT(*)::int AS open_time_record_count
+             FROM hr_time_records
+             WHERE staff_id = $1
+               AND clock_in IS NOT NULL
+               AND clock_out IS NULL
+               AND COALESCE(status, 'present') IN ('present','late','clocked_in','unscheduled')`,
+            [id]
+        ),
+        db.query(
+            `SELECT COUNT(*) FILTER (
+                        WHERE COALESCE(status, 'draft') IN ('draft','reviewed')
+                          AND voided_at IS NULL
+                    )::int AS open_payroll_count,
+                    COUNT(*) FILTER (
+                        WHERE COALESCE(status, '') IN ('approved','paid')
+                          AND voided_at IS NULL
+                    )::int AS closed_payroll_count
+             FROM payroll_reports
+             WHERE staff_id = $1`,
+            [id]
+        ),
+        db.query(
+            `SELECT id, status, effective_date, reason, target_pool_status, account_action, notes, completed_at, created_at
+             FROM staff_offboarding_events
+             WHERE staff_id = $1
+             ORDER BY completed_at DESC NULLS LAST, created_at DESC, id DESC
+             LIMIT 1`,
+            [id]
+        ),
+        loadActiveOnboardingProgress(id, db).catch(err => {
+            log.warn(`Lifecycle onboarding progress skipped for staff ${id}: ${err.message}`);
+            return null;
+        }),
+        loadStaffOffboardingReadiness(id, db, options).catch(err => {
+            log.warn(`Lifecycle offboarding readiness skipped for staff ${id}: ${err.message}`);
+            return null;
+        })
+    ]);
+
+    const account = accountResult.rows[0] || {};
+    const face = faceResult.rows[0] || {};
+    const documents = documentResult.rows[0] || {};
+    const schedule = scheduleResult.rows[0] || {};
+    const shifts = shiftResult.rows[0] || {};
+    const openTime = openTimeResult.rows[0] || {};
+    const payroll = payrollResult.rows[0] || {};
+    const latestOffboarding = offboardingEventResult.rows[0] || null;
+    const onboarding = onboardingProgress ? onboardingProgressMeta(onboardingProgress) : null;
+    const professionKeys = staffProfessionKeys(staff);
+    const readiness = staff.training_readiness || { percent: 0, total: 0, completed: 0 };
+    const readinessTotal = Number(readiness.total || 0);
+    const readinessPercent = Number(readiness.percent || 0);
+    const activeAccountCount = Number(account.active_account_count || 0);
+    const linkedAccountCount = Number(account.linked_account_count || 0);
+    const faceDescriptorCount = Number(face.face_descriptor_count || 0);
+    const documentCount = Number(documents.document_count || 0);
+    const activeDocumentCount = Number(documents.active_document_count || 0);
+    const archivedDocumentCount = Number(documents.archived_document_count || 0);
+    const futureScheduleCount = Number(schedule.future_staff_schedule_count || 0) + Number(shifts.future_hr_shift_count || 0);
+    const openTimeRecordCount = Number(openTime.open_time_record_count || 0);
+    const openPayrollCount = Number(payroll.open_payroll_count || 0);
+    const firstShiftDate = toDateOnly(shifts.first_hr_shift_date) || schedule.first_staff_schedule_date || null;
+    const isOffboardingFlow = staff.is_active === false || Boolean(staff.termination_date) || Boolean(latestOffboarding);
+    const poolStatus = staff.hr_pool_status || 'core';
+    const isActiveCoreStaff = staff.is_active !== false && poolStatus === 'core';
+
+    const onboardingItems = [
+        lifecycleChecklistItem('candidate_approved', 'Кандидат погоджений', false, {
+            unknown: true,
+            severity: 'info',
+            detail: 'У staff немає durable application_id. Найм із вакансії ставить application у hired, але не зберігає прямий link у картці.',
+            source: 'job_applications.status without staff link'
+        }),
+        lifecycleChecklistItem('hr_card_created', 'HR-картка створена', true, {
+            action: 'profile',
+            source: 'staff'
+        }),
+        lifecycleChecklistItem('department_set', 'Відділ заданий', Boolean(staff.department), {
+            severity: 'critical',
+            action: 'profile',
+            detail: staff.department || 'Потрібно заповнити staff.department.',
+            source: 'staff.department'
+        }),
+        lifecycleChecklistItem('role_type_set', 'Основна роль задана', Boolean(staff.role_type), {
+            severity: 'critical',
+            action: 'profile',
+            detail: staff.role_type || 'Потрібно заповнити staff.role_type.',
+            source: 'staff.role_type'
+        }),
+        lifecycleChecklistItem('professions_set', 'Професії задані', professionKeys.length > 0, {
+            severity: 'critical',
+            action: 'profile',
+            count: professionKeys.length,
+            detail: professionKeys.length ? professionKeys.join(', ') : 'Немає основної або додаткових професій.',
+            source: 'staff.role_type + staff.secondary_professions'
+        }),
+        lifecycleChecklistItem('account_linked', 'CRM-акаунт привʼязаний', activeAccountCount > 0, {
+            severity: 'critical',
+            action: 'account',
+            count: activeAccountCount || linkedAccountCount,
+            detail: activeAccountCount ? `Активних акаунтів: ${activeAccountCount}.` : 'Немає активного linked account.',
+            source: 'employee_profiles + users'
+        }),
+        lifecycleChecklistItem('face_descriptor_added', 'Face descriptor доданий', faceDescriptorCount > 0, {
+            severity: 'warning',
+            action: 'face',
+            count: faceDescriptorCount,
+            detail: faceDescriptorCount ? 'Face descriptor знайдено.' : 'Камера/face check-in не зможе підтвердити працівника.',
+            source: 'staff_face_descriptors'
+        }),
+        lifecycleChecklistItem('documents_checked', 'Документи перевірені', activeDocumentCount > 0, {
+            severity: 'warning',
+            action: 'documents',
+            count: activeDocumentCount,
+            detail: activeDocumentCount ? `Активних HR-документів: ${activeDocumentCount}.` : 'У картці немає активних HR-документів.',
+            source: 'staff_documents'
+        }),
+        lifecycleChecklistItem('readiness_approved', 'Readiness підтверджено', readinessTotal > 0 && readinessPercent >= 85, {
+            severity: 'critical',
+            action: 'training',
+            count: readinessTotal,
+            detail: readinessTotal ? `${readiness.completed || 0}/${readinessTotal}, ${readinessPercent}%.` : 'Немає checklist/training прогресу.',
+            source: 'hr_staff_profession_checklist_progress + training_course_enrollment'
+        }),
+        lifecycleChecklistItem('first_shift_scheduled', 'Перша зміна запланована', Boolean(firstShiftDate), {
+            severity: 'warning',
+            action: 'schedule',
+            detail: firstShiftDate || 'У staff_schedule/hr_shifts немає першої зміни.',
+            source: 'staff_schedule + hr_shifts'
+        }),
+        lifecycleChecklistItem('manager_assigned', 'Відповідальний менеджер призначений', Boolean(onboarding?.responsible_user_id), {
+            severity: 'warning',
+            action: 'onboarding',
+            detail: onboarding?.responsible_name || 'Немає active onboarding responsible.',
+            source: 'onboarding_progress.responsible_user_id'
+        })
+    ];
+
+    const offboardingItems = [
+        lifecycleChecklistItem('removed_from_future_schedule', 'Прибрано з майбутнього графіка', futureScheduleCount === 0, {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'schedule',
+            count: futureScheduleCount,
+            detail: futureScheduleCount ? `Майбутніх планових записів: ${futureScheduleCount}.` : 'Майбутніх планових записів немає.',
+            source: 'staff_schedule + hr_shifts'
+        }),
+        lifecycleChecklistItem('active_shifts_closed', 'Активні зміни закриті', openTimeRecordCount === 0, {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'attendance',
+            count: openTimeRecordCount,
+            detail: openTimeRecordCount ? `Відкритих time records: ${openTimeRecordCount}.` : 'Відкритих time records немає.',
+            source: 'hr_time_records'
+        }),
+        lifecycleChecklistItem('payroll_closed', 'Payroll закритий', openPayrollCount === 0, {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'payroll',
+            count: openPayrollCount,
+            detail: openPayrollCount ? `Незакритих payroll reports: ${openPayrollCount}.` : 'Незакритих payroll reports немає.',
+            source: 'payroll_reports'
+        }),
+        lifecycleChecklistItem('account_disabled_or_unlinked', 'Акаунт вимкнений або відвʼязаний', activeAccountCount === 0, {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'account',
+            count: activeAccountCount,
+            detail: activeAccountCount ? `Активних акаунтів ще є: ${activeAccountCount}.` : 'Активних акаунтів немає.',
+            source: 'employee_profiles + users'
+        }),
+        lifecycleChecklistItem('access_removed', 'Доступи прибрані', activeAccountCount === 0, {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'account',
+            count: activeAccountCount,
+            detail: activeAccountCount ? 'Linked CRM account ще активний.' : 'Активний CRM-доступ не знайдено.',
+            source: 'users.is_active'
+        }),
+        lifecycleChecklistItem('hr_status_changed', 'HR-статус змінений', staff.is_active === false && ['reserve', 'blacklisted'].includes(poolStatus), {
+            applicable: isOffboardingFlow,
+            severity: 'critical',
+            action: 'profile',
+            detail: `is_active=${staff.is_active !== false}, hr_pool_status=${poolStatus}.`,
+            source: 'staff.is_active + staff.hr_pool_status'
+        }),
+        lifecycleChecklistItem('final_note_added', 'Фінальна нотатка додана', Boolean(staff.termination_reason || latestOffboarding?.reason || latestOffboarding?.notes), {
+            applicable: isOffboardingFlow,
+            severity: 'warning',
+            action: 'offboarding',
+            detail: staff.termination_reason || latestOffboarding?.reason || latestOffboarding?.notes || 'Немає причини або фінальної нотатки.',
+            source: 'staff.termination_reason + staff_offboarding_events'
+        }),
+        lifecycleChecklistItem('documents_archived_if_applicable', 'Документи архівовані за потреби', documentCount === 0 || activeDocumentCount === 0, {
+            applicable: isOffboardingFlow && documentCount > 0,
+            severity: 'warning',
+            action: 'documents',
+            count: activeDocumentCount,
+            detail: documentCount
+                ? `Активних: ${activeDocumentCount}, архівних: ${archivedDocumentCount}.`
+                : 'Документів у картці немає.',
+            source: 'staff_documents'
+        })
+    ];
+
+    const onboardingSection = buildLifecycleSection('onboarding', 'Onboarding readiness', onboardingItems);
+    const offboardingSection = buildLifecycleSection('offboarding', 'Offboarding closure', offboardingItems);
+    const sections = [onboardingSection, offboardingSection];
+    const allItems = sections.flatMap(section => section.items);
+    const blockers = allItems.filter(item => item.applicable !== false && !item.complete && item.severity === 'critical');
+    const warnings = allItems.filter(item => item.applicable !== false && !item.complete && item.severity === 'warning');
+
+    return {
+        source: 'hr_staff_lifecycle_checklist_v1',
+        generated_at: new Date().toISOString(),
+        today,
+        staff: {
+            id: Number(staff.id),
+            name: staff.name,
+            department: staff.department,
+            position: staff.position,
+            role_type: staff.role_type,
+            professions: professionKeys,
+            is_active: staff.is_active !== false,
+            hr_pool_status: poolStatus,
+            termination_date: staff.termination_date || null
+        },
+        metrics: {
+            active_account_count: activeAccountCount,
+            linked_account_count: linkedAccountCount,
+            disabled_account_count: Number(account.disabled_account_count || 0),
+            face_descriptor_count: faceDescriptorCount,
+            active_document_count: activeDocumentCount,
+            future_schedule_count: futureScheduleCount,
+            open_time_record_count: openTimeRecordCount,
+            open_payroll_count: openPayrollCount,
+            readiness_percent: readinessPercent,
+            readiness_total: readinessTotal,
+            onboarding_percent: onboarding?.percent ?? null,
+            open_resource_count: Number(offboardingReadiness?.open_resource_count || 0),
+            document_alert_count: Number(offboardingReadiness?.document_alert_count || 0)
+        },
+        summary: {
+            status: blockers.length ? 'critical' : (warnings.length ? 'warning' : 'ok'),
+            blocker_count: blockers.length,
+            warning_count: warnings.length,
+            unknown_count: allItems.filter(item => item.status === 'unknown').length,
+            ready_for_schedule: isActiveCoreStaff && blockers.every(item => !['department_set', 'role_type_set', 'professions_set', 'account_linked', 'readiness_approved'].includes(item.key)),
+            ready_for_payroll: staff.is_active !== false || openPayrollCount > 0,
+            ready_for_offboarding: isOffboardingFlow && offboardingSection.blocked === 0,
+            offboarding_started: isOffboardingFlow
+        },
+        sections,
+        latest_offboarding_event: latestOffboarding,
+        onboarding_assignment: onboarding,
+        findings: [
+            {
+                key: 'candidate_staff_link_missing',
+                severity: 'warning',
+                message: 'Hire flow не зберігає job_application_id у staff, тому candidate → HR card не можна підтвердити без евристики.'
+            }
+        ]
+    };
+}
+
 const STAFF_DELETE_CONFIRMATION = 'ТАК';
 
 const STAFF_DELETE_BLOCKER_CHECKS = [
@@ -1958,6 +2347,17 @@ router.get('/staff/:id', async (req, res) => {
         res.json({ success: true, data: staff.rows[0] });
     } catch (err) {
         log.error('GET /hr/staff/:id error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.get('/staff/:id/lifecycle-checklist', requireHrManage, async (req, res) => {
+    try {
+        const data = await loadStaffLifecycleChecklist(req.params.id, pool, { currentUserId: req.user?.id, actor: req.user });
+        if (!data) return res.status(404).json({ success: false, error: 'Працівника не знайдено' });
+        res.json({ success: true, data });
+    } catch (err) {
+        log.error('GET /hr/staff/:id/lifecycle-checklist error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });

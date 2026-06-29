@@ -64,6 +64,10 @@ const log = createLogger('Staff');
 router.use(authenticateToken);
 
 const ACCOUNT_MANAGER_PRIMARY_ROLES = new Set(['creator', 'director']);
+const STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
+const STAFF_COPY_WEEK_MAX_STAFF_IDS = 500;
+const STAFF_ATTENDANCE_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'accountant'];
+const STAFF_PAYROLL_READ_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'hr', 'accountant'];
 
 function normalizeStaffRateUnit(value) {
     const unit = String(value || '').trim().toLowerCase();
@@ -214,6 +218,20 @@ function normalizeScheduleDate(value) {
     if (!value) return null;
     if (value instanceof Date) return value.toISOString().slice(0, 10);
     return String(value).slice(0, 10);
+}
+
+function normalizeCopyWeekStaffIds(value) {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set();
+    const ids = [];
+    for (const item of value) {
+        const id = Number(item);
+        if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+        if (ids.length > STAFF_COPY_WEEK_MAX_STAFF_IDS) break;
+    }
+    return ids;
 }
 
 function normalizeScheduleAuditEntry(entry = null) {
@@ -1104,16 +1122,37 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
 
 /**
  * POST /api/staff/schedule/copy-week — copy schedule from one week to another
- * LLM HINT: { fromMonday: "2026-02-09", toMonday: "2026-02-16", department?: "animators" }
- * Copies 7 days of schedule. Optional department filter.
+ * LLM HINT: { fromMonday: "2026-02-09", toMonday: "2026-02-16", department?: "animators", staffIds?: [1,2], dryRun?: true }
+ * Copies 7 days of schedule. Optional raw department filter or explicit staffIds filter.
  * Existing entries in target week are overwritten.
  */
 router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, res) => {
     try {
-        const { fromMonday, toMonday, department } = req.body;
+        const { fromMonday, toMonday } = req.body;
+        const requestedDepartment = String(req.body.department || '').trim();
+        const department = requestedDepartment === 'all' ? '' : requestedDepartment;
+        const displayGroup = String(req.body.displayGroup || req.body.display_group || department || 'all').trim();
+        const dryRun = req.body.dryRun === true || req.body.dry_run === true;
+        const staffIds = normalizeCopyWeekStaffIds(req.body.staffIds || req.body.staff_ids);
         if (!fromMonday || !toMonday) {
             return res.status(400).json({ success: false, error: 'Потрібні fromMonday та toMonday' });
         }
+        if (Array.isArray(req.body.staffIds || req.body.staff_ids) && !staffIds.length) {
+            return res.status(400).json({ success: false, error: 'staffIds[] має містити хоча б один валідний staff id' });
+        }
+        if (staffIds.length > STAFF_COPY_WEEK_MAX_STAFF_IDS) {
+            return res.status(400).json({ success: false, error: `Максимум ${STAFF_COPY_WEEK_MAX_STAFF_IDS} staffIds за раз` });
+        }
+        if (staffIds.length && department) {
+            return res.status(400).json({ success: false, error: 'staffIds[] не можна комбінувати з raw department filter' });
+        }
+        if (department && !STAFF_COPY_WEEK_RAW_DEPARTMENT_ALLOWLIST.has(department)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Ця категорія є virtual/display group. Передайте explicit staffIds[], щоб copy-week не зачепив неправильний raw department.'
+            });
+        }
+        const copyMode = staffIds.length ? 'explicit_staff_ids' : (department ? 'raw_department' : 'all');
 
         // Build date pairs (Mon→Mon, Tue→Tue, etc.)
         const fromDates = [];
@@ -1132,18 +1171,50 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                     WHERE ss.date >= $1 AND ss.date <= $2
                       AND ${activeOperationalStaffWhere('s')}`;
         const params = [fromDates[0], fromDates[6]];
-        if (department) {
+        if (staffIds.length) {
+            params.push(staffIds);
+            sql += ` AND ss.staff_id = ANY($${params.length}::int[])`;
+        } else if (department) {
             params.push(department);
             sql += ` AND s.department = $${params.length}`;
         }
         const source = await pool.query(sql, params);
+        const sourceRows = source.rows.filter(row => {
+            const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
+            return fromDates.includes(sourceDate);
+        });
+        const sourceStaffIds = [...new Set(sourceRows.map(row => Number(row.staff_id)).filter(Number.isFinite))];
+        let conflicts = 0;
+        if (sourceStaffIds.length) {
+            const conflictResult = await pool.query(
+                `SELECT COUNT(*)::int AS count
+                 FROM staff_schedule
+                 WHERE date >= $1 AND date <= $2
+                   AND staff_id = ANY($3::int[])`,
+                [toDates[0], toDates[6], sourceStaffIds]
+            );
+            conflicts = Number(conflictResult.rows[0]?.count || 0);
+        }
+        if (dryRun) {
+            return res.json({
+                success: true,
+                dryRun: true,
+                count: sourceRows.length,
+                conflicts,
+                staffCount: sourceStaffIds.length,
+                copyMode,
+                department: department || null,
+                displayGroup,
+                staffIds: copyMode === 'explicit_staff_ids' ? sourceStaffIds : undefined
+            });
+        }
 
         let count = 0;
         const affectedStaff = new Set();
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            for (const row of source.rows) {
+            for (const row of sourceRows) {
                 const sourceDate = typeof row.date === 'string' ? row.date : row.date?.toISOString?.().slice(0, 10);
                 const dayIndex = fromDates.indexOf(sourceDate);
                 if (dayIndex === -1) continue;
@@ -1197,7 +1268,12 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                     fromDate: sourceDate,
                     fromMonday,
                     toMonday,
-                    department: department || 'all'
+                    department: department || null,
+                    displayGroup,
+                    copyMode,
+                    staffCount: sourceStaffIds.length,
+                    staffIds: copyMode === 'explicit_staff_ids' ? sourceStaffIds : undefined,
+                    conflictCount: conflicts
                 });
                 affectedStaff.add(row.staff_id);
                 count++;
@@ -1211,7 +1287,15 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         }
         // Fire-and-forget notification
         if (count > 0) notifyBulkScheduleChange(affectedStaff, count);
-        res.json({ success: true, count });
+        res.json({
+            success: true,
+            count,
+            conflicts,
+            staffCount: affectedStaff.size,
+            copyMode,
+            department: department || null,
+            displayGroup
+        });
     } catch (err) {
         log.error('POST /staff/schedule/copy-week error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1312,6 +1396,73 @@ router.get('/schedule/check/:date', async (req, res) => {
     }
 });
 
+// GET /api/staff/attendance — payroll-ready actual attendance for schedule range
+router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (req, res) => {
+    try {
+        const from = normalizeScheduleDate(req.query.from);
+        const to = normalizeScheduleDate(req.query.to);
+        if (!from || !to) {
+            return res.status(400).json({ success: false, error: 'from/to required (YYYY-MM-DD)' });
+        }
+
+        const result = await pool.query(`
+            SELECT
+                COALESCE(tr.staff_id, sc.staff_id) AS staff_id,
+                COALESCE(tr.record_date, sc.date)::text AS date,
+                tr.id AS time_record_id,
+                tr.clock_in,
+                tr.clock_out,
+                tr.planned_start,
+                tr.planned_end,
+                COALESCE(tr.late_minutes, 0) AS late_minutes,
+                COALESCE(tr.early_leave_minutes, 0) AS early_leave_minutes,
+                COALESCE(tr.overtime_minutes, 0) AS overtime_minutes,
+                COALESCE(tr.total_worked_minutes, 0) AS total_worked_minutes,
+                tr.status AS time_status,
+                COALESCE(tr.auto_closed, false) AS auto_closed,
+                tr.corrected_by,
+                tr.corrected_at,
+                tr.correction_reason,
+                tr.notes,
+                sc.id AS checkin_id,
+                sc.check_in AS checkin_at,
+                sc.check_out AS checkout_at,
+                sc.method AS checkin_method,
+                CASE
+                    WHEN tr.id IS NOT NULL THEN 'hr_time_records'
+                    WHEN sc.id IS NOT NULL THEN 'staff_checkins'
+                    ELSE 'none'
+                END AS attendance_source
+            FROM hr_time_records tr
+            FULL OUTER JOIN staff_checkins sc
+              ON sc.staff_id = tr.staff_id
+             AND sc.date = tr.record_date
+            WHERE COALESCE(tr.record_date, sc.date) BETWEEN $1::date AND $2::date
+            ORDER BY date, staff_id
+        `, [from, to]);
+
+        const summary = result.rows.reduce((acc, row) => {
+            const status = String(row.time_status || '').trim() || (row.checkin_at ? 'present' : 'planned');
+            acc.total += 1;
+            if (row.clock_in || row.checkin_at) acc.checked_in += 1;
+            if (status === 'late' || Number(row.late_minutes || 0) > 0) acc.late += 1;
+            if (['absent', 'no_show'].includes(status)) acc.absent += 1;
+            if (status === 'early_leave' || Number(row.early_leave_minutes || 0) > 0) acc.left_early += 1;
+            if (row.clock_in && row.clock_out) acc.completed += 1;
+            if (['sick', 'vacation', 'day_off', 'excused'].includes(status)) acc.excused += 1;
+            return acc;
+        }, { total: 0, checked_in: 0, late: 0, absent: 0, left_early: 0, completed: 0, excused: 0 });
+
+        res.json({ success: true, from, to, data: result.rows, summary, source: 'hr_time_records+staff_checkins' });
+    } catch (err) {
+        if (err.message.includes('does not exist')) {
+            return res.json({ success: true, data: [], summary: { total: 0, checked_in: 0, late: 0, absent: 0, left_early: 0, completed: 0, excused: 0 }, source: 'missing_attendance_tables' });
+        }
+        log.error('GET /staff/attendance error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // ==========================================
 // STAFF CRUD (/:id routes AFTER /schedule to avoid param capture)
 // ==========================================
@@ -1320,7 +1471,29 @@ router.get('/schedule/check/:date', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const { department, active, include_freelance, includeFreelance } = req.query;
-        let sql = `SELECT staff.*,
+        let sql = `SELECT staff.id,
+            staff.name,
+            COALESCE(NULLIF(staff.display_name, ''), staff.name) AS display_name,
+            staff.department,
+            staff.position,
+            staff.position AS role,
+            staff.role_type,
+            COALESCE(staff.secondary_professions, '[]'::jsonb) AS secondary_professions,
+            COALESCE((
+                SELECT jsonb_agg(profession_key)
+                FROM (
+                    SELECT NULLIF(staff.role_type, '') AS profession_key
+                    UNION ALL
+                    SELECT NULLIF(secondary.value, '') AS profession_key
+                    FROM jsonb_array_elements_text(COALESCE(staff.secondary_professions, '[]'::jsonb)) AS secondary(value)
+                ) staff_professions
+                WHERE profession_key IS NOT NULL
+            ), '[]'::jsonb) AS professions,
+            staff.photo_url,
+            staff.color,
+            staff.is_active,
+            staff.is_freelance,
+            COALESCE(staff.hr_pool_status, 'core') AS hr_pool_status,
             (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
             (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account,
             (SELECT ep.user_id
@@ -2065,7 +2238,7 @@ router.get('/account-stats', async (req, res) => {
 });
 
 // v33.3: GET /api/staff/payroll — Monthly payroll aggregation
-router.get('/payroll', async (req, res) => {
+router.get('/payroll', requireRole(...STAFF_PAYROLL_READ_ROLES), async (req, res) => {
     try {
         const month = req.query.month || new Date().toISOString().slice(0, 7);
         const mFrom = req.query.from || `${month}-01`;

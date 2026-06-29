@@ -172,6 +172,12 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrRoute, /\.filter\(course => !\(course\.source === 'hr_profession_seed' && checklistItems\.length\)\)/);
         assert.match(hrRoute, /router\.get\('\/staff\/:id\/history'/);
         assert.match(hrRoute, /router\.put\('\/staff\/:id\/profession-checklist'/);
+        assert.match(hrRoute, /function loadStaffLifecycleChecklist/);
+        assert.match(hrRoute, /router\.get\('\/staff\/:id\/lifecycle-checklist', requireHrManage/);
+        assert.match(hrRoute, /candidate_approved/);
+        assert.match(hrRoute, /candidate_staff_link_missing/);
+        assert.match(hrRoute, /future_schedule_count/);
+        assert.match(hrRoute, /open_payroll_count/);
         assert.match(hrRoute, /if \(payload\.key !== currentKey\)/);
         assert.match(hrRoute, /Key професії не можна змінювати після створення/);
         assert.match(hrRoute, /isHiddenProfessionKey\(payload\.key\)/);
@@ -202,8 +208,12 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     it('renders profession-aware controls and training/history UI in HR and staff pages', () => {
         assert.match(hrHtml, /id="shiftProfession"/);
         assert.match(hrHtml, /id="editStaffHistory"/);
+        assert.match(hrHtml, /id="editStaffLifecycleChecklist"/);
         assert.match(hrHtml, /hr-team-training-readiness/);
         assert.match(hrPage, /function renderStaffTrainingReadiness/);
+        assert.match(hrPage, /function renderStaffLifecycleChecklist/);
+        assert.match(hrPage, /function loadStaffLifecycleChecklist/);
+        assert.match(hrPage, /hrFetch\(`\/staff\/\$\{id\}\/lifecycle-checklist`\)/);
         assert.match(hrPage, /openStaffTrainingReadiness/);
         assert.match(hrPage, /toggleStaffProfessionChecklist/);
         assert.match(hrPage, /function loadStaffProfileHistory/);

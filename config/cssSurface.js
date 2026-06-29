@@ -517,6 +517,20 @@ const CSS_SURFACE = [
         reason: 'Profile avatar crop controls and compact soon-tab menu styles imported by pages.css.'
     },
     {
+        file: 'css/pages-reports.css',
+        owner: 'reports',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Reports workspace payroll reconciliation, discrepancy badges, and dark-mode report table review styles imported by pages.css.'
+    },
+    {
+        file: 'css/pages-center-operations.css',
+        owner: 'center',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Center operations shift dashboard, staffing blockers, report/task rows, and handover notes imported by pages.css.'
+    },
+    {
         file: 'css/pages-products.css',
         owner: 'products',
         category: 'page-scoped',
@@ -528,7 +542,7 @@ const CSS_SURFACE = [
         owner: 'shared-ui',
         category: 'shared',
         status: 'active',
-        reason: 'HR employee-card foundation, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by pages.css.'
+        reason: 'HR employee-card foundation, lifecycle checklist, offboarding readiness, payroll hybrid config, role assignment, and dark-mode styles imported by pages.css.'
     },
     {
         file: 'css/pages-hr-staff.css',

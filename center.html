@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.66">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.66">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.66">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.66">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.66">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.66">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.66">
+    <link rel="stylesheet" href="css/base.css?v=0.77.67">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.67">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.67">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.67">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.67">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.67">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.67">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1288,9 +1288,17 @@
                 <!-- v20.3.0: Center tabs -->
                 <div class="center-tabs" id="centerTabs" role="tablist" aria-label="Розділи центру керування">
                     <button type="button" class="center-tab-btn active" data-tab="overview" role="tab" aria-selected="true">Огляд</button>
+                    <button type="button" class="center-tab-btn" data-tab="operations" role="tab" aria-selected="false">Зміна</button>
                     <button type="button" class="center-tab-btn" data-tab="finance" role="tab" aria-selected="false">Фінанси</button>
                     <button type="button" class="center-tab-btn" data-tab="reports" role="tab" aria-selected="false">Звіти</button>
                     <button type="button" class="center-tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналітика</button>
+                </div>
+
+                <!-- Tab: Reception / Managers operations center -->
+                <div class="center-tab-panel hidden" id="tabOperations" role="tabpanel" aria-label="Операційний центр зміни">
+                    <div id="operationsCenter" class="center-ops-root">
+                        <div class="center-state"><strong>Оновлюємо стан зміни...</strong><small>CRM збирає бронювання, графік, присутність, задачі і звіти.</small></div>
+                    </div>
                 </div>
 
                 <!-- Tab: Finance (embedded iframe) -->
@@ -1608,14 +1616,14 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="js/ui.js?v=0.77.66"></script>
-    <script src="js/config.js?v=0.77.66"></script>
-    <script src="js/notification.js?v=0.77.66"></script>
-    <script src="js/api.js?v=0.77.66"></script>
-    <script src="js/auth.js?v=0.77.66"></script>
-    <script src="js/components/sidebar.js?v=0.77.66"></script>
+    <script src="js/ui.js?v=0.77.67"></script>
+    <script src="js/config.js?v=0.77.67"></script>
+    <script src="js/notification.js?v=0.77.67"></script>
+    <script src="js/api.js?v=0.77.67"></script>
+    <script src="js/auth.js?v=0.77.67"></script>
+    <script src="js/components/sidebar.js?v=0.77.67"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/center-page.js?v=0.77.66"></script>
+    <script src="js/center-page.js?v=0.77.67"></script>
     <script>
     // v20.3.0: Center tabs
     (function() {
@@ -1640,17 +1648,20 @@
 
             // Show/hide sections
             const overviewSections = document.querySelectorAll('.center-section');
+            const operationsPanel = document.getElementById('tabOperations');
             const financePanel = document.getElementById('tabFinance');
             const reportsPanel = document.getElementById('tabReports');
             const analyticsPanel = document.getElementById('tabAnalytics');
 
             overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
+            if (operationsPanel) operationsPanel.classList.toggle('hidden', tab !== 'operations');
             if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
             if (reportsPanel) reportsPanel.classList.toggle('hidden', tab !== 'reports');
             if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
+            window.dispatchEvent(new CustomEvent('center:tab-change', { detail: { tab } }));
         }
 
-        if (urlTab && ['finance', 'analytics', 'reports'].includes(urlTab)) {
+        if (urlTab && ['operations', 'finance', 'analytics', 'reports'].includes(urlTab)) {
             switchCenterTab(urlTab);
         }
     })();
@@ -1737,6 +1748,6 @@
         }
     })();
     </script>
-    <script src="js/alerts.js?v=0.77.66"></script>
+    <script src="js/alerts.js?v=0.77.67"></script>
 </body>
 </html>

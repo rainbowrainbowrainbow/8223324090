@@ -2463,7 +2463,7 @@ body.timeline-dashboard-page .schedule-command-center .working-hours {
     white-space: nowrap;
 }
 
-body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn),
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .zoom-btn, .timeline-type-btn),
 body.timeline-dashboard-page .schedule-command-center :where(.btn-nav, .btn-today, .toggle-mini, .timeline-overlay-toggle, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
     height: 30px !important;
     min-height: 30px !important;
@@ -4184,11 +4184,6 @@ body.timeline-dashboard-page .schedule-command-center .view-mode-controls .timel
     min-width: max-content !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center #timelineHolidaysToggle {
-    flex: 0 0 auto !important;
-    min-width: 96px !important;
-}
-
 body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility {
     flex: 0 1 auto !important;
     min-width: 0 !important;
@@ -4327,10 +4322,6 @@ body.timeline-dashboard-page .schedule-command-center .timeline-compact-state[hi
         min-width: max-content !important;
     }
 
-    body.timeline-dashboard-page .schedule-command-center #timelineHolidaysToggle {
-        width: auto !important;
-        min-width: 96px !important;
-    }
 }
 
 @media (max-width: 430px) {
@@ -4368,12 +4359,6 @@ body.timeline-dashboard-page .schedule-command-center .timeline-compact-state[hi
         padding: 0 7px !important;
     }
 
-    body.timeline-dashboard-page .schedule-command-center #timelineHolidaysToggle {
-        flex: 0 0 84px !important;
-        width: 84px !important;
-        min-width: 84px !important;
-        padding: 0 8px !important;
-    }
 }
 
 /* v0.77.64: balanced top-row zones and compact view/holidays cluster. */
@@ -4424,24 +4409,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--vi
     padding: 0 10px !important;
     font-size: 12px !important;
     font-weight: 820 !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle {
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 82px !important;
-    height: 30px !important;
-    min-height: 30px !important;
-    padding: 0 10px !important;
-    border-radius: 12px !important;
-    font-size: 12px !important;
-    font-weight: 820 !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle::before {
-    width: 6px !important;
-    height: 6px !important;
-    margin-right: 6px !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
@@ -4532,15 +4499,11 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
         width: 100% !important;
     }
 
-    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle {
-        min-width: 76px !important;
-        padding: 0 8px !important;
-    }
 }
 
-/* v0.77.65: make Holidays read as an actual overlay switch, not a fourth view mode. */
+/* Timeline type switch: Bankets / Holidays is a resource timeline selector, not an overlay toggle. */
 body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .view-mode-controls {
-    gap: 6px !important;
+    gap: 8px !important;
     padding: 3px !important;
     background: rgba(15, 23, 42, 0.30) !important;
     border-color: rgba(148, 163, 184, 0.14) !important;
@@ -4554,97 +4517,384 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--vi
     gap: 2px !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle {
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-selector {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 6px !important;
     flex: 0 0 auto !important;
-    min-width: 100px !important;
-    height: 30px !important;
-    min-height: 30px !important;
-    padding: 0 11px 0 8px !important;
-    border-radius: 12px !important;
-    border-color: rgba(148, 163, 184, 0.16) !important;
-    background: rgba(30, 41, 59, 0.48) !important;
-    color: rgba(226, 232, 240, 0.66) !important;
+    min-width: 166px !important;
+    border-radius: 14px !important;
+    background: rgba(30, 41, 59, 0.58) !important;
+    border: 1px solid rgba(148, 163, 184, 0.10) !important;
+    padding: 2px !important;
+    gap: 2px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn {
+    flex: 1 1 0 !important;
+    min-width: 76px !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    color: rgba(226, 232, 240, 0.64) !important;
     box-shadow: none !important;
-    font-size: 12px !important;
-    font-weight: 780 !important;
+    white-space: nowrap !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle::before {
-    content: none !important;
-    display: none !important;
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active),
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn:focus-visible:not(.active) {
+    color: rgba(236, 254, 255, 0.90) !important;
+    background: rgba(148, 163, 184, 0.08) !important;
 }
 
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle:hover:not(:disabled) {
-    border-color: rgba(45, 212, 191, 0.36) !important;
-    background: rgba(30, 41, 59, 0.62) !important;
-    color: rgba(236, 254, 255, 0.92) !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle.active,
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle[aria-pressed="true"] {
-    border-color: rgba(45, 212, 191, 0.42) !important;
-    background: rgba(15, 23, 42, 0.52) !important;
-    color: rgba(236, 254, 255, 0.96) !important;
-    box-shadow: none !important;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-holidays-switch {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    width: 24px;
-    height: 14px;
-    padding: 2px;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.20);
-    background: rgba(15, 23, 42, 0.54);
-    transition: background-color 140ms ease, border-color 140ms ease;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-holidays-switch-thumb {
-    display: block;
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, 0.86);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.30);
-    transform: translateX(0);
-    transition: transform 140ms ease, background-color 140ms ease;
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle[aria-pressed="true"] .timeline-holidays-switch {
-    border-color: rgba(45, 212, 191, 0.50);
-    background: rgba(20, 184, 166, 0.30);
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle[aria-pressed="true"] .timeline-holidays-switch-thumb {
-    background: #99f6e4;
-    transform: translateX(10px);
-}
-
-body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-holidays-label {
-    line-height: 1;
-    white-space: nowrap;
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn.active,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"] {
+    background: var(--toolbar-active-bg, linear-gradient(135deg, #18c7b6, #0ea5a3)) !important;
+    border-color: rgba(45, 212, 191, 0.38) !important;
+    color: #ecfeff !important;
+    box-shadow: 0 10px 22px rgba(14, 165, 163, 0.16) !important;
 }
 
 @media (max-width: 430px) {
-    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle {
-        min-width: 92px !important;
-        padding: 0 8px 0 6px !important;
-        gap: 6px !important;
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-selector {
+        min-width: 146px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-type-btn {
+        min-width: 66px !important;
+        padding: 0 8px !important;
         font-size: 11.5px !important;
     }
+}
 
-    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .timeline-holidays-switch {
-        width: 22px;
+/* Toolbar filter row: status + period + timeline type on top, date navigation in utility row. */
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+    grid-template-columns: minmax(250px, max-content) minmax(160px, max-content) minmax(170px, max-content) !important;
+    grid-template-areas: "left center view" !important;
+    justify-content: space-between !important;
+    column-gap: 12px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone--left {
+    justify-self: start !important;
+    justify-content: flex-start !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone--center {
+    justify-self: center !important;
+    justify-content: center !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone--view {
+    justify-self: end !important;
+    justify-content: flex-end !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--date {
+    flex: 0 0 auto !important;
+    justify-content: flex-start !important;
+    min-width: 0 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--date .date-navigation-cluster {
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-selector {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(76px, 1fr)) !important;
+    min-width: 164px !important;
+    border-radius: 14px !important;
+    background: rgba(30, 41, 59, 0.58) !important;
+    border: 1px solid rgba(148, 163, 184, 0.10) !important;
+    padding: 2px !important;
+    gap: 2px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-btn {
+    min-width: 76px !important;
+}
+
+@media (max-width: 1180px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        grid-template-columns: minmax(0, 1fr) minmax(160px, max-content) minmax(170px, max-content) !important;
+        grid-template-areas: "left center view" !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain;
     }
 
-    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle.timeline-holidays-toggle[aria-pressed="true"] .timeline-holidays-switch-thumb {
-        transform: translateX(8px);
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain;
+    }
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        display: flex !important;
+        align-items: center !important;
+        flex-wrap: nowrap !important;
+        gap: 8px !important;
+        overflow-x: auto !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone {
+        flex: 0 0 auto !important;
+        width: auto !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+        flex-wrap: nowrap !important;
+    }
+}
+
+@media (max-width: 430px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-selector {
+        min-width: 140px !important;
+        grid-template-columns: repeat(2, minmax(64px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-btn {
+        min-width: 64px !important;
+        padding: 0 8px !important;
+    }
+}
+
+/* Toolbar v2 local polish: filters on top, CRM segmented timeline type, no page overflow. */
+body.timeline-dashboard-page .schedule-command-center {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: clip !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :is(#timelineHolidaysToggle, .timeline-holidays-switch, .timeline-holidays-switch-thumb) {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 10px !important;
+    border-radius: 10px !important;
+    font-size: 11.5px !important;
+    font-weight: 820 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center :where(.btn-nav, .btn-today, .timeline-command-btn, .btn-history, .btn-menu-toggle, .btn-undo, .btn-export, .btn-product-sales, .timeline-constructor-btn) {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 10px !important;
+    border-radius: 10px !important;
+    font-size: 11.5px !important;
+    font-weight: 820 !important;
+    line-height: 1 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+    display: grid !important;
+    grid-template-columns: minmax(230px, max-content) minmax(140px, max-content) minmax(156px, max-content) !important;
+    grid-template-areas: "left center view" !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone--left,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone--center,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main .schedule-command-zone--view {
+    justify-self: start !important;
+    justify-content: flex-start !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+    display: grid !important;
+    grid-template-columns: minmax(48px, auto) minmax(92px, auto) minmax(82px, auto) !important;
+    flex: 0 0 auto !important;
+    min-width: 226px !important;
+    width: max-content !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-selector {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(64px, 1fr)) !important;
+    flex: 0 0 auto !important;
+    min-width: 138px !important;
+    width: max-content !important;
+    padding: 2px !important;
+    border-radius: 12px !important;
+    background: rgba(30, 41, 59, 0.58) !important;
+    border: 1px solid rgba(148, 163, 184, 0.12) !important;
+    gap: 2px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-btn {
+    min-width: 64px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .view-mode-controls {
+    display: block !important;
+    flex: 0 0 auto !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-type-selector {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(70px, 1fr)) !important;
+    flex: 0 0 auto !important;
+    min-width: 150px !important;
+    width: max-content !important;
+    padding: 2px !important;
+    border-radius: 12px !important;
+    background: rgba(30, 41, 59, 0.58) !important;
+    border: 1px solid rgba(148, 163, 184, 0.12) !important;
+    gap: 2px !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-type-btn {
+    min-width: 70px !important;
+    border-color: transparent !important;
+    background: transparent !important;
+    color: rgba(226, 232, 240, 0.64) !important;
+    box-shadow: none !important;
+    white-space: nowrap !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-type-btn:hover:not(:disabled):not(.active),
+body.timeline-dashboard-page .schedule-command-center .timeline-type-btn:focus-visible:not(.active) {
+    border-color: rgba(45, 212, 191, 0.22) !important;
+    background: rgba(45, 212, 191, 0.07) !important;
+    color: rgba(236, 254, 255, 0.90) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .timeline-type-btn.active,
+body.timeline-dashboard-page .schedule-command-center .timeline-type-btn[aria-pressed="true"] {
+    background: linear-gradient(135deg, #18c7b6, #0ea5a3) !important;
+    border-color: rgba(45, 212, 191, 0.40) !important;
+    color: #ecfeff !important;
+    box-shadow: 0 8px 18px rgba(14, 165, 163, 0.18) !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--date,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility,
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions {
+    margin-left: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster,
+body.timeline-dashboard-page .schedule-command-center .v32-controls,
+body.timeline-dashboard-page .schedule-command-center .action-buttons {
+    flex: 0 0 auto !important;
+    flex-wrap: nowrap !important;
+    width: max-content !important;
+    max-width: none !important;
+}
+
+@media (max-width: 1180px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        grid-template-columns: minmax(222px, max-content) minmax(136px, max-content) minmax(148px, max-content) !important;
+        gap: 7px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+        min-width: 216px !important;
+        grid-template-columns: minmax(42px, auto) minmax(78px, auto) minmax(76px, auto) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-type-selector {
+        min-width: 146px !important;
+        grid-template-columns: repeat(2, minmax(68px, 1fr)) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--main {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 7px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+        gap: 7px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions {
+        margin-left: 0 !important;
+    }
+}
+
+@media (max-width: 430px) {
+    body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+        height: 28px !important;
+        min-height: 28px !important;
+        padding: 0 8px !important;
+        font-size: 11px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .status-filter-controls {
+        min-width: 202px !important;
+        grid-template-columns: minmax(38px, auto) minmax(72px, auto) minmax(70px, auto) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center .timeline-view-mode-selector {
+        min-width: 126px !important;
+        grid-template-columns: repeat(2, minmax(58px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-type-selector {
+        min-width: 134px !important;
+        grid-template-columns: repeat(2, minmax(62px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .timeline-type-btn {
+        min-width: 62px !important;
     }
 }

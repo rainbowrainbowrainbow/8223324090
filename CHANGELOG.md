@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.67 - HR Staff Schedule Operations Release
+
+### HR/staff schedule / Reports payroll / Operations / Security / (Клешня, 29.06.2026) [codex]
+- **Графік переведено на HR-card staff pool** - active staff тепер приходить через light HR-card контракт, а freelance placeholders сховані без явного `include_freelance=true`.
+- **Категорії графіка вирівняно під роботу центру** - охорона показується в технічному відділі, а рецепція й менеджери зібрані в `Рецепшен` без зміни department у БД.
+- **Schedule quality додано до робочого контуру** - health score, issue badges, attendance indicators, forecast і manager accountability показують ризики до зміни.
+- **Reports/payroll стали staff-aware** - рядки зберігають `employee_staff_id` / `owner_staff_id`, display snapshot і reconciliation warnings без ламання старих звітів.
+- **Reception / Managers operations view додано в Center** - `/center#operations` показує стан зміни, бронювання, задачі, платежі, звіти й handover notes.
+- **Sensitive staff endpoints закрито ролями** - payroll і full attendance API більше не відкриті для всіх authenticated users.
+- **Релізні маркери піднято до `0.77.67`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.66 - Holidays Toggle Interaction Fix
 
 ### Timeline toolbar / Holidays toggle / Interaction fix / (Клешня, 29.06.2026) [codex]

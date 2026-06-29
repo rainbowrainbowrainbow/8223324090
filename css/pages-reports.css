@@ -1,0 +1,442 @@
+/* Reports page extracted surfaces. */
+
+.rpt-payroll-reconciliation {
+    display: grid;
+    gap: 8px;
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.92);
+}
+
+.rpt-payroll-reconciliation-head,
+.rpt-payroll-metrics,
+.rpt-payroll-issues,
+.rpt-payroll-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.rpt-payroll-reconciliation-head {
+    justify-content: space-between;
+}
+
+.rpt-payroll-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.rpt-payroll-status.needs_review {
+    background: rgba(245, 158, 11, 0.14);
+    color: #B45309;
+}
+
+.rpt-payroll-status.draft {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+
+.rpt-payroll-status.approved {
+    background: rgba(99, 102, 241, 0.12);
+    color: #4F46E5;
+}
+
+.rpt-payroll-filter-btn {
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.82);
+    color: #475569;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.rpt-payroll-filter-btn.active,
+.rpt-payroll-filter-btn:hover,
+.rpt-payroll-filter-btn:focus-visible {
+    border-color: rgba(16, 185, 129, 0.38);
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+    outline: none;
+}
+
+.rpt-payroll-metrics span,
+.rpt-payroll-issues span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.76);
+    color: #475569;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.rpt-payroll-issues span {
+    background: rgba(245, 158, 11, 0.12);
+    color: #92400E;
+}
+
+.rpt-payroll-issues.is-ok span {
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+}
+
+.rpt-payroll-row-status,
+.rpt-payroll-row-issues {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 16px;
+    margin: 3px auto 0;
+    padding: 0 5px;
+    border-radius: 5px;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.rpt-payroll-row-status {
+    width: max-content;
+    max-width: 42px;
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+}
+
+.rpt-payroll-row-status.needs_review {
+    background: rgba(245, 158, 11, 0.16);
+    color: #B45309;
+}
+
+.rpt-payroll-row-status.draft {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+
+.rpt-payroll-row-status.approved {
+    background: rgba(99, 102, 241, 0.12);
+    color: #4F46E5;
+}
+
+.rpt-payroll-row-issues {
+    width: 18px;
+    background: rgba(239, 68, 68, 0.14);
+    color: #B91C1C;
+}
+
+.rpt-sheet-warning-card {
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(245, 158, 11, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 251, 235, 0.92);
+    color: #92400E;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.rpt-sheet-empty-filter {
+    padding: 22px;
+    text-align: center;
+    color: #64748B;
+    font-weight: 850;
+}
+
+.rpt-sheet-table tr.has-payroll-needs_review td:first-child {
+    box-shadow: inset 3px 0 0 #F59E0B;
+}
+
+.rpt-sheet-table tr.has-payroll-reconciled td:first-child {
+    box-shadow: inset 3px 0 0 #10B981;
+}
+
+.rpt-sheet-table tr.has-payroll-approved td:first-child {
+    box-shadow: inset 3px 0 0 #6366F1;
+}
+
+body.dark-mode .rpt-payroll-reconciliation {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+body.dark-mode .rpt-payroll-filter-btn,
+body.dark-mode .rpt-payroll-metrics span {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #CBD5E1;
+}
+
+body.dark-mode .rpt-payroll-filter-btn.active,
+body.dark-mode .rpt-payroll-filter-btn:hover,
+body.dark-mode .rpt-payroll-filter-btn:focus-visible {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6EE7B7;
+    border-color: rgba(52, 211, 153, 0.32);
+}
+
+body.dark-mode .rpt-payroll-status,
+body.dark-mode .rpt-payroll-row-status {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6EE7B7;
+}
+
+body.dark-mode .rpt-payroll-status.needs_review,
+body.dark-mode .rpt-payroll-row-status.needs_review,
+body.dark-mode .rpt-payroll-issues span {
+    background: rgba(245, 158, 11, 0.16);
+    color: #FCD34D;
+}
+
+body.dark-mode .rpt-sheet-warning-card {
+    border-color: rgba(245, 158, 11, 0.24);
+    background: rgba(120, 53, 15, 0.22);
+    color: #FCD34D;
+}
+
+body.dark-mode .rpt-payroll-status.draft,
+body.dark-mode .rpt-payroll-row-status.draft {
+    background: rgba(148, 163, 184, 0.16);
+    color: #CBD5E1;
+}
+
+body.dark-mode .rpt-payroll-status.approved,
+body.dark-mode .rpt-payroll-row-status.approved {
+    background: rgba(129, 140, 248, 0.18);
+    color: #C4B5FD;
+}
+
+body.dark-mode .rpt-payroll-issues.is-ok span {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6EE7B7;
+}
+
+.rpt-report-quality {
+    display: grid;
+    gap: 8px;
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(79, 70, 229, 0.20);
+    border-radius: 8px;
+    background: rgba(238, 242, 255, 0.88);
+    color: #334155;
+}
+
+.rpt-report-quality.compact {
+    margin: 8px 0;
+}
+
+.rpt-report-quality-head,
+.rpt-report-quality-metrics,
+.rpt-report-quality-issues,
+.rpt-report-quality-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.rpt-report-quality-head {
+    justify-content: space-between;
+}
+
+.rpt-report-quality-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.rpt-report-quality-status.needs_review {
+    background: rgba(245, 158, 11, 0.14);
+    color: #B45309;
+}
+
+.rpt-report-quality-status.warning {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+
+.rpt-report-quality-filter-btn {
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.82);
+    color: #475569;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.rpt-report-quality-filter-btn.active,
+.rpt-report-quality-filter-btn:hover,
+.rpt-report-quality-filter-btn:focus-visible {
+    border-color: rgba(16, 185, 129, 0.38);
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+    outline: none;
+}
+
+.rpt-report-quality-metrics span,
+.rpt-report-quality-issues span,
+.rpt-report-quality-issue-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.76);
+    color: #475569;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.rpt-report-quality-issue-btn {
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+}
+
+.rpt-report-quality-issues span,
+.rpt-report-quality-issue-btn {
+    background: rgba(245, 158, 11, 0.12);
+    color: #92400E;
+}
+
+.rpt-report-quality-issue-btn.active,
+.rpt-report-quality-issue-btn:hover,
+.rpt-report-quality-issue-btn:focus-visible {
+    outline: none;
+    background: rgba(245, 158, 11, 0.20);
+    color: #78350F;
+}
+
+.rpt-report-quality-issues.is-ok span {
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+}
+
+.rpt-quality-row-status,
+.rpt-quality-row-issues {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 16px;
+    margin: 3px auto 0;
+    padding: 0 5px;
+    border-radius: 5px;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.rpt-quality-row-status {
+    width: max-content;
+    max-width: 54px;
+    background: rgba(16, 185, 129, 0.10);
+    color: #047857;
+}
+
+.rpt-quality-row-status.needs_review {
+    background: rgba(245, 158, 11, 0.16);
+    color: #B45309;
+}
+
+.rpt-quality-row-status.warning {
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+
+.rpt-quality-row-issues {
+    width: 18px;
+    background: rgba(239, 68, 68, 0.14);
+    color: #B91C1C;
+}
+
+.rpt-sheet-table tr.has-quality-needs_review td:first-child {
+    box-shadow: inset 3px 0 0 #F59E0B;
+}
+
+.rpt-sheet-table tr.has-quality-warning td:first-child {
+    box-shadow: inset 3px 0 0 #64748B;
+}
+
+body.dark-mode .rpt-report-quality {
+    background: rgba(30, 41, 59, 0.82);
+    border-color: rgba(129, 140, 248, 0.24);
+    color: #CBD5E1;
+}
+
+body.dark-mode .rpt-report-quality-filter-btn,
+body.dark-mode .rpt-report-quality-metrics span {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #CBD5E1;
+}
+
+body.dark-mode .rpt-report-quality-filter-btn.active,
+body.dark-mode .rpt-report-quality-filter-btn:hover,
+body.dark-mode .rpt-report-quality-filter-btn:focus-visible {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6EE7B7;
+    border-color: rgba(52, 211, 153, 0.32);
+}
+
+body.dark-mode .rpt-report-quality-status,
+body.dark-mode .rpt-quality-row-status {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6EE7B7;
+}
+
+body.dark-mode .rpt-report-quality-status.needs_review,
+body.dark-mode .rpt-quality-row-status.needs_review,
+body.dark-mode .rpt-report-quality-issues span,
+body.dark-mode .rpt-report-quality-issue-btn {
+    background: rgba(245, 158, 11, 0.16);
+    color: #FCD34D;
+}
+
+body.dark-mode .rpt-report-quality-issue-btn.active,
+body.dark-mode .rpt-report-quality-issue-btn:hover,
+body.dark-mode .rpt-report-quality-issue-btn:focus-visible {
+    background: rgba(245, 158, 11, 0.24);
+    color: #FDE68A;
+}
+
+body.dark-mode .rpt-report-quality-status.warning,
+body.dark-mode .rpt-quality-row-status.warning {
+    background: rgba(148, 163, 184, 0.16);
+    color: #CBD5E1;
+}
+
+body.dark-mode .rpt-report-quality-issues.is-ok span {
+    background: rgba(16, 185, 129, 0.16);
+    color: #6EE7B7;
+}

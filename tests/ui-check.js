@@ -82,29 +82,37 @@ checkPage('index.html', (doc, html) => {
     check('Timeline product sales button exists', !!doc.getElementById('productSalesBtn'));
     check('Timeline create booking toolbar button is absent', !doc.getElementById('newBookingBtn'));
     check('Booking customer UI reads canonical children without writing one-child payload', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('Діти:') && bookingCode.includes('bookingCustomerChildLine') && !bookingCode.includes('obj.customer ='));
-    check('Timeline view modes and holiday overlay controls are split',
+    check('Timeline period and timeline type controls are split',
         !!doc.querySelector('#periodSelector[data-schedule-view-mode-selector]')
         && !!doc.querySelector('[data-schedule-view-mode="day"][data-period="1"]')
         && !!doc.querySelector('[data-schedule-view-mode="week"][data-period="7"]')
-        && !!doc.querySelector('[data-schedule-view-mode="rooms"][data-timeline-view="rooms"]')
-        && !!doc.querySelector('#timelineHolidaysToggle[data-timeline-holidays-toggle]')
+        && !doc.querySelector('#periodSelector [data-schedule-view-mode="rooms"]')
+        && !!doc.querySelector('[data-timeline-type-selector]')
+        && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]')?.textContent.trim() === 'Банкети'
+        && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="animators"]')?.textContent.trim() === 'Свята'
+        && !doc.querySelector('#timelineHolidaysToggle')
+        && !htmlContains('index.html', 'timeline-holidays-switch')
+        && !htmlContains('index.html', 'timeline-holidays-switch-thumb')
+        && !htmlContains('index.html', 'Без свят')
         && !!doc.querySelector('#settingsTimelineDefaultView option[value="animators"][selected]')
         && !!doc.getElementById('bookingPrimaryAnimatorSelect')
         && !!doc.getElementById('settingsTimelineRoomFirstEnabled')
         && !!doc.getElementById('settingsTimelineDefaultView')
         && appCode.includes('window.TimelineView.setMode(button.dataset.scheduleViewMode)')
-        && appCode.includes('__timelineHolidaysDelegatedBound')
-        && appCode.includes("closest?.('[data-timeline-holidays-toggle]')")
-        && appCode.includes('window.TimelineView.toggleHolidays?.()')
+        && appCode.includes('__timelineTypeViewDelegatedBound')
+        && appCode.includes("closest?.('[data-timeline-type-selector] [data-timeline-view]')")
+        && appCode.includes('window.TimelineView.set(button.dataset.timelineView)')
         && htmlContains('js/timeline.js', 'function defaultTimelineViewMode()')
         && htmlContains('js/timeline.js', 'function timelineViewModeState()')
         && htmlContains('js/timeline.js', 'showHolidays: timelineShowHolidays()')
         && htmlContains('js/timeline.js', 'document.body.dataset.currentScheduleViewMode = viewMode')
         && htmlContains('js/timeline.js', 'delete document.body.dataset.scheduleViewMode')
         && htmlContains('js/timeline.js', "document.querySelectorAll('[data-schedule-view-mode-selector] [data-schedule-view-mode]')")
+        && htmlContains('js/timeline.js', "btn.closest('[data-timeline-type-selector]')")
         && htmlContains('js/timeline.js', 'setMode: setTimelineScheduleViewMode')
+        && htmlContains('js/timeline.js', 'set: setTimelineView')
         && htmlContains('js/timeline.js', 'toggleHolidays: toggleTimelineHolidays')
-        && htmlContains('js/timeline.js', "label.textContent = showHolidays ? 'Свята' : 'Без свят'")
+        && !htmlContains('js/timeline.js', "label.textContent = showHolidays ? 'Свята' : 'Без свят'")
         && htmlContains('js/timeline.js', 'defaultTimelineView')
         && htmlContains('js/timeline.js', "TIMELINE_VIEW_USER_CHOICE_VERSION = 'standard-default-v1'")
         && htmlContains('js/timeline.js', 'timelineViewChoiceStorageKey')
@@ -239,12 +247,15 @@ checkPage('index.html', (doc, html) => {
         && modalsCss.includes('.action-history-row')
         && modalsCss.includes('.action-history-modal')
         && htmlContains('js/settings.js', 'ActionHistoryView.renderList(items'));
-    check('Timeline toolbar keeps top modes clear and moves actions to lower row',
+    check('Timeline toolbar keeps filters on top and actions in the utility row',
         !!doc.querySelector('.control-panel.schedule-command-center.toolbarContainer[role="toolbar"]')
-        && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--left.toolbarZone .date-controls.toolbarGroup')
-        && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--center.toolbarZone .status-filter-controls.toolbarGroup.segmentedControl')
+        && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--left.toolbarZone .status-filter-controls.toolbarGroup.segmentedControl')
+        && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--center.toolbarZone #periodSelector[data-schedule-view-mode-selector]')
         && !!doc.querySelector('.schedule-command-row--main.toolbarRow .schedule-command-zone--view.toolbarZone .view-mode-controls.toolbarGroup')
-        && !!doc.querySelector('.schedule-command-zone--view #timelineHolidaysToggle.toolbarToggleChip[data-timeline-holidays-toggle]')
+        && !!doc.querySelector('.schedule-command-zone--view [data-timeline-type-selector] [data-timeline-view="rooms"]')
+        && !!doc.querySelector('.schedule-command-zone--view [data-timeline-type-selector] [data-timeline-view="animators"]')
+        && !doc.querySelector('.schedule-command-zone--view #timelineHolidaysToggle')
+        && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--date.toolbarZone .date-controls.toolbarGroup')
         && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--utility.toolbarZone .v32-controls.toolbarGroup')
         && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--actions.toolbarZone .action-buttons.toolbarGroup')
         && !!doc.querySelector('.schedule-command-zone--actions .action-buttons > #historyBtn')
@@ -256,7 +267,8 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'v0.77.59: three-zone Schedule Command Center layout')
         && htmlContains('css/responsive.css', 'v0.77.61: follow-up toolbar action row and non-overlapping view overlay')
         && htmlContains('css/responsive.css', 'v0.77.64: balanced top-row zones and compact view/holidays cluster')
-        && htmlContains('css/responsive.css', 'v0.77.65: make Holidays read as an actual overlay switch')
+        && htmlContains('css/responsive.css', 'Toolbar filter row: status + period + timeline type on top')
+        && htmlContains('css/responsive.css', 'Toolbar v2 local polish: filters on top, CRM segmented timeline type')
         && htmlContains('css/responsive.css', '.schedule-command-row--main')
         && htmlContains('css/responsive.css', '.schedule-command-zone--left')
         && htmlContains('css/responsive.css', '.schedule-command-zone--center')
@@ -268,17 +280,20 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
         && htmlContains('css/responsive.css', 'margin-left: 6px !important;'));
-    check('Timeline top toolbar keeps status and view controls distributed',
-        !!doc.querySelector('.schedule-command-row--main > .schedule-command-zone--center .status-filter-controls')
-        && !!doc.querySelector('.schedule-command-row--main > .schedule-command-zone--view .view-mode-controls')
-        && !!doc.querySelector('.schedule-command-zone--view .timeline-view-mode-selector [data-schedule-view-mode="rooms"]')
-        && !!doc.querySelector('.schedule-command-zone--view #timelineHolidaysToggle[data-timeline-holidays-toggle]')
-        && !doc.querySelector('.schedule-command-zone--center .view-mode-controls')
+    check('Timeline top toolbar keeps status, period, and timeline type controls distributed',
+        !!doc.querySelector('.schedule-command-row--main > .schedule-command-zone--left .status-filter-controls')
+        && !!doc.querySelector('.schedule-command-row--main > .schedule-command-zone--center .timeline-view-mode-selector')
+        && !!doc.querySelector('.schedule-command-row--main > .schedule-command-zone--view .timeline-type-selector')
+        && !!doc.querySelector('.schedule-command-zone--view [data-timeline-type-selector] [data-timeline-view="rooms"]')
+        && !!doc.querySelector('.schedule-command-zone--view [data-timeline-type-selector] [data-timeline-view="animators"]')
+        && !doc.querySelector('.schedule-command-zone--center .status-filter-controls')
+        && !doc.querySelector('.schedule-command-zone--view .timeline-view-mode-selector [data-schedule-view-mode="rooms"]')
+        && !doc.querySelector('.schedule-command-zone--view #timelineHolidaysToggle')
         && htmlContains('css/responsive.css', 'grid-template-areas: "left center view"')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view .view-mode-controls')
-        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(3, minmax(74px, 1fr))')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--view #timelineHolidaysToggle')
-        && htmlContains('css/responsive.css', 'min-width: 82px !important;'));
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .timeline-type-selector')
+        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(2, minmax(70px, 1fr))')
+        && htmlContains('css/responsive.css', 'min-width: 150px !important;'));
     check('Timeline medium toolbar stays compact across tablet breakpoints',
         htmlContains('css/responsive.css', '@media (max-width: 1536px) and (min-width: 769px)')
         && htmlContains('css/responsive.css', '@media (min-width: 700px) and (max-width: 768px)')
@@ -295,7 +310,8 @@ checkPage('index.html', (doc, html) => {
     check('Timeline toolbar controls use shared classes and requested design tokens',
         doc.querySelectorAll('.schedule-command-center .segmentedControl').length >= 3
         && Array.from(doc.querySelectorAll('.status-filter-controls .segmentedItem')).map(btn => btn.dataset.filter).join('|') === 'all|confirmed|preliminary'
-        && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .segmentedItem')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week|rooms'
+        && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .segmentedItem')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week'
+        && Array.from(doc.querySelectorAll('.timeline-type-selector .segmentedItem')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
         && Array.from(doc.querySelectorAll('.zoom-controls .segmentedItem')).map(btn => btn.dataset.zoom).join('|') === '15|30|60'
         && !!doc.querySelector('#prevDay.toolbarIconButton.toolbarGhostButton')
         && !!doc.querySelector('#nextDay.toolbarIconButton.toolbarGhostButton')
@@ -322,8 +338,10 @@ checkPage('index.html', (doc, html) => {
         Array.from(doc.querySelectorAll('.status-filter-controls .status-filter-btn')).every(btn => btn.tagName === 'BUTTON' && btn.getAttribute('type') === 'button' && btn.hasAttribute('aria-pressed'))
         && Array.from(doc.querySelectorAll('.status-filter-controls .status-filter-btn')).map(btn => `${btn.dataset.filter}:${btn.getAttribute('aria-pressed')}`).join('|') === 'all:true|confirmed:false|preliminary:false'
         && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .timeline-view-mode-btn')).every(btn => btn.tagName === 'BUTTON' && btn.getAttribute('type') === 'button' && btn.hasAttribute('aria-pressed'))
-        && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .timeline-view-mode-btn')).map(btn => `${btn.dataset.scheduleViewMode}:${btn.getAttribute('aria-pressed')}`).join('|') === 'day:true|week:false|rooms:false'
-        && doc.querySelector('#timelineHolidaysToggle')?.getAttribute('aria-pressed') === 'true'
+        && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .timeline-view-mode-btn')).map(btn => `${btn.dataset.scheduleViewMode}:${btn.getAttribute('aria-pressed')}`).join('|') === 'day:true|week:false'
+        && Array.from(doc.querySelectorAll('.timeline-type-selector .timeline-type-btn')).every(btn => btn.tagName === 'BUTTON' && btn.getAttribute('type') === 'button' && btn.hasAttribute('aria-pressed'))
+        && Array.from(doc.querySelectorAll('.timeline-type-selector .timeline-type-btn')).map(btn => `${btn.dataset.timelineView}:${btn.getAttribute('aria-pressed')}`).join('|') === 'rooms:false|animators:true'
+        && !doc.querySelector('#timelineHolidaysToggle')
         && Array.from(doc.querySelectorAll('.zoom-controls .zoom-btn')).every(btn => btn.tagName === 'BUTTON' && btn.getAttribute('type') === 'button' && btn.hasAttribute('aria-pressed'))
         && !doc.querySelector('.timeline-compact-toggle')
         && doc.querySelector('#compactModeToggle')?.getAttribute('aria-checked') === 'false'
@@ -353,8 +371,10 @@ checkPage('index.html', (doc, html) => {
         && doc.querySelector('#periodSelector[data-schedule-view-mode-selector]')
         && doc.querySelector('[data-schedule-view-mode="day"][aria-pressed="true"]')
         && doc.querySelector('[data-schedule-view-mode="week"][aria-pressed="false"]')
-        && doc.querySelector('[data-schedule-view-mode="rooms"][aria-pressed="false"]')
-        && doc.querySelector('#timelineHolidaysToggle[data-timeline-holidays-toggle][aria-pressed="true"]')
+        && !doc.querySelector('#periodSelector [data-schedule-view-mode="rooms"]')
+        && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"][aria-pressed="false"]')
+        && doc.querySelector('[data-timeline-type-selector] [data-timeline-view="animators"][aria-pressed="true"]')
+        && !doc.querySelector('#timelineHolidaysToggle[data-timeline-holidays-toggle]')
         && Array.from(doc.querySelectorAll('.zoom-controls .zoom-btn')).map(btn => `${btn.dataset.zoom}:${btn.getAttribute('aria-pressed')}`).join('|') === '15:false|30:false|60:false'
         && doc.querySelector('#compactModeToggle[type="checkbox"][aria-checked="false"]')
         && doc.querySelector('#digestBtn[aria-busy="false"][aria-disabled="false"]')
@@ -370,10 +390,12 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/app.js', "closest?.('[data-schedule-view-mode-selector] [data-schedule-view-mode]')")
         && !htmlContains('js/app.js', "closest?.('[data-schedule-view-mode]')")
         && htmlContains('js/app.js', 'window.TimelineView.setMode(button.dataset.scheduleViewMode)')
-        && htmlContains('js/app.js', '__timelineHolidaysDelegatedBound')
-        && htmlContains('js/app.js', "closest?.('[data-timeline-holidays-toggle]')")
-        && htmlContains('js/app.js', "const holidaysToggle = document.getElementById('timelineHolidaysToggle')")
-        && htmlContains('js/app.js', 'window.TimelineView.toggleHolidays?.()')
+        && htmlContains('js/app.js', '__timelineTypeViewDelegatedBound')
+        && htmlContains('js/app.js', "closest?.('[data-timeline-type-selector] [data-timeline-view]')")
+        && htmlContains('js/app.js', 'window.TimelineView.set(button.dataset.timelineView)')
+        && !htmlContains('js/app.js', '__timelineHolidaysDelegatedBound')
+        && !htmlContains('js/app.js', "closest?.('[data-timeline-holidays-toggle]')")
+        && !htmlContains('js/app.js', "const holidaysToggle = document.getElementById('timelineHolidaysToggle')")
         && htmlContains('js/app.js', "historyBtnEl.addEventListener('click', showHistory)")
         && htmlContains('js/app.js', "digestBtn.addEventListener('click', sendDailyDigest)")
         && htmlContains('js/app.js', "document.querySelectorAll('.zoom-btn').forEach(btn => {")
@@ -409,11 +431,13 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/app.js', 'function focusTimelineActionMenuItem')
         && htmlContains('js/app.js', "e.key !== 'ArrowDown'")
         && htmlContains('js/app.js', "e.key === 'ArrowUp'"));
-    check('Timeline date navigation cluster keeps date primary and Now compact',
-        !!doc.querySelector('.schedule-command-zone--left .date-controls.date-navigation-cluster')
+    check('Timeline date navigation cluster keeps date primary and metadata out of the toolbar',
+        !!doc.querySelector('.schedule-command-row--utility .schedule-command-zone--date .date-controls.date-navigation-cluster')
         && !!doc.querySelector('.date-navigation-cluster .date-button-shell > #timelineDate[type="date"]')
         && !!doc.querySelector('.date-navigation-cluster .date-button-calendar[aria-hidden="true"]')
-        && !!doc.querySelector('.date-navigation-cluster .day-info .date-meta-dot[aria-hidden="true"]')
+        && !doc.querySelector('.date-navigation-cluster .day-info')
+        && !doc.querySelector('#dayOfWeekLabel')
+        && !doc.querySelector('#workingHours')
         && doc.querySelector('.date-navigation-cluster #todayBtn')?.textContent.trim() === 'Зараз'
         && htmlContains('css/responsive.css', '.date-navigation-cluster')
         && htmlContains('css/responsive.css', '.date-button-shell')
@@ -1845,34 +1869,63 @@ check('Timeline compact fit-screen width uses interval cells without adding the 
     && !timelineFitCellWidthBlock.includes('+ 1')
     && !timelineFitCellWidthBlock.includes('range.end - range.start'));
 check('Timeline now-line is measured to rows instead of covering the sticky time scale', uiCode.includes("document.getElementById('timelineLines')") && uiCode.includes('timelineLines.scrollHeight') && uiCode.includes('--timeline-now-line-top') && uiCode.includes('--timeline-now-line-height') && timelineConstructorCss.includes('top: var(--timeline-now-line-top, 0)') && timelineConstructorCss.includes('height: var(--timeline-now-line-height, 100%)') && !timelineConstructorCss.includes('.now-line-global {\n    position: absolute;\n    top: 0;\n    bottom: 0;'));
-check('Timeline mode selector keeps day/week/rooms exclusive and holidays independent', htmlContains('index.html', 'data-schedule-view-mode="day"') && htmlContains('index.html', 'data-schedule-view-mode="week"') && htmlContains('index.html', 'data-schedule-view-mode="rooms"') && htmlContains('index.html', 'data-timeline-holidays-toggle') && !htmlContains('index.html', 'data-period="3"') && !htmlContains('index.html', 'id="daysCount"') && timelineConfigCode.includes('TIMELINE_PERIOD_WEEK = 7') && timelineConfigCode.includes('normalizeTimelineModeState') && appCode.includes('function applyTimelinePeriod') && appCode.includes("__timelineScheduleModeDelegatedBound") && appCode.includes("__timelinePeriodDelegatedBound") && appCode.includes('function bootstrapInitializeApp') && appCode.includes("document.readyState === 'loading'") && appCode.includes("closest?.('[data-schedule-view-mode-selector] [data-schedule-view-mode]')") && !appCode.includes("closest?.('[data-schedule-view-mode]')") && timelineVisibilityCode.includes("visualBlock('viewModes'") && timelineCode.includes("const TIMELINE_SCHEDULE_VIEW_DAY = 'day'") && timelineCode.includes("const TIMELINE_SCHEDULE_VIEW_WEEK = 'week'") && timelineCode.includes("const TIMELINE_SCHEDULE_VIEW_ROOMS = 'rooms'") && timelineCode.includes("document.body.dataset.currentScheduleViewMode = viewMode") && timelineCode.includes("delete document.body.dataset.scheduleViewMode") && timelineCode.includes("document.querySelectorAll('[data-schedule-view-mode-selector] [data-schedule-view-mode]')") && !timelineCode.includes("document.querySelectorAll('[data-schedule-view-mode]')") && timelineCode.includes("document.querySelectorAll('[data-timeline-holidays-toggle]')") && responsiveCss.includes('.timeline-overlay-toggle.active') && responsiveCss.includes('.timeline-overlay-toggle.toolbarToggleChip.active') && responsiveCss.includes('.timeline-view-mode-btn.active'));
-const timelineViewModeVisualRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn');
-const timelineViewModeInactiveVisualRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible)');
-const timelineViewModeActiveVisualRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center .timeline-view-mode-selector .timeline-view-mode-btn.active');
-const timelineOverlayVisualRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip');
-const timelineOverlayActiveVisualRule = cssRuleIncludingSelectorText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center .toolbarGroup .timeline-overlay-toggle.toolbarToggleChip[aria-pressed="true"]');
-check('Timeline view mode visual hierarchy separates modes from holidays overlay',
+check('Timeline period selector and timeline type selector stay separate',
+    htmlContains('index.html', 'data-schedule-view-mode="day"')
+    && htmlContains('index.html', 'data-schedule-view-mode="week"')
+    && !htmlContains('index.html', 'data-schedule-view-mode="rooms"')
+    && htmlContains('index.html', 'data-timeline-type-selector')
+    && htmlContains('index.html', 'data-timeline-view="rooms"')
+    && htmlContains('index.html', 'data-timeline-view="animators"')
+    && htmlContains('index.html', '>Банкети</button>')
+    && htmlContains('index.html', '>Свята</button>')
+    && !htmlContains('index.html', 'data-timeline-holidays-toggle')
+    && !htmlContains('index.html', 'id="timelineHolidaysToggle"')
+    && !htmlContains('index.html', 'Без свят')
+    && !htmlContains('index.html', 'timeline-holidays-switch')
+    && !htmlContains('index.html', 'timeline-holidays-switch-thumb')
+    && !htmlContains('index.html', 'id="daysCount"')
+    && timelineConfigCode.includes('TIMELINE_PERIOD_WEEK = 7')
+    && timelineConfigCode.includes('normalizeTimelineModeState')
+    && appCode.includes('function applyTimelinePeriod')
+    && appCode.includes("__timelineScheduleModeDelegatedBound")
+    && appCode.includes("__timelinePeriodDelegatedBound")
+    && appCode.includes("__timelineTypeViewDelegatedBound")
+    && appCode.includes('function bootstrapInitializeApp')
+    && appCode.includes("document.readyState === 'loading'")
+    && appCode.includes("closest?.('[data-schedule-view-mode-selector] [data-schedule-view-mode]')")
+    && !appCode.includes("closest?.('[data-schedule-view-mode]')")
+    && appCode.includes("closest?.('[data-timeline-type-selector] [data-timeline-view]')")
+    && appCode.includes('window.TimelineView.set(button.dataset.timelineView)')
+    && !appCode.includes("closest?.('[data-timeline-holidays-toggle]')")
+    && timelineVisibilityCode.includes("visualBlock('viewModes'")
+    && timelineCode.includes("const TIMELINE_SCHEDULE_VIEW_DAY = 'day'")
+    && timelineCode.includes("const TIMELINE_SCHEDULE_VIEW_WEEK = 'week'")
+    && timelineCode.includes("const TIMELINE_VIEW_ROOMS = 'rooms'")
+    && timelineCode.includes("const TIMELINE_VIEW_ANIMATORS = 'animators'")
+    && timelineCode.includes("document.body.dataset.currentScheduleViewMode = viewMode")
+    && timelineCode.includes("delete document.body.dataset.scheduleViewMode")
+    && timelineCode.includes("document.querySelectorAll('[data-schedule-view-mode-selector] [data-schedule-view-mode]')")
+    && timelineCode.includes("btn.closest('[data-timeline-type-selector]')")
+    && !timelineCode.includes("document.querySelectorAll('[data-timeline-holidays-toggle]')")
+    && responsiveCss.includes('.timeline-view-mode-btn.active')
+    && responsiveCss.includes('.timeline-type-btn.active')
+    && responsiveCss.includes('.timeline-type-btn[aria-pressed="true"]'));
+check('Timeline type visual hierarchy uses CRM segmented control instead of a switch',
     htmlContains('index.html', 'class="period-selector timeline-view-mode-selector segmentedControl"')
-    && htmlContains('index.html', 'id="timelineHolidaysToggle"')
-    && htmlContains('index.html', 'class="timeline-overlay-toggle timeline-holidays-toggle toolbarToggleChip')
-    && htmlContains('index.html', 'timeline-holidays-switch')
-    && htmlContains('index.html', 'timeline-holidays-switch-thumb')
-    && htmlContains('index.html', 'timeline-holidays-label')
-    && timelineViewModeVisualRule.includes('min-width: 92px')
-    && timelineViewModeVisualRule.includes('font-weight: 850')
-    && timelineViewModeInactiveVisualRule.includes('rgba(226, 232, 240, 0.62)')
-    && timelineViewModeActiveVisualRule.includes('var(--toolbar-active-bg)')
-    && timelineViewModeActiveVisualRule.includes('0 10px 22px rgba(14, 165, 163, 0.18)')
-    && responsiveCss.includes('#timelineHolidaysToggle.timeline-holidays-toggle')
-    && responsiveCss.includes('min-width: 100px !important')
-    && responsiveCss.includes('rgba(30, 41, 59, 0.48)')
-    && responsiveCss.includes('.timeline-holidays-switch')
-    && responsiveCss.includes('.timeline-holidays-switch-thumb')
-    && responsiveCss.includes('content: none !important')
-    && responsiveCss.includes('transform: translateX(10px)')
-    && timelineOverlayVisualRule.includes('rgba(30, 41, 59, 0.36)')
-    && timelineOverlayActiveVisualRule.includes('rgba(20, 184, 166, 0.13)')
-    && timelineOverlayActiveVisualRule.includes('box-shadow: none'));
+    && htmlContains('index.html', 'class="timeline-type-selector segmentedControl"')
+    && htmlContains('index.html', 'class="timeline-type-btn segmentedItem"')
+    && !htmlContains('index.html', 'class="timeline-overlay-toggle timeline-holidays-toggle toolbarToggleChip')
+    && !htmlContains('index.html', 'timeline-holidays-label')
+    && responsiveCss.includes('Toolbar v2 local polish: filters on top, CRM segmented timeline type')
+    && responsiveCss.includes('body.timeline-dashboard-page .schedule-command-center .timeline-type-selector')
+    && responsiveCss.includes('grid-template-columns: repeat(2, minmax(70px, 1fr))')
+    && responsiveCss.includes('min-width: 150px !important')
+    && responsiveCss.includes('body.timeline-dashboard-page .schedule-command-center .timeline-type-btn')
+    && responsiveCss.includes('rgba(226, 232, 240, 0.64)')
+    && responsiveCss.includes('body.timeline-dashboard-page .schedule-command-center .timeline-type-btn.active')
+    && responsiveCss.includes('linear-gradient(135deg, #18c7b6, #0ea5a3)')
+    && responsiveCss.includes('overflow-x: auto !important')
+    && responsiveCss.includes('overflow-x: clip !important'));
 check('Timeline dark event cards use solid readable surfaces', darkModeCss.includes('--eg-event-quest-bg: linear-gradient') && darkModeCss.includes('.timeline-dashboard-page .mini-booking-block') && darkModeCss.includes('.timeline-dashboard-page.dark-mode .booking-block,') && darkModeCss.includes('body.timeline-dashboard-page.dark-mode .booking-block.linked-ghost') && darkModeCss.includes('.timeline-dashboard-page .mini-booking-block.banquet'));
 check('Timeline booking blocks show selected costumes on the visual card',
     timelineCode.includes('function bookingCostumeLabel')
@@ -3780,6 +3833,19 @@ check('HR staff profile opens with team identity card and editable name/phone/ph
     && htmlContains('css/hr-page.css', '.hr-staff-photo-editor')
     && htmlContains('css/hr-page.css', '.hr-staff-photo-preview')
     && htmlContains('css/hr-page.css', 'body.dark-mode .hr-staff-profile-quick-fields input'));
+check('HR staff profile shows derived lifecycle checklist without a new schema',
+    htmlContains('hr.html', 'id="editStaffLifecycleChecklist"')
+    && htmlContains('hr.html', 'class="hr-staff-foundation-panel hr-lifecycle-panel"')
+    && hrCode.includes('function renderStaffLifecycleChecklist')
+    && hrCode.includes('function loadStaffLifecycleChecklist')
+    && hrCode.includes("hrFetch(`/staff/${id}/lifecycle-checklist`)")
+    && hrCode.includes('renderLifecycleSection')
+    && hrRouteCode.includes('function loadStaffLifecycleChecklist')
+    && hrRouteCode.includes("router.get('/staff/:id/lifecycle-checklist', requireHrManage")
+    && hrRouteCode.includes('candidate_staff_link_missing')
+    && hrFoundationCss.includes('.hr-lifecycle-panel')
+    && hrFoundationCss.includes('.hr-lifecycle-summary')
+    && hrFoundationCss.includes('body.dark-mode .hr-lifecycle-panel'));
 check('HR/invite/changelog polish prevents long labels from overflowing compact surfaces',
     hrPageCss.includes('.hr-profession-card-head > div')
     && hrPageCss.includes('.hr-profession-chip')
@@ -3787,6 +3853,7 @@ check('HR/invite/changelog polish prevents long labels from overflowing compact 
     && hrPageCss.includes('.hr-staff-profile-quick-fields { grid-template-columns: 1fr; }')
     && hrFoundationCss.includes('@media (max-width: 560px)')
     && hrFoundationCss.includes('.hr-offboarding-readiness-grid {\n        grid-template-columns: 1fr;')
+    && hrFoundationCss.includes('.hr-lifecycle-item {\n        grid-template-columns: 1fr;')
     && staffHtmlForUiPolish.includes('.schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover')
     && staffHtmlForUiPolish.includes('.sub-group-row td')
     && staffHtmlForUiPolish.includes('overflow-wrap: anywhere')

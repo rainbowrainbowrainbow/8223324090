@@ -332,6 +332,7 @@ let staffResourceOptionsLoadSeq = 0;
 let staffRoleAssignmentsLoadSeq = 0;
 let staffPayrollSchemeLoadSeq = 0;
 let staffOffboardingReadiness = null;
+let staffLifecycleLoadSeq = 0;
 let hrRealtimeRefreshTimer = null;
 
 // ==========================================
@@ -4801,6 +4802,138 @@ function renderStaffOffboardingReadiness(payload = {}) {
     </div>`;
 }
 
+function lifecycleStatusLabel(status = '') {
+    return {
+        done: 'Готово',
+        blocked: 'Блокер',
+        missing: 'Потрібно',
+        unknown: 'Немає даних',
+        not_applicable: 'Не актуально'
+    }[status] || 'Потрібно';
+}
+
+function lifecycleStatusTone(item = {}) {
+    if (item.status === 'done') return 'is-ok';
+    if (item.status === 'blocked' || item.severity === 'critical') return 'is-critical';
+    if (item.status === 'unknown') return 'is-unknown';
+    if (item.status === 'not_applicable') return 'is-muted';
+    return 'is-warning';
+}
+
+function lifecycleSummaryLabel(value) {
+    return value ? 'Так' : 'Ні';
+}
+
+function lifecycleActionNode(action, staffId, item = {}) {
+    const id = Number(staffId);
+    if (!action || !Number.isFinite(id) || id <= 0 || item.complete || item.status === 'not_applicable') return '';
+    const button = (label, handler) => `<button type="button" class="hr-lifecycle-action" onclick="${handler}">${escapeHtml(label)}</button>`;
+    if (action === 'profile') return button('Профіль', "document.getElementById('editStaffName')?.focus()");
+    if (action === 'documents') return button('Документи', 'focusStaffDocumentsPanel()');
+    if (action === 'training') return button('Readiness', `openStaffTrainingReadiness(${id})`);
+    if (action === 'onboarding' && canManage) return button('Onboarding', `openStaffOnboardingAssignment(${id})`);
+    if (action === 'account' && canLinkAccounts()) {
+        const handler = item.key === 'account_linked'
+            ? `openAccountLinkForStaff(${id}, this)`
+            : `openAccountForStaff(${id}, this)`;
+        return button('Акаунт', handler);
+    }
+    if (action === 'face') return button('Face', "showNotification('Face descriptor додається через camera/check-in flow', 'info')");
+    if (action === 'schedule' || action === 'attendance') return '<a class="hr-lifecycle-action" href="/staff">Графік</a>';
+    if (action === 'payroll') return '<a class="hr-lifecycle-action" href="/hr#salary">Payroll</a>';
+    if (action === 'offboarding') return button('Offboarding', "document.getElementById('editOffboardingReason')?.focus()");
+    return '';
+}
+
+function renderLifecycleItem(item = {}, staffId) {
+    const tone = lifecycleStatusTone(item);
+    const detail = item.detail ? `<small>${escapeHtml(item.detail)}</small>` : '';
+    const count = item.count !== null && item.count !== undefined ? `<i>${escapeHtml(String(item.count))}</i>` : '';
+    const action = lifecycleActionNode(item.action, staffId, item);
+    return `<article class="hr-lifecycle-item ${tone}" data-lifecycle-item="${escapeHtml(item.key || '')}">
+        <div class="hr-lifecycle-item-main">
+            <span class="hr-lifecycle-dot" aria-hidden="true"></span>
+            <div>
+                <b>${escapeHtml(item.label || item.key || 'Checklist item')}</b>
+                ${detail}
+            </div>
+        </div>
+        <div class="hr-lifecycle-item-side">
+            ${count}
+            <span>${escapeHtml(lifecycleStatusLabel(item.status))}</span>
+            ${action}
+        </div>
+    </article>`;
+}
+
+function renderLifecycleSection(section = {}, staffId) {
+    const items = Array.isArray(section.items) ? section.items : [];
+    return `<section class="hr-lifecycle-section ${section.status === 'critical' ? 'is-critical' : section.status === 'warning' ? 'is-warning' : 'is-ok'}">
+        <div class="hr-lifecycle-section-head">
+            <div>
+                <strong>${escapeHtml(section.label || section.key || 'Lifecycle')}</strong>
+                <span>${Number(section.done || 0)}/${Number(section.total || 0)} · ${Number(section.percent || 0)}%</span>
+            </div>
+            <em>${section.blocked ? `${Number(section.blocked)} блок.` : section.warning ? `${Number(section.warning)} увага` : 'ok'}</em>
+        </div>
+        <div class="hr-lifecycle-items">${items.map(item => renderLifecycleItem(item, staffId)).join('')}</div>
+    </section>`;
+}
+
+function renderStaffLifecycleChecklist(payload = {}) {
+    const staffId = Number(payload.staff?.id || activeEditStaffId() || 0);
+    const summary = payload.summary || {};
+    const metrics = payload.metrics || {};
+    const sections = Array.isArray(payload.sections) ? payload.sections : [];
+    const findingHtml = (payload.findings || []).map(finding =>
+        `<div class="hr-lifecycle-finding">${escapeHtml(finding.message || finding.key || '')}</div>`
+    ).join('');
+    return `<div class="hr-lifecycle-summary">
+        <div class="hr-lifecycle-summary-card ${summary.status === 'critical' ? 'is-critical' : summary.status === 'warning' ? 'is-warning' : 'is-ok'}">
+            <b>${Number(summary.blocker_count || 0)}</b>
+            <span>блокери</span>
+        </div>
+        <div class="hr-lifecycle-summary-card">
+            <b>${Number(summary.warning_count || 0)}</b>
+            <span>warnings</span>
+        </div>
+        <div class="hr-lifecycle-summary-card ${summary.ready_for_schedule ? 'is-ok' : 'is-warning'}">
+            <b>${escapeHtml(lifecycleSummaryLabel(summary.ready_for_schedule))}</b>
+            <span>готовий до графіка</span>
+        </div>
+        <div class="hr-lifecycle-summary-card ${summary.ready_for_offboarding ? 'is-ok' : 'is-muted'}">
+            <b>${escapeHtml(lifecycleSummaryLabel(summary.ready_for_offboarding))}</b>
+            <span>offboarding закритий</span>
+        </div>
+    </div>
+    <div class="hr-lifecycle-metrics">
+        <span>Account: ${Number(metrics.active_account_count || 0)}</span>
+        <span>Face: ${Number(metrics.face_descriptor_count || 0)}</span>
+        <span>Readiness: ${Number(metrics.readiness_percent || 0)}%</span>
+        <span>Future shifts: ${Number(metrics.future_schedule_count || 0)}</span>
+        <span>Payroll open: ${Number(metrics.open_payroll_count || 0)}</span>
+    </div>
+    <div class="hr-lifecycle-sections">${sections.map(section => renderLifecycleSection(section, staffId)).join('')}</div>
+    ${findingHtml ? `<div class="hr-lifecycle-findings">${findingHtml}</div>` : ''}`;
+}
+
+async function loadStaffLifecycleChecklist(staffId, options = {}) {
+    const root = document.getElementById('editStaffLifecycleChecklist');
+    const id = Number(staffId);
+    if (!root || !Number.isFinite(id) || id <= 0) return;
+    if (!canManage) {
+        root.innerHTML = renderStaffFoundationEmpty('Lifecycle checklist доступний тільки HR/керівнику.');
+        return;
+    }
+    const seq = ++staffLifecycleLoadSeq;
+    root.innerHTML = 'Lifecycle checklist завантажується...';
+    const data = await hrFetch(`/staff/${id}/lifecycle-checklist`).catch(() => null);
+    if (seq !== staffLifecycleLoadSeq) return;
+    root.innerHTML = data?.success
+        ? renderStaffLifecycleChecklist(data.data || {})
+        : renderStaffFoundationEmpty(data?.error || 'Не вдалося завантажити lifecycle checklist.');
+}
+
 function setStaffFoundationLoading() {
     const docs = document.getElementById('editStaffDocuments');
     const medical = document.getElementById('editMedicalBookList');
@@ -5250,6 +5383,7 @@ async function openStaffEdit(staffId, options = {}) {
     showHrEditableModal('staffEditModal');
     if (focusTarget === 'documents') focusStaffDocumentsPanel();
     loadStaffProfileHistory(staffId);
+    loadStaffLifecycleChecklist(staffId);
     loadStaffFoundation(staffId);
     loadStaffRoleAssignments(staffId);
     loadStaffPayrollScheme(staffId);

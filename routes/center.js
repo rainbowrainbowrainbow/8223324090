@@ -60,6 +60,90 @@ function scopedBookingParams(user, params = [], alias = 'b') {
     return { params: queryParams, sql: visibility.sql, condition: visibility.condition };
 }
 
+function timeToMinutes(value) {
+    const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+}
+
+function timeFromTimestamp(value) {
+    if (!value) return null;
+    try {
+        return new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/Kyiv',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).format(new Date(value));
+    } catch {
+        return null;
+    }
+}
+
+function normalizeDateText(value) {
+    if (!value) return null;
+    if (typeof value === 'string') return value.slice(0, 10);
+    try {
+        return value.toISOString().slice(0, 10);
+    } catch {
+        return String(value).slice(0, 10);
+    }
+}
+
+function parseOperationsNotes(rows = []) {
+    const raw = rows.find(row => row?.value)?.value;
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        const items = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.notes) ? parsed.notes : []);
+        return items
+            .map(item => typeof item === 'string' ? { text: item } : item)
+            .filter(item => String(item?.text || item?.note || '').trim())
+            .slice(0, 8);
+    } catch {
+        return String(raw)
+            .split(/\r?\n/)
+            .map(text => text.trim())
+            .filter(Boolean)
+            .slice(0, 8)
+            .map(text => ({ text }));
+    }
+}
+
+function shiftAttendanceStatus(row, nowMinutes) {
+    const plannedStart = timeToMinutes(row.shift_start);
+    const plannedEnd = timeToMinutes(row.shift_end);
+    const clockIn = row.clock_in || row.check_in;
+    const clockOut = row.clock_out || row.check_out;
+    const dbStatus = String(row.time_status || '').trim().toLowerCase();
+    const lateMinutes = Number(row.late_minutes || 0);
+
+    if (clockIn && clockOut) return { status: 'completed', label: 'завершено', severity: 'ok' };
+    if (clockIn) {
+        if (dbStatus === 'late' || lateMinutes > 0) return { status: 'late', label: 'запізнення', severity: 'warning' };
+        return { status: 'checked_in', label: 'на зміні', severity: 'ok' };
+    }
+    if (['excused', 'sick', 'vacation', 'day_off', 'dayoff'].includes(dbStatus)) {
+        return { status: 'excused', label: 'поважна причина', severity: 'info' };
+    }
+    if (plannedStart !== null && nowMinutes !== null) {
+        if (nowMinutes > plannedStart + 60) return { status: 'absent', label: 'не вийшов', severity: 'critical' };
+        if (nowMinutes > plannedStart + 10) return { status: 'late', label: 'запізнюється', severity: 'warning' };
+    }
+    if (plannedStart !== null && plannedEnd !== null && nowMinutes !== null && nowMinutes >= plannedStart && nowMinutes <= plannedEnd) {
+        return { status: 'planned', label: 'планова зміна зараз', severity: 'info' };
+    }
+    return { status: 'planned', label: 'заплановано', severity: 'info' };
+}
+
+function operationsIssue(type, severity, title, detail = '', ref = {}) {
+    return { type, severity, title, detail, ref };
+}
+
 // Worker status based on last activity
 function computeWorkerStatus(lastActivityAt) {
     if (!lastActivityAt) return { status: 'offline', label: 'Офлайн', emoji: '🔴' };
@@ -791,6 +875,325 @@ router.get('/briefing', async (req, res) => {
     } catch (err) {
         log.error('GET /center/briefing error', err);
         res.status(500).json({ success: false, error: 'Помилка компіляції брифінгу' });
+    }
+});
+
+// ==========================================
+// RECEPTION / MANAGERS OPERATIONS CENTER
+// ==========================================
+
+router.get('/operations/today', async (req, res) => {
+    try {
+        const now = getKyivNow();
+        const today = formatDateISO(now);
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const bookingsScope = scopedBookingParams(req.user, [today]);
+
+        const [
+            bookingsRes,
+            scheduleRes,
+            tasksRes,
+            reportsRes,
+            historyRes,
+            notesRes
+        ] = await Promise.all([
+            pool.query(`
+                SELECT
+                    b.id,
+                    b.date::text AS date,
+                    b.time,
+                    b.duration,
+                    b.label,
+                    b.program_name,
+                    b.category,
+                    b.status,
+                    b.room,
+                    b.price,
+                    b.payment_status,
+                    b.paid_amount,
+                    b.customer_id,
+                    b.group_name,
+                    c.name AS customer_name,
+                    c.phone AS customer_phone
+                FROM bookings b
+                LEFT JOIN customers c ON c.id = b.customer_id
+                WHERE b.date::date = $1::date
+                  AND b.status != 'cancelled'
+                  AND b.linked_to IS NULL
+                  ${bookingsScope.sql}
+                ORDER BY b.time ASC, b.id ASC
+                LIMIT 120
+            `, bookingsScope.params).catch(err => {
+                log.warn('Operations center bookings read failed', err.message);
+                return { rows: [] };
+            }),
+            pool.query(`
+                SELECT
+                    ss.id AS schedule_id,
+                    ss.staff_id,
+                    ss.date::text AS date,
+                    ss.shift_start,
+                    ss.shift_end,
+                    ss.status,
+                    ss.note,
+                    s.name,
+                    s.department,
+                    s.position,
+                    s.role_type,
+                    COALESCE(s.is_active, true) AS is_active,
+                    tr.id AS time_record_id,
+                    tr.clock_in,
+                    tr.clock_out,
+                    tr.status AS time_status,
+                    COALESCE(tr.late_minutes, 0) AS late_minutes,
+                    COALESCE(tr.early_leave_minutes, 0) AS early_leave_minutes,
+                    sc.id AS checkin_id,
+                    sc.check_in,
+                    sc.check_out,
+                    sc.method AS checkin_method
+                FROM staff_schedule ss
+                JOIN staff s ON s.id = ss.staff_id
+                LEFT JOIN hr_time_records tr
+                  ON tr.staff_id = ss.staff_id
+                 AND tr.record_date = ss.date::date
+                LEFT JOIN staff_checkins sc
+                  ON sc.staff_id = ss.staff_id
+                 AND sc.date = ss.date::date
+                WHERE ss.date::date = $1::date
+                  AND ss.status IN ('working', 'remote')
+                  AND COALESCE(s.is_active, true) = true
+                ORDER BY ss.shift_start ASC NULLS LAST, s.department ASC, s.name ASC
+                LIMIT 200
+            `, [today]).catch(err => {
+                log.warn('Operations center staff schedule read failed', err.message);
+                return { rows: [] };
+            }),
+            pool.query(`
+                SELECT
+                    id,
+                    title,
+                    status,
+                    priority,
+                    assigned_to,
+                    category,
+                    source_type,
+                    source_id,
+                    date,
+                    deadline,
+                    created_at,
+                    updated_at
+                FROM tasks
+                WHERE COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+                  AND archived_at IS NULL
+                  AND (
+                    (NULLIF(date, '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND date::date = $1::date)
+                    OR deadline::date <= $1::date
+                    OR priority IN ('urgent', 'high')
+                  )
+                ORDER BY
+                    CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+                    deadline ASC NULLS LAST,
+                    updated_at DESC
+                LIMIT 24
+            `, [today]).catch(err => {
+                log.warn('Operations center tasks read failed', err.message);
+                return { rows: [] };
+            }),
+            pool.query(`
+                SELECT
+                    id,
+                    type,
+                    category,
+                    description,
+                    submitted_by,
+                    submitted_via,
+                    status,
+                    approval_status,
+                    report_lifecycle_status,
+                    created_at,
+                    updated_at
+                FROM reports
+                WHERE COALESCE(status, 'new') IN ('new', 'processing')
+                   OR COALESCE(approval_status, 'none') IN ('pending', 'task_created', 'in_review', 'rejected')
+                   OR COALESCE(report_lifecycle_status, 'open') = 'open'
+                ORDER BY created_at DESC
+                LIMIT 12
+            `).catch(err => {
+                log.warn('Operations center reports read failed', err.message);
+                return { rows: [] };
+            }),
+            pool.query(`
+                SELECT id, action, username, data, created_at
+                FROM history
+                WHERE created_at::date = $1::date
+                ORDER BY created_at DESC
+                LIMIT 20
+            `, [today]).catch(err => {
+                log.warn('Operations center history read failed', err.message);
+                return { rows: [] };
+            }),
+            pool.query(`
+                SELECT key, value
+                FROM settings
+                WHERE key IN ('center_operations_handover_notes', 'center.operations.handover')
+                ORDER BY key
+            `).catch(err => {
+                log.warn('Operations center handover notes read failed', err.message);
+                return { rows: [] };
+            })
+        ]);
+
+        const bookings = bookingsRes.rows.map(row => {
+            const price = Number(row.price || 0);
+            const paidAmount = Number(row.paid_amount || 0);
+            return {
+                id: row.id,
+                date: normalizeDateText(row.date),
+                time: row.time || null,
+                duration: Number(row.duration || 0),
+                label: row.label || row.program_name || row.id,
+                programName: row.program_name || row.label || '',
+                category: row.category || '',
+                status: row.status || '',
+                room: row.room || '',
+                price,
+                paymentStatus: row.payment_status || 'pending',
+                paidAmount,
+                debtAmount: Math.max(0, price - paidAmount),
+                customerId: row.customer_id || null,
+                clientName: row.customer_name || row.group_name || row.label || '',
+                customerPhone: row.customer_phone || ''
+            };
+        });
+
+        const shifts = scheduleRes.rows.map(row => {
+            const attendance = shiftAttendanceStatus(row, nowMinutes);
+            const start = timeToMinutes(row.shift_start);
+            const end = timeToMinutes(row.shift_end);
+            const isCurrent = start !== null && end !== null && nowMinutes >= start && nowMinutes <= end;
+            return {
+                scheduleId: row.schedule_id,
+                staffId: row.staff_id,
+                date: normalizeDateText(row.date),
+                name: row.name,
+                department: row.department || '',
+                position: row.position || '',
+                roleType: row.role_type || '',
+                plannedStart: row.shift_start || null,
+                plannedEnd: row.shift_end || null,
+                status: row.status || '',
+                note: row.note || '',
+                isCurrent,
+                attendance,
+                actualArrival: timeFromTimestamp(row.clock_in || row.check_in),
+                actualLeave: timeFromTimestamp(row.clock_out || row.check_out),
+                attendanceSource: row.time_record_id ? 'hr_time_records' : (row.checkin_id ? 'staff_checkins' : 'none')
+            };
+        });
+
+        const onShiftNow = shifts.filter(shift => shift.isCurrent && !['absent', 'excused'].includes(shift.attendance.status));
+        const lateStaff = shifts.filter(shift => shift.attendance.status === 'late');
+        const noShowStaff = shifts.filter(shift => shift.attendance.status === 'absent');
+        const pendingPayments = bookings.filter(booking =>
+            booking.status === 'confirmed'
+            && booking.price > 0
+            && booking.paymentStatus !== 'paid'
+            && booking.paidAmount < booking.price
+        );
+        const unconfirmedBookings = bookings.filter(booking => booking.status === 'preliminary');
+        const openTasks = tasksRes.rows.map(row => ({
+            id: row.id,
+            title: row.title,
+            status: row.status || 'todo',
+            priority: row.priority || 'normal',
+            assignedTo: row.assigned_to || '',
+            category: row.category || '',
+            sourceType: row.source_type || '',
+            sourceId: row.source_id || '',
+            date: row.date || '',
+            deadline: row.deadline || null,
+            isOverdue: Boolean(row.deadline && new Date(row.deadline).getTime() < now.getTime())
+        }));
+        const pendingReports = reportsRes.rows.map(row => ({
+            id: row.id,
+            type: row.type,
+            category: row.category || '',
+            description: row.description || '',
+            submittedBy: row.submitted_by || '',
+            submittedVia: row.submitted_via || '',
+            status: row.status || 'new',
+            approvalStatus: row.approval_status || 'none',
+            lifecycleStatus: row.report_lifecycle_status || 'open',
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        }));
+
+        const timelineEvents = [
+            ...bookings.map(booking => ({
+                id: `booking:${booking.id}`,
+                type: 'booking',
+                time: booking.time,
+                title: booking.programName || booking.label,
+                detail: [booking.room, booking.clientName].filter(Boolean).join(' · '),
+                status: booking.status,
+                bookingId: booking.id
+            })),
+            ...historyRes.rows.map(row => ({
+                id: `history:${row.id}`,
+                type: 'history',
+                time: timeFromTimestamp(row.created_at),
+                title: row.action,
+                detail: row.username || 'system',
+                status: 'audit'
+            }))
+        ].sort((a, b) => String(a.time || '99:99').localeCompare(String(b.time || '99:99'))).slice(0, 40);
+
+        const incidents = [
+            ...noShowStaff.map(shift => operationsIssue('staff_no_show', 'critical', `${shift.name}: не вийшов`, `${shift.plannedStart || '—'}-${shift.plannedEnd || '—'}`, { staffId: shift.staffId })),
+            ...lateStaff.map(shift => operationsIssue('staff_late', 'warning', `${shift.name}: запізнюється`, `${shift.plannedStart || '—'}-${shift.plannedEnd || '—'}`, { staffId: shift.staffId })),
+            ...pendingPayments.slice(0, 8).map(booking => operationsIssue('payment_pending', 'warning', `Оплата: ${booking.label}`, `Борг ${booking.debtAmount} грн`, { bookingId: booking.id })),
+            ...unconfirmedBookings.slice(0, 8).map(booking => operationsIssue('booking_unconfirmed', 'warning', `Не підтверджено: ${booking.label}`, [booking.time, booking.clientName].filter(Boolean).join(' · '), { bookingId: booking.id })),
+            ...openTasks.filter(task => task.isOverdue).slice(0, 8).map(task => operationsIssue('task_overdue', 'critical', `Прострочена задача: ${task.title}`, task.assignedTo || 'без відповідального', { taskId: task.id })),
+            ...pendingReports.filter(report => report.approvalStatus !== 'approved').slice(0, 8).map(report => operationsIssue('report_pending', 'warning', `Звіт #${report.id} потребує уваги`, report.category || report.status, { reportId: report.id }))
+        ];
+
+        res.json({
+            success: true,
+            date: today,
+            generatedAt: new Date().toISOString(),
+            source: {
+                bookings: 'bookings + customers, visibility-scoped, today only',
+                shifts: 'staff_schedule + hr_time_records + staff_checkins, read-only',
+                tasks: 'tasks open/urgent/due/overdue',
+                reports: 'reports metadata only; raw_data is intentionally omitted',
+                handoverNotes: 'settings.center_operations_handover_notes'
+            },
+            counts: {
+                bookings: bookings.length,
+                activeShifts: shifts.length,
+                onShiftNow: onShiftNow.length,
+                lateStaff: lateStaff.length,
+                noShowStaff: noShowStaff.length,
+                pendingPayments: pendingPayments.length,
+                pendingReports: pendingReports.length,
+                openTasks: openTasks.length,
+                incidents: incidents.length
+            },
+            bookings,
+            timelineEvents,
+            activeShifts: shifts,
+            onShiftNow,
+            lateStaff,
+            noShowStaff,
+            pendingPayments,
+            pendingReports,
+            openTasks,
+            incidents,
+            handoverNotes: parseOperationsNotes(notesRes.rows)
+        });
+    } catch (err) {
+        log.error('GET /center/operations/today error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження операційного центру' });
     }
 });
 

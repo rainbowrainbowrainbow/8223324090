@@ -23,9 +23,20 @@ const StaffState = {
     weekStart: null,    // First date of the current visible schedule window
     staff: [],
     schedule: {},       // { staffId_date: entry }
+    scheduleRawEntries: [], // raw rows for health duplicate/overlap checks
+    attendance: {},      // { staffId_date: payroll-ready hr_time_records/staff_checkins row }
+    attendanceSummary: null,
+    staffingForecast: null,
+    staffingForecastBookings: {}, // { date: booking[] } from /api/bookings/:date
+    staffingForecastAvailable: false,
+    managerAccountability: null,
+    accountabilityDeptFilter: 'all',
+    accountabilityManagerFilter: 'all',
     scheduleHistory: {}, // { staffId_date: audit entries }
     departments: {},
     activeDept: 'all',
+    healthFilter: 'all',
+    includeFreelance: false,
     editingCell: null,  // { staffId, date }
     hoursData: null,    // { staffId: { totalHours, workingDays, ... } }
     showHours: false,
@@ -71,6 +82,72 @@ const STATUS_ICONS = {
     remote: '◉',
     unset: '·'
 };
+
+const SCHEDULE_HEALTH_FILTERS = ['all', 'critical', 'warning', 'ok'];
+const SCHEDULE_HEALTH_SEVERITY_RANK = { ok: 0, info: 1, warning: 2, critical: 3 };
+const SCHEDULE_HEALTH_SCORE_PENALTY = { critical: 18, warning: 6, info: 2 };
+const SCHEDULE_HEALTH_LABELS = {
+    critical: 'Critical',
+    warning: 'Warnings',
+    info: 'Info',
+    ok: 'OK'
+};
+const SCHEDULE_HEALTH_LONG_SHIFT_MINUTES = 12 * 60;
+const SCHEDULE_HEALTH_DEPARTMENT_MIN_WORKING = {
+    animators: 1,
+    trampoline: 1,
+    reception: 1,
+    cafe: 1,
+    tech: 1,
+    cleaning: 1
+};
+const SCHEDULE_HEALTH_MANAGER_ROLES = new Set(['manager', 'senior_manager', 'admin', 'vice_director', 'art_director']);
+const MANAGER_ACCOUNTABILITY_ROLES = new Set(['manager', 'senior_manager', 'admin', 'vice_director', 'art_director']);
+const MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS = {
+    lateReports: 'late_reports_source_missing',
+    payrollDiscrepancies: 'payroll_reconciliation_source_missing',
+    unapprovedShifts: 'shift_approval_source_missing',
+    weeklyTrend: 'historical_accountability_snapshot_missing',
+    lastActionDate: 'manager_action_log_source_missing'
+};
+const MANAGER_ACCOUNTABILITY_MAPPING_SOURCE = 'inferred_from_hr_role_type_same_department';
+
+const SCHEDULE_ATTENDANCE_STATUSES = new Set(['planned', 'checked_in', 'late', 'absent', 'left_early', 'completed', 'manual_review', 'excused']);
+const SCHEDULE_ATTENDANCE_LABELS = {
+    planned: 'План',
+    checked_in: 'Прийшов',
+    late: 'Запізн.',
+    absent: 'Не вийшов',
+    left_early: 'Ранній вихід',
+    completed: 'Закрито',
+    manual_review: 'Перевірити',
+    excused: 'Поважна'
+};
+const SCHEDULE_ATTENDANCE_LATE_GRACE_MINUTES = 5;
+
+const STAFFING_FORECAST_DEPARTMENTS = ['animators', 'trampoline', 'reception', 'managers', 'tech', 'cafe', 'cleaning'];
+const STAFFING_FORECAST_LABELS = {
+    animators: 'Аніматори',
+    trampoline: 'Батутисти',
+    reception: 'Рецепшен',
+    managers: 'Менеджери',
+    tech: 'Тех/охорона',
+    cafe: 'Кафе',
+    cleaning: 'Клінінг'
+};
+const STAFFING_FORECAST_RULES = {
+    emptyDay: '0 staff unless active bookings exist',
+    animators: '1 per active event, +1 per 12 expected children, respect booking.hosts/secondAnimator',
+    trampoline: '1 when booking category/room/program mentions trampoline/batut, +1 per 18 expected children',
+    reception: '1 for any active day, +1 when day has 5+ bookings or 3+ peak-time bookings',
+    managers: '1 for any active day, +1 when 6+ bookings or 60+ expected guests',
+    tech: '1 for any active day, +1 for weekend/evening/high-volume days',
+    cafe: '1 when banquet/menu/kitchen/cafe demand exists, +1 for 30+ expected guests',
+    cleaning: '1 for any active day, +1 for 5+ bookings or 40+ expected guests'
+};
+const STAFFING_FORECAST_PEAK_START_MINUTES = 15 * 60;
+const STAFFING_FORECAST_PEAK_END_MINUTES = 20 * 60;
+const STAFFING_FORECAST_TECH_EVENING_MINUTES = 18 * 60;
 
 // Sub-groups within large departments (by role_type)
 const DEPT_SUB_GROUPS = {
@@ -243,6 +320,32 @@ function renderStaffCardAvatar(staff = {}, initials = '', fallbackColor = '#6366
     return `<div class="emp-avatar" style="background:${escapeHtml(fallbackColor)}">${isFreelance ? '~' : escapeHtml(initials)}</div>`;
 }
 
+function staffCardTrainingReadiness(staff = {}) {
+    const readiness = staff.training_readiness || staff.trainingReadiness;
+    if (!readiness || typeof readiness !== 'object') {
+        return { hasData: false, total: 0, completed: 0, percent: 0 };
+    }
+    const total = Number(readiness.total || 0);
+    const completed = Number(readiness.completed || 0);
+    const percent = total
+        ? Math.max(0, Math.min(100, Number(readiness.percent || Math.round((completed / total) * 100))))
+        : 0;
+    return { hasData: true, total, completed, percent };
+}
+
+function renderStaffCardReadinessBadge(staff = {}) {
+    const readiness = staffCardTrainingReadiness(staff);
+    if (!readiness.hasData) {
+        return '<span class="staff-card-badge warn" title="Готовність: дані навчання не передано у staff-card">Навч.</span>';
+    }
+    if (!readiness.total) {
+        return '<span class="staff-card-badge warn" title="Готовність: чеклісти навчання не налаштовані">Навч.</span>';
+    }
+    const state = readiness.percent >= 85 ? 'ok' : (readiness.percent >= 45 ? 'neutral' : 'warn');
+    const title = `Готовність навчання: ${readiness.completed}/${readiness.total}`;
+    return `<span class="staff-card-badge ${state}" title="${escapeHtml(title)}">${readiness.percent}%</span>`;
+}
+
 function renderStaffCardBadges(staff = {}) {
     const accountBadge = staff.has_account
         ? '<span class="staff-card-badge ok" title="CRM акаунт: є">CRM</span>'
@@ -254,7 +357,10 @@ function renderStaffCardBadges(staff = {}) {
     const poolBadge = pool && pool !== 'core'
         ? `<span class="staff-card-badge neutral" title="HR пул: ${escapeHtml(pool)}">${escapeHtml(pool)}</span>`
         : '';
-    return `${accountBadge}${faceBadge}${poolBadge}`;
+    const freelanceBadge = staff.is_freelance
+        ? '<span class="staff-card-badge neutral freelance" title="Фріланс-слот: показано тільки в explicit режимі">ФР</span>'
+        : '';
+    return `${accountBadge}${faceBadge}${renderStaffCardReadinessBadge(staff)}${poolBadge}${freelanceBadge}`;
 }
 
 function professionCatalogOptions() {
@@ -397,6 +503,1031 @@ function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
     return parts.join(' | ');
 }
 
+function scheduleHealthCellKey(staffId, date) {
+    return `${Number(staffId)}_${date}`;
+}
+
+function scheduleHealthIsWorkStatus(status) {
+    return ['working', 'remote'].includes(normalizeScheduleStatus(status));
+}
+
+function scheduleHealthIsOffStatus(status) {
+    return ['dayoff', 'vacation', 'sick'].includes(normalizeScheduleStatus(status));
+}
+
+function scheduleHealthSeverity(issues = []) {
+    return (issues || []).reduce((worst, issue) => (
+        SCHEDULE_HEALTH_SEVERITY_RANK[issue.severity] > SCHEDULE_HEALTH_SEVERITY_RANK[worst]
+            ? issue.severity
+            : worst
+    ), 'ok');
+}
+
+function scheduleHealthScore(issues = []) {
+    const penalty = (issues || []).reduce((sum, issue) => sum + (SCHEDULE_HEALTH_SCORE_PENALTY[issue.severity] || 0), 0);
+    return Math.max(0, Math.min(100, 100 - penalty));
+}
+
+function scheduleHealthShiftRange(entry = {}) {
+    const start = scheduleTimeToMinutes(entry.shift_start);
+    const endRaw = scheduleTimeToMinutes(entry.shift_end);
+    if (start === null || endRaw === null) return null;
+    const end = endRaw <= start ? endRaw + (24 * 60) : endRaw;
+    return { start, end };
+}
+
+function scheduleHealthRangesOverlap(a, b) {
+    if (!a || !b) return false;
+    return Math.max(a.start, b.start) < Math.min(a.end, b.end);
+}
+
+function isScheduleManagerStaff(staff = {}) {
+    const keys = [staff.role_type, ...staffSecondaryProfessions(staff)].map(normalizeProfessionKey).filter(Boolean);
+    return keys.some(key => SCHEDULE_HEALTH_MANAGER_ROLES.has(key));
+}
+
+function scheduleHealthPush(map, key, issue) {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(issue);
+}
+
+function scheduleHealthIssueSummary(issues = [], limit = 3) {
+    return (issues || [])
+        .slice(0, limit)
+        .map(issue => issue.title || issue.detail || issue.code)
+        .filter(Boolean)
+        .join(' | ');
+}
+
+function scheduleHealthIssueDetail(issue = {}) {
+    return [issue.title, issue.detail].filter(Boolean).join(': ');
+}
+
+function scheduleHealthCounts(issues = []) {
+    return (issues || []).reduce((acc, issue) => {
+        acc[issue.severity] = (acc[issue.severity] || 0) + 1;
+        return acc;
+    }, { critical: 0, warning: 0, info: 0 });
+}
+
+function scheduleHealthIssue({ code, severity = 'warning', scope = 'row', title, detail, staff = null, staffId = null, date = '', department = '' }) {
+    const resolvedStaffId = Number(staff?.id ?? staffId);
+    const staffName = String(staff?.display_name || staff?.name || '').trim();
+    return {
+        code,
+        severity,
+        scope,
+        title,
+        detail,
+        staffId: Number.isFinite(resolvedStaffId) ? resolvedStaffId : null,
+        staffName,
+        date,
+        department,
+        id: ''
+    };
+}
+
+function buildScheduleHealth(dates = getWeekDates(StaffState.weekStart), visibleStaff = scheduleVisibleStaff()) {
+    const dateKeys = dates.map(formatDateStr);
+    const dateSet = new Set(dateKeys);
+    const staffById = new Map((visibleStaff || []).map(staff => [Number(staff.id), staff]));
+    const issues = [];
+    const rowIssuesByStaff = new Map();
+    const staffIssuesByStaff = new Map();
+    const cellIssuesByKey = new Map();
+    const dayIssuesByDate = new Map();
+    const departmentIssuesByKey = new Map();
+    const rawEntriesByCell = new Map();
+
+    const addIssue = (issue) => {
+        if (!issue?.code) return;
+        const normalized = { ...issue, id: `${issue.code}:${issues.length + 1}` };
+        issues.push(normalized);
+        if (normalized.staffId !== null && normalized.staffId !== undefined) {
+            scheduleHealthPush(staffIssuesByStaff, Number(normalized.staffId), normalized);
+            if (normalized.scope === 'row') scheduleHealthPush(rowIssuesByStaff, Number(normalized.staffId), normalized);
+            if (normalized.scope === 'cell' && normalized.date) {
+                scheduleHealthPush(cellIssuesByKey, scheduleHealthCellKey(normalized.staffId, normalized.date), normalized);
+            }
+        }
+        if (normalized.date) scheduleHealthPush(dayIssuesByDate, normalized.date, normalized);
+        if (normalized.department) scheduleHealthPush(departmentIssuesByKey, normalized.department, normalized);
+    };
+
+    const rawEntries = (StaffState.scheduleRawEntries || [])
+        .filter(entry => staffById.has(Number(entry.staff_id)) && dateSet.has(entry.date));
+
+    for (const entry of rawEntries) {
+        const key = scheduleHealthCellKey(entry.staff_id, entry.date);
+        scheduleHealthPush(rawEntriesByCell, key, entry);
+    }
+
+    for (const staff of visibleStaff || []) {
+        const department = scheduleDisplayDepartmentKey(staff);
+        const pool = String(staff.hr_pool_status || '').trim();
+        const readiness = staffCardTrainingReadiness(staff);
+        const hasRole = Boolean(normalizeProfessionKey(staff.role_type) || staffSecondaryProfessions(staff).length);
+
+        if (staff.is_active === false) {
+            addIssue(scheduleHealthIssue({ code: 'staff_inactive', severity: 'critical', scope: 'row', title: 'Staff inactive', detail: 'Працівник не активний, але присутній у видимому графіку.', staff, department }));
+        }
+        if (pool === 'blacklisted' || pool === 'offboarded' || pool === 'dismissed' || staff.termination_date) {
+            addIssue(scheduleHealthIssue({ code: 'staff_blacklisted_or_offboarded', severity: 'critical', scope: 'row', title: 'Offboarded/blacklisted staff', detail: 'Працівник має HR-статус, який не має потрапляти в активний графік.', staff, department }));
+        }
+        if (staff.is_freelance && !StaffState.includeFreelance) {
+            addIssue(scheduleHealthIssue({ code: 'freelance_without_explicit_mode', severity: 'critical', scope: 'row', title: 'Freelance without explicit mode', detail: 'Фріланс/placeholder рядок показаний без include_freelance=true.', staff, department }));
+        }
+        if (staff.has_account !== true) {
+            addIssue(scheduleHealthIssue({ code: 'missing_account', severity: 'warning', scope: 'row', title: 'No CRM account', detail: 'Працівник не привʼязаний до CRM account.', staff, department }));
+        }
+        if (staff.has_face_descriptor !== true) {
+            addIssue(scheduleHealthIssue({ code: 'missing_face_descriptor', severity: 'warning', scope: 'row', title: 'No face descriptor', detail: 'Немає face descriptor для фактичної присутності.', staff, department }));
+        }
+        if (!readiness.hasData || !readiness.total) {
+            addIssue(scheduleHealthIssue({ code: 'missing_readiness', severity: 'warning', scope: 'row', title: 'No readiness', detail: 'У staff-card немає підтвердженої readiness/навчальної готовності.', staff, department }));
+        } else if (readiness.percent < 45) {
+            addIssue(scheduleHealthIssue({ code: 'low_readiness', severity: 'warning', scope: 'row', title: 'Low readiness', detail: `Готовність навчання ${readiness.percent}%.`, staff, department }));
+        } else if (readiness.percent < 85) {
+            addIssue(scheduleHealthIssue({ code: 'partial_readiness', severity: 'info', scope: 'row', title: 'Partial readiness', detail: `Готовність навчання ${readiness.percent}%.`, staff, department }));
+        }
+        if (!hasRole) {
+            addIssue(scheduleHealthIssue({ code: 'staff_without_role', severity: 'warning', scope: 'row', title: 'No staff role', detail: 'У картці працівника не задана роль/професія.', staff, department }));
+        }
+
+        for (const date of dateKeys) {
+            const entry = StaffState.schedule[`${staff.id}_${date}`];
+            if (!entry) continue;
+            const status = normalizeScheduleStatus(entry.status);
+            if (!scheduleHealthIsWorkStatus(status)) continue;
+
+            if (staff.is_active === false || pool === 'blacklisted' || pool === 'offboarded' || staff.termination_date) {
+                addIssue(scheduleHealthIssue({ code: 'planned_inactive_staff', severity: 'critical', scope: 'cell', title: 'Inactive staff scheduled', detail: 'На зміну поставлений неактивний/offboarded працівник.', staff, date, department }));
+            }
+
+            const professionKey = normalizeProfessionKey(entry.profession_key || staff.role_type);
+            if (!professionKey) {
+                addIssue(scheduleHealthIssue({ code: 'shift_without_role', severity: 'warning', scope: 'cell', title: 'Shift without role', detail: 'Робоча зміна не має професії/ролі.', staff, date, department }));
+            } else if (entry.profession_key && !staffHasProfession(staff, entry.profession_key)) {
+                addIssue(scheduleHealthIssue({ code: 'profession_mismatch', severity: 'critical', scope: 'cell', title: 'Profession mismatch', detail: 'Професія зміни не відповідає професіям у HR-картці працівника.', staff, date, department }));
+            }
+
+            const loadMeta = scheduleShiftLoadMeta({ ...entry, status });
+            if (loadMeta.minutes > SCHEDULE_HEALTH_LONG_SHIFT_MINUTES) {
+                addIssue(scheduleHealthIssue({ code: 'long_shift', severity: 'warning', scope: 'cell', title: 'Long shift', detail: `Зміна триває ${Math.round(loadMeta.minutes / 60)} годин.`, staff, date, department }));
+            }
+        }
+    }
+
+    for (const [cellKey, entries] of rawEntriesByCell.entries()) {
+        if (entries.length < 2) continue;
+        const first = entries[0];
+        const staff = staffById.get(Number(first.staff_id));
+        if (!staff) continue;
+        const department = scheduleDisplayDepartmentKey(staff);
+        const statuses = entries.map(entry => normalizeScheduleStatus(entry.status));
+
+        addIssue(scheduleHealthIssue({ code: 'duplicate_shift', severity: 'critical', scope: 'cell', title: 'Duplicate shift', detail: 'Для одного працівника в один день знайдено кілька рядків графіка.', staff, date: first.date, department }));
+
+        if (statuses.some(scheduleHealthIsWorkStatus) && statuses.some(scheduleHealthIsOffStatus)) {
+            addIssue(scheduleHealthIssue({ code: 'planned_off_conflict', severity: 'critical', scope: 'cell', title: 'Planned shift on day off/vacation', detail: 'У той самий день є робоча зміна і day off/vacation/sick.', staff, date: first.date, department }));
+        }
+
+        const workingEntries = entries.filter(entry => scheduleHealthIsWorkStatus(entry.status));
+        let hasOverlap = false;
+        for (let i = 0; i < workingEntries.length && !hasOverlap; i++) {
+            for (let j = i + 1; j < workingEntries.length; j++) {
+                if (scheduleHealthRangesOverlap(scheduleHealthShiftRange(workingEntries[i]), scheduleHealthShiftRange(workingEntries[j]))) {
+                    hasOverlap = true;
+                    break;
+                }
+            }
+        }
+        if (hasOverlap) {
+            addIssue(scheduleHealthIssue({ code: 'overlapping_shift', severity: 'critical', scope: 'cell', title: 'Overlapping shifts', detail: 'Зміни одного працівника перетинаються по часу.', staff, date: first.date, department }));
+        }
+    }
+
+    const grouped = groupStaffByScheduleDepartment(visibleStaff || []);
+    for (const [department, deptStaff] of Object.entries(grouped)) {
+        const minWorking = SCHEDULE_HEALTH_DEPARTMENT_MIN_WORKING[department] || 0;
+        if (!minWorking) continue;
+        for (const date of dateKeys) {
+            const entries = deptStaff.map(staff => StaffState.schedule[`${staff.id}_${date}`]).filter(Boolean);
+            if (!entries.length) continue;
+            const workingCount = entries.filter(entry => scheduleHealthIsWorkStatus(entry.status)).length;
+            if (workingCount < minWorking) {
+                addIssue(scheduleHealthIssue({
+                    code: 'department_understaffed',
+                    severity: 'warning',
+                    scope: 'department',
+                    title: 'Department understaffed',
+                    detail: `${scheduleDisplayDepartmentLabel(department)}: ${workingCount}/${minWorking} людей у роботі.`,
+                    date,
+                    department
+                }));
+            }
+        }
+    }
+
+    for (const date of dateKeys) {
+        const hasVisibleWork = (visibleStaff || []).some(staff => scheduleHealthIsWorkStatus(StaffState.schedule[`${staff.id}_${date}`]?.status));
+        if (!hasVisibleWork) continue;
+        const managerPool = StaffState.activeDept === 'all' || StaffState.activeDept === 'reception'
+            ? (visibleStaff || [])
+            : StaffState.staff;
+        const hasManager = managerPool.some(staff => (
+            isScheduleManagerStaff(staff) && scheduleHealthIsWorkStatus(StaffState.schedule[`${staff.id}_${date}`]?.status)
+        ));
+        if (!hasManager) {
+            addIssue(scheduleHealthIssue({
+                code: 'no_responsible_manager',
+                severity: 'warning',
+                scope: 'department',
+                title: 'No responsible manager',
+                detail: 'На день є робочі зміни, але не знайдено відповідального manager у графіку.',
+                date,
+                department: StaffState.activeDept === 'all' ? 'all' : StaffState.activeDept
+            }));
+        }
+    }
+
+    const counts = scheduleHealthCounts(issues);
+    const score = scheduleHealthScore(issues);
+    const dayScores = dateKeys.map(date => {
+        const dayIssues = dayIssuesByDate.get(date) || [];
+        return { date, score: scheduleHealthScore(dayIssues), severity: scheduleHealthSeverity(dayIssues), count: dayIssues.length };
+    });
+    const departmentScores = Object.keys(grouped).map(department => {
+        const deptIssues = departmentIssuesByKey.get(department) || [];
+        return {
+            department,
+            label: scheduleDisplayDepartmentLabel(department),
+            score: scheduleHealthScore(deptIssues),
+            severity: scheduleHealthSeverity(deptIssues),
+            count: deptIssues.length
+        };
+    });
+    const hasScheduleData = rawEntries.length > 0 || (visibleStaff || []).some(staff => dateKeys.some(date => StaffState.schedule[`${staff.id}_${date}`]));
+    const health = {
+        score,
+        severity: scheduleHealthSeverity(issues),
+        counts,
+        issues,
+        rowIssuesByStaff,
+        staffIssuesByStaff,
+        cellIssuesByKey,
+        dayScores,
+        departmentScores,
+        hasScheduleData,
+        visibleStaffCount: (visibleStaff || []).length,
+        okStaffCount: 0
+    };
+    health.okStaffCount = (visibleStaff || []).filter(staff => !scheduleHealthIssuesForStaff(health, staff.id).length).length;
+    return health;
+}
+
+function scheduleHealthIssuesForStaff(health, staffId) {
+    return health?.staffIssuesByStaff?.get(Number(staffId)) || [];
+}
+
+function scheduleHealthRowIssues(health, staffId) {
+    return health?.rowIssuesByStaff?.get(Number(staffId)) || [];
+}
+
+function scheduleHealthCellIssues(health, staffId, date) {
+    return health?.cellIssuesByKey?.get(scheduleHealthCellKey(staffId, date)) || [];
+}
+
+function scheduleHealthFilteredStaff(staffList = [], health = null) {
+    const filter = SCHEDULE_HEALTH_FILTERS.includes(StaffState.healthFilter) ? StaffState.healthFilter : 'all';
+    if (filter !== StaffState.healthFilter) StaffState.healthFilter = filter;
+    if (filter === 'all' || !health) return staffList;
+    return staffList.filter(staff => {
+        const issues = scheduleHealthIssuesForStaff(health, staff.id);
+        if (filter === 'ok') return issues.length === 0;
+        return issues.some(issue => issue.severity === filter);
+    });
+}
+
+function scheduleHealthIssuesForActiveFilter(health = null) {
+    if (!health) return [];
+    const filter = SCHEDULE_HEALTH_FILTERS.includes(StaffState.healthFilter) ? StaffState.healthFilter : 'all';
+    if (filter === 'all') return health.issues;
+    if (filter === 'ok') return [];
+    return health.issues.filter(issue => issue.severity === filter);
+}
+
+function renderScheduleHealthBadges(issues = [], scope = 'cell') {
+    if (!issues?.length) return '';
+    const sorted = [...issues].sort((a, b) => (
+        SCHEDULE_HEALTH_SEVERITY_RANK[b.severity] - SCHEDULE_HEALTH_SEVERITY_RANK[a.severity]
+    ));
+    const visible = sorted.slice(0, scope === 'row' ? 3 : 2);
+    const extra = Math.max(0, sorted.length - visible.length);
+    return `<span class="schedule-health-badges schedule-health-badges-${scope}">
+        ${visible.map(issue => {
+            const detail = scheduleHealthIssueDetail(issue);
+            const label = issue.severity === 'critical' ? '!' : (issue.severity === 'warning' ? '?' : 'i');
+            return `<button type="button" class="schedule-health-badge is-${issue.severity}" data-health-detail="${escapeHtml(detail)}" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}">${label}</button>`;
+        }).join('')}
+        ${extra ? `<span class="schedule-health-badge-more" title="${extra} more">+${extra}</span>` : ''}
+    </span>`;
+}
+
+function renderScheduleHealthIssueList(health = null) {
+    if (!health) return '';
+    if (!health.hasScheduleData) {
+        return '<div class="schedule-health-empty">Немає заповнених змін у видимому періоді. Health показує тільки HR-card ризики працівників.</div>';
+    }
+    const issues = scheduleHealthIssuesForActiveFilter(health)
+        .sort((a, b) => SCHEDULE_HEALTH_SEVERITY_RANK[b.severity] - SCHEDULE_HEALTH_SEVERITY_RANK[a.severity])
+        .slice(0, 6);
+    if (!issues.length) {
+        return '<div class="schedule-health-empty">Для цього health-фільтра немає активних issues.</div>';
+    }
+    return `<div class="schedule-health-issues">
+        ${issues.map(issue => {
+            const detail = scheduleHealthIssueDetail(issue);
+            const meta = [issue.staffName, issue.date, issue.department && issue.department !== 'all' ? scheduleDisplayDepartmentLabel(issue.department) : '']
+                .filter(Boolean)
+                .join(' · ');
+            return `<button type="button" class="schedule-health-issue is-${issue.severity}" data-health-detail="${escapeHtml(detail)}">
+                <span class="schedule-health-issue-level">${escapeHtml(SCHEDULE_HEALTH_LABELS[issue.severity] || issue.severity)}</span>
+                <span class="schedule-health-issue-title">${escapeHtml(issue.title || issue.code)}</span>
+                ${meta ? `<span class="schedule-health-issue-meta">${escapeHtml(meta)}</span>` : ''}
+            </button>`;
+        }).join('')}
+    </div>`;
+}
+
+function renderScheduleHealthPanel(health = null) {
+    const container = document.getElementById('scheduleHealthPanel');
+    if (!container || !health) return;
+    const counts = health.counts || { critical: 0, warning: 0, info: 0 };
+    const filterCounts = {
+        all: health.visibleStaffCount,
+        critical: counts.critical || 0,
+        warning: counts.warning || 0,
+        ok: health.okStaffCount || 0
+    };
+    const filterLabels = { all: 'All', critical: 'Critical', warning: 'Warnings', ok: 'OK' };
+    const dayHtml = health.dayScores.map(day => `
+        <span class="schedule-health-pill is-${day.severity}" title="${day.count} issues">
+            ${escapeHtml(day.date.slice(5))}<b>${day.score}</b>
+        </span>
+    `).join('');
+    const departmentHtml = health.departmentScores.map(dept => `
+        <span class="schedule-health-pill is-${dept.severity}" title="${dept.count} issues">
+            ${escapeHtml(dept.label)}<b>${dept.score}</b>
+        </span>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="schedule-health-head">
+            <div class="schedule-health-score is-${health.severity}">
+                <span>Health</span>
+                <b>${health.score}</b>
+            </div>
+            <div class="schedule-health-counts">
+                <span class="is-critical">${counts.critical || 0} critical</span>
+                <span class="is-warning">${counts.warning || 0} warnings</span>
+                <span class="is-info">${counts.info || 0} info</span>
+            </div>
+            <div class="schedule-health-filter-bar" role="group" aria-label="Schedule health filter">
+                ${SCHEDULE_HEALTH_FILTERS.map(key => `
+                    <button type="button" class="schedule-health-filter ${StaffState.healthFilter === key ? 'active' : ''}" data-health-filter="${key}">
+                        ${filterLabels[key]} <b>${filterCounts[key] || 0}</b>
+                    </button>
+                `).join('')}
+            </div>
+        </div>
+        <div class="schedule-health-metrics">
+            <div class="schedule-health-strip" aria-label="Health by day">${dayHtml}</div>
+            ${departmentHtml ? `<div class="schedule-health-strip" aria-label="Health by department">${departmentHtml}</div>` : ''}
+        </div>
+        ${renderScheduleHealthIssueList(health)}
+    `;
+    container.querySelectorAll('[data-health-filter]').forEach(button => {
+        button.addEventListener('click', () => {
+            const next = button.dataset.healthFilter;
+            if (!SCHEDULE_HEALTH_FILTERS.includes(next)) return;
+            StaffState.healthFilter = next;
+            renderSchedule();
+        });
+    });
+    bindScheduleHealthDetailButtons(container);
+}
+
+function bindScheduleHealthDetailButtons(root = document) {
+    root.querySelectorAll('[data-health-detail]').forEach(button => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const detail = button.dataset.healthDetail || button.getAttribute('title') || '';
+            if (detail && typeof showNotification === 'function') {
+                showNotification(detail, 'warning');
+            }
+        });
+    });
+}
+
+function staffingForecastLabel(key) {
+    return STAFFING_FORECAST_LABELS[key] || scheduleDisplayDepartmentLabel(key) || key;
+}
+
+function staffingForecastObject(value) {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    if (typeof value !== 'string') return {};
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function staffingForecastNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function staffingForecastBool(value) {
+    if (value === true || value === 1) return true;
+    const text = String(value || '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'y', 'так'].includes(text);
+}
+
+function staffingForecastBookingText(booking = {}) {
+    return [
+        booking.category,
+        booking.programName,
+        booking.program_name,
+        booking.programCode,
+        booking.program_code,
+        booking.label,
+        booking.room,
+        booking.status
+    ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function staffingForecastExpectedGuests(booking = {}) {
+    const extra = staffingForecastObject(booking.extraData || booking.extra_data);
+    const bookingPackage = staffingForecastObject(booking.bookingPackage || booking.booking_package || extra.bookingPackage || extra.package);
+    const counts = staffingForecastObject(bookingPackage.counts || extra.counts);
+    const banquetTotal = staffingForecastNumber(booking.banquetGuests || booking.banquet_guests)
+        + staffingForecastNumber(booking.banquetAdults || booking.banquet_adults);
+    const packageTotal = staffingForecastNumber(counts.children || counts.kids)
+        + staffingForecastNumber(counts.adults);
+    const candidates = [
+        booking.expectedGuestCount,
+        booking.expected_guest_count,
+        booking.guestCount,
+        booking.guest_count,
+        booking.guests,
+        booking.kidsCount,
+        booking.kids_count,
+        booking.childrenCount,
+        booking.children_count,
+        booking.banquetGuests,
+        booking.banquet_guests,
+        booking.banquetAdults,
+        booking.banquet_adults,
+        extra.expectedGuestCount,
+        extra.guestCount,
+        extra.guests,
+        extra.kidsCount,
+        extra.children,
+        extra.adults,
+        counts.guests,
+        counts.total,
+        banquetTotal,
+        packageTotal
+    ].map(staffingForecastNumber).filter(Boolean);
+    return Math.max(8, ...candidates, 0);
+}
+
+function staffingForecastHostCount(booking = {}) {
+    const hosts = booking.hosts;
+    if (Array.isArray(hosts)) return Math.max(1, hosts.length);
+    const numeric = staffingForecastNumber(hosts);
+    if (numeric) return Math.max(1, Math.round(numeric));
+    if (typeof hosts === 'string' && hosts.trim()) {
+        return Math.max(1, hosts.split(',').map(item => item.trim()).filter(Boolean).length);
+    }
+    return 1;
+}
+
+function staffingForecastBookingTimeMinutes(booking = {}) {
+    return scheduleTimeToMinutes(booking.time || booking.startTime || booking.start_time || booking.startsAt || booking.starts_at);
+}
+
+function staffingForecastIsActiveBooking(booking = {}) {
+    const status = String(booking.status || '').trim().toLowerCase();
+    return !['cancelled', 'canceled', 'declined', 'deleted', 'archived', 'rejected', 'void'].includes(status);
+}
+
+function staffingForecastIsTrampolineBooking(booking = {}) {
+    return /trampoline|batut|батут/.test(staffingForecastBookingText(booking));
+}
+
+function staffingForecastIsCafeBooking(booking = {}) {
+    const text = staffingForecastBookingText(booking);
+    return /cafe|kitchen|banquet|menu|pizza|food|кафе|кух|банкет|меню|піц/.test(text)
+        || staffingForecastNumber(booking.banquetGuests || booking.banquet_guests) > 0
+        || staffingForecastNumber(booking.banquetAdults || booking.banquet_adults) > 0;
+}
+
+function staffingForecastDayRecommendation(date, bookings = []) {
+    const activeBookings = (bookings || []).filter(staffingForecastIsActiveBooking);
+    const recommended = STAFFING_FORECAST_DEPARTMENTS.reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+    if (!activeBookings.length) {
+        return { date, recommended, bookingCount: 0, expectedGuests: 0, peakBookings: 0, source: 'empty_day' };
+    }
+
+    const day = new Date(`${date}T00:00:00`).getDay();
+    const isWeekend = day === 0 || day === 6;
+    let expectedGuests = 0;
+    let peakBookings = 0;
+    let eveningBookings = 0;
+    let cafeGuests = 0;
+
+    for (const booking of activeBookings) {
+        const guests = staffingForecastExpectedGuests(booking);
+        const minutes = staffingForecastBookingTimeMinutes(booking);
+        expectedGuests += guests;
+        if (minutes !== null && minutes >= STAFFING_FORECAST_PEAK_START_MINUTES && minutes < STAFFING_FORECAST_PEAK_END_MINUTES) {
+            peakBookings += 1;
+        }
+        if (minutes !== null && minutes >= STAFFING_FORECAST_TECH_EVENING_MINUTES) {
+            eveningBookings += 1;
+        }
+        const hostDemand = Math.max(staffingForecastHostCount(booking), Math.ceil(guests / 12));
+        recommended.animators += Math.max(staffingForecastBool(booking.secondAnimator || booking.second_animator) ? 2 : 1, hostDemand);
+        if (staffingForecastIsTrampolineBooking(booking)) {
+            recommended.trampoline += Math.max(1, Math.ceil(guests / 18));
+        }
+        if (staffingForecastIsCafeBooking(booking)) {
+            cafeGuests += guests;
+        }
+    }
+
+    recommended.reception = 1 + (activeBookings.length >= 5 || peakBookings >= 3 ? 1 : 0);
+    recommended.managers = 1 + (activeBookings.length >= 6 || expectedGuests >= 60 ? 1 : 0);
+    recommended.tech = 1 + (isWeekend || eveningBookings >= 2 || expectedGuests >= 70 ? 1 : 0);
+    recommended.cafe = cafeGuests ? 1 + (cafeGuests >= 30 ? 1 : 0) : 0;
+    recommended.cleaning = 1 + (activeBookings.length >= 5 || expectedGuests >= 40 ? 1 : 0);
+
+    return {
+        date,
+        recommended,
+        bookingCount: activeBookings.length,
+        expectedGuests,
+        peakBookings,
+        source: 'bookings_timeline_heuristics_v1'
+    };
+}
+
+function staffingForecastDepartmentForShift(staff = {}, entry = {}) {
+    const professionKey = normalizeProfessionKey(entry.profession_key || staff.role_type);
+    if (['manager', 'senior_manager', 'admin', 'vice_director', 'art_director'].includes(professionKey)) return 'managers';
+    if (professionKey === 'reception') return 'reception';
+    if (['trampoline_instructor', 'senior_instructor', 'instructor'].includes(professionKey)) return 'trampoline';
+    if (professionKey === 'animator') return 'animators';
+    if (['cook', 'pizzaiolo', 'barista', 'waiter'].includes(professionKey)) return 'cafe';
+    if (['cleaner', 'cleaning', 'dishwasher', 'wardrobe'].includes(professionKey)) return 'cleaning';
+    if (['tech', 'technician', 'security'].includes(professionKey)) return 'tech';
+    const department = scheduleDisplayDepartmentKey(staff);
+    return STAFFING_FORECAST_DEPARTMENTS.includes(department) ? department : '';
+}
+
+function staffingForecastVisibleDepartments() {
+    if (StaffState.activeDept === 'reception') return ['reception', 'managers'];
+    if (StaffState.activeDept === 'tech') return ['tech'];
+    if (STAFFING_FORECAST_DEPARTMENTS.includes(StaffState.activeDept)) return [StaffState.activeDept];
+    return STAFFING_FORECAST_DEPARTMENTS;
+}
+
+function staffingForecastScheduledCounts(date, staffList = []) {
+    const counts = STAFFING_FORECAST_DEPARTMENTS.reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+    for (const staff of staffList || []) {
+        const entry = StaffState.schedule[`${staff.id}_${date}`];
+        if (!entry || !scheduleHealthIsWorkStatus(entry.status)) continue;
+        const department = staffingForecastDepartmentForShift(staff, entry);
+        if (department && Object.prototype.hasOwnProperty.call(counts, department)) {
+            counts[department] += 1;
+        }
+    }
+    return counts;
+}
+
+function staffingForecastGap(recommended = {}, scheduled = {}, departmentKeys = STAFFING_FORECAST_DEPARTMENTS) {
+    return departmentKeys.reduce((acc, key) => {
+        const need = Number(recommended[key] || 0);
+        const planned = Number(scheduled[key] || 0);
+        acc[key] = {
+            recommended: need,
+            scheduled: planned,
+            missing: Math.max(0, need - planned),
+            overstaffed: Math.max(0, planned - need)
+        };
+        return acc;
+    }, {});
+}
+
+function buildStaffingDemandForecast(dates = getWeekDates(StaffState.weekStart), visibleStaff = scheduleVisibleStaff()) {
+    const departmentKeys = staffingForecastVisibleDepartments();
+    const days = (dates || []).map(dateObj => {
+        const date = typeof dateObj === 'string' ? dateObj : formatDateStr(dateObj);
+        const recommendation = staffingForecastDayRecommendation(date, StaffState.staffingForecastBookings[date] || []);
+        const scheduled = staffingForecastScheduledCounts(date, visibleStaff);
+        const gaps = staffingForecastGap(recommendation.recommended, scheduled, departmentKeys);
+        const missing = Object.values(gaps).reduce((sum, gap) => sum + gap.missing, 0);
+        const overstaffed = Object.values(gaps).reduce((sum, gap) => sum + gap.overstaffed, 0);
+        return {
+            date,
+            ...recommendation,
+            scheduled,
+            gaps,
+            missing,
+            overstaffed,
+            severity: missing > 0 ? 'critical' : (overstaffed > 0 ? 'warning' : 'ok')
+        };
+    });
+    const totals = departmentKeys.reduce((acc, key) => {
+        acc[key] = days.reduce((sum, day) => {
+            const gap = day.gaps[key] || {};
+            return {
+                recommended: sum.recommended + (gap.recommended || 0),
+                scheduled: sum.scheduled + (gap.scheduled || 0),
+                missing: sum.missing + (gap.missing || 0),
+                overstaffed: sum.overstaffed + (gap.overstaffed || 0)
+            };
+        }, { recommended: 0, scheduled: 0, missing: 0, overstaffed: 0 });
+        return acc;
+    }, {});
+    return {
+        source: 'bookings_timeline_heuristics_v1',
+        rules: STAFFING_FORECAST_RULES,
+        departmentKeys,
+        days,
+        totals,
+        bookingCount: days.reduce((sum, day) => sum + day.bookingCount, 0),
+        expectedGuests: days.reduce((sum, day) => sum + day.expectedGuests, 0),
+        totalMissing: Object.values(totals).reduce((sum, gap) => sum + gap.missing, 0),
+        totalOverstaffed: Object.values(totals).reduce((sum, gap) => sum + gap.overstaffed, 0),
+        hasSourceData: StaffState.staffingForecastAvailable
+    };
+}
+
+function renderStaffingForecastGapChip(key, gap = {}) {
+    const state = gap.missing ? 'is-missing' : (gap.overstaffed ? 'is-overstaffed' : 'is-ok');
+    const delta = gap.missing ? `-${gap.missing}` : (gap.overstaffed ? `+${gap.overstaffed}` : 'ok');
+    return `<span class="forecast-gap-chip ${state}" title="${escapeHtml(staffingForecastLabel(key))}: scheduled ${gap.scheduled || 0}, recommended ${gap.recommended || 0}">
+        <span>${escapeHtml(staffingForecastLabel(key))}</span>
+        <b>${gap.scheduled || 0}/${gap.recommended || 0}</b>
+        <small>${escapeHtml(delta)}</small>
+    </span>`;
+}
+
+function renderStaffingForecastPanel(forecast = null) {
+    const container = document.getElementById('scheduleForecastPanel');
+    if (!container) return;
+    if (!forecast) {
+        container.innerHTML = '';
+        return;
+    }
+    if (!forecast.hasSourceData) {
+        container.innerHTML = '<div class="forecast-empty">Staffing forecast unavailable: bookings/timeline data was not loaded. Schedule is unchanged.</div>';
+        return;
+    }
+    const totalsHtml = forecast.departmentKeys
+        .map(key => renderStaffingForecastGapChip(key, forecast.totals[key]))
+        .join('');
+    const daysHtml = forecast.days.map(day => {
+        const dayGaps = forecast.departmentKeys
+            .map(key => renderStaffingForecastGapChip(key, day.gaps[key]))
+            .join('');
+        return `<div class="forecast-day-card is-${day.severity}">
+            <div class="forecast-day-head">
+                <span>${escapeHtml(day.date.slice(5))}</span>
+                <b>${day.missing ? `${day.missing} missing` : 'covered'}</b>
+            </div>
+            <div class="forecast-day-meta">
+                <span>${day.bookingCount} bookings</span>
+                <span>${day.expectedGuests} guests</span>
+                ${day.overstaffed ? `<span>${day.overstaffed} over</span>` : ''}
+            </div>
+            <div class="forecast-day-gaps">${dayGaps}</div>
+        </div>`;
+    }).join('');
+    const rulesHtml = Object.entries(forecast.rules || {})
+        .map(([key, rule]) => `<li><b>${escapeHtml(staffingForecastLabel(key))}</b>: ${escapeHtml(rule)}</li>`)
+        .join('');
+    container.innerHTML = `
+        <div class="forecast-head">
+            <div>
+                <span class="forecast-kicker">Demand forecast</span>
+                <b>${forecast.totalMissing ? `${forecast.totalMissing} missing shifts` : 'No staffing gap'}</b>
+            </div>
+            <div class="forecast-source">${escapeHtml(forecast.source)}</div>
+        </div>
+        <div class="forecast-total-row">${totalsHtml}</div>
+        <div class="forecast-days">${daysHtml}</div>
+        <details class="forecast-rules">
+            <summary>Rules</summary>
+            <ul>${rulesHtml}</ul>
+        </details>
+    `;
+}
+
+function managerAccountabilityStaffName(staff = {}) {
+    return String(staff.display_name || staff.name || '').trim() || 'Manager';
+}
+
+function isManagerAccountabilityStaff(staff = {}) {
+    const keys = [staff.role_type, ...staffSecondaryProfessions(staff)]
+        .map(normalizeProfessionKey)
+        .filter(Boolean);
+    return keys.some(key => MANAGER_ACCOUNTABILITY_ROLES.has(key));
+}
+
+function managerAccountabilityDepartmentKeys(staffList = []) {
+    const grouped = groupStaffByScheduleDepartment(staffList || []);
+    return scheduleDepartmentRenderOrder(grouped);
+}
+
+function managerAccountabilityManagersForDepartment(department, managers = []) {
+    return managers.filter(manager => {
+        const rawDepartment = String(manager.department || '').trim();
+        return rawDepartment === department || scheduleDisplayDepartmentKey(manager) === department;
+    });
+}
+
+function managerAccountabilityMissingReadiness(staffList = []) {
+    return (staffList || []).filter(staff => {
+        const readiness = staffCardTrainingReadiness(staff);
+        return !readiness.hasData || !readiness.total;
+    }).length;
+}
+
+function managerAccountabilityAttendanceCounts(dates = [], deptStaff = []) {
+    const counts = { noShows: 0, unresolvedAttendance: 0 };
+    for (const staff of deptStaff || []) {
+        for (const dateObj of dates || []) {
+            const date = typeof dateObj === 'string' ? dateObj : formatDateStr(dateObj);
+            const entry = StaffState.schedule[`${staff.id}_${date}`];
+            const record = scheduleAttendanceRecord(staff.id, date);
+            const status = scheduleAttendanceStatus(entry, record, date);
+            if (status === 'absent') counts.noShows += 1;
+            if (status === 'manual_review' || status === 'left_early') counts.unresolvedAttendance += 1;
+        }
+    }
+    return counts;
+}
+
+function managerAccountabilityDepartmentIssues(health = null, department = '') {
+    const issues = (health?.issues || []).filter(issue => issue.department === department);
+    return {
+        issues,
+        critical: issues.filter(issue => issue.severity === 'critical').length,
+        warning: issues.filter(issue => issue.severity === 'warning').length
+    };
+}
+
+function managerAccountabilityHealthScore(health = null, department = '') {
+    const score = (health?.departmentScores || []).find(item => item.department === department);
+    return score || {
+        department,
+        label: scheduleDisplayDepartmentLabel(department),
+        score: 100,
+        severity: 'ok',
+        count: 0
+    };
+}
+
+function managerAccountabilityMetric(value, source = 'available') {
+    return {
+        value,
+        available: source === 'available',
+        source
+    };
+}
+
+function buildManagerAccountability(dates = getWeekDates(StaffState.weekStart), staffList = StaffState.staff, health = null) {
+    const grouped = groupStaffByScheduleDepartment(staffList || []);
+    const departmentKeys = managerAccountabilityDepartmentKeys(staffList);
+    const managers = (staffList || []).filter(isManagerAccountabilityStaff);
+    const departments = departmentKeys.map(department => {
+        const deptStaff = grouped[department] || [];
+        const assignedManagers = managerAccountabilityManagersForDepartment(department, managers);
+        const issues = managerAccountabilityDepartmentIssues(health, department);
+        const healthScore = managerAccountabilityHealthScore(health, department);
+        const attendance = managerAccountabilityAttendanceCounts(dates, deptStaff);
+        const missingReadiness = managerAccountabilityMissingReadiness(deptStaff);
+        return {
+            department,
+            label: scheduleDisplayDepartmentLabel(department),
+            assignedManagers,
+            managerSource: assignedManagers.length ? MANAGER_ACCOUNTABILITY_MAPPING_SOURCE : 'explicit_department_manager_mapping_missing',
+            healthScore,
+            openCriticalIssues: managerAccountabilityMetric(issues.critical),
+            warningIssues: managerAccountabilityMetric(issues.warning),
+            lateReports: managerAccountabilityMetric(null, MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS.lateReports),
+            payrollDiscrepancies: managerAccountabilityMetric(null, MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS.payrollDiscrepancies),
+            noShows: managerAccountabilityMetric(attendance.noShows),
+            unresolvedAttendance: managerAccountabilityMetric(attendance.unresolvedAttendance),
+            unapprovedShifts: managerAccountabilityMetric(null, MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS.unapprovedShifts),
+            missingReadiness: managerAccountabilityMetric(missingReadiness),
+            unresolvedIssues: issues.critical + issues.warning + attendance.noShows + attendance.unresolvedAttendance + missingReadiness
+        };
+    });
+
+    const managerRows = managers.map(manager => {
+        const responsibleDepartments = departments.filter(dept => (
+            dept.assignedManagers.some(item => Number(item.id) === Number(manager.id))
+        ));
+        const unresolvedIssues = responsibleDepartments.reduce((sum, dept) => sum + dept.unresolvedIssues, 0);
+        return {
+            id: Number(manager.id),
+            name: managerAccountabilityStaffName(manager),
+            role: professionLabel(manager.role_type) || manager.position || '',
+            departments: responsibleDepartments.map(dept => dept.department),
+            unresolvedIssues,
+            weeklyTrend: managerAccountabilityMetric(null, MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS.weeklyTrend),
+            lastActionDate: managerAccountabilityMetric(null, MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS.lastActionDate),
+            profileHref: `/hr?employee=${encodeURIComponent(manager.id)}`
+        };
+    });
+
+    return {
+        source: 'staff_schedule_health_attendance_hr_cards',
+        mappingSource: MANAGER_ACCOUNTABILITY_MAPPING_SOURCE,
+        departments,
+        managers: managerRows,
+        hasExplicitDepartmentManagerMapping: false,
+        missingSources: Object.values(MANAGER_ACCOUNTABILITY_UNAVAILABLE_METRICS),
+        dateRange: dates.map(dateObj => (typeof dateObj === 'string' ? dateObj : formatDateStr(dateObj)))
+    };
+}
+
+function renderManagerAccountabilityMetric(metric = {}, label = '') {
+    if (!metric.available) {
+        return `<span class="accountability-metric is-unavailable" title="${escapeHtml(metric.source || 'source unavailable')}">
+            <b>N/A</b><span>${escapeHtml(label)}</span>
+        </span>`;
+    }
+    const value = Number(metric.value || 0);
+    const state = value > 0 ? 'is-attention' : 'is-ok';
+    return `<span class="accountability-metric ${state}">
+        <b>${value}</b><span>${escapeHtml(label)}</span>
+    </span>`;
+}
+
+function managerAccountabilityFilteredDepartments(accountability = null) {
+    if (!accountability) return [];
+    const deptFilter = StaffState.accountabilityDeptFilter || 'all';
+    const managerFilter = StaffState.accountabilityManagerFilter || 'all';
+    return (accountability.departments || []).filter(row => {
+        if (deptFilter !== 'all' && row.department !== deptFilter) return false;
+        if (managerFilter === 'unassigned') return row.assignedManagers.length === 0;
+        if (managerFilter !== 'all') {
+            return row.assignedManagers.some(manager => String(manager.id) === managerFilter);
+        }
+        return true;
+    });
+}
+
+function renderManagerAccountabilityPanel(accountability = null) {
+    const container = document.getElementById('managerAccountabilityPanel');
+    if (!container) return;
+    if (!accountability) {
+        container.innerHTML = '';
+        return;
+    }
+    const rows = managerAccountabilityFilteredDepartments(accountability);
+    const deptOptions = (accountability.departments || []).map(row => (
+        `<option value="${escapeHtml(row.department)}" ${StaffState.accountabilityDeptFilter === row.department ? 'selected' : ''}>${escapeHtml(row.label)}</option>`
+    )).join('');
+    const managerOptions = (accountability.managers || []).map(manager => (
+        `<option value="${escapeHtml(manager.id)}" ${String(StaffState.accountabilityManagerFilter) === String(manager.id) ? 'selected' : ''}>${escapeHtml(manager.name)}</option>`
+    )).join('');
+    const bodyHtml = rows.length ? rows.map(row => {
+        const managerHtml = row.assignedManagers.length
+            ? row.assignedManagers.map(manager => `<a href="/hr?employee=${encodeURIComponent(manager.id)}">${escapeHtml(managerAccountabilityStaffName(manager))}</a>`).join(', ')
+            : '<span class="accountability-unassigned">Не призначено</span>';
+        return `<tr class="${row.openCriticalIssues.value > 0 ? 'has-critical' : ''}">
+            <td>
+                <button type="button" class="accountability-dept-link" data-accountability-dept="${escapeHtml(row.department)}">
+                    ${escapeHtml(row.label)}
+                </button>
+                <small>${escapeHtml(row.managerSource)}</small>
+            </td>
+            <td>${managerHtml}</td>
+            <td><span class="accountability-health is-${escapeHtml(row.healthScore.severity)}">${row.healthScore.score}</span></td>
+            <td>
+                ${renderManagerAccountabilityMetric(row.openCriticalIssues, 'critical')}
+                ${renderManagerAccountabilityMetric(row.warningIssues, 'warnings')}
+            </td>
+            <td>
+                ${renderManagerAccountabilityMetric(row.noShows, 'no-shows')}
+                ${renderManagerAccountabilityMetric(row.unresolvedAttendance, 'attendance')}
+            </td>
+            <td>
+                ${renderManagerAccountabilityMetric(row.lateReports, 'late reports')}
+                ${renderManagerAccountabilityMetric(row.payrollDiscrepancies, 'payroll')}
+            </td>
+            <td>
+                ${renderManagerAccountabilityMetric(row.unapprovedShifts, 'unapproved')}
+                ${renderManagerAccountabilityMetric(row.missingReadiness, 'readiness')}
+            </td>
+            <td class="accountability-actions">
+                <button type="button" data-accountability-dept="${escapeHtml(row.department)}">Графік</button>
+                <a href="/reports.html">Reports</a>
+                <a href="/hr.html">HR</a>
+            </td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="8" class="accountability-empty">Немає відділів для поточного accountability filter.</td></tr>';
+
+    const managerRows = (accountability.managers || []).map(manager => {
+        const deptLabels = manager.departments.length
+            ? manager.departments.map(dept => scheduleDisplayDepartmentLabel(dept)).join(', ')
+            : 'Немає inferred-відділів';
+        return `<div class="accountability-manager-row">
+            <a href="${escapeHtml(manager.profileHref)}">${escapeHtml(manager.name)}</a>
+            <span>${escapeHtml(deptLabels)}</span>
+            ${renderManagerAccountabilityMetric(managerAccountabilityMetric(manager.unresolvedIssues), 'unresolved')}
+            ${renderManagerAccountabilityMetric(manager.weeklyTrend, 'trend')}
+            ${renderManagerAccountabilityMetric(manager.lastActionDate, 'last action')}
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="accountability-head">
+            <div>
+                <span class="accountability-kicker">Manager accountability</span>
+                <b>${rows.reduce((sum, row) => sum + row.unresolvedIssues, 0)} unresolved issues</b>
+            </div>
+            <div class="accountability-filters">
+                <select data-accountability-filter="department" aria-label="Accountability department filter">
+                    <option value="all" ${StaffState.accountabilityDeptFilter === 'all' ? 'selected' : ''}>Всі відділи</option>
+                    ${deptOptions}
+                </select>
+                <select data-accountability-filter="manager" aria-label="Accountability manager filter">
+                    <option value="all" ${StaffState.accountabilityManagerFilter === 'all' ? 'selected' : ''}>Всі managers</option>
+                    <option value="unassigned" ${StaffState.accountabilityManagerFilter === 'unassigned' ? 'selected' : ''}>Без manager</option>
+                    ${managerOptions}
+                </select>
+            </div>
+        </div>
+        <div class="accountability-note">
+            Explicit manager→department mapping is missing. Assigned manager is inferred from HR role_type and same display department; unavailable metrics are not counted as zero.
+        </div>
+        <div class="accountability-table-wrap">
+            <table class="accountability-table">
+                <thead>
+                    <tr>
+                        <th>Відділ</th>
+                        <th>Manager</th>
+                        <th>Health</th>
+                        <th>Issues</th>
+                        <th>Attendance</th>
+                        <th>Reports/payroll</th>
+                        <th>Shifts/readiness</th>
+                        <th>Drill-down</th>
+                    </tr>
+                </thead>
+                <tbody>${bodyHtml}</tbody>
+            </table>
+        </div>
+        <div class="accountability-manager-list">
+            ${managerRows || '<div class="accountability-empty">Немає manager/senior_manager у поточному staff pool.</div>'}
+        </div>
+    `;
+
+    container.querySelectorAll('[data-accountability-filter]').forEach(select => {
+        select.addEventListener('change', () => {
+            if (select.dataset.accountabilityFilter === 'department') {
+                StaffState.accountabilityDeptFilter = select.value || 'all';
+            } else {
+                StaffState.accountabilityManagerFilter = select.value || 'all';
+            }
+            renderManagerAccountabilityPanel(StaffState.managerAccountability);
+        });
+    });
+    container.querySelectorAll('[data-accountability-dept]').forEach(button => {
+        button.addEventListener('click', () => {
+            const department = button.dataset.accountabilityDept || 'all';
+            StaffState.activeDept = department;
+            StaffState.accountabilityDeptFilter = department;
+            renderDeptFilter();
+            renderSchedule();
+            document.getElementById('scheduleWrapper')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+}
+
 function replaceScheduleStateEntry(previousEntry, nextEntry) {
     if (previousEntry) {
         const oldKey = scheduleEntryKey(previousEntry);
@@ -421,7 +1552,8 @@ const LEGACY_DEPARTMENT_FALLBACK = {
 
 const SCHEDULE_DEPARTMENT_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'];
 const SCHEDULE_RECEPTION_ROLE_KEYS = new Set(['reception', 'manager', 'senior_manager']);
-const SCHEDULE_BACKEND_COPY_SAFE_DEPARTMENTS = new Set(['all', 'animators', 'trampoline', 'cafe', 'cleaning']);
+const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
+const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set(['reception', 'tech', 'admin']);
 
 function getDepartmentOptionsFromStaffState() {
     const source = StaffState.departments && Object.keys(StaffState.departments).length
@@ -496,8 +1628,40 @@ function scheduleDepartmentRenderOrder(grouped = {}) {
     return ordered;
 }
 
-function isCopyWeekSafeForActiveScheduleDepartment() {
-    return SCHEDULE_BACKEND_COPY_SAFE_DEPARTMENTS.has(StaffState.activeDept);
+function scheduleCopyWeekModeForDepartment(department = StaffState.activeDept) {
+    if (department === 'all') return 'all';
+    if (SCHEDULE_COPY_RAW_DEPARTMENT_SAFE.has(department)) return 'raw_department';
+    return 'explicit_staff_ids';
+}
+
+function scheduleCopyWeekVisibleStaffIds() {
+    return scheduleVisibleStaff()
+        .map(staff => Number(staff.id))
+        .filter(Number.isFinite);
+}
+
+function scheduleCopyWeekPayload(fromMonday, toMonday, options = {}) {
+    const department = StaffState.activeDept || 'all';
+    const mode = scheduleCopyWeekModeForDepartment(department);
+    const body = {
+        fromMonday,
+        toMonday,
+        displayGroup: department,
+        dryRun: Boolean(options.dryRun)
+    };
+    if (mode === 'raw_department') {
+        body.department = department;
+    } else if (mode === 'explicit_staff_ids') {
+        body.staffIds = scheduleCopyWeekVisibleStaffIds();
+        if (!body.staffIds.length) {
+            return {
+                error: 'Немає видимих працівників для копіювання цієї категорії.',
+                body,
+                mode
+            };
+        }
+    }
+    return { body, mode };
 }
 
 const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -611,9 +1775,11 @@ async function fetchSchedule(from, to) {
         const data = await res.json();
         if (data.success) {
             StaffState.schedule = {};
-            for (const entry of data.data) {
+            StaffState.scheduleRawEntries = [];
+            for (const entry of (data.data || [])) {
                 const normalizedEntry = { ...entry, status: normalizeScheduleStatus(entry.status) };
-                StaffState.schedule[`${entry.staff_id}_${entry.date}`] = normalizedEntry;
+                StaffState.scheduleRawEntries.push(normalizedEntry);
+                StaffState.schedule[`${normalizedEntry.staff_id}_${normalizedEntry.date}`] = normalizedEntry;
             }
         }
         return data;
@@ -622,6 +1788,99 @@ async function fetchSchedule(from, to) {
         showNotification('Помилка завантаження розкладу', 'error');
         return { success: false };
     }
+}
+
+async function fetchScheduleAttendance(from, to) {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/staff/attendance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            StaffState.attendance = {};
+            for (const row of (data.data || [])) {
+                const date = String(row.date || '').slice(0, 10);
+                if (!row.staff_id || !date) continue;
+                StaffState.attendance[`${row.staff_id}_${date}`] = { ...row, date };
+            }
+            StaffState.attendanceSummary = data.summary || null;
+        }
+        return data;
+    } catch (err) {
+        console.error('fetchScheduleAttendance error:', err);
+        StaffState.attendance = {};
+        StaffState.attendanceSummary = null;
+        return { success: false };
+    }
+}
+
+function staffingForecastDateKeys(from, to) {
+    const fallback = getWeekDates(StaffState.weekStart || new Date()).map(formatDateStr);
+    if (!from || !to) return fallback;
+    const start = new Date(`${from}T00:00:00`);
+    const end = new Date(`${to}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return fallback;
+    const dates = [];
+    for (const current = new Date(start); current <= end && dates.length <= 31; current.setDate(current.getDate() + 1)) {
+        dates.push(formatDateStr(current));
+    }
+    return dates.length ? dates : fallback;
+}
+
+async function fetchStaffingForecastBookings(from, to) {
+    const dates = staffingForecastDateKeys(from, to);
+    const nextBookings = {};
+    let successCount = 0;
+    const token = localStorage.getItem('pzp_token');
+    await Promise.all(dates.map(async (date) => {
+        try {
+            const res = await fetch(`/api/bookings/${encodeURIComponent(date)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error(`Bookings ${date} ${res.status}`);
+            const data = await res.json();
+            const rows = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+            nextBookings[date] = rows;
+            successCount += 1;
+        } catch (err) {
+            console.warn('fetchStaffingForecastBookings error:', date, err);
+            nextBookings[date] = [];
+        }
+    }));
+    StaffState.staffingForecastBookings = nextBookings;
+    StaffState.staffingForecastAvailable = successCount > 0;
+    return { success: successCount > 0, dates, successCount };
+}
+
+async function postAttendanceAction(action, staffId) {
+    const token = localStorage.getItem('pzp_token');
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if (action === 'clock-in') {
+        const res = await fetch('/api/hr/clock-in', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ staff_id: staffId })
+        });
+        return await res.json();
+    }
+    if (action === 'clock-out') {
+        const res = await fetch('/api/hr/clock-out', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ staff_id: staffId })
+        });
+        return await res.json();
+    }
+    if (action === 'excused') {
+        const res = await fetch('/api/hr/mark-absent', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ staff_id: staffId, status: 'day_off', notes: 'Excused from schedule attendance panel' })
+        });
+        return await res.json();
+    }
+    return { success: false, error: 'Unknown attendance action' };
 }
 
 async function saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note, professionKey = null) {
@@ -683,14 +1942,14 @@ async function bulkSaveSchedule(entries) {
     return await res.json();
 }
 
-async function copyWeekSchedule(fromMonday, toMonday, department) {
+async function copyWeekSchedule(fromMonday, toMonday, options = {}) {
     const token = localStorage.getItem('pzp_token');
-    const body = { fromMonday, toMonday };
-    if (department && department !== 'all') body.department = department;
+    const payload = scheduleCopyWeekPayload(fromMonday, toMonday, options);
+    if (payload.error) return { success: false, error: payload.error, copyMode: payload.mode };
     const res = await fetch('/api/staff/schedule/copy-week', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(payload.body)
     });
     return await res.json();
 }
@@ -701,6 +1960,191 @@ async function fetchScheduleHours(from, to) {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     return await res.json();
+}
+
+function scheduleAttendanceRecord(staffId, date) {
+    return StaffState.attendance?.[`${staffId}_${date}`] || null;
+}
+
+function scheduleAttendanceIsWork(entry = {}) {
+    return ['working', 'remote'].includes(normalizeScheduleStatus(entry?.status));
+}
+
+function scheduleAttendanceIsExcusedStatus(status) {
+    return ['sick', 'vacation', 'day_off', 'dayoff', 'excused'].includes(normalizeScheduleStatus(status));
+}
+
+function scheduleAttendanceFormatTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).slice(0, 5);
+    return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+}
+
+function scheduleAttendancePlannedTimes(entry = {}, record = {}) {
+    return {
+        start: entry?.shift_start || record?.planned_start || null,
+        end: entry?.shift_end || record?.planned_end || null,
+        role: entry?.profession_key || null
+    };
+}
+
+function scheduleAttendanceIsPastDue(date, plannedStart) {
+    const today = todayStr();
+    if (date < today) return true;
+    if (date > today) return false;
+    const startMinutes = scheduleTimeToMinutes(plannedStart);
+    if (startMinutes === null) return false;
+    const now = new Date();
+    const nowMinutes = (now.getHours() * 60) + now.getMinutes();
+    return nowMinutes > startMinutes + SCHEDULE_ATTENDANCE_LATE_GRACE_MINUTES;
+}
+
+function scheduleAttendanceStatus(entry = null, record = null, date = '') {
+    const planned = scheduleAttendancePlannedTimes(entry, record);
+    const scheduleStatus = normalizeScheduleStatus(entry?.status);
+    const rawStatus = normalizeScheduleStatus(record?.time_status || record?.status || '');
+    const clockIn = record?.clock_in || record?.checkin_at;
+    const clockOut = record?.clock_out || record?.checkout_at;
+    const lateMinutes = Number(record?.late_minutes || 0);
+    const earlyLeaveMinutes = Number(record?.early_leave_minutes || 0);
+    const isWork = scheduleAttendanceIsWork(entry) || Boolean(clockIn || clockOut);
+
+    if (!entry && !record) return '';
+    if (scheduleAttendanceIsExcusedStatus(rawStatus) || scheduleAttendanceIsExcusedStatus(scheduleStatus)) return 'excused';
+    if (['absent', 'no_show'].includes(rawStatus)) return 'absent';
+    if (earlyLeaveMinutes > 0 || rawStatus === 'early_leave') return 'left_early';
+    if (clockIn && clockOut) {
+        if (lateMinutes > SCHEDULE_ATTENDANCE_LATE_GRACE_MINUTES || rawStatus === 'late') return 'late';
+        return 'completed';
+    }
+    if (clockIn) {
+        if (lateMinutes > SCHEDULE_ATTENDANCE_LATE_GRACE_MINUTES || rawStatus === 'late') return 'late';
+        return 'checked_in';
+    }
+    if (record && !clockIn && !scheduleAttendanceIsExcusedStatus(rawStatus)) return 'manual_review';
+    if (isWork && scheduleAttendanceIsPastDue(date, planned.start)) return 'absent';
+    if (isWork) return 'planned';
+    return '';
+}
+
+function scheduleAttendanceDetails(entry = null, record = null, date = '') {
+    const planned = scheduleAttendancePlannedTimes(entry, record);
+    const status = scheduleAttendanceStatus(entry, record, date);
+    const actualArrival = record?.clock_in || record?.checkin_at || null;
+    const actualLeave = record?.clock_out || record?.checkout_at || null;
+    return {
+        status,
+        label: SCHEDULE_ATTENDANCE_LABELS[status] || status,
+        plannedStart: planned.start,
+        plannedEnd: planned.end,
+        plannedRole: planned.role,
+        actualArrival,
+        actualLeave,
+        lateMinutes: Number(record?.late_minutes || 0),
+        earlyLeaveMinutes: Number(record?.early_leave_minutes || 0),
+        totalWorkedMinutes: Number(record?.total_worked_minutes || 0),
+        source: record?.attendance_source || (record ? 'attendance_record' : 'schedule_plan'),
+        timeRecordId: record?.time_record_id || null
+    };
+}
+
+function scheduleAttendanceActionButtons(staffId, date, details = {}) {
+    if (!StaffState.canManage || date !== todayStr()) return '';
+    if (!SCHEDULE_ATTENDANCE_STATUSES.has(details.status)) return '';
+    const buttons = [];
+    if (['planned', 'absent', 'manual_review'].includes(details.status)) {
+        buttons.push(`<button type="button" class="attendance-action-btn" data-attendance-action="clock-in" data-staff="${staffId}" title="Підтвердити прихід">IN</button>`);
+        buttons.push(`<button type="button" class="attendance-action-btn" data-attendance-action="excused" data-staff="${staffId}" title="Позначити поважну причину">EX</button>`);
+    }
+    if (['checked_in', 'late'].includes(details.status)) {
+        buttons.push(`<button type="button" class="attendance-action-btn" data-attendance-action="clock-out" data-staff="${staffId}" title="Підтвердити вихід">OUT</button>`);
+    }
+    return buttons.length ? `<span class="attendance-actions">${buttons.join('')}</span>` : '';
+}
+
+function renderScheduleAttendanceIndicator(staffId, date, entry = null) {
+    const record = scheduleAttendanceRecord(staffId, date);
+    const details = scheduleAttendanceDetails(entry, record, date);
+    if (!details.status) return '';
+    const actual = [
+        details.actualArrival ? `in ${scheduleAttendanceFormatTime(details.actualArrival)}` : '',
+        details.actualLeave ? `out ${scheduleAttendanceFormatTime(details.actualLeave)}` : ''
+    ].filter(Boolean).join(' · ');
+    const planned = [
+        details.plannedStart ? String(details.plannedStart).slice(0, 5) : '',
+        details.plannedEnd ? String(details.plannedEnd).slice(0, 5) : ''
+    ].filter(Boolean).join('-');
+    const meta = actual || (planned ? `plan ${planned}` : details.source);
+    const title = [
+        `Attendance: ${details.label}`,
+        planned ? `planned ${planned}` : '',
+        actual ? `actual ${actual}` : '',
+        details.lateMinutes ? `late ${details.lateMinutes}m` : '',
+        details.earlyLeaveMinutes ? `early ${details.earlyLeaveMinutes}m` : '',
+        `source ${details.source}`
+    ].filter(Boolean).join(' | ');
+    return `<span class="sch-attendance is-${details.status}" title="${escapeHtml(title)}">
+        <span class="sch-attendance-status">${escapeHtml(details.label)}</span>
+        ${meta ? `<span class="sch-attendance-meta">${escapeHtml(meta)}</span>` : ''}
+        ${scheduleAttendanceActionButtons(staffId, date, details)}
+    </span>`;
+}
+
+function buildScheduleAttendanceSummary(dates = [], staffList = []) {
+    return dates.map(dateObj => {
+        const date = formatDateStr(dateObj);
+        const counts = { planned: 0, checked_in: 0, late: 0, absent: 0, left_early: 0, completed: 0, manual_review: 0, excused: 0 };
+        let plannedWork = 0;
+        for (const staff of staffList) {
+            const entry = StaffState.schedule[`${staff.id}_${date}`];
+            const record = scheduleAttendanceRecord(staff.id, date);
+            if (scheduleAttendanceIsWork(entry)) plannedWork++;
+            const status = scheduleAttendanceStatus(entry, record, date);
+            if (counts[status] !== undefined) counts[status]++;
+        }
+        return { date, plannedWork, counts };
+    });
+}
+
+function renderScheduleAttendanceSummary(dates = [], staffList = []) {
+    const container = document.getElementById('scheduleAttendanceSummary');
+    if (!container) return;
+    const days = buildScheduleAttendanceSummary(dates, staffList);
+    if (!staffList.length) {
+        container.innerHTML = '<div class="attendance-summary-empty">Немає видимих рядків для attendance summary.</div>';
+        return;
+    }
+    container.innerHTML = days.map(day => `
+        <div class="attendance-day-card">
+            <div class="attendance-day-head">
+                <span>${escapeHtml(day.date.slice(5))}</span>
+                <b>${day.counts.checked_in + day.counts.late + day.counts.completed + day.counts.left_early}/${day.plannedWork}</b>
+            </div>
+            <div class="attendance-day-metrics">
+                <span class="is-late">${day.counts.late} late</span>
+                <span class="is-absent">${day.counts.absent} absent</span>
+                <span class="is-review">${day.counts.manual_review} review</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function handleAttendanceAction(button) {
+    const action = button?.dataset?.attendanceAction;
+    const staffId = Number(button?.dataset?.staff);
+    if (!action || !Number.isFinite(staffId)) return;
+    button.disabled = true;
+    const result = await postAttendanceAction(action, staffId);
+    if (result.success) {
+        const dates = getWeekDates(StaffState.weekStart);
+        await fetchScheduleAttendance(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
+        renderSchedule();
+        showNotification('Attendance оновлено');
+    } else {
+        button.disabled = false;
+        showNotification(result.error || 'Не вдалося оновити attendance', 'error');
+    }
 }
 
 // ==========================================
@@ -737,10 +2181,10 @@ function renderWeekLabel() {
     document.getElementById('weekLabel').textContent = label;
 }
 
-function renderSummary() {
+function renderSummary(staffList = null) {
     const container = document.getElementById('scheduleSummary');
     const today = todayStr();
-    const filtered = scheduleVisibleStaff();
+    const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
 
     let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0, unset = 0, replacements = 0;
     for (const s of filtered) {
@@ -767,26 +2211,31 @@ function renderSummary() {
     `;
 }
 
-function renderEmpRow(emp, dates, today) {
-    const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2);
+function renderEmpRow(emp, dates, today, health = null) {
+    const employeeName = String(emp.display_name || emp.name || '').trim() || 'Співробітник';
+    const initials = employeeName.split(' ').map(w => w[0]).join('').slice(0, 2);
     const hoursData = StaffState.hoursData?.[emp.id];
     const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
     const isFreelance = emp.is_freelance;
     const linkBadge = renderLinkBadge(emp);
     const cardBadges = renderStaffCardBadges(emp);
+    const rowHealthIssues = scheduleHealthRowIssues(health, emp.id);
+    const rowHealthSeverity = scheduleHealthSeverity(rowHealthIssues);
+    const rowHealthClass = rowHealthSeverity !== 'ok' ? `has-health-${rowHealthSeverity}` : '';
+    const rowHealthBadges = renderScheduleHealthBadges(rowHealthIssues, 'row');
     const roleSummary = staffCardRoleSummary(emp) || emp.position || '';
     const hrLink = renderHrCrosslink(emp);
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
-    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
+    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass}">`;
     html += `<td>
         <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
-             title="Відкрити HR профіль: ${escapeHtml(emp.name)}"
-             aria-label="Відкрити HR профіль: ${escapeHtml(emp.name)}">
+             title="Відкрити HR профіль: ${escapeHtml(employeeName)}"
+             aria-label="Відкрити HR профіль: ${escapeHtml(employeeName)}">
             ${renderStaffCardAvatar(emp, initials, avatarColor)}
             <div class="emp-info">
-                <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
+                <span class="emp-name"><span class="emp-name-text">${escapeHtml(employeeName)}</span>${hrLink}</span>
                 <span class="emp-position">${escapeHtml(roleSummary)} ${linkBadge}</span>
-                <span class="emp-readiness">${cardBadges}</span>
+                <span class="emp-readiness">${cardBadges}${rowHealthBadges}</span>
                 <span class="emp-hours">${hoursLabel}</span>
             </div>
         </div>
@@ -803,6 +2252,14 @@ function renderEmpRow(emp, dates, today) {
         const isReplacement = isReplacementEntry(entry);
         const loadMeta = scheduleShiftLoadMeta({ ...entry, status, shift_start: shiftStart, shift_end: shiftEnd });
         const loadClass = loadMeta.className || '';
+        const cellHealthIssues = scheduleHealthCellIssues(health, emp.id, ds);
+        const cellHealthSeverity = scheduleHealthSeverity(cellHealthIssues);
+        const cellHealthClass = cellHealthSeverity !== 'ok' ? `has-health-${cellHealthSeverity}` : '';
+        const cellHealthBadges = renderScheduleHealthBadges(cellHealthIssues, 'cell');
+        const attendanceRecord = scheduleAttendanceRecord(emp.id, ds);
+        const attendanceDetails = scheduleAttendanceDetails(entry, attendanceRecord, ds);
+        const attendanceClass = attendanceDetails.status ? `has-attendance-${attendanceDetails.status}` : '';
+        const attendanceIndicator = renderScheduleAttendanceIndicator(emp.id, ds, entry);
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
             cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
@@ -824,13 +2281,19 @@ function renderEmpRow(emp, dates, today) {
         if (entry?.note) {
             cellContent += `<span class="sch-note">${escapeHtml(entry.note)}</span>`;
         }
+        if (attendanceIndicator) {
+            cellContent += attendanceIndicator;
+        }
+        if (cellHealthBadges) {
+            cellContent += cellHealthBadges;
+        }
 
         html += `<td>
-            <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''}"
+            <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass} ${attendanceClass}"
                  data-staff="${emp.id}" data-date="${ds}"
                  data-shift-load="${loadMeta.bucket || ''}" data-shift-ratio="${loadMeta.label || ''}"
                  data-schedule-id="${entry?.id || ''}" data-hr-shift="${entry?.hr_shift_id || ''}"
-                 title="${escapeHtml(scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd))}">
+                 title="${escapeHtml([scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd), attendanceDetails.status ? `attendance ${attendanceDetails.label}` : '', scheduleHealthIssueSummary(cellHealthIssues)].filter(Boolean).join(' | '))}">
                 ${cellContent}
             </div>
         </td>`;
@@ -859,12 +2322,28 @@ function renderSchedule() {
 
     // Body — group by department
     const tbody = document.getElementById('scheduleBody');
-    const filtered = scheduleVisibleStaff();
+    const baseFiltered = scheduleVisibleStaff();
+    const health = buildScheduleHealth(dates, baseFiltered);
+    const forecast = buildStaffingDemandForecast(dates, baseFiltered);
+    const accountability = buildManagerAccountability(dates, baseFiltered, health);
+    const filtered = scheduleHealthFilteredStaff(baseFiltered, health);
+    StaffState.staffingForecast = forecast;
+    StaffState.managerAccountability = accountability;
+    renderScheduleHealthPanel(health);
+    renderStaffingForecastPanel(forecast);
+    renderManagerAccountabilityPanel(accountability);
 
     // Group staff by department
     const grouped = groupStaffByScheduleDepartment(filtered);
 
     let bodyHtml = '';
+
+    if (!filtered.length) {
+        const message = baseFiltered.length
+            ? 'Немає рядків для поточного health-фільтра.'
+            : 'Немає працівників у поточному фільтрі графіка.';
+        bodyHtml = `<tr class="schedule-health-empty-row"><td colspan="${dates.length + 1}">${escapeHtml(message)}</td></tr>`;
+    }
 
     for (const dept of scheduleDepartmentRenderOrder(grouped)) {
         if (!grouped[dept]) continue;
@@ -885,7 +2364,7 @@ function renderSchedule() {
                 bodyHtml += `<tr class="sub-group-row"><td colspan="${dates.length + 1}"><span class="sub-group-icon">${sg.icon}</span> ${sg.label} <span class="sub-group-count">${sgStaff.length}</span></td></tr>`;
 
                 for (const emp of sgStaff) {
-                    bodyHtml += renderEmpRow(emp, dates, today);
+                    bodyHtml += renderEmpRow(emp, dates, today, health);
                 }
             }
             // Render staff that didn't match any sub-group (edge case)
@@ -896,12 +2375,12 @@ function renderSchedule() {
                 return !roleKey || !allRoleKeys.has(roleKey);
             });
             for (const emp of unmatched) {
-                bodyHtml += renderEmpRow(emp, dates, today);
+                bodyHtml += renderEmpRow(emp, dates, today, health);
             }
         } else {
             // Small department — render without sub-groups
             for (const emp of deptStaff) {
-                bodyHtml += renderEmpRow(emp, dates, today);
+                bodyHtml += renderEmpRow(emp, dates, today, health);
             }
         }
     }
@@ -910,13 +2389,22 @@ function renderSchedule() {
     if (StaffState.showHours) {
         tbody.classList.add('show-hours');
     }
-    renderSummary();
+    renderSummary(filtered);
+    renderScheduleAttendanceSummary(dates, filtered);
 
     // Cell click handlers
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
         if (!StaffState.canManage) cell.setAttribute('aria-readonly', 'true');
         cell.addEventListener('click', () => {
             openEditModal(parseInt(cell.dataset.staff), cell.dataset.date);
+        });
+    });
+
+    tbody.querySelectorAll('[data-attendance-action]').forEach(button => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            handleAttendanceAction(button);
         });
     });
 
@@ -936,6 +2424,7 @@ function renderSchedule() {
             }
         });
     });
+    bindScheduleHealthDetailButtons(tbody);
 
     // Employee profile click handlers: the name/avatar area opens the HR profile,
     // while date cells keep opening shift editing and account badges keep linking accounts.
@@ -1281,7 +2770,11 @@ async function goToWeek(monday) {
     StaffState.weekStart = monday;
     renderWeekLabel();
     const dates = getWeekDates(monday);
-    await fetchSchedule(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
+    const from = formatDateStr(dates[0]);
+    const to = formatDateStr(getScheduleRangeEnd(dates));
+    await fetchSchedule(from, to);
+    await fetchScheduleAttendance(from, to);
+    await fetchStaffingForecastBookings(from, to);
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
 }
@@ -1421,15 +2914,27 @@ async function handleCopyWeek() {
     const deptLabel = StaffState.activeDept === 'all'
         ? 'всіх відділів'
         : scheduleDisplayDepartmentLabel(StaffState.activeDept);
+    const copyMode = scheduleCopyWeekModeForDepartment(StaffState.activeDept);
 
-    if (!isCopyWeekSafeForActiveScheduleDepartment()) {
-        showNotification('Для цієї категорії копіювання тижня тимчасово доступне тільки через "Всі", бо вона зібрана з кількох HR-відділів/ролей.', 'error');
+    const preview = await copyWeekSchedule(fromMonday, toMonday, { dryRun: true });
+    if (!preview.success) {
+        showNotification(preview.error || 'Не вдалося підготувати preview копіювання тижня', 'error');
         return;
     }
 
-    if (!await confirmModal(`Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?\n\nІснуючі записи будуть перезаписані.`, { type: 'warning', okText: 'Копіювати' })) return;
+    const previewLines = [
+        `Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?`,
+        '',
+        `Режим: ${copyMode === 'explicit_staff_ids' ? 'visible staffIds[]' : (copyMode === 'raw_department' ? 'raw department' : 'all staff')}`,
+        `Працівників: ${preview.staffCount || 0}`,
+        `Змін буде створено/оновлено: ${preview.count || 0}`,
+        `Конфліктів із цільовим тижнем: ${preview.conflicts || 0}`,
+        '',
+        'Існуючі записи в цільовому тижні будуть перезаписані після підтвердження.'
+    ];
+    if (!await confirmModal(previewLines.join('\n'), { type: 'warning', okText: 'Копіювати' })) return;
 
-    const result = await copyWeekSchedule(fromMonday, toMonday, StaffState.activeDept);
+    const result = await copyWeekSchedule(fromMonday, toMonday);
     if (result.success) {
         showNotification(`Скопійовано ${result.count} записів на наступний тиждень`);
         // Jump to the target week to see the result
@@ -1766,7 +3271,9 @@ function renderLinkBadge(emp) {
 }
 
 function renderHrCrosslink(emp) {
-    return `<a href="/hr?employee=${emp.id}" class="hr-crosslink" title="HR профіль">👤</a>`;
+    const staffId = Number(emp?.id);
+    if (!Number.isFinite(staffId)) return '';
+    return `<a href="/hr?employee=${encodeURIComponent(staffId)}" class="hr-crosslink" title="HR профіль" aria-label="Відкрити HR профіль">👤</a>`;
 }
 
 function openHrProfile(staffId) {
@@ -2255,7 +3762,11 @@ async function initPage() {
     renderWeekLabel();
 
     const dates = getWeekDates(StaffState.weekStart);
-    await fetchSchedule(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
+    const from = formatDateStr(dates[0]);
+    const to = formatDateStr(getScheduleRangeEnd(dates));
+    await fetchSchedule(from, to);
+    await fetchScheduleAttendance(from, to);
+    await fetchStaffingForecastBookings(from, to);
     renderSchedule();
 
     // Event listeners

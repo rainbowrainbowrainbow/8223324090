@@ -23,7 +23,7 @@ async function waitFor(predicate, message = 'condition') {
     assert.fail(`Timed out waiting for ${message}`);
 }
 
-async function setupReportsDom(options = {}) {
+async function setupReportsDom(setupOptions = {}) {
     const html = fs.readFileSync(path.join(ROOT, 'reports.html'), 'utf8');
     const js = fs.readFileSync(path.join(ROOT, 'js/reports-page.js'), 'utf8');
     const dom = new JSDOM(html, {
@@ -42,17 +42,53 @@ async function setupReportsDom(options = {}) {
     window.confirmModal = async () => true;
     window.promptModal = async () => 'Нова колонка';
     window.localStorage.setItem('pzp_token', 'test-token');
-    window.fetch = async (url, options = {}) => {
+    window.fetch = async (url, fetchOptions = {}) => {
         const target = String(url);
-        requests.push({ url: target, options });
-        if (target.startsWith('/api/reports/templates')) return jsonResponse({ success: true, templates: [], canManage: true });
+        requests.push({ url: target, options: fetchOptions });
+        if (target.startsWith('/api/reports/templates')) {
+            return jsonResponse({ success: true, templates: setupOptions.backendTemplates || [], canManage: true });
+        }
         if (target.startsWith('/api/reports/drafts')) return jsonResponse({ success: true, drafts: [] });
         if (target.startsWith('/api/staff?active=true')) {
-            if (options.staffApiFails) return jsonResponse({ success: false, error: 'staff_unavailable' }, 503);
+            if (setupOptions.staffApiFails) return jsonResponse({ success: false, error: 'staff_unavailable' }, 503);
             return jsonResponse({
                 success: true,
                 data: [
-                    { id: 42, name: 'Оля Коваленко', department: 'animators', position: 'Аніматор', role_type: 'animator' }
+                    { id: 42, name: 'Оля Коваленко', display_name: 'Оля Коваленко', department: 'animators', position: 'Аніматор', role_type: 'animator' }
+                ]
+            });
+        }
+        if (target.startsWith('/api/staff/schedule')) {
+            return jsonResponse({
+                success: true,
+                data: [
+                    {
+                        id: 700,
+                        staff_id: 42,
+                        date: '2026-06-28',
+                        status: 'working',
+                        shift_start: '10:00',
+                        shift_end: '18:00',
+                        hr_shift_id: 701
+                    }
+                ]
+            });
+        }
+        if (target.startsWith('/api/staff/attendance')) {
+            return jsonResponse({
+                success: true,
+                data: [
+                    {
+                        staff_id: 42,
+                        date: '2026-06-28',
+                        time_record_id: 800,
+                        clock_in: '2026-06-28T10:30:00.000Z',
+                        clock_out: '2026-06-28T18:00:00.000Z',
+                        late_minutes: 30,
+                        total_worked_minutes: 450,
+                        time_status: 'late',
+                        attendance_source: 'hr_time_records'
+                    }
                 ]
             });
         }
@@ -72,8 +108,8 @@ async function setupReportsDom(options = {}) {
                 taskContract: { sourceType: 'report', sourceEntityType: 'report' }
             });
         }
-        if (target === '/api/reports/table/close' && options.method === 'POST') {
-            const body = JSON.parse(options.body || '{}');
+        if (target === '/api/reports/table/close' && fetchOptions.method === 'POST') {
+            const body = JSON.parse(fetchOptions.body || '{}');
             const rawData = JSON.parse(JSON.stringify(body.tableJson || {}));
             rawData.reportTableTemplate.lifecycle = {
                 status: 'closed',
@@ -106,8 +142,8 @@ async function setupReportsDom(options = {}) {
             return jsonResponse({ success: true, report }, body.reportId ? 200 : 201);
         }
         if (target.startsWith('/api/reports?')) return jsonResponse({ reports: createdReports, total: createdReports.length });
-        if (target === '/api/reports' && options.method === 'POST') {
-            const body = JSON.parse(options.body || '{}');
+        if (target === '/api/reports' && fetchOptions.method === 'POST') {
+            const body = JSON.parse(fetchOptions.body || '{}');
             const report = {
                 id: 9001,
                 type: body.type,
@@ -194,6 +230,92 @@ test('reports create flow creates a real report without visible technical table 
     assert.equal(document.getElementById('hashtagDashboard').textContent.includes('visible-ops'), true);
 });
 
+test('operations checklist stores owner staff id with display snapshot', async () => {
+    const { window, requests } = await setupReportsDom();
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'operations-checklist';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /Операційний/.test(document.getElementById('reportSheetTitle').textContent), 'operations template switch');
+
+    const ownerSelect = document.querySelector('[data-row-index="0"][data-column-key="owner"][data-staff-field="true"]');
+    assert.ok(ownerSelect);
+    ownerSelect.value = '42';
+    ownerSelect.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const status = document.querySelector('[data-row-index="0"][data-column-key="status"]');
+    status.value = 'OK';
+    status.dispatchEvent(new window.Event('input', { bubbles: true }));
+
+    assert.match(document.getElementById('reportSheetSummary').textContent, /Report quality/);
+    assert.match(document.getElementById('reportSheetSummary').textContent, /owner без staff_id/);
+    document.querySelector('[data-report-quality-issue-filter="operations_owner_staff_id_missing"]').click();
+    assert.equal(document.querySelectorAll('#reportSheetTable tbody tr').length, 2);
+    document.querySelector('[data-report-quality-filter="needs_review"]').click();
+    assert.equal(document.querySelectorAll('#reportSheetTable tbody tr').length, 2);
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'operations report create request');
+
+    const createRequest = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    const body = JSON.parse(createRequest.options.body);
+    const table = body.rawData.reportTableTemplate;
+    const ownerColumn = table.columns.find(col => col.key === 'owner');
+    const row = table.rows[0];
+    assert.equal(ownerColumn.type, 'staff');
+    assert.equal(ownerColumn.staffIdKey, 'owner_staff_id');
+    assert.equal(row.owner, 'Оля Коваленко');
+    assert.equal(row.owner_staff_id, '42');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.status, 'needs_review');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.blockingPolicy, 'informational_only_until_policy_confirmed');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.operations_owner_staff_id_missing, 2);
+});
+
+test('staff report fields preserve legacy snapshot text without staff id', async () => {
+    const { window, requests } = await setupReportsDom({
+        backendTemplates: [
+            {
+                id: 'legacy-owner-template',
+                title: 'Legacy owner table',
+                category: 'Operations',
+                layout: 'checklist',
+                defaultReport: { type: 'expense', category: 'Офіс', hashtag: 'legacy-owner', amountColumn: null },
+                columns: [
+                    { key: 'task', label: 'Task', type: 'text' },
+                    { key: 'owner', label: 'Owner', type: 'staff', staffIdKey: 'owner_staff_id' },
+                    { key: 'status', label: 'Status', type: 'text' },
+                    { key: 'note', label: 'Note', type: 'text' }
+                ],
+                rows: [
+                    { task: 'Legacy task', owner: 'Legacy Owner', status: 'OK', note: 'old row' }
+                ]
+            }
+        ]
+    });
+    const document = window.document;
+
+    const picker = document.getElementById('reportTemplatePicker');
+    picker.value = 'legacy-owner-template';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await waitFor(() => /Legacy owner table/.test(document.getElementById('reportSheetTitle').textContent), 'legacy template switch');
+
+    const ownerSelect = document.querySelector('[data-row-index="0"][data-column-key="owner"][data-staff-field="true"]');
+    assert.ok(ownerSelect);
+    assert.match(ownerSelect.textContent, /Legacy Owner · snapshot/);
+    assert.equal(ownerSelect.value, '');
+
+    document.getElementById('reportTemplateSaveBtn').click();
+    await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'legacy report create request');
+
+    const createRequest = requests.find(req => req.url === '/api/reports' && req.options.method === 'POST');
+    const body = JSON.parse(createRequest.options.body);
+    const row = body.rawData.reportTableTemplate.rows[0];
+    assert.equal(row.owner, 'Legacy Owner');
+    assert.equal(row.owner_staff_id, '');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.status, 'needs_review');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.operations_owner_staff_id_missing, 1);
+});
+
 test('payroll report template stores canonical staff id with display snapshot', async () => {
     const { window, requests } = await setupReportsDom();
     const document = window.document;
@@ -205,14 +327,18 @@ test('payroll report template stores canonical staff id with display snapshot', 
 
     const staffSelect = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
     assert.ok(staffSelect);
+    const date = document.querySelector('[data-row-index="0"][data-column-key="date"]');
+    date.value = '2026-06-28';
+    date.dispatchEvent(new window.Event('input', { bubbles: true }));
     staffSelect.value = '42';
     staffSelect.dispatchEvent(new window.Event('input', { bubbles: true }));
 
     const hours = document.querySelector('[data-row-index="0"][data-column-key="hours"]');
     const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
-    hours.value = '8';
+    hours.value = '7';
     total.value = '1200';
     [hours, total].forEach(input => input.dispatchEvent(new window.Event('input', { bubbles: true })));
+    await waitFor(() => document.getElementById('reportSheetSummary').textContent.includes('Review'), 'payroll review summary');
 
     document.getElementById('reportTemplateSaveBtn').click();
     await waitFor(() => requests.some(req => req.url === '/api/reports' && req.options.method === 'POST'), 'payroll report create request');
@@ -222,7 +348,36 @@ test('payroll report template stores canonical staff id with display snapshot', 
     const row = body.rawData.reportTableTemplate.rows[0];
     assert.equal(row.employee, 'Оля Коваленко');
     assert.equal(row.employee_staff_id, '42');
+    assert.equal(row.staff_id, '42');
+    assert.equal(row.display_snapshot, 'Оля Коваленко');
+    assert.equal(row.role_snapshot, 'animator');
     assert.equal(row.role, 'animator');
+    assert.equal(row.planned_hours, 8);
+    assert.equal(row.actual_hours, 7.5);
+    assert.equal(row.paid_hours, 7);
+    assert.deepEqual(row.planned_shift_ref, {
+        source: 'staff_schedule',
+        id: 700,
+        hr_shift_id: 701,
+        date: '2026-06-28',
+        status: 'working',
+        start: '10:00',
+        end: '18:00'
+    });
+    assert.equal(row.attendance_ref.time_record_id, 800);
+    assert.equal(row.attendance_status, 'late');
+    assert.equal(row.reconciliation_status, 'needs_review');
+    assert.ok(row.reconciliation_issues.includes('actual_paid_hours_mismatch'));
+    assert.equal(body.rawData.reportTableTemplate.payrollReconciliation.status, 'needs_review');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.status, 'needs_review');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.blockingPolicy, 'informational_only_until_policy_confirmed');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.payroll_actual_hours_mismatch, 1);
+    assert.deepEqual(body.rawData.reportTableTemplate.payrollReconciliation.totals, {
+        planned: 8,
+        actual: 7.5,
+        paid: 7,
+        amount: 1200
+    });
     assert.equal(body.amount, 1200);
 });
 
@@ -238,6 +393,8 @@ test('payroll report workspace keeps working when staff options API is unavailab
     const staffSelect = document.querySelector('[data-row-index="0"][data-column-key="employee"][data-staff-field="true"]');
     assert.ok(staffSelect);
     assert.match(staffSelect.textContent, /Оберіть працівника/);
+    assert.equal([...staffSelect.options].some(option => option.value === '42'), false);
+    assert.match(document.getElementById('reportSheetSummary').textContent, /snapshot fallback/);
 
     const total = document.querySelector('[data-row-index="0"][data-column-key="total"]');
     total.value = '500';
@@ -251,7 +408,28 @@ test('payroll report workspace keeps working when staff options API is unavailab
     const row = body.rawData.reportTableTemplate.rows[0];
     assert.equal(row.employee, '');
     assert.equal(row.employee_staff_id, '');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.status, 'needs_review');
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.staff_options_unavailable, 1);
+    assert.equal(body.rawData.reportTableTemplate.reportQuality.issueCounts.payroll_employee_missing, 1);
     assert.equal(body.amount, 500);
+});
+
+test('reports API keeps payroll reconciliation inside rawData without a new report schema', () => {
+    const reportsRoute = fs.readFileSync(path.join(ROOT, 'routes/reports.js'), 'utf8');
+    assert.match(reportsRoute, /function normalizeReportRawPayload/);
+    assert.match(reportsRoute, /function normalizePayrollRows/);
+    assert.match(reportsRoute, /reports_rawData_payroll_reconciliation_v1/);
+    assert.match(reportsRoute, /staff_id = staffId/);
+    assert.match(reportsRoute, /display_snapshot/);
+    assert.match(reportsRoute, /role_snapshot/);
+    assert.match(reportsRoute, /planned_shift_ref/);
+    assert.match(reportsRoute, /attendance_ref/);
+    assert.match(reportsRoute, /actual_paid_hours_mismatch/);
+    assert.match(reportsRoute, /duplicate_payroll_row/);
+    assert.match(reportsRoute, /amount_missing_or_zero/);
+    assert.match(reportsRoute, /offboarded_staff/);
+    assert.match(reportsRoute, /rawData \? JSON\.stringify\(normalizeReportRawPayload\(rawData\)\)/);
+    assert.doesNotMatch(reportsRoute, /ALTER TABLE reports[\s\S]*staff_id|CREATE TABLE IF NOT EXISTS payroll_reconciliation/i);
 });
 
 test('standard park report totals dar subtotal and locks after close', async () => {

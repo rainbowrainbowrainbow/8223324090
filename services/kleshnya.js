@@ -22,7 +22,7 @@ const {
     taskBusinessContextFromPayload
 } = require('./taskBusinessScope');
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
-const { createNotificationOutboxEvent } = require('./notificationOutbox');
+const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 
 const log = createLogger('Kleshnya');
 
@@ -63,64 +63,9 @@ function getCurrentMonth() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function envFlag(value) {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
-    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-    return null;
-}
-
-function firstEnvFlag(...values) {
-    for (const value of values) {
-        const parsed = envFlag(value);
-        if (parsed !== null) return parsed;
-    }
-    return null;
-}
-
-function hermesTaskOutboxEnabled(options = {}, env = process.env) {
-    if (typeof options.hermesOutboxEnabled === 'boolean') return options.hermesOutboxEnabled;
-
-    const explicit = firstEnvFlag(
-        env.HERMES_TASK_OUTBOX_ENABLED,
-        env.HERMES_NOTIFICATION_OUTBOX_ENABLED,
-        env.NOTIFICATION_OUTBOX_ENABLED
-    );
-    if (explicit !== null) return explicit;
-
-    const nodeEnv = String(env.NODE_ENV || '').trim().toLowerCase();
-    return ['test', 'development', 'local'].includes(nodeEnv);
-}
-
-function isActiveTaskForHermesOutbox(task = {}) {
-    if (task.is_active === false || task.deleted_at || task.archived_at) return false;
-    const status = String(task.status || task.workflow_state || 'todo').trim().toLowerCase();
-    return !['done', 'completed', 'archived', 'cancelled', 'canceled', 'deleted'].includes(status);
-}
-
 async function emitTaskCreatedHermesOutbox(task, options = {}) {
-    const ownerUserId = Number(task?.owner_user_id || task?.ownerUserId || 0);
-    if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) {
-        return { created: false, reason: 'no_owner_user_id' };
-    }
-    if (!isActiveTaskForHermesOutbox(task)) {
-        return { created: false, reason: 'inactive_task_status' };
-    }
-    if (options.skipHermesOutbox === true) {
-        return { created: false, reason: 'skip_hermes_outbox' };
-    }
-    if (!hermesTaskOutboxEnabled(options)) {
-        return { created: false, reason: 'hermes_task_outbox_disabled' };
-    }
-
     try {
-        return await createNotificationOutboxEvent({
-            task,
-            eventType: 'task_created',
-            context: options.hermesOutboxContext || options.notificationContext || {}
-        }, {
-            pool: options.pool
-        });
+        return await emitTaskCreatedNotificationOutboxEvent(task, options);
     } catch (err) {
         log.error(`Task Hermes notification outbox error: ${err.message}`);
         throw err;

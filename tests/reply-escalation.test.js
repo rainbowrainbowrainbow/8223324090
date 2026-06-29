@@ -35,8 +35,10 @@ function compact(sql) {
 
 function createEscalationPool(rows, { existingTask = false } = {}) {
     const queries = [];
+    const outboxInserts = [];
     return {
         queries,
+        outboxInserts,
         query: async (sql, params = []) => {
             const text = compact(sql);
             queries.push({ text, params });
@@ -70,6 +72,24 @@ function createEscalationPool(rows, { existingTask = false } = {}) {
             if (/INSERT INTO task_logs/i.test(text)) {
                 return { rows: [] };
             }
+            if (/INSERT INTO notification_outbox/i.test(text)) {
+                const row = {
+                    id: outboxInserts.length + 1,
+                    event_id: params[0],
+                    task_id: params[1],
+                    owner_user_id: params[2],
+                    event_type: params[3],
+                    payload_json: params[4],
+                    payload_hash: params[5],
+                    status: 'pending',
+                    attempts: 0,
+                    available_at: params[6],
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                outboxInserts.push(row);
+                return { rows: [row] };
+            }
             throw new Error(`Unexpected query: ${text}`);
         }
     };
@@ -81,7 +101,8 @@ describe('reply auto-escalation', () => {
         const result = await runReplyAutoEscalation({
             pool,
             now: '2026-05-13T10:00:00.000Z',
-            today: '2026-05-13'
+            today: '2026-05-13',
+            hermesOutboxEnabled: true
         });
 
         assert.equal(result.checked, 1);
@@ -92,6 +113,12 @@ describe('reply auto-escalation', () => {
         assert.equal(result.escalations[0].task.business_context, 'maysternya_doli');
         assert.match(result.escalations[0].task.description, /Reply owner user id: 501/);
         assert.match(result.escalations[0].task.title, /Прострочена відповідь/);
+
+        assert.equal(pool.outboxInserts.length, 1);
+        assert.equal(pool.outboxInserts[0].task_id, result.escalations[0].task.id);
+        assert.equal(pool.outboxInserts[0].owner_user_id, 501);
+        assert.equal(pool.outboxInserts[0].event_type, 'task_created');
+        assert.equal(pool.outboxInserts[0].status, 'pending');
 
         const findQuery = pool.queries.find(q => /FROM conversations c/i.test(q.text));
         assert.ok(findQuery);
@@ -113,13 +140,15 @@ describe('reply auto-escalation', () => {
         const result = await runReplyAutoEscalation({
             pool,
             now: '2026-05-13T10:00:00.000Z',
-            today: '2026-05-13'
+            today: '2026-05-13',
+            hermesOutboxEnabled: true
         });
 
         assert.equal(result.created, 0);
         assert.equal(result.reused, 1);
         assert.equal(result.escalations[0].reason, 'reused');
         assert.equal(result.escalations[0].task.status, 'done');
+        assert.equal(pool.outboxInserts.length, 0);
     });
 
     it('does not escalate rows that are no longer active waiting reply', async () => {

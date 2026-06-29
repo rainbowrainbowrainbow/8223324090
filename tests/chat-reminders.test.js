@@ -10,6 +10,7 @@ let baseUrl;
 let state;
 
 const originalJwtSecret = process.env.JWT_SECRET;
+const originalHermesTaskOutboxFlag = process.env.HERMES_TASK_OUTBOX_ENABLED;
 
 function listen(app) {
     return new Promise(resolve => {
@@ -41,7 +42,8 @@ function clearModules() {
         '../services/guardian',
         '../services/linkPreview',
         '../services/gamification',
-        '../services/kleshnya'
+        '../services/kleshnya',
+        '../services/notificationOutbox'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     });
@@ -82,6 +84,7 @@ function resetState() {
         tx: [],
         locks: [],
         taskInserts: [],
+        outboxInserts: [],
         logInserts: [],
         fallbackInserts: [],
         queries: [],
@@ -172,7 +175,25 @@ function createFakePool() {
                         };
                         pendingTasks.push(row);
                         state.taskInserts.push(row);
-                        return { rows: [{ id: row.id }], rowCount: 1 };
+                        return { rows: [row], rowCount: 1 };
+                    }
+                    if (/INSERT INTO notification_outbox/i.test(text)) {
+                        const row = {
+                            id: state.outboxInserts.length + 1,
+                            event_id: params[0],
+                            task_id: params[1],
+                            owner_user_id: params[2],
+                            event_type: params[3],
+                            payload_json: params[4],
+                            payload_hash: params[5],
+                            status: 'pending',
+                            attempts: 0,
+                            available_at: params[6],
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        };
+                        state.outboxInserts.push(row);
+                        return { rows: [row], rowCount: 1 };
                     }
                     if (/INSERT INTO task_logs/i.test(text)) {
                         if (state.failTaskLog) throw new Error('simulated task log failure');
@@ -202,6 +223,7 @@ function fakeChatService() {
 describe('chat reminder idempotency', () => {
     before(async () => {
         process.env.JWT_SECRET = TEST_JWT_SECRET;
+        process.env.HERMES_TASK_OUTBOX_ENABLED = 'true';
         resetState();
         clearModules();
 
@@ -239,6 +261,8 @@ describe('chat reminder idempotency', () => {
         if (server) await close(server);
         if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
         else process.env.JWT_SECRET = originalJwtSecret;
+        if (originalHermesTaskOutboxFlag === undefined) delete process.env.HERMES_TASK_OUTBOX_ENABLED;
+        else process.env.HERMES_TASK_OUTBOX_ENABLED = originalHermesTaskOutboxFlag;
         clearModules();
     });
 
@@ -260,6 +284,11 @@ describe('chat reminder idempotency', () => {
         assert.equal(state.taskInserts[0].owner_user_id, 1);
         assert.equal(state.taskInserts[0].visibility, 'private');
         assert.equal(state.taskInserts[0].remind_at, remindAt);
+        assert.equal(state.outboxInserts.length, 1);
+        assert.equal(state.outboxInserts[0].task_id, first.data.taskId);
+        assert.equal(state.outboxInserts[0].owner_user_id, 1);
+        assert.equal(state.outboxInserts[0].event_type, 'task_created');
+        assert.equal(state.outboxInserts[0].status, 'pending');
         assert.equal(state.logInserts.length, 1);
         assert.equal(state.fallbackInserts.length, 0);
         assert.deepEqual(state.tx, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);

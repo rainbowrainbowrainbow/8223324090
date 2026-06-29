@@ -17,6 +17,7 @@ const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const dashboardAssistant = require('../services/dashboardAssistant');
 const { callUnifiedChatCompletion } = require('../services/ai-config');
+const { emitTaskCreatedNotificationOutboxEvent } = require('../services/notificationOutbox');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 
@@ -217,10 +218,12 @@ async function createChatReminderTask({ pool, message, user, remindAtIso }) {
                 'chat_reminder', $7, 'manual', 'personal', 'reminder', 'private', 'inbox',
                 $3, 'chat'
             )
-            RETURNING id
+            RETURNING *
         `, [title, description, remindAtIso, createdBy, userId, controlPolicy, sourceId]);
 
-        const taskId = taskRes.rows[0].id;
+        const task = taskRes.rows[0];
+        const taskId = task.id;
+        await emitTaskCreatedNotificationOutboxEvent(task, { pool: client });
         await client.query(`
             INSERT INTO task_logs (task_id, action, old_value, new_value, actor)
             VALUES ($1, $2, $3, $4, $5)

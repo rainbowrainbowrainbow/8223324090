@@ -73,6 +73,21 @@ function positiveIntegerOrNull(value) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function envFlag(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return null;
+}
+
+function firstEnvFlag(...values) {
+    for (const value of values) {
+        const parsed = envFlag(value);
+        if (parsed !== null) return parsed;
+    }
+    return null;
+}
+
 function firstPresent(source = {}, keys = []) {
     for (const key of keys) {
         const value = source[key];
@@ -126,6 +141,26 @@ function normalizeEventType(eventType) {
 function normalizeOutboxStatus(value) {
     const normalized = String(value || '').trim().toLowerCase();
     return NOTIFICATION_OUTBOX_STATUS_SET.has(normalized) ? normalized : null;
+}
+
+function hermesTaskOutboxEnabled(options = {}, env = process.env) {
+    if (typeof options.hermesOutboxEnabled === 'boolean') return options.hermesOutboxEnabled;
+
+    const explicit = firstEnvFlag(
+        env.HERMES_TASK_OUTBOX_ENABLED,
+        env.HERMES_NOTIFICATION_OUTBOX_ENABLED,
+        env.NOTIFICATION_OUTBOX_ENABLED
+    );
+    if (explicit !== null) return explicit;
+
+    const nodeEnv = String(env.NODE_ENV || '').trim().toLowerCase();
+    return ['test', 'development', 'local'].includes(nodeEnv);
+}
+
+function isActiveTaskForHermesOutbox(task = {}) {
+    if (task.is_active === false || task.deleted_at || task.archived_at) return false;
+    const status = String(task.status || task.workflow_state || 'todo').trim().toLowerCase();
+    return !['done', 'completed', 'archived', 'cancelled', 'canceled', 'deleted'].includes(status);
 }
 
 function notificationOutboxHttpError(statusCode, code, message, meta = null) {
@@ -800,6 +835,30 @@ async function createNotificationOutboxEvent(input = {}, options = {}) {
     };
 }
 
+async function emitTaskCreatedNotificationOutboxEvent(task = {}, options = {}) {
+    const ownerUserId = normalizeOwnerUserId(task);
+    if (!ownerUserId) {
+        return { created: false, reason: 'no_owner_user_id' };
+    }
+    if (!isActiveTaskForHermesOutbox(task)) {
+        return { created: false, reason: 'inactive_task_status' };
+    }
+    if (options.skipHermesOutbox === true) {
+        return { created: false, reason: 'skip_hermes_outbox' };
+    }
+    if (!hermesTaskOutboxEnabled(options, options.env || process.env)) {
+        return { created: false, reason: 'hermes_task_outbox_disabled' };
+    }
+
+    return createNotificationOutboxEvent({
+        task,
+        eventType: 'task_created',
+        context: options.hermesOutboxContext || options.notificationContext || {}
+    }, {
+        pool: options.pool
+    });
+}
+
 module.exports = {
     DEFAULT_NOTIFICATION_OUTBOX_LIMIT,
     FUTURE_TASK_NOTIFICATION_EVENT_TYPES,
@@ -811,11 +870,14 @@ module.exports = {
     buildTaskNotificationPayload,
     claimNotificationOutboxEvent,
     createNotificationOutboxEvent,
+    emitTaskCreatedNotificationOutboxEvent,
     failNotificationOutboxEvent,
     findNotificationOutboxEventByEventId,
     generateNotificationEventId,
     getNotificationOutboxStats,
     hashNotificationPayload,
+    hermesTaskOutboxEnabled,
+    isActiveTaskForHermesOutbox,
     listNotificationOutboxDebugEvents,
     listNotificationOutboxEvents,
     stableJsonStringify,

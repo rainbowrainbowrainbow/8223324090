@@ -9,6 +9,7 @@ const {
     activeTaskBusinessContext
 } = require('./taskBusinessScope');
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
+const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 
 const log = createLogger('ReplyEscalation');
 
@@ -296,6 +297,13 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
     const created = task?.created === true || task?.created === 't' || task?.created === 1;
     if (created) {
         await logTaskAction(db, task.id, 'created', `reply escalation for message ${sourceId}`);
+        await emitTaskCreatedNotificationOutboxEvent(task, {
+            pool: db,
+            hermesOutboxEnabled: options.hermesOutboxEnabled,
+            skipHermesOutbox: options.skipHermesOutbox,
+            hermesOutboxContext: options.hermesOutboxContext,
+            env: options.env
+        });
         emitTaskAssignedToOwner(task, { username: REPLY_ESCALATION_CREATED_BY }, {
             assignmentEvent: 'created',
             source: 'services/replyEscalation'
@@ -356,7 +364,11 @@ async function escalateReplyExpectationForConversation(conversationId, options =
     const result = await createOrReuseReplyEscalationTask(row, {
         pool: db,
         now,
-        today: options.today
+        today: options.today,
+        hermesOutboxEnabled: options.hermesOutboxEnabled,
+        skipHermesOutbox: options.skipHermesOutbox,
+        hermesOutboxContext: options.hermesOutboxContext,
+        env: options.env
     });
 
     if (result.skipped) {
@@ -389,7 +401,11 @@ async function runReplyAutoEscalation(options = {}) {
         escalations.push(await createOrReuseReplyEscalationTask(row, {
             pool: db,
             now: options.now,
-            today: options.today
+            today: options.today,
+            hermesOutboxEnabled: options.hermesOutboxEnabled,
+            skipHermesOutbox: options.skipHermesOutbox,
+            hermesOutboxContext: options.hermesOutboxContext,
+            env: options.env
         }));
     }
 

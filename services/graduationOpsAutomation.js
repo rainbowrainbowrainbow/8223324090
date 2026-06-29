@@ -1,5 +1,6 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 
 const log = createLogger('GraduationOpsAutomation');
 
@@ -538,7 +539,15 @@ async function upsertControlledTask(query, sourceType, quoteId, data = {}) {
             data.packStatus || null
         ]
     );
-    return result.rows[0];
+    const task = result.rows[0];
+    await emitTaskCreatedNotificationOutboxEvent(task, {
+        pool: query,
+        hermesOutboxEnabled: data.hermesOutboxEnabled,
+        skipHermesOutbox: data.skipHermesOutbox,
+        hermesOutboxContext: data.hermesOutboxContext,
+        env: data.env
+    });
+    return task;
 }
 
 async function completeAutomationTask(query, sourceType, quoteId, reason, packStatus = 'ready') {
@@ -596,7 +605,7 @@ function sourceEntity(context) {
         : { sourceEntityType: null, sourceEntityId: null };
 }
 
-async function ensureMissingRosterTask(query, context, actor = {}) {
+async function ensureMissingRosterTask(query, context, actor = {}, outboxOptions = {}) {
     const manager = await resolveUserByUsername(query, context.managerUsername);
     const source = sourceEntity(context);
     const task = await upsertControlledTask(query, SOURCE_ROSTER_MISSING, context.quote.id, {
@@ -625,7 +634,8 @@ async function ensureMissingRosterTask(query, context, actor = {}) {
             childrenCount: context.childrenCount,
             printArtifactUrl: `/api/graduation/quotes/${context.quote.id}/diplomas/export/pdf`
         },
-        ...source
+        ...source,
+        ...outboxOptions
     });
     const observers = await leadershipObserverIds(query, task.owner_user_id || null);
     await ensureTaskObservers(query, task.id, observers, actor?.id || actor?.userId || null);
@@ -639,7 +649,7 @@ async function ensureMissingRosterTask(query, context, actor = {}) {
     return task;
 }
 
-async function ensurePrintReminderTask(query, context, rosterReady, actor = {}) {
+async function ensurePrintReminderTask(query, context, rosterReady, actor = {}, outboxOptions = {}) {
     const artDirector = await resolveFirstUserByRoles(query, ['art_director']);
     const reminderDate = computeReminderDate(context.eventDate);
     const reminderAt = reminderDate ? makeKyivTimestamp(reminderDate, '10:00') : null;
@@ -677,7 +687,8 @@ async function ensurePrintReminderTask(query, context, rosterReady, actor = {}) 
             artifactUrl,
             reminderDate
         },
-        ...source
+        ...source,
+        ...outboxOptions
     });
     if (!rosterReady) {
         const observers = await leadershipObserverIds(query, task.owner_user_id || null);
@@ -695,7 +706,7 @@ async function ensurePrintReminderTask(query, context, rosterReady, actor = {}) 
     return task;
 }
 
-async function ensureCapsulePrepTask(query, context, actor = {}) {
+async function ensureCapsulePrepTask(query, context, actor = {}, outboxOptions = {}) {
     const manager = await resolveUserByUsername(query, context.managerUsername);
     const source = sourceEntity(context);
     const deadlineDate = context.eventDate ? addDays(context.eventDate, -3) || context.eventDate : null;
@@ -724,7 +735,8 @@ async function ensureCapsulePrepTask(query, context, actor = {}) {
             futureAdapterEvent: 'graduation_capsule_requested',
             vendorBotReady: false
         },
-        ...source
+        ...source,
+        ...outboxOptions
     });
     await upsertAutomationState(query, context.quote.id, AUTOMATION_CAPSULE, {
         bookingId: context.bookingId,
@@ -739,6 +751,12 @@ async function ensureCapsulePrepTask(query, context, actor = {}) {
 async function syncGraduationOpsForQuote(quoteId, options = {}) {
     const query = options.query || pool;
     const actor = options.actor || {};
+    const outboxOptions = {
+        hermesOutboxEnabled: options.hermesOutboxEnabled,
+        skipHermesOutbox: options.skipHermesOutbox,
+        hermesOutboxContext: options.hermesOutboxContext,
+        env: options.env
+    };
     const context = await loadQuoteContext(query, quoteId);
     if (!context) return { success: false, reason: 'quote_not_found', quoteId };
 
@@ -773,7 +791,7 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
     const tasks = {};
 
     if (diplomaPresent && !rosterReady) {
-        tasks.missingRoster = await ensureMissingRosterTask(query, context, actor);
+        tasks.missingRoster = await ensureMissingRosterTask(query, context, actor, outboxOptions);
     } else {
         const closed = await completeAutomationTask(query, SOURCE_ROSTER_MISSING, context.quote.id, rosterReady ? 'roster_ready' : 'diploma_removed', rosterReady ? 'ready' : 'cancelled');
         await upsertAutomationState(query, context.quote.id, AUTOMATION_ROSTER, {
@@ -785,7 +803,7 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
     }
 
     if (diplomaPresent) {
-        tasks.printReminder = await ensurePrintReminderTask(query, context, rosterReady, actor);
+        tasks.printReminder = await ensurePrintReminderTask(query, context, rosterReady, actor, outboxOptions);
     } else {
         const cancelled = await cancelAutomationTask(query, SOURCE_PRINT_REMINDER, context.quote.id, 'diploma service removed');
         await upsertAutomationState(query, context.quote.id, AUTOMATION_PRINT, {
@@ -797,7 +815,7 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
     }
 
     if (capsulePresent) {
-        tasks.capsulePrep = await ensureCapsulePrepTask(query, context, actor);
+        tasks.capsulePrep = await ensureCapsulePrepTask(query, context, actor, outboxOptions);
     } else {
         const cancelled = await cancelAutomationTask(query, SOURCE_CAPSULE_PREP, context.quote.id, 'capsule service removed');
         await upsertAutomationState(query, context.quote.id, AUTOMATION_CAPSULE, {

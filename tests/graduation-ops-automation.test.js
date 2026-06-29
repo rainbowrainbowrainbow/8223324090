@@ -9,13 +9,125 @@ const {
     hasCapsuleService,
     hasDiplomaService,
     isRosterReady,
-    normalizeSelectedServices
+    normalizeSelectedServices,
+    syncGraduationOpsForQuote
 } = require('../services/graduationOpsAutomation');
 
 const ROOT = path.join(__dirname, '..');
 
 function readRepoFile(file) {
     return fs.readFileSync(path.join(ROOT, file), 'utf8');
+}
+
+function compactSql(sql) {
+    return String(sql).replace(/\s+/g, ' ').trim();
+}
+
+function createGraduationOpsOutboxQuery() {
+    const state = {
+        queries: [],
+        tasks: [],
+        outboxInserts: [],
+        automationStates: [],
+        nextTaskId: 810
+    };
+
+    return {
+        state,
+        query: async (sql, params = []) => {
+            const text = compactSql(sql);
+            state.queries.push({ text, params });
+
+            if (/FROM graduation_quotes q/i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[0],
+                        status: 'draft',
+                        selected_services: [{ name: 'Diploma ceremony' }],
+                        package_id: null,
+                        child_pack_id: null,
+                        booking_id: 77,
+                        booking_date: '2026-06-30',
+                        booking_time: '12:00',
+                        created_by: 'manager',
+                        children_count: 0
+                    }]
+                };
+            }
+            if (/FROM users/i.test(text) && /username = \$1 OR name = \$1/i.test(text)) {
+                return { rows: [{ id: 4, username: params[0], name: 'Manager', role: 'manager' }] };
+            }
+            if (/FROM users/i.test(text) && /role = ANY\(\$1::text\[\]\)/i.test(text)) {
+                return { rows: [{ id: 6, username: 'art_director', name: 'Art Director', role: 'art_director' }] };
+            }
+            if (/FROM tasks WHERE source_type = \$1 AND source_id = \$2/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/UPDATE tasks SET status = 'done'/i.test(text) && /archive_reason = \$3/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
+            if (/INSERT INTO tasks/i.test(text)) {
+                const row = {
+                    id: state.nextTaskId++,
+                    title: params[0],
+                    description: params[1],
+                    date: params[2],
+                    priority: params[3],
+                    assigned_to: params[4],
+                    owner: params[5],
+                    owner_user_id: params[6],
+                    deadline: params[7],
+                    source_type: params[9],
+                    source_id: params[10],
+                    category: params[11],
+                    task_kind: params[15],
+                    status: 'todo',
+                    workflow_state: params[16],
+                    remind_at: params[17],
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                state.tasks.push(row);
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/INSERT INTO notification_outbox/i.test(text)) {
+                const row = {
+                    id: state.outboxInserts.length + 1,
+                    event_id: params[0],
+                    task_id: params[1],
+                    owner_user_id: params[2],
+                    event_type: params[3],
+                    payload_json: params[4],
+                    payload_hash: params[5],
+                    status: 'pending',
+                    attempts: 0,
+                    available_at: params[6],
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                state.outboxInserts.push(row);
+                return { rows: [row], rowCount: 1 };
+            }
+            if (/SELECT DISTINCT u\.id/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/INSERT INTO task_observers/i.test(text)) {
+                return { rows: [], rowCount: 1 };
+            }
+            if (/INSERT INTO graduation_automation_state/i.test(text)) {
+                const row = {
+                    graduation_quote_id: params[0],
+                    automation_key: params[2],
+                    state: params[3],
+                    task_id: params[4]
+                };
+                state.automationStates.push(row);
+                return { rows: [row], rowCount: 1 };
+            }
+
+            throw new Error(`Unexpected graduation ops query: ${text}`);
+        }
+    };
 }
 
 describe('Graduation ops automation contract', () => {
@@ -92,5 +204,33 @@ describe('Graduation ops automation contract', () => {
         assert.match(timeline, /apiUpdateBooking/);
         assert.match(tasksRoute, /controlMode/);
         assert.match(tasksPage, /special-control/);
+    });
+
+    it('emits notification_outbox events for newly inserted graduation automation tasks', async () => {
+        const fake = createGraduationOpsOutboxQuery();
+        const result = await syncGraduationOpsForQuote(900, {
+            query: fake,
+            hermesOutboxEnabled: true
+        });
+
+        assert.equal(result.success, true);
+        assert.equal(fake.state.tasks.length, 2);
+        assert.equal(fake.state.outboxInserts.length, 2);
+        assert.deepEqual(
+            fake.state.outboxInserts.map(row => row.task_id),
+            fake.state.tasks.map(row => row.id)
+        );
+        assert.deepEqual(
+            fake.state.outboxInserts.map(row => row.event_type),
+            ['task_created', 'task_created']
+        );
+        assert.deepEqual(
+            fake.state.outboxInserts.map(row => row.status),
+            ['pending', 'pending']
+        );
+        assert.deepEqual(
+            fake.state.outboxInserts.map(row => row.owner_user_id),
+            [4, 6]
+        );
     });
 });

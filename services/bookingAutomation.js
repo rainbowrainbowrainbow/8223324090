@@ -151,12 +151,29 @@ async function executeAction(action, booking, rule) {
 /**
  * Action: create_task — insert a task into the tasks table
  */
+function positiveIntegerOrNull(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const numeric = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isInteger(numeric) || numeric <= 0) return null;
+    return numeric;
+}
+
+function pickDefined(source, keys) {
+    for (const key of keys) {
+        if (source[key] !== undefined) return source[key];
+    }
+    return undefined;
+}
+
 async function executeCreateTask(action, booking, rule) {
     const title = interpolate(action.title, booking);
     const taskDate = calculateTaskDate(booking.date, rule.days_before);
     const bookingId = booking.id || null;
+    const businessContext = pickDefined(action, ['businessContext', 'business_context'])
+        || bookingBusinessContext(booking);
+    const ownerUserId = positiveIntegerOrNull(pickDefined(action, ['owner_user_id', 'ownerUserId']));
 
-    await getKleshnya().createTask({
+    const taskPayload = {
         title,
         date: taskDate,
         status: 'todo',
@@ -166,8 +183,22 @@ async function executeCreateTask(action, booking, rule) {
         type: 'auto_complete',
         source_type: bookingId ? 'booking' : 'manual',
         source_id: bookingId ? String(bookingId) : null,
+        businessContext,
         duplicateMode: 'skip'
-    });
+    };
+
+    const passthroughFields = [
+        'assigned_to', 'owner', 'deadline', 'time_window_start', 'time_window_end',
+        'visibility', 'task_type', 'task_mode', 'task_kind', 'control_policy',
+        'control_meta', 'source_entity_type', 'source_entity_id', 'source_module',
+        'created_by_user_id'
+    ];
+    for (const field of passthroughFields) {
+        if (action[field] !== undefined) taskPayload[field] = action[field];
+    }
+    if (ownerUserId) taskPayload.owner_user_id = ownerUserId;
+
+    await getKleshnya().createTask(taskPayload);
     log.info(`Auto-task created: "${title}" for ${taskDate} (rule: ${rule.name})`);
 }
 

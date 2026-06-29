@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.64 - Toolbar View Cluster and Automation Owner
+
+### Timeline toolbar / View cluster / Booking automation owner forwarding / (Клешня, 29.06.2026) [codex]
+- **Режими перегляду і `Свята` зібрано в один компактний cluster** - `День`, `Тиждень`, `Кімнати` лишаються segmented control, а `Свята` стоїть поруч як окремий overlay toggle без накладання.
+- **Верхній toolbar розкладено на стабільні зони** - date navigation, status filter і view cluster більше не стискаються до одного місця на широких і середніх екранах.
+- **`Кімнати` і `Свята` читаються як різні типи controls** - mode зберігає teal-fill active state, overlay має окремий chip-style стан і не виглядає четвертим режимом.
+- **Auto-created tasks отримали typed owner forwarding** - `create_task` actions можуть передавати `owner_user_id`, `assigned_to`, `owner`, `visibility`, `deadline` і `businessContext` у Kleshnya payload без зміни API/DB.
+- **Unsafe owner ids відсікаються** - нечислові або непозитивні `owner_user_id` не проходять у task payload, а legacy actions без owner fields лишаються backward compatible.
+- **Responsive guardrails оновлено** - static UI check перевіряє окрему `.schedule-command-zone--view`, наявність `rooms` mode і `timelineHolidaysToggle` у правильній зоні.
+- **Релізні маркери піднято до `0.77.64`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.63 - Banquet Detail Money Typography
 
 ### Banquet detail / Menu money typography / Regression guards / (Клешня, 29.06.2026) [codex]

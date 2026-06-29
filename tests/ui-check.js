@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/ui-check.js — DOM-level UI checks using jsdom
  * Validates HTML structure, JS function availability, onclick handlers
  * Run: node tests/ui-check.js
@@ -2461,6 +2461,11 @@ const renderBookingPackageMenuRowsBlock = sourceBlock(bookingPackageRendererCode
 const renderBookingPackageEntertainmentRowsBlock = sourceBlock(bookingPackageRendererCode, 'function renderBookingPackageEntertainmentRows', 'function formatBookingEntryQuantityLabel');
 const renderBookingPackageDetailBlock = sourceBlock(bookingPackageRendererCode, 'function renderBookingPackageDetail', 'const api = {');
 const renderBanquetMenuSectionBlock = sourceBlock(bookingBanquetDetailCode, 'function renderBanquetMenuSection', 'function renderBanquetServiceSection');
+const banquetMenuMoneyRule = cssRuleText(timelineConstructorCss, '.booking-banquet-section--menu .booking-detail-package-money');
+const mobileBanquetMenuMoneyRule = cssRuleIncludingSelectorText(
+    cssAtRuleBlock(timelineConstructorCss, '@media (max-width: 640px)'),
+    '.booking-banquet-section--menu .booking-detail-package-money'
+);
 const bookingInviteParamsBlock = sourceBlock(bookingCode, 'const inviteModel = window.InviteShare', 'const invitePayload = inviteModel.payload');
 const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'let banquetSnapshot');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
@@ -2840,6 +2845,14 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && panelCss.includes('.booking-detail-package-entry-title')
     && panelCss.includes('.booking-detail-package-entry-row small')
     && panelCss.includes('.booking-detail-package-entry-row strong')
+    && bookingPackageRendererCode.includes('booking-detail-package-money booking-detail-package-money--subtotal')
+    && bookingPackageRendererCode.includes('booking-detail-package-money booking-detail-package-money--total')
+    && banquetMenuMoneyRule.includes('font-family: inherit')
+    && banquetMenuMoneyRule.includes('font-size: 13px')
+    && banquetMenuMoneyRule.includes('font-weight: 900')
+    && banquetMenuMoneyRule.includes('font-variant-numeric: tabular-nums')
+    && banquetMenuMoneyRule.includes('letter-spacing: 0')
+    && mobileBanquetMenuMoneyRule.includes('font-size: 12px')
     && panelCss.includes('border-left: 1px solid var(--gray-100)')
     && timelineConstructorCss.includes('grid-template-columns: 96px minmax(0, 1fr)')
     && timelineConstructorCss.includes('font-size: 11px')

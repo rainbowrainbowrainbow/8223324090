@@ -2339,6 +2339,16 @@ body.dark-mode .booking-banquet-unlink-btn {
     background: var(--white);
 }
 
+.booking-banquet-section--menu .booking-detail-package-money {
+    color: var(--gray-800);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    letter-spacing: 0;
+}
+
 .booking-banquet-section--comments {
     gap: 6px;
     padding: 8px 10px;
@@ -2609,6 +2619,10 @@ body.dark-mode .booking-banquet-candidate-role {
     .booking-banquet-candidate-role,
     .booking-banquet-candidate .btn-secondary {
         width: 100%;
+    }
+
+    .booking-banquet-section--menu .booking-detail-package-money {
+        font-size: 12px;
     }
 
     .booking-banquet-service-row,

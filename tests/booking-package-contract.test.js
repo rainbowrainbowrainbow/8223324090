@@ -3432,6 +3432,19 @@ test('banquet menu regression keeps one table header across serving groups', () 
     assert.match(menuText, /11\s*230\s*₴/);
     assert.doesNotMatch(menuText, /UAH|11230|4070|4500|1600/);
     assert.equal(menuSection.querySelectorAll('.booking-detail-package-table-head').length, 1);
+    const packageRows = Array.from(menuSection.querySelectorAll('.booking-detail-package-table-row'));
+    assert.ok(
+        packageRows.every(row => row.querySelectorAll('.booking-detail-package-money').length === 2),
+        'menu and activity rows share the same money styling hook'
+    );
+    assert.ok(
+        menuSection.querySelector('.booking-detail-package-entry-row .booking-detail-package-money--subtotal'),
+        'entry subtotal shares the banquet money styling hook'
+    );
+    assert.ok(
+        menuSection.querySelector('.booking-detail-package-total .booking-detail-package-money--total'),
+        'banquet total shares the banquet money styling hook'
+    );
 });
 
 test('banquet menu regression shows per-child activity quantity instead of duration', () => {

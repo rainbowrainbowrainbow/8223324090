@@ -48,8 +48,8 @@ function renderBookingPackageMenuRows(positions = [], options = {}) {
                         ${item.note || item.servingNote ? `<small>${item.note ? escapeHtml(item.note) : ''}${item.note && item.servingNote ? ' · ' : ''}${item.servingNote ? escapeHtml(item.servingNote) : ''}</small>` : ''}
                     </div>
                     <span role="cell">${escapeHtml(formatBookingMenuPositionQuantity(item))}</span>
-                    <span role="cell">${escapeHtml(formatPrice(item.unitPrice || 0))}</span>
-                    <strong role="cell">${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
+                    <span class="booking-detail-package-money" role="cell">${escapeHtml(formatPrice(item.unitPrice || 0))}</span>
+                    <strong class="booking-detail-package-money booking-detail-package-money--subtotal" role="cell">${escapeHtml(formatPrice(item.subtotal || 0))}</strong>
                 </div>
     `;
     const groups = groupedBookingMenuPositions(positions);
@@ -146,8 +146,8 @@ function renderBookingPackageEntertainmentRows(rows = [], options = {}) {
                                 ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
                             </div>
                             <span role="cell">${escapeHtml(quantityLabel)}</span>
-                            <span role="cell">${escapeHtml(priceLabel)}</span>
-                            <strong role="cell">${escapeHtml(subtotalLabel)}</strong>
+                            <span class="booking-detail-package-money" role="cell">${escapeHtml(priceLabel)}</span>
+                            <strong class="booking-detail-package-money booking-detail-package-money--subtotal" role="cell">${escapeHtml(subtotalLabel)}</strong>
                         </div>
                     `;
                 }).join('')}
@@ -224,7 +224,7 @@ function renderBookingPackageEntryRow(bookingPackage = {}) {
     return `
         <div class="booking-detail-package-row booking-detail-package-entry-row">
             <div><span class="booking-detail-package-entry-title">${escapeHtml(entryCharge.title || 'Вхід')}</span><small>${escapeHtml(details)}</small></div>
-            <strong>${escapeHtml(formatPrice(entryCharge.subtotal))}</strong>
+            <strong class="booking-detail-package-money booking-detail-package-money--subtotal">${escapeHtml(formatPrice(entryCharge.subtotal))}</strong>
         </div>
     `;
 }
@@ -311,7 +311,7 @@ function renderBookingPackageDetail(booking, options = {}) {
             ${eventRows}
             <div class="booking-detail-package-row booking-detail-package-total">
                 <div>Загальна сума</div>
-                <strong>${escapeHtml(formatPrice(displayTotal))}</strong>
+                <strong class="booking-detail-package-money booking-detail-package-money--total">${escapeHtml(formatPrice(displayTotal))}</strong>
             </div>
         </div>
     `;

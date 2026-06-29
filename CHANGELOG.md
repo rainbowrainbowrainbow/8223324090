@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.63 - Banquet Detail Money Typography
+
+### Banquet detail / Menu money typography / Regression guards / (Клешня, 29.06.2026) [codex]
+- **Ціни меню й активностей у деталях банкету вирівняно** - menu/activity price і subtotal клітинки отримали спільний `booking-detail-package-money` hook та однакові font family, size, weight і numeric rules.
+- **Підсумки банкетного меню не вибиваються зі стилю** - entry subtotal і загальна сума в секції меню використовують той самий money hook без окремої типографіки.
+- **Scoped CSS не чіпає інші package tables** - правило обмежено `.booking-banquet-section--menu`, а mobile breakpoint зберігає компактний 12px розмір.
+- **Regression guardrails оновлено** - contract і UI checks перевіряють money hook у меню, activity, entry subtotal, total і scoped CSS.
+- **Релізні маркери піднято до `0.77.63`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.62 - Staff Reports Workspace Refinement
 
 ### Staff schedule / Reports workspace / HR-card light rows / (Клешня, 28.06.2026) [codex]

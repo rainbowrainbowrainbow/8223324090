@@ -165,6 +165,43 @@ describe('Tasks', () => {
         assert.ok([400, 500].includes(res.status));
     });
 
+    it('POST complete -> PATCH status todo reopens task', async () => {
+        const create = await authRequest('POST', '/api/tasks', {
+            title: 'Complete Undo Regression Task',
+            description: 'Created by live regression test',
+            date: '2099-01-15',
+            priority: 'normal',
+            category: 'admin',
+            task_type: 'human'
+        });
+        assert.equal(create.status, 200, `Expected create 200, got ${create.status}: ${JSON.stringify(create.data)}`);
+        assert.ok(create.data.success);
+        assert.ok(create.data.task?.id);
+        const taskId = create.data.task.id;
+
+        try {
+            const completed = await authRequest('POST', `/api/tasks/${taskId}/complete`, {
+                sourceSurface: 'profile_my_cabinet'
+            });
+            assert.equal(completed.status, 200, `Expected complete 200, got ${completed.status}: ${JSON.stringify(completed.data)}`);
+            assert.equal(completed.data.success, true);
+            assert.equal(completed.data.task.status, 'done');
+            assert.ok(completed.data.task.completedAt || completed.data.task.completed_at, 'complete should set completed_at');
+
+            const undone = await authRequest('PATCH', `/api/tasks/${taskId}/status`, {
+                status: 'todo',
+                sourceSurface: 'profile_my_cabinet'
+            });
+            assert.equal(undone.status, 200, `Expected undo 200, got ${undone.status}: ${JSON.stringify(undone.data)}`);
+            assert.equal(undone.data.success, true);
+            assert.equal(undone.data.task.status, 'todo');
+            assert.equal(undone.data.task.completedAt ?? undone.data.task.completed_at, null);
+            assert.notEqual(undone.data.task.workflowState || undone.data.task.workflow_state, 'done');
+        } finally {
+            await authRequest('DELETE', `/api/tasks/${taskId}`);
+        }
+    });
+
     // ==========================================
     // LOGS
     // ==========================================

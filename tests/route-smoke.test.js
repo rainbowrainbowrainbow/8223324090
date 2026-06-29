@@ -780,6 +780,52 @@ function createFakePool() {
         task.source_type === 'onboarding'
         && String(task.source_id || '').startsWith(`${progressId}:`)
     );
+    const defaultRouteSmokeTask = id => ({
+        id: Number(id),
+        title: 'Route smoke task',
+        status: 'todo',
+        workflow_state: 'todo',
+        schedule_status: 'unscheduled',
+        priority: 'high',
+        deadline: '2099-05-02T12:00:00Z',
+        owner_user_id: 1,
+        assigned_to: 'Route Smoke',
+        owner: null,
+        owner_name: 'Route Smoke',
+        owner_username: 'route-smoke',
+        visibility: 'team',
+        version: 1,
+        active: true,
+        business_context: 'event_genix',
+        created_at: '2099-05-01T10:00:00Z',
+        completed_at: null
+    });
+    const routeSmokeReportTask = id => ({
+        ...defaultRouteSmokeTask(id),
+        title: 'Report required task',
+        control_meta: { reportRequired: true }
+    });
+    const routeSmokeTask = id => {
+        if (String(id) === '99') return routeSmokeReportTask(id);
+        const stored = hrState.tasks.find(task => Number(task.id) === Number(id));
+        if (!stored && String(id) !== '1') return null;
+        return {
+            ...defaultRouteSmokeTask(id),
+            ...(stored || {}),
+            owner_name: stored?.owner_name || 'Route Smoke',
+            owner_username: stored?.owner_username || 'route-smoke',
+            owner_user_id: stored?.owner_user_id || 1,
+            assigned_to: stored?.assigned_to || 'Route Smoke',
+            business_context: stored?.business_context || 'event_genix',
+            version: stored?.version || 1
+        };
+    };
+    const saveRouteSmokeTask = task => {
+        const index = hrState.tasks.findIndex(item => Number(item.id) === Number(task.id));
+        if (index >= 0) hrState.tasks[index] = { ...hrState.tasks[index], ...task };
+        else hrState.tasks.push(task);
+        return hrState.tasks[index >= 0 ? index : hrState.tasks.length - 1];
+    };
     const onboardingRow = progress => {
         const staff = hrState.staff.get(Number(progress.staff_id)) || {};
         const template = hrState.onboardingTemplates.get(Number(progress.template_id)) || {};
@@ -1929,39 +1975,13 @@ function createFakePool() {
                 }] };
             }
             if (/FROM tasks t LEFT JOIN users u ON u\.id = t\.owner_user_id WHERE t\.id = \$1/i.test(text)) {
-                if (String(params[0]) === '99') {
-                    return { rows: [{
-                        id: params[0],
-                        title: 'Report required task',
-                        status: 'todo',
-                        priority: 'high',
-                        owner_user_id: 1,
-                        assigned_to: 'Route Smoke',
-                        owner_name: 'Route Smoke',
-                        owner_username: 'route-smoke',
-                        version: 1,
-                        control_meta: { reportRequired: true },
-                        active: true,
-                        created_at: '2099-05-01T10:00:00Z'
-                    }] };
-                }
-                return { rows: [{
-                    id: params[0],
-                    title: 'Route smoke task',
-                    status: 'todo',
-                    priority: 'high',
-                    deadline: '2099-05-02T12:00:00Z',
-                    owner_user_id: 1,
-                    assigned_to: 'Route Smoke',
-                    owner: null,
-                    owner_name: 'Route Smoke',
-                    owner_username: 'route-smoke',
-                    version: 1,
-                    active: true,
-                    created_at: '2099-05-01T10:00:00Z'
-                }] };
+                const task = routeSmokeTask(params[0]);
+                return { rows: task ? [task] : [] };
             }
             if (/SELECT id FROM reports WHERE id = \$1 LIMIT 1/i.test(text)) {
+                return { rows: Number(params[0]) === 701 ? [{ id: 701 }] : [] };
+            }
+            if (/SELECT id FROM reports WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 LIMIT 1/i.test(text)) {
                 return { rows: Number(params[0]) === 701 ? [{ id: 701 }] : [] };
             }
             if (/FROM task_subtasks/i.test(text) && /WHERE task_id = \$1/i.test(text)) {
@@ -1971,16 +1991,41 @@ function createFakePool() {
                 return { rows: [{ id: params[0] }] };
             }
             if (/UPDATE tasks/i.test(text) && /SET status = 'done'/i.test(text) && /RETURNING \*/i.test(text)) {
-                return { rows: [{
-                    id: params[0],
-                    title: 'Route smoke task',
+                const current = routeSmokeTask(params[0]);
+                if (!current) return { rows: [], rowCount: 0 };
+                const updated = saveRouteSmokeTask({
+                    ...current,
                     status: 'done',
-                    priority: 'high',
-                    deadline: '2099-05-02T12:00:00Z',
-                    owner_user_id: 1,
-                    assigned_to: 'Route Smoke',
-                    completed_at: '2099-05-02T12:05:00Z'
-                }] };
+                    workflow_state: 'done',
+                    schedule_status: current.scheduled_start_at ? 'completed' : current.schedule_status,
+                    completed_at: '2099-05-02T12:05:00Z',
+                    version: Number(current.version || 1) + 1
+                });
+                return { rows: [updated] };
+            }
+            if (/SELECT t\.\* FROM tasks t WHERE t\.id = \$1/i.test(text)) {
+                const task = routeSmokeTask(params[0]);
+                return { rows: task ? [task] : [] };
+            }
+            if (/^SELECT \* FROM tasks WHERE id = \$1/i.test(text)) {
+                const task = routeSmokeTask(params[0]);
+                return { rows: task ? [task] : [] };
+            }
+            if (/^UPDATE tasks SET status=\$1/i.test(text)) {
+                const current = routeSmokeTask(params[1]);
+                if (!current) return { rows: [], rowCount: 0 };
+                const nextStatus = params[0];
+                const updated = saveRouteSmokeTask({
+                    ...current,
+                    status: nextStatus,
+                    workflow_state: nextStatus === 'done' ? 'done' : (nextStatus === 'in_progress' ? 'in_progress' : 'todo'),
+                    schedule_status: nextStatus === 'done' && current.scheduled_start_at
+                        ? 'completed'
+                        : (nextStatus !== 'done' && current.scheduled_start_at && current.schedule_status === 'completed' ? 'scheduled' : current.schedule_status),
+                    completed_at: nextStatus === 'done' ? '2099-05-02T12:05:00Z' : null,
+                    version: Number(current.version || 1) + 1
+                });
+                return { rows: [], rowCount: 1 };
             }
             if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id WHERE l\.id = \$1(?: AND COALESCE\(l\.business_context, 'event_genix'\) = \$2)? LIMIT 1/i.test(text)) {
                 return {
@@ -4252,6 +4297,47 @@ describe('route-level API safety smoke', () => {
         const completedWithReport = await request('POST', '/api/tasks/99/complete', { sourceSurface: 'task_page', reportId: 701 }, withAuth());
         assert.equal(completedWithReport.status, 200, JSON.stringify(completedWithReport.data));
         assert.equal(completedWithReport.data.success, true);
+    });
+
+    it('regresses Profile My Day complete -> undo through canonical task status', async () => {
+        queries.length = 0;
+        const created = await request('POST', '/api/tasks', {
+            title: 'Profile My Day undo regression',
+            ownerUserId: 1,
+            category: 'personal',
+            task_mode: 'personal',
+            task_kind: 'action',
+            visibility: 'me_only',
+            date: '2099-06-03',
+            source_type: 'manual',
+            source_module: 'profile_my_cabinet',
+            source_surface: 'profile_my_cabinet'
+        }, withAuth({}, 'creator'));
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        assert.equal(created.data.success, true);
+        assert.equal(created.data.task.status, 'todo');
+
+        const taskId = created.data.task.id;
+        const completed = await request('POST', `/api/tasks/${taskId}/complete`, {
+            sourceSurface: 'profile_my_cabinet'
+        }, withAuth({}, 'creator'));
+        assert.equal(completed.status, 200, JSON.stringify(completed.data));
+        assert.equal(completed.data.success, true);
+        assert.equal(completed.data.task.status, 'done');
+        assert.ok(completed.data.task.completedAt, 'complete should set completedAt');
+        assert.equal(completed.data.meta.canonicalField, 'tasks.status');
+
+        const undone = await request('PATCH', `/api/tasks/${taskId}/status`, {
+            status: 'todo',
+            sourceSurface: 'profile_my_cabinet'
+        }, withAuth({}, 'creator'));
+        assert.equal(undone.status, 200, JSON.stringify(undone.data));
+        assert.equal(undone.data.success, true);
+        assert.equal(undone.data.task.status, 'todo');
+        assert.equal(undone.data.task.completedAt, null);
+        assert.notEqual(undone.data.task.workflowState, 'done');
+        assert.equal(undone.data.meta.canonicalField, 'tasks.status');
+        assert.ok(queries.some(q => /^UPDATE tasks SET status=\$1/i.test(q.text) && q.params[0] === 'todo'));
     });
 
     it('lets lead roles load assignable users without opening user management', async () => {

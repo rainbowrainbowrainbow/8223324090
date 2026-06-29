@@ -254,7 +254,7 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
         `UPDATE tasks
          SET status=$1,
              workflow_state=CASE WHEN $4='done' THEN 'done' WHEN $4='in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
-             schedule_status=CASE WHEN $4='done' AND scheduled_start_at IS NOT NULL THEN 'completed' ELSE schedule_status END,
+             schedule_status=CASE WHEN $4='done' AND scheduled_start_at IS NOT NULL THEN 'completed' WHEN $4<>'done' AND scheduled_start_at IS NOT NULL AND schedule_status='completed' THEN 'scheduled' ELSE schedule_status END,
              updated_at=NOW(),
              completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END,
              archived_at=NULL,

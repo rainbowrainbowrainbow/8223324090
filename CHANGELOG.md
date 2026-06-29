@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.70 - Profile My Day Undo Fix
+
+### Profile My Day / Task lifecycle / Undo reliability / (Клешня, 29.06.2026) [codex]
+- **`Скасувати` у `Мій день` стабілізовано** - undo після toast `Задачу виконано` повертає задачу через `/api/tasks/:id/status` і більше не завершується `Internal server error`.
+- **Task lifecycle вирівняно** - відновлення задачі очищає `completed_at`, не лишає `workflow_state='done'`, а logging у `task_action_history` / legacy `task_logs` не блокує основну зміну статусу.
+- **Legacy quick-status захищено** - `/api/auth/tasks/:id/quick-status` зберігає business scope і `canMutateTask`, повертає актуальну `task` та не валить mutation через помилку `task_logs`.
+- **Regression guardrails додано** - тести фіксують complete -> undo через canonical status route, безпечний legacy logging і scheduled undo lifecycle.
+- **Релізні маркери піднято до `0.77.70`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.69 - Timeline Header Filter Labels
 
 ### Timeline header filters / Label visibility / Regression guard / (Клешня, 29.06.2026) [codex]

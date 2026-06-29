@@ -5484,23 +5484,35 @@ function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
         <span>Задачу виконано</span>
         <button type="button" data-cabinet-undo-task="${taskId}">Скасувати</button>`;
     const undoBtn = toast.querySelector('[data-cabinet-undo-task]');
+    const scheduleDismiss = (delay = 6000) => {
+        if (cabinetUndoToastTimer) clearTimeout(cabinetUndoToastTimer);
+        cabinetUndoToastTimer = setTimeout(() => {
+            toast.classList.remove('is-visible');
+            setTimeout(() => toast.remove(), 240);
+            cabinetUndoToastTimer = null;
+        }, delay);
+    };
     undoBtn?.addEventListener('click', async () => {
+        if (cabinetUndoToastTimer) {
+            clearTimeout(cabinetUndoToastTimer);
+            cabinetUndoToastTimer = null;
+        }
         undoBtn.disabled = true;
+        undoBtn.setAttribute('aria-busy', 'true');
         try {
             await setCabinetTaskStatus(taskId, normalizeCabinetRestoreStatus(restoreStatus), { silent: true, allowUndo: false });
             if (typeof showNotification === 'function') showNotification('Задачу повернуто', 'success');
             toast.remove();
         } catch (error) {
             undoBtn.disabled = false;
+            undoBtn.removeAttribute('aria-busy');
+            scheduleDismiss(9000);
             if (typeof showNotification === 'function') showNotification(error?.message || 'Не вдалося скасувати виконання', 'error');
         }
     });
     document.body.appendChild(toast);
     requestAnimationFrame(() => toast.classList.add('is-visible'));
-    cabinetUndoToastTimer = setTimeout(() => {
-        toast.classList.remove('is-visible');
-        setTimeout(() => toast.remove(), 240);
-    }, 6000);
+    scheduleDismiss();
 }
 
 function unlockCabinetTaskCompletionSound() {
@@ -5781,10 +5793,9 @@ async function setCabinetTaskStatus(taskId, status, options = {}) {
             if (!reportId) throw new Error('Звіт потрібен перед виконанням задачі');
             result = await apiPost(`/tasks/${id}/complete`, { sourceSurface, reportId });
         }
-    } else if (typeof apiQuickTaskStatus === 'function') {
-        result = await apiQuickTaskStatus(id, status);
     } else {
-        result = await apiPatch(`/auth/tasks/${id}/quick-status`, { status });
+        const sourceSurface = 'profile_my_cabinet';
+        result = await apiPatch(`/tasks/${id}/status`, { status, sourceSurface });
     }
     const mutation = normalizeCabinetTaskMutationResult(result, 'Task status update failed');
     if (!mutation.success) throw new Error(mutation.error || 'Task status update failed');

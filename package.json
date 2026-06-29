@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.69",
+  "version": "0.77.70",
   "eventGenix": {
-    "releaseLabel": "Timeline Header Filter Labels"
+    "releaseLabel": "Profile My Day Undo Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

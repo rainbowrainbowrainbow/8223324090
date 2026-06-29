@@ -110,6 +110,59 @@ test('acknowledgeTask only records acknowledgement and reminder timestamp, not d
     assert.ok(queries.some(q => q.text.startsWith('INSERT INTO task_logs') && q.params[1] === 'acknowledged'));
 });
 
+test('updateTaskStatus reopens completed scheduled task as scheduled', async () => {
+    const queries = [];
+    let taskSelectCount = 0;
+    const task = {
+        id: 88,
+        status: 'done',
+        workflow_state: 'done',
+        schedule_status: 'completed',
+        scheduled_start_at: '2099-02-01T09:00:00.000Z',
+        completed_at: '2099-02-01T10:00:00.000Z',
+        version: 5,
+        task_type: 'human'
+    };
+    const reopened = {
+        ...task,
+        status: 'todo',
+        workflow_state: 'todo',
+        schedule_status: 'scheduled',
+        completed_at: null,
+        version: 6
+    };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) {
+                taskSelectCount += 1;
+                return { rows: [taskSelectCount === 1 ? task : reopened] };
+            }
+            if (text.startsWith('UPDATE tasks')) {
+                assert.equal(params[0], 'todo');
+                assert.equal(params[1], 88);
+                assert.equal(params[2], 5);
+                assert.equal(params[3], 'todo');
+                assert.match(text, /schedule_status=CASE WHEN \$4='done'/);
+                assert.match(text, /schedule_status='completed' THEN 'scheduled'/);
+                return { rowCount: 1, rows: [] };
+            }
+            if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
+            return { rows: [] };
+        }
+    };
+    const { updateTaskStatus } = loadKleshnya(pool);
+
+    const result = await updateTaskStatus(88, 'todo', 'route-smoke');
+
+    assert.equal(result.status, 'todo');
+    assert.equal(result.completed_at, null);
+    assert.equal(result.workflow_state, 'todo');
+    assert.equal(result.schedule_status, 'scheduled');
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO task_logs') && q.params[2] === 'done' && q.params[3] === 'todo'), true);
+});
+
 test('buildOwnerTaskDigestText groups tasks into one Telegram-safe message', () => {
     const { buildOwnerTaskDigestText } = loadKleshnya();
     const text = buildOwnerTaskDigestText([

@@ -25,7 +25,7 @@ const {
     normalizeManualPassword,
     uniquePasswordCandidates
 } = require('../services/credentialInput');
-const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
+const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
 const { canonicalTaskOrderSql } = require('../services/taskScheduling');
 const { logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const {
@@ -1193,7 +1193,7 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
         const taskParams = [parseInt(id)];
         const taskBusinessCondition = pushBusinessScopeCondition(taskParams, businessScope, 'tasks');
         const task = await pool.query(
-            `SELECT id, status, assigned_to, owner, owner_user_id
+            `SELECT *
              FROM tasks
              WHERE id = $1 AND ${taskBusinessCondition}`,
             taskParams
@@ -1208,25 +1208,37 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
             || ['creator', 'director', 'vice_director', 'senior_manager', 'admin'].includes(req.user.role);
         if (!canChange) return res.status(403).json({ error: 'Недостатньо прав' });
 
+        if (!canMutateTask(req.user, t)) return res.status(403).json({ error: 'Insufficient task permissions' });
+
         const oldStatus = t.status;
         const updateParams = [status, parseInt(id)];
         const updateBusinessCondition = pushBusinessScopeCondition(updateParams, businessScope, 'tasks');
-        await pool.query(
+        const update = await pool.query(
             `UPDATE tasks
              SET status = $1,
                  workflow_state = CASE WHEN $1 = 'done' THEN 'done' WHEN $1 = 'in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
+                 schedule_status = CASE WHEN $1 = 'done' AND scheduled_start_at IS NOT NULL THEN 'completed' WHEN $1 <> 'done' AND scheduled_start_at IS NOT NULL AND schedule_status = 'completed' THEN 'scheduled' ELSE schedule_status END,
                  completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END,
-                 updated_at = NOW()
-             WHERE id = $2 AND ${updateBusinessCondition}`,
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $2 AND ${updateBusinessCondition}
+             RETURNING *`,
             updateParams
         );
-        // Log the change
-        await pool.query(
-            'INSERT INTO task_logs (task_id, action, old_value, new_value, actor) VALUES ($1, $2, $3, $4, $5)',
-            [parseInt(id), 'status_change', oldStatus, status, req.user.username]
-        );
+        const updatedTask = update.rows[0] || null;
+        if (!updatedTask) return res.status(404).json({ error: 'Task not found' });
+        // Legacy task_logs must not break the status mutation.
         try {
-            await logTaskActionEvent({
+            await pool.query(
+                'INSERT INTO task_logs (task_id, action, old_value, new_value, actor) VALUES ($1, $2, $3, $4, $5)',
+                [parseInt(id), 'status_change', oldStatus, status, req.user.username]
+            );
+        } catch (logErr) {
+            log.warn(`Quick task status legacy log skipped: ${logErr.message}`);
+        }
+        let historyEvent = null;
+        try {
+            historyEvent = await logTaskActionEvent({
                 taskId: parseInt(id, 10),
                 actionType: TASK_ACTION_TYPES.STATUS_CHANGED,
                 actor: req.user,
@@ -1243,7 +1255,18 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
             log.warn(`Quick task status history skipped: ${historyErr.message}`);
         }
         log.info(`Task #${id} status: ${oldStatus} → ${status} by ${req.user.username}`);
-        res.json({ success: true, oldStatus, newStatus: status });
+        res.json({
+            success: true,
+            oldStatus,
+            newStatus: status,
+            task: updatedTask,
+            historyEvent,
+            meta: {
+                durableMutation: true,
+                canonicalField: 'tasks.status',
+                legacyRoute: true
+            }
+        });
     } catch (err) {
         log.error('Quick task status error', err);
         res.status(500).json({ error: 'Internal server error' });

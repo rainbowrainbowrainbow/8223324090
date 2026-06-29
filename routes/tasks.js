@@ -2913,7 +2913,15 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
                 } catch (e) { /* gamification not ready */ }
             }
             _alertPush();
-            return res.json({ success: true, task: normalizeTaskPayload(result.task), historyEvent: result.historyEvent });
+            return res.json({
+                success: true,
+                task: normalizeTaskPayload(result.task),
+                historyEvent: result.historyEvent,
+                meta: {
+                    durableMutation: true,
+                    canonicalField: 'tasks.status'
+                }
+            });
         }
         const kleshnya = getKleshnya();
         const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
@@ -2946,7 +2954,15 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         }
 
         _alertPush();
-        res.json({ success: true, task: normalizeTaskPayload(responseTask), historyEvent });
+        res.json({
+            success: true,
+            task: normalizeTaskPayload(responseTask),
+            historyEvent,
+            meta: {
+                durableMutation: true,
+                canonicalField: 'tasks.status'
+            }
+        });
     } catch (err) {
         if (err.code || err.statusCode) {
             return sendTaskActionError(res, err);

@@ -46,6 +46,12 @@ function cssImportVersionTagsAreCurrent(filename) {
 check('Aggregate CSS imports carry current asset versions',
     ['css/pages.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
 
+function cssRuleSetsDisplay(css, selector, display) {
+    const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rulePattern = new RegExp(`${escapedSelector}\\s*\\{[^}]*display\\s*:\\s*${display}\\s*;`, 'm');
+    return rulePattern.test(css);
+}
+
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS
 // ═══════════════════════════════════════════════════
@@ -68,6 +74,8 @@ checkPage('index.html', (doc, html) => {
     const bookingsRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const timelineBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'timeline-browser-smoke.js'), 'utf8');
     const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
+    const responsiveCss = cssTextWithImports('css/responsive.css');
+    const timelineHeaderLabelBreakpointCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) {');
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales,\s*[\r\n]+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
         || modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
     const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales,\s*[\r\n]+body\.dark-mode\s+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
@@ -525,6 +533,13 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '@media (max-width: 1536px)')
         && htmlContains('css/responsive.css', 'display: none;')
         && htmlContains('css/responsive.css', 'display: inline;'));
+    check('Timeline header filter label CSS prevents simultaneous full and short display',
+        cssRuleSetsDisplay(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'inline')
+        && cssRuleSetsDisplay(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'none')
+        && cssRuleSetsDisplay(timelineHeaderLabelBreakpointCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'none')
+        && cssRuleSetsDisplay(timelineHeaderLabelBreakpointCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline')
+        && !cssRuleSetsDisplay(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'inline-block')
+        && !cssRuleSetsDisplay(timelineHeaderLabelBreakpointCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline-block'));
     check('Timeline small toolbar keeps digest before overflow with row-scoped scroll',
         htmlContains('css/responsive.css', '@media (max-width: 768px)')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone')

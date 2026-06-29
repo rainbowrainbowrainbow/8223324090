@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.68 - Timeline Header Filters Release
+
+### Timeline header filters / Toolbar cleanup / Regression guards / (Клешня, 29.06.2026) [codex]
+- **Фільтри таймлайну перенесено в шапку** - статуси, `День` / `Тиждень`, `Банкети` / `Свята` і масштаб `15/30/60 хв` тепер стоять у верхньому header поруч із пошуком.
+- **Нижній toolbar очищено для роботи з датою й діями** - у `schedule-command-center` лишились дата, навігація, `Зараз`, історія, дайджест, overflow-меню і налаштування.
+- **Видимий підпис `Масштаб:` прибрано** - кнопки `15/30/60 хв` зберегли старі `data-zoom` hooks і не потребують нового JS.
+- **Responsive layout шапки стабілізовано** - desktop тримає фільтри біля пошуку, а laptop/tablet/mobile отримують контрольований другий рядок або horizontal scroll без overlap із user controls.
+- **Regression guardrails оновлено** - UI smoke перевіряє `.timeline-header-filters`, відсутність дублювання в toolbar і збережені `rooms/animators`, period та zoom contracts.
+- **Релізні маркери піднято до `0.77.68`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.67 - HR Staff Schedule Operations Release
 
 ### HR/staff schedule / Reports payroll / Operations / Security / (Клешня, 29.06.2026) [codex]

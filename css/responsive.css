@@ -4898,3 +4898,302 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons {
         min-width: 62px !important;
     }
 }
+
+/* Timeline header filters: move schedule filters next to search without changing handlers. */
+body.timeline-dashboard-page .header .header-content {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    gap: 10px;
+    max-width: none;
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+}
+
+body.timeline-dashboard-page .header .btn-search {
+    flex: 0 0 auto;
+}
+
+body.timeline-dashboard-page .header .user-panel {
+    flex: 0 0 auto;
+    min-width: max-content;
+    max-width: max-content;
+    gap: 8px;
+}
+
+body.timeline-dashboard-page .header .header-theme-toggle,
+body.timeline-dashboard-page .header .btn-logout {
+    flex: 0 0 auto;
+}
+
+body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
+    margin-left: auto;
+}
+
+body.timeline-dashboard-page .timeline-header-filters {
+    flex: 1 1 720px;
+    min-width: 0;
+    max-width: min(980px, 100%);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 6px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.58);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+}
+
+body.timeline-dashboard-page .timeline-header-filters::-webkit-scrollbar {
+    height: 4px;
+}
+
+body.timeline-dashboard-page .timeline-header-filters::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.34);
+    border-radius: 999px;
+}
+
+body.timeline-dashboard-page .timeline-header-filters-label {
+    flex: 0 0 auto;
+    padding: 0 3px 0 2px;
+    color: rgba(226, 232, 240, 0.78);
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .timeline-header-filter-group,
+body.timeline-dashboard-page .timeline-header-filter-group .view-mode-controls,
+body.timeline-dashboard-page .timeline-header-filter-group.v32-controls {
+    box-sizing: border-box;
+    flex: 0 0 auto !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-controls, .period-selector, .timeline-type-selector, .zoom-controls) {
+    box-sizing: border-box;
+    flex: 0 0 auto !important;
+    display: grid !important;
+    align-items: center !important;
+    min-height: 34px !important;
+    width: max-content !important;
+    padding: 2px !important;
+    gap: 2px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(148, 163, 184, 0.14) !important;
+    background: rgba(30, 41, 59, 0.64) !important;
+    box-shadow: none !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters .status-filter-controls {
+    grid-template-columns: minmax(48px, auto) minmax(92px, auto) minmax(82px, auto) !important;
+    min-width: 226px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters .period-selector {
+    grid-template-columns: repeat(2, minmax(64px, 1fr)) !important;
+    min-width: 138px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector {
+    grid-template-columns: repeat(2, minmax(70px, 1fr)) !important;
+    min-width: 150px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters .zoom-controls {
+    grid-template-columns: repeat(3, minmax(48px, 1fr)) !important;
+    min-width: 150px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+    width: auto !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    min-width: 0 !important;
+    padding: 0 10px !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    background: transparent !important;
+    color: rgba(226, 232, 240, 0.66) !important;
+    box-shadow: none !important;
+    font-size: 11.5px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):hover:not(:disabled):not(.active),
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):focus-visible:not(.active) {
+    border-color: rgba(45, 212, 191, 0.22) !important;
+    background: rgba(45, 212, 191, 0.07) !important;
+    color: rgba(236, 254, 255, 0.92) !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters :where(.segmentedItem.active, .segmentedItem[aria-pressed="true"]) {
+    background: linear-gradient(135deg, #18c7b6, #0ea5a3) !important;
+    border-color: rgba(45, 212, 191, 0.42) !important;
+    color: #ecfeff !important;
+    box-shadow: 0 8px 18px rgba(14, 165, 163, 0.18) !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filters .timeline-compact-state[hidden] {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+    width: 100%;
+}
+
+body.timeline-dashboard-page .schedule-command-center {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
+    min-height: 36px !important;
+}
+
+@media (max-width: 1536px) and (min-width: 1181px) {
+    body.timeline-dashboard-page .header .header-content {
+        gap: 8px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters {
+        flex-basis: 640px;
+        max-width: min(850px, 100%);
+        gap: 6px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .status-filter-controls {
+        min-width: 210px !important;
+        grid-template-columns: minmax(44px, auto) minmax(82px, auto) minmax(76px, auto) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .period-selector {
+        min-width: 128px !important;
+        grid-template-columns: repeat(2, minmax(58px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector {
+        min-width: 138px !important;
+        grid-template-columns: repeat(2, minmax(64px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .zoom-controls {
+        min-width: 138px !important;
+        grid-template-columns: repeat(3, minmax(42px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+        padding: 0 8px !important;
+    }
+}
+
+@media (max-width: 1180px) {
+    body.timeline-dashboard-page .header .header-content {
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters {
+        order: 4;
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: 100%;
+        justify-content: flex-start;
+    }
+
+    body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
+        margin-left: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    body.timeline-dashboard-page .header .header-content {
+        gap: 8px;
+    }
+
+    body.timeline-dashboard-page .header .btn-search {
+        min-width: max-content;
+        height: 38px;
+        min-height: 38px;
+    }
+
+    body.timeline-dashboard-page .header .header-theme-toggle,
+    body.timeline-dashboard-page .header .btn-logout {
+        height: 38px;
+        min-height: 38px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters {
+        gap: 6px;
+        padding: 4px;
+        border-radius: 12px;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center {
+        padding-top: 7px !important;
+        padding-bottom: 7px !important;
+    }
+}
+
+@media (max-width: 430px) {
+    body.timeline-dashboard-page .header .header-content {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters {
+        gap: 5px;
+        padding: 4px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters-label {
+        font-size: 10px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+        height: 28px !important;
+        min-height: 28px !important;
+        padding: 0 8px !important;
+        font-size: 11px !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .status-filter-controls {
+        min-width: 202px !important;
+        grid-template-columns: minmax(38px, auto) minmax(72px, auto) minmax(70px, auto) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .period-selector {
+        min-width: 126px !important;
+        grid-template-columns: repeat(2, minmax(58px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector {
+        min-width: 134px !important;
+        grid-template-columns: repeat(2, minmax(62px, 1fr)) !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .zoom-controls {
+        min-width: 136px !important;
+        grid-template-columns: repeat(3, minmax(42px, 1fr)) !important;
+    }
+}

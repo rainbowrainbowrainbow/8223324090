@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.67",
+  "version": "0.77.68",
   "eventGenix": {
-    "releaseLabel": "HR Staff Schedule Operations Release"
+    "releaseLabel": "Timeline Type Toolbar"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.67">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.67">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.67">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.67">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.67">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.67">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.67">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.67">
-    <link rel="stylesheet" href="css/features.css?v=0.77.67">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.67">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.67">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.67">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.67">
+    <link rel="stylesheet" href="css/base.css?v=0.77.68">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.68">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.68">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.68">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.68">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.68">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.68">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.68">
+    <link rel="stylesheet" href="css/features.css?v=0.77.68">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.68">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.68">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.68">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.68">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.67">✨ 0.77.67</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.68">✨ 0.77.68</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.67 — HR Staff Schedule Operations Release</p>
+                <p class="tagline">AI First CRM v0.77.68 — Timeline Type Toolbar</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.67</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.68</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1740,15 +1740,14 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.77.67 — HR Staff Schedule Operations Release</h4>
+                    <h4>v0.77.68 — Timeline Type Toolbar</h4>
                     <ul>
-                        <li><b>Графік переведено на HR-card staff pool</b> — active staff тепер приходить через light HR-card контракт, а freelance placeholders сховані без явного <code>include_freelance=true</code>.</li>
-                        <li><b>Категорії графіка вирівняно під роботу центру</b> — охорона показується в технічному відділі, а рецепція й менеджери зібрані в <code>Рецепшен</code> без зміни department у БД.</li>
-                        <li><b>Додано контроль якості графіка</b> — health score, issue badges, attendance indicators, forecast і manager accountability показують ризики до зміни.</li>
-                        <li><b>Reports/payroll стали staff-aware</b> — рядки зберігають <code>employee_staff_id</code> / <code>owner_staff_id</code>, display snapshot і reconciliation warnings без ламання старих звітів.</li>
-                        <li><b>Reception / Managers operations view додано в Center</b> — вкладка <code>/center#operations</code> показує стан зміни, бронювання, задачі, платежі, звіти й handover notes.</li>
-                        <li><b>Sensitive staff endpoints закрито ролями</b> — payroll і full attendance API більше не відкриті для всіх authenticated users.</li>
-                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.67</code>.</li>
+                        <li><b>Тип таймлайну зроблено явним</b> — замість старого overlay switch додано segmented control <code>Банкети / Свята</code>.</li>
+                        <li><b>Період і тип графіка розділено</b> — <code>День / Тиждень</code> керують періодом, а <code>Банкети / Свята</code> перемикають банкетний та аніматорський таймлайн.</li>
+                        <li><b>Фільтри винесено у верхній рядок</b> — статуси, період і тип таймлайну зібрані в одному зрозумілому control layer.</li>
+                        <li><b>Прибрано дубль дати</b> — secondary metadata <code>Понеділок, 29.06 · 12:00-20:00</code> більше не дублює основний date picker.</li>
+                        <li><b>Regression guardrails оновлено</b> — UI checks перевіряють <code>Банкети / Свята</code> і нову модель toolbar state.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.68</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -15139,42 +15138,42 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.67"></script>
-    <script src="js/timeline-visibility.js?v=0.77.67"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.67"></script>
-    <script src="js/config.js?v=0.77.67"></script>
-    <script src="js/api.js?v=0.77.67"></script>
-    <script src="js/ui.js?v=0.77.67"></script>
-    <script src="js/auth.js?v=0.77.67"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.67"></script>
-    <script src="js/timeline-cache.js?v=0.77.67"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.67"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.67"></script>
-    <script src="js/event-cards.js?v=0.77.67"></script>
-    <script src="js/invite-config.js?v=0.77.67"></script>
-    <script src="js/invite-share.js?v=0.77.67"></script>
-    <script src="js/timeline.js?v=0.77.67"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.67"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.67"></script>
-    <script src="js/booking-save-path.js?v=0.77.67"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.67"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.67"></script>
-    <script src="js/booking.js?v=0.77.67"></script>
-    <script src="js/settings.js?v=0.77.67"></script>
-    <script src="js/booking-form.js?v=0.77.67"></script>
-    <script src="js/booking-linked.js?v=0.77.67"></script>
-    <script src="js/settings-dashboard.js?v=0.77.67"></script>
-    <script src="js/settings-history.js?v=0.77.67"></script>
-    <script src="js/settings-afisha.js?v=0.77.67"></script>
-    <script src="js/settings-certificates.js?v=0.77.67"></script>
-    <script src="js/offline.js?v=0.77.67"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.67"></script>
-    <script src="js/search.js?v=0.77.67"></script>
-    <script src="js/ws.js?v=0.77.67"></script>
-    <script src="js/app.js?v=0.77.67"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.67"></script>
-    <script src="js/components/sidebar.js?v=0.77.67"></script>
+    <script src="js/timeline-context.js?v=0.77.68"></script>
+    <script src="js/timeline-visibility.js?v=0.77.68"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.68"></script>
+    <script src="js/config.js?v=0.77.68"></script>
+    <script src="js/api.js?v=0.77.68"></script>
+    <script src="js/ui.js?v=0.77.68"></script>
+    <script src="js/auth.js?v=0.77.68"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.68"></script>
+    <script src="js/timeline-cache.js?v=0.77.68"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.68"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.68"></script>
+    <script src="js/event-cards.js?v=0.77.68"></script>
+    <script src="js/invite-config.js?v=0.77.68"></script>
+    <script src="js/invite-share.js?v=0.77.68"></script>
+    <script src="js/timeline.js?v=0.77.68"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.68"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.68"></script>
+    <script src="js/booking-save-path.js?v=0.77.68"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.68"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.68"></script>
+    <script src="js/booking.js?v=0.77.68"></script>
+    <script src="js/settings.js?v=0.77.68"></script>
+    <script src="js/booking-form.js?v=0.77.68"></script>
+    <script src="js/booking-linked.js?v=0.77.68"></script>
+    <script src="js/settings-dashboard.js?v=0.77.68"></script>
+    <script src="js/settings-history.js?v=0.77.68"></script>
+    <script src="js/settings-afisha.js?v=0.77.68"></script>
+    <script src="js/settings-certificates.js?v=0.77.68"></script>
+    <script src="js/offline.js?v=0.77.68"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.68"></script>
+    <script src="js/search.js?v=0.77.68"></script>
+    <script src="js/ws.js?v=0.77.68"></script>
+    <script src="js/app.js?v=0.77.68"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.68"></script>
+    <script src="js/components/sidebar.js?v=0.77.68"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.77.67"></script>
+    <script src="js/alerts.js?v=0.77.68"></script>
 </body>
 </html>

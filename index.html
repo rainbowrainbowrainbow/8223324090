@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.70">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.70">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.70">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.70">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.70">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.70">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.70">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.70">
-    <link rel="stylesheet" href="css/features.css?v=0.77.70">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.70">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.70">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.70">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.70">
+    <link rel="stylesheet" href="css/base.css?v=0.77.71">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.71">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.71">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.71">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.71">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.71">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.71">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.71">
+    <link rel="stylesheet" href="css/features.css?v=0.77.71">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.71">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.71">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.71">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.71">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.70">✨ 0.77.70</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.71">✨ 0.77.71</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.70 — Profile My Day Undo Fix</p>
+                <p class="tagline">AI First CRM v0.77.71 — Timeline Toolbar Rooms Default</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.70</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.71</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -106,7 +106,12 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <button type="button" class="btn-search" onclick="openSearch()" title="Пошук (Ctrl+K)">Пошук <kbd>⌘K</kbd></button>
                 <div class="timeline-header-filters" aria-label="Фільтри таймлайну">
-                    <span class="timeline-header-filters-label">Фільтри</span>
+                    <span class="timeline-header-filters-label timeline-header-filter-control">
+                        <span class="timeline-header-filter-icon timeline-header-filter-icon--sliders" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M4 7h10"/><path d="M18 7h2"/><path d="M16 5v4"/><path d="M4 17h2"/><path d="M10 17h10"/><path d="M8 15v4"/></svg>
+                        </span>
+                        <span>Фільтри</span>
+                    </span>
                     <div class="timeline-header-filter-group timeline-header-filter-group--status" aria-label="Статус бронювань">
                         <div class="status-filter-controls toolbarGroup segmentedControl">
                             <button type="button" class="status-filter-btn segmentedItem active" data-filter="all" title="Показати всі бронювання" aria-label="Всі" aria-pressed="true">Всі</button>
@@ -114,32 +119,46 @@
                             <button type="button" class="status-filter-btn segmentedItem" data-filter="preliminary" title="Тільки попередні" aria-label="Попередні" aria-pressed="false"><span class="toolbar-label-full">Попередні</span><span class="toolbar-label-short" aria-hidden="true">Попер.</span></button>
                         </div>
                     </div>
+                    <span class="timeline-header-filter-icon timeline-header-filter-icon--calendar" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M7 3v4"/><path d="M17 3v4"/><path d="M4 9h16"/><path d="M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/></svg>
+                    </span>
                     <div class="timeline-header-filter-group timeline-header-filter-group--period" aria-label="Період графіка">
                         <div class="period-selector timeline-view-mode-selector segmentedControl" id="periodSelector" aria-label="Період графіка" data-schedule-view-mode-selector>
                             <button type="button" class="period-btn timeline-view-mode-btn segmentedItem active" data-period="1" data-schedule-view-mode="day" title="Один день" aria-pressed="true">День</button>
                             <button type="button" class="period-btn timeline-view-mode-btn segmentedItem" data-period="7" data-schedule-view-mode="week" title="Тиждень" aria-pressed="false">Тиждень</button>
                         </div>
                     </div>
+                    <span class="timeline-header-filter-icon timeline-header-filter-icon--banquet" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M6 10h12l-1.2 9H7.2L6 10Z"/><path d="M8 10a4 4 0 0 1 8 0"/><path d="M9 14h6"/></svg>
+                    </span>
                     <div class="timeline-header-filter-group timeline-header-filter-group--type" aria-label="Тип таймлайну">
                         <div class="view-mode-controls toolbarGroup">
                             <div class="timeline-type-selector segmentedControl" id="timelineTypeSelector" data-timeline-type-selector aria-label="Тип таймлайну">
-                                <button type="button" class="timeline-type-btn segmentedItem" data-timeline-view="rooms" title="Банкетний таймлайн" aria-pressed="false">Банкети</button>
-                                <button type="button" class="timeline-type-btn segmentedItem active" data-timeline-view="animators" title="Таймлайн свят з аніматорами" aria-pressed="true">Свята</button>
+                                <button type="button" class="timeline-type-btn segmentedItem active" data-timeline-view="rooms" title="Банкетний таймлайн" aria-pressed="true">Банкети</button>
+                                <button type="button" class="timeline-type-btn segmentedItem" data-timeline-view="animators" title="Таймлайн свят з аніматорами" aria-pressed="false">Свята</button>
                             </div>
                         </div>
                     </div>
+                    <span class="timeline-header-filter-icon timeline-header-filter-icon--clock" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>
+                    </span>
                     <div class="timeline-header-filter-group timeline-header-filter-group--zoom v32-controls toolbarGroup" aria-label="Масштаб таймлайну">
                         <div class="zoom-controls segmentedControl">
-                            <button type="button" class="zoom-btn segmentedItem" data-zoom="15" title="Масштаб: 15 хвилин на клітинку" aria-pressed="false">15 хв</button>
+                            <button type="button" class="zoom-btn segmentedItem active" data-zoom="15" title="Масштаб: 15 хвилин на клітинку" aria-pressed="true">15 хв</button>
                             <button type="button" class="zoom-btn segmentedItem" data-zoom="30" title="Масштаб: 30 хвилин на клітинку" aria-pressed="false">30 хв</button>
                             <button type="button" class="zoom-btn segmentedItem" data-zoom="60" title="Масштаб: 60 хвилин на клітинку" aria-pressed="false">60 хв</button>
                         </div>
-                        <input type="checkbox" id="compactModeToggle" class="timeline-compact-state" aria-label="Компактний режим" aria-checked="false" hidden>
                     </div>
+                    <label class="timeline-compact-toggle toolbarToggleChip" title="Компактний режим">
+                        <input type="checkbox" id="compactModeToggle" class="timeline-compact-state" role="switch" aria-label="Компактний режим" aria-checked="false">
+                        <span class="timeline-compact-toggle-track" aria-hidden="true">
+                            <span class="timeline-compact-toggle-thumb"></span>
+                        </span>
+                    </label>
+                    <button type="button" id="logoutBtn" class="btn-logout timeline-header-logout">Вийти</button>
                 </div>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -1059,8 +1078,8 @@
                     <div class="form-group" id="settingsTimelineDefaultViewGroup">
                         <label for="settingsTimelineDefaultView">Початковий вигляд таймлайну:</label>
                         <select id="settingsTimelineDefaultView">
-                            <option value="animators" selected>Свята</option>
-                            <option value="rooms">Кімнати</option>
+                            <option value="animators">Свята</option>
+                            <option value="rooms" selected>Кімнати</option>
                         </select>
                     </div>
                     <div id="settingsTimelineControlCenter" class="timeline-control-center" aria-live="polite">
@@ -1737,6 +1756,16 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.77.71 — Timeline Toolbar Rooms Default</h4>
+                    <ul>
+                        <li><b>Toolbar фільтрів оновлено під compact pills</b> — статуси, період, тип таймлайну, масштаб, компактний перемикач і <code>Вийти</code> зібрані в новій світлій панелі без зміни business hooks.</li>
+                        <li><b>Default для Event Genix park змінено на <code>Банкети</code></b> — fallback стартового вигляду тепер <code>rooms</code> тільки для <code>event_genix</code> park з увімкненим room timeline.</li>
+                        <li><b>Масштаб за замовчуванням став <code>15 хв</code></b> — <code>TIMELINE_DEFAULT_ZOOM_MINUTES</code> оновлено до <code>15</code>, а збережені валідні preferences користувачів лишаються сильнішими за fallback.</li>
+                        <li><b>Responsive і accessibility guardrails посилено</b> — тести фіксують порядок controls, <code>aria-pressed</code>, decorative icons, focus-visible, mobile scroll і canonical <code>#logoutBtn</code>.</li>
+                        <li><b>Релізні маркери синхронізовано</b> — package, cache tags, Service Worker, first screen, changelog і <code>/api/version</code> піднято до <code>0.77.71</code>.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.77.70 — Profile My Day Undo Fix</h4>
                     <ul>
@@ -15168,42 +15197,42 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.70"></script>
-    <script src="js/timeline-visibility.js?v=0.77.70"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.70"></script>
-    <script src="js/config.js?v=0.77.70"></script>
-    <script src="js/api.js?v=0.77.70"></script>
-    <script src="js/ui.js?v=0.77.70"></script>
-    <script src="js/auth.js?v=0.77.70"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.70"></script>
-    <script src="js/timeline-cache.js?v=0.77.70"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.70"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.70"></script>
-    <script src="js/event-cards.js?v=0.77.70"></script>
-    <script src="js/invite-config.js?v=0.77.70"></script>
-    <script src="js/invite-share.js?v=0.77.70"></script>
-    <script src="js/timeline.js?v=0.77.70"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.70"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.70"></script>
-    <script src="js/booking-save-path.js?v=0.77.70"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.70"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.70"></script>
-    <script src="js/booking.js?v=0.77.70"></script>
-    <script src="js/settings.js?v=0.77.70"></script>
-    <script src="js/booking-form.js?v=0.77.70"></script>
-    <script src="js/booking-linked.js?v=0.77.70"></script>
-    <script src="js/settings-dashboard.js?v=0.77.70"></script>
-    <script src="js/settings-history.js?v=0.77.70"></script>
-    <script src="js/settings-afisha.js?v=0.77.70"></script>
-    <script src="js/settings-certificates.js?v=0.77.70"></script>
-    <script src="js/offline.js?v=0.77.70"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.70"></script>
-    <script src="js/search.js?v=0.77.70"></script>
-    <script src="js/ws.js?v=0.77.70"></script>
-    <script src="js/app.js?v=0.77.70"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.70"></script>
-    <script src="js/components/sidebar.js?v=0.77.70"></script>
+    <script src="js/timeline-context.js?v=0.77.71"></script>
+    <script src="js/timeline-visibility.js?v=0.77.71"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.71"></script>
+    <script src="js/config.js?v=0.77.71"></script>
+    <script src="js/api.js?v=0.77.71"></script>
+    <script src="js/ui.js?v=0.77.71"></script>
+    <script src="js/auth.js?v=0.77.71"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.71"></script>
+    <script src="js/timeline-cache.js?v=0.77.71"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.71"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.71"></script>
+    <script src="js/event-cards.js?v=0.77.71"></script>
+    <script src="js/invite-config.js?v=0.77.71"></script>
+    <script src="js/invite-share.js?v=0.77.71"></script>
+    <script src="js/timeline.js?v=0.77.71"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.71"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.71"></script>
+    <script src="js/booking-save-path.js?v=0.77.71"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.71"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.71"></script>
+    <script src="js/booking.js?v=0.77.71"></script>
+    <script src="js/settings.js?v=0.77.71"></script>
+    <script src="js/booking-form.js?v=0.77.71"></script>
+    <script src="js/booking-linked.js?v=0.77.71"></script>
+    <script src="js/settings-dashboard.js?v=0.77.71"></script>
+    <script src="js/settings-history.js?v=0.77.71"></script>
+    <script src="js/settings-afisha.js?v=0.77.71"></script>
+    <script src="js/settings-certificates.js?v=0.77.71"></script>
+    <script src="js/offline.js?v=0.77.71"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.71"></script>
+    <script src="js/search.js?v=0.77.71"></script>
+    <script src="js/ws.js?v=0.77.71"></script>
+    <script src="js/app.js?v=0.77.71"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.71"></script>
+    <script src="js/components/sidebar.js?v=0.77.71"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.77.70"></script>
+    <script src="js/alerts.js?v=0.77.71"></script>
 </body>
 </html>

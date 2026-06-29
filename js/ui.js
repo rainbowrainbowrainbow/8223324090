@@ -2544,7 +2544,9 @@ function toggleCompactMode(event) {
     } else if (toggle) {
         toggle.checked = AppState.compactMode;
         toggle.setAttribute('aria-checked', AppState.compactMode ? 'true' : 'false');
-        toggle.closest?.('.timeline-compact-toggle')?.setAttribute('aria-pressed', AppState.compactMode ? 'true' : 'false');
+        const chip = toggle.closest?.('.timeline-compact-toggle');
+        chip?.classList.toggle('active', Boolean(AppState.compactMode));
+        chip?.removeAttribute('aria-pressed');
     }
     if (previousCompactMode !== Boolean(AppState.compactMode) && typeof markTimelineNavigationScrollReset === 'function') {
         markTimelineNavigationScrollReset('compact-change');

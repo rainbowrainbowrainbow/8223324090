@@ -777,6 +777,9 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timeline, /function defaultTimelineViewMode\(\)/);
     assert.match(timeline, /presentation\?\.\(\)\?\.defaultTimelineView/);
     assert.match(timeline, /TIMELINE_VIEW_USER_CHOICE_VERSION/);
+    assert.match(timeline, /function normalizeStoredTimelineViewMode\(value\)/);
+    assert.match(timeline, /const requested = urlView \|\| storedView \|\| defaultView/);
+    assert.match(timeline, /localStorage\.removeItem\(timelineViewStorageKey\(\)\)/);
     assert.doesNotMatch(timeline, /function roomLoadBookingMinutes/);
     assert.doesNotMatch(timeline, /roomLoadPanel/);
     assert.match(timeline, /TIMELINE_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
@@ -797,8 +800,11 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(timelineContext, /defaultTimelineView/);
     assert.match(resources, /TIMELINE_VIEW_MODES/);
     assert.match(resources, /normalizeDefaultTimelineView/);
-    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park' }, 'event_genix').defaultTimelineView, 'animators');
+    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park' }, 'event_genix').defaultTimelineView, 'rooms');
+    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park', defaultTimelineView: 'animators' }, 'event_genix').defaultTimelineView, 'animators');
     assert.equal(normalizeTimelineDisplaySettings({ mode: 'park', defaultTimelineView: 'rooms' }, 'event_genix').defaultTimelineView, 'rooms');
+    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park', roomTimelineEnabled: false }, 'event_genix').defaultTimelineView, 'animators');
+    assert.equal(normalizeTimelineDisplaySettings({ mode: 'park' }, 'maysternya_doli').defaultTimelineView, 'animators');
     assert.match(timeline, /assignmentMode = isRoomTimelineView\(\) \? 'room' : 'line'/);
     assert.match(booking, /ROOM_FIRST_BANQUET_SERVICE_LINE_ID = 'banquet-service'/);
     assert.match(booking, /BOOKING_TAKEAWAY_ROOM_VALUE = 'На виніс'/);
@@ -815,7 +821,7 @@ test('room-first timeline keeps park source of truth but projects rows by room',
     assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="rooms"[\s\S]*>Банкети<\/button>/);
     assert.match(html, /data-timeline-type-selector[\s\S]*data-timeline-view="animators"[\s\S]*>Свята<\/button>/);
     assert.doesNotMatch(html, /id="timelineHolidaysToggle"[^>]*data-timeline-holidays-toggle/);
-    assert.match(html, /<option value="animators" selected>Свята<\/option>/);
+    assert.match(html, /<option value="rooms" selected>Кімнати<\/option>/);
     assert.match(html, /id="settingsTimelineRoomFirstEnabled"/);
     assert.match(html, /id="settingsTimelineDefaultView"/);
     assert.match(migration, /MIGRATION_KIND: data-fix/);

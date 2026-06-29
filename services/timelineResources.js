@@ -65,6 +65,18 @@ function normalizeDefaultTimelineView(value, roomTimelineEnabled) {
     return 'animators';
 }
 
+function defaultTimelineViewForContext(context, mode, roomTimelineEnabled) {
+    return mode === 'park' && roomTimelineEnabled && normalizeTimelineContext(context) === DEFAULT_TIMELINE_CONTEXT
+        ? 'rooms'
+        : 'animators';
+}
+
+function normalizeDefaultTimelineViewForContext(value, roomTimelineEnabled, context, mode) {
+    const view = String(value || '').trim().toLowerCase();
+    if (roomTimelineEnabled && TIMELINE_VIEW_MODES.has(view)) return view;
+    return defaultTimelineViewForContext(context, mode, roomTimelineEnabled);
+}
+
 function defaultTimelineModules(mode, parkKitchenMode = 'with_kitchen') {
     const base = Object.fromEntries(TIMELINE_MODULE_KEYS.map(key => [key, false]));
     if (mode === 'disabled') {
@@ -204,7 +216,7 @@ function normalizeTimelineDisplaySettings(value, context) {
         && (Object.prototype.hasOwnProperty.call(value || {}, 'roomTimelineEnabled')
             ? value.roomTimelineEnabled !== false
             : normalizeTimelineContext(context) === DEFAULT_TIMELINE_CONTEXT);
-    const defaultTimelineView = normalizeDefaultTimelineView(value?.defaultTimelineView, roomTimelineEnabled);
+    const defaultTimelineView = normalizeDefaultTimelineViewForContext(value?.defaultTimelineView, roomTimelineEnabled, context, mode);
 
     return {
         version: 2,

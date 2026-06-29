@@ -411,6 +411,11 @@ function normalizeTimelineViewMode(value) {
         : TIMELINE_VIEW_ANIMATORS;
 }
 
+function normalizeStoredTimelineViewMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    return mode === TIMELINE_VIEW_ROOMS || mode === TIMELINE_VIEW_ANIMATORS ? mode : null;
+}
+
 function timelinePeriodDayValue() {
     return typeof TIMELINE_PERIOD_DAY !== 'undefined' ? TIMELINE_PERIOD_DAY : 1;
 }
@@ -463,13 +468,12 @@ function defaultTimelineViewMode() {
 function timelineCurrentView() {
     const urlView = timelineViewFromUrl();
     const storedRaw = localStorage.getItem(timelineViewStorageKey());
-    const storedView = storedRaw ? normalizeTimelineViewMode(storedRaw) : null;
+    const storedView = storedRaw ? normalizeStoredTimelineViewMode(storedRaw) : null;
     const defaultView = defaultTimelineViewMode();
-    const choiceVersion = localStorage.getItem(timelineViewChoiceStorageKey());
-    const hasExplicitChoice = choiceVersion === TIMELINE_VIEW_USER_CHOICE_VERSION;
-    const canUseStored = storedView
-        && (hasExplicitChoice || storedView === defaultView);
-    const requested = urlView || (canUseStored ? storedView : null) || defaultView;
+    if (storedRaw && !storedView) {
+        try { localStorage.removeItem(timelineViewStorageKey()); } catch {}
+    }
+    const requested = urlView || storedView || defaultView;
     if (requested === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return TIMELINE_VIEW_ANIMATORS;
     return requested;
 }

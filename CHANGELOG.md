@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.71 - Timeline Toolbar Rooms Default
+
+### Timeline toolbar / Rooms default / Zoom default / Release hygiene / (Клешня, 29.06.2026) [codex]
+- **Toolbar фільтрів оновлено під compact pills** - статуси, період, тип таймлайну, масштаб, компактний перемикач і `Вийти` зібрані в новій світлій панелі без зміни business hooks.
+- **Default для Event Genix park змінено на `Банкети`** - fallback стартового вигляду тепер `rooms` тільки для `event_genix` park з увімкненим room timeline.
+- **Масштаб за замовчуванням став `15 хв`** - `TIMELINE_DEFAULT_ZOOM_MINUTES` оновлено до `15`, а збережені валідні preferences користувачів лишаються сильнішими за fallback.
+- **Responsive і accessibility guardrails посилено** - тести фіксують порядок controls, `aria-pressed`, decorative icons, focus-visible, mobile scroll і canonical `#logoutBtn`.
+- **Релізні маркери піднято до `0.77.71`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.70 - Profile My Day Undo Fix
 
 ### Profile My Day / Task lifecycle / Undo reliability / (Клешня, 29.06.2026) [codex]

@@ -1033,7 +1033,23 @@ function mergeTimelineToggleDefaults(value, defaults, keys) {
     return merged;
 }
 
+function timelineSettingsActiveContextKey(settings = {}) {
+    return String(settings.context
+        || settings.businessContext
+        || window.CrmBusinessContext?.activeProfile?.()?.key
+        || window.TimelineBusinessContext?.current?.()?.apiValue
+        || window.TimelineBusinessContext?.current?.()?.key
+        || 'event_genix');
+}
+
+function defaultTimelineViewForControlSettings(settings = {}, mode = 'park', roomTimelineEnabled = false) {
+    return mode === 'park' && roomTimelineEnabled && timelineSettingsActiveContextKey(settings) === 'event_genix'
+        ? 'rooms'
+        : 'animators';
+}
+
 function normalizeTimelineControlSettings(settings = {}) {
+    const context = timelineSettingsActiveContextKey(settings);
     const rawMode = String(settings.mode || '').trim();
     const mode = settings.timelineEnabled === false || rawMode === 'disabled'
         ? 'disabled'
@@ -1055,7 +1071,7 @@ function normalizeTimelineControlSettings(settings = {}) {
             : true);
     const defaultTimelineView = roomTimelineEnabled && ['rooms', 'animators'].includes(settings.defaultTimelineView)
         ? settings.defaultTimelineView
-        : 'animators';
+        : defaultTimelineViewForControlSettings({ ...settings, context }, mode, roomTimelineEnabled);
     const enabledModules = mergeTimelineToggleDefaults(settings.enabledModules, defaultTimelineControlModules(mode, parkKitchenMode), TIMELINE_CONTROL_MODULES);
     const timelineFeatures = mergeTimelineToggleDefaults(settings.timelineFeatures, defaultTimelineControlFeatures(mode, parkKitchenMode), TIMELINE_CONTROL_FEATURES);
     const bookingPolicy = mergeTimelineToggleDefaults(settings.bookingPolicy, defaultTimelineControlPolicies(mode), TIMELINE_CONTROL_POLICIES);
@@ -1078,7 +1094,8 @@ function normalizeTimelineControlSettings(settings = {}) {
         defaultTimelineView,
         enabledModules,
         timelineFeatures,
-        bookingPolicy
+        bookingPolicy,
+        context
     };
 }
 
@@ -1282,7 +1299,9 @@ function collectTimelineDisplaySettingsFromControls() {
     const startPage = document.querySelector('[data-timeline-start-page].is-active')?.dataset.timelineStartPage || (mode === 'disabled' ? 'dashboard' : 'timeline');
     const resourceModel = document.querySelector('[data-timeline-resource-model].is-active')?.dataset.timelineResourceModel || defaultTimelineResourceModel(mode);
     const roomTimelineEnabled = mode === 'park' && controls.roomFirst?.checked !== false;
-    const defaultTimelineView = roomTimelineEnabled ? (controls.defaultView?.value || 'animators') : 'animators';
+    const defaultTimelineView = roomTimelineEnabled
+        ? (controls.defaultView?.value || defaultTimelineViewForControlSettings({}, mode, roomTimelineEnabled))
+        : 'animators';
     const normalized = normalizeTimelineControlSettings({
         mode,
         timelineEnabled: mode !== 'disabled',
@@ -1543,7 +1562,7 @@ function handleTimelineDisplayModeChange() {
         startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
         resourceModel: defaultTimelineResourceModel(mode),
         roomTimelineEnabled: mode === 'park',
-        defaultTimelineView: 'animators'
+        defaultTimelineView: defaultTimelineViewForControlSettings({}, mode, mode === 'park')
     });
 }
 
@@ -1563,7 +1582,7 @@ function handleTimelineControlClick(event) {
             startPage: mode === 'disabled' ? 'dashboard' : 'timeline',
             resourceModel,
             roomTimelineEnabled: mode === 'park',
-            defaultTimelineView: 'animators'
+            defaultTimelineView: defaultTimelineViewForControlSettings({}, mode, mode === 'park')
         });
         return;
     }

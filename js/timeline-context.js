@@ -228,6 +228,12 @@
     const KNOWN_CRM_CONTEXT_KEYS = new Set([...STATIC_CONTEXT_KEYS, 'dar', 'crm']);
     const displaySettingsCache = new Map();
 
+    function defaultTimelineViewForContext(ctx, mode, roomTimelineEnabled) {
+        return mode === 'park' && roomTimelineEnabled && ctx?.key === 'event_genix'
+            ? 'rooms'
+            : 'animators';
+    }
+
     function normalizedPath() {
         return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
     }
@@ -567,7 +573,7 @@
                 : ctx.key === 'event_genix');
         const defaultTimelineView = roomTimelineEnabled && VALID_TIMELINE_VIEW_MODES.has(String(value?.defaultTimelineView || ''))
             ? String(value.defaultTimelineView)
-            : 'animators';
+            : defaultTimelineViewForContext(ctx, mode, roomTimelineEnabled);
         const enabledModules = normalizeToggleRecord(value?.enabledModules, defaultModulesForMode(mode, parkKitchenMode), MODULE_KEYS);
         const timelineFeatures = normalizeToggleRecord(value?.timelineFeatures, defaultFeaturesForMode(mode, parkKitchenMode), FEATURE_KEYS);
         const bookingPolicy = normalizeToggleRecord(value?.bookingPolicy, defaultBookingPolicyForMode(mode), POLICY_KEYS);
@@ -667,7 +673,7 @@
             startPage: settings.startPage || 'timeline',
             resourceModel: settings.resourceModel || defaultResourceModelForMode(mode.key),
             roomTimelineEnabled: mode.key === 'park' && settings.roomTimelineEnabled !== false,
-            defaultTimelineView: settings.defaultTimelineView || 'animators',
+            defaultTimelineView: settings.defaultTimelineView || defaultTimelineViewForContext(ctx, mode.key, settings.roomTimelineEnabled !== false),
             defaultBookingRoom: ctx.defaultBookingRoom || null,
             enabledModules,
             timelineFeatures,
@@ -756,7 +762,7 @@
             document.body.setAttribute('data-timeline-park-kitchen', view.parkKitchenEnabled ? 'with_kitchen' : 'without_kitchen');
             document.body.setAttribute('data-timeline-start-page', view.startPage || 'timeline');
             document.body.setAttribute('data-timeline-resource-model', view.resourceModel || 'auto');
-            document.body.setAttribute('data-timeline-default-view', view.defaultTimelineView || 'animators');
+            document.body.setAttribute('data-timeline-default-view', view.defaultTimelineView || defaultTimelineViewForContext(ctx, view.mode, view.roomTimelineEnabled !== false));
         }
 
         const titleEl = document.querySelector('.em-logo-title');

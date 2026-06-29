@@ -113,7 +113,8 @@ function syncTimelineCompactToggleAria() {
         toggle.setAttribute('aria-checked', active ? 'true' : 'false');
     }
     if (chip) {
-        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+        chip.classList.toggle('active', active);
+        chip.removeAttribute('aria-pressed');
     }
 }
 

@@ -22,6 +22,7 @@ const {
     taskBusinessContextFromPayload
 } = require('./taskBusinessScope');
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
+const { createNotificationOutboxEvent } = require('./notificationOutbox');
 
 const log = createLogger('Kleshnya');
 
@@ -60,6 +61,70 @@ function formatDeadline(deadline) {
 function getCurrentMonth() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function envFlag(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    return null;
+}
+
+function firstEnvFlag(...values) {
+    for (const value of values) {
+        const parsed = envFlag(value);
+        if (parsed !== null) return parsed;
+    }
+    return null;
+}
+
+function hermesTaskOutboxEnabled(options = {}, env = process.env) {
+    if (typeof options.hermesOutboxEnabled === 'boolean') return options.hermesOutboxEnabled;
+
+    const explicit = firstEnvFlag(
+        env.HERMES_TASK_OUTBOX_ENABLED,
+        env.HERMES_NOTIFICATION_OUTBOX_ENABLED,
+        env.NOTIFICATION_OUTBOX_ENABLED
+    );
+    if (explicit !== null) return explicit;
+
+    const nodeEnv = String(env.NODE_ENV || '').trim().toLowerCase();
+    return ['test', 'development', 'local'].includes(nodeEnv);
+}
+
+function isActiveTaskForHermesOutbox(task = {}) {
+    if (task.is_active === false || task.deleted_at || task.archived_at) return false;
+    const status = String(task.status || task.workflow_state || 'todo').trim().toLowerCase();
+    return !['done', 'completed', 'archived', 'cancelled', 'canceled', 'deleted'].includes(status);
+}
+
+async function emitTaskCreatedHermesOutbox(task, options = {}) {
+    const ownerUserId = Number(task?.owner_user_id || task?.ownerUserId || 0);
+    if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) {
+        return { created: false, reason: 'no_owner_user_id' };
+    }
+    if (!isActiveTaskForHermesOutbox(task)) {
+        return { created: false, reason: 'inactive_task_status' };
+    }
+    if (options.skipHermesOutbox === true) {
+        return { created: false, reason: 'skip_hermes_outbox' };
+    }
+    if (!hermesTaskOutboxEnabled(options)) {
+        return { created: false, reason: 'hermes_task_outbox_disabled' };
+    }
+
+    try {
+        return await createNotificationOutboxEvent({
+            task,
+            eventType: 'task_created',
+            context: options.hermesOutboxContext || options.notificationContext || {}
+        }, {
+            pool: options.pool
+        });
+    } catch (err) {
+        log.error(`Task Hermes notification outbox error: ${err.message}`);
+        throw err;
+    }
 }
 
 async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, created_by_user_id, created_by }, options = {}) {
@@ -127,6 +192,7 @@ async function createTask(data, options = {}) {
     const query = options.pool || pool;
     const afterCommit = Array.isArray(options.afterCommit) ? options.afterCommit : null;
     const skipNotifications = options.skipNotifications === true;
+    const skipHermesOutbox = options.skipHermesOutbox === true;
     const {
         business_context,
         businessContext,
@@ -219,6 +285,13 @@ async function createTask(data, options = {}) {
 
     // Log creation
     await logTaskAction(task.id, 'created', null, title, created_by, { pool: query });
+    await emitTaskCreatedHermesOutbox(task, {
+        pool: query,
+        skipHermesOutbox,
+        hermesOutboxEnabled: options.hermesOutboxEnabled,
+        hermesOutboxContext: options.hermesOutboxContext,
+        notificationContext: options.notificationContext
+    });
 
     // Notify assigned person (fire-and-forget — never block task creation)
     if (!skipNotifications && task.assigned_to && task_type === 'human') {

@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const MODULES_TO_CLEAR = [
     '../db',
     '../services/kleshnya',
+    '../services/notificationOutbox',
     '../services/telegram',
     '../services/taskDuplicatePolicy',
     '../services/taskBusinessScope',

@@ -55,6 +55,16 @@ const {
     createTaskWatchdogCallbackDryRunHandler,
     createTaskWatchdogPreviewHandler
 } = require('../services/taskWatchdogRoutes');
+const {
+    ackNotificationOutboxEvent,
+    claimNotificationOutboxEvent,
+    failNotificationOutboxEvent,
+    findNotificationOutboxEventByEventId,
+    getNotificationOutboxStats,
+    listNotificationOutboxDebugEvents,
+    listNotificationOutboxEvents,
+    toNotificationOutboxApiEvent
+} = require('../services/notificationOutbox');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Hermes');
@@ -74,7 +84,14 @@ const SUPPORTED_ACTIONS = [
     'menu_photos.apply',
     'menu_photos.reject',
     'task_watchdog.preview',
-    'task_watchdog.callback_dry_run'
+    'task_watchdog.callback_dry_run',
+    'notification_outbox.read',
+    'notification_outbox.detail',
+    'notification_outbox.claim',
+    'notification_outbox.ack',
+    'notification_outbox.fail',
+    'notification_outbox.stats',
+    'notification_outbox.debug'
 ];
 
 const PLANNED_MUTATION_ACTIONS = [];
@@ -210,6 +227,20 @@ function sendHermesError(res, status, code, error, meta = null) {
     }
 
     return res.status(status).json(body);
+}
+
+function sendNotificationOutboxError(res, err, fallbackCode, fallbackMessage) {
+    if (err.statusCode && err.statusCode < 500) {
+        return sendHermesError(
+            res,
+            err.statusCode,
+            err.code || fallbackCode,
+            err.message || fallbackMessage,
+            err.meta || null
+        );
+    }
+    log.error(fallbackMessage, err);
+    return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', fallbackMessage);
 }
 
 function hermesRateLimitKey(req = {}) {
@@ -1011,6 +1042,24 @@ function buildCapabilitiesPayload(env = process.env) {
         pagination: 'cursor',
         mutationsRequireConfirmation: true,
         mutationsRequireIdempotencyKey: true,
+        features: {
+            notificationOutbox: true
+        },
+        endpoints: {
+            notificationOutbox: {
+                list: 'GET /api/hermes/notification-outbox',
+                detail: 'GET /api/hermes/notification-outbox/:eventId',
+                claim: 'POST /api/hermes/notification-outbox/:eventId/claim',
+                ack: 'POST /api/hermes/notification-outbox/:eventId/ack',
+                fail: 'POST /api/hermes/notification-outbox/:eventId/fail',
+                stats: 'GET /api/hermes/notification-outbox/stats',
+                debug: 'GET /api/hermes/notification-outbox/debug',
+                maxLimit: 50,
+                defaultLimit: 20,
+                mutationsRequireConfirmation: false,
+                mutationsRequireIdempotencyKey: false
+            }
+        },
         supportedActions: SUPPORTED_ACTIONS,
         mutationActionsAvailable: true,
         plannedMutationActions: PLANNED_MUTATION_ACTIONS,
@@ -1048,6 +1097,153 @@ function createHermesRouter(options = {}) {
 
     router.get('/task-watchdog/preview', taskWatchdogPreviewHandler);
     router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
+
+    router.get('/notification-outbox', async (req, res) => {
+        try {
+            const result = await listNotificationOutboxEvents(req.query || {}, { pool: query });
+            return res.json({
+                success: true,
+                items: result.events.map(toNotificationOutboxApiEvent),
+                pagination: result.pagination,
+                meta: {
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    projection: 'notification_outbox.list'
+                }
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_LIST_FAILED',
+                'Hermes notification_outbox list failed'
+            );
+        }
+    });
+
+    router.get('/notification-outbox/stats', async (req, res) => {
+        try {
+            const result = await getNotificationOutboxStats({ pool: query });
+            return res.json({
+                success: true,
+                stats: result.stats,
+                oldestPendingAt: result.oldestPendingAt,
+                lastSentAt: result.lastSentAt
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_STATS_FAILED',
+                'Hermes notification_outbox stats failed'
+            );
+        }
+    });
+
+    router.get('/notification-outbox/debug', async (req, res) => {
+        try {
+            const result = await listNotificationOutboxDebugEvents(req.query || {}, { pool: query });
+            return res.json({
+                success: true,
+                items: result.items,
+                pagination: result.pagination
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_DEBUG_FAILED',
+                'Hermes notification_outbox debug failed'
+            );
+        }
+    });
+
+    router.get('/notification-outbox/:eventId', async (req, res) => {
+        try {
+            const event = await findNotificationOutboxEventByEventId(req.params.eventId, { pool: query });
+            if (!event) {
+                return sendHermesError(res, 404, 'OUTBOX_EVENT_NOT_FOUND', 'notification_outbox event was not found');
+            }
+            return res.json({
+                success: true,
+                event: toNotificationOutboxApiEvent(event)
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_DETAIL_FAILED',
+                'Hermes notification_outbox detail failed'
+            );
+        }
+    });
+
+    router.post('/notification-outbox/:eventId/claim', async (req, res) => {
+        try {
+            const result = await claimNotificationOutboxEvent(req.params.eventId, req.body || {}, { pool: query });
+            return res.json({
+                success: true,
+                claimed: result.claimed === true,
+                event: toNotificationOutboxApiEvent(result.event),
+                meta: {
+                    workerId: result.workerId,
+                    lockSeconds: result.lockSeconds
+                }
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_CLAIM_FAILED',
+                'Hermes notification_outbox claim failed'
+            );
+        }
+    });
+
+    router.post('/notification-outbox/:eventId/ack', async (req, res) => {
+        try {
+            const result = await ackNotificationOutboxEvent(req.params.eventId, req.body || {}, { pool: query });
+            return res.json({
+                success: true,
+                alreadySent: result.alreadySent === true,
+                event: toNotificationOutboxApiEvent(result.event),
+                meta: {
+                    workerId: result.workerId
+                }
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_ACK_FAILED',
+                'Hermes notification_outbox ack failed'
+            );
+        }
+    });
+
+    router.post('/notification-outbox/:eventId/fail', async (req, res) => {
+        try {
+            const result = await failNotificationOutboxEvent(req.params.eventId, req.body || {}, { pool: query });
+            return res.json({
+                success: true,
+                retryable: result.retryable,
+                deadLetter: result.deadLetter,
+                attempts: result.attempts,
+                backoffMinutes: result.backoffMinutes,
+                event: toNotificationOutboxApiEvent(result.event),
+                meta: {
+                    workerId: result.workerId
+                }
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_FAIL_FAILED',
+                'Hermes notification_outbox fail failed'
+            );
+        }
+    });
 
     router.get('/my-cabinet', async (req, res) => {
         try {

@@ -556,13 +556,19 @@ function initTimelineListeners() {
             applyTimelinePeriod(button.dataset.period, root);
         }, true);
     }
-    const holidaysToggle = document.getElementById('timelineHolidaysToggle');
-    if (holidaysToggle && window.TimelineView?.toggleHolidays) {
-        window.TimelineView.updateControls?.();
-        holidaysToggle.addEventListener('click', event => {
+    if (!window.__timelineHolidaysDelegatedBound) {
+        window.__timelineHolidaysDelegatedBound = true;
+        document.addEventListener('click', event => {
+            const button = event.target?.closest?.('[data-timeline-holidays-toggle]');
+            if (!button || !window.TimelineView?.toggleHolidays) return;
             event.preventDefault();
+            event.stopPropagation();
             window.TimelineView.toggleHolidays?.();
-        });
+        }, true);
+    }
+    const holidaysToggle = document.getElementById('timelineHolidaysToggle');
+    if (holidaysToggle && window.TimelineView?.updateControls) {
+        window.TimelineView.updateControls?.();
     }
 
     const historyBtnEl = document.getElementById('historyBtn');

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.65",
+  "version": "0.77.66",
   "eventGenix": {
-    "releaseLabel": "Holidays Overlay Switch Polish"
+    "releaseLabel": "Holidays Toggle Interaction Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

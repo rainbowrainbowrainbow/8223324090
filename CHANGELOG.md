@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.66 - Holidays Toggle Interaction Fix
+
+### Timeline toolbar / Holidays toggle / Interaction fix / (Клешня, 29.06.2026) [codex]
+- **Клік по `Свята` зроблено стабільним** - handler переведено на delegated binding, тому toggle працює навіть якщо `TimelineView` ініціалізується пізніше за toolbar.
+- **Напис тепер змінюється після перемикання** - увімкнений overlay показує `Свята`, вимкнений стан показує `Без свят`; `aria-label` і `title` синхронізуються з тим самим станом.
+- **Switch приведено ближче до CRM стилю** - зменшено mobile-like track, прибрано зайву яскравість, активний стан лишився читабельним без конкуренції з режимом `Кімнати`.
+- **Regression guardrails оновлено** - UI check перевіряє delegated holidays handler, label sync і новий active transform.
+- **Релізні маркери піднято до `0.77.66`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.65 - Holidays Overlay Switch Polish
 
 ### Timeline toolbar / Holidays switch / Responsive polish / (Клешня, 29.06.2026) [codex]

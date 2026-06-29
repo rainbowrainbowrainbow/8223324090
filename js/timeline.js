@@ -547,7 +547,11 @@ function updateTimelineViewControls() {
         btn.classList.toggle('active', showHolidays);
         btn.classList.toggle('is-overlay-active', showHolidays);
         btn.setAttribute('aria-pressed', showHolidays ? 'true' : 'false');
+        btn.setAttribute('aria-label', showHolidays ? 'Свята увімкнено' : 'Свята вимкнено');
+        btn.title = showHolidays ? 'Свята показуються поверх вибраного режиму' : 'Свята приховано для вибраного режиму';
         btn.dataset.showHolidays = showHolidays ? 'true' : 'false';
+        const label = btn.querySelector('.timeline-holidays-label');
+        if (label) label.textContent = showHolidays ? 'Свята' : 'Без свят';
     });
     if (typeof syncTimelinePeriodSelector === 'function') syncTimelinePeriodSelector();
 }

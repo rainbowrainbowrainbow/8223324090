@@ -584,7 +584,14 @@ function createHermesCreateFakePool(options = {}) {
             if (!task || ['done', 'cancelled', 'archived'].includes(String(task.status || 'todo'))) {
                 return { rows: [], rowCount: 0 };
             }
-            Object.assign(task, {
+            const isHermesStatusUpdate = compact.includes('status = $2::text');
+            Object.assign(task, isHermesStatusUpdate ? {
+                status: params[1],
+                workflow_state: params[1] === 'in_progress' ? 'in_progress' : 'todo',
+                completed_at: null,
+                updated_at: '2026-06-27T08:00:00.000Z',
+                version: Number(task.version || 1) + 1
+            } : {
                 status: 'done',
                 workflow_state: 'done',
                 completed_at: '2026-06-27T08:00:00.000Z',
@@ -1556,6 +1563,33 @@ describe('Hermes task write routes', () => {
             assert.equal(res.data.meta.historyEvent.actionType, 'task_completed');
             assert.equal(res.data.meta.historyEvent.sourceSurface, 'hermes');
             assert.equal(res.data.meta.historyEvent.meta.route, 'hermes_task_complete');
+        });
+    });
+
+    it('updates a visible task status through taskExecution with explicit text casts', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[709, taskRow(709, {
+                status: 'todo',
+                workflow_state: 'todo',
+                version: 2
+            })]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/709/status', {
+                status: 'in_progress'
+            }, mutationHeaders('status-success'));
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.task.id, '709');
+            assert.equal(res.data.task.status, 'in_progress');
+            assert.equal(res.data.meta.historyEvent.actionType, 'task_status_changed');
+            assert.equal(res.data.meta.historyEvent.sourceSurface, 'hermes');
+            assert.equal(res.data.meta.historyEvent.meta.route, 'hermes_task_status');
+            const statusUpdate = fakePool.calls.find(call => call.compact?.startsWith('UPDATE tasks SET status ='));
+            assert.ok(statusUpdate, 'status update SQL should be executed');
+            assert.match(statusUpdate.compact, /SET status = \$2::text/);
+            assert.match(statusUpdate.compact, /CASE WHEN \$2::text = 'in_progress'/);
         });
     });
 

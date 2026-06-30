@@ -422,8 +422,8 @@ async function updateTaskStatus(taskId, status, actor, options = {}) {
         }
         const result = await query.query(
             `UPDATE tasks
-             SET status = $2,
-                 workflow_state = CASE WHEN $2 = 'in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
+             SET status = $2::text,
+                 workflow_state = CASE WHEN $2::text = 'in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
                  schedule_status = CASE WHEN scheduled_start_at IS NOT NULL AND schedule_status = 'completed' THEN 'scheduled' ELSE schedule_status END,
                  completed_at = NULL,
                  updated_at = NOW(),

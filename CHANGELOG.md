@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.72 - Timeline Header Theme Polish
+
+### Timeline header / Theme polish / Command bar / Regression guards / (Клешня, 30.06.2026) [codex]
+- **Toolbar таймлайну став theme-aware** - у темній темі панель фільтрів більше не лишається білою, а у світлій краще вписується в header shell.
+- **Перемикач теми зроблено зрозумілішим** - у світлій темі видно sun state, у темній темі moon state, без зміни `#headerThemeToggle`, `applyCrmThemeMode()` і `pzp_dark_mode`.
+- **Command bar у світлій темі вирівняно** - `.schedule-command-center.toolbarContainer` отримав scoped light override, тому дата, навігація й actions більше не виглядають як темна планка.
+- **Regression guards оновлено** - `tests/ui-check.js` фіксує dark toolbar override, light command bar override і sun/moon contract для theme toggle.
+- **Релізні маркери піднято до `0.77.72`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.71 - Timeline Toolbar Rooms Default
 
 ### Timeline toolbar / Rooms default / Zoom default / Release hygiene / (Клешня, 29.06.2026) [codex]

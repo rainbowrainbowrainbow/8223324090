@@ -4899,6 +4899,118 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons {
     }
 }
 
+/* Light theme keeps the schedule command bar aligned with the light CRM shell. */
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
+    --toolbar-container-bg: rgba(248, 250, 252, 0.86);
+    --toolbar-control-bg: rgba(255, 255, 255, 0.92);
+    --toolbar-border: rgba(226, 232, 240, 0.88);
+    --toolbar-active-bg: linear-gradient(135deg, #14B8A6, #0D9488);
+    --toolbar-active-text: #FFFFFF;
+    --toolbar-inactive-text: #475569;
+    --toolbar-muted-text: #64748B;
+    --toolbar-hover-bg: #F1F5F9;
+    --toolbar-pressed-bg: rgba(20, 184, 166, 0.14);
+    --toolbar-focus-ring: rgba(20, 184, 166, 0.22);
+    background: var(--toolbar-container-bg) !important;
+    border-color: var(--toolbar-border) !important;
+    color: var(--toolbar-inactive-text) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedControl, .timeline-view-mode-selector, .timeline-type-selector),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedControl, .timeline-view-mode-selector, .timeline-type-selector),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .view-mode-controls,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .view-mode-controls {
+    background: rgba(255, 255, 255, 0.88) !important;
+    border-color: var(--toolbar-border) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62) !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip, .segmentedItem),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip, .segmentedItem),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton {
+    background: var(--toolbar-control-bg) !important;
+    border-color: var(--toolbar-border) !important;
+    color: var(--toolbar-inactive-text) !important;
+    box-shadow: none !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .segmentedItem,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .segmentedItem,
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn:not(.active):not(:hover):not(:focus-visible),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn,
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-type-btn,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-type-btn {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--toolbar-inactive-text) !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip, .segmentedItem):hover:not(:disabled):not([aria-disabled="true"]):not(.active),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarToggleChip, .segmentedItem):hover:not(:disabled):not([aria-disabled="true"]):not(.active),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton:hover,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton:hover,
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn:hover:not(:disabled):not(.active),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .btn-menu-toggle[aria-expanded="true"],
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .btn-menu-toggle[aria-expanded="true"] {
+    background: var(--toolbar-hover-bg) !important;
+    border-color: rgba(20, 184, 166, 0.28) !important;
+    color: #334155 !important;
+    box-shadow: none !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedItem.active, .segmentedItem[aria-pressed="true"], .toolbarToggleChip.active, .toolbarToggleChip:has(input:checked), .toolbarToggleChip[aria-pressed="true"]),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.segmentedItem.active, .segmentedItem[aria-pressed="true"], .toolbarToggleChip.active, .toolbarToggleChip:has(input:checked), .toolbarToggleChip[aria-pressed="true"]),
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn.active,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .timeline-view-mode-selector .timeline-view-mode-btn.active,
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn.active,
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"],
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn.active,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn[aria-pressed="true"] {
+    background: var(--toolbar-active-bg) !important;
+    border-color: rgba(20, 184, 166, 0.42) !important;
+    color: var(--toolbar-active-text) !important;
+    box-shadow: 0 8px 18px rgba(20, 184, 166, 0.18) !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarAccentButton, .timeline-command-btn--digest),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarAccentButton, .timeline-command-btn--digest) {
+    background: rgba(20, 184, 166, 0.10) !important;
+    border-color: rgba(20, 184, 166, 0.32) !important;
+    color: #0F766E !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarAccentButton, .timeline-command-btn--digest):hover:not(:disabled),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarAccentButton, .timeline-command-btn--digest):hover:not(:disabled) {
+    background: var(--toolbar-active-bg) !important;
+    border-color: rgba(20, 184, 166, 0.42) !important;
+    color: var(--toolbar-active-text) !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer input[type="date"],
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer input[type="date"] {
+    color: #0F172A !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.date-button-calendar, .day-info, .day-label, .working-hours, .date-meta-dot, .schedule-command-label, .timeline-control-icon),
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.date-button-calendar, .day-info, .day-label, .working-hours, .date-meta-dot, .schedule-command-label, .timeline-control-icon) {
+    color: var(--toolbar-muted-text) !important;
+}
+
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem):focus-visible,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer :where(.toolbarButton, .toolbarIconButton, .toolbarGhostButton, .toolbarAccentButton, .toolbarToggleChip, .segmentedItem):focus-visible,
+body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer .date-button-shell:focus-within,
+html[data-theme="light"] body.timeline-dashboard-page .schedule-command-center.toolbarContainer .date-button-shell:focus-within {
+    outline: none !important;
+    border-color: rgba(20, 184, 166, 0.56) !important;
+    box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;
+}
+
 /* Timeline header filters: move schedule filters next to search without changing handlers. */
 body.timeline-dashboard-page .header .header-content {
     box-sizing: border-box;
@@ -4935,15 +5047,135 @@ body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
     margin-left: auto;
 }
 
+body.timeline-dashboard-page .header .header-theme-toggle {
+    width: 52px !important;
+    min-width: 52px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 4px !important;
+    border: 1px solid rgba(226, 232, 240, 0.88) !important;
+    border-radius: 14px !important;
+    background: rgba(248, 250, 252, 0.82) !important;
+    color: #B45309 !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62) !important;
+    overflow: hidden !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-track {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    border-radius: 999px !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-thumb {
+    position: absolute !important;
+    top: 50% !important;
+    left: 3px !important;
+    z-index: 1 !important;
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 999px !important;
+    transform: translateY(-50%) !important;
+    background: linear-gradient(135deg, #FDE68A, #F59E0B) !important;
+    box-shadow: 0 4px 10px rgba(245, 158, 11, 0.24) !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-glyph {
+    position: absolute !important;
+    top: 50% !important;
+    z-index: 2 !important;
+    width: 18px !important;
+    height: 18px !important;
+    display: grid !important;
+    place-items: center !important;
+    pointer-events: none !important;
+    transform: translateY(-50%) !important;
+    transition: opacity 140ms ease, color 140ms ease !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-glyph svg {
+    width: 18px !important;
+    height: 18px !important;
+    fill: none !important;
+    stroke: currentColor !important;
+    stroke-width: 1.8 !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-glyph--sun {
+    left: 9px !important;
+    right: auto !important;
+    color: #7C2D12 !important;
+    opacity: 1 !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-glyph--moon {
+    left: auto !important;
+    right: 9px !important;
+    color: #64748B !important;
+    opacity: 0 !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-toggle:hover {
+    border-color: rgba(245, 158, 11, 0.36) !important;
+    background: rgba(255, 251, 235, 0.92) !important;
+    color: #92400E !important;
+}
+
+body.timeline-dashboard-page .header .header-theme-toggle:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.20) !important;
+}
+
+body.dark-mode.timeline-dashboard-page .header .header-theme-toggle,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-theme-toggle {
+    border-color: rgba(148, 163, 184, 0.18) !important;
+    background: rgba(15, 23, 42, 0.74) !important;
+    color: #BFDBFE !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045) !important;
+}
+
+body.dark-mode.timeline-dashboard-page .header .header-theme-toggle.is-dark .header-theme-thumb,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-theme-toggle.is-dark .header-theme-thumb {
+    transform: translate(14px, -50%) !important;
+    background: linear-gradient(135deg, #60A5FA, #334155) !important;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24) !important;
+}
+
+body.dark-mode.timeline-dashboard-page .header .header-theme-toggle.is-dark .header-theme-glyph--sun,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-theme-toggle.is-dark .header-theme-glyph--sun {
+    color: #FBBF24 !important;
+    opacity: 0 !important;
+}
+
+body.dark-mode.timeline-dashboard-page .header .header-theme-toggle.is-dark .header-theme-glyph--moon,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-theme-toggle.is-dark .header-theme-glyph--moon {
+    color: #EFF6FF !important;
+    opacity: 1 !important;
+}
+
+body.dark-mode.timeline-dashboard-page .header .header-theme-toggle:hover,
+html[data-theme="dark"] body.timeline-dashboard-page .header .header-theme-toggle:hover {
+    border-color: rgba(96, 165, 250, 0.30) !important;
+    background: rgba(30, 41, 59, 0.82) !important;
+    color: #DBEAFE !important;
+}
+
 body.timeline-dashboard-page .timeline-header-filters {
     --timeline-header-filter-panel-bg: #F8FAFC;
+    --timeline-header-filter-panel-surface: rgba(248, 250, 252, 0.78);
     --timeline-header-filter-border: #E2E8F0;
+    --timeline-header-filter-panel-border: rgba(226, 232, 240, 0.74);
     --timeline-header-filter-control-bg: #FFFFFF;
     --timeline-header-filter-hover-bg: #F1F5F9;
     --timeline-header-filter-active-bg: #14B8A6;
     --timeline-header-filter-text: #475569;
     --timeline-header-filter-muted: #64748B;
     --timeline-header-filter-focus: rgba(20, 184, 166, 0.22);
+    --timeline-header-filter-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
     flex: 1 1 auto;
     width: auto;
     min-width: 0;
@@ -4953,12 +5185,12 @@ body.timeline-dashboard-page .timeline-header-filters {
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 52px;
-    padding: 8px 12px;
-    border: 1px solid var(--timeline-header-filter-border);
+    min-height: 50px;
+    padding: 7px 10px;
+    border: 1px solid var(--timeline-header-filter-panel-border, var(--timeline-header-filter-border));
     border-radius: 14px;
-    background: var(--timeline-header-filter-panel-bg);
-    box-shadow: none;
+    background: var(--timeline-header-filter-panel-surface, var(--timeline-header-filter-panel-bg));
+    box-shadow: var(--timeline-header-filter-panel-shadow);
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
@@ -4976,6 +5208,21 @@ body.timeline-dashboard-page .timeline-header-filters::-webkit-scrollbar {
 body.timeline-dashboard-page .timeline-header-filters::-webkit-scrollbar-thumb {
     background: #CBD5E1;
     border-radius: 999px;
+}
+
+body.dark-mode.timeline-dashboard-page .timeline-header-filters,
+html[data-theme="dark"] body.timeline-dashboard-page .timeline-header-filters {
+    --timeline-header-filter-panel-bg: rgba(15, 23, 42, 0.72);
+    --timeline-header-filter-panel-surface: rgba(15, 23, 42, 0.74);
+    --timeline-header-filter-border: rgba(148, 163, 184, 0.18);
+    --timeline-header-filter-panel-border: rgba(148, 163, 184, 0.18);
+    --timeline-header-filter-control-bg: rgba(30, 41, 59, 0.72);
+    --timeline-header-filter-hover-bg: rgba(51, 65, 85, 0.82);
+    --timeline-header-filter-active-bg: #14B8A6;
+    --timeline-header-filter-text: #CBD5E1;
+    --timeline-header-filter-muted: #94A3B8;
+    --timeline-header-filter-focus: rgba(45, 212, 191, 0.30);
+    --timeline-header-filter-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 body.timeline-dashboard-page .timeline-header-filters-label {

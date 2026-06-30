@@ -393,6 +393,63 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
     assert.equal(HR_JS.includes("{ id: 'team', label: 'Команда', tab: 'team' }"), false, 'team workspace must use concrete people bucket tabs');
 });
 
+test('HR Pulse command cards replace legacy nav PNG switcher without weakening routing', () => {
+    for (const token of [
+        'function withPulseCommand',
+        'function renderHrPulseIcon',
+        "icon: 'calendar'",
+        "icon: 'clock'",
+        "icon: 'report'",
+        "tone: 'people'",
+        "tone: 'schedule'",
+        "tone: 'reports'",
+        "{ id: 'schedule', label: 'Графік', href: '/staff' }",
+        'span class="hr-pulse-card-icon"',
+        'span class="hr-pulse-card-content"',
+        'span class="hr-pulse-card-title"',
+        'span class="hr-pulse-card-subtitle"',
+        'span class="hr-pulse-card-badge',
+        'data-pulse-badge=',
+        'span class="hr-pulse-card-line"',
+        'data-href=',
+        'data-pulse-tone=',
+        'applyPulseCardBadges',
+        'setPulseCardBadge'
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing HR Pulse command-card token ${token}`);
+    }
+
+    for (const token of [
+        '.hr-nav--pulse .hr-tab.hr-pulse-card',
+        '.hr-pulse-card-icon',
+        '.hr-pulse-card-title',
+        '.hr-pulse-card-subtitle',
+        '.hr-pulse-card-badge',
+        '.hr-pulse-card-line',
+        '.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible',
+        '@media (prefers-reduced-motion: reduce)'
+    ]) {
+        assert.ok(HR_HTML.includes(token), `missing HR Pulse command-card CSS token ${token}`);
+    }
+
+    for (const legacyToken of [
+        'today-nav-light.png',
+        'today-nav-dark.png',
+        'schedule-nav-light.png',
+        'schedule-nav-dark.png',
+        'reports-nav-light.png',
+        'reports-nav-dark.png',
+        'lightImage',
+        'darkImage',
+        'withPulseVisual',
+        'hr-pulse-card-media',
+        'hr-pulse-card-img',
+        'hr-pulse-card-overlay'
+    ]) {
+        assert.equal(HR_JS.includes(legacyToken), false, `legacy HR Pulse nav token must stay removed: ${legacyToken}`);
+    }
+});
+
 test('HR legacy hashes remap to canonical tabs instead of blank states', () => {
     const aliases = [
         "workers: { tab: 'team', bucket: 'workers' }",

@@ -15,6 +15,24 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function setStaffPulseCardBadge(navId, value, options = {}) {
+    if (typeof document === 'undefined') return;
+    const id = String(navId || '').trim();
+    if (!id) return;
+    const badge = Array.from(document.querySelectorAll('.staff-pulse-tab-badge[data-pulse-badge]'))
+        .find(item => item.dataset.pulseBadge === id);
+    if (!badge) return;
+    const text = value === null || value === undefined ? '' : String(value).trim();
+    const shouldHide = options.hidden === true || text === '' || (options.hideZero === true && Number(value) === 0);
+    badge.textContent = shouldHide ? '' : text;
+    badge.classList.toggle('hidden', shouldHide);
+    badge.hidden = shouldHide;
+    if (!shouldHide && options.title) badge.title = String(options.title);
+    else badge.removeAttribute('title');
+    if (!shouldHide && options.ariaLabel) badge.setAttribute('aria-label', String(options.ariaLabel));
+    else badge.removeAttribute('aria-label');
+}
+
 // ==========================================
 // STATE
 // ==========================================
@@ -23,6 +41,7 @@ const StaffState = {
     weekStart: null,    // First date of the current visible schedule window
     staff: [],
     schedule: {},       // { staffId_date: entry }
+    scheduleLoadedRange: null,
     scheduleRawEntries: [], // raw rows for health duplicate/overlap checks
     attendance: {},      // { staffId_date: payroll-ready hr_time_records/staff_checkins row }
     attendanceSummary: null,
@@ -1781,10 +1800,14 @@ async function fetchSchedule(from, to) {
                 StaffState.scheduleRawEntries.push(normalizedEntry);
                 StaffState.schedule[`${normalizedEntry.staff_id}_${normalizedEntry.date}`] = normalizedEntry;
             }
+            StaffState.scheduleLoadedRange = { from, to };
+        } else {
+            StaffState.scheduleLoadedRange = null;
         }
         return data;
     } catch (err) {
         console.error('fetchSchedule error:', err);
+        StaffState.scheduleLoadedRange = null;
         showNotification('Помилка завантаження розкладу', 'error');
         return { success: false };
     }
@@ -2181,6 +2204,42 @@ function renderWeekLabel() {
     document.getElementById('weekLabel').textContent = label;
 }
 
+function summarizeScheduleToday(staffList = null) {
+    const today = todayStr();
+    const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
+    const summary = { date: today, total: filtered.length, working: 0, dayoff: 0, vacation: 0, sick: 0, remote: 0, unset: 0, replacements: 0 };
+    for (const s of filtered) {
+        const entry = StaffState.schedule[`${s.id}_${today}`];
+        if (!entry) {
+            summary.unset++;
+        } else {
+            if (isReplacementEntry(entry)) summary.replacements++;
+            if (entry.status === 'working') summary.working++;
+            else if (entry.status === 'dayoff') summary.dayoff++;
+            else if (entry.status === 'vacation') summary.vacation++;
+            else if (entry.status === 'sick') summary.sick++;
+            else if (entry.status === 'remote') summary.remote++;
+        }
+    }
+    return summary;
+}
+
+function updateSchedulePulseCardBadge(summary, dates = []) {
+    const visibleDates = dates.map(formatDateStr);
+    const todayVisible = visibleDates.includes(summary?.date);
+    const loadedRange = StaffState.scheduleLoadedRange;
+    const todayLoaded = Boolean(loadedRange && summary?.date >= loadedRange.from && summary.date <= loadedRange.to);
+    if (!summary || !todayVisible || !todayLoaded || summary.total <= 0) {
+        setStaffPulseCardBadge('schedule', null, { hidden: true });
+        return;
+    }
+    const active = summary.working + summary.remote;
+    setStaffPulseCardBadge('schedule', active, {
+        title: `На роботі сьогодні: ${active} з ${summary.total}`,
+        ariaLabel: `На графіку сьогодні активні ${active} з ${summary.total}`
+    });
+}
+
 function renderSummary(staffList = null) {
     const container = document.getElementById('scheduleSummary');
     const today = todayStr();
@@ -2390,6 +2449,7 @@ function renderSchedule() {
         tbody.classList.add('show-hours');
     }
     renderSummary(filtered);
+    updateSchedulePulseCardBadge(summarizeScheduleToday(StaffState.staff), dates);
     renderScheduleAttendanceSummary(dates, filtered);
 
     // Cell click handlers

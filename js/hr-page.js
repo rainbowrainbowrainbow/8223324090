@@ -121,8 +121,66 @@ const STAFF_DEPARTMENT_LABELS = {
     security: 'Охорона'
 };
 
-function withPulseVisual(item, visual) {
-    return { ...item, ...visual };
+function withPulseCommand(item, command) {
+    return { ...item, ...command };
+}
+
+function renderHrPulseIcon(icon) {
+    const icons = {
+        calendar: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M4 10h16M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg>',
+        clock: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+        report: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M8 15h8M8 18h5M8 12h3"/></svg>'
+    };
+    return icons[icon] || icons.calendar;
+}
+
+const hrPulseCardBadges = new Map([
+    ['reports', { value: 'CSV', title: 'CSV експорт', ariaLabel: 'Звіти доступні для CSV експорту' }]
+]);
+
+function applyPulseCardBadgeToElement(badge, state) {
+    const visible = Boolean(state?.value);
+    badge.textContent = visible ? state.value : '';
+    badge.classList.toggle('hidden', !visible);
+    badge.hidden = !visible;
+    if (visible && state.title) badge.title = state.title;
+    else badge.removeAttribute('title');
+    if (visible && state.ariaLabel) badge.setAttribute('aria-label', state.ariaLabel);
+    else badge.removeAttribute('aria-label');
+}
+
+function applyPulseCardBadge(navId) {
+    if (typeof document === 'undefined') return;
+    const id = String(navId || '').trim();
+    if (!id) return;
+    const state = hrPulseCardBadges.get(id);
+    document.querySelectorAll('.hr-pulse-card-badge[data-pulse-badge]').forEach(badge => {
+        if (badge.dataset.pulseBadge === id) applyPulseCardBadgeToElement(badge, state);
+    });
+}
+
+function applyPulseCardBadges() {
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('.hr-pulse-card-badge[data-pulse-badge]').forEach(badge => {
+        applyPulseCardBadgeToElement(badge, hrPulseCardBadges.get(badge.dataset.pulseBadge));
+    });
+}
+
+function setPulseCardBadge(navId, value, options = {}) {
+    const id = String(navId || '').trim();
+    if (!id) return;
+    const text = value === null || value === undefined ? '' : String(value).trim();
+    const shouldHide = options.hidden === true || text === '' || (options.hideZero === true && Number(value) === 0);
+    if (shouldHide) {
+        hrPulseCardBadges.delete(id);
+    } else {
+        hrPulseCardBadges.set(id, {
+            value: text,
+            title: options.title ? String(options.title) : '',
+            ariaLabel: options.ariaLabel ? String(options.ariaLabel) : ''
+        });
+    }
+    applyPulseCardBadge(id);
 }
 
 const HR_NAV_GROUPS = [
@@ -130,27 +188,27 @@ const HR_NAV_GROUPS = [
         id: 'pulse',
         label: 'Пульс компанії',
         items: [
-            withPulseVisual(
+            withPulseCommand(
                 { id: 'today', label: 'Сьогодні' },
                 {
-                    lightImage: 'images/hr-pulse/today-nav-light.png',
-                    darkImage: 'images/hr-pulse/today-nav-dark.png',
+                    subtitle: 'Огляд дня',
+                    icon: 'calendar',
                     tone: 'people'
                 }
             ),
-            withPulseVisual(
+            withPulseCommand(
                 { id: 'schedule', label: 'Графік', href: '/staff' },
                 {
-                    lightImage: 'images/hr-pulse/schedule-nav-light.png',
-                    darkImage: 'images/hr-pulse/schedule-nav-dark.png',
+                    subtitle: 'Розклад змін',
+                    icon: 'clock',
                     tone: 'schedule'
                 }
             ),
-            withPulseVisual(
+            withPulseCommand(
                 { id: 'reports', label: 'Звіти' },
                 {
-                    lightImage: 'images/hr-pulse/reports-nav-light.png',
-                    darkImage: 'images/hr-pulse/reports-nav-dark.png',
+                    subtitle: 'Аналітика',
+                    icon: 'report',
                     tone: 'reports'
                 }
             )
@@ -1208,23 +1266,15 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
                     const tabClass = pulseMode ? 'hr-tab hr-pulse-card' : 'hr-tab';
                     const toneAttr = pulseMode && item.tone ? ` data-pulse-tone="${escapeHtml(item.tone)}"` : '';
-                    const mediaImages = pulseMode ? [
-                        item.lightImage ? `<img class="hr-pulse-card-img hr-pulse-card-img--light" src="${escapeHtml(item.lightImage)}" alt="" loading="lazy" decoding="async">` : '',
-                        item.darkImage ? `<img class="hr-pulse-card-img hr-pulse-card-img--dark" src="${escapeHtml(item.darkImage)}" alt="" loading="lazy" decoding="async">` : '',
-                        !item.lightImage && !item.darkImage && item.image ? `<img class="hr-pulse-card-img" src="${escapeHtml(item.image)}" alt="" loading="lazy" decoding="async">` : ''
-                    ].filter(Boolean).join('') : '';
-                    const media = pulseMode && mediaImages ? `
-                        <span class="hr-pulse-card-media" aria-hidden="true">
-                            ${mediaImages}
-                        </span>
-                    ` : '';
+                    const pulseBadge = item.badge ? String(item.badge) : '';
                     const content = pulseMode ? `
-                        ${media}
-                        <span class="hr-pulse-card-overlay" aria-hidden="true"></span>
+                        <span class="hr-pulse-card-icon" aria-hidden="true">${renderHrPulseIcon(item.icon)}</span>
                         <span class="hr-pulse-card-content">
-                            <span class="hr-pulse-card-label">${escapeHtml(item.label)}</span>
-                            ${countBadge}
+                            <span class="hr-pulse-card-title">${escapeHtml(item.label)}</span>
+                            <span class="hr-pulse-card-subtitle">${escapeHtml(item.subtitle || '')}</span>
                         </span>
+                        <span class="hr-pulse-card-badge${pulseBadge ? '' : ' hidden'}" data-pulse-badge="${escapeHtml(item.id)}">${escapeHtml(pulseBadge)}</span>
+                        <span class="hr-pulse-card-line" aria-hidden="true"></span>
                     ` : `${escapeHtml(item.label)}${countBadge}`;
                     return `
                     <button type="button" class="${tabClass}" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}${toneAttr}>${content}</button>
@@ -1233,6 +1283,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
             </div>
         </section>
     `).join('') : '<div class="hr-nav-empty">Немає доступних HR-розділів</div>';
+    applyPulseCardBadges();
 }
 
 function hashForHrTarget(target, bucket = null) {
@@ -1611,7 +1662,10 @@ function renderTodayFilterInfo(allItems = [], filteredItems = []) {
 async function loadToday() {
     if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const data = await hrFetch('/today');
-    if (!data || !data.success) return;
+    if (!data || !data.success) {
+        setPulseCardBadge('today', null, { hidden: true });
+        return;
+    }
     todayData = data;
     renderToday(data);
 }
@@ -1622,6 +1676,12 @@ function renderToday(data) {
     document.getElementById('todayDate').textContent =         `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
 
     const allItems = Array.isArray(data.data) ? data.data : [];
+    const pulseSummary = summarizeTodayItems(allItems);
+    setPulseCardBadge('today', pulseSummary.present, {
+        hidden: allItems.length === 0,
+        title: `На роботі: ${pulseSummary.present} з ${pulseSummary.total_staff}`,
+        ariaLabel: `Сьогодні на роботі ${pulseSummary.present} з ${pulseSummary.total_staff}`
+    });
     bindTodayFilterControls();
     renderTodayDepartmentSegments(allItems);
     const visibleItems = filteredTodayItems(allItems);
@@ -6717,6 +6777,10 @@ async function setPoolStatus(staffId, status) {
 // ==========================================
 
 async function loadReports() {
+    setPulseCardBadge('reports', 'CSV', {
+        title: 'CSV експорт',
+        ariaLabel: 'Звіти доступні для CSV експорту'
+    });
     // Fill month selector
     const sel = document.getElementById('reportMonth');
     if (sel.options.length === 0) {
@@ -6743,6 +6807,10 @@ async function loadReports() {
 }
 
 function renderReports(data) {
+    setPulseCardBadge('reports', 'CSV', {
+        title: 'CSV експорт',
+        ariaLabel: 'Звіти доступні для CSV експорту'
+    });
     // Summary
     const rows = data.data;
     let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalOvertime = 0;

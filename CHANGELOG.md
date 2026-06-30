@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.75 - HR Pulse Icon Navigation
+
+### HR Pulse / Staff navigation / Icon cards / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **HR Pulse навігацію переведено на компактні icon cards** - `js/hr-page.js` рендерить SVG-іконки, title/subtitle, badge slot і accent line без важких nav image cards.
+- **Staff графік вирівняно з HR Pulse navigation contract** - `staff.html` і `css/pages-hr-staff.css` використовують той самий icon-card rhythm для `Сьогодні`, `Графік`, `Звіти`.
+- **CSS guardrails оновлено під нову розмітку** - `css/hr-page.css` і `css/pages-hr-staff.css` тримають bounded cards, focus-visible, dark theme, badge/line states і reduced-motion fallback.
+- **UI regression tests оновлено** - `tests/ui-check.js` фіксує новий icon-card contract замість застарілих decorative nav images.
+- **Релізні маркери піднято до `0.77.75`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.74 - Timeline Geometry Regression Guard
 
 ### Timeline regression guards / Header visibility / 15 хв geometry / Release hygiene / (Клешня, 30.06.2026) [codex]

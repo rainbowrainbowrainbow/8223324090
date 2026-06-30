@@ -1537,6 +1537,147 @@ body.timeline-dashboard-page.dark-mode .header {
     box-shadow: 0 0 0 3px var(--eg-focus-ring, rgba(14,165,134,0.18)) !important;
 }
 
+/* v0.77.78: timeline view-panel actions keep their button geometry after late assistant topbar CSS. */
+.timeline-dashboard-page .header .header-content {
+    --timeline-topbar-control-h: 40px;
+    --timeline-topbar-radius: 10px;
+    --timeline-topbar-icon-size: 18px;
+    --timeline-topbar-control-bg: var(--eg-panel-bg-soft);
+    --timeline-topbar-control-bg-hover: var(--eg-surface-elevated);
+    --timeline-topbar-border: var(--eg-border-default);
+    --timeline-topbar-border-hover: var(--eg-border-strong);
+    --timeline-topbar-text: var(--eg-text-secondary);
+    --timeline-topbar-text-strong: var(--eg-text-primary);
+    --timeline-topbar-accent: var(--eg-accent);
+    --timeline-topbar-accent-hover: var(--eg-accent-hover);
+    --timeline-topbar-accent-soft: var(--eg-accent-soft);
+    --timeline-topbar-accent-border: var(--eg-accent-border);
+    --timeline-topbar-focus: var(--eg-focus-ring);
+}
+
+.timeline-dashboard-page .header .timeline-header-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: auto;
+    padding-left: 12px;
+    border-left: 1px solid var(--timeline-topbar-border);
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn, .timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle) {
+    flex: 0 0 auto;
+    height: var(--timeline-topbar-control-h);
+    min-height: var(--timeline-topbar-control-h);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--timeline-topbar-border);
+    border-radius: var(--timeline-topbar-radius);
+    background: var(--timeline-topbar-control-bg);
+    color: var(--timeline-topbar-text);
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    transform: none;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn) {
+    padding: 0 12px;
+    gap: 7px;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn):hover,
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn):focus-visible,
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-view-btn.is-open,
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-view-btn[aria-expanded="true"] {
+    border-color: var(--timeline-topbar-accent-border);
+    background: var(--timeline-topbar-accent-soft);
+    color: var(--timeline-topbar-accent);
+}
+
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn):focus-visible,
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-settings-btn, .timeline-header-logout):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--timeline-topbar-focus);
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn.hidden,
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn.hidden {
+    display: none;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .toolbar-label-short {
+    display: none;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-control-icon {
+    width: var(--timeline-topbar-icon-size);
+    min-width: var(--timeline-topbar-icon-size);
+    height: var(--timeline-topbar-icon-size);
+    display: inline-grid;
+    place-items: center;
+    line-height: 1;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-control-icon svg {
+    width: var(--timeline-topbar-icon-size);
+    height: var(--timeline-topbar-icon-size);
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn {
+    width: var(--timeline-topbar-control-h);
+    min-width: var(--timeline-topbar-control-h);
+    flex-basis: var(--timeline-topbar-control-h);
+    padding: 0;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-constructor-btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout {
+    padding: 0 18px;
+    border-color: var(--timeline-topbar-accent);
+    background: var(--timeline-topbar-accent);
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:hover,
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:focus-visible {
+    border-color: var(--timeline-topbar-accent-hover);
+    background: var(--timeline-topbar-accent-hover);
+}
+
+@media (max-width: 430px) {
+    .timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn .toolbar-label-full {
+        display: none;
+    }
+
+    .timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn .toolbar-label-short {
+        display: inline;
+    }
+}
+
 @media (max-width: 1320px) {
     .timeline-dashboard-page .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
         max-width: min(840px, calc(100vw - 260px)) !important;

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.78 - Timeline Header View Panel Cache Fix
+
+### Timeline topbar / View panel cache / Assistant rail CSS / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Топбар таймлайну захищено від старого CSS-каскаду** - `assistant-rail-topbar.css` отримав scoped contract для `Вигляд`, `Історія змін`, theme, settings і logout після пізнього завантаження assistant rail стилів.
+- **`Вигляд` більше не має випадати як голий текст** - кнопка, іконка, hover/focus/open state і приховування короткого label історії дублюються у late topbar CSS.
+- **Cache tags примусово оновлено** - package, package-lock, HTML asset tags, CSS imports і Service Worker cache namespace піднято до `0.77.78`, щоб браузер не змішував нову розмітку зі старою `responsive.css`.
+- **Auth, booking, API і БД не змінювались** - правка обмежена topbar CSS і релізною синхронізацією.
+
+---
+
 ## v0.77.77 - Variant 3 Header Polish
 
 ### HR Pulse Variant 3 / Staff reports parity / Compact headers / Motion guardrails / Release hygiene / (Клешня, 30.06.2026) [codex]

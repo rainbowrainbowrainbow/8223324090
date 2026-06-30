@@ -712,6 +712,14 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/app.js', 'function focusTimelineActionMenuItem')
         && htmlContains('js/app.js', "e.key !== 'ArrowDown'")
         && htmlContains('js/app.js', "e.key === 'ArrowUp'"));
+    check('Timeline assistant rail late CSS keeps topbar view actions styled',
+        htmlContains('css/assistant-rail-topbar.css', 'v0.77.78: timeline view-panel actions keep their button geometry after late assistant topbar CSS')
+        && htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn, .timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle)')
+        && htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions .toolbar-label-short')
+        && htmlContains('css/assistant-rail-topbar.css', 'display: none;')
+        && htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout')
+        && htmlContains('css/assistant-rail-topbar.css', '--timeline-topbar-control-h: 40px;')
+        && htmlContains('css/assistant-rail-topbar.css', '--timeline-topbar-accent: var(--eg-accent);'));
     check('Timeline date navigation cluster keeps date primary and metadata out of the toolbar',
         !!doc.querySelector('.schedule-command-row--utility .schedule-command-zone--date .date-controls.date-navigation-cluster')
         && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|todayBtn|nextDay'

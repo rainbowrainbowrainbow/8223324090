@@ -5348,9 +5348,9 @@ body.timeline-dashboard-page .schedule-command-row--utility .timeline-header-vie
 }
 
 body.timeline-dashboard-page .timeline-view-panel {
-    --timeline-view-panel-radius: 14px;
-    --timeline-view-panel-group-h: 36px;
-    --timeline-view-panel-segment-h: 32px;
+    --timeline-view-panel-radius: 12px;
+    --timeline-view-panel-group-h: 34px;
+    --timeline-view-panel-segment-h: 30px;
     --timeline-header-filter-border: var(--eg-border-default, rgba(15, 23, 42, 0.11));
     --timeline-header-filter-border-strong: var(--eg-border-strong, rgba(15, 23, 42, 0.18));
     --timeline-header-filter-control-bg: var(--eg-panel-bg-soft, #F8FAFC);
@@ -5362,13 +5362,14 @@ body.timeline-dashboard-page .timeline-view-panel {
     --timeline-header-filter-muted: var(--eg-text-muted, #7A8797);
     --timeline-header-filter-focus: var(--eg-focus-ring, rgba(14, 165, 134, 0.18));
     box-sizing: border-box;
-    position: static;
-    inset: auto;
-    z-index: auto;
-    width: min(720px, 100%);
-    max-width: 100%;
-    max-inline-size: 100%;
-    padding: 10px;
+    position: absolute;
+    inset: auto auto auto 0;
+    top: calc(100% + 6px);
+    z-index: 120;
+    width: max-content;
+    max-width: min(840px, calc(100vw - 48px));
+    max-inline-size: min(840px, calc(100vw - 48px));
+    padding: 6px;
     border: 1px solid var(--eg-border-default, rgba(15, 23, 42, 0.11));
     border-radius: var(--timeline-view-panel-radius);
     outline: 0;
@@ -5390,15 +5391,15 @@ html[data-theme="dark"] body.timeline-dashboard-page .timeline-view-panel {
 }
 
 body.timeline-dashboard-page .timeline-header-filters {
-    width: 100%;
+    width: max-content;
     min-width: 0;
     max-width: 100%;
     max-inline-size: 100%;
     box-sizing: border-box;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: stretch;
-    gap: 12px;
+    display: flex !important;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px 8px;
     min-height: 0;
     padding: 0;
     border: 0;
@@ -5422,30 +5423,48 @@ body.timeline-dashboard-page .timeline-header-filter-group,
 body.timeline-dashboard-page .timeline-header-filter-group .view-mode-controls,
 body.timeline-dashboard-page .timeline-header-filter-group.v32-controls {
     box-sizing: border-box;
-    width: 100% !important;
+    width: auto !important;
     min-width: 0 !important;
     max-width: 100% !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: stretch !important;
-    gap: 6px !important;
+    gap: 4px !important;
+    flex: 0 0 auto !important;
     padding: 0 !important;
     border: 0 !important;
     background: transparent !important;
     box-shadow: none !important;
-    overflow: hidden !important;
+    overflow: visible !important;
 }
 
 body.timeline-dashboard-page .timeline-header-filter-group .view-mode-controls {
     gap: 0 !important;
+    width: 100% !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filter-group--status {
+    inline-size: 258px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filter-group--period {
+    inline-size: 164px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filter-group--type {
+    inline-size: 176px !important;
+}
+
+body.timeline-dashboard-page .timeline-header-filter-group--zoom {
+    inline-size: 176px !important;
 }
 
 body.timeline-dashboard-page .timeline-view-panel-label {
     display: block;
     color: var(--timeline-header-filter-muted);
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 900;
-    line-height: 1.2;
+    line-height: 1;
     letter-spacing: 0;
     text-transform: uppercase;
 }
@@ -5460,7 +5479,7 @@ body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-cont
     max-width: 100% !important;
     padding: 2px !important;
     gap: 2px !important;
-    border-radius: 999px !important;
+    border-radius: 12px !important;
     border: 1px solid var(--timeline-header-filter-border) !important;
     background: var(--timeline-header-filter-control-bg) !important;
     box-shadow: none !important;
@@ -5489,12 +5508,12 @@ body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn,
     min-width: 0 !important;
     padding: 0 10px !important;
     border: 1px solid transparent !important;
-    border-radius: 999px !important;
+    border-radius: 10px !important;
     background: transparent !important;
     color: var(--timeline-header-filter-text) !important;
     box-shadow: none !important;
-    font-size: 14px !important;
-    font-weight: 500 !important;
+    font-size: 12px !important;
+    font-weight: 760 !important;
     line-height: 1 !important;
     letter-spacing: 0 !important;
     white-space: nowrap !important;
@@ -5733,15 +5752,21 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer {
     --timeline-topbar-focus: var(--eg-focus-ring, rgba(14, 165, 134, 0.18));
     width: max-content !important;
     max-width: 100% !important;
+    position: relative !important;
+    z-index: 70 !important;
     align-items: flex-start !important;
-    gap: 6px !important;
+    gap: 2px !important;
     padding: 0 !important;
-    margin-bottom: 12px !important;
+    margin-bottom: 4px !important;
     border: 0 !important;
     border-radius: 0 !important;
     background: transparent !important;
     box-shadow: none !important;
     overflow: visible !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer:not(.is-view-panel-open) {
+    gap: 0 !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
@@ -5787,33 +5812,37 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--act
     justify-content: flex-start !important;
 }
 
+body.timeline-dashboard-page .schedule-command-center .schedule-command-row--actions:not(:has(.action-buttons > :not(.hidden):not([hidden]):not(.timeline-hidden-by-config):not(.timeline-permission-hidden):not(.is-empty))) {
+    display: none !important;
+}
+
 body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions {
     margin-left: 0 !important;
 }
 
-/* v0.77.79: filters open as an inline tray under the compact date command line. */
+/* v0.77.79: filters open as an attached overlay tray under the compact date command line. */
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open {
-    width: min(720px, 100%) !important;
+    width: max-content !important;
     max-width: 100% !important;
-    gap: 8px !important;
+    gap: 0 !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel {
-    position: static !important;
-    inset: auto !important;
-    top: auto !important;
+    position: absolute !important;
+    inset: auto auto auto 0 !important;
+    top: calc(100% + 6px) !important;
     right: auto !important;
     bottom: auto !important;
-    left: auto !important;
-    z-index: auto !important;
-    width: min(720px, 100%) !important;
-    max-width: 100% !important;
-    max-inline-size: 100% !important;
+    left: 0 !important;
+    z-index: 120 !important;
+    width: max-content !important;
+    max-width: min(840px, calc(100vw - 48px)) !important;
+    max-inline-size: min(840px, calc(100vw - 48px)) !important;
     margin: 0 !important;
-    padding: 10px !important;
+    padding: 6px !important;
     display: block;
     border: 1px solid var(--eg-border-default, rgba(148, 163, 184, 0.18)) !important;
-    border-radius: 14px !important;
+    border-radius: 12px !important;
     background: var(--eg-surface-elevated, rgba(15, 23, 42, 0.86)) !important;
     box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12) !important;
     overflow: hidden !important;
@@ -5824,8 +5853,13 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
 }
 
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    width: max-content !important;
+    max-width: 100% !important;
+    grid-template-columns: none !important;
+    gap: 6px 8px !important;
 }
 
 @media (max-width: 768px) {
@@ -5850,10 +5884,21 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
 
     body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel {
         width: 100% !important;
-        padding: 9px !important;
+        max-width: 100% !important;
+        max-inline-size: 100% !important;
+        padding: 8px !important;
     }
 
     body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filters {
-        grid-template-columns: 1fr !important;
+        width: 100% !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+        grid-template-columns: none !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group {
+        width: 100% !important;
+        inline-size: auto !important;
+        flex: 1 1 100% !important;
     }
 }

@@ -857,6 +857,9 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const headerOverflowX = headerContent ? Math.max(0, headerContent.scrollWidth - headerContent.clientWidth) : Number.NaN;
         const dateControlsOverflowX = dateControls ? Math.max(0, dateControls.scrollWidth - dateControls.clientWidth) : Number.NaN;
         const bodyOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
+        const closedDateToTimelineGap = utilityRowRect && timelineContainerRect
+            ? Math.round((timelineContainerRect.top - utilityRowRect.bottom) * 100) / 100
+            : Number.NaN;
         const cell = document.querySelector('.line-grid .grid-cell');
         const block = document.querySelector(`.booking-block[data-booking-id="${CSS.escape(String(id))}"]:not(.status-hidden)`);
         return {
@@ -873,6 +876,15 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             viewPanelTop: panelRect ? Math.round(panelRect.top * 100) / 100 : Number.NaN,
             viewPanelBottom: panelRect ? Math.round(panelRect.bottom * 100) / 100 : Number.NaN,
             viewPanelWidth: panelRect ? Math.round(panelRect.width * 100) / 100 : 0,
+            viewPanelHeight: panelRect ? Math.round(panelRect.height * 100) / 100 : 0,
+            viewPanelLayoutVisible: Boolean(
+                panel
+                && panelRect
+                && panelRect.width > 0
+                && panelRect.height > 0
+                && panelStyle?.display !== 'none'
+                && panelStyle?.visibility !== 'hidden'
+            ),
             viewPanelPosition: panelStyle?.position || '',
             viewPanelInCommandCenter: Boolean(panel?.closest('.schedule-command-center.toolbarContainer')),
             viewToggleInTopbar: Boolean(viewToggle?.closest('.timeline-header-actions')),
@@ -893,9 +905,11 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             dateControlsHeight: dateControlsRect ? Math.round(dateControlsRect.height * 100) / 100 : 0,
             actionsWidth: actionsRect ? Math.round(actionsRect.width * 100) / 100 : 0,
             timelineTop: timelineContainerRect ? Math.round(timelineContainerRect.top * 100) / 100 : Number.NaN,
+            closedDateToTimelineGap,
             dateInteractiveIds: dateInteractive.map(el => el.id).join('|'),
             dateInteractiveNonzeroCount: dateInteractiveRects.filter(rect => rect.width > 0 && rect.height > 0).length,
             filterOverflowX,
+            filtersHeight: filtersRect ? Math.round(filtersRect.height * 100) / 100 : 0,
             actionsOverflowX,
             headerOverflowX,
             dateControlsOverflowX,
@@ -947,6 +961,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.compactToggleVisible, false, `timeline compact toggle is not visible at ${label}`);
         assert.equal(metrics.filterLabelVisible, false, `timeline filter label/sliders control is not visible at ${label}`);
         assert.equal(metrics.viewPanelHidden, true, `timeline view panel is hidden by default at ${label}`);
+        assert.equal(metrics.viewPanelLayoutVisible, false, `hidden timeline view panel does not occupy layout space at ${label}`);
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at ${label}`);
@@ -962,6 +977,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.utilityRowHeight <= 48, `date utility row stays compact at ${label}: ${metrics.utilityRowHeight}px`);
         assert.ok(metrics.dateControlsHeight <= 48, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 96, `command center does not create a large empty band at ${label}: ${metrics.commandCenterHeight}px`);
+        assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64, `closed filters state keeps date row close to timeline at ${label}: ${metrics.closedDateToTimelineGap}px`);
         assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px actions=${metrics.actionsWidth}px`);
         assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + 4, `date utility row does not stretch beyond the date cluster at ${label}: row=${metrics.utilityRowWidth}px cluster=${metrics.dateControlsWidth}px`);
         assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at ${label}: ${metrics.bodyOverflowX}`);
@@ -991,12 +1007,18 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
         await setTimelineViewPanelOpen(page, true);
         const openMetrics = await readMetrics();
-        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens inline at ${label}`);
+        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens as an attached tray at ${label}`);
+        assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at ${label}`);
         assert.equal(openMetrics.viewPanelInCommandCenter, true, `view panel is mounted inside the command center at ${label}`);
-        assert.equal(openMetrics.viewPanelPosition, 'static', `view panel is not floating at ${label}`);
+        assert.equal(openMetrics.viewPanelPosition, 'absolute', `view panel is an overlay tray at ${label}`);
         assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1, `view panel opens below the date row at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
-        assert.ok(openMetrics.viewPanelBottom <= openMetrics.timelineTop + 1, `view panel stays above the timeline surface at ${label}: panel=${openMetrics.viewPanelBottom}px timeline=${openMetrics.timelineTop}px`);
-        assert.ok(openMetrics.bodyOverflowX <= 2, `open inline view panel does not create body overflow at ${label}: ${openMetrics.bodyOverflowX}`);
+        assert.ok(openMetrics.viewPanelTop <= openMetrics.utilityRowBottom + 16, `view panel stays attached to the date row at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
+        assert.ok(openMetrics.commandCenterHeight <= metrics.commandCenterHeight + 2, `opening filters does not grow command center layout at ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
+        assert.ok(Math.abs(openMetrics.timelineTop - metrics.timelineTop) <= 2, `opening filters does not push timeline down at ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.ok(openMetrics.viewPanelWidth <= Math.min(840, openMetrics.viewportWidth - 48) + 2, `open view panel stays compact at ${label}: ${openMetrics.viewPanelWidth}px`);
+        assert.ok(openMetrics.viewPanelHeight <= 92, `open view panel avoids a large blank area at ${label}: ${openMetrics.viewPanelHeight}px`);
+        assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside viewport at ${label}: ${openMetrics.viewPanelRight}px`);
+        assert.ok(openMetrics.bodyOverflowX <= 2, `open attached view panel does not create body overflow at ${label}: ${openMetrics.bodyOverflowX}`);
         await setTimelineViewPanelOpen(page, false);
     }
 
@@ -1010,6 +1032,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.digestVisible, false, `timeline digest button is not rendered at narrow ${label}`);
         assert.equal(metrics.compactToggleVisible, false, `timeline compact toggle is not visible at narrow ${label}`);
         assert.equal(metrics.viewPanelHidden, true, `timeline view panel is hidden by default at narrow ${label}`);
+        assert.equal(metrics.viewPanelLayoutVisible, false, `hidden timeline view panel does not occupy layout space at narrow ${label}`);
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at narrow ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at narrow ${label}`);
@@ -1024,6 +1047,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.utilityRowHeight <= 104, `date utility row wraps compactly at narrow ${label}: ${metrics.utilityRowHeight}px`);
         assert.ok(metrics.dateControlsHeight <= 104, `date controls wrap compactly at narrow ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 156, `command center avoids a large empty band at narrow ${label}: ${metrics.commandCenterHeight}px`);
+        assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 96, `closed filters state keeps date row close to timeline at narrow ${label}: ${metrics.closedDateToTimelineGap}px`);
         assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: ${metrics.bodyOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not leak horizontal overflow at narrow ${label}: ${metrics.headerOverflowX}`);
         assert.ok(metrics.headerLeft >= -1 && metrics.headerRight <= metrics.viewportWidth + 1, `timeline header remains within viewport at narrow ${label}: ${metrics.headerLeft}px..${metrics.headerRight}px`);
@@ -1031,11 +1055,15 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         await setTimelineViewPanelOpen(page, true);
         const openMetrics = await readMetrics();
         assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens at narrow ${label}`);
+        assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at narrow ${label}`);
         assert.equal(openMetrics.viewToggleExpanded, 'true', `timeline view toggle expands at narrow ${label}`);
         assert.equal(openMetrics.viewPanelInCommandCenter, true, `view panel is mounted inside the command center at narrow ${label}`);
-        assert.equal(openMetrics.viewPanelPosition, 'static', `view panel is inline at narrow ${label}`);
+        assert.equal(openMetrics.viewPanelPosition, 'absolute', `view panel is an attached overlay at narrow ${label}`);
         assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1, `view panel opens below the date row at narrow ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
-        assert.ok(openMetrics.viewPanelBottom <= openMetrics.timelineTop + 1, `view panel stays above the timeline surface at narrow ${label}: panel=${openMetrics.viewPanelBottom}px timeline=${openMetrics.timelineTop}px`);
+        assert.ok(openMetrics.viewPanelTop <= openMetrics.utilityRowBottom + 16, `view panel stays attached to the date row at narrow ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
+        assert.ok(openMetrics.commandCenterHeight <= metrics.commandCenterHeight + 2, `opening filters does not grow command center layout at narrow ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
+        assert.ok(Math.abs(openMetrics.timelineTop - metrics.timelineTop) <= 2, `opening filters does not push timeline down at narrow ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.ok(openMetrics.viewPanelHeight <= 260, `open view panel wraps without a huge blank area at narrow ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.bodyOverflowX <= 2, `open view panel does not create body overflow at narrow ${label}: ${openMetrics.bodyOverflowX}`);
         assert.ok(openMetrics.viewPanelLeft >= -1, `open view panel stays inside the left viewport edge at narrow ${label}: ${openMetrics.viewPanelLeft}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside the right viewport edge at narrow ${label}: ${openMetrics.viewPanelRight}px`);

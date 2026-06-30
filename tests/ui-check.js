@@ -61,6 +61,8 @@ checkPage('index.html', (doc, html) => {
     const featuresCss = fs.readFileSync(path.join(ROOT, 'css', 'features.css'), 'utf8');
     const panelCss = fs.readFileSync(path.join(ROOT, 'css', 'panel.css'), 'utf8');
     const darkModeCss = fs.readFileSync(path.join(ROOT, 'css', 'dark-mode.css'), 'utf8');
+    const assistantTopbarCss = fs.readFileSync(path.join(ROOT, 'css', 'assistant-rail-topbar.css'), 'utf8');
+    const assistantAggregateCss = cssTextWithImports('css/assistant-rail.css');
     const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
     const bookingCode = [
         fs.readFileSync(path.join(ROOT, 'js', 'booking-drawer-state.js'), 'utf8'),
@@ -77,6 +79,11 @@ checkPage('index.html', (doc, html) => {
     const responsiveCss = cssTextWithImports('css/responsive.css');
     const timelineHeaderWideDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 2160px) and (min-width: 1537px) {');
     const timelineViewPanelResponsiveCss = sourceBlock(responsiveCss, '/* v0.77.77: header/topbar wrapping guard for the timeline shell.', '@media (max-width: 430px) {');
+    const timelineCompactCommandCss = sourceBlock(
+        responsiveCss,
+        '/* v0.77.79: compact date command line removes the empty full-width card shell. */',
+        '/* v0.77.79: filters open as an attached overlay tray under the compact date command line. */'
+    );
     const timelineHeaderLabelBreakpointCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) {');
     const timelineHeaderNarrowDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1360px) and (min-width: 1181px) {');
     const timelineHeaderSmallMobileCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 430px) {');
@@ -86,6 +93,7 @@ checkPage('index.html', (doc, html) => {
     const timelineViewPanelRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-view-panel');
     const timelineInlineViewPanelRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel');
     const timelineViewPanelHiddenRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-view-panel[hidden]');
+    const assistantTopbarActionsRule = cssRuleText(assistantTopbarCss, '.timeline-dashboard-page .header .timeline-header-actions');
     const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
     const timelineHeaderActionsRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions');
     const timelineHeaderLogoutRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout');
@@ -323,7 +331,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'v0.77.64: balanced top-row zones and compact view/holidays cluster')
         && htmlContains('css/responsive.css', 'Timeline view panel: keep schedule display controls in one shared selector scope.')
         && htmlContains('css/responsive.css', 'v0.77.77: header/topbar wrapping guard for the timeline shell.')
-        && htmlContains('css/responsive.css', 'v0.77.79: filters open as an inline tray under the compact date command line.')
+        && htmlContains('css/responsive.css', 'v0.77.79: filters open as an attached overlay tray under the compact date command line.')
         && htmlContains('css/responsive.css', '.timeline-view-panel')
         && htmlContains('css/responsive.css', '.timeline-view-panel[hidden]')
         && htmlContains('css/responsive.css', 'max-inline-size: 100%')
@@ -365,11 +373,12 @@ checkPage('index.html', (doc, html) => {
         && timelineHeaderFiltersRule.includes('outline: 0')
         && timelineHeaderFiltersRule.includes('background: transparent')
         && timelineHeaderFiltersRule.includes('box-shadow: none')
-        && timelineViewPanelRule.includes('position: static')
-        && timelineViewPanelRule.includes('max-inline-size: 100%')
-        && timelineInlineViewPanelRule.includes('position: static !important')
-        && timelineInlineViewPanelRule.includes('width: min(720px, 100%) !important')
-        && timelineInlineViewPanelRule.includes('max-inline-size: 100% !important')
+        && timelineViewPanelRule.includes('position: absolute')
+        && timelineViewPanelRule.includes('max-inline-size: min(840px, calc(100vw - 48px))')
+        && timelineInlineViewPanelRule.includes('position: absolute !important')
+        && timelineInlineViewPanelRule.includes('top: calc(100% + 6px) !important')
+        && timelineInlineViewPanelRule.includes('width: max-content !important')
+        && timelineInlineViewPanelRule.includes('max-width: min(840px, calc(100vw - 48px)) !important')
         && timelineViewPanelRule.includes('overflow: hidden')
         && timelineViewPanelHiddenRule.includes('display: none !important')
         && htmlContains('js/app.js', 'function setTimelineViewPanelOpen')
@@ -510,31 +519,50 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '.schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn')
         && htmlContains('css/responsive.css', '.schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton')
         && htmlContains('css/responsive.css', 'box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;'));
-    check('Timeline view panel opens as an inline tray under the date command row',
+    check('Timeline dashboard dark mode uses CRM surface background instead of pure black void',
+        darkModeCss.includes('.timeline-dashboard-page.dark-mode')
+        && darkModeCss.includes('--eg-app-bg: #101827')
+        && !darkModeCss.includes('--eg-app-bg: #070B10')
+        && darkModeCss.includes('.timeline-dashboard-page .main-content')
+        && darkModeCss.includes('background: var(--eg-app-bg)'));
+    check('Timeline view panel opens as an attached overlay tray under the date command row',
         htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .header-content')
         && htmlContains('css/responsive.css', 'flex-wrap: nowrap;')
         && htmlContains('css/responsive.css', 'max-inline-size: 100%;')
         && !doc.querySelector('.header .timeline-view-panel#timelineViewPanel')
         && !!doc.querySelector('.schedule-command-center > .timeline-view-panel#timelineViewPanel')
         && !!doc.querySelector('.schedule-command-row--utility + #timelineViewPanel')
-        && htmlContains('css/responsive.css', 'v0.77.79: filters open as an inline tray under the compact date command line.')
+        && htmlContains('css/responsive.css', 'v0.77.79: filters open as an attached overlay tray under the compact date command line.')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel')
-        && timelineViewPanelRule.includes('position: static')
-        && timelineViewPanelRule.includes('width: min(720px, 100%)')
-        && timelineInlineViewPanelRule.includes('position: static !important')
-        && timelineInlineViewPanelRule.includes('inset: auto !important')
-        && timelineInlineViewPanelRule.includes('width: min(720px, 100%) !important')
-        && timelineInlineViewPanelRule.includes('max-inline-size: 100% !important')
+        && timelineCompactCommandCss.includes('margin-bottom: 4px !important')
+        && !timelineCompactCommandCss.includes('margin-bottom: 12px !important')
+        && timelineCompactCommandCss.includes('body.timeline-dashboard-page .schedule-command-center.toolbarContainer:not(.is-view-panel-open)')
+        && timelineCompactCommandCss.includes('gap: 0 !important')
+        && timelineCompactCommandCss.includes('position: relative !important')
+        && timelineViewPanelRule.includes('position: absolute')
+        && timelineViewPanelRule.includes('width: max-content')
+        && timelineViewPanelRule.includes('max-width: min(840px, calc(100vw - 48px))')
+        && timelineInlineViewPanelRule.includes('position: absolute !important')
+        && timelineInlineViewPanelRule.includes('inset: auto auto auto 0 !important')
+        && timelineInlineViewPanelRule.includes('top: calc(100% + 6px) !important')
+        && timelineInlineViewPanelRule.includes('width: max-content !important')
+        && timelineInlineViewPanelRule.includes('max-inline-size: min(840px, calc(100vw - 48px)) !important')
+        && timelineViewPanelHiddenRule.includes('display: none !important')
+        && timelineCompactCommandCss.includes('body.timeline-dashboard-page .schedule-command-center .schedule-command-row--actions:not(:has(.action-buttons > :not(.hidden):not([hidden]):not(.timeline-hidden-by-config):not(.timeline-permission-hidden):not(.is-empty)))')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-view-panel[hidden]')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters')
-        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(2, minmax(0, 1fr))')
+        && htmlContains('css/responsive.css', 'display: flex !important;')
+        && htmlContains('css/responsive.css', 'gap: 6px 8px')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filter-group--status')
+        && htmlContains('css/responsive.css', 'inline-size: 258px !important')
+        && htmlContains('css/responsive.css', '--timeline-view-panel-segment-h: 30px')
         && htmlContains('css/responsive.css', 'v0.77.77: header/topbar wrapping guard for the timeline shell.')
         && htmlContains('css/responsive.css', '@media (min-width: 1181px)')
         && htmlContains('css/responsive.css', '@media (max-width: 1180px)')
         && htmlContains('css/responsive.css', '@media (max-width: 768px)')
         && htmlContains('css/responsive.css', 'width: 100% !important;')
-        && htmlContains('css/responsive.css', 'grid-template-columns: 1fr')
+        && htmlContains('css/responsive.css', 'flex: 1 1 100% !important')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn')
@@ -544,20 +572,21 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'text-overflow: ellipsis !important;')
         && !responsiveCss.includes('wide constrained desktops need a second header row')
         && htmlContains('css/responsive.css', '@media (max-width: 1360px) and (min-width: 1181px)'));
-    check('Timeline inline view panel and topbar actions have an overflow-safe contract',
+    check('Timeline attached view tray and topbar actions have an overflow-safe contract',
         timelineViewPanelResponsiveCss.includes('@media (min-width: 1181px)')
         && timelineViewPanelResponsiveCss.includes('flex-wrap: nowrap;')
         && timelineViewPanelResponsiveCss.includes('align-items: center;')
-        && timelineViewPanelRule.includes('position: static')
-        && timelineViewPanelRule.includes('width: min(720px, 100%)')
-        && timelineViewPanelRule.includes('max-inline-size: 100%')
-        && timelineInlineViewPanelRule.includes('position: static !important')
-        && timelineInlineViewPanelRule.includes('width: min(720px, 100%) !important')
+        && timelineViewPanelRule.includes('position: absolute')
+        && timelineViewPanelRule.includes('width: max-content')
+        && timelineViewPanelRule.includes('max-inline-size: min(840px, calc(100vw - 48px))')
+        && timelineInlineViewPanelRule.includes('position: absolute !important')
+        && timelineInlineViewPanelRule.includes('width: max-content !important')
         && timelineViewPanelRule.includes('overflow: hidden')
         && timelineViewPanelHiddenRule.includes('display: none !important')
-        && timelineHeaderFiltersRule.includes('grid-template-columns: repeat(2, minmax(0, 1fr))')
+        && timelineHeaderFiltersRule.includes('display: flex !important')
+        && timelineHeaderFiltersRule.includes('flex-wrap: wrap')
         && timelineViewPanelResponsiveCss.includes('@media (max-width: 768px)')
-        && timelineViewPanelResponsiveCss.includes('grid-template-columns: 1fr')
+        && responsiveCss.includes('flex-direction: column !important')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open')
         && htmlContains('css/responsive.css', 'width: 100% !important;')
         && timelineHeaderActionsRule.includes('margin-left: auto;')
@@ -607,6 +636,7 @@ checkPage('index.html', (doc, html) => {
         && timelineBrowserSmokeCode.includes('metrics.compactToggleVisible')
         && timelineBrowserSmokeCode.includes('metrics.filterLabelVisible')
         && timelineBrowserSmokeCode.includes('metrics.viewPanelHidden')
+        && timelineBrowserSmokeCode.includes('metrics.viewPanelLayoutVisible')
         && timelineBrowserSmokeCode.includes('metrics.viewToggleExpanded')
         && timelineBrowserSmokeCode.includes("metrics.viewToggleLabel, 'Фільтри'")
         && timelineBrowserSmokeCode.includes("metrics.visibleTimelineViewLabels.includes('Вигляд'), false")
@@ -614,13 +644,20 @@ checkPage('index.html', (doc, html) => {
         && timelineBrowserSmokeCode.includes("metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle'")
         && timelineBrowserSmokeCode.includes('metrics.utilityRowHeight <= 48')
         && timelineBrowserSmokeCode.includes('metrics.commandCenterHeight <= 96')
+        && timelineBrowserSmokeCode.includes('metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64')
         && timelineBrowserSmokeCode.includes('metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth, metrics.actionsWidth) + 32')
         && timelineBrowserSmokeCode.includes('metrics.utilityRowHeight <= 104')
         && timelineBrowserSmokeCode.includes('metrics.commandCenterHeight <= 156')
-        && timelineBrowserSmokeCode.includes("openMetrics.viewPanelPosition, 'static'")
+        && timelineBrowserSmokeCode.includes('metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 96')
+        && timelineBrowserSmokeCode.includes("openMetrics.viewPanelPosition, 'absolute'")
+        && timelineBrowserSmokeCode.includes('openMetrics.viewPanelLayoutVisible, true')
         && timelineBrowserSmokeCode.includes('openMetrics.viewPanelInCommandCenter, true')
         && timelineBrowserSmokeCode.includes('openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1')
-        && timelineBrowserSmokeCode.includes('openMetrics.viewPanelBottom <= openMetrics.timelineTop + 1')
+        && timelineBrowserSmokeCode.includes('openMetrics.viewPanelTop <= openMetrics.utilityRowBottom + 16')
+        && timelineBrowserSmokeCode.includes('opening filters does not grow command center layout')
+        && timelineBrowserSmokeCode.includes('opening filters does not push timeline down')
+        && timelineBrowserSmokeCode.includes('openMetrics.viewPanelWidth <= Math.min(840, openMetrics.viewportWidth - 48) + 2')
+        && timelineBrowserSmokeCode.includes('openMetrics.viewPanelHeight <= 92')
         && timelineBrowserSmokeCode.includes('openMetrics.bodyOverflowX <= 2')
         && timelineBrowserSmokeCode.includes('metrics.settingsAllowed')
         && timelineBrowserSmokeCode.includes('metrics.settingsVisible')
@@ -753,14 +790,34 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/app.js', "e.key !== 'ArrowDown'")
         && htmlContains('js/app.js', "e.key === 'ArrowUp'"));
     check('Timeline assistant rail late CSS keeps ordered topbar actions styled',
-        htmlContains('css/assistant-rail-topbar.css', 'v0.77.78: timeline topbar utility actions keep their button geometry after late assistant topbar CSS')
-        && htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-history-btn, .timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle)')
-        && !htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn')
-        && htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions .toolbar-label-short')
-        && htmlContains('css/assistant-rail-topbar.css', 'display: none;')
-        && htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout')
-        && htmlContains('css/assistant-rail-topbar.css', '--timeline-topbar-control-h: 40px;')
-        && htmlContains('css/assistant-rail-topbar.css', '--timeline-topbar-accent: var(--eg-accent);'));
+        assistantTopbarCss.includes('v0.77.78: timeline topbar utility actions keep their button geometry after late assistant topbar CSS')
+        && assistantTopbarActionsRule.includes('margin-left: auto;')
+        && assistantTopbarActionsRule.includes('border-left: 1px solid var(--timeline-topbar-border);')
+        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-history-btn, .timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle)')
+        && assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #historyBtn') < assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #currentUser')
+        && assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #currentUser') < assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle')
+        && assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle') < assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn')
+        && assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn') < assistantTopbarCss.indexOf('.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn')
+        && assistantTopbarCss.includes('order: 50;')
+        && !assistantTopbarCss.includes('timelineViewPanelToggle')
+        && !assistantTopbarCss.includes('timeline-header-view-btn')
+        && !assistantTopbarCss.includes('timeline-view-panel')
+        && !assistantTopbarCss.includes('timeline-header-filters')
+        && !assistantTopbarCss.includes('schedule-command-row--utility')
+        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions .toolbar-label-short')
+        && assistantTopbarCss.includes('display: none;')
+        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout')
+        && assistantTopbarCss.includes('--timeline-topbar-control-h: 40px;')
+        && assistantTopbarCss.includes('--timeline-topbar-accent: var(--eg-accent);')
+        && assistantAggregateCss.includes('body.timeline-dashboard-page .header .header-content.assistant-rail-mounted')
+        && assistantAggregateCss.includes('body.timeline-dashboard-page .header .header-content.assistant-rail-mounted > #crmAssistantRailHost')
+        && assistantAggregateCss.includes('position: static !important')
+        && assistantAggregateCss.includes('body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .assistant-command-panel .assistant-rail-subtitles-wrap')
+        && assistantAggregateCss.includes('pointer-events: none !important')
+        && assistantAggregateCss.includes('body.timeline-dashboard-page .header .header-content.assistant-rail-mounted .crm-assistant-rail[data-live="true"] .assistant-command-panel .assistant-rail-subtitles-wrap')
+        && assistantAggregateCss.includes('pointer-events: auto !important')
+        && timelineCompactCommandCss.includes('z-index: 70 !important')
+        && timelineInlineViewPanelRule.includes('z-index: 120 !important'));
     check('Timeline date navigation cluster keeps date primary with the view trigger outside topbar',
         !!doc.querySelector('.schedule-command-row--utility .schedule-command-zone--date .date-controls.date-navigation-cluster')
         && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle'

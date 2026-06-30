@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.80 - Timeline Header Filters Tray Fix
+
+### Timeline header / Compact date row / Filters tray / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Date row зроблено компактним** - прибрано closed-state gap між навігацією дати й timeline grid, а `Назад`, дата, `Зараз`, `Вперед` і `Фільтри` лишаються в одному керованому рядку.
+- **`Вигляд` замінено на `Фільтри` у date row** - trigger більше не живе в глобальному topbar, має stable `#timelineViewPanelToggle`, коректний `aria-expanded` і не повертає старий видимий label.
+- **Фільтри відкриваються attached overlay tray** - статус, період, тип і масштаб залишилися на існуючих handlers/selectors, а панель більше не відштовхує timeline вниз і не виглядає як відірвана картка.
+- **Чорний void замінено CRM surface background** - основна зона таймлайну використовує темну CRM-поверхню замість чистого чорного фону, збережено читабельність dark/light режимів.
+- **Topbar повернуто до CRM shell contract** - `Історія змін` лишається перед utility controls, theme/settings не дублюються, а `Вийти` є останньою правою дією.
+- **Regression guards оновлено** - `tests/ui-check.js` і `tests/browser/timeline-browser-smoke.js` фіксують `Фільтри`, attached tray, compact gap, logout rightmost, відсутність `Дайджест`, відсутність старого `Вигляд` і mobile overflow.
+- **Auth, booking, API і БД не змінювались** - правка обмежена DOM/CSS/JS layout для header controls, release notes і тестами.
+
+---
+
 ## v0.77.79 - Timeline Header Filters Tray Fix
 
 ### Timeline header / Compact date row / Filters tray / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]

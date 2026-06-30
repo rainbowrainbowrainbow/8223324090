@@ -1,977 +1,179 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Event Genix — AI-система для дитячих розважальних центрів</title>
-    <meta name="description" content="AI-екосистема управління для дитячих розважальних центрів. CRM, таймлайн, командний чат, AI-асистент Клешня.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="canonical" href="https://8223324090-production.up.railway.app/landing/">
-    <meta name="robots" content="index, follow">
-    <link rel="stylesheet" href="style.css?v=5.6">
-    <meta property="og:title" content="Event Genix — Бізнес, що керує собою.">
-    <meta property="og:description" content="AI-система для дитячих розважальних центрів. Автоматизуйте бронювання, команду, фінанси. 90+ хв економії на день.">
-    <meta property="og:type" content="website">
-    <meta property="og:image" content="https://8223324090-production.up.railway.app/landing/images/crm-login.jpg">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:image" content="https://8223324090-production.up.railway.app/landing/images/crm-login.jpg">
-    <meta name="theme-color" content="#C9A84C">
-    <link rel="icon" href="images/favicon.ico">
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Майстерня долі — психологічний простір Олександра</title>
+  <meta name="description" content="Онлайн-робота з тривогою, вигоранням та емоційним виснаженням. Майстерня долі — простір, де ви повертаєтесь до себе." />
+  <meta name="theme-color" content="#a58a57" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
-<!-- SCROLL PROGRESS BAR -->
-<div class="scroll-progress" id="scrollProgress"></div>
-
-<!-- STICKY NAVBAR -->
-<nav class="navbar" id="navbar">
-    <div class="navbar__inner">
-        <a href="#hero" class="navbar__logo">Event Genix</a>
-        <button class="navbar__burger" id="navBurger" aria-label="Меню">
-            <span></span><span></span><span></span>
-        </button>
-        <ul class="navbar__links" id="navLinks">
-            <li><a href="#product" class="nav-a">Продукт</a></li>
-            <li><a href="#how" class="nav-a">Як це працює</a></li>
-            <li><a href="#cases" class="nav-a">Кейси</a></li>
-            <li><a href="#pricing" class="nav-a">Ціни</a></li>
-            <li><a href="#team" class="nav-a">Команда</a></li>
-            <li><a href="#faq" class="nav-a">FAQ</a></li>
-        </ul>
-        <a href="#pricing" class="btn btn--gold navbar__cta">Демо →</a>
+  <header class="header" id="top">
+    <div class="container header__inner">
+      <a class="logo" href="#hero" aria-label="На головний екран">Майстерня долі</a>
+      <button class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="mainNav" aria-label="Відкрити меню">☰</button>
+      <nav class="nav" id="mainNav" aria-label="Основна навігація">
+        <a href="#pain">Запити</a>
+        <a href="#about">Про Олександра</a>
+        <a href="#formats">Формати</a>
+        <a href="#faq">FAQ</a>
+        <a class="btn btn--small btn--gold" href="#contact">Записатися</a>
+      </nav>
     </div>
-</nav>
+  </header>
 
-<!-- СЕКЦІЯ 1: HERO -->
-<section class="hero" id="hero">
-    <div class="hero__bg"></div>
-    <div class="hero__grid"></div>
-    <div class="hero__orbs">
-        <div class="orb orb--1"></div>
-        <div class="orb orb--2"></div>
-        <div class="orb orb--3"></div>
-        <div class="orb orb--4"></div>
-    </div>
-    <div class="hero__content">
-        <div class="hero__logo">Event Genix</div>
-        <div class="hero__badge animate-on-load">
-            <span class="hero__badge-dot"></span>
-            Живе в Парку Закревського з лютого 2026
+  <main>
+    <section class="hero" id="hero">
+      <div class="container hero__grid">
+        <div>
+          <p class="eyebrow">Онлайн · Конфіденційно · Офіційно</p>
+          <h1>Психологічний простір, де ви повертаєтесь до себе</h1>
+          <p class="lead">Робота з тривогою, вигоранням, емоційним виснаженням, стосунками, самотністю, сенсом та ідентичністю.</p>
+          <div class="hero__actions">
+            <a class="btn btn--gold" href="#contact">Записатися на консультацію</a>
+            <a class="btn btn--line" href="#formats">Переглянути формати</a>
+          </div>
+          <p class="note">Онлайн для клієнтів з України та українців за кордоном.</p>
         </div>
-        <h1 class="hero__title animate-on-load">
-            Все в одному місці.<br><span class="grad">Нічого не губиться.</span>
-        </h1>
-        <p class="hero__subtitle animate-on-load">
-            Не друга CRM — екосистема де AI є центральним мозком, а не додатковою кнопкою.
-        </p>
-        <p class="hero__typewriter animate-on-load">
-            <span id="typewriterText"></span><span class="typewriter-cursor"></span>
-        </p>
-        <div class="hero__cta animate-on-load">
-            <a href="https://t.me/ArdDirector" class="btn btn--gold" target="_blank" rel="noopener">Спробувати безкоштовно →</a>
-            <a href="#product" class="btn btn--outline">Що вміє система →</a>
+        <aside class="hero__card">
+          <h2>Майстерня долі</h2>
+          <p>«Допомагаю людям знову знайти себе»</p>
+          <ul>
+            <li>30+ років досвіду роботи з людьми та бізнесами</li>
+            <li>Магістр психології (053), коуч ICU ISTA</li>
+            <li>КПТ · НЛП · Соціальна панорама · Еріксонівський гіпноз</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="pain">
+      <div class="container">
+        <h2>Коли цей формат вам підійде</h2>
+        <div class="cards" id="painCards"></div>
+      </div>
+    </section>
+
+    <section class="section section--soft" id="changes">
+      <div class="container narrow">
+        <h2>Що змінюється в роботі</h2>
+        <p class="center">Це не просто розмова про проблему. Це робота над системними змінами — без тиску, без «швидких обіцянок», з повагою до вашого темпу.</p>
+        <ul class="check-list" id="changesList"></ul>
+      </div>
+    </section>
+
+    <section class="section" id="about">
+      <div class="container about">
+        <article>
+          <p class="eyebrow">Хто буде з вами в цій роботі</p>
+          <h2>Про Олександра</h2>
+          <p>Психолог, коуч і засновник простору «Майстерня долі». Має 3 вищі освіти (економіка, менеджмент, психологія), ступінь магістра психології (053) і кваліфікацію ICU ISTA.</p>
+          <p>За плечима — 30+ років роботи з людьми, управління проєктами, створення та ведення бізнесів.</p>
+          <p>Особистий досвід втрат, складних операцій, реанімацій і тривалого відновлення став основою підходу, у якому підтримка поєднана з відповідальністю та реальними змінами.</p>
+        </article>
+        <aside class="about__panel">
+          <h3>Принципи</h3>
+          <ul>
+            <li>Довіра та емпатія</li>
+            <li>Конфіденційність</li>
+            <li>Обережна, але ефективна робота</li>
+            <li>Фокус на результаті, а не демонстрації технік</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section section--soft" id="formats">
+      <div class="container">
+        <h2>Формати роботи</h2>
+        <div class="pricing" id="pricingCards"></div>
+      </div>
+    </section>
+
+    <section class="section" id="steps">
+      <div class="container narrow">
+        <h2>Як проходить робота</h2>
+        <ol class="timeline" id="stepsList"></ol>
+      </div>
+    </section>
+
+    <section class="section section--soft" id="safety">
+      <div class="container narrow">
+        <h2>Чому це безпечно</h2>
+        <ul class="check-list" id="safetyList"></ul>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="container narrow">
+        <h2>Часті запитання</h2>
+        <div class="faq" id="faqList"></div>
+      </div>
+    </section>
+
+    <section class="section section--soft" id="legal">
+      <div class="container narrow">
+        <h2>Оплата і юридичні умови</h2>
+        <p>Оплата проходить офіційно: інвойс / реквізити / QR. Безготівковий сценарій є основним.</p>
+        <p class="note">Сценарій: клієнт читає умови → залишає заявку або отримує інвойс → оплачує безготівково → оплата означає згоду з умовами оферти.</p>
+        <div class="legal-links">
+          <a href="#" aria-disabled="true">TODO: Публічна оферта</a>
+          <a href="#" aria-disabled="true">TODO: Політика конфіденційності</a>
+          <a href="#" aria-disabled="true">TODO: Умови оплати</a>
+          <a href="#" aria-disabled="true">TODO: Реквізити / QR</a>
         </div>
-    </div>
-    <!-- SCROLL INDICATOR -->
-    <a href="#why-now" class="hero__scroll-hint" aria-label="Гортати вниз">
-        <span class="hero__scroll-hint__text">Гортай вниз</span>
-        <span class="hero__scroll-hint__arrow">↓</span>
-    </a>
-</section>
+      </div>
+    </section>
 
-<!-- СЕКЦІЯ 2: ПРОВОКАЦІЯ → ДЕМІФІКАЦІЯ -->
-<section class="section why-now" id="why-now">
-    <div class="container">
-        <h2 class="section__title section__title--gold fade-in">Більшість парків досі на Excel.<br>Або взагалі вручну.</h2>
-        <p class="section__text section__text--provoke fade-in">
-            Банкетні листи від руки. Бронювання в блокноті. Фінанси в таблицях.<br>
-            <span class="gold-accent">Шлях до фінансів не побудований — і ви втрачаєте гроші кожного дня.</span>
-        </p>
-        <blockquote class="quote quote--demystify fade-in">
-            "Додати AI в стару CRM — все одно що поставити GPS в паровоз. Нам потрібна нова система."
-        </blockquote>
-        <div class="cards cards--3 fade-in">
-            <div class="card">
-                <div class="card__icon">📊</div>
-                <div class="card__title">Централізація</div>
-                <div class="card__text">Бронювання, фінанси, команда, аналітика — все в одному місці. Бачите все. Керуєте всім.</div>
-            </div>
-            <div class="card">
-                <div class="card__icon">🤖</div>
-                <div class="card__title">AI-екосистема, не кнопка</div>
-                <div class="card__text">Event Genix працює ідеально коли повністю. Кожен модуль підсилює інший — це не набір інструментів, це система.</div>
-            </div>
-            <div class="card">
-                <div class="card__icon">🚀</div>
-                <div class="card__title">Вікно можливостей</div>
-                <div class="card__text">AI-агенти — тренд наступних 12 місяців. Хто впровадить зараз — виграє конкуренцію на роки вперед.</div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 2.1: ДЕМІФІКАЦІЯ AI -->
-<section class="section demystify" id="demystify">
-    <div class="container">
-        <h2 class="section__title fade-in">Страхи vs Реальність</h2>
-        <p class="section__subtitle fade-in">Найпоширеніші побоювання — і чому вони не мають підстав</p>
-        <div class="demystify-grid fade-in">
-            <div class="demystify-card" data-open="false">
-                <div class="demystify-q">
-                    <span class="demystify-icon">🤖</span>
-                    <span>AI замінить моїх працівників?</span>
-                    <span class="demystify-arrow">+</span>
-                </div>
-                <div class="demystify-a">Ні. AI автоматизує рутину — ваші адміни роблять більше за менший час. Жодне скорочення. Навпаки — вони зможуть зосередитись на клієнтах замість Excel-таблиць.</div>
-            </div>
-            <div class="demystify-card" data-open="false">
-                <div class="demystify-q">
-                    <span class="demystify-icon">⚙️</span>
-                    <span>Це складно впровадити?</span>
-                    <span class="demystify-arrow">+</span>
-                </div>
-                <div class="demystify-a">Один день. Ваші кімнати, програми, команда — і система працює. Навчання команди — 2-3 години. Без зупинки роботи парку.</div>
-            </div>
-            <div class="demystify-card" data-open="false">
-                <div class="demystify-q">
-                    <span class="demystify-icon">💸</span>
-                    <span>А якщо безкоштовний ChatGPT?</span>
-                    <span class="demystify-arrow">+</span>
-                </div>
-                <div class="demystify-a">Безкоштовні моделі — загальні інструменти. Event Genix знає вашу специфіку: піньяти, квести, банкетні листи, типи клієнтів, розклад аніматорів. Це як GPS в паровоз vs сучасний потяг — різні класи систем.</div>
-            </div>
-            <div class="demystify-card" data-open="false">
-                <div class="demystify-q">
-                    <span class="demystify-icon">🔗</span>
-                    <span>Ми можемо залишити свій Telegram/Google Chat?</span>
-                    <span class="demystify-arrow">+</span>
-                </div>
-                <div class="demystify-a">Технічно — так. Але тоді система втрачає частину можливостей: Guardian не фільтрує чужий месенджер, аналітика не бачить переписку, AI не може діяти по контексту розмови. Event Genix — екосистема. Вона працює ідеально коли повністю.</div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 2.5: ІНТЕРАКТИВНИЙ КАЛЬКУЛЯТОР ЕКОНОМІЇ -->
-<section class="section stats-band" id="stats">
-    <div class="container">
-
-        <!-- РЯДОК ЦИФР -->
-        <div class="stats-row">
-            <div class="stat-item fade-in">
-                <div class="stat-item__value">90+</div>
-                <div class="stat-item__label">хвилин економії на день</div>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item fade-in">
-                <div class="stat-item__value">24</div>
-                <div class="stat-item__label">модулі в системі</div>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item fade-in">
-                <div class="stat-item__value">v25.4</div>
-                <div class="stat-item__label">актуальна версія</div>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item fade-in">
-                <div class="stat-item__value">33+</div>
-                <div class="stat-item__label">годин на місяць вільного часу</div>
-            </div>
-        </div>
-
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 3: ЩО МИ РОБИМО -->
-<section class="section product" id="product">
-    <div class="container">
-        <h2 class="section__title fade-in">Ми не прийшли продати вам другу CRM</h2>
-        <p class="section__subtitle fade-in">Ми прийшли щоб ви могли конкурувати в епоху AI. Event Genix — екосистема де кожен модуль підсилює інший.</p>
-
-        <!-- ТРАНСФОРМАЦІЯ ДО/ПІСЛЯ -->
-        <div class="transform-block fade-in">
-            <div class="transform-col transform-col--before">
-                <h3 class="transform-title">До Event Genix</h3>
-                <ul class="transform-list">
-                    <li>3+ години рутини щодня</li>
-                    <li>Забуті бронювання та плутанина</li>
-                    <li>4 різні системи одночасно</li>
-                    <li>«Хто сьогодні працює?» — незрозуміло</li>
-                    <li>Рутинний Excel замість аналітики</li>
-                </ul>
-            </div>
-            <div class="transform-arrow">→</div>
-            <div class="transform-col transform-col--after">
-                <h3 class="transform-title">Після Event Genix</h3>
-                <ul class="transform-list">
-                    <li>90+ хвилин вільного часу</li>
-                    <li>0 пропущених клієнтів</li>
-                    <li>Все в одному вікні</li>
-                    <li>Графік завжди актуальний</li>
-                    <li>Автоматична звітність</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="cards cards--2x2 fade-in">
-            <div class="card card--expandable" data-expanded="false">
-                <div class="card__icon">🗓️</div>
-                <div class="card__title">Таймлайн і бронювання</div>
-                <div class="card__text">Весь розклад на одному екрані. Бронювання підтверджуються, клієнти отримують нагадування — автоматично.</div>
-                <div class="card__expand-btn">Реальний кейс ↓</div>
-                <div class="card__case">
-                    <div class="card__case-before">🔴 Раніше: Адмін забув подзвонити клієнту. Той прийшов — кімната зайнята. Скандал, повернення грошей.</div>
-                    <div class="card__case-after">✅ Зараз: За 24 год і за 2 год — автоматичні нагадування у Telegram. 0 пропущених. 0 скандалів.</div>
-                    <div class="card__case-saving">💡 Економія: 40+ хвилин дзвінків щодня</div>
-                </div>
-            </div>
-            <div class="card card--expandable" data-expanded="false">
-                <div class="card__icon">💬</div>
-                <div class="card__title">Командний месенджер</div>
-                <div class="card__text">Корпоративний чат всередині системи. Прив'язаний до задач і бронювань.</div>
-                <div class="card__expand-btn">Реальний кейс ↓</div>
-                <div class="card__case">
-                    <div class="card__case-before">🔴 Раніше: Аніматор не знав що є день народження о 15:00. Прийшов непідготовлений.</div>
-                    <div class="card__case-after">✅ Зараз: Бронювання підтверджено → автоматично @згадка аніматора в чаті з деталями події.</div>
-                    <div class="card__case-saving">💡 Результат: Команда завжди знає що відбувається</div>
-                </div>
-            </div>
-            <div class="card card--expandable" data-expanded="false">
-                <div class="card__icon">🤖</div>
-                <div class="card__title">Клешня — AI-дворецький</div>
-                <div class="card__text">"Забронюй Minecraft на суботу" — і все. Голосом, у Telegram, без зайвих кліків.</div>
-                <div class="card__expand-btn">Реальний кейс ↓</div>
-                <div class="card__case">
-                    <div class="card__case-before">🔴 Раніше: Директор щоранку 40 хв збирав дані: виручка, події, команда, залишки.</div>
-                    <div class="card__case-after">✅ Зараз: "Клешня, що в мене сьогодні?" → за 10 секунд: виручка вчора 8 400 ₴, 4 події, зміна укомплектована.</div>
-                    <div class="card__case-saving">💡 Економія: 40 хвилин ранку щодня</div>
-                </div>
-            </div>
-            <div class="card card--expandable" data-expanded="false">
-                <div class="card__icon">💰</div>
-                <div class="card__title">Центр цін</div>
-                <div class="card__text">Змінив ціну один раз → оновилося скрізь: каталог, афіша, сайт, таймлайн.</div>
-                <div class="card__expand-btn">Реальний кейс ↓</div>
-                <div class="card__case">
-                    <div class="card__case-before">🔴 Раніше: Підняли ціни — забули оновити афішу. Клієнти прийшли з старою ціною, вимагали знижку.</div>
-                    <div class="card__case-after">✅ Зараз: Ціна оновлена в одному місці → все оновлено скрізь за секунду. Ніякої плутанини.</div>
-                    <div class="card__case-saving">💡 Результат: 0 конфліктів через ціни</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ЯК ЦЕ ПРАЦЮЄ -->
-<section class="section how-it-works" id="how">
-    <div class="container">
-        <h2 class="section__title fade-in">Від першого дзвінка до живої системи</h2>
-        <p class="section__subtitle fade-in">Реальний шлях запуску. Без прихованих кроків.</p>
-
-        <!-- PROCESS TIMELINE -->
-        <div class="process-track fade-in">
-
-            <!-- STEP 1 -->
-            <div class="process-step" data-open="false">
-                <div class="process-step__header">
-                    <div class="process-step__num">01</div>
-                    <div class="process-step__icon">📞</div>
-                    <div class="process-step__info">
-                        <h3 class="process-step__title">Перший контакт</h3>
-                        <p class="process-step__sub">5–10 хвилин · дзвінок або заявка на сайті</p>
-                    </div>
-                    <div class="process-step__toggle">↓</div>
-                </div>
-                <div class="process-step__body">
-                    <p>Коротка розмова або заявка. Розказуєте про свій центр — скільки кімнат, скільки людей у команді, які болі зараз.</p>
-                    <p>Домовляємось на онлайн-презентацію у зручний час.</p>
-                    <div class="process-step__cta-hint">→ Або залишіть заявку прямо тут — і ми зателефонуємо самі</div>
-                </div>
-            </div>
-            <div class="process-connector">↓</div>
-
-            <!-- STEP 2 -->
-            <div class="process-step" data-open="false">
-                <div class="process-step__header">
-                    <div class="process-step__num">02</div>
-                    <div class="process-step__icon">🖥️</div>
-                    <div class="process-step__info">
-                        <h3 class="process-step__title">Онлайн-презентація</h3>
-                        <p class="process-step__sub">60–90 хвилин · жива демонстрація системи</p>
-                    </div>
-                    <div class="process-step__toggle">↓</div>
-                </div>
-                <div class="process-step__body">
-                    <p>Показуємо живу систему — бронювання, командний чат, AI-дворецький, гейміфікацію, аналітику. Все наживо, не слайди.</p>
-                    <p>Розповідаємо про тарифи та пакети. Відповідаємо на всі запитання.</p>
-                    <p class="process-note">Після презентації ще 30 хвилин — обговорюємо що вам підійшло і що потрібно налаштувати під ваш бізнес.</p>
-                </div>
-            </div>
-            <div class="process-connector">↓</div>
-
-            <!-- STEP 3 -->
-            <div class="process-step" data-open="false">
-                <div class="process-step__header">
-                    <div class="process-step__num">03</div>
-                    <div class="process-step__icon">🤝</div>
-                    <div class="process-step__info">
-                        <h3 class="process-step__title">Домовленості та офлайн (опційно)</h3>
-                        <p class="process-step__sub">Первісний договір · Офлайн-зустріч за потребою</p>
-                    </div>
-                    <div class="process-step__toggle">↓</div>
-                </div>
-                <div class="process-step__body">
-                    <p>Підтверджуємо умови. Якщо є потреба — приїжджаємо до вас на офлайн-презентацію для всієї команди.</p>
-                    <p>Наші спеціалісти відповідають на всі запитання команди вживу.</p>
-                </div>
-            </div>
-            <div class="process-connector">↓</div>
-
-            <!-- STEP 4 — INTEGRATION -->
-            <div class="process-step process-step--integration" data-open="false">
-                <div class="process-step__header">
-                    <div class="process-step__num">04</div>
-                    <div class="process-step__icon">⚙️</div>
-                    <div class="process-step__info">
-                        <h3 class="process-step__title">Інтеграція за 3 етапи</h3>
-                        <p class="process-step__sub">Система сама себе інтегрує · Спеціалісти завжди на зв'язку</p>
-                    </div>
-                    <div class="process-step__toggle">↓</div>
-                </div>
-                <div class="process-step__body">
-                    <div class="integration-phases">
-                        <div class="integration-phase">
-                            <div class="integration-phase__label">День 1</div>
-                            <div class="integration-phase__content">
-                                <strong>Старт — команда одразу відчуває різницю</strong>
-                                <ul>
-                                    <li>✅ Командний чат та сповіщення</li>
-                                    <li>✅ Гейміфікація, кабінети, бонуси</li>
-                                    <li>✅ Система досягнень і подарунки</li>
-                                    <li>✅ Кожен у команді отримує свій акаунт</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <div class="integration-phase">
-                            <div class="integration-phase__label">День 3</div>
-                            <div class="integration-phase__content">
-                                <strong>Управління — контроль без нарад</strong>
-                                <ul>
-                                    <li>✅ Задачі та делегування</li>
-                                    <li>✅ Таймлайн і бронювання</li>
-                                    <li>✅ Розклад команди</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <div class="integration-phase">
-                            <div class="integration-phase__label">Тиждень 2</div>
-                            <div class="integration-phase__content">
-                                <strong>Автоматизація — система працює сама</strong>
-                                <ul>
-                                    <li>✅ AI-дворецький Клешня</li>
-                                    <li>✅ Аналітика та фінанси</li>
-                                    <li>✅ Центр цін, афіші, HR</li>
-                                    <li>✅ Перший P&amp;L-звіт за тиждень</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                    <p class="process-note process-note--gold">Система сама себе інтегрує. Наші спеціалісти-демонстранти фізично допоможуть і дадуть відповідь на всі запитання.</p>
-                </div>
-            </div>
-
-        </div><!-- /process-track -->
-        <!-- CRM SCREENSHOT PREVIEW -->
-        <div class="crm-preview fade-in">
-            <div class="crm-preview__frame">
-                <div class="crm-preview__bar">
-                    <span class="crm-preview__dot crm-preview__dot--red"></span>
-                    <span class="crm-preview__dot crm-preview__dot--yellow"></span>
-                    <span class="crm-preview__dot crm-preview__dot--green"></span>
-                    <span class="crm-preview__url">8223324090-production.up.railway.app</span>
-                </div>
-                <img src="images/crm-login.jpg" alt="Event Genix CRM — екран входу" class="crm-preview__img" loading="lazy" />
-                <div class="crm-preview__badge">🔥 Live · v25.4.0</div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 4: ЯК ЦЕ ВИГЛЯДАЄ -->
-<section class="section day-in-life" id="demo">
-    <div class="container">
-        <h2 class="section__title section__title--gold fade-in">Ваш ранок після Event Genix</h2>
-        <div class="timeline-block fade-in">
-            <div class="timeline-entry">
-                <span class="timeline-time">7:00</span>
-                <span class="timeline-text">Ви ще спите.<br>Клешня вже підтвердила 3 нових бронювання.<br>Одному клієнту пішло нагадування.<br>Зміна на суботу — укомплектована.</span>
-            </div>
-            <div class="timeline-entry">
-                <span class="timeline-time">9:00</span>
-                <span class="timeline-text">Ви відкриваєте телефон.<br>"Клешня, що в мене сьогодні?"<br>Готовий бриф: 4 події, 1 питання від адміна,<br>виручка за вчора — 8 400 грн.</span>
-            </div>
-            <div class="timeline-entry">
-                <span class="timeline-time">12:00</span>
-                <span class="timeline-text">Адмін: "Скільки вільних слотів у неділю?"<br>Клешня: "Два: 11:00 і 15:00. Бронювати?"</span>
-            </div>
-            <div class="timeline-entry">
-                <span class="timeline-time">18:00</span>
-                <span class="timeline-text">"Зроби P&amp;L за тиждень."<br>10 секунд. Таблиця + аналіз готові.</span>
-            </div>
-        </div>
-        <p class="section__note fade-in">Це не фантастика. Це те що вже працює в Парку Закревського з лютого 2026.</p>
-    </div>
-</section>
-
-<!-- ROI калькулятор видалено 12.03.2026 -->
-
-<!-- СЕКЦІЯ 5: МОДУЛІ ТА ЦІНИ -->
-<section class="section pricing" id="pricing">
-    <div class="pricing__bg"></div>
-    <div class="container">
-        <h2 class="section__title fade-in">Оберіть свій пакет</h2>
-        <p class="section__subtitle fade-in">Починайте з базового. Додавайте коли потрібно.</p>
-        <div class="pricing-grid pricing-grid--v2 fade-in">
-
-            <!-- БАЗОВИЙ -->
-            <div class="price-card price-card--base">
-                <div class="price-card__tag">Старт</div>
-                <div class="price-card__header">
-                    <div class="price-card__name">Базовий</div>
-                    <div class="price-card__price">2 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $100</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>CRM + Таймлайн івентів</li>
-                    <li>Командний месенджер<br><span class="feat-sub">Веб + Android + iOS застосунок</span></li>
-                    <li>Центр цін</li>
-                    <li>Клешня AI (базово)</li>
-                    <li>Автосертифікати</li>
-                    <li>Telegram-бот</li>
-                    <li>Dashboard</li>
-                    <li>Склад + Навчання</li>
-                </ul>
-                <button class="btn btn--outline" data-package="basic">Спробувати безкоштовно →</button>
-            </div>
-
-            <!-- HR МОДУЛЬ -->
-            <div class="price-card">
-                <div class="price-card__header">
-                    <div class="price-card__name">+ HR Модуль</div>
-                    <div class="price-card__price">+3 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $20</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>Найм та навчання</li>
-                    <li>Нарахування зарплати</li>
-                    <li>Премії / депремії</li>
-                    <li>Система запізнень</li>
-                    <li>Система задач HR</li>
-                    <li>Субагенти — цифрові робітники<br><span class="feat-sub">Кожен під свою задачу</span></li>
-                </ul>
-                <button class="btn btn--outline" data-package="hr">Отримати демо →</button>
-            </div>
-
-            <!-- ART DIRECTOR -->
-            <div class="price-card price-card--recommended">
-                <div class="price-card__badge">🔥 Популярний</div>
-                <div class="price-card__header">
-                    <div class="price-card__name">+ Art Director</div>
-                    <div class="price-card__price">+8 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $50</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>Генерація афіш</li>
-                    <li>Автопіньята</li>
-                    <li>Клешня Art (100 генерацій/день)</li>
-                    <li>Брендований контент</li>
-                </ul>
-                <button class="btn btn--gold" data-package="art">Отримати демо →</button>
-            </div>
-
-            <!-- ДИЗАЙНЕР -->
-            <div class="price-card">
-                <div class="price-card__header">
-                    <div class="price-card__name">+ Дизайнер</div>
-                    <div class="price-card__price">+4 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $30</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>Каталоги продуктів</li>
-                    <li>Гайдлайн парку</li>
-                    <li>Брендбук / стильгайд</li>
-                    <li>Шаблони матеріалів</li>
-                </ul>
-                <button class="btn btn--outline" data-package="designer">Отримати демо →</button>
-            </div>
-
-            <!-- ЗВУК -->
-            <div class="price-card price-card--sound">
-                <div class="price-card__header">
-                    <div class="price-card__name">+ Звук 🔊</div>
-                    <div class="price-card__price">+2 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $10</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>Авто-оголошення N разів/день</li>
-                    <li>Генерація пісень через агента</li>
-                    <li>Генерація оголошень через агента</li>
-                    <li>Голосові повідомлення команді</li>
-                </ul>
-                <button class="btn btn--outline" data-package="sound">Отримати демо →</button>
-            </div>
-
-            <!-- КЛЕШНЯ AGENT -->
-            <div class="price-card price-card--kleshnya">
-                <div class="price-card__header">
-                    <div class="price-card__name">+ Клешня Agent 🦞</div>
-                    <div class="price-card__price">+2 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Розхід: 0 ₴ · Підключення $10</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>Повний доступ до AI-агента</li>
-                    <li>Відповіді 24/7 у Telegram</li>
-                    <li>Авто-бронювання голосом</li>
-                    <li>Ранковий бріфінг директора</li>
-                </ul>
-                <button class="btn btn--outline" data-package="kleshnya">Отримати демо →</button>
-            </div>
-
-            <!-- ПОВНИЙ -->
-            <div class="price-card price-card--full price-card--recommended">
-                <div class="price-card__badge">⭐ Максимум</div>
-                <div class="price-card__header">
-                    <div class="price-card__name">Повний пакет</div>
-                    <div class="price-card__price">21 000 ₴<span>/міс</span></div>
-                    <div class="price-card__setup">Підключення $170 · Розхід: 0 ₴</div>
-                </div>
-                <ul class="price-card__features">
-                    <li>Всі 6 модулів включено</li>
-                    <li>Клешня 200 генерацій/день</li>
-                    <li>Пріоритетна підтримка 24/7</li>
-                    <li>Персональний onboarding</li>
-                    <li>Щомісячна аналітика від команди</li>
-                </ul>
-                <button class="btn btn--gold" data-package="full">Отримати повний пакет →</button>
-            </div>
-
-        </div>
-        <p class="section__note fade-in">Ціни в гривнях. Підключення — разово, в доларах за курсом НБУ.</p>
-
-        <!-- COMPARISON TOGGLE -->
-        <div class="pricing-toggle fade-in">
-            <button class="ptoggle-btn ptoggle-btn--active" id="pToggleCards">Картки</button>
-            <button class="ptoggle-btn" id="pToggleTable">Порівняння</button>
-        </div>
-
-        <!-- COMPARISON TABLE -->
-        <div class="compare-table fade-in" id="compareTable" style="display:none;">
-            <table class="ctable">
-                <thead>
-                    <tr>
-                        <th class="ctable__feature">Функція</th>
-                        <th>Базовий</th>
-                        <th>+HR</th>
-                        <th>+Art Dir.</th>
-                        <th>+Дизайнер</th>
-                        <th>+Звук</th>
-                        <th>+Клешня</th>
-                        <th class="ctable__rec">Повний ⭐</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td class="ctable__feature">CRM + Таймлайн</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Месенджер (Web/Android/iOS)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Центр цін + Склад</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Клешня AI</td><td>Базово</td><td>Базово</td><td>100/день</td><td>Базово</td><td>Базово</td><td>200/день</td><td>200/день</td></tr>
-                    <tr><td class="ctable__feature">Найм / Навчання / ЗП</td><td>—</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Система запізнень + Задачі HR</td><td>—</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Субагенти (цифрові робітники)</td><td>—</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Генерація афіш / Автопіньята</td><td>—</td><td>—</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Каталоги / Гайдлайн / Брендбук</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td><td>—</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Авто-оголошення / Генерація пісень</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Клешня Agent 24/7</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>✅</td></tr>
-                    <tr><td class="ctable__feature">Пріоритет підтримки</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td></tr>
-                    <tr class="ctable__price-row">
-                        <td class="ctable__feature"><strong>Ціна/міс</strong></td>
-                        <td>2 000 ₴</td>
-                        <td>+3 000 ₴</td>
-                        <td>+8 000 ₴</td>
-                        <td>+4 000 ₴</td>
-                        <td>+2 000 ₴</td>
-                        <td>+2 000 ₴</td>
-                        <td class="ctable__rec">21 000 ₴</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- TRUST BADGES -->
-        <div class="trust-badges fade-in">
-            <div class="trust-badge"><span>🔒</span> SSL шифрування</div>
-            <div class="trust-badge"><span>☁️</span> Railway EU сервери</div>
-            <div class="trust-badge"><span>💾</span> Бекап щодня</div>
-            <div class="trust-badge"><span>🇺🇦</span> Зроблено в Україні</div>
-            <div class="trust-badge"><span>⚡</span> Uptime 99.9%</div>
-        </div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 6: КЕЙСИ -->
-<section class="section cases" id="cases">
-    <div class="container">
-        <h2 class="section__title fade-in">Реальні кейси. Реальна економія.</h2>
-        <div class="cases-grid fade-in">
-            <div class="case">
-                <div class="case__icon">🎭</div>
-                <div class="case__title">Піньята-автомат</div>
-                <div class="case__before">Раніше: 15 хвилин людської уваги на кожну нову піньяту.</div>
-                <div class="case__after">Зараз: 30 секунд. Система сама: ціна → фото → каталог → друк → номер.</div>
-                <div class="case__saving">Економія: 13 хв × 50 піньят/міс = 10+ годин на місяць</div>
-            </div>
-            <div class="case">
-                <div class="case__icon">🌅</div>
-                <div class="case__title">Ранковий бріфінг директора</div>
-                <div class="case__before">"Клешня, що в мене сьогодні?"</div>
-                <div class="case__after">За 10 секунд: повний зріз дня, команда, задачі, виручка.</div>
-                <div class="case__saving">Без відкривання 4 різних систем.</div>
-            </div>
-            <div class="case">
-                <div class="case__icon">🛒</div>
-                <div class="case__title">Автозакупівлі</div>
-                <div class="case__before">Раніше: адміністратор витрачав 30+ хв щодня на замовлення витратних матеріалів.</div>
-                <div class="case__after">Зараз: "Клешня, замов серветки" → розбирає → підтверджує → замовляє у постачальників.</div>
-                <div class="case__saving">Людина тільки каже "ок". Решта — автоматично.</div>
-            </div>
-            <div class="case">
-                <div class="case__icon">📊</div>
-                <div class="case__title">Google Trends для квестів</div>
-                <div class="case__before">"Що зараз популярне серед дітей?"</div>
-                <div class="case__after">Система моніторить тренди і підказує теми для нових квестів.</div>
-                <div class="case__saving">Одна клієнтка після демо: "Це ж така пушка просто!"</div>
-            </div>
-        </div>
-    </div>
-</section>
-
-
-<!-- СЕКЦІЯ 6.5: ВІДГУКИ -->
-<section class="section testimonials" id="testimonials">
-    <div class="container">
-        <h2 class="section__title section__title--gold fade-in">Що кажуть після демо</h2>
-        <div class="testi-grid fade-in">
-            <div class="testi-card">
-                <div class="testi-stars">★★★★★</div>
-                <p class="testi-text">"Це ж така пушка просто! Я не думала що таке взагалі можливо — голосом кажеш, і воно саме все робить."</p>
-                <div class="testi-author">
-                    <div class="testi-avatar">НВ</div>
-                    <div>
-                        <div class="testi-name">Наталія Василівна</div>
-                        <div class="testi-role">Власниця дитячого центру</div>
-                    </div>
-                </div>
-            </div>
-            <div class="testi-card testi-card--gold">
-                <div class="testi-stars">★★★★★</div>
-                <p class="testi-text">"Раніше на ранковий брифінг витрачав 40 хвилин. Зараз — 2 хвилини. Клешня сама готує весь зріз за ніч."</p>
-                <div class="testi-author">
-                    <div class="testi-avatar">СШ</div>
-                    <div>
-                        <div class="testi-name">Сергій Шарлай</div>
-                        <div class="testi-role">Засновник, Парк Закревського</div>
-                    </div>
-                </div>
-            </div>
-            <div class="testi-card">
-                <div class="testi-stars">★★★★★</div>
-                <p class="testi-text">"Адміни перестали плутати розклад після першого ж дня. Таймлайн — це просто мастхев для будь-якого парку."</p>
-                <div class="testi-author">
-                    <div class="testi-avatar">КК</div>
-                    <div>
-                        <div class="testi-name">Карина Крамаренко</div>
-                        <div class="testi-role">Топ-менеджер, Парк Закревського</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 7: НАША КОМАНДА -->
-<section class="section team" id="team">
-    <div class="container">
-        <h2 class="section__title section__title--gold fade-in">Команда Event Genix</h2>
-        <p class="section__subtitle fade-in">Перша команда що живе в системі щодня — і знає кожен її нюанс</p>
-        <!-- TEAM CAROUSEL v2 -->
-        <div class="tc-wrap fade-in">
-            <button class="tc-btn tc-btn--prev" type="button">&#8592;</button>
-            <div class="tc-viewport">
-                <div class="tc-track" id="tcTrack">
-
-                    <div class="tc-slide tc-slide--sergiy">
-                        <div class="tc-photo tc-photo--initials">
-                            <span class="tc-initials">СШ</span>
-                        </div>
-                        <div class="tc-name">Сергій Шарлай</div>
-                        <div class="tc-role">CEO & Засновник</div>
-                        <div class="tc-bio">Будував систему для власного парку — виживав у хаосі. Вийшло щось більше. Тепер ділиться.</div>
-                    </div>
-
-                    <div class="tc-slide tc-slide--karina">
-                        <div class="tc-photo">
-                            <img src="images/team-karina.jpg" loading="lazy" alt="Карина Крамаренко" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;">
-                        </div>
-                        <div class="tc-name">Карина Крамаренко</div>
-                        <div class="tc-role">Топ-менеджер</div>
-                        <div class="tc-bio">Серце нашої команди. Координує всі процеси та забезпечує бездоганний сервіс для кожного клієнта.</div>
-                    </div>
-
-                    <div class="tc-slide tc-slide--anli">
-                        <div class="tc-photo">
-                            <img src="images/team-anli.jpg" loading="lazy" alt="АнЛі" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;">
-                        </div>
-                        <div class="tc-name">АнЛі</div>
-                        <div class="tc-role">Демонстратор продукту</div>
-                        <div class="tc-bio">Представляє Event Genix на локаціях. Перший контакт з клієнтами.</div>
-                    </div>
-
-                    <div class="tc-slide tc-slide--sasha">
-                        <div class="tc-photo">
-                            <img src="images/team-sasha.jpg" loading="lazy" alt="Олександр Домн" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;">
-                        </div>
-                        <div class="tc-name">Олександр Домн</div>
-                        <div class="tc-role">Менеджер з впровадження</div>
-                        <div class="tc-bio">Реалізує технічні системи парку — турнікети, термінали, система карток на локаціях.</div>
-                    </div>
-
-                    <div class="tc-slide tc-slide--nv">
-                        <div class="tc-photo">
-                            <img src="images/team-nv.jpg" loading="lazy" alt="Наталія Василівна" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;">
-                        </div>
-                        <div class="tc-name">Наталія Василівна</div>
-                        <div class="tc-role">Strategic Business Advisor</div>
-                        <div class="tc-bio">«Дитячий центр без системи — це не бізнес. Це щоденне гасіння пожеж.»<br><br>15+ років у бізнес-консалтингу. Перевіряє кожну фічу Event Genix через призму реального бізнесу. Якщо функція не економить час чи гроші — вона не потрапляє в продукт.</div>
-                    </div>
-
-                </div>
-            </div>
-            <button class="tc-btn tc-btn--next" type="button">&#8594;</button>
-        </div>
-        <div class="tc-dots" id="tcDots"></div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 8: ОНОВЛЕННЯ -->
-<section class="section updates" id="updates">
-    <div class="container">
-        <h2 class="section__title fade-in">Ми не зупиняємось 🚀</h2>
-        <p class="section__subtitle fade-in">Нові фічі — кожного тижня. Ось що додали останнім часом.</p>
-        <div class="updates-grid fade-in">
-            <div class="update-card update-card--new">
-                <div class="update-card__badge">🔥 Нове</div>
-                <div class="update-card__version">Березень</div>
-                <div class="update-card__title">Персональний дашборд</div>
-                <ul class="update-card__list">
-                    <li>Кожен бачить тільки своє — директор, адмін, аніматор</li>
-                    <li>Перетягуй віджети як тобі зручно</li>
-                    <li>Показники дня з порівнянням до вчора</li>
-                    <li>Швидкі дії прямо з головного екрану</li>
-                </ul>
-            </div>
-            <div class="update-card">
-                <div class="update-card__version">Березень</div>
-                <div class="update-card__title">Командний месенджер</div>
-                <ul class="update-card__list">
-                    <li>Корпоративний чат прямо в CRM</li>
-                    <li>Канали, @згадки, реакції, відповіді</li>
-                    <li>Працює з телефону — як Telegram</li>
-                    <li>AI-асистент Клешня відповідає прямо в чаті</li>
-                </ul>
-            </div>
-            <div class="update-card">
-                <div class="update-card__version">Лютий</div>
-                <div class="update-card__title">Автозахват клієнтів</div>
-                <ul class="update-card__list">
-                    <li>Написали в Telegram — одразу в базі</li>
-                    <li>Працює з Facebook, Instagram, Viber</li>
-                    <li>Жодного втраченого ліда</li>
-                    <li>Менеджер отримує сповіщення миттєво</li>
-                </ul>
-            </div>
-            <div class="update-card">
-                <div class="update-card__version">Лютий</div>
-                <div class="update-card__title">AI-генерація контенту</div>
-                <ul class="update-card__list">
-                    <li>Афіші за 30 секунд — скажіть що потрібно</li>
-                    <li>Автоматичні сертифікати з іменем дитини</li>
-                    <li>Каталог піньят оновлюється сам</li>
-                    <li>Голосові оголошення через AI</li>
-                </ul>
-            </div>
-        </div>
-        <p class="section__note fade-in">Версія v25.4 · Березень 2026 · <a href="/" style="color:var(--gold);text-decoration:underline;">Увійти в систему →</a></p>
-    </div>
-</section>
-
-<!-- FAQ СЕКЦІЯ -->
-<section class="section faq" id="faq">
-    <div class="container">
-        <h2 class="section__title fade-in">Часті запитання</h2>
-        <div class="faq-list fade-in">
-            <div class="faq-item">
-                <button class="faq-q">Скільки часу займає впровадження? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Базове підключення — 1 робочий день. Ми налаштовуємо систему під вас: кімнати, програми, команду. Ви отримуєте готову до роботи CRM без зайвих технічних складнощів.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Що якщо у мене вже є CRM? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Event Genix може працювати паралельно або замінити існуючу систему. Ми допоможемо перенести дані. Більшість клієнтів переходять повністю — бо тут все в одному місці + AI.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Чи потрібні технічні знання? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Ні. Інтерфейс зрозумілий навіть для адмінів і аніматорів без досвіду. Є мобільна версія. Клешня відповідає на питання голосом у Telegram — навіть це не треба запам'ятовувати.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Де зберігаються мої дані? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">На захищеному хмарному сервері (Railway, EU). Резервне копіювання щодня. Тільки ви маєте доступ — ніяких "третіх осіб". Дані захищені шифруванням.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Чи є демо перед оплатою? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Так. Ми даємо повний доступ до живої системи на 7 днів безкоштовно. Без кредитної картки. Ви самі побачите — чи підходить вам це.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Що вмінить Клешня — AI-асистент? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Клешня бронює, нагадує, будує розклад, генерує афіші, відповідає на питання команди, складає P&L, контролює склад і багато іншого. Все через Telegram або веб-інтерфейс.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Скільки коштує і чи є приховані платежі? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Ціни фіксовані — від 2 000 ₴/міс за Базовий до 21 000 ₴/міс за повний пакет. Без прихованих комісій. Підключення — разово в доларах за курсом НБУ. Розхід на AI поки 0 ₴ — включено в тариф.</div>
-            </div>
-            <div class="faq-item">
-                <button class="faq-q">Що якщо я захочу скасувати підписку? <span class="faq-arrow">↓</span></button>
-                <div class="faq-a">Скасувати можна будь-коли. Ваші дані залишаються вашими — ми надамо повний експорт (CSV, JSON) всієї бази перед виходом. Без штрафів і утримання.</div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 9: ФІНАЛЬНИЙ CTA -->
-<section class="section cta" id="cta">
-    <div class="cta__bg"></div>
-    <div class="container">
-        <h2 class="section__title section__title--large fade-in">Готові автоматизувати свій бізнес?</h2>
-        <p class="section__subtitle fade-in">Дамо демо доступ. Покажемо на живій системі.<br>Без тиску. Без ультиматумів.</p>
-        <div class="cta__buttons fade-in">
-            <a href="/" class="btn btn--gold" target="_blank" rel="noopener">→ Відкрити живу систему</a>
-            <a href="https://t.me/EventHelper_One_Bot" class="btn btn--outline" target="_blank" rel="noopener">Написати боту в Telegram</a>
-        </div>
-        <p class="section__note">Або особисто: <a href="https://t.me/ArdDirector" target="_blank" style="color:var(--gold)">@ArdDirector</a> · Відповідаємо протягом години</p>
-    </div>
-</section>
-
-<!-- СЕКЦІЯ 9: FOOTER -->
-<footer class="footer">
-    <div class="container">
-        <div class="footer__top">
-            <div class="footer__brand">
-                <div class="footer__logo">Event Genix</div>
-                <p class="footer__tagline">AI-система що не спить,<br>поки ви відпочиваєте.</p>
-                <div class="footer__social">
-                    <a href="https://t.me/ArdDirector" target="_blank" rel="noopener" class="footer__social-link" title="Telegram">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
-                    </a>
-                </div>
-            </div>
-            <div class="footer__columns">
-                <div class="footer__col">
-                    <div class="footer__col-title">Продукт</div>
-                    <a href="#product">Можливості</a>
-                    <a href="#pricing">Базовий пакет</a>
-                    <a href="#pricing">HR-модуль</a>
-                    <a href="#pricing">Art Director</a>
-                    <a href="#pricing">Ціни</a>
-                </div>
-                <div class="footer__col">
-                    <div class="footer__col-title">Компанія</div>
-                    <a href="#how">Як це працює</a>
-                    <a href="#team">Команда</a>
-                    <a href="#cases">Кейси</a>
-                    <a href="#faq">FAQ</a>
-                    <a href="#updates">Оновлення</a>
-                </div>
-                <div class="footer__col">
-                    <div class="footer__col-title">Контакти</div>
-                    <a href="https://t.me/ArdDirector" target="_blank" rel="noopener">💬 @ArdDirector</a>
-                    <a href="https://t.me/EventHelper_One_Bot" target="_blank" rel="noopener">🤖 Написати боту</a>
-                    <a href="/" target="_blank">Відкрити систему</a>
-                </div>
-            </div>
-        </div>
-        <div class="footer__bottom">
-            <span>&copy; 2026 Event Genix. Зроблено в Україні. 🇺🇦</span>
-            <span class="footer__version">v25.4 · <a href="#updates" style="color:inherit">Changelog</a></span>
-        </div>
-    </div>
-</footer>
-
-<!-- Модальне вікно форми -->
-<div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-        <button class="modal__close" id="modalClose">&times;</button>
-        <h3 class="modal__title">Отримати демо доступ</h3>
-        <p class="modal__subtitle">Залиште контакти — ми зв'яжемось протягом дня</p>
-        <form class="modal__form" id="demoForm">
-            <input type="hidden" name="package" id="formPackage" value="">
-            <div class="form-group">
-                <label for="formName">Ваше ім'я</label>
-                <input type="text" id="formName" name="name" required placeholder="Як до вас звертатися?">
-            </div>
-            <div class="form-group">
-                <label for="formPhone">Телефон</label>
-                <input type="tel" id="formPhone" name="phone" required placeholder="+380 __ ___ __ __">
-            </div>
-            <div class="form-group">
-                <label for="formPackageDisplay">Пакет</label>
-                <select id="formPackageDisplay" name="packageDisplay">
-                    <option value="basic">Базовий — 2 000 ₴/міс</option>
-                    <option value="hr">+ HR Модуль — +3 000 ₴/міс</option>
-                    <option value="art">+ Art Director — +8 000 ₴/міс</option>
-                    <option value="designer">+ Дизайнер — +4 000 ₴/міс</option>
-                    <option value="sound">+ Звук — +2 000 ₴/міс</option>
-                    <option value="kleshnya">+ Клешня Agent — +2 000 ₴/міс</option>
-                    <option value="full">Повний пакет — 21 000 ₴/міс</option>
-                </select>
-                <div id="modalPriceHint" style="display:none;margin-top:8px;font-size:13px;color:#C9A84C;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:8px 12px;"></div>
-            </div>
-            <button type="submit" class="btn btn--gold btn--full">Надіслати заявку</button>
+    <section class="section cta" id="contact">
+      <div class="container narrow">
+        <h2>Якщо вже час не просто триматися, а змінюватися — почнімо роботу</h2>
+        <form class="form" id="leadForm" novalidate>
+          <label>Ім’я
+            <input type="text" name="name" required />
+          </label>
+          <label>Телефон або Telegram
+            <input type="text" name="phone_or_telegram" required />
+          </label>
+          <label>Email
+            <input type="email" name="email" required />
+          </label>
+          <label>Коротко про запит
+            <textarea name="request" rows="4" required></textarea>
+          </label>
+          <label>Зручний час для зв’язку
+            <input type="text" name="time" placeholder="Напр.: 08:00–11:00" />
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" name="consent" required />
+            Погоджуюсь з публічною офертою і політикою конфіденційності
+          </label>
+          <button class="btn btn--gold" type="submit">Надіслати заявку</button>
+          <p class="note" id="formStatus" role="status" aria-live="polite"></p>
         </form>
-        <div class="modal__success" id="modalSuccess" style="display:none;">
-            <div class="modal__success-icon">✓</div>
-            <p>Дякуємо! Ми зв'яжемось з вами найближчим часом.</p>
-        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div>
+        <strong>Майстерня долі</strong>
+        <p>Психологічний простір Олександра</p>
+        <p>Онлайн · Конфіденційно · Офіційна оплата</p>
+      </div>
+      <div>
+        <p>Email: <a href="mailto:dyvozir@gmail.com">dyvozir@gmail.com</a></p>
+        <p><a href="#" aria-disabled="true">TODO: Telegram / WhatsApp</a></p>
+      </div>
     </div>
-</div>
+    <p class="footer__copy">© <span id="year"></span> Майстерня долі. Всі права захищено.</p>
+  </footer>
 
-<!-- BACK TO TOP -->
-<button class="back-to-top" id="backToTop" title="Вгору">↑</button>
-
-<!-- STICKY BOTTOM CTA -->
-<div class="sticky-cta" id="stickyCta">
-    <div class="sticky-cta__inner">
-        <div class="sticky-cta__text">
-            <strong>Event Genix</strong> — <span>Готові спробувати?</span>
-        </div>
-        <div class="sticky-cta__actions">
-            <a href="https://t.me/ArdDirector" class="btn btn--gold" target="_blank" rel="noopener" style="padding:10px 24px;font-size:14px;">Написати в Telegram →</a>
-            <button class="sticky-cta__close" id="stickyCtaClose">✕</button>
-        </div>
-    </div>
-</div>
-
-<script src="script.js?v=5.3"></script>
+  <script src="script.js"></script>
 </body>
 </html>

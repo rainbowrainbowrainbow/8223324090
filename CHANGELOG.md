@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.82 - Timeline Filter Popover
+
+### Timeline controls / Filter popover / Topbar order / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Фільтри знову сховані за однією кнопкою** - date row показує тільки навігацію датою і `Фільтри`, а статус, період, тип і масштаб відкриваються компактним popover.
+- **Прибрано лякаючий ряд із багатьох кнопок** - `#timelineViewPanel` більше не розтягує control-line, не займає місце у closed state і не перетворює верхню зону на нескінченний toolbar.
+- **Кнопка `Фільтри` показує короткий summary активних налаштувань** - користувач бачить поточний зріз без відкриття панелі, а на вузьких екранах summary ховається, щоб не ламати date row.
+- **Topbar actions впорядковано** - theme і settings лишаються utility controls, `Історія змін` стоїть перед `Вийти`, а `Вийти` лишається останньою правою дією.
+- **Regression guards оновлено** - static і browser smoke тепер очікують compact popover, stable `z-index`, hidden closed state, logout rightmost і відсутність старого inline-ряду фільтрів.
+- **Auth, booking, API і БД не змінювались** - правка обмежена timeline header presentation, CSS, release markers і тестами.
+
+---
+
 ## v0.77.81 - Timeline Inline Filters Fix
 
 ### Timeline filters / Inline command line / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]

@@ -894,7 +894,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             historyVisible,
             historyBeforeLogout: Boolean(historyRect && logoutRect && historyRect.right <= logoutRect.left + 1),
             topbarRightmostId: topbarRightmost?.id || '',
-            viewToggleLabel: viewToggle?.textContent.trim() || '',
+            viewToggleLabel: viewToggle?.querySelector('.timeline-filter-label')?.textContent.trim() || viewToggle?.textContent.trim() || '',
             visibleTimelineViewLabels,
             commandCenterWidth: commandCenterRect ? Math.round(commandCenterRect.width * 100) / 100 : 0,
             commandCenterHeight: commandCenterRect ? Math.round(commandCenterRect.height * 100) / 100 : 0,
@@ -1008,16 +1008,16 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
         await setTimelineViewPanelOpen(page, true);
         const openMetrics = await readMetrics();
-        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens as inline filter controls at ${label}`);
+        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens as a compact filter popover at ${label}`);
         assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at ${label}`);
         assert.equal(openMetrics.viewPanelInCommandCenter, true, `view panel is mounted inside the command center at ${label}`);
-        assert.equal(openMetrics.viewPanelPosition, 'static', `view panel is inline controls, not an overlay tray, at ${label}`);
-        assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowTop - 1, `view panel starts inside the date command line at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowTop}px`);
-        assert.ok(openMetrics.viewPanelTop <= openMetrics.utilityRowBottom + 1, `view panel stays in the date command line at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
-        assert.ok(openMetrics.viewPanelBottom <= openMetrics.timelineTop + 1, `open filters stay above the timeline grid at ${label}: panel=${openMetrics.viewPanelBottom}px timeline=${openMetrics.timelineTop}px`);
-        assert.ok(openMetrics.commandCenterHeight <= 72, `opening filters keeps a compact command line at ${label}: ${openMetrics.commandCenterHeight}px`);
-        assert.ok(openMetrics.viewPanelWidth <= openMetrics.viewportWidth + 1, `open view panel stays inside viewport at ${label}: ${openMetrics.viewPanelWidth}px`);
-        assert.ok(openMetrics.viewPanelHeight <= 64, `open view panel avoids a large blank area at ${label}: ${openMetrics.viewPanelHeight}px`);
+        assert.equal(openMetrics.viewPanelPosition, 'absolute', `view panel is a popover, not an always-visible inline row, at ${label}`);
+        assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1, `view panel opens below the date command line at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
+        assert.ok(openMetrics.viewPanelTop <= openMetrics.utilityRowBottom + 18, `view panel stays attached to the filter trigger at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
+        assert.ok(openMetrics.commandCenterHeight <= metrics.commandCenterHeight + 2, `opening filters does not grow the command center at ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
+        assert.ok(Math.abs(openMetrics.timelineTop - metrics.timelineTop) <= 2, `opening filters does not push timeline down at ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.ok(openMetrics.viewPanelWidth <= Math.min(620, openMetrics.viewportWidth - 48) + 2, `open view panel stays compact at ${label}: ${openMetrics.viewPanelWidth}px`);
+        assert.ok(openMetrics.viewPanelHeight <= 220, `open view panel avoids a large blank area at ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside viewport at ${label}: ${openMetrics.viewPanelRight}px`);
         assert.ok(openMetrics.bodyOverflowX <= 2, `open attached view panel does not create body overflow at ${label}: ${openMetrics.bodyOverflowX}`);
         await setTimelineViewPanelOpen(page, false);
@@ -1059,11 +1059,11 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at narrow ${label}`);
         assert.equal(openMetrics.viewToggleExpanded, 'true', `timeline view toggle expands at narrow ${label}`);
         assert.equal(openMetrics.viewPanelInCommandCenter, true, `view panel is mounted inside the command center at narrow ${label}`);
-        assert.equal(openMetrics.viewPanelPosition, 'static', `view panel is inline controls, not an attached overlay, at narrow ${label}`);
-        assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowTop - 1, `view panel starts inside the command area at narrow ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowTop}px`);
-        assert.ok(openMetrics.viewPanelBottom <= openMetrics.timelineTop + 1, `open filters stay above the timeline grid at narrow ${label}: panel=${openMetrics.viewPanelBottom}px timeline=${openMetrics.timelineTop}px`);
-        assert.ok(openMetrics.commandCenterHeight <= 280, `opening filters stays bounded at narrow ${label}: ${openMetrics.commandCenterHeight}px`);
-        assert.ok(openMetrics.viewPanelHeight <= 260, `open view panel wraps without a huge blank area at narrow ${label}: ${openMetrics.viewPanelHeight}px`);
+        assert.equal(openMetrics.viewPanelPosition, 'absolute', `view panel is a compact popover at narrow ${label}`);
+        assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1, `view panel opens below the command area at narrow ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
+        assert.ok(openMetrics.commandCenterHeight <= metrics.commandCenterHeight + 2, `opening filters does not grow command center at narrow ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
+        assert.ok(Math.abs(openMetrics.timelineTop - metrics.timelineTop) <= 2, `opening filters does not push timeline down at narrow ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.ok(openMetrics.viewPanelHeight <= 320, `open view panel wraps without a huge blank area at narrow ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.bodyOverflowX <= 2, `open view panel does not create body overflow at narrow ${label}: ${openMetrics.bodyOverflowX}`);
         assert.ok(openMetrics.viewPanelLeft >= -1, `open view panel stays inside the left viewport edge at narrow ${label}: ${openMetrics.viewPanelLeft}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside the right viewport edge at narrow ${label}: ${openMetrics.viewPanelRight}px`);

@@ -2586,6 +2586,35 @@ body.timeline-dashboard-page .schedule-command-center .timeline-command-btn.hidd
     display: none !important;
 }
 
+body.timeline-dashboard-page .schedule-command-center #timelineViewPanelToggle {
+    gap: 8px !important;
+    padding-inline: 12px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center #timelineViewPanelToggle .timeline-filter-label {
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+}
+
+body.timeline-dashboard-page .schedule-command-center #timelineViewPanelToggle .timeline-filter-summary {
+    max-width: 170px;
+    min-width: 0;
+    display: inline-block;
+    color: var(--eg-text-muted, #7A8797);
+    font-size: 11px;
+    font-weight: 760;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .schedule-command-center #timelineViewPanelToggle.is-open .timeline-filter-summary {
+    color: currentColor;
+    opacity: 0.82;
+}
+
 body.timeline-dashboard-page .schedule-command-center .admin-dropdown[data-menu-scope="timeline-actions"] {
     margin-left: 0 !important;
     display: inline-flex;
@@ -5050,19 +5079,19 @@ body.timeline-dashboard-page .header .timeline-header-actions {
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions > #historyBtn {
-    order: 10;
-}
-
-body.timeline-dashboard-page .header .timeline-header-actions > #currentUser {
-    order: 20;
-}
-
-body.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
     order: 30;
 }
 
+body.timeline-dashboard-page .header .timeline-header-actions > #currentUser {
+    order: 5;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
+    order: 10;
+}
+
 body.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {
-    order: 40;
+    order: 20;
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {
@@ -5362,21 +5391,22 @@ body.timeline-dashboard-page .timeline-view-panel {
     --timeline-header-filter-muted: var(--eg-text-muted, #7A8797);
     --timeline-header-filter-focus: var(--eg-focus-ring, rgba(14, 165, 134, 0.18));
     box-sizing: border-box;
-    position: static;
-    inset: auto;
-    z-index: auto;
-    flex: 0 1 auto;
-    width: max-content;
-    max-width: min(100%, calc(100vw - 48px));
-    max-inline-size: min(100%, calc(100vw - 48px));
-    padding: 0;
-    border: 0;
-    border-radius: 0;
+    position: absolute;
+    inset: auto auto auto 0;
+    top: calc(100% + 8px);
+    z-index: 140;
+    flex: 0 0 auto;
+    width: min(620px, calc(100vw - 48px));
+    max-width: min(620px, calc(100vw - 48px));
+    max-inline-size: min(620px, calc(100vw - 48px));
+    padding: 10px;
+    border: 1px solid var(--timeline-header-filter-border);
+    border-radius: 16px;
     outline: 0;
-    background: transparent;
-    box-shadow: none;
-    overflow: visible;
-    isolation: auto;
+    background: var(--eg-surface-elevated, #FFFFFF);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+    isolation: isolate;
 }
 
 body.timeline-dashboard-page .timeline-view-panel[hidden] {
@@ -5385,21 +5415,21 @@ body.timeline-dashboard-page .timeline-view-panel[hidden] {
 
 body.dark-mode.timeline-dashboard-page .timeline-view-panel,
 html[data-theme="dark"] body.timeline-dashboard-page .timeline-view-panel {
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(18, 26, 42, 0.96);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
 }
 
 body.timeline-dashboard-page .timeline-header-filters {
-    width: max-content;
+    width: 100%;
     min-width: 0;
     max-width: 100%;
     max-inline-size: 100%;
     box-sizing: border-box;
-    display: flex !important;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 6px 8px;
+    display: grid !important;
+    align-items: start;
+    grid-template-columns: minmax(240px, 1.25fr) minmax(150px, 0.75fr);
+    gap: 9px;
     min-height: 0;
     padding: 0;
     border: 0;
@@ -5407,7 +5437,7 @@ body.timeline-dashboard-page .timeline-header-filters {
     outline: 0;
     background: transparent;
     box-shadow: none;
-    overflow: visible;
+    overflow: hidden;
 }
 
 /* v0.77.69: header filter labels must not render full and short text at once. */
@@ -5444,19 +5474,27 @@ body.timeline-dashboard-page .timeline-header-filter-group .view-mode-controls {
 }
 
 body.timeline-dashboard-page .timeline-header-filter-group--status {
-    inline-size: 258px !important;
+    inline-size: auto !important;
+    grid-column: 1;
+    grid-row: 1;
 }
 
 body.timeline-dashboard-page .timeline-header-filter-group--period {
-    inline-size: 164px !important;
+    inline-size: auto !important;
+    grid-column: 2;
+    grid-row: 1;
 }
 
 body.timeline-dashboard-page .timeline-header-filter-group--type {
-    inline-size: 176px !important;
+    inline-size: auto !important;
+    grid-column: 1;
+    grid-row: 2;
 }
 
 body.timeline-dashboard-page .timeline-header-filter-group--zoom {
-    inline-size: 176px !important;
+    inline-size: auto !important;
+    grid-column: 2;
+    grid-row: 2;
 }
 
 body.timeline-dashboard-page .timeline-view-panel-label {
@@ -5814,36 +5852,36 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--ac
     margin-left: 0 !important;
 }
 
-/* v0.77.81: filters expand inline in the compact date command line. */
+/* v0.77.82: filters stay hidden behind one compact popover trigger. */
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open {
     width: max-content !important;
     max-width: 100% !important;
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-    gap: 8px !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: flex-start !important;
+    gap: 0 !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel {
-    position: static !important;
-    inset: auto !important;
-    top: auto !important;
+    position: absolute !important;
+    inset: auto auto auto 0 !important;
+    top: calc(100% + 8px) !important;
     right: auto !important;
     bottom: auto !important;
-    left: auto !important;
-    z-index: auto !important;
-    flex: 0 1 auto !important;
-    width: max-content !important;
-    max-width: min(100%, calc(100vw - 48px)) !important;
-    max-inline-size: min(100%, calc(100vw - 48px)) !important;
+    left: 0 !important;
+    z-index: 140 !important;
+    flex: 0 0 auto !important;
+    width: min(620px, calc(100vw - 48px)) !important;
+    max-width: min(620px, calc(100vw - 48px)) !important;
+    max-inline-size: min(620px, calc(100vw - 48px)) !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 10px !important;
     display: block;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    overflow: visible !important;
+    border: 1px solid var(--timeline-header-filter-border, rgba(148, 163, 184, 0.24)) !important;
+    border-radius: 16px !important;
+    background: var(--eg-surface-elevated, rgba(15, 23, 42, 0.96)) !important;
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18) !important;
+    overflow: hidden !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel[hidden] {
@@ -5851,13 +5889,37 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
 }
 
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filters {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    align-items: flex-end !important;
-    width: max-content !important;
+    display: grid !important;
+    grid-template-columns: minmax(240px, 1.25fr) minmax(150px, 0.75fr) !important;
+    align-items: start !important;
+    width: 100% !important;
     max-width: 100% !important;
-    grid-template-columns: none !important;
-    gap: 6px 8px !important;
+    gap: 9px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group {
+    width: 100% !important;
+    inline-size: auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group--status {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group--period {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group--type {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group--zoom {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
 }
 
 @media (max-width: 768px) {
@@ -5885,19 +5947,24 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
         width: 100% !important;
         max-width: 100% !important;
         max-inline-size: 100% !important;
-        padding: 0 !important;
+        padding: 10px !important;
     }
 
     body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filters {
         width: 100% !important;
-        flex-direction: column !important;
         gap: 8px !important;
-        grid-template-columns: none !important;
+        grid-template-columns: 1fr !important;
     }
 
     body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel .timeline-header-filter-group {
         width: 100% !important;
         inline-size: auto !important;
         flex: 1 1 100% !important;
+        grid-column: auto !important;
+        grid-row: auto !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center #timelineViewPanelToggle .timeline-filter-summary {
+        display: none;
     }
 }

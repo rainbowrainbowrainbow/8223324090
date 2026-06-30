@@ -1570,19 +1570,19 @@ body.timeline-dashboard-page.dark-mode .header {
 }
 
 .timeline-dashboard-page .header .timeline-header-actions > #historyBtn {
-    order: 10;
-}
-
-.timeline-dashboard-page .header .timeline-header-actions > #currentUser {
-    order: 20;
-}
-
-.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
     order: 30;
 }
 
+.timeline-dashboard-page .header .timeline-header-actions > #currentUser {
+    order: 5;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
+    order: 10;
+}
+
 .timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {
-    order: 40;
+    order: 20;
 }
 
 .timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {

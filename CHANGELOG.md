@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.77 - Variant 3 Header Polish
+
+### HR Pulse Variant 3 / Staff reports parity / Compact headers / Motion guardrails / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **HR Pulse command cards наближено до Variant 3** - `Сьогодні`, `Графік` і `Звіти` стали компактними картками зліва, з фіолетовим active state, м'якою accent line і без розтягування на всю ширину.
+- **`/staff` отримав той самий navigation rhythm** - статичний `staff-pulse-nav` вирівняно з HR Pulse: `Графік` лишається active, route `/staff` збережений, nav PNG більше не потрібні.
+- **`/hr#reports` інтегровано в той самий shell** - reports card активується коректно, CSV badge лишається правдивим, а верхній reports hero узгоджено зі спокійною Variant 3 подачею.
+- **Mobile і focus polish стабілізовано** - active card автоматично прокручується у видиму зону, focus-visible, hover/press і reduced-motion стани зафіксовані без агресивного glow.
+- **Regression guards оновлено** - `tests/ui-check.js` і `tests/hr-button-contract.test.js` захищають compact flex contract, route `/staff`, відсутність plain team card і застарілих nav PNG.
+- **Релізні маркери піднято до `0.77.77`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.76 - Timeline Header Normal Mode Fix
 
 ### Timeline header / Normal mode / Compact cleanup / Browser guards / Release hygiene / (Клешня, 30.06.2026) [codex]

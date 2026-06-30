@@ -79,6 +79,8 @@ checkPage('index.html', (doc, html) => {
     const timelineHeaderOneRowDesktopCss = sourceBlock(responsiveCss, '/* v0.77.76: desktop header filters stay in one row', '@media (max-width: 1360px) and (min-width: 1181px) {');
     const timelineHeaderLabelBreakpointCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) {');
     const timelineHeaderNarrowDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1360px) and (min-width: 1181px) {');
+    const timelineMediumToolbarCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) and (min-width: 769px) {');
+    const timelineMediumCenterRule = cssRuleText(timelineMediumToolbarCss, 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center');
     const timelineHeaderFiltersRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters');
     const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
     const timelineWideDesktopFiltersRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters');
@@ -403,7 +405,9 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'display: none !important;')
         && htmlContains('css/responsive.css', 'overflow-x: auto !important')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center {\n        justify-self: stretch !important;\n        justify-content: flex-start !important;')
+        && /justify-self:\s*stretch/.test(timelineMediumCenterRule)
+        && /justify-content:\s*flex-start\s*!important;/.test(timelineMediumCenterRule)
+        && /overflow-x:\s*auto\s*!important;/.test(timelineMediumCenterRule)
         && htmlContains('css/responsive.css', 'gap: 5px !important;'));
     check('Timeline toolbar controls use shared classes and requested design tokens',
         doc.querySelectorAll('.timeline-header-filters .segmentedControl').length >= 4
@@ -1177,6 +1181,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule exposes managed replacement controls and state', !!doc.getElementById('schReplaceBtn') && !!doc.getElementById('schClearReplacementBtn') && !!doc.getElementById('schReplacementDetails') && staffCode.includes('async function replaceScheduleEntry') && staffCode.includes('async function clearScheduleReplacement') && staffCode.includes('function scheduleReplacementCandidates') && staffCode.includes('sch-replacement-badge') && staffPagesCss.includes('.sch-cell.is-replacement') && staffPagesCss.includes('.sch-replacement-details[hidden]'));
     const staffPulseTabs = [...doc.querySelectorAll('.staff-pulse-nav .staff-pulse-tab')];
     const staffPulseNavRule = cssRuleText(staffPagesCss, '.staff-pulse-nav');
+    const staffPulseNavItemsRule = cssRuleText(staffPagesCss, '.staff-pulse-nav-items');
     const staffPulseTabRule = cssRuleText(staffPagesCss, '.staff-pulse-tab');
     const staffPulseTabIconRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-icon');
     const staffPulseTabLineRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-line');
@@ -1212,7 +1217,7 @@ checkPage('staff.html', (doc, html) => {
         && html.includes('images/hr-pulse/schedule-operations.png')
         && staffPagesCss.includes('v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm')
         && staffPagesCss.includes('.staff-pulse-nav-items')
-        && staffPagesCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
+        && !staffPulseNavItemsRule.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
         && staffPagesCss.includes('.staff-pulse-tab-icon')
         && staffPagesCss.includes('.staff-pulse-tab-title')
         && staffPagesCss.includes('.staff-pulse-tab-subtitle')
@@ -1229,6 +1234,15 @@ checkPage('staff.html', (doc, html) => {
         staffPulseBoundedContainer(staffPulseNavRule)
         && staffPulseBoundedContainer(staffPulseTabRule)
         && staffPulseBoundedContainer(staffScheduleCommandRule));
+    check('Staff HR Pulse command shell uses compact flex cards without full-width stretch',
+        /display:\s*flex;/.test(staffPulseNavItemsRule)
+        && /flex-wrap:\s*nowrap;/.test(staffPulseNavItemsRule)
+        && /width:\s*auto;/.test(staffPulseNavItemsRule)
+        && /flex:\s*0 0 clamp\(172px,\s*15vw,\s*210px\);/.test(staffPulseTabRule)
+        && /max-width:\s*210px;/.test(staffPulseTabRule)
+        && /@media \(max-width:\s*1120px\)/.test(staffPagesCss)
+        && /overflow-x:\s*auto;/.test(staffPagesCss)
+        && /scrollbar-width:\s*none;/.test(staffPagesCss));
     check('Staff HR Pulse icon cards keep bounded decorative affordances',
         /display:\s*grid;/.test(staffPulseTabIconRule)
         && /place-items:\s*center;/.test(staffPulseTabIconRule)
@@ -2266,6 +2280,21 @@ check('Theme switch belongs to the top-right header, not the sidebar or timeline
 check('CRM dark theme is the default unless a user explicitly chose light', fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8').includes('const CRM_DEFAULT_DARK_MODE = true') && htmlContains('index.html', "var d=s!=='false';") && htmlContains('profile.html', "var d=s!=='false';") && fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8').includes('window.CRM_DEFAULT_DARK_MODE !== false') && fs.readFileSync(path.join(ROOT, 'js/profile-page.js'), 'utf8').includes("localStorage.getItem('pzp_dark_mode') !== 'false'"));
 check('Header right-side actions hide duplicate profile name and share compact control sizing', layoutCss.includes('.header .user-panel > .user-name') && layoutCss.includes('display: none !important') && layoutCss.includes('width: 64px') && layoutCss.includes('min-height: 42px') && layoutCss.includes('border-radius: 12px'));
 check('Global search is injected by the shared authenticated header on all CRM pages', authCode.includes('function initGlobalHeaderSearch') && authCode.includes('ensureGlobalSearchModal') && authCode.includes('js/search.js') && authCode.includes('js/crm-feature-registry.js') && authCode.includes('globalHeaderSearchBtn') && layoutCss.includes('v0.56.6: shared header search') && layoutCss.includes('.header-search-btn') && layoutCss.includes('.search-overlay') && layoutCss.includes('.search-container'));
+check('Shared compact header guardrails keep search, theme, and logout controls without regressing timeline search removal',
+    authCode.includes('function initGlobalHeaderSearch')
+    && authCode.includes('function initHeaderThemeToggle')
+    && authCode.includes('function bindLogoutButton')
+    && layoutCss.includes('.header .btn-search')
+    && layoutCss.includes('.header .header-search-btn')
+    && layoutCss.includes('.header-theme-toggle')
+    && layoutCss.includes('.btn-logout')
+    && layoutCss.includes('.header .user-panel > .user-name')
+    && layoutCss.includes('.header .btn-search:focus-visible')
+    && layoutCss.includes('.header .header-search-btn:focus-visible')
+    && !htmlContains('index.html', 'id="globalHeaderSearchBtn"')
+    && !htmlContains('index.html', 'class="btn-search"')
+    && htmlContains('index.html', 'class="timeline-header-filters"')
+    && htmlContains('index.html', 'id="logoutBtn"'));
 check('Global search finds CRM pages, sections, product links, feature registry aliases, and assistant redirect commands', searchCode.includes('SEARCH_NAV_ALIASES') && searchCode.includes('window.Sidebar?.NAV_ITEMS') && searchCode.includes('getFeatureRegistryNavigationItems') && featureRegistryCode.includes('видати грамоту') && featureRegistryCode.includes("href: '/afisha'") && featureRegistryCode.includes("href: '/programs#kitchen-cakes'") && featureRegistryCode.includes("href: '/hr#dismissed'") && featureRegistryCode.includes('звільнені співробітники') && searchCode.includes("'/programs#animation'") && searchCode.includes("'/programs#kitchen-menu'") && searchCode.includes('buildNavigationResults') && searchCode.includes('buildAssistantSuggestion') && searchCode.includes('assistant_command') && searchCode.includes('window.CrmAssistantRail?.tryRunAssistantCommand') && searchCode.includes('/sales-funnel') && searchCode.includes('/finance') && layoutCss.includes('v0.57.12: global search is also a CRM navigation and assistant command hub') && featuresCss.includes('v0.57.12: global search navigation/assistant hub styling parity'));
 check('Global search dark theme keeps modal hints and navigation results readable', layoutCss.includes('v0.61.44: global search dark contrast') && featuresCss.includes('v0.61.44: global search dark contrast') && layoutCss.includes('html[data-theme="dark"] .search-container') && featuresCss.includes('html[data-theme="dark"] .search-hint') && layoutCss.includes('background: rgba(15,23,42,0.58)') && featuresCss.includes('color: #CBD5E1'));
 const visibleAssistantNamingText = [
@@ -3952,8 +3981,65 @@ check('Graduation timeline renders package components as persisted interactive n
 check('Task/customer/finance edit surfaces use shared dirty guard', tasksCode.includes('attemptCloseEditableSurface(overlay') && customersCode.includes('attemptCloseEditableSurface(modal') && financeCode.includes('attemptCloseEditableSurface(modal'));
 check('Design/catalog overlays guard dirty dismiss paths', designsPageCode.includes('attemptCloseEditableSurface(overlay') && designsHtml.includes('guardedEditableOverlayClose') && designsHtml.includes('closeAutomationModal(false)'));
 check('Staff and HR edit modals use guarded close paths', staffCode.includes('attemptCloseEditableSurface(overlay') && hrCode.includes('closeHrEditableModal') && hrCode.includes('showHrEditableModal'));
-check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surfaces', htmlContains('hr.html', 'id="hrNav"') && htmlContains('hr.html', 'id="hrPageTitle"') && hrCode.includes('const HR_NAV_GROUPS') && hrCode.includes('const HR_STRUCTURE_WORKSPACE_TABS') && hrCode.includes('const HR_PAYROLL_WORKSPACE_TABS') && hrCode.includes('const HR_OTHER_WORKSPACE_TABS') && hrCode.includes('const HR_PULSE_WORKSPACE_TABS') && hrCode.includes('function isHrStructureWorkspaceTab') && hrCode.includes('function isHrPayrollWorkspaceTab') && hrCode.includes('function isHrOtherWorkspaceTab') && hrCode.includes('function isHrPulseWorkspaceTab') && hrCode.includes('function hrWorkspaceGroupId') && hrCode.includes('function updateHrPageTitle') && hrCode.includes('function bindHrNavClicks') && hrCode.includes("other: { tab: 'vacancies' }") && hrCode.includes("href: '/training#onboarding'") && hrCode.includes("window.location.replace('/training#onboarding')") && hrCode.includes("payroll: { tab: 'salary' }") && hrCode.includes("id: 'pulse'") && hrCode.includes("label: 'Пульс компанії'") && hrCode.includes("{ id: 'today', label: 'Сьогодні' }") && hrCode.includes("{ id: 'schedule', label: 'Графік', href: '/staff' }") && hrCode.includes("{ id: 'reports', label: 'Звіти' }") && sidebarCode.includes("label: 'Пульс компанії'") && sidebarCode.includes("label: 'ЗП та KPI'") && sidebarCode.includes("label: 'Вакансії'") && hrCode.includes("label: 'Команда'") && hrCode.includes("label: 'Структура компанії'") && hrCode.includes("{ id: 'salary', label: 'Зарплата' }") && hrCode.includes("{ id: 'zrs', label: 'ЗРС' }") && hrCode.includes("{ id: 'kpi', label: 'KPI' }") && !hrCode.includes("{ id: 'onboarding', label: 'Онбординг' }") && hrCode.includes("{ id: 'vacancies', label: 'Вакансії' }") && !hrCode.includes("{ id: 'costumes', label: 'Костюми'") && hrCode.includes("{ id: 'checklists', label: 'Чеклисти' }") && hrCode.includes("label: 'ЗП та KPI'") && hrCode.includes("label: 'Вакансії'") && hrCode.includes("note: 'найм, відгуки, співбесіди, шаблони платформ'") && hrCode.includes("workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse'") && hrCode.includes("workspaceGroupId === 'other' ? 'Навігація вакансій'") && hrCode.includes("nav.classList.toggle('hr-nav--structure-only'") && hrCode.includes("nav.classList.toggle('hr-nav--pulse'") && hrCode.includes("workspaceMode || pulseMode ? ' hidden' : ''") && hrCode.includes('if (header) header.hidden = pulseMode') && htmlContains('hr.html', '.hr-nav {') && htmlContains('hr.html', 'flex-direction: column') && htmlContains('hr.html', '.hr-nav--structure-only') && htmlContains('hr.html', '.hr-nav--structure-only .hr-nav-group-title') && htmlContains('hr.html', '.hr-nav--pulse .hr-nav-items') && htmlContains('hr.html', 'grid-template-columns: repeat(3, minmax(0, 1fr));') && htmlContains('hr.html', 'data-vacancy-tab="responses"') && htmlContains('hr.html', 'data-vacancy-tab="interviews"') && htmlContains('hr.html', 'data-vacancy-tab="templates"') && hrCode.includes('function formatVacancyPlatformText') && hrRouteCode.includes("router.get('/vacancy-platforms'") && hrRouteCode.includes("router.post('/vacancy-platforms/format-preview'") && !htmlContains('hr.html', 'data-tab="ai-team"') && !htmlContains('hr.html', 'data-tab="ratings"') && !htmlContains('hr.html', 'id="tab-leaves"'));
+check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surfaces',
+    htmlContains('hr.html', 'id="hrNav"')
+    && htmlContains('hr.html', 'id="hrPageTitle"')
+    && [
+        'const HR_NAV_GROUPS',
+        'const HR_STRUCTURE_WORKSPACE_TABS',
+        'const HR_PAYROLL_WORKSPACE_TABS',
+        'const HR_OTHER_WORKSPACE_TABS',
+        'const HR_PULSE_WORKSPACE_TABS',
+        'function isHrStructureWorkspaceTab',
+        'function isHrPayrollWorkspaceTab',
+        'function isHrOtherWorkspaceTab',
+        'function isHrPulseWorkspaceTab',
+        'function hrWorkspaceGroupId',
+        'function updateHrPageTitle',
+        'function bindHrNavClicks',
+        "other: { tab: 'vacancies' }",
+        "href: '/training#onboarding'",
+        "window.location.replace('/training#onboarding')",
+        "payroll: { tab: 'salary' }",
+        "id: 'pulse'",
+        "{ id: 'today', label:",
+        "{ id: 'schedule', label:",
+        "href: '/staff'",
+        "{ id: 'reports', label:",
+        "label: 'KPI'",
+        "workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse'",
+        "workspaceGroupId === 'other' ?",
+        "nav.classList.toggle('hr-nav--structure-only'",
+        "nav.classList.toggle('hr-nav--pulse'",
+        "workspaceMode || pulseMode ? ' hidden' : ''",
+        'if (header) header.hidden = pulseMode',
+        'function formatVacancyPlatformText'
+    ].every(token => hrCode.includes(token))
+    && [
+        "href: '/hr'",
+        "href: '/hr#payroll'",
+        "href: '/hr#other'"
+    ].every(token => sidebarCode.includes(token))
+    && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
+    && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
+    && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
+    && hrPageCss.includes('.hr-nav {')
+    && hrPageCss.includes('flex-direction: column')
+    && hrPageCss.includes('.hr-nav--structure-only')
+    && hrPageCss.includes('.hr-nav--structure-only .hr-nav-group-title')
+    && hrPageCss.includes('.hr-nav--pulse .hr-nav-items')
+    && hrPageCss.includes('flex-wrap: nowrap;')
+    && !hrPageCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
+    && htmlContains('hr.html', 'data-vacancy-tab="responses"')
+    && htmlContains('hr.html', 'data-vacancy-tab="interviews"')
+    && htmlContains('hr.html', 'data-vacancy-tab="templates"')
+    && hrRouteCode.includes("router.get('/vacancy-platforms'")
+    && hrRouteCode.includes("router.post('/vacancy-platforms/format-preview'")
+    && !htmlContains('hr.html', 'data-tab="ai-team"')
+    && !htmlContains('hr.html', 'data-tab="ratings"')
+    && !htmlContains('hr.html', 'id="tab-leaves"'));
 const hrPulseNavSurfaceRule = cssRuleText(hrPageCss, '.hr-nav--pulse');
+const hrPulseNavItemsRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-nav-items');
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardIconRule = cssRuleText(hrPageCss, '.hr-pulse-card-icon');
 const hrPulseCardLineRule = cssRuleText(hrPageCss, '.hr-pulse-card-line');
@@ -4008,7 +4094,12 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible')
     && /overflow:\s*hidden;/.test(hrPulseNavSurfaceRule)
     && /contain:\s*layout paint;/.test(hrPulseNavSurfaceRule)
+    && /display:\s*flex;/.test(hrPulseNavItemsRule)
+    && /flex-wrap:\s*nowrap;/.test(hrPulseNavItemsRule)
+    && /width:\s*auto;/.test(hrPulseNavItemsRule)
     && /display:\s*grid;/.test(hrPulseCardRule)
+    && /flex:\s*0 0 clamp\(172px,\s*15vw,\s*210px\);/.test(hrPulseCardRule)
+    && /max-width:\s*210px;/.test(hrPulseCardRule)
     && /overflow:\s*hidden;/.test(hrPulseCardRule)
     && /contain:\s*layout paint;/.test(hrPulseCardRule)
     && /display:\s*grid;/.test(hrPulseCardIconRule)
@@ -4023,6 +4114,10 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && /inset:\s*0;/.test(hrReportsHeroMediaImgRule)
     && /max-width:\s*none;/.test(hrReportsHeroMediaImgRule)
     && hrPageCss.includes('@media (max-width: 480px)')
+    && hrPageCss.includes('@media (max-width: 1120px)')
+    && hrPageCss.includes('overflow-x: auto;')
+    && hrPageCss.includes('scrollbar-width: none;')
+    && !hrPageCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
     && hrPageCss.includes('@media (prefers-reduced-motion: reduce)'));
 check('HR Pulse command cards do not depend on legacy nav PNG layers',
     legacyHrPulseNavTokens.every(token => !hrCode.includes(token) && !hrPageCss.includes(token)));

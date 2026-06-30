@@ -421,6 +421,7 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
 
     for (const token of [
         '.hr-nav--pulse .hr-tab.hr-pulse-card',
+        '.hr-nav--pulse .hr-nav-items',
         '.hr-pulse-card-icon',
         '.hr-pulse-card-title',
         '.hr-pulse-card-subtitle',
@@ -431,6 +432,19 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
     ]) {
         assert.ok(HR_HTML.includes(token), `missing HR Pulse command-card CSS token ${token}`);
     }
+
+    for (const token of [
+        'flex-wrap: nowrap;',
+        'width: auto;',
+        'flex: 0 0 clamp(172px, 15vw, 210px);',
+        'max-width: 210px;',
+        '@media (max-width: 1120px)',
+        'overflow-x: auto;',
+        'scrollbar-width: none;'
+    ]) {
+        assert.ok(HR_HTML.includes(token), `missing HR Pulse compact shell token ${token}`);
+    }
+    assert.equal(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), false, 'HR Pulse must not return to full-width 3-column grid');
 
     for (const legacyToken of [
         'today-nav-light.png',
@@ -1212,7 +1226,9 @@ test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap t
     assert.ok(HR_HTML.includes('.hr-people-bucket-grid { grid-template-columns: 1fr; }'));
     assert.ok(HR_HTML.includes('.hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }'));
     assert.ok(HR_HTML.includes('.hr-nav--pulse .hr-nav-items'));
-    assert.ok(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'));
+    assert.ok(HR_HTML.includes('flex-wrap: nowrap;'));
+    assert.ok(HR_HTML.includes('overflow-x: auto;'));
+    assert.equal(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), false);
     assert.ok(HR_HTML.includes('body.dark-mode .hr-nav--pulse .hr-tab.active'));
 
     const bodyRule = HR_HTML.match(/\.hr-people-bucket-body\s*\{([\s\S]*?)\}/)?.[1] || '';

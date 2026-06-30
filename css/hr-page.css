@@ -57,20 +57,36 @@
     flex-direction: row;
 }
 .hr-nav--pulse {
+    --hr-pulse-violet: 168, 85, 247;
     position: relative;
     top: auto;
     z-index: 2;
     flex-direction: row;
     align-items: center;
-    gap: 0;
-    margin-bottom: 14px;
-    padding: 6px;
-    border: 1px solid rgba(20,184,166,0.12);
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 7px;
+    border: 1px solid rgba(148,163,184,0.14);
     border-radius: 14px;
-    background: linear-gradient(135deg, rgba(15,23,42,0.025), rgba(99,102,241,0.055));
-    box-shadow: 0 8px 18px rgba(15,23,42,0.055);
+    background:
+        linear-gradient(180deg, rgba(18,24,42,0.94), rgba(9,14,26,0.94));
+    box-shadow: 0 12px 30px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05);
     overflow: hidden;
     contain: layout paint;
+}
+.hr-nav--pulse::after {
+    content: "";
+    flex: 1 1 260px;
+    min-width: 180px;
+    max-width: 520px;
+    height: 44px;
+    margin-left: auto;
+    border: 1px solid rgba(148,163,184,0.10);
+    border-radius: 12px;
+    background:
+        linear-gradient(90deg, rgba(148,163,184,0.06), rgba(168,85,247,0.06));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+    pointer-events: none;
 }
 .hr-nav--pulse + #tab-today.active {
     position: relative;
@@ -80,6 +96,9 @@
     padding: 4px;
 }
 .hr-nav--pulse .hr-nav-group {
+    flex: 0 1 auto;
+    max-width: 100%;
+    min-width: 0;
     padding: 0;
     background: transparent;
 }
@@ -98,10 +117,12 @@
     min-width: 0;
 }
 .hr-nav--pulse .hr-nav-items {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
     gap: 8px;
-    width: 100%;
+    width: auto;
+    max-width: 100%;
 }
 .hr-nav--structure-only .hr-nav-items {
     width: 100%;
@@ -112,48 +133,48 @@
 .hr-nav--pulse .hr-tab {
     position: relative;
     min-width: 0;
-    min-height: 52px;
-    padding: 13px 16px;
+    min-height: 48px;
+    padding: 10px 12px;
     border: 1px solid transparent;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.42);
-    color: var(--gray-600);
-    font-size: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    color: #AEB6CB;
+    font-size: 13px;
     font-weight: 900;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.34);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .hr-nav--pulse .hr-tab:hover,
 .hr-nav--pulse .hr-tab:focus-visible {
-    border-color: rgba(20,184,166,0.20);
-    background: rgba(255,255,255,0.72);
-    color: var(--gray-800);
+    border-color: rgba(168,85,247,0.28);
+    background: rgba(255,255,255,0.065);
+    color: #F8FAFC;
 }
 .hr-nav--pulse .hr-tab.active {
-    border-color: rgba(20,184,166,0.30);
-    background: linear-gradient(135deg, rgba(20,184,166,0.18), rgba(99,102,241,0.16));
-    color: var(--primary);
-    box-shadow: 0 14px 26px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.50);
+    border-color: rgba(168,85,247,0.48);
+    background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(30,41,59,0.70));
+    color: #FFFFFF;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card {
-    --hr-pulse-accent: 20, 184, 166;
+    --hr-pulse-accent: 148, 163, 184;
     position: relative;
     display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) auto;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
-    min-height: 72px;
-    max-width: 100%;
-    padding: 12px 14px 14px;
-    border: 1px solid rgba(var(--hr-pulse-accent),0.18);
+    gap: 10px;
+    flex: 0 0 clamp(172px, 15vw, 210px);
+    width: clamp(172px, 15vw, 210px);
+    min-height: 58px;
+    max-width: 210px;
+    padding: 10px 12px 13px;
+    border: 1px solid rgba(148,163,184,0.14);
     overflow: hidden;
     isolation: isolate;
     border-radius: 12px;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.12), transparent 42%),
-        linear-gradient(135deg, rgba(255,255,255,0.78), rgba(248,250,252,0.92));
-    color: #0F172A;
+    background: linear-gradient(135deg, rgba(17,24,39,0.86), rgba(21,27,48,0.84));
+    color: #F8FAFC;
     text-align: left;
-    box-shadow: 0 6px 14px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.72);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
     transform: translateZ(0);
     transition:
         transform var(--speed-fast) var(--ease-smooth),
@@ -165,20 +186,20 @@
     contain: layout paint;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="people"] {
-    --hr-pulse-accent: 34, 211, 238;
+    --hr-pulse-accent: 168, 85, 247;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="schedule"] {
-    --hr-pulse-accent: 16, 185, 129;
+    --hr-pulse-accent: 45, 212, 191;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="reports"] {
-    --hr-pulse-accent: 245, 158, 11;
+    --hr-pulse-accent: 251, 191, 36;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card::before {
     content: "";
     position: absolute;
     inset: 0;
     z-index: 0;
-    background: radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.18), transparent 46%);
+    background: linear-gradient(90deg, rgba(var(--hr-pulse-accent),0.08), transparent 48%);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--speed-fast) var(--ease-smooth);
@@ -188,13 +209,13 @@
     z-index: 1;
     display: grid;
     place-items: center;
-    width: 34px;
-    height: 34px;
-    min-width: 34px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
     border-radius: 10px;
     background: rgba(var(--hr-pulse-accent),0.12);
     color: rgb(var(--hr-pulse-accent));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.54);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
     transition:
         transform var(--speed-fast) var(--ease-smooth),
         background var(--speed-fast) var(--ease-smooth),
@@ -219,8 +240,8 @@
 }
 .hr-pulse-card-title,
 .hr-pulse-card-label {
-    color: #0F172A;
-    font-size: 15px;
+    color: #F8FAFC;
+    font-size: 14px;
     font-weight: 900;
     line-height: 1.12;
     overflow: hidden;
@@ -234,7 +255,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--gray-500);
+    color: #8F9AB3;
     font-size: 11px;
     font-weight: 800;
     line-height: 1.2;
@@ -249,8 +270,8 @@
     min-height: 22px;
     padding: 0 7px;
     border-radius: 999px;
-    background: rgba(var(--hr-pulse-accent),0.14);
-    color: rgb(var(--hr-pulse-accent));
+    background: rgba(148,163,184,0.11);
+    color: #CBD5E1;
     font-size: 11px;
     font-weight: 900;
     line-height: 1;
@@ -263,13 +284,13 @@
     position: absolute;
     left: 12px;
     right: 12px;
-    bottom: 7px;
+    bottom: 6px;
     z-index: 1;
     height: 2px;
     border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgb(var(--hr-pulse-accent)), transparent);
-    opacity: 0.24;
-    transform: scaleX(0.18);
+    background: linear-gradient(90deg, transparent, rgba(var(--hr-pulse-violet),0.94), transparent);
+    opacity: 0.18;
+    transform: scaleX(0.24);
     transform-origin: left;
     transition:
         opacity var(--speed-fast) var(--ease-smooth),
@@ -278,12 +299,10 @@
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible {
     transform: translateY(-1px);
-    border-color: rgba(var(--hr-pulse-accent),0.42);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.16), transparent 44%),
-        linear-gradient(135deg, rgba(255,255,255,0.88), rgba(248,250,252,0.98));
-    color: #0F172A;
-    box-shadow: 0 9px 20px rgba(15,23,42,0.12), 0 0 0 2px rgba(var(--hr-pulse-accent),0.10);
+    border-color: rgba(168,85,247,0.34);
+    background: linear-gradient(135deg, rgba(31,41,68,0.92), rgba(27,33,58,0.90));
+    color: #FFFFFF;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.20), 0 0 0 1px rgba(168,85,247,0.08);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover::before,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible::before {
@@ -292,7 +311,7 @@
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon {
     background: rgba(var(--hr-pulse-accent),0.18);
-    transform: scale(1.04);
+    transform: scale(1.03);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-line,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-line {
@@ -305,33 +324,31 @@
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible {
     outline: none;
     box-shadow:
-        0 9px 20px rgba(15,23,42,0.12),
-        0 0 0 2px rgba(var(--hr-pulse-accent),0.32),
-        0 0 0 5px rgba(255,255,255,0.64);
+        0 8px 18px rgba(0,0,0,0.20),
+        0 0 0 2px rgba(168,85,247,0.40),
+        0 0 0 5px rgba(168,85,247,0.14);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active {
-    border-color: rgba(var(--hr-pulse-accent),0.56);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.24), transparent 44%),
-        linear-gradient(135deg, rgba(var(--hr-pulse-accent),0.14), rgba(255,255,255,0.92));
-    color: #0F172A;
+    border-color: rgba(var(--hr-pulse-violet),0.56);
+    background: linear-gradient(135deg, rgba(var(--hr-pulse-violet),0.34), rgba(38,31,63,0.88));
+    color: #FFFFFF;
     box-shadow:
-        0 10px 22px rgba(15,23,42,0.14),
-        0 0 0 1px rgba(var(--hr-pulse-accent),0.12),
-        inset 0 1px 0 rgba(255,255,255,0.18);
+        0 10px 22px rgba(0,0,0,0.28),
+        0 0 0 1px rgba(var(--hr-pulse-violet),0.14),
+        inset 0 1px 0 rgba(255,255,255,0.10);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-accent),0.22);
-    color: #0F172A;
+    background: rgba(var(--hr-pulse-violet),0.24);
+    color: #F5F3FF;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-line {
     opacity: 1;
     transform: scaleX(1);
-    box-shadow: 0 0 12px rgba(var(--hr-pulse-accent),0.42);
+    box-shadow: 0 0 12px rgba(var(--hr-pulse-violet),0.42);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge {
-    background: rgba(var(--hr-pulse-accent),0.22);
-    color: #0F172A;
+    background: rgba(var(--hr-pulse-violet),0.24);
+    color: #FFFFFF;
 }
 .hr-tab {
     flex: 0 1 150px;
@@ -421,18 +438,16 @@ body.dark-mode .hr-nav--pulse .hr-tab.active {
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card {
-    border-color: rgba(var(--hr-pulse-accent),0.20);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.12), transparent 44%),
-        linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,30,56,0.96));
+    border-color: rgba(148,163,184,0.14);
+    background: linear-gradient(135deg, rgba(17,24,39,0.86), rgba(21,27,48,0.84));
     color: #F8FAFC;
-    box-shadow: 0 7px 16px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
 }
 body.dark-mode .hr-pulse-card-icon,
 [data-theme="dark"] .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-accent),0.16);
+    background: rgba(var(--hr-pulse-accent),0.12);
     color: rgb(var(--hr-pulse-accent));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
 body.dark-mode .hr-pulse-card-title,
 body.dark-mode .hr-pulse-card-label,
@@ -446,8 +461,8 @@ body.dark-mode .hr-pulse-card-subtitle,
 }
 body.dark-mode .hr-pulse-card-badge,
 [data-theme="dark"] .hr-pulse-card-badge {
-    background: rgba(var(--hr-pulse-accent),0.18);
-    color: #E2E8F0;
+    background: rgba(148,163,184,0.11);
+    color: #CBD5E1;
 }
 body.dark-mode .hr-pulse-card-line,
 [data-theme="dark"] .hr-pulse-card-line {
@@ -457,36 +472,32 @@ body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:hover,
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:hover,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible {
-    border-color: rgba(var(--hr-pulse-accent),0.38);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.18), transparent 44%),
-        linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,30,56,1));
+    border-color: rgba(168,85,247,0.34);
+    background: linear-gradient(135deg, rgba(31,41,68,0.92), rgba(27,33,58,0.90));
     color: #FFFFFF;
-    box-shadow: 0 9px 20px rgba(0,0,0,0.30), 0 0 0 2px rgba(var(--hr-pulse-accent),0.12);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.20), 0 0 0 1px rgba(168,85,247,0.08);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-accent),0.24);
+    background: rgba(var(--hr-pulse-accent),0.18);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active {
-    border-color: rgba(var(--hr-pulse-accent),0.54);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--hr-pulse-accent),0.26), transparent 44%),
-        linear-gradient(135deg, rgba(var(--hr-pulse-accent),0.16), rgba(15,23,42,0.96));
+    border-color: rgba(var(--hr-pulse-violet),0.56);
+    background: linear-gradient(135deg, rgba(var(--hr-pulse-violet),0.34), rgba(38,31,63,0.88));
     color: #FFFFFF;
     box-shadow:
-        0 10px 22px rgba(0,0,0,0.32),
-        0 0 0 1px rgba(var(--hr-pulse-accent),0.14),
-        inset 0 1px 0 rgba(255,255,255,0.12);
+        0 10px 22px rgba(0,0,0,0.28),
+        0 0 0 1px rgba(var(--hr-pulse-violet),0.14),
+        inset 0 1px 0 rgba(255,255,255,0.10);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge {
-    background: rgba(var(--hr-pulse-accent),0.26);
+    background: rgba(var(--hr-pulse-violet),0.24);
     color: #FFFFFF;
 }
 body.dark-mode .hr-today-date {
@@ -4510,6 +4521,12 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 /* ==========================================
    RESPONSIVE
    ========================================== */
+@media (max-width: 1120px) {
+    .hr-nav--pulse::after {
+        display: none;
+    }
+}
+
 @media (max-width: 768px) {
     .hr-tabs,
     .hr-nav { gap: 6px; }
@@ -4544,7 +4561,15 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     .hr-tab { min-width: 80px; padding: 8px 10px; font-size: 12px; }
     .hr-nav--pulse .hr-nav-items {
         gap: 6px;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .hr-nav--pulse .hr-nav-items::-webkit-scrollbar {
+        display: none;
     }
     .hr-nav--pulse .hr-tab {
         min-height: 44px;
@@ -4552,6 +4577,8 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         font-size: 12px;
     }
     .hr-nav--pulse .hr-tab.hr-pulse-card {
+        flex-basis: 168px;
+        width: 168px;
         grid-template-columns: 30px minmax(0, 1fr) auto;
         gap: 8px;
         min-height: 60px;
@@ -4830,6 +4857,8 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     }
 
     .hr-nav--pulse .hr-tab.hr-pulse-card {
+        flex-basis: 148px;
+        width: 148px;
         grid-template-columns: 26px minmax(0, 1fr);
         gap: 6px;
         min-height: 56px;

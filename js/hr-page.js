@@ -1284,6 +1284,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
         </section>
     `).join('') : '<div class="hr-nav-empty">Немає доступних HR-розділів</div>';
     applyPulseCardBadges();
+    scrollActiveHrPulseCardIntoView();
 }
 
 function hashForHrTarget(target, bucket = null) {
@@ -1312,6 +1313,24 @@ function syncHrNavActive(target, bucket = null) {
     const tab = document.querySelector(`.hr-tab[data-tab="${tabSelector}"]${bucketSelector}`)
         || document.querySelector(`.hr-tab[data-tab="${tabSelector}"]`);
     tab?.classList.add('active');
+    scrollActiveHrPulseCardIntoView();
+}
+
+function scrollActiveHrPulseCardIntoView() {
+    const nav = document.getElementById('hrNav');
+    if (!nav?.classList.contains('hr-nav--pulse')) return;
+    const activeCard = nav.querySelector('.hr-pulse-card.active');
+    const scroller = activeCard?.closest('.hr-nav-items');
+    if (!activeCard || !scroller || scroller.scrollWidth <= scroller.clientWidth + 4) return;
+    const reduceMotion = typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.requestAnimationFrame(() => {
+        activeCard.scrollIntoView({
+            block: 'nearest',
+            inline: 'center',
+            behavior: reduceMotion ? 'auto' : 'smooth'
+        });
+    });
 }
 
 function setHrNavTeamMode(target) {

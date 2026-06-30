@@ -1737,58 +1737,71 @@ body.dark-mode .hr-role-pill.bad {
 
 /* v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm. */
 .staff-pulse-nav {
+    --staff-pulse-violet: 168, 85, 247;
     position: relative;
     top: auto;
     z-index: 2;
     display: flex;
     align-items: center;
-    gap: 0;
-    margin-bottom: 18px;
-    padding: 8px;
-    border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
-    border-radius: 18px;
-    background: linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--gray-900) 4%, transparent),
-        color-mix(in srgb, var(--secondary, var(--primary)) 8%, transparent)
-    );
-    box-shadow: var(--shadow-md);
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 7px;
+    border: 1px solid rgba(148,163,184,0.14);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(18,24,42,0.94), rgba(9,14,26,0.94));
+    box-shadow: 0 12px 30px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05);
     overflow: hidden;
     isolation: isolate;
     contain: layout paint;
 }
 
+.staff-pulse-nav::after {
+    content: "";
+    flex: 1 1 260px;
+    min-width: 180px;
+    max-width: 520px;
+    height: 44px;
+    margin-left: auto;
+    border: 1px solid rgba(148,163,184,0.10);
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(148,163,184,0.06), rgba(168,85,247,0.06));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+    pointer-events: none;
+}
+
 .staff-pulse-nav-items {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
     gap: 8px;
-    width: 100%;
+    width: auto;
+    max-width: 100%;
     min-width: 0;
 }
 
 .staff-pulse-tab {
-    --staff-pulse-accent: 20, 184, 166;
+    --staff-pulse-accent: 148, 163, 184;
     position: relative;
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    flex: 0 0 clamp(172px, 15vw, 210px);
+    width: clamp(172px, 15vw, 210px);
     min-width: 0;
-    max-width: 100%;
-    min-height: 88px;
-    padding: 14px 16px 16px;
-    border: 1px solid rgba(var(--staff-pulse-accent),0.18);
-    border-radius: 18px;
+    max-width: 210px;
+    min-height: 58px;
+    padding: 10px 12px 13px;
+    border: 1px solid rgba(148,163,184,0.14);
+    border-radius: 12px;
     overflow: hidden;
     isolation: isolate;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.12), transparent 42%),
-        linear-gradient(135deg, rgba(255,255,255,0.82), rgba(248,250,252,0.96));
-    color: #0F172A;
+    background: linear-gradient(135deg, rgba(17,24,39,0.86), rgba(21,27,48,0.84));
+    color: #F8FAFC;
     font-family: inherit;
     text-align: left;
     text-decoration: none;
-    box-shadow: 0 18px 36px rgba(15,23,42,0.12), inset 0 1px 0 color-mix(in srgb, var(--white) 72%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
     transition:
         transform var(--speed-fast) var(--ease-smooth),
         border-color var(--speed-fast) var(--ease-smooth),
@@ -1800,15 +1813,15 @@ body.dark-mode .hr-role-pill.bad {
 }
 
 .staff-pulse-tab[data-pulse-tone="people"] {
-    --staff-pulse-accent: 34, 211, 238;
+    --staff-pulse-accent: 168, 85, 247;
 }
 
 .staff-pulse-tab[data-pulse-tone="schedule"] {
-    --staff-pulse-accent: 16, 185, 129;
+    --staff-pulse-accent: 45, 212, 191;
 }
 
 .staff-pulse-tab[data-pulse-tone="reports"] {
-    --staff-pulse-accent: 245, 158, 11;
+    --staff-pulse-accent: 251, 191, 36;
 }
 
 .staff-pulse-tab::before {
@@ -1816,7 +1829,7 @@ body.dark-mode .hr-role-pill.bad {
     position: absolute;
     inset: 0;
     z-index: 0;
-    background: radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.18), transparent 46%);
+    background: linear-gradient(90deg, rgba(var(--staff-pulse-accent),0.08), transparent 48%);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--speed-fast) var(--ease-smooth);
@@ -1827,13 +1840,13 @@ body.dark-mode .hr-role-pill.bad {
     z-index: 1;
     display: grid;
     place-items: center;
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    border-radius: 12px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border-radius: 10px;
     background: rgba(var(--staff-pulse-accent),0.12);
     color: rgb(var(--staff-pulse-accent));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.54);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
     transition:
         transform var(--speed-fast) var(--ease-smooth),
         background var(--speed-fast) var(--ease-smooth),
@@ -1842,8 +1855,8 @@ body.dark-mode .hr-role-pill.bad {
 
 .staff-pulse-tab-icon svg {
     display: block;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
 }
 
 .staff-pulse-tab-content {
@@ -1853,7 +1866,7 @@ body.dark-mode .hr-role-pill.bad {
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     width: 100%;
     min-width: 0;
     padding: 0;
@@ -1861,9 +1874,9 @@ body.dark-mode .hr-role-pill.bad {
 
 .staff-pulse-tab-title,
 .staff-pulse-tab-label {
-    color: #0F172A;
-    font-size: 16px;
-    font-weight: 950;
+    color: #F8FAFC;
+    font-size: 14px;
+    font-weight: 900;
     line-height: 1.12;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1877,9 +1890,9 @@ body.dark-mode .hr-role-pill.bad {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--gray-500);
-    font-size: 12px;
-    font-weight: 850;
+    color: #8F9AB3;
+    font-size: 11px;
+    font-weight: 800;
     line-height: 1.2;
 }
 
@@ -1889,14 +1902,14 @@ body.dark-mode .hr-role-pill.bad {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 26px;
-    min-height: 24px;
-    padding: 0 8px;
+    min-width: 24px;
+    min-height: 22px;
+    padding: 0 7px;
     border-radius: 999px;
-    background: rgba(var(--staff-pulse-accent),0.14);
-    color: rgb(var(--staff-pulse-accent));
+    background: rgba(148,163,184,0.11);
+    color: #CBD5E1;
     font-size: 11px;
-    font-weight: 950;
+    font-weight: 900;
     line-height: 1;
     white-space: nowrap;
 }
@@ -1907,15 +1920,15 @@ body.dark-mode .hr-role-pill.bad {
 
 .staff-pulse-tab-line {
     position: absolute;
-    left: 14px;
-    right: 14px;
-    bottom: 8px;
+    left: 12px;
+    right: 12px;
+    bottom: 6px;
     z-index: 1;
     height: 2px;
     border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgb(var(--staff-pulse-accent)), transparent);
-    opacity: 0.24;
-    transform: scaleX(0.18);
+    background: linear-gradient(90deg, transparent, rgba(var(--staff-pulse-violet),0.94), transparent);
+    opacity: 0.18;
+    transform: scaleX(0.24);
     transform-origin: left;
     transition:
         opacity var(--speed-fast) var(--ease-smooth),
@@ -1926,12 +1939,10 @@ body.dark-mode .hr-role-pill.bad {
 .staff-pulse-tab:focus-visible {
     outline: none;
     transform: translateY(-1px);
-    border-color: rgba(var(--staff-pulse-accent),0.52);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.16), transparent 44%),
-        linear-gradient(135deg, rgba(255,255,255,0.9), rgba(248,250,252,1));
-    color: #0F172A;
-    box-shadow: 0 22px 42px rgba(15,23,42,0.18), 0 0 0 3px rgba(var(--staff-pulse-accent),0.14);
+    border-color: rgba(168,85,247,0.34);
+    background: linear-gradient(135deg, rgba(31,41,68,0.92), rgba(27,33,58,0.90));
+    color: #FFFFFF;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.20), 0 0 0 1px rgba(168,85,247,0.08);
 }
 
 .staff-pulse-tab:hover::before,
@@ -1942,7 +1953,7 @@ body.dark-mode .hr-role-pill.bad {
 .staff-pulse-tab:hover .staff-pulse-tab-icon,
 .staff-pulse-tab:focus-visible .staff-pulse-tab-icon {
     background: rgba(var(--staff-pulse-accent),0.18);
-    transform: scale(1.04);
+    transform: scale(1.03);
 }
 
 .staff-pulse-tab:hover .staff-pulse-tab-line,
@@ -1957,36 +1968,39 @@ body.dark-mode .hr-role-pill.bad {
 
 .staff-pulse-tab:focus-visible {
     box-shadow:
-        0 22px 42px rgba(15,23,42,0.18),
-        0 0 0 3px rgba(var(--staff-pulse-accent),0.26),
-        0 0 0 6px color-mix(in srgb, var(--white) 72%, transparent);
+        0 8px 18px rgba(0,0,0,0.20),
+        0 0 0 2px rgba(168,85,247,0.40),
+        0 0 0 5px rgba(168,85,247,0.14);
 }
 
 .staff-pulse-tab.active,
 .staff-pulse-tab[aria-current="page"] {
-    border-color: rgba(var(--staff-pulse-accent),0.72);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.24), transparent 44%),
-        linear-gradient(135deg, rgba(var(--staff-pulse-accent),0.14), rgba(255,255,255,0.94));
-    color: #0F172A;
+    border-color: rgba(var(--staff-pulse-violet),0.56);
+    background: linear-gradient(135deg, rgba(var(--staff-pulse-violet),0.34), rgba(38,31,63,0.88));
+    color: #FFFFFF;
     box-shadow:
-        0 24px 48px rgba(15,23,42,0.20),
-        0 0 0 1px rgba(var(--staff-pulse-accent),0.16),
-        0 0 34px rgba(var(--staff-pulse-accent),0.18),
-        inset 0 1px 0 color-mix(in srgb, var(--white) 26%, transparent);
+        0 10px 22px rgba(0,0,0,0.28),
+        0 0 0 1px rgba(var(--staff-pulse-violet),0.14),
+        inset 0 1px 0 rgba(255,255,255,0.10);
 }
 
 .staff-pulse-tab.active .staff-pulse-tab-icon,
 .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-icon {
-    background: rgba(var(--staff-pulse-accent),0.22);
-    color: #0F172A;
+    background: rgba(var(--staff-pulse-violet),0.24);
+    color: #F5F3FF;
 }
 
 .staff-pulse-tab.active .staff-pulse-tab-line,
 .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-line {
     opacity: 1;
     transform: scaleX(1);
-    box-shadow: 0 0 12px rgba(var(--staff-pulse-accent),0.42);
+    box-shadow: 0 0 12px rgba(var(--staff-pulse-violet),0.42);
+}
+
+.staff-pulse-tab.active .staff-pulse-tab-badge,
+.staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge {
+    background: rgba(var(--staff-pulse-violet),0.24);
+    color: #FFFFFF;
 }
 
 .staff-schedule-command {
@@ -2481,29 +2495,24 @@ body.dark-mode[data-page-group="hr"] .schedule-table .sch-cell.today-col,
 
 body.dark-mode .staff-pulse-nav,
 [data-theme="dark"] .staff-pulse-nav {
-    border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 18%, transparent);
-    background: linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--surface, #1E1E38) 96%, transparent),
-        color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 86%, transparent)
-    );
-    box-shadow: var(--shadow-lg);
+    border-color: rgba(148,163,184,0.14);
+    background: linear-gradient(180deg, rgba(18,24,42,0.94), rgba(9,14,26,0.94));
+    box-shadow: 0 12px 30px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
 body.dark-mode .staff-pulse-tab,
 [data-theme="dark"] .staff-pulse-tab {
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.12), transparent 42%),
-        linear-gradient(135deg, #070D1A, color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 82%, transparent));
+    border-color: rgba(148,163,184,0.14);
+    background: linear-gradient(135deg, rgba(17,24,39,0.86), rgba(21,27,48,0.84));
     color: #F8FAFC;
-    box-shadow: 0 20px 44px rgba(0,0,0,0.36), inset 0 1px 0 color-mix(in srgb, var(--white) 10%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
 }
 
 body.dark-mode .staff-pulse-tab-icon,
 [data-theme="dark"] .staff-pulse-tab-icon {
-    background: rgba(var(--staff-pulse-accent),0.16);
+    background: rgba(var(--staff-pulse-accent),0.12);
     color: rgb(var(--staff-pulse-accent));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 body.dark-mode .staff-pulse-tab-title,
@@ -2520,44 +2529,47 @@ body.dark-mode .staff-pulse-tab-subtitle,
 
 body.dark-mode .staff-pulse-tab-badge,
 [data-theme="dark"] .staff-pulse-tab-badge {
-    background: rgba(var(--staff-pulse-accent),0.18);
-    color: #E2E8F0;
+    background: rgba(148,163,184,0.11);
+    color: #CBD5E1;
 }
 
 body.dark-mode .staff-pulse-tab:hover,
 body.dark-mode .staff-pulse-tab:focus-visible,
 [data-theme="dark"] .staff-pulse-tab:hover,
 [data-theme="dark"] .staff-pulse-tab:focus-visible {
-    border-color: rgba(var(--staff-pulse-accent),0.54);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.18), transparent 44%),
-        linear-gradient(135deg, #070D1A, color-mix(in srgb, var(--bg-tertiary, #2A2A4A) 88%, transparent));
+    border-color: rgba(168,85,247,0.34);
+    background: linear-gradient(135deg, rgba(31,41,68,0.92), rgba(27,33,58,0.90));
     color: #FFFFFF;
-    box-shadow: 0 24px 48px rgba(0,0,0,0.42), 0 0 0 3px rgba(var(--staff-pulse-accent),0.16);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.20), 0 0 0 1px rgba(168,85,247,0.08);
 }
 
 body.dark-mode .staff-pulse-tab.active,
 body.dark-mode .staff-pulse-tab[aria-current="page"],
 [data-theme="dark"] .staff-pulse-tab.active,
 [data-theme="dark"] .staff-pulse-tab[aria-current="page"] {
-    border-color: rgba(var(--staff-pulse-accent),0.74);
-    background:
-        radial-gradient(circle at 18% 0%, rgba(var(--staff-pulse-accent),0.24), transparent 44%),
-        linear-gradient(135deg, rgba(var(--staff-pulse-accent),0.14), #070D1A);
+    border-color: rgba(var(--staff-pulse-violet),0.56);
+    background: linear-gradient(135deg, rgba(var(--staff-pulse-violet),0.34), rgba(38,31,63,0.88));
     color: #FFFFFF;
     box-shadow:
-        0 26px 52px rgba(0,0,0,0.46),
-        0 0 0 1px rgba(var(--staff-pulse-accent),0.18),
-        0 0 38px rgba(var(--staff-pulse-accent),0.22),
-        inset 0 1px 0 color-mix(in srgb, var(--white) 18%, transparent);
+        0 10px 22px rgba(0,0,0,0.28),
+        0 0 0 1px rgba(var(--staff-pulse-violet),0.14),
+        inset 0 1px 0 rgba(255,255,255,0.10);
 }
 
 body.dark-mode .staff-pulse-tab.active .staff-pulse-tab-icon,
 body.dark-mode .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-icon,
 [data-theme="dark"] .staff-pulse-tab.active .staff-pulse-tab-icon,
 [data-theme="dark"] .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-icon {
-    background: rgba(var(--staff-pulse-accent),0.22);
-    color: #F8FAFC;
+    background: rgba(var(--staff-pulse-violet),0.24);
+    color: #F5F3FF;
+}
+
+body.dark-mode .staff-pulse-tab.active .staff-pulse-tab-badge,
+body.dark-mode .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge,
+[data-theme="dark"] .staff-pulse-tab.active .staff-pulse-tab-badge,
+[data-theme="dark"] .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge {
+    background: rgba(var(--staff-pulse-violet),0.24);
+    color: #FFFFFF;
 }
 
 body.dark-mode .staff-schedule-command,
@@ -3165,6 +3177,25 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     border-color: color-mix(in srgb, var(--primary-light, var(--primary)) 24%, transparent);
 }
 
+@media (max-width: 1120px) {
+    .staff-pulse-nav::after {
+        display: none;
+    }
+
+    .staff-pulse-nav-items {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .staff-pulse-nav-items::-webkit-scrollbar {
+        display: none;
+    }
+}
+
 @media (max-width: 768px) {
     .hr-kpi-actions {
         width: 100%;
@@ -3186,15 +3217,27 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-nav {
         padding: 6px;
-        margin-bottom: 20px;
+        margin-bottom: 12px;
         border-radius: 14px;
     }
 
     .staff-pulse-nav-items {
         gap: 6px;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .staff-pulse-nav-items::-webkit-scrollbar {
+        display: none;
     }
 
     .staff-pulse-tab {
+        flex-basis: 168px;
+        width: 168px;
         min-height: 64px;
         grid-template-columns: 32px minmax(0, 1fr) auto;
         gap: 8px;
@@ -3436,6 +3479,8 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .staff-pulse-tab {
         grid-template-columns: 28px minmax(0, 1fr);
         gap: 6px;
+        flex-basis: 148px;
+        width: 148px;
         min-height: 58px;
         padding: 8px 7px 11px;
         border-radius: 12px;

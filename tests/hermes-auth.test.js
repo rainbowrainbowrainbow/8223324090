@@ -364,6 +364,7 @@ describe('Hermes capabilities route auth', () => {
                 'tasks.complete',
                 'tasks.reassign',
                 'tasks.reschedule',
+                'tasks.status',
                 'menu_photos.read',
                 'menu_photos.candidates',
                 'menu_photos.draft',

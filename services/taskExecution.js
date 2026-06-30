@@ -393,6 +393,72 @@ async function completeTask(taskId, actor, options = {}) {
     });
 }
 
+function normalizeTaskStatusForExecution(status) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (['todo', 'in_progress'].includes(normalized)) return normalized;
+    const err = new Error('Status must be todo or in_progress. Use completeTask for done.');
+    err.statusCode = 400;
+    err.code = 'INVALID_TASK_STATUS';
+    throw err;
+}
+
+async function updateTaskStatus(taskId, status, actor, options = {}) {
+    const targetStatus = normalizeTaskStatusForExecution(status);
+    return withTaskExecutionTransaction(options, async query => {
+        const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
+        if (!canMutateTask(actor, task)) {
+            throw forbidden('You cannot update this task status');
+        }
+        const currentStatus = String(task.status || 'todo').trim().toLowerCase();
+        if (['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(currentStatus)) {
+            const err = new Error('Task is already closed or cannot be updated');
+            err.statusCode = 409;
+            err.code = 'TASK_NOT_ACTIVE';
+            throw err;
+        }
+        if (currentStatus === targetStatus) {
+            const updated = normalizeTaskRow(task);
+            return { task: updated, historyEvent: null, unchanged: true };
+        }
+        const result = await query.query(
+            `UPDATE tasks
+             SET status = $2,
+                 workflow_state = CASE WHEN $2 = 'in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
+                 schedule_status = CASE WHEN scheduled_start_at IS NOT NULL AND schedule_status = 'completed' THEN 'scheduled' ELSE schedule_status END,
+                 completed_at = NULL,
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $1
+               AND COALESCE(version, 1) = $3
+               AND COALESCE(business_context, 'event_genix') = $4
+               AND COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
+             RETURNING *`,
+            [task.id, targetStatus, task.version || 1, task.business_context || 'event_genix']
+        );
+        if (!result.rows.length) {
+            const err = new Error('Task was changed by another user or is already closed');
+            err.statusCode = 409;
+            err.code = 'TASK_STALE_WRITE';
+            throw err;
+        }
+        const updated = normalizeTaskRow(result.rows[0]);
+        const historyEvent = await logTaskActionEvent({
+            taskId: task.id,
+            actionType: TASK_ACTION_TYPES.STATUS_CHANGED,
+            actor,
+            sourceSurface: sourceSurface(options.sourceSurface),
+            oldValue: { status: currentStatus },
+            newValue: { status: targetStatus },
+            meta: {
+                route: options.route || 'work_queue_task_status',
+                ownerStateBefore: task.ownerState,
+                canonicalField: 'tasks.status'
+            }
+        }, { pool: query });
+        return { task: updated, historyEvent, unchanged: false };
+    });
+}
+
 async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
     return withTaskExecutionTransaction(options, async query => {
         const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
@@ -538,5 +604,6 @@ module.exports = {
     taskRequiresCompletionReport,
     reassignTaskOwner,
     resolveDeadline,
-    rescheduleTask
+    rescheduleTask,
+    updateTaskStatus
 };

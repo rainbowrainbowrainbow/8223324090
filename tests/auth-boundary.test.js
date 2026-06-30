@@ -210,6 +210,7 @@ describe('API auth boundary middleware', () => {
             'tasks.complete',
             'tasks.reassign',
             'tasks.reschedule',
+            'tasks.status',
             'menu_photos.read',
             'menu_photos.candidates',
             'menu_photos.draft',

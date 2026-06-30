@@ -23,7 +23,8 @@ const {
     getAssignableTaskOwner,
     reassignTaskOwner,
     resolveDeadline,
-    rescheduleTask
+    rescheduleTask,
+    updateTaskStatus
 } = require('../services/taskExecution');
 const {
     TaskDuplicateError,
@@ -78,6 +79,7 @@ const SUPPORTED_ACTIONS = [
     'tasks.complete',
     'tasks.reassign',
     'tasks.reschedule',
+    'tasks.status',
     'menu_photos.read',
     'menu_photos.candidates',
     'menu_photos.draft',
@@ -147,6 +149,10 @@ const HERMES_RESCHEDULE_ALLOWED_FIELDS = new Set([
     'snooze_minutes',
     'snoozeHours',
     'snooze_hours'
+]);
+
+const HERMES_STATUS_ALLOWED_FIELDS = new Set([
+    'status'
 ]);
 
 const HERMES_MENU_PHOTO_DRAFT_ALLOWED_FIELDS = new Set([
@@ -651,6 +657,18 @@ function normalizeHermesReschedulePayload(body = {}) {
     };
 }
 
+function normalizeHermesStatusPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_STATUS_ALLOWED_FIELDS);
+    const status = String(body.status || '').trim().toLowerCase();
+    if (!['todo', 'in_progress'].includes(status)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_TASK_STATUS', 'status must be todo or in_progress; use /complete for done');
+    }
+    return { status };
+}
+
 function enrichHermesCreatedTask(task = {}, context = {}) {
     const actor = context.actor || {};
     const owner = context.owner || null;
@@ -1046,6 +1064,9 @@ function buildCapabilitiesPayload(env = process.env) {
             notificationOutbox: true
         },
         endpoints: {
+            tasks: {
+                status: 'POST /api/hermes/tasks/:id/status'
+            },
             notificationOutbox: {
                 list: 'GET /api/hermes/notification-outbox',
                 detail: 'GET /api/hermes/notification-outbox/:eventId',
@@ -1883,6 +1904,55 @@ function createHermesRouter(options = {}) {
             }
             log.error('Hermes task reschedule error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task reschedule failed');
+        }
+    });
+
+    router.post('/tasks/:id/status', requireHermesMutationGuard, async (req, res) => {
+        let payload;
+        let businessScope;
+        const taskId = parsePositiveInt(req.params.id);
+        if (!taskId) {
+            return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
+        }
+
+        try {
+            payload = normalizeHermesStatusPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_TASK_PAYLOAD', err.message);
+            }
+            log.error('Hermes task status preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task status failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const result = await updateTaskStatus(taskId, payload.status, req.user, {
+                    pool: mutationPool,
+                    businessScope,
+                    sourceSurface: 'hermes',
+                    route: 'hermes_task_status'
+                });
+                return {
+                    status: 200,
+                    body: hermesMutationTaskBody(req, businessScope, result.task, {
+                        historyEvent: result.historyEvent || null,
+                        unchanged: result.unchanged === true
+                    })
+                };
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/tasks/:id/status',
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_TASK_MUTATION_FAILED', err.message);
+            }
+            log.error('Hermes task status error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task status failed');
         }
     });
 

@@ -128,8 +128,9 @@ function setTimelineViewPanelOpen(open, options = {}) {
     panel.hidden = !nextOpen;
     toggle.classList.toggle('is-open', nextOpen);
     toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
-    toggle.title = nextOpen ? 'Закрити панель вигляду таймлайну' : 'Відкрити панель вигляду таймлайну';
+    toggle.title = nextOpen ? 'Закрити фільтри таймлайну' : 'Відкрити фільтри таймлайну';
     toggle.setAttribute('aria-label', toggle.title);
+    panel.closest('.schedule-command-center')?.classList.toggle('is-view-panel-open', nextOpen);
 
     if (nextOpen && options.focusPanel) {
         const firstControl = panel.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');

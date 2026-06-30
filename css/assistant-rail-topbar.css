@@ -1537,7 +1537,7 @@ body.timeline-dashboard-page.dark-mode .header {
     box-shadow: 0 0 0 3px var(--eg-focus-ring, rgba(14,165,134,0.18)) !important;
 }
 
-/* v0.77.78: timeline view-panel actions keep their button geometry after late assistant topbar CSS. */
+/* v0.77.78: timeline topbar utility actions keep their button geometry after late assistant topbar CSS. */
 .timeline-dashboard-page .header .header-content {
     --timeline-topbar-control-h: 40px;
     --timeline-topbar-radius: 10px;
@@ -1569,7 +1569,27 @@ body.timeline-dashboard-page.dark-mode .header {
     overflow: visible;
 }
 
-.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn, .timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle) {
+.timeline-dashboard-page .header .timeline-header-actions > #historyBtn {
+    order: 10;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions > #currentUser {
+    order: 20;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
+    order: 30;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {
+    order: 40;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {
+    order: 50;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-history-btn, .timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle) {
     flex: 0 0 auto;
     height: var(--timeline-topbar-control-h);
     min-height: var(--timeline-topbar-control-h);
@@ -1589,21 +1609,19 @@ body.timeline-dashboard-page.dark-mode .header {
     transform: none;
 }
 
-.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn) {
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn {
     padding: 0 12px;
     gap: 7px;
 }
 
-.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn):hover,
-.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn):focus-visible,
-.timeline-dashboard-page .header .timeline-header-actions .timeline-header-view-btn.is-open,
-.timeline-dashboard-page .header .timeline-header-actions .timeline-header-view-btn[aria-expanded="true"] {
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn:hover,
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn:focus-visible {
     border-color: var(--timeline-topbar-accent-border);
     background: var(--timeline-topbar-accent-soft);
     color: var(--timeline-topbar-accent);
 }
 
-.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-view-btn, .timeline-header-history-btn):focus-visible,
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn:focus-visible,
 .timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-settings-btn, .timeline-header-logout):focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px var(--timeline-topbar-focus);
@@ -1618,7 +1636,7 @@ body.timeline-dashboard-page.dark-mode .header {
     display: none;
 }
 
-.timeline-dashboard-page .header .timeline-header-actions .timeline-control-icon {
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn .timeline-control-icon {
     width: var(--timeline-topbar-icon-size);
     min-width: var(--timeline-topbar-icon-size);
     height: var(--timeline-topbar-icon-size);

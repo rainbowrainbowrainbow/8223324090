@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.76 - Timeline Header Normal Mode Fix
+
+### Timeline header / Normal mode / Compact cleanup / Browser guards / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Header таймлайна спрощено до нового normal contract** - прибрано зайву кнопку пошуку, visible label `Фільтри`, wrapper-обводку та compact toggle, щоб filters лишались легкими і не стискали timeline.
+- **Compact mode вимкнено для всіх користувачів** - старий `pzp_compact_mode=true` очищається, `AppState.compactMode` стартує як `false`, а normal timeline більше не відкривається зі стиснутими клітинками.
+- **Account actions винесено вправо** - `Вийти` отримав окрему right-side action zone, а gear налаштувань переноситься поруч із logout без зміни existing settings handler.
+- **15-хвилинний zoom contract зафіксовано без переписування математики** - browser smoke перевіряє 15/30/60, `CONFIG.TIMELINE.CELL_MINUTES`, saved zoom після reload, legacy compact preference і readable thresholds для cell/booking block.
+- **Regression guards посилено** - `tests/ui-check.js` і `tests/browser/timeline-browser-smoke.js` ловлять повернення search/compact/filter label, forced second-row desktop layout, clipping logout/settings і crushed normal timeline.
+- **Релізні маркери піднято до `0.77.76`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.75 - HR Pulse Icon Navigation
 
 ### HR Pulse / Staff navigation / Icon cards / Release hygiene / (Клешня, 30.06.2026) [codex]

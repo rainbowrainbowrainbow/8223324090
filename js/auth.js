@@ -2749,6 +2749,7 @@ function openGlobalHeaderSearch() {
 function initGlobalHeaderSearch() {
     const headerContent = document.querySelector('.header .header-content');
     if (!headerContent) return false;
+    if (document.body?.classList?.contains('timeline-dashboard-page')) return false;
 
     ensureGlobalSearchModal();
 

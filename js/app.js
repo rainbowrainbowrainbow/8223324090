@@ -107,7 +107,8 @@ function syncTimelineStatusFilterButtons() {
 function syncTimelineCompactToggleAria() {
     const toggle = document.getElementById('compactModeToggle');
     const chip = toggle?.closest?.('.timeline-compact-toggle');
-    const active = Boolean(AppState.compactMode);
+    AppState.compactMode = false;
+    const active = false;
     if (toggle) {
         toggle.checked = active;
         toggle.setAttribute('aria-checked', active ? 'true' : 'false');
@@ -205,7 +206,8 @@ function _checkAutoOpen() {
 
 function loadPreferences() {
     AppState.darkMode = initDarkMode();
-    AppState.compactMode = localStorage.getItem(timelineStorageKey('compact_mode')) === 'true';
+    localStorage.removeItem(timelineStorageKey('compact_mode'));
+    AppState.compactMode = false;
     const zoomKey = timelineStorageKey('zoom_level');
     const savedZoomRaw = localStorage.getItem(zoomKey);
     const savedZoom = Number.parseInt(savedZoomRaw, 10);
@@ -220,9 +222,6 @@ function loadPreferences() {
     syncTimelinePeriodSelector();
     if (typeof applyTimelineResponsiveDensity === 'function') {
         applyTimelineResponsiveDensity();
-    } else if (AppState.compactMode) {
-        CONFIG.TIMELINE.CELL_WIDTH = 35;
-        document.querySelector('.timeline-container')?.classList.add('compact');
     }
     if (typeof updateZoomButtons === 'function') updateZoomButtons();
 }

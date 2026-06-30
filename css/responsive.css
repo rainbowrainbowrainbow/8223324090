@@ -5035,7 +5035,7 @@ body.timeline-dashboard-page .header .user-panel {
     min-width: max-content;
     max-width: max-content;
     gap: 8px;
-    overflow: hidden;
+    overflow: visible;
 }
 
 body.timeline-dashboard-page .header .header-theme-toggle,
@@ -5045,6 +5045,74 @@ body.timeline-dashboard-page .header .btn-logout {
 
 body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
     margin-left: auto;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-left: auto;
+    padding-left: 14px;
+    border-left: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    flex: 0 0 40px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid rgba(148, 163, 184, 0.30) !important;
+    border-radius: 14px !important;
+    background: rgba(15, 23, 42, 0.04) !important;
+    color: var(--eg-text-muted, #64748B) !important;
+    box-shadow: none !important;
+    line-height: 1 !important;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn.hidden {
+    display: none !important;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn:hover,
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn:focus-visible,
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn.is-active {
+    border-color: rgba(20, 184, 166, 0.48) !important;
+    background: rgba(20, 184, 166, 0.10) !important;
+    color: var(--eg-accent-strong, #0F766E) !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 3px var(--timeline-header-filter-focus) !important;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-constructor-btn-icon {
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    font-size: 15px !important;
+    line-height: 1 !important;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-constructor-btn-label {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
 }
 
 body.timeline-dashboard-page .header .header-theme-toggle {
@@ -5165,17 +5233,13 @@ html[data-theme="dark"] body.timeline-dashboard-page .header .header-theme-toggl
 }
 
 body.timeline-dashboard-page .timeline-header-filters {
-    --timeline-header-filter-panel-bg: #F8FAFC;
-    --timeline-header-filter-panel-surface: rgba(248, 250, 252, 0.78);
     --timeline-header-filter-border: #E2E8F0;
-    --timeline-header-filter-panel-border: rgba(226, 232, 240, 0.74);
     --timeline-header-filter-control-bg: #FFFFFF;
     --timeline-header-filter-hover-bg: #F1F5F9;
     --timeline-header-filter-active-bg: #14B8A6;
     --timeline-header-filter-text: #475569;
     --timeline-header-filter-muted: #64748B;
     --timeline-header-filter-focus: rgba(20, 184, 166, 0.22);
-    --timeline-header-filter-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
     flex: 1 1 auto;
     width: auto;
     min-width: 0;
@@ -5186,11 +5250,12 @@ body.timeline-dashboard-page .timeline-header-filters {
     align-items: center;
     gap: 10px;
     min-height: 50px;
-    padding: 7px 10px;
-    border: 1px solid var(--timeline-header-filter-panel-border, var(--timeline-header-filter-border));
-    border-radius: 14px;
-    background: var(--timeline-header-filter-panel-surface, var(--timeline-header-filter-panel-bg));
-    box-shadow: var(--timeline-header-filter-panel-shadow);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
@@ -5212,36 +5277,13 @@ body.timeline-dashboard-page .timeline-header-filters::-webkit-scrollbar-thumb {
 
 body.dark-mode.timeline-dashboard-page .timeline-header-filters,
 html[data-theme="dark"] body.timeline-dashboard-page .timeline-header-filters {
-    --timeline-header-filter-panel-bg: rgba(15, 23, 42, 0.72);
-    --timeline-header-filter-panel-surface: rgba(15, 23, 42, 0.74);
     --timeline-header-filter-border: rgba(148, 163, 184, 0.18);
-    --timeline-header-filter-panel-border: rgba(148, 163, 184, 0.18);
     --timeline-header-filter-control-bg: rgba(30, 41, 59, 0.72);
     --timeline-header-filter-hover-bg: rgba(51, 65, 85, 0.82);
     --timeline-header-filter-active-bg: #14B8A6;
     --timeline-header-filter-text: #CBD5E1;
     --timeline-header-filter-muted: #94A3B8;
     --timeline-header-filter-focus: rgba(45, 212, 191, 0.30);
-    --timeline-header-filter-panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-}
-
-body.timeline-dashboard-page .timeline-header-filters-label {
-    flex: 0 0 auto;
-    min-width: max-content;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 34px;
-    min-height: 34px;
-    padding: 0 14px;
-    border: 1px solid var(--timeline-header-filter-border);
-    border-radius: 999px;
-    background: var(--timeline-header-filter-control-bg);
-    color: var(--timeline-header-filter-text);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 1;
-    white-space: nowrap;
 }
 
 body.timeline-dashboard-page .timeline-header-filter-icon {
@@ -5260,16 +5302,6 @@ body.timeline-dashboard-page .timeline-header-filter-icon {
 
 body.timeline-dashboard-page .timeline-header-filters > .timeline-header-filter-icon {
     display: inline-flex;
-}
-
-body.timeline-dashboard-page .timeline-header-filters-label .timeline-header-filter-icon {
-    width: 18px;
-    height: 18px;
-    min-width: 18px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: inherit;
 }
 
 body.timeline-dashboard-page .timeline-header-filter-icon svg {
@@ -5373,9 +5405,7 @@ body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn,
     color: var(--timeline-header-filter-text) !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):focus-visible,
-body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout:focus-visible,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:focus-within {
+body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):focus-visible {
     outline: none !important;
     box-shadow: 0 0 0 3px var(--timeline-header-filter-focus) !important;
 }
@@ -5394,117 +5424,40 @@ body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn,
     pointer-events: none !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle {
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout {
     flex: 0 0 auto;
-    position: relative;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 48px !important;
-    height: 34px !important;
-    min-width: 48px !important;
-    min-height: 34px !important;
-    padding: 0 !important;
-    border: 1px solid var(--timeline-header-filter-border) !important;
-    border-radius: 999px !important;
-    background: var(--timeline-header-filter-control-bg) !important;
-    cursor: pointer;
-    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-state {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle-track {
-    position: relative;
-    width: 30px;
-    height: 18px;
-    border-radius: 999px;
-    background: var(--timeline-header-filter-border);
-    transition: background-color 140ms ease;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle-thumb {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 12px;
-    height: 12px;
-    border-radius: 999px;
-    background: #FFFFFF;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
-    transition: transform 140ms ease, background-color 140ms ease;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:hover,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:focus-within {
-    border-color: var(--timeline-header-filter-border) !important;
-    background: var(--timeline-header-filter-hover-bg) !important;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle.active,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state:checked),
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state[aria-checked="true"]) {
-    border-color: var(--timeline-header-filter-active-bg) !important;
-    background: var(--timeline-header-filter-control-bg) !important;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle.active .timeline-compact-toggle-track,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state:checked) .timeline-compact-toggle-track,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state[aria-checked="true"]) .timeline-compact-toggle-track {
-    background: var(--timeline-header-filter-active-bg);
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle.active .timeline-compact-toggle-thumb,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state:checked) .timeline-compact-toggle-thumb,
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state[aria-checked="true"]) .timeline-compact-toggle-thumb {
-    transform: translateX(12px);
-    background: #FFFFFF;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle:has(.timeline-compact-state:disabled) {
-    cursor: not-allowed;
-    opacity: 0.4;
-    pointer-events: none;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout {
-    flex: 0 0 auto;
-    height: 34px !important;
-    min-height: 34px !important;
-    padding: 0 14px !important;
-    border: 1px solid var(--timeline-header-filter-border) !important;
-    border-radius: 999px !important;
-    background: var(--timeline-header-filter-control-bg) !important;
-    color: var(--timeline-header-filter-text) !important;
-    box-shadow: none !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 0 18px !important;
+    border: 1px solid rgba(13, 148, 136, 0.58) !important;
+    border-radius: 14px !important;
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.98), rgba(13, 148, 136, 0.94)) !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 10px 24px rgba(20, 184, 166, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
     font-size: 14px !important;
-    font-weight: 500 !important;
+    font-weight: 800 !important;
     line-height: 1 !important;
     white-space: nowrap;
 }
 
-body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout:hover,
-body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout:focus-visible {
-    border-color: var(--timeline-header-filter-border) !important;
-    background: var(--timeline-header-filter-hover-bg) !important;
-    color: var(--timeline-header-filter-text) !important;
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:hover,
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:focus-visible {
+    border-color: rgba(15, 118, 110, 0.68) !important;
+    background: linear-gradient(135deg, rgba(13, 148, 136, 1), rgba(15, 118, 110, 0.96)) !important;
+    color: #FFFFFF !important;
+    transform: none !important;
 }
 
-body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout:disabled,
-body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout[aria-disabled="true"] {
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 3px var(--timeline-header-filter-focus), 0 10px 24px rgba(20, 184, 166, 0.2) !important;
+}
+
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout:disabled,
+body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout[aria-disabled="true"] {
     cursor: not-allowed !important;
     opacity: 0.4 !important;
     pointer-events: none !important;
-}
-
-body.timeline-dashboard-page .timeline-header-filters .timeline-compact-state[hidden] {
-    display: none !important;
 }
 
 body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility {
@@ -5520,24 +5473,49 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
     min-height: 36px !important;
 }
 
-/* v0.77.73: wide constrained desktops need a second header row so filter actions are not clipped. */
+/* v0.77.76: desktop header filters stay in one row after removing search, compact mode, and the filter label. */
+@media (min-width: 1181px) {
+    body.timeline-dashboard-page .header .header-content {
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters {
+        order: initial;
+        flex: 1 1 auto;
+        flex-basis: auto;
+        width: auto;
+        max-width: 100%;
+        max-inline-size: 100%;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: visible;
+        overflow-y: visible;
+        touch-action: auto;
+    }
+
+    body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
+        margin-left: auto;
+    }
+}
+
 @media (max-width: 2160px) and (min-width: 1537px) {
     body.timeline-dashboard-page .header .header-content {
         gap: 8px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
     }
 
     body.timeline-dashboard-page .timeline-header-filters {
-        order: 4;
-        flex: 1 0 100%;
-        flex-basis: 100%;
-        width: 100%;
+        flex: 1 1 auto;
+        flex-basis: auto;
+        width: auto;
         max-width: 100%;
         max-inline-size: 100%;
         gap: 8px;
-        padding-left: 8px;
-        padding-right: 8px;
+        padding-left: 0;
+        padding-right: 0;
     }
 
     body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
@@ -5572,20 +5550,19 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
 @media (max-width: 1536px) and (min-width: 1181px) {
     body.timeline-dashboard-page .header .header-content {
         gap: 8px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
     }
 
     body.timeline-dashboard-page .timeline-header-filters {
-        order: 4;
-        flex: 1 0 100%;
-        flex-basis: 100%;
-        width: 100%;
+        flex: 1 1 auto;
+        flex-basis: auto;
+        width: auto;
         max-width: 100%;
         max-inline-size: 100%;
         gap: 6px;
-        padding-left: 8px;
-        padding-right: 8px;
+        padding-left: 0;
+        padding-right: 0;
     }
 
     body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
@@ -5622,10 +5599,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
         min-width: 26px;
     }
 
-    body.timeline-dashboard-page .timeline-header-filters-label {
-        padding-left: 10px;
-        padding-right: 10px;
-    }
 }
 
 @media (max-width: 1536px) {
@@ -5657,18 +5630,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
         display: inline;
     }
 
-    body.timeline-dashboard-page .timeline-header-filters-label {
-        width: 34px;
-        min-width: 34px;
-        padding-left: 0;
-        padding-right: 0;
-        justify-content: center;
-    }
-
-    body.timeline-dashboard-page .timeline-header-filters-label > span:not(.timeline-header-filter-icon) {
-        display: none;
-    }
-
     body.timeline-dashboard-page .timeline-header-filters .status-filter-controls {
         min-width: 202px !important;
     }
@@ -5685,7 +5646,7 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
         min-width: 136px !important;
     }
 
-    body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout {
+    body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout {
         padding-left: 12px !important;
         padding-right: 12px !important;
     }
@@ -5755,10 +5716,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
     body.timeline-dashboard-page .timeline-header-filters {
         gap: 8px;
         padding: 7px 8px;
-    }
-
-    body.timeline-dashboard-page .timeline-header-filters-label {
-        font-size: 14px;
     }
 
     body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {

@@ -523,24 +523,76 @@ async function assertBookingBlockVisible(page, bookingId) {
 }
 
 async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
+    const desktopViewports = [
+        { width: 2048, height: 1152 },
+        { width: 1920, height: 1080 },
+        { width: 1536, height: 864 }
+    ];
+    const readZoomState = () => page.evaluate(() => {
+        const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('zoom_level') : 'pzp_zoom_level';
+        const buttons = Array.from(document.querySelectorAll('.timeline-header-filters .zoom-btn')).map(btn => ({
+            zoom: btn.dataset.zoom,
+            active: btn.classList.contains('active'),
+            pressed: btn.getAttribute('aria-pressed')
+        }));
+        return {
+            configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
+            appZoomLevel: Number(AppState?.zoomLevel),
+            savedZoom: localStorage.getItem(key),
+            activeZoom: buttons.find(btn => btn.active)?.zoom || '',
+            buttons
+        };
+    });
+    const assertZoomLevel = async (level, label) => {
+        const expected = String(level);
+        await page.locator(`.timeline-header-filters .zoom-btn[data-zoom="${expected}"]`).click();
+        await page.waitForFunction(zoom => {
+            const zoomButton = document.querySelector(`.timeline-header-filters .zoom-btn[data-zoom="${zoom}"]`);
+            return Number(CONFIG?.TIMELINE?.CELL_MINUTES) === Number(zoom)
+                && Number(AppState?.zoomLevel) === Number(zoom)
+                && zoomButton?.classList.contains('active')
+                && zoomButton?.getAttribute('aria-pressed') === 'true';
+        }, expected);
+        const state = await readZoomState();
+        assert.equal(state.configCellMinutes, level, `${label}: CONFIG.TIMELINE.CELL_MINUTES is ${level}`);
+        assert.equal(state.appZoomLevel, level, `${label}: AppState.zoomLevel is ${level}`);
+        assert.equal(state.savedZoom, expected, `${label}: saved zoom preference is ${expected}`);
+        assert.equal(state.activeZoom, expected, `${label}: active zoom button is ${expected}`);
+        for (const button of state.buttons) {
+            assert.equal(button.pressed, button.zoom === expected ? 'true' : 'false', `${label}: aria-pressed for ${button.zoom}`);
+            assert.equal(button.active, button.zoom === expected, `${label}: active class for ${button.zoom}`);
+        }
+    };
+
     await page.setViewportSize({ width: 2048, height: 1152 });
     await page.evaluate(() => {
-        if (typeof AppState !== 'undefined') AppState.compactMode = false;
-        localStorage.setItem('pzp_compact_mode', 'false');
-        document.body?.classList?.remove('timeline-compact-mode');
-        document.documentElement?.classList?.remove('timeline-compact-mode');
+        if (typeof AppState !== 'undefined') AppState.compactMode = true;
+        localStorage.setItem('pzp_compact_mode', 'true');
+        document.body?.classList?.add('timeline-compact-mode');
+        document.documentElement?.classList?.add('timeline-compact-mode');
     });
     await renderTimelineView(page, date, 'animators');
-    await page.locator('.timeline-header-filters .zoom-btn[data-zoom="15"]').click();
+    await assertZoomLevel(30, '30-minute zoom switch');
+    await assertZoomLevel(60, '60-minute zoom switch');
+    await assertZoomLevel(15, '15-minute zoom switch');
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => {
-        const zoomButton = document.querySelector('.timeline-header-filters .zoom-btn[data-zoom="15"]');
-        return Number(CONFIG?.TIMELINE?.CELL_MINUTES) === 15
-            && zoomButton?.classList.contains('active')
-            && zoomButton?.getAttribute('aria-pressed') === 'true';
+        const appVisible = document.getElementById('mainApp') && !document.getElementById('mainApp').classList.contains('hidden');
+        return appVisible && window.AppState && window.TimelineView && typeof renderTimeline === 'function';
     });
+    await renderTimelineView(page, date, 'animators');
+    const reloadedZoom = await readZoomState();
+    assert.equal(reloadedZoom.configCellMinutes, 15, 'saved 15-minute zoom survives reload in CONFIG');
+    assert.equal(reloadedZoom.appZoomLevel, 15, 'saved 15-minute zoom survives reload in AppState');
+    assert.equal(reloadedZoom.savedZoom, '15', 'saved 15-minute zoom remains in localStorage after reload');
+    assert.equal(reloadedZoom.activeZoom, '15', 'saved 15-minute zoom button remains active after reload');
+    for (const button of reloadedZoom.buttons) {
+        assert.equal(button.pressed, button.zoom === '15' ? 'true' : 'false', `reload: aria-pressed for ${button.zoom}`);
+        assert.equal(button.active, button.zoom === '15', `reload: active class for ${button.zoom}`);
+    }
     await assertBookingBlockVisible(page, bookingId);
 
-    const metrics = await page.evaluate(id => {
+    const readMetrics = () => page.evaluate(id => {
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
         const visibleRect = (selector) => {
             const el = document.querySelector(selector);
@@ -560,22 +612,54 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
                     && rect.right <= viewportWidth + 1
                 ),
                 width: rect ? Math.round(rect.width * 100) / 100 : 0,
+                height: rect ? Math.round(rect.height * 100) / 100 : 0,
+                top: rect ? Math.round(rect.top * 100) / 100 : 0,
+                bottom: rect ? Math.round(rect.bottom * 100) / 100 : 0,
                 left: rect ? Math.round(rect.left * 100) / 100 : 0,
                 right: rect ? Math.round(rect.right * 100) / 100 : 0
             };
         };
+        const anyVisible = (selector) => Array.from(document.querySelectorAll(selector)).some(el => {
+            const rect = el.getBoundingClientRect?.();
+            const style = getComputedStyle(el);
+            return Boolean(
+                rect
+                && rect.width > 0
+                && rect.height > 0
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+            );
+        });
         const criticalSelectors = [
             '.timeline-header-filters',
             '.timeline-header-filters .status-filter-controls',
             '.timeline-header-filters #periodSelector',
             '.timeline-header-filters [data-timeline-type-selector]',
             '.timeline-header-filters .zoom-controls',
-            '.timeline-header-filters .timeline-compact-toggle',
-            '.timeline-header-filters #logoutBtn'
+            '.header .timeline-header-actions #logoutBtn'
         ];
         const critical = criticalSelectors.map(visibleRect);
         const hiddenControls = critical.filter(item => !item.visible);
         const filters = document.querySelector('.timeline-header-filters');
+        const actions = document.querySelector('.header .timeline-header-actions');
+        const logout = document.querySelector('.header .timeline-header-actions #logoutBtn');
+        const settings = document.querySelector('.header .timeline-header-actions #timelineConstructorBtn');
+        const filtersRect = filters?.getBoundingClientRect?.();
+        const actionsRect = actions?.getBoundingClientRect?.();
+        const logoutRect = logout?.getBoundingClientRect?.();
+        const settingsRect = settings?.getBoundingClientRect?.();
+        const settingsStyle = settings ? getComputedStyle(settings) : null;
+        const settingsVisible = Boolean(
+            settings
+            && settingsRect
+            && settingsRect.width > 0
+            && settingsRect.height > 0
+            && settingsStyle?.display !== 'none'
+            && settingsStyle?.visibility !== 'hidden'
+            && settingsRect.left >= -1
+            && settingsRect.right <= viewportWidth + 1
+        );
+        const settingsAllowed = Boolean(window.TimelineBusinessContext?.canUseAction?.('settings', window.AppState?.currentUser || null));
         const filterOverflowX = filters ? Math.max(0, filters.scrollWidth - filters.clientWidth) : Number.NaN;
         const bodyOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
         const cell = document.querySelector('.line-grid .grid-cell');
@@ -583,23 +667,73 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         return {
             viewportWidth,
             hiddenControls,
+            searchVisible: anyVisible('.timeline-dashboard-page .header .btn-search, .timeline-dashboard-page .header #globalHeaderSearchBtn'),
+            compactToggleVisible: anyVisible('#compactModeToggle, .timeline-header-filters .timeline-compact-toggle, .timeline-compact-toggle'),
+            filterLabelVisible: anyVisible('.timeline-header-filters-label, .timeline-header-filter-icon--sliders'),
             filterOverflowX,
             bodyOverflowX,
             configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
             activeZoom: document.querySelector('.timeline-header-filters .zoom-btn.active')?.dataset.zoom || '',
+            actionsRightGap: actionsRect ? Math.round((viewportWidth - actionsRect.right) * 100) / 100 : Number.NaN,
+            actionsLeft: actionsRect ? Math.round(actionsRect.left * 100) / 100 : Number.NaN,
+            filtersRight: filtersRect ? Math.round(filtersRect.right * 100) / 100 : Number.NaN,
+            settingsAllowed,
+            settingsVisible,
+            settingsLeft: settingsRect ? Math.round(settingsRect.left * 100) / 100 : Number.NaN,
+            settingsRight: settingsRect ? Math.round(settingsRect.right * 100) / 100 : Number.NaN,
+            settingsTop: settingsRect ? Math.round(settingsRect.top * 100) / 100 : Number.NaN,
+            settingsWidth: settingsRect ? Math.round(settingsRect.width * 100) / 100 : 0,
+            logoutTop: logoutRect ? Math.round(logoutRect.top * 100) / 100 : Number.NaN,
+            logoutLeft: logoutRect ? Math.round(logoutRect.left * 100) / 100 : Number.NaN,
+            logoutWidth: logoutRect ? Math.round(logoutRect.width * 100) / 100 : Number.NaN,
+            compactState: Boolean(AppState?.compactMode),
+            compactStorage: localStorage.getItem('pzp_compact_mode'),
+            htmlCompactClass: document.documentElement.classList.contains('timeline-compact-mode'),
+            bodyCompactClass: document.body?.classList?.contains('timeline-compact-mode') || false,
+            containerCompactClass: document.querySelector('.timeline-container')?.classList?.contains('compact') || false,
+            timelineDensity: document.documentElement.style.getPropertyValue('--timeline-density'),
+            fitScreen: document.querySelector('.timeline-container')?.dataset?.fitScreen || '',
             cellWidth: cell ? cell.getBoundingClientRect().width : 0,
             bookingWidth: block ? block.getBoundingClientRect().width : 0,
             bookingLeft: block ? block.getBoundingClientRect().left : 0
         };
     }, bookingId);
 
-    assert.deepEqual(metrics.hiddenControls, [], `timeline header critical controls visible at 2048px: ${JSON.stringify(metrics.hiddenControls)}`);
-    assert.ok(metrics.filterOverflowX <= 2, `timeline header filters do not need desktop horizontal scroll at 2048px: ${metrics.filterOverflowX}`);
-    assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at 2048px: ${metrics.bodyOverflowX}`);
-    assert.equal(metrics.configCellMinutes, 15, '15-minute zoom updates CONFIG.TIMELINE.CELL_MINUTES');
-    assert.equal(metrics.activeZoom, '15', '15-minute zoom button is active after click');
-    assert.ok(metrics.cellWidth >= 48, `15-minute desktop grid cell stays readable: ${metrics.cellWidth}px`);
-    assert.ok(metrics.bookingWidth >= 150, `15-minute 60-minute booking block stays readable: ${metrics.bookingWidth}px`);
+    for (const viewport of desktopViewports) {
+        await page.setViewportSize(viewport);
+        await page.waitForFunction(() => document.querySelector('.timeline-header-filters')?.getBoundingClientRect?.().width > 0);
+        const metrics = await readMetrics();
+        const label = `${viewport.width}x${viewport.height}`;
+
+        assert.deepEqual(metrics.hiddenControls, [], `timeline header critical controls visible at ${label}: ${JSON.stringify(metrics.hiddenControls)}`);
+        assert.equal(metrics.searchVisible, false, `timeline header search button is not visible at ${label}`);
+        assert.equal(metrics.compactToggleVisible, false, `timeline compact toggle is not visible at ${label}`);
+        assert.equal(metrics.filterLabelVisible, false, `timeline filter label/sliders control is not visible at ${label}`);
+        assert.ok(metrics.filterOverflowX <= 2, `timeline header filters do not need desktop horizontal scroll at ${label}: ${metrics.filterOverflowX}`);
+        assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at ${label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.actionsRightGap >= 0 && metrics.actionsRightGap <= 96, `logout action zone stays pinned to the right at ${label}: ${metrics.actionsRightGap}px`);
+        assert.ok(metrics.actionsLeft >= metrics.filtersRight - 4, `logout action zone stays visually separated after filters at ${label}: ${metrics.actionsLeft}px vs ${metrics.filtersRight}px`);
+        assert.ok(metrics.logoutTop >= 0 && metrics.logoutTop <= 120, `logout stays in the top header row at ${label}: ${metrics.logoutTop}px`);
+        assert.ok(metrics.logoutWidth >= 72, `logout button stays visibly highlighted at ${label}: ${metrics.logoutWidth}px`);
+        if (metrics.settingsAllowed) {
+            assert.equal(metrics.settingsVisible, true, `settings gear is visible for settings-capable user at ${label}`);
+            assert.ok(metrics.settingsWidth >= 32, `settings gear keeps usable hit target at ${label}: ${metrics.settingsWidth}px`);
+            assert.ok(metrics.settingsRight <= metrics.logoutLeft + 1, `settings gear stays before logout at ${label}: ${metrics.settingsRight}px vs ${metrics.logoutLeft}px`);
+            assert.ok(Math.abs(metrics.settingsTop - metrics.logoutTop) <= 16, `settings gear stays near logout vertically at ${label}: ${metrics.settingsTop}px vs ${metrics.logoutTop}px`);
+            assert.ok(metrics.logoutLeft - metrics.settingsRight <= 18, `settings gear stays close to logout at ${label}: ${metrics.logoutLeft - metrics.settingsRight}px`);
+        }
+        assert.equal(metrics.configCellMinutes, 15, `15-minute zoom updates CONFIG.TIMELINE.CELL_MINUTES at ${label}`);
+        assert.equal(metrics.activeZoom, '15', `15-minute zoom button is active after click at ${label}`);
+        assert.equal(metrics.compactState, false, `legacy compact preference is ignored after render at ${label}`);
+        assert.equal(metrics.compactStorage, null, `legacy compact preference is removed at ${label}`);
+        assert.equal(metrics.htmlCompactClass, false, `html compact class is not applied at ${label}`);
+        assert.equal(metrics.bodyCompactClass, false, `body compact class is not applied at ${label}`);
+        assert.equal(metrics.containerCompactClass, false, `timeline container compact class is not applied at ${label}`);
+        assert.equal(metrics.timelineDensity, 'regular', `timeline density remains regular at ${label}`);
+        assert.equal(metrics.fitScreen, 'scroll', `timeline keeps normal scroll layout instead of compact fit-screen at ${label}`);
+        assert.ok(metrics.cellWidth >= 48, `15-minute desktop grid cell stays readable at ${label}: ${metrics.cellWidth}px`);
+        assert.ok(metrics.bookingWidth >= 150, `15-minute 60-minute booking block stays readable at ${label}: ${metrics.bookingWidth}px`);
+    }
 }
 
 async function runRevealAction(page, date, kitchenId) {

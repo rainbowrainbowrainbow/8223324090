@@ -653,26 +653,44 @@
         document.getElementById('timelineBusinessSwitch')?.remove();
     }
 
+    function constructorButtonHost() {
+        return document.querySelector('.timeline-header-actions')
+            || document.querySelector('.action-buttons')
+            || document.querySelector('.control-panel');
+    }
+
+    function placeConstructorButton(button) {
+        const host = constructorButtonHost();
+        if (!button || !host) return;
+        const logoutAction = host.querySelector('.timeline-header-logout');
+        if (logoutAction && logoutAction !== button && logoutAction.parentElement === host) {
+            host.insertBefore(button, logoutAction);
+            return;
+        }
+        if (button.parentElement !== host) host.appendChild(button);
+    }
+
     function createConstructorButton() {
         if (document.getElementById('timelineConstructorBtn')) {
             state.toggleBtn = document.getElementById('timelineConstructorBtn');
-            state.toggleBtn.classList.add('toolbarIconButton', 'toolbarGhostButton');
+            state.toggleBtn.classList.add('timeline-header-settings-btn', 'toolbarIconButton', 'toolbarGhostButton');
+            placeConstructorButton(state.toggleBtn);
             bindConstructorButton(state.toggleBtn);
             return;
         }
-        const actionButtons = document.querySelector('.action-buttons') || document.querySelector('.control-panel');
-        if (!actionButtons) return;
+        const host = constructorButtonHost();
+        if (!host) return;
 
         const button = document.createElement('button');
         button.type = 'button';
         button.id = 'timelineConstructorBtn';
-        button.className = 'timeline-constructor-btn toolbarIconButton toolbarGhostButton hidden';
+        button.className = 'timeline-constructor-btn timeline-header-settings-btn toolbarIconButton toolbarGhostButton hidden';
         button.title = 'Налаштування';
         button.setAttribute('aria-label', 'Налаштування');
         button.setAttribute('aria-pressed', 'false');
         button.innerHTML = '<span class="timeline-constructor-btn-icon" aria-hidden="true">⚙</span><span class="timeline-constructor-btn-label">Налаштування</span>';
         bindConstructorButton(button);
-        actionButtons.appendChild(button);
+        placeConstructorButton(button);
         state.toggleBtn = button;
     }
 

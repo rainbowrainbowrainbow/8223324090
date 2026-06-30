@@ -2236,7 +2236,7 @@ function syncTimelineViewportMetrics() {
     const width = _timelineViewportWidth();
     const height = _timelineViewportHeight();
     const timelinePage = document.body?.classList?.contains('timeline-dashboard-page');
-    const compactTimeline = !!(timelinePage && typeof AppState !== 'undefined' && AppState.compactMode);
+    const compactTimeline = false;
     document.documentElement.classList.toggle('timeline-dashboard-root', !!timelinePage);
     document.documentElement.classList.toggle('timeline-compact-mode', compactTimeline);
     document.body?.classList?.toggle('timeline-compact-mode', compactTimeline);
@@ -2339,7 +2339,10 @@ function applyTimelineResponsiveDensity() {
     const level = typeof normalizeTimelineZoomLevel === 'function'
         ? normalizeTimelineZoomLevel(AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES)
         : (AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 30);
-    const compact = !!AppState.compactMode;
+    AppState.compactMode = false;
+    const compactKey = typeof timelineStorageKey === 'function' ? timelineStorageKey('compact_mode') : 'pzp_compact_mode';
+    localStorage.removeItem(compactKey);
+    const compact = false;
     const viewportWidth = _timelineViewportWidth();
     const nextHeaderWidth = compact
         ? viewportWidth <= 360
@@ -2533,21 +2536,17 @@ function initTimelineResponsiveResize() {
 function toggleCompactMode(event) {
     const toggle = document.getElementById('compactModeToggle');
     const previousCompactMode = Boolean(AppState.compactMode);
-    AppState.compactMode = typeof event?.target?.checked === 'boolean'
-        ? event.target.checked
-        : toggle
-            ? toggle.checked
-            : !AppState.compactMode;
+    AppState.compactMode = false;
     const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('compact_mode') : 'pzp_compact_mode';
-    localStorage.setItem(key, AppState.compactMode);
+    localStorage.removeItem(key);
     applyTimelineResponsiveDensity();
     if (typeof syncTimelineCompactToggleAria === 'function') {
         syncTimelineCompactToggleAria();
     } else if (toggle) {
-        toggle.checked = AppState.compactMode;
-        toggle.setAttribute('aria-checked', AppState.compactMode ? 'true' : 'false');
+        toggle.checked = false;
+        toggle.setAttribute('aria-checked', 'false');
         const chip = toggle.closest?.('.timeline-compact-toggle');
-        chip?.classList.toggle('active', Boolean(AppState.compactMode));
+        chip?.classList.toggle('active', false);
         chip?.removeAttribute('aria-pressed');
     }
     if (previousCompactMode !== Boolean(AppState.compactMode) && typeof markTimelineNavigationScrollReset === 'function') {

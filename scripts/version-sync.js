@@ -392,6 +392,7 @@ syncAssetVersions('index.html', version);
 syncFirstScreenLabels('index.html', version, releaseLabel, { checkLatestModal: true, releaseLabelInText: true });
 syncFirstScreenLabels('dashboard.html', version, releaseLabel);
 syncServiceWorker(version);
+syncCssImportVersions('css/assistant-rail.css', version);
 syncCssImportVersions('css/pages.css', version);
 syncCssImportVersions('css/sidebar-aurora.css', version);
 

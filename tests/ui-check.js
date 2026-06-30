@@ -44,7 +44,7 @@ function cssImportVersionTagsAreCurrent(filename) {
 }
 
 check('Aggregate CSS imports carry current asset versions',
-    ['css/pages.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
+    ['css/assistant-rail.css', 'css/pages.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
 
 function cssRuleSetsDisplay(css, selector, display) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -5520,6 +5520,55 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
     min-height: 36px !important;
 }
 
+/* v0.77.73: wide constrained desktops need a second header row so filter actions are not clipped. */
+@media (max-width: 2160px) and (min-width: 1537px) {
+    body.timeline-dashboard-page .header .header-content {
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters {
+        order: 4;
+        flex: 1 0 100%;
+        flex-basis: 100%;
+        width: 100%;
+        max-width: 100%;
+        max-inline-size: 100%;
+        gap: 8px;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    body.timeline-dashboard-page .header .timeline-header-filters + .user-panel {
+        margin-left: auto;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .status-filter-controls {
+        min-width: 284px !important;
+        grid-template-columns: max-content max-content max-content !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .period-selector {
+        min-width: 142px !important;
+        grid-template-columns: max-content max-content !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector {
+        min-width: 152px !important;
+        grid-template-columns: max-content max-content !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters .zoom-controls {
+        min-width: 162px !important;
+        grid-template-columns: max-content max-content max-content !important;
+    }
+
+    body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {
+        padding: 0 12px !important;
+    }
+}
+
 @media (max-width: 1536px) and (min-width: 1181px) {
     body.timeline-dashboard-page .header .header-content {
         gap: 8px;

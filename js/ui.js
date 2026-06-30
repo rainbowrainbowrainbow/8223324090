@@ -2218,7 +2218,7 @@ function hideTooltip() {
 // ==========================================
 
 function _timelineBaseCellWidth(level, compact) {
-    if (compact) return level === 15 ? 28 : level === 30 ? 44 : 64;
+    if (compact) return level === 15 ? 38 : level === 30 ? 44 : 64;
     return level === 15 ? 50 : level === 30 ? 80 : 120;
 }
 
@@ -2311,8 +2311,10 @@ function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding
     }
     if (compact) {
         const fitted = _timelineFitCellWidth(level, headerWidth, scrollPadding);
-        return Math.max(18, Math.min(base, fitted || base));
+        const readableMinimum = level === 15 ? 38 : level === 30 ? 44 : 64;
+        return Math.max(readableMinimum, Math.min(base, fitted || base));
     }
+    if (level === 15 && viewportWidth > 768) return base;
     if (viewportWidth <= 1180) return Math.max(34, Math.round(base * 0.72));
     if (viewportWidth <= 1366) return Math.max(36, Math.round(base * 0.8));
     if (viewportWidth <= 1536) return Math.max(40, Math.round(base * 0.9));
@@ -2358,7 +2360,7 @@ function applyTimelineResponsiveDensity() {
         : _timelineResponsiveHeaderWidth();
     const nextScrollPadding = compact ? (viewportWidth <= 768 ? 6 : 8) : (viewportWidth <= 1536 ? 14 : 20);
     const nextCellWidth = _timelineResponsiveCellWidth(level, compact, nextHeaderWidth, nextScrollPadding);
-    const nextLineHeight = compact ? (level === 15 ? 36 : level === 30 ? 40 : 46) : (level === 15 ? 64 : level === 30 ? 72 : 80);
+    const nextLineHeight = compact ? (level === 15 ? 44 : level === 30 ? 40 : 46) : (level === 15 ? 64 : level === 30 ? 72 : 80);
     const changed = CONFIG.TIMELINE.CELL_WIDTH !== nextCellWidth;
 
     CONFIG.TIMELINE.CELL_WIDTH = nextCellWidth;

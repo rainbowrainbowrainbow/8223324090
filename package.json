@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.72",
+  "version": "0.77.74",
   "eventGenix": {
-    "releaseLabel": "Timeline Header Theme Polish"
+    "releaseLabel": "Timeline Geometry Regression Guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

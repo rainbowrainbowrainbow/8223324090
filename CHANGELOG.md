@@ -4,6 +4,28 @@
 
 ---
 
+## v0.77.74 - Timeline Geometry Regression Guard
+
+### Timeline regression guards / Header visibility / 15 хв geometry / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Browser smoke тепер ловить реальну regression geometry** - `tests/browser/timeline-browser-smoke.js` відкриває desktop viewport `2048x1152`, перемикає `15 хв` і перевіряє видимість header controls, відсутність uncontrolled overflow, ширину клітинки та booking block.
+- **Static UI guard посилено threshold-контрактами** - `tests/ui-check.js` перевіряє wide desktop breakpoint, readable minimum для compact `15 хв`, base width для regular desktop `15 хв` і наявність browser smoke assertions.
+- **Header filters захищено від повторного обрізання** - test contract фіксує другий рядок для wide constrained desktop, `margin-left: auto` для user panel і мінімальну ширину `zoom-controls`.
+- **15-хвилинна геометрія захищена від повторного стискання** - regular desktop `15 хв` більше не може пройти static guard, якщо responsive density повернеться до стискання нижче base width.
+- **Релізні маркери піднято до `0.77.74`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
+## v0.77.73 - Timeline Filters Geometry Fix
+
+### Timeline filters / 15 хв geometry / Header overflow / Regression guards / (Клешня, 30.06.2026) [codex]
+- **Фільтри таймлайну більше не обрізають праві кнопки** - на широких, але обмежених desktop-екранах header переводить `.timeline-header-filters` у другий рядок, щоб zoom, compact toggle і `Вийти` лишалися видимими.
+- **`15 хв` повернуто до читабельної геометрії** - regular desktop density більше не стискає 15-хвилинні клітинки нижче базової ширини, а compact mode має мінімум для readable quarter-hour сітки.
+- **Картки бронювань не зменшуються разом із filter redesign** - ширина блоків знову рахується від достатньої `--timeline-cell-w`, а compact 15-хв рядок отримав більшу мінімальну висоту.
+- **Regression guards оновлено** - `tests/ui-check.js` фіксує wide header breakpoint і readable 15-minute density contract.
+- **Релізні маркери піднято до `0.77.73`** - package, package-lock, cache tags, Service Worker, first screen, changelog і `/api/version` синхронізовані.
+
+---
+
 ## v0.77.72 - Timeline Header Theme Polish
 
 ### Timeline header / Theme polish / Command bar / Regression guards / (Клешня, 30.06.2026) [codex]

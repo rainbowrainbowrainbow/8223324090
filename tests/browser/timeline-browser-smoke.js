@@ -522,6 +522,86 @@ async function assertBookingBlockVisible(page, bookingId) {
     }, bookingId);
 }
 
+async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
+    await page.setViewportSize({ width: 2048, height: 1152 });
+    await page.evaluate(() => {
+        if (typeof AppState !== 'undefined') AppState.compactMode = false;
+        localStorage.setItem('pzp_compact_mode', 'false');
+        document.body?.classList?.remove('timeline-compact-mode');
+        document.documentElement?.classList?.remove('timeline-compact-mode');
+    });
+    await renderTimelineView(page, date, 'animators');
+    await page.locator('.timeline-header-filters .zoom-btn[data-zoom="15"]').click();
+    await page.waitForFunction(() => {
+        const zoomButton = document.querySelector('.timeline-header-filters .zoom-btn[data-zoom="15"]');
+        return Number(CONFIG?.TIMELINE?.CELL_MINUTES) === 15
+            && zoomButton?.classList.contains('active')
+            && zoomButton?.getAttribute('aria-pressed') === 'true';
+    });
+    await assertBookingBlockVisible(page, bookingId);
+
+    const metrics = await page.evaluate(id => {
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const visibleRect = (selector) => {
+            const el = document.querySelector(selector);
+            const rect = el?.getBoundingClientRect?.();
+            const style = el ? getComputedStyle(el) : null;
+            return {
+                selector,
+                exists: Boolean(el),
+                visible: Boolean(
+                    el
+                    && rect
+                    && rect.width > 0
+                    && rect.height > 0
+                    && style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && rect.left >= -1
+                    && rect.right <= viewportWidth + 1
+                ),
+                width: rect ? Math.round(rect.width * 100) / 100 : 0,
+                left: rect ? Math.round(rect.left * 100) / 100 : 0,
+                right: rect ? Math.round(rect.right * 100) / 100 : 0
+            };
+        };
+        const criticalSelectors = [
+            '.timeline-header-filters',
+            '.timeline-header-filters .status-filter-controls',
+            '.timeline-header-filters #periodSelector',
+            '.timeline-header-filters [data-timeline-type-selector]',
+            '.timeline-header-filters .zoom-controls',
+            '.timeline-header-filters .timeline-compact-toggle',
+            '.timeline-header-filters #logoutBtn'
+        ];
+        const critical = criticalSelectors.map(visibleRect);
+        const hiddenControls = critical.filter(item => !item.visible);
+        const filters = document.querySelector('.timeline-header-filters');
+        const filterOverflowX = filters ? Math.max(0, filters.scrollWidth - filters.clientWidth) : Number.NaN;
+        const bodyOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
+        const cell = document.querySelector('.line-grid .grid-cell');
+        const block = document.querySelector(`.booking-block[data-booking-id="${CSS.escape(String(id))}"]:not(.status-hidden)`);
+        return {
+            viewportWidth,
+            hiddenControls,
+            filterOverflowX,
+            bodyOverflowX,
+            configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
+            activeZoom: document.querySelector('.timeline-header-filters .zoom-btn.active')?.dataset.zoom || '',
+            cellWidth: cell ? cell.getBoundingClientRect().width : 0,
+            bookingWidth: block ? block.getBoundingClientRect().width : 0,
+            bookingLeft: block ? block.getBoundingClientRect().left : 0
+        };
+    }, bookingId);
+
+    assert.deepEqual(metrics.hiddenControls, [], `timeline header critical controls visible at 2048px: ${JSON.stringify(metrics.hiddenControls)}`);
+    assert.ok(metrics.filterOverflowX <= 2, `timeline header filters do not need desktop horizontal scroll at 2048px: ${metrics.filterOverflowX}`);
+    assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at 2048px: ${metrics.bodyOverflowX}`);
+    assert.equal(metrics.configCellMinutes, 15, '15-minute zoom updates CONFIG.TIMELINE.CELL_MINUTES');
+    assert.equal(metrics.activeZoom, '15', '15-minute zoom button is active after click');
+    assert.ok(metrics.cellWidth >= 48, `15-minute desktop grid cell stays readable: ${metrics.cellWidth}px`);
+    assert.ok(metrics.bookingWidth >= 150, `15-minute 60-minute booking block stays readable: ${metrics.bookingWidth}px`);
+}
+
 async function runRevealAction(page, date, kitchenId) {
     await renderTimelineView(page, date, 'rooms');
     await page.evaluate(async id => {
@@ -584,6 +664,7 @@ async function run() {
         createdBookingIds.push(activity.id);
 
         ({ context, page } = await openAuthenticatedPage(browser, base, session));
+        await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);
 
         const activityFirstDrawer = await openRoomDrawer(page, date, room, '13:00');
         assertBridgeSelector(activityFirstDrawer, 'activity first -> kitchen');

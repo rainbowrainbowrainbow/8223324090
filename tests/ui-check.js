@@ -75,8 +75,13 @@ checkPage('index.html', (doc, html) => {
     const timelineBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'timeline-browser-smoke.js'), 'utf8');
     const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
     const responsiveCss = cssTextWithImports('css/responsive.css');
+    const timelineHeaderWideDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 2160px) and (min-width: 1537px) {');
     const timelineHeaderLabelBreakpointCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) {');
     const timelineHeaderNarrowDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1360px) and (min-width: 1181px) {');
+    const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
+    const timelineWideDesktopFiltersRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters');
+    const timelineWideDesktopUserPanelRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .timeline-header-filters + .user-panel');
+    const timelineWideDesktopZoomRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .zoom-controls');
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales,\s*[\r\n]+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
         || modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
     const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales,\s*[\r\n]+body\.dark-mode\s+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
@@ -422,12 +427,34 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'min-width: max-content !important;')
         && htmlContains('css/responsive.css', 'white-space: nowrap !important;')
         && htmlContains('css/responsive.css', 'grid-template-columns: max-content max-content max-content !important;')
+        && htmlContains('css/responsive.css', 'v0.77.73: wide constrained desktops need a second header row so filter actions are not clipped.')
+        && htmlContains('css/responsive.css', '@media (max-width: 2160px) and (min-width: 1537px)')
         && htmlContains('css/responsive.css', '@media (max-width: 1536px)')
         && htmlContains('css/responsive.css', 'flex-wrap: wrap;')
         && htmlContains('css/responsive.css', 'flex-basis: 100%;')
         && htmlContains('css/responsive.css', '@media (max-width: 1360px) and (min-width: 1181px)')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters > .timeline-header-filter-icon')
         && htmlContains('css/responsive.css', 'flex: 1 0 100%;'));
+    check('Timeline header filters have a wide desktop overflow contract',
+        timelineWideDesktopHeaderRule.includes('flex-wrap: wrap;')
+        && timelineWideDesktopHeaderRule.includes('align-items: center;')
+        && timelineWideDesktopFiltersRule.includes('order: 4;')
+        && timelineWideDesktopFiltersRule.includes('flex: 1 0 100%;')
+        && timelineWideDesktopFiltersRule.includes('flex-basis: 100%;')
+        && timelineWideDesktopFiltersRule.includes('max-inline-size: 100%;')
+        && timelineWideDesktopUserPanelRule.includes('margin-left: auto;')
+        && timelineWideDesktopZoomRule.includes('min-width: 162px !important;')
+        && timelineWideDesktopZoomRule.includes('grid-template-columns: max-content max-content max-content !important;'));
+    check('Timeline browser smoke guards header visibility and 15-minute geometry thresholds',
+        timelineBrowserSmokeCode.includes('function assertTimelineHeaderAnd15MinuteGeometry')
+        && timelineBrowserSmokeCode.includes('page.setViewportSize({ width: 2048, height: 1152 })')
+        && timelineBrowserSmokeCode.includes("'.timeline-header-filters .zoom-btn[data-zoom=\"15\"]'")
+        && timelineBrowserSmokeCode.includes('metrics.hiddenControls')
+        && timelineBrowserSmokeCode.includes('metrics.filterOverflowX <= 2')
+        && timelineBrowserSmokeCode.includes('metrics.bodyOverflowX <= 2')
+        && timelineBrowserSmokeCode.includes('metrics.cellWidth >= 48')
+        && timelineBrowserSmokeCode.includes('metrics.bookingWidth >= 150')
+        && timelineBrowserSmokeCode.includes('await assertTimelineHeaderAnd15MinuteGeometry(page, date, activity.id);'));
     check('Timeline toolbar exposes accessible pressed, loading, and focus states',
         Array.from(doc.querySelectorAll('.status-filter-controls .status-filter-btn')).every(btn => btn.tagName === 'BUTTON' && btn.getAttribute('type') === 'button' && btn.hasAttribute('aria-pressed'))
         && Array.from(doc.querySelectorAll('.status-filter-controls .status-filter-btn')).map(btn => `${btn.dataset.filter}:${btn.getAttribute('aria-pressed')}`).join('|') === 'all:true|confirmed:false|preliminary:false'
@@ -1509,6 +1536,19 @@ const timelineConfigCode = fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf
 const timelineConstructorCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
 const controlsCss = fs.readFileSync(path.join(ROOT, 'css/controls.css'), 'utf8');
 const timelineSettingsCss = fs.readFileSync(path.join(ROOT, 'css/timeline-settings.css'), 'utf8');
+const timelineBaseCellWidthBlock = sourceBlock(uiCode, 'function _timelineBaseCellWidth', 'function _timelineViewportWidth');
+const timelineBaseCellWidthRows = [...timelineBaseCellWidthBlock.matchAll(/return\s+level\s*===\s*15\s*\?\s*(\d+)\s*:\s*level\s*===\s*30\s*\?\s*(\d+)\s*:\s*(\d+);/g)]
+    .map(match => match.slice(1).map(Number));
+const timelineCompactBaseWidths = timelineBaseCellWidthRows[0] || [];
+const timelineRegularBaseWidths = timelineBaseCellWidthRows[1] || [];
+const timelineResponsiveCellWidthBlock = sourceBlock(uiCode, 'function _timelineResponsiveCellWidth', 'function _timelineResponsiveHeaderWidth');
+const timelineReadableMinimums = (timelineResponsiveCellWidthBlock.match(/const readableMinimum\s*=\s*level\s*===\s*15\s*\?\s*(\d+)\s*:\s*level\s*===\s*30\s*\?\s*(\d+)\s*:\s*(\d+);/) || [])
+    .slice(1)
+    .map(Number);
+const timelineApplyResponsiveDensityBlock = sourceBlock(uiCode, 'function applyTimelineResponsiveDensity', 'function syncTimelineViewHeight');
+const timelineCompactLineHeights = (timelineApplyResponsiveDensityBlock.match(/const nextLineHeight\s*=\s*compact\s*\?\s*\(level\s*===\s*15\s*\?\s*(\d+)\s*:\s*level\s*===\s*30\s*\?\s*(\d+)\s*:\s*(\d+)\)/) || [])
+    .slice(1)
+    .map(Number);
 const iphoneSafeDownloadFiles = [
     'js/app.js',
     'js/finance-page.js',
@@ -2589,6 +2629,13 @@ check('Explainability shared styles exist', pagesCss.includes('.explain-filter-s
 check('Timeline responsive density updates JS cell geometry with viewport', uiCode.includes('function applyTimelineResponsiveDensity') && uiCode.includes('_timelineResponsiveCellWidth') && uiCode.includes('--timeline-cell-w') && htmlContains('js/app.js', 'initTimelineResponsiveResize'));
 check('Timeline Android density reads lexical CONFIG and visual viewport', uiCode.includes("typeof CONFIG === 'undefined'") && !uiCode.includes('if (!window.CONFIG || !CONFIG.TIMELINE)') && uiCode.includes('window.visualViewport?.addEventListener?.(\'resize\'') && uiCode.includes('window.visualViewport?.addEventListener?.(\'scroll\''));
 check('Timeline iOS and iPad viewport hardening is explicit', uiCode.includes('function syncTimelineViewportMetrics') && uiCode.includes('--eg-viewport-height') && uiCode.includes('--eg-viewport-width') && uiCode.includes('timeline-dashboard-root') && htmlContains('css/timeline.css', 'var(--eg-viewport-height') && responsiveCss.includes('v0.63.5: iPad/tablet timeline shell') && responsiveCss.includes('html.timeline-dashboard-root') && responsiveCss.includes('body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header'));
+check('Timeline 15-minute zoom keeps readable desktop geometry after header filter changes',
+    timelineCompactBaseWidths[0] >= 38
+    && timelineRegularBaseWidths[0] >= 50
+    && timelineReadableMinimums[0] >= timelineCompactBaseWidths[0]
+    && timelineCompactLineHeights[0] >= 44
+    && /if\s*\(\s*level\s*===\s*15\s*&&\s*viewportWidth\s*>\s*768\s*\)\s*return\s+base/.test(timelineResponsiveCellWidthBlock)
+    && timelineResponsiveCellWidthBlock.indexOf('if (level === 15 && viewportWidth > 768) return base') < timelineResponsiveCellWidthBlock.indexOf('if (viewportWidth <= 1180)'));
 check('Timeline compact mode fits desktop while phones keep readable horizontal scroll', uiCode.includes('function _timelineFitCellWidth') && uiCode.includes('phones must scroll horizontally instead of crushing readable time cells') && uiCode.includes("container.dataset.fitScreen = compact && viewportWidth > 768 ? 'true' : 'scroll'") && uiCode.includes('event?.target?.checked') && uiCode.includes('timeline-compact-mode') && htmlContains('js/app.js', 'function syncTimelineCompactToggleAria') && htmlContains('js/app.js', 'toggle.checked = active') && htmlContains('css/timeline.css', 'v0.56.5: timeline compact fit-screen density') && htmlContains('css/controls.css', 'keep compact zoom modes genuinely compact') && darkModeCss.includes('v0.63.55: operational compact timeline density') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .control-panel') && darkModeCss.includes('body.timeline-dashboard-page.timeline-compact-mode .booking-block'));
 check('Timeline phone layout has tidy toolbar rows and readable day/week scroll grids', responsiveCss.includes('v0.69.20: phone timeline toolbar and readable horizontal grid') && responsiveCss.includes('"prev date next"') && responsiveCss.includes('"today day day"') && responsiveCss.includes('.timeline-container[data-fit-screen="scroll"] .timeline-scroll') && responsiveCss.includes('width: max-content !important') && responsiveCss.includes('body.timeline-dashboard-page .multi-day-container') && responsiveCss.includes('body.timeline-dashboard-page .mini-line-grid') && responsiveCss.includes('--mini-grid-width') && responsiveCss.includes('body.timeline-dashboard-page.timeline-compact-mode :where(.status-filter-btn, .period-btn, .zoom-btn)'));
 check('Timeline horizontal scroll restore is scoped and reset on navigation context changes',

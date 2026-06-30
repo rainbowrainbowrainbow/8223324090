@@ -16,6 +16,7 @@
 const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, getConfiguredThreadId, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
+const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 
 const log = createLogger('Kleshnya');
 
@@ -61,13 +62,15 @@ function getCurrentMonth() {
 /**
  * Create a task through Kleshnya (with logging + notification)
  */
-async function createTask(data) {
+async function createTask(data, options = {}) {
     const {
         title, description, date, priority = 'normal', assigned_to, owner,
         task_type = 'human', deadline, time_window_start, time_window_end,
         dependency_ids = [], control_policy, source_type = 'manual', source_id,
         category = 'admin', template_id, afisha_id, created_by = 'kleshnya'
     } = data;
+
+    const ownerUserId = Number(data.owner_user_id || data.ownerUserId || options.owner_user_id || options.ownerUserId || 0);
 
     if (!title || !title.trim()) throw new Error('title required');
 
@@ -88,6 +91,16 @@ async function createTask(data) {
 
     // Log creation
     await logTaskAction(task.id, 'created', null, title, created_by);
+
+    await emitTaskCreatedNotificationOutboxEvent({
+        ...task,
+        owner_user_id: Number.isInteger(ownerUserId) && ownerUserId > 0 ? ownerUserId : task.owner_user_id
+    }, {
+        skipHermesOutbox: options.skipHermesOutbox,
+        hermesOutboxEnabled: options.hermesOutboxEnabled,
+        hermesOutboxContext: options.hermesOutboxContext || options.notificationContext || {},
+        env: options.env
+    }).catch(err => log.error(`Hermes notification_outbox error: ${err.message}`));
 
     // Notify assigned person (fire-and-forget — never block task creation)
     if (assigned_to && task_type === 'human') {

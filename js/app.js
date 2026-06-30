@@ -119,6 +119,54 @@ function syncTimelineCompactToggleAria() {
     }
 }
 
+function setTimelineViewPanelOpen(open, options = {}) {
+    const toggle = document.getElementById('timelineViewPanelToggle');
+    const panel = document.getElementById('timelineViewPanel');
+    if (!toggle || !panel) return;
+
+    const nextOpen = Boolean(open);
+    panel.hidden = !nextOpen;
+    toggle.classList.toggle('is-open', nextOpen);
+    toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+    toggle.title = nextOpen ? 'Закрити панель вигляду таймлайну' : 'Відкрити панель вигляду таймлайну';
+    toggle.setAttribute('aria-label', toggle.title);
+
+    if (nextOpen && options.focusPanel) {
+        const firstControl = panel.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        firstControl?.focus?.({ preventScroll: true });
+    } else if (!nextOpen && options.returnFocus) {
+        toggle.focus?.({ preventScroll: true });
+    }
+}
+
+function initTimelineViewPanel() {
+    const toggle = document.getElementById('timelineViewPanelToggle');
+    const panel = document.getElementById('timelineViewPanel');
+    if (!toggle || !panel || window.__timelineViewPanelBound) return;
+
+    window.__timelineViewPanelBound = true;
+    setTimelineViewPanelOpen(false);
+
+    toggle.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const nextOpen = toggle.getAttribute('aria-expanded') !== 'true';
+        setTimelineViewPanelOpen(nextOpen, { focusPanel: nextOpen });
+    });
+
+    document.addEventListener('click', event => {
+        if (panel.hidden) return;
+        const target = event.target;
+        if (panel.contains(target) || toggle.contains(target)) return;
+        setTimelineViewPanelOpen(false);
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || panel.hidden) return;
+        setTimelineViewPanelOpen(false, { returnFocus: true });
+    });
+}
+
 function syncTimelinePeriodSelector(root = document.getElementById('periodSelector')) {
     if (typeof normalizeTimelineModeState === 'function') {
         normalizeTimelineModeState(AppState);
@@ -568,6 +616,7 @@ function initTimelineListeners() {
     }
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
+    initTimelineViewPanel();
 
     // v36.2: Afisha top-bar button
     const afishaTopBtn = document.getElementById('afishaTopBtn');
@@ -1011,9 +1060,6 @@ function initSettingsListeners() {
     // v5.17: Thread ID save button
     const saveThreadIdBtn = document.getElementById('saveThreadIdBtn');
     if (saveThreadIdBtn) saveThreadIdBtn.addEventListener('click', saveThreadIdFromSettings);
-
-    const digestBtn = document.getElementById('digestBtn');
-    if (digestBtn) digestBtn.addEventListener('click', sendDailyDigest);
 
     const saveAnimatorsBtn = document.getElementById('saveAnimatorsBtn');
     if (saveAnimatorsBtn) saveAnimatorsBtn.addEventListener('click', saveAnimatorsList);

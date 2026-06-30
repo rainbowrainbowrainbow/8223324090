@@ -55,7 +55,6 @@
         visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn'),
         visualBlock('actionMenu', 'Верхня панель', 'Меню дій', '#adminDropdown'),
         visualBlock('history', 'Верхня панель', 'Історія змін', '#historyBtn'),
-        visualBlock('digest', 'Верхня панель', 'Дайджест дня', '#digestBtn'),
         visualBlock('quickStats', 'Робоча зона', 'Швидка статистика', '#quickStatsBar'),
         visualBlock('assistantWidget', 'Робоча зона', 'Помічник', '#kleshnyaWidget'),
         visualBlock('warnings', 'Робоча зона', 'Попередження', '#warningBanner, #filterModeBanner'),

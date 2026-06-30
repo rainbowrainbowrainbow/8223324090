@@ -522,11 +522,139 @@ async function assertBookingBlockVisible(page, bookingId) {
     }, bookingId);
 }
 
+async function setTimelineViewPanelOpen(page, open) {
+    await page.evaluate(nextOpen => {
+        const panel = document.getElementById('timelineViewPanel');
+        const toggle = document.getElementById('timelineViewPanelToggle');
+        if (!panel || !toggle) return;
+        if (!panel.hidden !== Boolean(nextOpen)) toggle.click();
+    }, open);
+    await page.waitForFunction(nextOpen => {
+        const panel = document.getElementById('timelineViewPanel');
+        const toggle = document.getElementById('timelineViewPanelToggle');
+        return Boolean(
+            panel
+            && toggle
+            && panel.hidden === !nextOpen
+            && toggle.getAttribute('aria-expanded') === String(Boolean(nextOpen))
+        );
+    }, open);
+}
+
+async function assertTimelineViewPanelInteractions(page) {
+    assert.equal(await page.locator('#digestBtn').count(), 0, 'digest button is not rendered on the timeline page');
+
+    await setTimelineViewPanelOpen(page, false);
+    await page.locator('#timelineViewPanelToggle').click();
+    await page.waitForFunction(() => {
+        const panel = document.getElementById('timelineViewPanel');
+        const toggle = document.getElementById('timelineViewPanelToggle');
+        return Boolean(panel && !panel.hidden && toggle?.getAttribute('aria-expanded') === 'true');
+    });
+    await page.locator('#timelineViewPanelToggle').click();
+    await page.waitForFunction(() => {
+        const panel = document.getElementById('timelineViewPanel');
+        const toggle = document.getElementById('timelineViewPanelToggle');
+        return Boolean(panel && panel.hidden && toggle?.getAttribute('aria-expanded') === 'false');
+    });
+    await setTimelineViewPanelOpen(page, true);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('timelineViewPanel')?.hidden === true);
+
+    await setTimelineViewPanelOpen(page, true);
+    await page.locator('#timelineViewPanel .status-filter-btn[data-filter="confirmed"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('#timelineViewPanel .status-filter-btn[data-filter="confirmed"]');
+        return AppState?.statusFilter === 'confirmed'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+    await page.locator('#timelineViewPanel .status-filter-btn[data-filter="all"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('#timelineViewPanel .status-filter-btn[data-filter="all"]');
+        return AppState?.statusFilter === 'all'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+
+    await page.locator('#timelineViewPanel [data-schedule-view-mode="week"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('#timelineViewPanel [data-schedule-view-mode="week"]');
+        return window.TimelineView?.state?.().viewMode === 'week'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+    await page.locator('#timelineViewPanel [data-schedule-view-mode="day"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('#timelineViewPanel [data-schedule-view-mode="day"]');
+        return window.TimelineView?.state?.().viewMode === 'day'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+
+    await page.locator('#timelineViewPanel [data-timeline-view="rooms"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('#timelineViewPanel [data-timeline-view="rooms"]');
+        return window.TimelineView?.current?.() === 'rooms'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+    await page.locator('#timelineViewPanel [data-timeline-view="animators"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('#timelineViewPanel [data-timeline-view="animators"]');
+        return window.TimelineView?.current?.() === 'animators'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+
+    await setTimelineViewPanelOpen(page, false);
+    const history = await page.evaluate(() => {
+        const btn = document.getElementById('historyBtn');
+        const rect = btn?.getBoundingClientRect?.();
+        const style = btn ? getComputedStyle(btn) : null;
+        const visible = Boolean(
+            btn
+            && rect
+            && rect.width > 0
+            && rect.height > 0
+            && style?.display !== 'none'
+            && style?.visibility !== 'hidden'
+            && !btn.classList.contains('hidden')
+        );
+        return {
+            exists: Boolean(btn),
+            inTopbar: Boolean(btn?.closest('.timeline-header-actions')),
+            visible,
+            disabled: Boolean(btn?.disabled),
+            title: btn?.getAttribute('title') || '',
+            ariaLabel: btn?.getAttribute('aria-label') || '',
+            canView: typeof canViewHistory === 'function' ? Boolean(canViewHistory()) : null
+        };
+    });
+    assert.equal(history.exists, true, 'history button exists');
+    assert.equal(history.inTopbar, true, 'history button is mounted in the topbar');
+    assert.match(`${history.title} ${history.ariaLabel}`, /Історія|історію/i, 'history button keeps accessible labeling');
+    if (history.canView !== false) {
+        assert.equal(history.visible, true, 'history button is reachable for the authenticated timeline user');
+        assert.equal(history.disabled, false, 'history button is enabled for the authenticated timeline user');
+        await page.locator('#historyBtn').click();
+        await page.waitForFunction(() => {
+            const modal = document.getElementById('historyModal');
+            return Boolean(modal && !modal.classList.contains('hidden'));
+        });
+        await page.evaluate(() => document.getElementById('historyModal')?.classList.add('hidden'));
+    }
+}
+
 async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
     const desktopViewports = [
         { width: 2048, height: 1152 },
         { width: 1920, height: 1080 },
         { width: 1536, height: 864 }
+    ];
+    const narrowViewports = [
+        { width: 768, height: 900 },
+        { width: 390, height: 844 }
     ];
     const readZoomState = () => page.evaluate(() => {
         const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('zoom_level') : 'pzp_zoom_level';
@@ -545,9 +673,15 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
     });
     const assertZoomLevel = async (level, label) => {
         const expected = String(level);
-        await page.locator(`.timeline-header-filters .zoom-btn[data-zoom="${expected}"]`).click();
+        await page.evaluate(() => {
+            const panel = document.getElementById('timelineViewPanel');
+            const toggle = document.getElementById('timelineViewPanelToggle');
+            if (panel?.hidden) toggle?.click();
+        });
+        await page.waitForFunction(() => document.getElementById('timelineViewPanel') && !document.getElementById('timelineViewPanel').hidden);
+        await page.locator(`#timelineViewPanel .zoom-btn[data-zoom="${expected}"]`).click();
         await page.waitForFunction(zoom => {
-            const zoomButton = document.querySelector(`.timeline-header-filters .zoom-btn[data-zoom="${zoom}"]`);
+            const zoomButton = document.querySelector(`#timelineViewPanel .zoom-btn[data-zoom="${zoom}"]`);
             return Number(CONFIG?.TIMELINE?.CELL_MINUTES) === Number(zoom)
                 && Number(AppState?.zoomLevel) === Number(zoom)
                 && zoomButton?.classList.contains('active')
@@ -572,6 +706,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         document.documentElement?.classList?.add('timeline-compact-mode');
     });
     await renderTimelineView(page, date, 'animators');
+    await assertTimelineViewPanelInteractions(page);
     await assertZoomLevel(30, '30-minute zoom switch');
     await assertZoomLevel(60, '60-minute zoom switch');
     await assertZoomLevel(15, '15-minute zoom switch');
@@ -631,24 +766,41 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             );
         });
         const criticalSelectors = [
-            '.timeline-header-filters',
-            '.timeline-header-filters .status-filter-controls',
-            '.timeline-header-filters #periodSelector',
-            '.timeline-header-filters [data-timeline-type-selector]',
-            '.timeline-header-filters .zoom-controls',
+            '#timelineViewPanelToggle',
             '.header .timeline-header-actions #logoutBtn'
         ];
         const critical = criticalSelectors.map(visibleRect);
         const hiddenControls = critical.filter(item => !item.visible);
+        const panel = document.getElementById('timelineViewPanel');
         const filters = document.querySelector('.timeline-header-filters');
+        const headerContent = document.querySelector('.header .header-content');
         const actions = document.querySelector('.header .timeline-header-actions');
+        const history = document.querySelector('.header .timeline-header-actions #historyBtn');
         const logout = document.querySelector('.header .timeline-header-actions #logoutBtn');
+        const viewToggle = document.getElementById('timelineViewPanelToggle');
         const settings = document.querySelector('.header .timeline-header-actions #timelineConstructorBtn');
+        const dateControls = document.querySelector('.schedule-command-row--utility .date-controls');
+        const dateInteractive = Array.from(document.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input'));
+        const dateInteractiveRects = dateInteractive.map(el => el.getBoundingClientRect?.()).filter(Boolean);
+        const panelRect = panel?.getBoundingClientRect?.();
         const filtersRect = filters?.getBoundingClientRect?.();
+        const headerRect = headerContent?.getBoundingClientRect?.();
         const actionsRect = actions?.getBoundingClientRect?.();
+        const historyRect = history?.getBoundingClientRect?.();
         const logoutRect = logout?.getBoundingClientRect?.();
+        const viewToggleRect = viewToggle?.getBoundingClientRect?.();
         const settingsRect = settings?.getBoundingClientRect?.();
+        const historyStyle = history ? getComputedStyle(history) : null;
         const settingsStyle = settings ? getComputedStyle(settings) : null;
+        const historyVisible = Boolean(
+            history
+            && historyRect
+            && historyRect.width > 0
+            && historyRect.height > 0
+            && historyStyle?.display !== 'none'
+            && historyStyle?.visibility !== 'hidden'
+            && !history.classList.contains('hidden')
+        );
         const settingsVisible = Boolean(
             settings
             && settingsRect
@@ -661,6 +813,9 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         );
         const settingsAllowed = Boolean(window.TimelineBusinessContext?.canUseAction?.('settings', window.AppState?.currentUser || null));
         const filterOverflowX = filters ? Math.max(0, filters.scrollWidth - filters.clientWidth) : Number.NaN;
+        const actionsOverflowX = actions ? Math.max(0, actions.scrollWidth - actions.clientWidth) : Number.NaN;
+        const headerOverflowX = headerContent ? Math.max(0, headerContent.scrollWidth - headerContent.clientWidth) : Number.NaN;
+        const dateControlsOverflowX = dateControls ? Math.max(0, dateControls.scrollWidth - dateControls.clientWidth) : Number.NaN;
         const bodyOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
         const cell = document.querySelector('.line-grid .grid-cell');
         const block = document.querySelector(`.booking-block[data-booking-id="${CSS.escape(String(id))}"]:not(.status-hidden)`);
@@ -668,15 +823,33 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             viewportWidth,
             hiddenControls,
             searchVisible: anyVisible('.timeline-dashboard-page .header .btn-search, .timeline-dashboard-page .header #globalHeaderSearchBtn'),
+            digestVisible: anyVisible('#digestBtn'),
             compactToggleVisible: anyVisible('#compactModeToggle, .timeline-header-filters .timeline-compact-toggle, .timeline-compact-toggle'),
             filterLabelVisible: anyVisible('.timeline-header-filters-label, .timeline-header-filter-icon--sliders'),
+            viewPanelHidden: Boolean(panel?.hidden),
+            viewToggleExpanded: viewToggle?.getAttribute('aria-expanded') || '',
+            viewPanelLeft: panelRect ? Math.round(panelRect.left * 100) / 100 : Number.NaN,
+            viewPanelRight: panelRect ? Math.round(panelRect.right * 100) / 100 : Number.NaN,
+            viewPanelWidth: panelRect ? Math.round(panelRect.width * 100) / 100 : 0,
+            viewToggleInTopbar: Boolean(viewToggle?.closest('.timeline-header-actions')),
+            historyExists: Boolean(history),
+            historyInTopbar: Boolean(history?.closest('.timeline-header-actions')),
+            historyVisible,
+            dateInteractiveIds: dateInteractive.map(el => el.id).join('|'),
+            dateInteractiveNonzeroCount: dateInteractiveRects.filter(rect => rect.width > 0 && rect.height > 0).length,
             filterOverflowX,
+            actionsOverflowX,
+            headerOverflowX,
+            dateControlsOverflowX,
             bodyOverflowX,
             configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
             activeZoom: document.querySelector('.timeline-header-filters .zoom-btn.active')?.dataset.zoom || '',
+            headerLeft: headerRect ? Math.round(headerRect.left * 100) / 100 : Number.NaN,
+            headerRight: headerRect ? Math.round(headerRect.right * 100) / 100 : Number.NaN,
             actionsRightGap: actionsRect ? Math.round((viewportWidth - actionsRect.right) * 100) / 100 : Number.NaN,
             actionsLeft: actionsRect ? Math.round(actionsRect.left * 100) / 100 : Number.NaN,
             filtersRight: filtersRect ? Math.round(filtersRect.right * 100) / 100 : Number.NaN,
+            viewToggleRight: viewToggleRect ? Math.round(viewToggleRect.right * 100) / 100 : Number.NaN,
             settingsAllowed,
             settingsVisible,
             settingsLeft: settingsRect ? Math.round(settingsRect.left * 100) / 100 : Number.NaN,
@@ -701,18 +874,32 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
     for (const viewport of desktopViewports) {
         await page.setViewportSize(viewport);
-        await page.waitForFunction(() => document.querySelector('.timeline-header-filters')?.getBoundingClientRect?.().width > 0);
+        await page.evaluate(() => {
+            const panel = document.getElementById('timelineViewPanel');
+            const toggle = document.getElementById('timelineViewPanelToggle');
+            if (panel && !panel.hidden) toggle?.click();
+        });
+        await page.waitForFunction(() => document.getElementById('timelineViewPanelToggle')?.getBoundingClientRect?.().width > 0);
         const metrics = await readMetrics();
         const label = `${viewport.width}x${viewport.height}`;
 
-        assert.deepEqual(metrics.hiddenControls, [], `timeline header critical controls visible at ${label}: ${JSON.stringify(metrics.hiddenControls)}`);
+        assert.deepEqual(metrics.hiddenControls, [], `timeline topbar critical controls visible at ${label}: ${JSON.stringify(metrics.hiddenControls)}`);
         assert.equal(metrics.searchVisible, false, `timeline header search button is not visible at ${label}`);
+        assert.equal(metrics.digestVisible, false, `timeline digest button is not rendered at ${label}`);
         assert.equal(metrics.compactToggleVisible, false, `timeline compact toggle is not visible at ${label}`);
         assert.equal(metrics.filterLabelVisible, false, `timeline filter label/sliders control is not visible at ${label}`);
-        assert.ok(metrics.filterOverflowX <= 2, `timeline header filters do not need desktop horizontal scroll at ${label}: ${metrics.filterOverflowX}`);
+        assert.equal(metrics.viewPanelHidden, true, `timeline view panel is hidden by default at ${label}`);
+        assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at ${label}`);
+        assert.equal(metrics.viewToggleInTopbar, true, `view panel toggle stays in the topbar at ${label}`);
+        assert.equal(metrics.historyExists, true, `history button exists at ${label}`);
+        assert.equal(metrics.historyInTopbar, true, `history button stays in the topbar at ${label}`);
+        assert.equal(metrics.historyVisible, true, `history button is visible for the authenticated user at ${label}`);
+        assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay', `date row contains only date controls at ${label}`);
+        assert.equal(metrics.dateInteractiveNonzeroCount, 4, `date row controls keep visible hit targets at ${label}`);
         assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at ${label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
+        assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
         assert.ok(metrics.actionsRightGap >= 0 && metrics.actionsRightGap <= 96, `logout action zone stays pinned to the right at ${label}: ${metrics.actionsRightGap}px`);
-        assert.ok(metrics.actionsLeft >= metrics.filtersRight - 4, `logout action zone stays visually separated after filters at ${label}: ${metrics.actionsLeft}px vs ${metrics.filtersRight}px`);
         assert.ok(metrics.logoutTop >= 0 && metrics.logoutTop <= 120, `logout stays in the top header row at ${label}: ${metrics.logoutTop}px`);
         assert.ok(metrics.logoutWidth >= 72, `logout button stays visibly highlighted at ${label}: ${metrics.logoutWidth}px`);
         if (metrics.settingsAllowed) {
@@ -733,6 +920,36 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.fitScreen, 'scroll', `timeline keeps normal scroll layout instead of compact fit-screen at ${label}`);
         assert.ok(metrics.cellWidth >= 48, `15-minute desktop grid cell stays readable at ${label}: ${metrics.cellWidth}px`);
         assert.ok(metrics.bookingWidth >= 150, `15-minute 60-minute booking block stays readable at ${label}: ${metrics.bookingWidth}px`);
+    }
+
+    for (const viewport of narrowViewports) {
+        await page.setViewportSize(viewport);
+        await setTimelineViewPanelOpen(page, false);
+        const metrics = await readMetrics();
+        const label = `${viewport.width}x${viewport.height}`;
+
+        assert.equal(metrics.searchVisible, false, `timeline header search button is not visible at narrow ${label}`);
+        assert.equal(metrics.digestVisible, false, `timeline digest button is not rendered at narrow ${label}`);
+        assert.equal(metrics.compactToggleVisible, false, `timeline compact toggle is not visible at narrow ${label}`);
+        assert.equal(metrics.viewPanelHidden, true, `timeline view panel is hidden by default at narrow ${label}`);
+        assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at narrow ${label}`);
+        assert.equal(metrics.viewToggleInTopbar, true, `view panel toggle stays in the topbar at narrow ${label}`);
+        assert.equal(metrics.historyExists, true, `history button exists at narrow ${label}`);
+        assert.equal(metrics.historyInTopbar, true, `history button stays in the topbar at narrow ${label}`);
+        assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay', `date row contains only date controls at narrow ${label}`);
+        assert.equal(metrics.dateInteractiveNonzeroCount, 4, `date row controls keep visible hit targets at narrow ${label}`);
+        assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: ${metrics.bodyOverflowX}`);
+        assert.ok(metrics.headerOverflowX <= 2, `timeline header does not leak horizontal overflow at narrow ${label}: ${metrics.headerOverflowX}`);
+        assert.ok(metrics.headerLeft >= -1 && metrics.headerRight <= metrics.viewportWidth + 1, `timeline header remains within viewport at narrow ${label}: ${metrics.headerLeft}px..${metrics.headerRight}px`);
+
+        await setTimelineViewPanelOpen(page, true);
+        const openMetrics = await readMetrics();
+        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens at narrow ${label}`);
+        assert.equal(openMetrics.viewToggleExpanded, 'true', `timeline view toggle expands at narrow ${label}`);
+        assert.ok(openMetrics.bodyOverflowX <= 2, `open view panel does not create body overflow at narrow ${label}: ${openMetrics.bodyOverflowX}`);
+        assert.ok(openMetrics.viewPanelLeft >= -1, `open view panel stays inside the left viewport edge at narrow ${label}: ${openMetrics.viewPanelLeft}px`);
+        assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside the right viewport edge at narrow ${label}: ${openMetrics.viewPanelRight}px`);
+        await setTimelineViewPanelOpen(page, false);
     }
 }
 

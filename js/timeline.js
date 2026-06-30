@@ -3349,10 +3349,6 @@ async function renderTimeline() {
     if (historyBtn) {
         historyBtn.classList.toggle('hidden', !canViewHistory());
     }
-    const digestBtn = document.getElementById('digestBtn');
-    if (digestBtn) {
-        digestBtn.classList.toggle('hidden', isViewer());
-    }
     if (typeof refreshTimelineActionMenuVisibility === 'function') {
         refreshTimelineActionMenuVisibility({ forceClosed: true, reason: 'render-actions' });
     }
@@ -6480,10 +6476,6 @@ async function renderMultiDayTimeline() {
     const historyBtn = document.getElementById('historyBtn');
     if (historyBtn) {
         historyBtn.classList.toggle('hidden', !canViewHistory());
-    }
-    const digestBtn = document.getElementById('digestBtn');
-    if (digestBtn) {
-        digestBtn.classList.toggle('hidden', isViewer());
     }
     if (typeof refreshTimelineActionMenuVisibility === 'function') {
         refreshTimelineActionMenuVisibility({ forceClosed: true, reason: 'render-multiday-actions' });

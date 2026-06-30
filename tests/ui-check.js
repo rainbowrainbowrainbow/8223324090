@@ -76,16 +76,16 @@ checkPage('index.html', (doc, html) => {
     const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
     const responsiveCss = cssTextWithImports('css/responsive.css');
     const timelineHeaderWideDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 2160px) and (min-width: 1537px) {');
-    const timelineHeaderOneRowDesktopCss = sourceBlock(responsiveCss, '/* v0.77.76: desktop header filters stay in one row', '@media (max-width: 1360px) and (min-width: 1181px) {');
+    const timelineViewPanelResponsiveCss = sourceBlock(responsiveCss, '/* v0.77.77: view panel keeps timeline filters behind the topbar action.', '@media (max-width: 430px) {');
     const timelineHeaderLabelBreakpointCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) {');
     const timelineHeaderNarrowDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1360px) and (min-width: 1181px) {');
+    const timelineHeaderSmallMobileCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 430px) {');
     const timelineMediumToolbarCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) and (min-width: 769px) {');
     const timelineMediumCenterRule = cssRuleText(timelineMediumToolbarCss, 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--center');
     const timelineHeaderFiltersRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters');
+    const timelineViewPanelRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-view-panel');
+    const timelineViewPanelHiddenRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-view-panel[hidden]');
     const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
-    const timelineWideDesktopFiltersRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters');
-    const timelineWideDesktopUserPanelRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .timeline-header-filters + .user-panel');
-    const timelineWideDesktopZoomRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .zoom-controls');
     const timelineHeaderActionsRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions');
     const timelineHeaderLogoutRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout');
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales,\s*[\r\n]+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
@@ -230,12 +230,9 @@ checkPage('index.html', (doc, html) => {
         && doc.querySelector('.action-buttons #adminDropdown #menuToggleBtn')
         && !doc.querySelector('.v32-controls #adminDropdown')
         && doc.getElementById('menuToggleBtn')?.querySelector('.timeline-control-icon--dots')
-        && !!doc.getElementById('historyBtn')
-        && !!doc.getElementById('digestBtn')
+        && doc.querySelector('.header .timeline-header-actions > #historyBtn.btn-history.timeline-header-history-btn')
+        && !doc.getElementById('digestBtn')
         && !!doc.getElementById('exportPdfBtn')
-        && doc.querySelector('.action-buttons > #digestBtn.timeline-command-btn.timeline-command-btn--digest')
-        && !doc.querySelector('.v32-controls > #digestBtn')
-        && !timelineActionMenu?.querySelector('#digestBtn')
         && timelineActionMenu?.querySelector('#exportPdfBtn')
         && !doc.getElementById('afishaBtn')
         && !doc.getElementById('dashboardBtn')
@@ -264,29 +261,33 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('services/scheduler.js', "code: 'NO_BOT_TOKEN'")
         && htmlContains('services/scheduler.js', "reason: 'telegram_send_failed'")
         && htmlContains('routes/telegram.js', "code: 'DIGEST_INTERNAL_ERROR'"));
-    check('Timeline history opens as a primary toolbar action with shared history styling',
-        doc.querySelector('.action-buttons > #historyBtn.btn-history')
+    check('Timeline history opens as a primary topbar action with shared history styling',
+        doc.querySelector('.header .timeline-header-actions > #historyBtn.btn-history.timeline-header-history-btn')
+        && !doc.querySelector('.schedule-command-center #historyBtn')
         && !timelineActionMenu?.querySelector('#historyBtn')
         && modalsCss.includes('.action-history-row')
         && modalsCss.includes('.action-history-modal')
         && htmlContains('js/settings.js', 'ActionHistoryView.renderList(items'));
-    check('Timeline header keeps filters without the search button and actions in the utility row',
+    check('Timeline header keeps view panel, topbar actions, and a date-only utility row',
         !!doc.querySelector('.control-panel.schedule-command-center.toolbarContainer[role="toolbar"]')
         && !doc.querySelector('.header .btn-search')
         && !doc.querySelector('.header #globalHeaderSearchBtn')
         && !html.includes('onclick="openSearch()"')
         && htmlContains('js/auth.js', "document.body?.classList?.contains('timeline-dashboard-page')")
-        && !!doc.querySelector('.header .timeline-header-filters[aria-label="Фільтри таймлайну"]')
+        && !doc.querySelector('.header .header-content > .timeline-header-filters')
+        && !!doc.querySelector('.header .timeline-view-panel#timelineViewPanel[hidden][aria-label="Налаштування вигляду таймлайну"]')
+        && !!doc.querySelector('#timelineViewPanel > #timelineHeaderFilters.timeline-header-filters[aria-label="Фільтри таймлайну"]')
+        && !!doc.querySelector('.header .timeline-header-actions > #timelineViewPanelToggle[aria-controls="timelineViewPanel"][aria-expanded="false"]')
+        && !!doc.querySelector('.header .timeline-header-actions > #historyBtn')
+        && !doc.getElementById('digestBtn')
         && !doc.querySelector('.timeline-header-filters-label')
         && !doc.querySelector('.timeline-header-filter-icon--sliders')
+        && Array.from(doc.querySelectorAll('.timeline-view-panel-label')).map(el => el.textContent.trim()).join('|') === 'Статус|Період|Тип|Масштаб'
         && !!doc.querySelector('.timeline-header-filters .status-filter-controls.toolbarGroup.segmentedControl')
-        && !!doc.querySelector('.timeline-header-filters .timeline-header-filter-icon--calendar[aria-hidden="true"]')
         && !!doc.querySelector('.timeline-header-filters #periodSelector[data-schedule-view-mode-selector]')
-        && !!doc.querySelector('.timeline-header-filters .timeline-header-filter-icon--banquet[aria-hidden="true"]')
         && !!doc.querySelector('.timeline-header-filters .view-mode-controls.toolbarGroup')
         && !!doc.querySelector('.timeline-header-filters [data-timeline-type-selector] [data-timeline-view="rooms"]')
         && !!doc.querySelector('.timeline-header-filters [data-timeline-type-selector] [data-timeline-view="animators"]')
-        && !!doc.querySelector('.timeline-header-filters .timeline-header-filter-icon--clock[aria-hidden="true"]')
         && !!doc.querySelector('.timeline-header-filters .v32-controls.toolbarGroup .zoom-controls')
         && !doc.querySelector('.timeline-header-filters .timeline-compact-toggle')
         && !doc.getElementById('compactModeToggle')
@@ -294,9 +295,14 @@ checkPage('index.html', (doc, html) => {
         && !doc.querySelector('.timeline-header-filters #logoutBtn')
         && !doc.querySelector('.timeline-header-filters #timelineHolidaysToggle')
         && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--date.toolbarZone .date-controls.toolbarGroup')
-        && !!doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--actions.toolbarZone .action-buttons.toolbarGroup')
-        && !!doc.querySelector('.schedule-command-zone--actions .action-buttons > #historyBtn')
-        && !!doc.querySelector('.schedule-command-zone--actions .action-buttons #adminDropdown[data-menu-scope="timeline-actions"]')
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|todayBtn|nextDay'
+        && !doc.querySelector('.schedule-command-row--utility.toolbarRow .schedule-command-zone--actions')
+        && !doc.querySelector('.schedule-command-row--utility #historyBtn')
+        && !doc.querySelector('.schedule-command-row--utility #digestBtn')
+        && !doc.querySelector('.schedule-command-row--utility #logoutBtn')
+        && !doc.querySelector('.schedule-command-row--utility #headerThemeToggle')
+        && !!doc.querySelector('.schedule-command-row--actions.toolbarRow .schedule-command-zone--actions.toolbarZone .action-buttons.toolbarGroup')
+        && !!doc.querySelector('.schedule-command-row--actions .action-buttons #adminDropdown[data-menu-scope="timeline-actions"]')
         && !doc.querySelector('.schedule-command-row--main')
         && !doc.querySelector('.schedule-command-center .status-filter-controls')
         && !doc.querySelector('.schedule-command-center .timeline-view-mode-selector')
@@ -308,7 +314,11 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'v0.77.59: three-zone Schedule Command Center layout')
         && htmlContains('css/responsive.css', 'v0.77.61: follow-up toolbar action row and non-overlapping view overlay')
         && htmlContains('css/responsive.css', 'v0.77.64: balanced top-row zones and compact view/holidays cluster')
-        && htmlContains('css/responsive.css', 'Timeline header filters: move schedule filters next to search without changing handlers.')
+        && htmlContains('css/responsive.css', 'Timeline view panel: keep schedule display controls in one shared selector scope.')
+        && htmlContains('css/responsive.css', 'v0.77.77: view panel keeps timeline filters behind the topbar action.')
+        && htmlContains('css/responsive.css', '.timeline-view-panel')
+        && htmlContains('css/responsive.css', '.timeline-view-panel[hidden]')
+        && htmlContains('css/responsive.css', 'max-inline-size: calc(100vw - 24px)')
         && htmlContains('css/responsive.css', '.timeline-header-filters')
         && htmlContains('css/responsive.css', '.timeline-header-filter-group')
         && htmlContains('css/responsive.css', '.schedule-command-row--main')
@@ -320,8 +330,8 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '@media (max-width: 1536px) and (min-width: 769px)')
         && htmlContains('css/responsive.css', 'grid-template-areas:')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
-        && htmlContains('css/responsive.css', 'margin-left: 6px !important;'));
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-row--actions')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn'));
     check('Timeline header regression guard forbids old search, compact, label, and second-row contracts',
         !doc.querySelector('.timeline-dashboard-page .header .btn-search')
         && !doc.querySelector('.timeline-header-filters .btn-search')
@@ -347,38 +357,40 @@ checkPage('index.html', (doc, html) => {
         && timelineHeaderFiltersRule.includes('outline: 0')
         && timelineHeaderFiltersRule.includes('background: transparent')
         && timelineHeaderFiltersRule.includes('box-shadow: none')
-        && timelineHeaderOneRowDesktopCss.includes('@media (min-width: 1181px)')
-        && timelineHeaderOneRowDesktopCss.includes('flex-wrap: nowrap;')
-        && timelineHeaderOneRowDesktopCss.includes('flex: 1 1 auto;')
-        && timelineHeaderOneRowDesktopCss.includes('flex-basis: auto;')
-        && !timelineHeaderOneRowDesktopCss.includes('wide constrained desktops need a second header row')
-        && !timelineHeaderOneRowDesktopCss.includes('order: 4;')
-        && !timelineHeaderOneRowDesktopCss.includes('flex-basis: 100%;')
-        && !timelineHeaderOneRowDesktopCss.includes('flex: 1 0 100%;')
+        && timelineViewPanelRule.includes('position: absolute')
+        && timelineViewPanelRule.includes('max-inline-size: calc(100vw - 24px)')
+        && timelineViewPanelRule.includes('overflow: hidden')
+        && timelineViewPanelHiddenRule.includes('display: none !important')
+        && htmlContains('js/app.js', 'function setTimelineViewPanelOpen')
+        && htmlContains('js/app.js', 'function initTimelineViewPanel')
+        && htmlContains('js/app.js', 'panel.hidden = !nextOpen')
+        && htmlContains('js/app.js', "toggle.classList.toggle('is-open', nextOpen)")
+        && htmlContains('js/app.js', "event.key !== 'Escape'")
+        && htmlContains('js/app.js', 'panel.contains(target)')
+        && !htmlContains('js/app.js', 'scrollIntoView')
+        && !doc.querySelector('.header .header-content > .timeline-header-filters')
         && timelineBrowserSmokeCode.includes('metrics.cellWidth >= 48')
         && timelineBrowserSmokeCode.includes('metrics.bookingWidth >= 150'));
-    check('Timeline header filters keep exact visual order and direct handler hooks',
+    check('Timeline view panel filters keep exact visual order and direct handler hooks',
         Array.from(doc.querySelector('.timeline-header-filters')?.children || []).map(el => {
             if (el.matches('.timeline-header-filter-group--status') && el.querySelector('.status-filter-controls')) return 'status';
-            if (el.matches('.timeline-header-filter-icon--calendar[aria-hidden="true"]')) return 'calendar-icon';
             if (el.matches('.timeline-header-filter-group--period') && el.querySelector('#periodSelector[data-schedule-view-mode-selector]')) return 'period';
-            if (el.matches('.timeline-header-filter-icon--banquet[aria-hidden="true"]')) return 'banquet-icon';
             if (el.matches('.timeline-header-filter-group--type') && el.querySelector('[data-timeline-type-selector]')) return 'type';
-            if (el.matches('.timeline-header-filter-icon--clock[aria-hidden="true"]')) return 'clock-icon';
             if (el.matches('.timeline-header-filter-group--zoom') && el.querySelector('.zoom-controls')) return 'zoom';
             return `unexpected:${el.className || el.id || el.tagName}`;
-        }).join('|') === 'status|calendar-icon|period|banquet-icon|type|clock-icon|zoom'
+        }).join('|') === 'status|period|type|zoom'
         && !doc.querySelector('.timeline-header-filters-label')
         && !doc.querySelector('.timeline-header-filter-icon--sliders')
         && !doc.querySelector('.timeline-header-filters .timeline-compact-toggle')
         && !doc.getElementById('compactModeToggle')
+        && Array.from(doc.querySelectorAll('.timeline-header-filter-group > .timeline-view-panel-label')).map(el => el.textContent.trim()).join('|') === 'Статус|Період|Тип|Масштаб'
         && Array.from(doc.querySelectorAll('.timeline-header-filters .status-filter-btn')).map(btn => btn.dataset.filter).join('|') === 'all|confirmed|preliminary'
         && Array.from(doc.querySelectorAll('.timeline-header-filters [data-schedule-view-mode]')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week'
         && Array.from(doc.querySelectorAll('.timeline-header-filters [data-timeline-view]')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
         && Array.from(doc.querySelectorAll('.timeline-header-filters .zoom-btn')).map(btn => btn.dataset.zoom).join('|') === '15|30|60'
         && !!doc.querySelector('.header .timeline-header-actions #logoutBtn[type="button"]:not([onclick])')
         && !doc.querySelector('.timeline-header-filters #logoutBtn'));
-    check('Timeline header filter strip keeps status, period, type, and scale controls distributed',
+    check('Timeline view panel keeps status, period, type, and scale controls distributed',
         !!doc.querySelector('.timeline-header-filter-group--status .status-filter-controls')
         && !!doc.querySelector('.timeline-header-filter-group--period .timeline-view-mode-selector')
         && !!doc.querySelector('.timeline-header-filter-group--type .timeline-type-selector')
@@ -392,8 +404,9 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .period-selector')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .zoom-controls')
-        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(2, minmax(70px, 1fr))')
-        && htmlContains('css/responsive.css', 'min-width: 150px !important;'));
+        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(2, minmax(0, 1fr))')
+        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(3, minmax(0, 1fr))')
+        && htmlContains('css/responsive.css', 'min-width: 0 !important;'));
     check('Timeline medium toolbar stays compact across tablet breakpoints',
         htmlContains('css/responsive.css', '@media (max-width: 1536px) and (min-width: 769px)')
         && htmlContains('css/responsive.css', '@media (min-width: 700px) and (max-width: 768px)')
@@ -419,7 +432,9 @@ checkPage('index.html', (doc, html) => {
         && !!doc.querySelector('#nextDay.toolbarIconButton.toolbarGhostButton')
         && !!doc.querySelector('#todayBtn.toolbarButton.toolbarGhostButton')
         && !!doc.querySelector('#menuToggleBtn.toolbarIconButton.toolbarGhostButton')
-        && !!doc.querySelector('#digestBtn.toolbarButton.toolbarAccentButton')
+        && !!doc.querySelector('#timelineViewPanelToggle.toolbarButton.toolbarGhostButton')
+        && !!doc.querySelector('#historyBtn.toolbarButton.toolbarGhostButton.timeline-header-history-btn')
+        && !doc.getElementById('digestBtn')
         && !!doc.querySelector('#exportTimelineBtn.toolbarButton.toolbarGhostButton')
         && !doc.querySelector('.timeline-header-filters .timeline-compact-toggle')
         && !doc.getElementById('compactModeToggle')
@@ -435,28 +450,39 @@ checkPage('index.html', (doc, html) => {
         && !html.includes('timeline-header-filter-icon--sliders')
         && !responsiveCss.includes('timeline-header-filters-label')
         && !responsiveCss.includes('body.timeline-dashboard-page .timeline-header-filters .timeline-compact-toggle')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-border: #E2E8F0')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-control-bg: #FFFFFF')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-hover-bg: #F1F5F9')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-active-bg: #14B8A6')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-text: #475569')
+        && htmlContains('css/responsive.css', '--timeline-topbar-control-h: 40px')
+        && htmlContains('css/responsive.css', '--timeline-topbar-radius: 10px')
+        && htmlContains('css/responsive.css', '--timeline-topbar-icon-size: 18px')
+        && htmlContains('css/responsive.css', '--timeline-topbar-control-bg: var(--eg-panel-bg-soft')
+        && htmlContains('css/responsive.css', '--timeline-topbar-control-bg-hover: var(--eg-surface-elevated')
+        && htmlContains('css/responsive.css', '--timeline-topbar-border: var(--eg-border-default')
+        && htmlContains('css/responsive.css', '--timeline-topbar-border-hover: var(--eg-border-strong')
+        && htmlContains('css/responsive.css', '--timeline-topbar-text: var(--eg-text-secondary')
+        && htmlContains('css/responsive.css', '--timeline-topbar-focus: var(--eg-focus-ring')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-border: var(--eg-border-default')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-control-bg: var(--eg-panel-bg-soft')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-hover-bg: var(--eg-surface-elevated')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-active-bg: var(--eg-accent')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-text: var(--eg-text-secondary')
         && htmlContains('css/responsive.css', 'border-radius: 999px !important')
         && htmlContains('css/responsive.css', ':focus-visible')
         && htmlContains('css/responsive.css', ':disabled')
         && htmlContains('css/responsive.css', '.is-loading')
         && htmlContains('css/responsive.css', 'aria-busy="true"'));
-    check('Timeline header filter toolbar is theme-aware without losing light active tokens',
-        htmlContains('css/responsive.css', 'body.dark-mode.timeline-dashboard-page .timeline-header-filters')
-        && htmlContains('css/responsive.css', 'html[data-theme="dark"] body.timeline-dashboard-page .timeline-header-filters')
+    check('Timeline view panel filter toolbar is theme-aware without losing light active tokens',
+        htmlContains('css/responsive.css', 'body.dark-mode.timeline-dashboard-page .timeline-view-panel')
+        && htmlContains('css/responsive.css', 'html[data-theme="dark"] body.timeline-dashboard-page .timeline-view-panel')
         && timelineHeaderFiltersRule.includes('background: transparent')
         && timelineHeaderFiltersRule.includes('border: 0')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-control-bg: #FFFFFF')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-border: #E2E8F0')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-active-bg: #14B8A6')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-control-bg: rgba(30, 41, 59')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-border: rgba(148, 163, 184')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-text: #CBD5E1')
-        && htmlContains('css/responsive.css', '--timeline-header-filter-muted: #94A3B8'));
+        && timelineViewPanelRule.includes('background: var(--eg-surface-elevated')
+        && timelineViewPanelRule.includes('border: 1px solid var(--eg-border-default')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-control-bg: var(--eg-panel-bg-soft')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-border: var(--eg-border-default')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-border-strong: var(--eg-border-strong')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-active-bg: var(--eg-accent')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-text: var(--eg-text-secondary')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-muted: var(--eg-text-muted')
+        && htmlContains('css/responsive.css', '--timeline-header-filter-focus: var(--eg-focus-ring'));
     check('Timeline schedule command center has a scoped light theme override over dark-first variables',
         htmlContains('css/responsive.css', 'Light theme keeps the schedule command bar aligned with the light CRM shell.')
         && htmlContains('css/responsive.css', 'body:not(.dark-mode).timeline-dashboard-page .schedule-command-center.toolbarContainer')
@@ -472,68 +498,75 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '.schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn')
         && htmlContains('css/responsive.css', '.schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton')
         && htmlContains('css/responsive.css', 'box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;'));
-    check('Timeline header filters keep desktop full row and mobile scroll without overlap',
+    check('Timeline view panel keeps desktop popover and mobile bounds without overlap',
         htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .header-content')
         && htmlContains('css/responsive.css', 'flex-wrap: nowrap;')
         && htmlContains('css/responsive.css', 'max-inline-size: 100%;')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-view-panel')
+        && htmlContains('css/responsive.css', 'position: absolute')
+        && htmlContains('css/responsive.css', 'width: min(720px, calc(100vw - 24px))')
+        && htmlContains('css/responsive.css', 'max-inline-size: calc(100vw - 24px)')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-view-panel[hidden]')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters')
-        && htmlContains('css/responsive.css', 'flex: 1 1 auto;')
-        && htmlContains('css/responsive.css', 'v0.77.76: desktop header filters stay in one row')
+        && htmlContains('css/responsive.css', 'grid-template-columns: repeat(2, minmax(0, 1fr))')
+        && htmlContains('css/responsive.css', 'v0.77.77: view panel keeps timeline filters behind the topbar action.')
         && htmlContains('css/responsive.css', '@media (min-width: 1181px)')
-        && htmlContains('css/responsive.css', 'overflow-x: visible;')
-        && htmlContains('css/responsive.css', 'overflow-x: auto;')
-        && htmlContains('css/responsive.css', 'scrollbar-width: none;')
-        && htmlContains('css/responsive.css', '-webkit-overflow-scrolling: touch;')
+        && htmlContains('css/responsive.css', '@media (max-width: 1180px)')
+        && htmlContains('css/responsive.css', '@media (max-width: 768px)')
+        && htmlContains('css/responsive.css', 'max-inline-size: calc(100vw - 16px)')
+        && htmlContains('css/responsive.css', 'grid-template-columns: 1fr')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn')
-        && htmlContains('css/responsive.css', 'min-width: max-content !important;')
+        && htmlContains('css/responsive.css', 'min-width: 0 !important;')
         && htmlContains('css/responsive.css', 'white-space: nowrap !important;')
-        && htmlContains('css/responsive.css', 'grid-template-columns: max-content max-content max-content !important;')
-        && htmlContains('css/responsive.css', '@media (max-width: 2160px) and (min-width: 1537px)')
-        && htmlContains('css/responsive.css', '@media (max-width: 1536px) and (min-width: 1181px)')
+        && htmlContains('css/responsive.css', 'overflow: hidden !important;')
+        && htmlContains('css/responsive.css', 'text-overflow: ellipsis !important;')
         && !responsiveCss.includes('wide constrained desktops need a second header row')
-        && htmlContains('css/responsive.css', '@media (max-width: 1360px) and (min-width: 1181px)')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters > .timeline-header-filter-icon')
-        && htmlContains('css/responsive.css', 'flex: 1 0 100%;'));
-    check('Timeline header filters have a one-row desktop overflow contract',
-        timelineWideDesktopHeaderRule.includes('flex-wrap: nowrap;')
-        && timelineWideDesktopHeaderRule.includes('align-items: center;')
-        && timelineWideDesktopFiltersRule.includes('flex: 1 1 auto;')
-        && timelineWideDesktopFiltersRule.includes('flex-basis: auto;')
-        && timelineWideDesktopFiltersRule.includes('width: auto;')
-        && timelineWideDesktopFiltersRule.includes('max-inline-size: 100%;')
+        && htmlContains('css/responsive.css', '@media (max-width: 1360px) and (min-width: 1181px)'));
+    check('Timeline view panel and topbar actions have an overflow-safe contract',
+        timelineViewPanelResponsiveCss.includes('@media (min-width: 1181px)')
+        && timelineViewPanelResponsiveCss.includes('flex-wrap: nowrap;')
+        && timelineViewPanelResponsiveCss.includes('align-items: center;')
+        && timelineViewPanelRule.includes('position: absolute')
+        && timelineViewPanelRule.includes('width: min(720px, calc(100vw - 24px))')
+        && timelineViewPanelRule.includes('max-inline-size: calc(100vw - 24px)')
+        && timelineViewPanelRule.includes('overflow: hidden')
+        && timelineViewPanelHiddenRule.includes('display: none !important')
+        && timelineHeaderFiltersRule.includes('grid-template-columns: repeat(2, minmax(0, 1fr))')
+        && timelineViewPanelResponsiveCss.includes('@media (max-width: 768px)')
+        && timelineViewPanelResponsiveCss.includes('grid-template-columns: 1fr')
+        && timelineViewPanelResponsiveCss.includes('max-inline-size: calc(100vw - 16px)')
         && timelineHeaderActionsRule.includes('margin-left: auto;')
         && timelineHeaderActionsRule.includes('border-left:')
-        && timelineHeaderLogoutRule.includes('linear-gradient')
-        && timelineHeaderLogoutRule.includes('font-weight: 800')
-        && timelineHeaderLogoutRule.includes('white-space: nowrap')
+        && timelineHeaderLogoutRule.includes('background: var(--timeline-topbar-accent)')
+        && timelineHeaderLogoutRule.includes('border-color: var(--timeline-topbar-accent)')
+        && htmlContains('css/responsive.css', 'font-weight: 800 !important;')
+        && htmlContains('css/responsive.css', 'white-space: nowrap')
         && htmlContains('js/timeline-visibility.js', 'function constructorButtonHost()')
         && htmlContains('js/timeline-visibility.js', "document.querySelector('.timeline-header-actions')")
         && htmlContains('js/timeline-visibility.js', 'function placeConstructorButton(button)')
         && htmlContains('js/timeline-visibility.js', "host.querySelector('.timeline-header-logout')")
         && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, logoutAction)')
         && !responsiveCss.includes('body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout')
-        && !timelineWideDesktopFiltersRule.includes('order: 4;')
-        && !timelineWideDesktopFiltersRule.includes('flex-basis: 100%;')
-        && !timelineWideDesktopFiltersRule.includes('flex: 1 0 100%;')
-        && timelineWideDesktopUserPanelRule.includes('margin-left: auto;')
-        && timelineWideDesktopZoomRule.includes('min-width: 162px !important;')
-        && timelineWideDesktopZoomRule.includes('grid-template-columns: max-content max-content max-content !important;')
-        && timelineHeaderOneRowDesktopCss.includes('@media (max-width: 1536px) and (min-width: 1181px)')
-        && timelineHeaderOneRowDesktopCss.includes('flex-wrap: nowrap;')
-        && timelineHeaderOneRowDesktopCss.includes('flex: 1 1 auto;')
-        && timelineHeaderOneRowDesktopCss.includes('flex-basis: auto;')
-        && timelineHeaderOneRowDesktopCss.includes('width: auto;')
-        && !timelineHeaderOneRowDesktopCss.includes('order: 4;')
-        && !timelineHeaderOneRowDesktopCss.includes('flex-basis: 100%;')
-        && !timelineHeaderOneRowDesktopCss.includes('flex: 1 0 100%;'));
+        && !responsiveCss.includes('body.timeline-dashboard-page .header .timeline-header-filters + .user-panel')
+        && !doc.querySelector('.header .header-content > .timeline-header-filters')
+        && !timelineViewPanelRule.includes('overflow-x: auto'));
     check('Timeline browser smoke guards header visibility and 15-minute geometry thresholds',
         timelineBrowserSmokeCode.includes('function assertTimelineHeaderAnd15MinuteGeometry')
+        && timelineBrowserSmokeCode.includes('function assertTimelineViewPanelInteractions')
         && timelineBrowserSmokeCode.includes('page.setViewportSize({ width: 2048, height: 1152 })')
         && timelineBrowserSmokeCode.includes('{ width: 1920, height: 1080 }')
         && timelineBrowserSmokeCode.includes('{ width: 1536, height: 864 }')
-        && timelineBrowserSmokeCode.includes('.timeline-header-filters .zoom-btn[data-zoom="${expected}"]')
+        && timelineBrowserSmokeCode.includes('{ width: 768, height: 900 }')
+        && timelineBrowserSmokeCode.includes('{ width: 390, height: 844 }')
+        && timelineBrowserSmokeCode.includes("await page.locator('#timelineViewPanelToggle').click()")
+        && timelineBrowserSmokeCode.includes('#timelineViewPanel .status-filter-btn[data-filter="confirmed"]')
+        && timelineBrowserSmokeCode.includes('#timelineViewPanel [data-schedule-view-mode="week"]')
+        && timelineBrowserSmokeCode.includes('#timelineViewPanel [data-timeline-view="rooms"]')
+        && timelineBrowserSmokeCode.includes('#timelineViewPanel .zoom-btn[data-zoom="${expected}"]')
+        && timelineBrowserSmokeCode.includes("document.getElementById('timelineViewPanel')")
+        && timelineBrowserSmokeCode.includes("document.getElementById('timelineViewPanelToggle')")
         && timelineBrowserSmokeCode.includes('const readZoomState = () => page.evaluate')
         && timelineBrowserSmokeCode.includes('const assertZoomLevel = async (level, label) =>')
         && timelineBrowserSmokeCode.includes('await assertZoomLevel(30')
@@ -547,14 +580,18 @@ checkPage('index.html', (doc, html) => {
         && timelineBrowserSmokeCode.includes('metrics.actionsRightGap >= 0')
         && timelineBrowserSmokeCode.includes('metrics.logoutTop >= 0')
         && timelineBrowserSmokeCode.includes('metrics.searchVisible')
+        && timelineBrowserSmokeCode.includes('metrics.digestVisible')
         && timelineBrowserSmokeCode.includes('metrics.compactToggleVisible')
         && timelineBrowserSmokeCode.includes('metrics.filterLabelVisible')
+        && timelineBrowserSmokeCode.includes('metrics.viewPanelHidden')
+        && timelineBrowserSmokeCode.includes('metrics.viewToggleExpanded')
+        && timelineBrowserSmokeCode.includes("metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay'")
+        && timelineBrowserSmokeCode.includes('openMetrics.bodyOverflowX <= 2')
         && timelineBrowserSmokeCode.includes('metrics.settingsAllowed')
         && timelineBrowserSmokeCode.includes('metrics.settingsVisible')
         && timelineBrowserSmokeCode.includes('metrics.settingsRight <= metrics.logoutLeft')
         && timelineBrowserSmokeCode.includes('metrics.logoutLeft - metrics.settingsRight <= 18')
         && timelineBrowserSmokeCode.includes('metrics.hiddenControls')
-        && timelineBrowserSmokeCode.includes('metrics.filterOverflowX <= 2')
         && timelineBrowserSmokeCode.includes('metrics.bodyOverflowX <= 2')
         && timelineBrowserSmokeCode.includes("localStorage.setItem('pzp_compact_mode', 'true')")
         && timelineBrowserSmokeCode.includes('metrics.compactState')
@@ -576,17 +613,14 @@ checkPage('index.html', (doc, html) => {
         && Array.from(doc.querySelectorAll('.timeline-header-filter-icon')).every(icon => icon.getAttribute('aria-hidden') === 'true')
         && doc.querySelector('#logoutBtn')?.closest('.timeline-header-actions')
         && !doc.querySelector('#logoutBtn')?.closest('.timeline-header-filters')
-        && doc.querySelector('#digestBtn')?.getAttribute('aria-busy') === 'false'
-        && doc.querySelector('#digestBtn')?.getAttribute('aria-disabled') === 'false'
-        && !!doc.querySelector('#digestBtn #digestStatus.toolbar-sr-status[aria-live="polite"]')
+        && doc.querySelector('#timelineViewPanelToggle[aria-controls="timelineViewPanel"][aria-expanded="false"]')
+        && doc.querySelector('#timelineViewPanel[hidden] #timelineHeaderFilters')
+        && doc.querySelector('#historyBtn')?.closest('.timeline-header-actions')
+        && !doc.getElementById('digestBtn')
         && htmlContains('js/app.js', 'function syncTimelineStatusFilterButtons')
         && htmlContains('js/app.js', 'function syncTimelineCompactToggleAria')
         && htmlContains('js/timeline.js', "b.setAttribute('aria-pressed', active ? 'true' : 'false')")
         && htmlContains('js/ui.js', "btn.setAttribute('aria-pressed', active ? 'true' : 'false')")
-        && htmlContains('js/settings.js', "btn.setAttribute('aria-busy', 'true')")
-        && htmlContains('js/settings.js', "btn.setAttribute('aria-disabled', 'true')")
-        && htmlContains('js/settings.js', "digestBtn?.disabled")
-        && htmlContains('css/responsive.css', '.toolbar-sr-status')
         && htmlContains('css/responsive.css', ':focus-visible')
         && htmlContains('css/responsive.css', 'box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;'));
     check('Timeline header filter accessibility keeps semantic tab order and decorative icons quiet',
@@ -624,8 +658,9 @@ checkPage('index.html', (doc, html) => {
         && !doc.querySelector('.timeline-compact-toggle')
         && doc.querySelector('.header .timeline-header-actions #logoutBtn[type="button"]')
         && !doc.querySelector('.timeline-header-filters #logoutBtn')
-        && doc.querySelector('#digestBtn[aria-busy="false"][aria-disabled="false"]')
-        && doc.getElementById('historyBtn')
+        && !doc.getElementById('digestBtn')
+        && doc.querySelector('.header .timeline-header-actions #timelineViewPanelToggle[type="button"]')
+        && doc.querySelector('.header .timeline-header-actions #historyBtn[type="button"]')
         && doc.querySelector('#adminDropdown[data-menu-scope="timeline-actions"] #menuToggleBtn[aria-haspopup="menu"][aria-expanded="false"]')
         && htmlContains('js/app.js', "document.getElementById('loginForm')?.addEventListener('submit', async (e) => {")
         && htmlContains('js/app.js', 'const result = await login(usernameEl?.value, passwordEl?.value)')
@@ -644,18 +679,18 @@ checkPage('index.html', (doc, html) => {
         && !htmlContains('js/app.js', "closest?.('[data-timeline-holidays-toggle]')")
         && !htmlContains('js/app.js', "const holidaysToggle = document.getElementById('timelineHolidaysToggle')")
         && htmlContains('js/app.js', "historyBtnEl.addEventListener('click', showHistory)")
-        && htmlContains('js/app.js', "digestBtn.addEventListener('click', sendDailyDigest)")
+        && htmlContains('js/app.js', "document.getElementById('timelineViewPanelToggle')")
+        && htmlContains('js/app.js', "document.getElementById('timelineViewPanel')")
+        && htmlContains('js/app.js', 'function initTimelineViewPanel')
+        && htmlContains('js/app.js', "panel.contains(target)")
+        && htmlContains('js/app.js', "event.key !== 'Escape'")
+        && !htmlContains('js/app.js', "digestBtn.addEventListener('click', sendDailyDigest)")
         && htmlContains('js/app.js', "document.querySelectorAll('.zoom-btn').forEach(btn => {")
         && htmlContains('js/app.js', "compactToggle.addEventListener('change', toggleCompactMode)")
         && htmlContains('js/app.js', 'function setTimelineActionMenuOpen')
         && htmlContains('js/app.js', "content.hidden = !nextOpen")
         && htmlContains('js/app.js', "closeTimelineActionMenu('outside-click')")
         && htmlContains('js/app.js', "closeTimelineActionMenu('escape')")
-        && htmlContains('js/settings.js', "digestBtn?.classList.contains('is-loading')")
-        && htmlContains('js/settings.js', "digestBtn?.disabled")
-        && htmlContains('js/settings.js', "digestBtn?.getAttribute('aria-busy') === 'true'")
-        && htmlContains('js/settings.js', "btn.setAttribute('aria-busy', 'true')")
-        && htmlContains('js/settings.js', "btn.setAttribute('aria-disabled', 'true')")
         && htmlContains('js/timeline-visibility.js', "button.id = 'timelineConstructorBtn'")
         && htmlContains('js/timeline-visibility.js', 'bindConstructorButton(button)')
         && htmlContains('js/timeline-visibility.js', 'openSettingsCenter()')
@@ -668,10 +703,9 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'transform: translateY(1px) !important;')
         && htmlContains('css/responsive.css', 'animation: scheduleToolbarSpinner 720ms linear infinite;')
         && htmlContains('css/responsive.css', 'border-top-color: transparent;')
-        && htmlContains('css/responsive.css', 'min-width: 112px !important;')
         && !htmlContains('css/responsive.css', 'scheduleDigestPulse')
-        && htmlContains('js/settings.js', "label.textContent = 'Готуємо...'")
-        && htmlContains('js/settings.js', "label.textContent = 'Дайджест'")
+        && htmlContains('css/responsive.css', 'timeline-header-view-btn')
+        && htmlContains('css/responsive.css', 'timeline-header-history-btn')
         && htmlContains('css/layout.css', 'animation: timelineActionMenuIn 140ms ease-out forwards;')
         && htmlContains('css/layout.css', 'transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;')
         && htmlContains('js/app.js', "closeTimelineActionMenu('escape')")
@@ -680,6 +714,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/app.js', "e.key === 'ArrowUp'"));
     check('Timeline date navigation cluster keeps date primary and metadata out of the toolbar',
         !!doc.querySelector('.schedule-command-row--utility .schedule-command-zone--date .date-controls.date-navigation-cluster')
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input')).map(el => el.id).join('|') === 'prevDay|timelineDate|todayBtn|nextDay'
         && !!doc.querySelector('.date-navigation-cluster .date-button-shell > #timelineDate[type="date"]')
         && !!doc.querySelector('.date-navigation-cluster .date-button-calendar[aria-hidden="true"]')
         && !doc.querySelector('.date-navigation-cluster .day-info')
@@ -741,14 +776,14 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '@media (max-width: 768px)')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .toolbar-label-short')
         && htmlContains('css/responsive.css', 'overflow-x: auto !important')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-row--actions')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions .action-buttons')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--utility .v32-controls')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #digestBtn')
+        && !htmlContains('index.html', 'id="digestBtn"')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #adminDropdown')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn')
         && htmlContains('css/responsive.css', 'order: 1')
         && htmlContains('css/responsive.css', 'order: 3')
-        && htmlContains('css/responsive.css', 'order: 4')
         && htmlContains('css/responsive.css', 'order: 2')
         && htmlContains('css/responsive.css', '.schedule-command-zone--actions')
         && htmlContains('css/responsive.css', 'overflow-x: hidden'));
@@ -767,33 +802,39 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short')
         && htmlContains('css/responsive.css', '@media (max-width: 1536px)')
+        && htmlContains('css/responsive.css', '@media (max-width: 430px)')
         && htmlContains('css/responsive.css', 'display: none;')
         && htmlContains('css/responsive.css', 'display: inline;'));
-    check('Timeline header filter label CSS keeps desktop full labels without simultaneous short display',
+    check('Timeline header filter label CSS keeps panel labels readable without simultaneous short display',
         cssRuleSetsDisplay(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'inline')
         && cssRuleSetsDisplay(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'none')
         && cssRuleSetsDisplay(timelineHeaderLabelBreakpointCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'inline')
         && cssRuleSetsDisplay(timelineHeaderLabelBreakpointCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'none')
-        && cssRuleSetsDisplay(timelineHeaderNarrowDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'none')
-        && cssRuleSetsDisplay(timelineHeaderNarrowDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline')
+        && !cssRuleSetsDisplay(timelineHeaderNarrowDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'none')
+        && !cssRuleSetsDisplay(timelineHeaderNarrowDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline')
+        && /body\.timeline-dashboard-page \.timeline-header-filters \.toolbar-label-full\s*\{\s*display:\s*none;/.test(responsiveCss)
+        && /body\.timeline-dashboard-page \.timeline-header-filters \.toolbar-label-short\s*\{\s*display:\s*inline;/.test(responsiveCss)
         && !cssRuleSetsDisplay(responsiveCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-full', 'inline-block')
         && !cssRuleSetsDisplay(timelineHeaderLabelBreakpointCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline-block')
         && !cssRuleSetsDisplay(timelineHeaderNarrowDesktopCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline-block')
+        && !cssRuleSetsDisplay(timelineHeaderSmallMobileCss, 'body.timeline-dashboard-page .timeline-header-filters .toolbar-label-short', 'inline-block')
         && !responsiveCss.includes('body.timeline-dashboard-page .timeline-header-filters > .timeline-header-filter-icon {\n        display: none;'));
-    check('Timeline small toolbar keeps digest before overflow with row-scoped scroll',
+    check('Timeline small toolbar keeps date row clean with row-scoped secondary actions',
         htmlContains('css/responsive.css', '@media (max-width: 768px)')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone')
         && htmlContains('css/responsive.css', 'overscroll-behavior-x: contain')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #digestBtn')
+        && !!doc.querySelector('.schedule-command-row--utility .date-controls #prevDay')
+        && !!doc.querySelector('.schedule-command-row--utility .date-controls #timelineDate')
+        && !!doc.querySelector('.schedule-command-row--utility .date-controls #todayBtn')
+        && !!doc.querySelector('.schedule-command-row--utility .date-controls #nextDay')
+        && !doc.querySelector('.schedule-command-row--utility .action-buttons')
+        && !doc.getElementById('digestBtn')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #adminDropdown')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #digestBtn')
         && htmlContains('css/responsive.css', 'order: 1;')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #adminDropdown')
         && htmlContains('css/responsive.css', 'order: 3;')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineConstructorBtn')
-        && htmlContains('css/responsive.css', 'order: 4;')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--actions')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-row--actions')
         && htmlContains('css/responsive.css', '.schedule-command-zone--center .status-filter-controls')
         && htmlContains('css/responsive.css', 'width: auto !important')
         && htmlContains('css/responsive.css', '.schedule-command-zone--center .view-mode-controls'));

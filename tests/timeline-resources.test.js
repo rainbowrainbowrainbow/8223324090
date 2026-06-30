@@ -3001,10 +3001,11 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
 
     assert.equal(
         packageJson.scripts['test:browser:timeline'],
-        'npx --yes --package playwright node tests/browser/timeline-browser-smoke.js'
+        'npm exec --package=playwright -c "node tests/browser/timeline-browser-smoke.js"'
     );
     assert.match(smoke, /TIMELINE_BROWSER_SMOKE_ALLOW_PRODUCTION/);
     assert.match(smoke, /refusing non-local browser smoke/);
+    assert.match(smoke, /function assertTimelineViewPanelInteractions/);
     assert.match(smoke, /\/api\/banquets\/from-source\/member-booking/);
     assert.match(smoke, /\/api\/banquets\/from-source\/activity-booking/);
     assert.match(smoke, /function openActiveBanquetEmptyCellDrawer/);

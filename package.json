@@ -41,7 +41,7 @@
     "test:browser:event-cards": "npx --yes --package @playwright/test playwright test tests/browser/event-cards-visual-smoke.spec.js --reporter=line",
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
-    "test:browser:timeline": "npx --yes --package playwright node tests/browser/timeline-browser-smoke.js",
+    "test:browser:timeline": "npm exec --package=playwright -c \"node tests/browser/timeline-browser-smoke.js\"",
     "test:api": "node --test tests/api.test.js",
     "test:integration": "node --test tests/*.test.js",
     "db:migrate": "node db/migrate.js",

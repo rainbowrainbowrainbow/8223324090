@@ -104,48 +104,47 @@
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <div class="timeline-header-filters" aria-label="Фільтри таймлайну">
-                    <div class="timeline-header-filter-group timeline-header-filter-group--status" aria-label="Статус бронювань">
-                        <div class="status-filter-controls toolbarGroup segmentedControl">
-                            <button type="button" class="status-filter-btn segmentedItem active" data-filter="all" title="Показати всі бронювання" aria-label="Всі" aria-pressed="true">Всі</button>
-                            <button type="button" class="status-filter-btn segmentedItem" data-filter="confirmed" title="Тільки підтверджені" aria-label="Підтверджені" aria-pressed="false"><span class="toolbar-label-full">Підтверджені</span><span class="toolbar-label-short" aria-hidden="true">Підтв.</span></button>
-                            <button type="button" class="status-filter-btn segmentedItem" data-filter="preliminary" title="Тільки попередні" aria-label="Попередні" aria-pressed="false"><span class="toolbar-label-full">Попередні</span><span class="toolbar-label-short" aria-hidden="true">Попер.</span></button>
+                <div class="user-panel timeline-header-actions">
+                    <button type="button" id="timelineViewPanelToggle" class="timeline-header-view-btn toolbarButton toolbarGhostButton" title="Відкрити панель вигляду таймлайну" aria-label="Відкрити панель вигляду таймлайну" aria-controls="timelineViewPanel" aria-expanded="false"><span class="timeline-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M8 5v4"/><path d="M15 10v4"/><path d="M11 15v4"/></svg></span><span>Вигляд</span></button>
+                    <button type="button" id="historyBtn" class="btn-history timeline-header-history-btn toolbarButton toolbarGhostButton hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span class="toolbar-label-full">Історія змін</span><span class="toolbar-label-short" aria-hidden="true">Історія</span></button>
+                    <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout timeline-header-logout">Вийти</button>
+                </div>
+                <div class="timeline-view-panel" id="timelineViewPanel" role="region" aria-label="Налаштування вигляду таймлайну" hidden>
+                    <div class="timeline-header-filters" id="timelineHeaderFilters" aria-label="Фільтри таймлайну">
+                        <div class="timeline-header-filter-group timeline-header-filter-group--status" aria-labelledby="timelineViewStatusLabel">
+                            <span class="timeline-view-panel-label" id="timelineViewStatusLabel">Статус</span>
+                            <div class="status-filter-controls toolbarGroup segmentedControl">
+                                <button type="button" class="status-filter-btn segmentedItem active" data-filter="all" title="Показати всі бронювання" aria-label="Всі" aria-pressed="true">Всі</button>
+                                <button type="button" class="status-filter-btn segmentedItem" data-filter="confirmed" title="Тільки підтверджені" aria-label="Підтверджені" aria-pressed="false"><span class="toolbar-label-full">Підтверджені</span><span class="toolbar-label-short" aria-hidden="true">Підтв.</span></button>
+                                <button type="button" class="status-filter-btn segmentedItem" data-filter="preliminary" title="Тільки попередні" aria-label="Попередні" aria-pressed="false"><span class="toolbar-label-full">Попередні</span><span class="toolbar-label-short" aria-hidden="true">Попер.</span></button>
+                            </div>
                         </div>
-                    </div>
-                    <span class="timeline-header-filter-icon timeline-header-filter-icon--calendar" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M7 3v4"/><path d="M17 3v4"/><path d="M4 9h16"/><path d="M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/></svg>
-                    </span>
-                    <div class="timeline-header-filter-group timeline-header-filter-group--period" aria-label="Період графіка">
-                        <div class="period-selector timeline-view-mode-selector segmentedControl" id="periodSelector" aria-label="Період графіка" data-schedule-view-mode-selector>
-                            <button type="button" class="period-btn timeline-view-mode-btn segmentedItem active" data-period="1" data-schedule-view-mode="day" title="Один день" aria-pressed="true">День</button>
-                            <button type="button" class="period-btn timeline-view-mode-btn segmentedItem" data-period="7" data-schedule-view-mode="week" title="Тиждень" aria-pressed="false">Тиждень</button>
+                        <div class="timeline-header-filter-group timeline-header-filter-group--period" aria-labelledby="timelineViewPeriodLabel">
+                            <span class="timeline-view-panel-label" id="timelineViewPeriodLabel">Період</span>
+                            <div class="period-selector timeline-view-mode-selector segmentedControl" id="periodSelector" aria-label="Період графіка" data-schedule-view-mode-selector>
+                                <button type="button" class="period-btn timeline-view-mode-btn segmentedItem active" data-period="1" data-schedule-view-mode="day" title="Один день" aria-pressed="true">День</button>
+                                <button type="button" class="period-btn timeline-view-mode-btn segmentedItem" data-period="7" data-schedule-view-mode="week" title="Тиждень" aria-pressed="false">Тиждень</button>
+                            </div>
                         </div>
-                    </div>
-                    <span class="timeline-header-filter-icon timeline-header-filter-icon--banquet" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M6 10h12l-1.2 9H7.2L6 10Z"/><path d="M8 10a4 4 0 0 1 8 0"/><path d="M9 14h6"/></svg>
-                    </span>
-                    <div class="timeline-header-filter-group timeline-header-filter-group--type" aria-label="Тип таймлайну">
-                        <div class="view-mode-controls toolbarGroup">
-                            <div class="timeline-type-selector segmentedControl" id="timelineTypeSelector" data-timeline-type-selector aria-label="Тип таймлайну">
-                                <button type="button" class="timeline-type-btn segmentedItem active" data-timeline-view="rooms" title="Банкетний таймлайн" aria-pressed="true">Банкети</button>
-                                <button type="button" class="timeline-type-btn segmentedItem" data-timeline-view="animators" title="Таймлайн свят з аніматорами" aria-pressed="false">Свята</button>
+                        <div class="timeline-header-filter-group timeline-header-filter-group--type" aria-labelledby="timelineViewTypeLabel">
+                            <span class="timeline-view-panel-label" id="timelineViewTypeLabel">Тип</span>
+                            <div class="view-mode-controls toolbarGroup">
+                                <div class="timeline-type-selector segmentedControl" id="timelineTypeSelector" data-timeline-type-selector aria-label="Тип таймлайну">
+                                    <button type="button" class="timeline-type-btn segmentedItem active" data-timeline-view="rooms" title="Банкетний таймлайн" aria-pressed="true">Банкети</button>
+                                    <button type="button" class="timeline-type-btn segmentedItem" data-timeline-view="animators" title="Таймлайн свят з аніматорами" aria-pressed="false">Свята</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="timeline-header-filter-group timeline-header-filter-group--zoom v32-controls toolbarGroup" aria-labelledby="timelineViewZoomLabel">
+                            <span class="timeline-view-panel-label" id="timelineViewZoomLabel">Масштаб</span>
+                            <div class="zoom-controls segmentedControl">
+                                <button type="button" class="zoom-btn segmentedItem active" data-zoom="15" title="Масштаб: 15 хвилин на клітинку" aria-pressed="true">15 хв</button>
+                                <button type="button" class="zoom-btn segmentedItem" data-zoom="30" title="Масштаб: 30 хвилин на клітинку" aria-pressed="false">30 хв</button>
+                                <button type="button" class="zoom-btn segmentedItem" data-zoom="60" title="Масштаб: 60 хвилин на клітинку" aria-pressed="false">60 хв</button>
                             </div>
                         </div>
                     </div>
-                    <span class="timeline-header-filter-icon timeline-header-filter-icon--clock" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>
-                    </span>
-                    <div class="timeline-header-filter-group timeline-header-filter-group--zoom v32-controls toolbarGroup" aria-label="Масштаб таймлайну">
-                        <div class="zoom-controls segmentedControl">
-                            <button type="button" class="zoom-btn segmentedItem active" data-zoom="15" title="Масштаб: 15 хвилин на клітинку" aria-pressed="true">15 хв</button>
-                            <button type="button" class="zoom-btn segmentedItem" data-zoom="30" title="Масштаб: 30 хвилин на клітинку" aria-pressed="false">30 хв</button>
-                            <button type="button" class="zoom-btn segmentedItem" data-zoom="60" title="Масштаб: 60 хвилин на клітинку" aria-pressed="false">60 хв</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="user-panel timeline-header-actions">
-                    <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
-                    <button type="button" id="logoutBtn" class="btn-logout timeline-header-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -166,10 +165,10 @@
                             <button type="button" id="nextDay" class="btn-nav toolbarIconButton toolbarGhostButton" title="Наступний день" aria-label="Наступний день">›</button>
                         </div>
                     </div>
+                </div>
+                <div class="schedule-command-row schedule-command-row--actions toolbarRow">
                     <div class="schedule-command-zone schedule-command-zone--actions toolbarZone">
                         <div class="action-buttons toolbarGroup">
-                            <button type="button" id="digestBtn" class="timeline-command-btn timeline-command-btn--digest toolbarButton toolbarAccentButton hidden" title="Надіслати дайджест в Telegram" aria-label="Надіслати дайджест дня" aria-disabled="false" aria-busy="false"><span class="timeline-control-icon" aria-hidden="true">✦</span><span>Дайджест</span><span id="digestStatus" class="toolbar-sr-status" aria-live="polite"></span></button>
-                            <button type="button" id="historyBtn" class="btn-history toolbarButton toolbarGhostButton hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span class="toolbar-label-full">Історія змін</span><span class="toolbar-label-short" aria-hidden="true">Історія</span></button>
                             <button id="undoBtn" class="btn-undo toolbarButton toolbarGhostButton hidden" title="Скасувати останню дію">↩ Скасувати</button>
                             <button id="productSalesBtn" class="btn-product-sales toolbarButton toolbarGhostButton hidden" title="Відкрити звіт продажів програм">📊 Продажі</button>
                             <button id="exportTimelineBtn" class="btn-export toolbarButton toolbarGhostButton" title="Експортувати таймлайн як картинку">Експорт</button>

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.80",
+  "version": "0.77.81",
   "eventGenix": {
-    "releaseLabel": "Timeline Header Filters Tray Fix"
+    "releaseLabel": "Timeline Inline Filters Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

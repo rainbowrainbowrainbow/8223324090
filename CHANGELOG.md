@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.81 - Timeline Inline Filters Fix
+
+### Timeline filters / Inline command line / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Фільтри більше не відкриваються overlay над timeline** - `#timelineViewPanel` повернуто у normal flow як inline controls поруч із date row, без `position: absolute`, `z-index` і перекриття шкали часу.
+- **Відкрита кнопка `Фільтри` показує controls у верхній control-line** - статус, період, тип і масштаб лишилися на існуючих selectors/handlers, але більше не виглядають як окрема картка поверх таймлайну.
+- **Closed state лишається компактним** - `#timelineViewPanel[hidden]` не займає місце, date row не розтягується в порожній band, timeline стартує одразу під controls.
+- **Regression guards оновлено під правильний UX** - static і browser smoke тепер очікують `position: static`, inline panel geometry і забороняють повернення attached overlay.
+- **Auth, booking, API і БД не змінювались** - правка обмежена CSS/test/release markers для timeline header controls.
+
+---
+
 ## v0.77.80 - Timeline Header Filters Tray Fix
 
 ### Timeline header / Compact date row / Filters tray / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]

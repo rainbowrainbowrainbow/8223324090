@@ -63,7 +63,8 @@ Any missing or changed line means approval is incomplete.
   docs.
 - Test owner is `owner_user_id=4`.
 - The task title is exactly `[HERMES_SMOKE] Тест outbox Hermes DM`.
-- V0.6 Hermes polling fallback remains unchanged.
+- Any Hermes-side fallback or delivery job has been freshly verified outside
+  this CRM repo if the smoke depends on it.
 - No real client task is selected or mutated.
 
 ## Create Path
@@ -184,11 +185,15 @@ Do not delete or complete the test task unless separately approved.
 If the smoke exposes a problem:
 
 1. Disable CRM outbox event creation with
-   `HERMES_NOTIFICATION_OUTBOX_ENABLED=false`,
-   `HERMES_TASK_OUTBOX_ENABLED=false`, or `NOTIFICATION_OUTBOX_ENABLED=false`.
+   `HERMES_TASK_OUTBOX_ENABLED=false`. Compatibility flags such as
+   `HERMES_NOTIFICATION_OUTBOX_ENABLED=false` or
+   `NOTIFICATION_OUTBOX_ENABLED=false` may also be used if that is how the
+   environment is configured.
 2. Keep the `notification_outbox` table for diagnostics.
-3. Keep the V0.6 Hermes polling cron as fallback.
-4. Do not change Hermes cron without explicit owner approval.
+3. Use only a currently verified Hermes fallback plan. Historical V0.6 polling
+   notes are not active instructions by themselves.
+4. Do not change Hermes cron, gateway, route config, or Railway settings
+   without explicit owner approval.
 5. Preserve sanitized evidence: task id, event id, status, attempts, and
    `last_error_code`.
 
@@ -204,12 +209,12 @@ Implement CRM-side notification_outbox foundation for Hermes-native task notific
 
 Do not send Telegram, do not deploy, do not apply production migrations, do not change Hermes cron jobs, and do not print secrets.
 
-Current temporary fallback:
-Hermes V0.6 polling cron job_id=74d7a31ef2ab reads /api/hermes/tasks and /api/hermes/my-cabinet every 5 minutes and sends Telegram DMs via Hermes for approved owner routes:
-- Сергій ownerUserId=4 -> telegram:674972415
-- Наталія ownerUserId=3 -> telegram:606680445
+Historical fallback notes:
+Older docs may mention a Hermes V0.6 polling cron. Treat that as historical
+context only unless a fresh Hermes-side audit verifies the current job,
+schedule, owner routes, and approval boundaries.
 
-Do not disable or modify this fallback from the CRM repo.
+Do not disable, recreate, or modify Hermes fallback jobs from the CRM repo.
 
 Final architecture:
 CRM Task Service -> notification_outbox -> Hermes Delivery Worker -> Telegram DM.

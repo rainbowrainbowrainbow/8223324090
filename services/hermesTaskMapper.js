@@ -25,7 +25,8 @@ const HISTORY_TYPE_MAP = Object.freeze({
     task_schedule_manual_override: 'schedule_manual_override',
     task_schedule_proposal_created: 'schedule_proposal_created',
     task_slot_missed: 'slot_missed',
-    task_discipline_penalty_applied: 'discipline_penalty_applied'
+    task_discipline_penalty_applied: 'discipline_penalty_applied',
+    task_commented: 'comment'
 });
 
 const SENSITIVE_KEY_PATTERN = /(?:phone|email|e[-_]?mail|token|secret|password|cookie|authorization|control_?meta|raw_?data)/i;

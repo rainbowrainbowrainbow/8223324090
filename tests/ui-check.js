@@ -3411,6 +3411,7 @@ const authCss = fs.readFileSync(path.join(ROOT, 'css/auth.css'), 'utf8');
 const hrPageCss = fs.readFileSync(path.join(ROOT, 'css/hr-page.css'), 'utf8');
 const hrFoundationCss = fs.readFileSync(path.join(ROOT, 'css/pages-hr-foundation.css'), 'utf8');
 const inviteHtmlForUiPolish = fs.readFileSync(path.join(ROOT, 'invite.html'), 'utf8');
+const inviteHtmlForUiPolishNormalized = inviteHtmlForUiPolish.replace(/\r\n/g, '\n');
 const staffCssForUiPolish = cssTextWithImports('css/pages.css');
 const hrPayrollPeriodServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const staffRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
@@ -4698,7 +4699,7 @@ check('HR/invite/changelog polish prevents long labels from overflowing compact 
     && staffCssForUiPolish.includes('.schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover')
     && staffCssForUiPolish.includes('.sub-group-row td')
     && staffCssForUiPolish.includes('overflow-wrap: anywhere')
-    && inviteHtmlForUiPolish.includes('.invite-info-row .info {\nflex: 1;\nmin-width: 0;')
+    && inviteHtmlForUiPolishNormalized.includes('.invite-info-row .info {\nflex: 1;\nmin-width: 0;')
     && inviteHtmlForUiPolish.includes('.map-link')
     && inviteHtmlForUiPolish.includes('overflow-wrap: anywhere')
     && authCss.includes('.changelog-section code')

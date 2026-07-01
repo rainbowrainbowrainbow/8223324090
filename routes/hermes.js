@@ -8,6 +8,7 @@ const {
 } = require('../middleware/hermesAuth');
 const {
     buildTaskVisibilityScope,
+    canMutateTask,
     normalizeUserId
 } = require('../services/taskPolicy');
 const {
@@ -31,10 +32,17 @@ const {
     findActiveDuplicateTask
 } = require('../services/taskDuplicatePolicy');
 const {
+    listTaskSubtasks,
+    normalizeSubtaskRow,
     normalizeSubtasksInput,
-    replaceTaskSubtasks
+    replaceTaskSubtasks,
+    subtaskCompletionState
 } = require('../services/taskSubtasks');
-const { listTaskActionHistory } = require('../services/taskActionHistory');
+const {
+    TASK_ACTION_TYPES,
+    listTaskActionHistory,
+    logTaskActionEvent
+} = require('../services/taskActionHistory');
 const {
     MAX_HERMES_LIMIT,
     toHermesPagination,
@@ -62,8 +70,10 @@ const {
     failNotificationOutboxEvent,
     findNotificationOutboxEventByEventId,
     getNotificationOutboxStats,
+    hermesTaskOutboxEnabled,
     listNotificationOutboxDebugEvents,
     listNotificationOutboxEvents,
+    skipNotificationOutboxEvent,
     toNotificationOutboxApiEvent
 } = require('../services/notificationOutbox');
 const { createLogger } = require('../utils/logger');
@@ -77,6 +87,10 @@ const SUPPORTED_ACTIONS = [
     'tasks.my_cabinet',
     'tasks.create',
     'tasks.complete',
+    'tasks.completion_report',
+    'tasks.comment',
+    'tasks.subtasks.read',
+    'tasks.subtask.toggle',
     'tasks.reassign',
     'tasks.reschedule',
     'tasks.status',
@@ -87,11 +101,13 @@ const SUPPORTED_ACTIONS = [
     'menu_photos.reject',
     'task_watchdog.preview',
     'task_watchdog.callback_dry_run',
+    'diagnostics.owner_workload',
     'notification_outbox.read',
     'notification_outbox.detail',
     'notification_outbox.claim',
     'notification_outbox.ack',
     'notification_outbox.fail',
+    'notification_outbox.skip',
     'notification_outbox.stats',
     'notification_outbox.debug'
 ];
@@ -134,6 +150,28 @@ const HERMES_CREATE_ALLOWED_FIELDS = new Set([
 const HERMES_COMPLETE_ALLOWED_FIELDS = new Set([
     'reportId',
     'report_id'
+]);
+
+const HERMES_COMPLETION_REPORT_ALLOWED_FIELDS = new Set([
+    'reportText',
+    'report_text',
+    'type',
+    'amount',
+    'category',
+    'businessContext',
+    'business_context'
+]);
+
+const HERMES_COMMENT_ALLOWED_FIELDS = new Set([
+    'text',
+    'source',
+    'businessContext',
+    'business_context'
+]);
+
+const HERMES_SUBTASK_TOGGLE_ALLOWED_FIELDS = new Set([
+    'is_done',
+    'isDone'
 ]);
 
 const HERMES_REASSIGN_ALLOWED_FIELDS = new Set([
@@ -179,6 +217,11 @@ const MAX_HERMES_SUBTASKS = 50;
 const MAX_HERMES_LABELS = 20;
 const DEFAULT_HERMES_RATE_LIMIT_WINDOW_MS = 60000;
 const DEFAULT_HERMES_RATE_LIMIT_MAX = 60;
+const DEFAULT_COMPLETION_REPORT_CATEGORY = '\u0417\u0430\u0434\u0430\u0447\u0430';
+const COMPLETION_REPORT_DESCRIPTION_PREFIX = '\u0417\u0432\u0456\u0442 \u043f\u043e \u0437\u0430\u0434\u0430\u0447\u0456';
+const UNTITLED_COMPLETION_REPORT_TASK = '\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0438';
+const MAX_HERMES_COMMENT_TEXT_LENGTH = 4000;
+const MAX_HERMES_COMMENT_SOURCE_LENGTH = 80;
 
 const TASK_DUE_DATE_SQL = `COALESCE(
     (t.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
@@ -635,6 +678,90 @@ function normalizeHermesCompletePayload(body = {}) {
     };
 }
 
+function normalizeHermesCompletionReportPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_COMPLETION_REPORT_ALLOWED_FIELDS);
+
+    const reportText = String(body.reportText ?? body.report_text ?? '').trim();
+    if (!reportText) {
+        throw hermesHttpError(400, 'TASK_REPORT_TEXT_REQUIRED', 'reportText is required');
+    }
+
+    const reportType = ['income', 'expense'].includes(body.type) ? body.type : 'expense';
+    const amount = Number.parseFloat(body.amount);
+
+    return {
+        reportText,
+        type: reportType,
+        amount: Number.isFinite(amount) ? amount : 0,
+        category: cleanNullableString(body.category, 120) || DEFAULT_COMPLETION_REPORT_CATEGORY
+    };
+}
+
+function sanitizeHermesCommentText(value) {
+    const text = String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+        .trim();
+    return text.slice(0, MAX_HERMES_COMMENT_TEXT_LENGTH).trim();
+}
+
+function normalizeHermesCommentSource(value) {
+    const raw = cleanNullableString(value, MAX_HERMES_COMMENT_SOURCE_LENGTH) || 'telegram_tasker';
+    const normalized = raw
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return normalized || 'telegram_tasker';
+}
+
+function normalizeHermesCommentPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_COMMENT_ALLOWED_FIELDS);
+
+    const text = sanitizeHermesCommentText(body.text);
+    if (!text) {
+        throw hermesHttpError(400, 'TASK_COMMENT_TEXT_REQUIRED', 'text is required');
+    }
+
+    return {
+        text,
+        source: normalizeHermesCommentSource(body.source)
+    };
+}
+
+function parseHermesBoolean(value) {
+    if (value === true || value === false) return value;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(text)) return true;
+    if (['false', '0', 'no', 'off'].includes(text)) return false;
+    throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done must be a boolean');
+}
+
+function normalizeHermesSubtaskTogglePayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_SUBTASK_TOGGLE_ALLOWED_FIELDS);
+
+    const hasSnake = Object.prototype.hasOwnProperty.call(body, 'is_done');
+    const hasCamel = Object.prototype.hasOwnProperty.call(body, 'isDone');
+    if (!hasSnake && !hasCamel) {
+        throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done is required');
+    }
+    if (hasSnake && hasCamel && parseHermesBoolean(body.is_done) !== parseHermesBoolean(body.isDone)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done and isDone must match');
+    }
+
+    return {
+        isDone: parseHermesBoolean(hasSnake ? body.is_done : body.isDone)
+    };
+}
+
 function normalizeHermesReassignPayload(body = {}) {
     if (!isPlainObject(body)) {
         throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'Request body must be a JSON object');
@@ -699,6 +826,209 @@ function hermesMutationTaskBody(req, businessScope, task, meta = {}) {
             idempotencyKey: req.hermesMutation?.idempotencyKey || null,
             ...meta
         }
+    };
+}
+
+function isoOrNull(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString();
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+}
+
+function toHermesSubtaskApi(row = {}) {
+    const subtask = normalizeSubtaskRow(row);
+    return {
+        id: String(subtask.id || ''),
+        title: subtask.title || '',
+        status: subtask.isDone ? 'done' : 'open',
+        is_done: subtask.isDone,
+        sort_order: subtask.sortOrder,
+        source_type: subtask.sourceType,
+        completed_at: isoOrNull(subtask.completedAt),
+        updated_at: isoOrNull(subtask.updatedAt)
+    };
+}
+
+function hermesSubtaskState(subtasks = []) {
+    const total = subtasks.length;
+    const done = subtasks.filter(item => item.isDone || item.is_done).length;
+    return subtaskCompletionState(done, total);
+}
+
+function hermesSubtaskParentSummary(task = {}, subtasks = [], parentUpdate = {}) {
+    const state = hermesSubtaskState(subtasks);
+    return {
+        id: String(task.id || ''),
+        status: task.status || null,
+        subtaskCount: state.total,
+        subtaskDoneCount: state.done,
+        subtaskOpenCount: state.open,
+        subtaskProgress: state.progress,
+        canCompleteParent: state.canCompleteParent,
+        version: parentUpdate.version || task.version || null,
+        updated_at: isoOrNull(parentUpdate.updated_at || task.updated_at)
+    };
+}
+
+async function loadHermesMutableTask(queryable, taskId, actor, businessScope) {
+    const params = [taskId];
+    const visibility = buildTaskVisibilityScope(actor, params, 't');
+    const businessCondition = businessScope ? `AND ${pushTaskBusinessScopeCondition(params, businessScope, 't')}` : '';
+    const result = await queryable.query(
+        `SELECT ${TASK_SELECT_FIELDS}
+         FROM tasks t
+         LEFT JOIN users u ON u.id = t.owner_user_id
+         LEFT JOIN users creator ON creator.id = t.created_by_user_id
+         WHERE t.id = $1
+           ${visibility}
+           ${businessCondition}
+         LIMIT 1`,
+        params
+    );
+    if (!result.rows.length) {
+        throw hermesHttpError(404, 'TASK_NOT_VISIBLE', 'Task not found or not visible');
+    }
+    const task = result.rows[0];
+    if (!canMutateTask(actor, task)) {
+        throw hermesHttpError(403, 'TASK_ACTION_FORBIDDEN', 'You cannot update this task');
+    }
+    return task;
+}
+
+function completionReportDescription(task = {}, reportText = '') {
+    return `${COMPLETION_REPORT_DESCRIPTION_PREFIX} #${task.id}: ${task.title || UNTITLED_COMPLETION_REPORT_TASK}\n\n${reportText}`;
+}
+
+async function createHermesCompletionReport(queryable, task, payload, actor) {
+    const businessContext = activeTaskBusinessContext(task.business_context);
+    const submittedBy = actor?.name || actor?.displayName || actor?.username || 'Hermes';
+    const rawData = {
+        taskCompletionReport: {
+            taskId: task.id,
+            taskTitle: task.title || null,
+            required: true,
+            sourceSurface: 'hermes',
+            submittedByUserId: normalizeUserId(actor),
+            submittedByUsername: actor?.username || null,
+            submittedAt: new Date().toISOString()
+        },
+        text: payload.reportText
+    };
+
+    const result = await queryable.query(
+        `INSERT INTO reports (business_context, type, amount, description, category, submitted_by, submitted_by_id,
+            submitted_via, raw_data, hashtags)
+         VALUES ($1,$2,$3,$4,$5,$6,NULL,'web',$7,$8)
+         RETURNING id, category, amount, created_at`,
+        [
+            businessContext,
+            payload.type,
+            payload.amount,
+            completionReportDescription(task, payload.reportText),
+            payload.category,
+            submittedBy,
+            JSON.stringify(rawData),
+            JSON.stringify(['task-report', `task-${task.id}`])
+        ]
+    );
+    const report = result.rows[0];
+    if (!report?.id) {
+        throw hermesHttpError(500, 'HERMES_COMPLETION_REPORT_CREATE_FAILED', 'Hermes completion report was not saved');
+    }
+
+    const accountant = await queryable.query(
+        'SELECT id FROM accountants WHERE is_on_duty = true ORDER BY id ASC LIMIT 1'
+    ).catch(() => ({ rows: [] }));
+    if (accountant.rows[0]?.id) {
+        await queryable.query(
+            'UPDATE reports SET assigned_to = $1, assigned_at = NOW(), updated_at = NOW() WHERE id = $2',
+            [accountant.rows[0].id, report.id]
+        );
+    }
+
+    const update = await queryable.query(
+        `UPDATE tasks
+         SET control_meta = COALESCE(control_meta, '{}'::jsonb) || jsonb_build_object(
+                'reportRequired', true,
+                'reportId', $2::int,
+                'reportSubmittedAt', NOW(),
+                'reportSubmittedBy', $3::text
+             ),
+             updated_at = NOW(),
+             version = COALESCE(version, 1) + 1
+         WHERE id = $1
+           AND COALESCE(business_context, 'event_genix') = $4
+         RETURNING *`,
+        [task.id, report.id, actor?.username || actor?.name || 'hermes', businessContext]
+    );
+    if (!update.rows.length) {
+        throw hermesHttpError(409, 'TASK_REPORT_LINK_FAILED', 'Completion report was saved but task link failed');
+    }
+
+    return {
+        report,
+        task: {
+            ...task,
+            ...update.rows[0],
+            owner_name: update.rows[0].owner_name || task.owner_name || null,
+            owner_username: update.rows[0].owner_username || task.owner_username || null,
+            creator_name: update.rows[0].creator_name || task.creator_name || null,
+            created_by_username: update.rows[0].created_by_username || task.created_by_username || null
+        }
+    };
+}
+
+async function createHermesTaskComment(queryable, task, payload, actor) {
+    return logTaskActionEvent({
+        taskId: task.id,
+        actionType: TASK_ACTION_TYPES.COMMENTED,
+        actor,
+        sourceSurface: 'hermes',
+        oldValue: null,
+        newValue: {
+            comment: {
+                text: payload.text
+            }
+        },
+        meta: {
+            route: 'hermes_task_comment',
+            source: payload.source,
+            textLength: payload.text.length
+        },
+        summary: 'Task comment added'
+    }, { pool: queryable });
+}
+
+async function toggleHermesTaskSubtask(queryable, task, subtaskId, payload) {
+    const result = await queryable.query(
+        `UPDATE task_subtasks
+         SET is_done = $3::boolean,
+             completed_at = CASE WHEN $3::boolean = true THEN NOW() ELSE NULL END,
+             updated_at = NOW()
+         WHERE task_id = $1
+           AND id = $2
+         RETURNING *`,
+        [task.id, subtaskId, payload.isDone]
+    );
+    const updatedSubtask = result.rows[0] || null;
+    if (!updatedSubtask) {
+        throw hermesHttpError(404, 'HERMES_SUBTASK_NOT_FOUND', 'Subtask not found');
+    }
+
+    const parentUpdate = await queryable.query(
+        `UPDATE tasks
+         SET updated_at = NOW(),
+             version = COALESCE(version, 1) + 1
+         WHERE id = $1
+         RETURNING id, updated_at, version`,
+        [task.id]
+    );
+    const subtasks = await listTaskSubtasks(queryable, task.id);
+    return {
+        subtask: updatedSubtask,
+        subtasks,
+        parentUpdate: parentUpdate.rows[0] || {}
     };
 }
 
@@ -1049,6 +1379,89 @@ function applyListFilters(req, queryParts) {
     }
 }
 
+function normalizeOwnerWorkloadDiagnosticRow(row = {}) {
+    const ownerUserId = parsePositiveInt(row.owner_user_id);
+    return {
+        ownerUserId,
+        ownerLabel: cleanNullableString(row.owner_label, 160) || (ownerUserId ? `User #${ownerUserId}` : 'Unassigned'),
+        active: Number(row.active || 0),
+        urgent: Number(row.urgent || 0),
+        outboxPending: Number(row.outbox_pending || 0),
+        outboxSkipped: Number(row.outbox_skipped || 0),
+        blockedMissingRoute: Number(row.blocked_missing_route || 0),
+        deliveryRouteStatus: 'unknown'
+    };
+}
+
+async function getHermesOwnerWorkloadDiagnostics(queryable, businessScope) {
+    const params = [];
+    const businessCondition = pushTaskBusinessScopeCondition(params, businessScope, 't');
+    const result = await queryable.query(
+        `WITH task_scope AS (
+             SELECT t.id,
+                    t.owner_user_id,
+                    COALESCE(NULLIF(u.name, ''), NULLIF(u.username, ''), 'User #' || t.owner_user_id::text) AS owner_label,
+                    COALESCE(t.status, 'todo') AS status,
+                    COALESCE(t.priority, 'normal') AS priority
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             WHERE t.owner_user_id IS NOT NULL
+               AND ${businessCondition}
+         ),
+         task_counts AS (
+             SELECT owner_user_id,
+                    MAX(owner_label) AS owner_label,
+                    COUNT(*) FILTER (
+                        WHERE status NOT IN ('done', 'cancelled', 'archived')
+                    ) AS active,
+                    COUNT(*) FILTER (
+                        WHERE status NOT IN ('done', 'cancelled', 'archived')
+                          AND priority IN ('urgent', 'critical')
+                    ) AS urgent
+             FROM task_scope
+             GROUP BY owner_user_id
+         ),
+         outbox_counts AS (
+             SELECT ts.owner_user_id,
+                    MAX(ts.owner_label) AS owner_label,
+                    COUNT(*) FILTER (WHERE no.status = 'pending') AS outbox_pending,
+                    COUNT(*) FILTER (WHERE no.status = 'skipped') AS outbox_skipped,
+                    COUNT(*) FILTER (
+                        WHERE no.status = 'skipped'
+                          AND no.last_error_code = 'MISSING_TELEGRAM_ROUTE'
+                    ) AS blocked_missing_route
+             FROM notification_outbox no
+             JOIN task_scope ts ON ts.id = no.task_id
+             GROUP BY ts.owner_user_id
+         ),
+         owner_counts AS (
+             SELECT COALESCE(tc.owner_user_id, oc.owner_user_id) AS owner_user_id,
+                    COALESCE(tc.owner_label, oc.owner_label) AS owner_label,
+                    COALESCE(tc.active, 0)::int AS active,
+                    COALESCE(tc.urgent, 0)::int AS urgent,
+                    COALESCE(oc.outbox_pending, 0)::int AS outbox_pending,
+                    COALESCE(oc.outbox_skipped, 0)::int AS outbox_skipped,
+                    COALESCE(oc.blocked_missing_route, 0)::int AS blocked_missing_route
+             FROM task_counts tc
+             FULL OUTER JOIN outbox_counts oc ON oc.owner_user_id = tc.owner_user_id
+         )
+         SELECT *
+         FROM owner_counts
+         WHERE active > 0
+            OR urgent > 0
+            OR outbox_pending > 0
+            OR outbox_skipped > 0
+            OR blocked_missing_route > 0
+         ORDER BY urgent DESC,
+                  active DESC,
+                  blocked_missing_route DESC,
+                  outbox_pending DESC,
+                  owner_user_id ASC`,
+        params
+    );
+    return result.rows.map(normalizeOwnerWorkloadDiagnosticRow);
+}
+
 function buildCapabilitiesPayload(env = process.env) {
     const ownerAllowlist = parseHermesOwnerAllowlist(env);
     return {
@@ -1061,11 +1474,19 @@ function buildCapabilitiesPayload(env = process.env) {
         mutationsRequireConfirmation: true,
         mutationsRequireIdempotencyKey: true,
         features: {
-            notificationOutbox: true
+            notificationOutbox: true,
+            taskOutboxEmitEnabled: hermesTaskOutboxEnabled({}, env)
         },
         endpoints: {
             tasks: {
+                completionReport: 'POST /api/hermes/tasks/:id/completion-report',
+                comment: 'POST /api/hermes/tasks/:id/comments',
+                subtasks: 'GET /api/hermes/tasks/:id/subtasks',
+                subtaskToggle: 'PATCH /api/hermes/tasks/:id/subtasks/:subtaskId',
                 status: 'POST /api/hermes/tasks/:id/status'
+            },
+            diagnostics: {
+                ownerWorkload: 'GET /api/hermes/diagnostics/owner-workload'
             },
             notificationOutbox: {
                 list: 'GET /api/hermes/notification-outbox',
@@ -1073,6 +1494,7 @@ function buildCapabilitiesPayload(env = process.env) {
                 claim: 'POST /api/hermes/notification-outbox/:eventId/claim',
                 ack: 'POST /api/hermes/notification-outbox/:eventId/ack',
                 fail: 'POST /api/hermes/notification-outbox/:eventId/fail',
+                skip: 'POST /api/hermes/notification-outbox/:eventId/skip',
                 stats: 'GET /api/hermes/notification-outbox/stats',
                 debug: 'GET /api/hermes/notification-outbox/debug',
                 maxLimit: 50,
@@ -1118,6 +1540,30 @@ function createHermesRouter(options = {}) {
 
     router.get('/task-watchdog/preview', taskWatchdogPreviewHandler);
     router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
+
+    router.get('/diagnostics/owner-workload', async (req, res) => {
+        try {
+            const businessScope = ensureTaskBusinessScope(req, res);
+            if (!businessScope) return;
+            const owners = await getHermesOwnerWorkloadDiagnostics(query, businessScope);
+            return res.json({
+                success: true,
+                owners,
+                meta: {
+                    businessScope: taskBusinessScopeMeta(businessScope),
+                    routeTruthSource: 'not_configured_in_crm',
+                    sanitized: true,
+                    readOnly: true
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_REQUEST', err.message);
+            }
+            log.error('Hermes owner workload diagnostics error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes owner workload diagnostics failed');
+        }
+    });
 
     router.get('/notification-outbox', async (req, res) => {
         try {
@@ -1262,6 +1708,27 @@ function createHermesRouter(options = {}) {
                 err,
                 'HERMES_NOTIFICATION_OUTBOX_FAIL_FAILED',
                 'Hermes notification_outbox fail failed'
+            );
+        }
+    });
+
+    router.post('/notification-outbox/:eventId/skip', async (req, res) => {
+        try {
+            const result = await skipNotificationOutboxEvent(req.params.eventId, req.body || {}, { pool: query });
+            return res.json({
+                success: true,
+                alreadySkipped: result.alreadySkipped === true,
+                event: toNotificationOutboxApiEvent(result.event),
+                meta: {
+                    workerId: result.workerId
+                }
+            });
+        } catch (err) {
+            return sendNotificationOutboxError(
+                res,
+                err,
+                'HERMES_NOTIFICATION_OUTBOX_SKIP_FAILED',
+                'Hermes notification_outbox skip failed'
             );
         }
     });
@@ -1715,6 +2182,7 @@ function createHermesRouter(options = {}) {
                 }, {
                     pool: mutationPool,
                     afterCommit,
+                    hermesOutboxEnabled: hermesTaskOutboxEnabled({}, env),
                     skipNotifications: Boolean(options.skipNotifications)
                 });
 
@@ -1757,6 +2225,117 @@ function createHermesRouter(options = {}) {
             }
             log.error('Hermes task create error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task create failed');
+        }
+    });
+
+    router.post('/tasks/:id/comments', requireHermesMutationGuard, async (req, res) => {
+        let payload;
+        let businessScope;
+        const taskId = parsePositiveInt(req.params.id);
+        if (!taskId) {
+            return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
+        }
+
+        try {
+            payload = normalizeHermesCommentPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_TASK_PAYLOAD', err.message);
+            }
+            log.error('Hermes task comment preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task comment failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const task = await loadHermesMutableTask(mutationPool, taskId, req.user, businessScope);
+                const historyEvent = await createHermesTaskComment(mutationPool, task, payload, req.user);
+                return {
+                    status: 201,
+                    body: {
+                        success: true,
+                        commentId: historyEvent.id,
+                        logId: historyEvent.id,
+                        task: toHermesTaskDetail(task, taskMapperOptions(req)),
+                        meta: {
+                            businessScope: taskBusinessScopeMeta(businessScope),
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            commentSource: payload.source,
+                            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
+                            durableLog: 'task_action_history',
+                            actionType: TASK_ACTION_TYPES.COMMENTED
+                        }
+                    }
+                };
+            }, {
+                pool: query,
+                requestPath: `/api/hermes/tasks/${taskId}/comments`,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_TASK_COMMENT_FAILED', err.message);
+            }
+            log.error('Hermes task comment error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task comment failed');
+        }
+    });
+
+    router.post('/tasks/:id/completion-report', requireHermesMutationGuard, async (req, res) => {
+        let payload;
+        let businessScope;
+        const taskId = parsePositiveInt(req.params.id);
+        if (!taskId) {
+            return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
+        }
+
+        try {
+            payload = normalizeHermesCompletionReportPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_TASK_PAYLOAD', err.message);
+            }
+            log.error('Hermes completion report preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes completion report failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const task = await loadHermesMutableTask(mutationPool, taskId, req.user, businessScope);
+                const result = await createHermesCompletionReport(mutationPool, task, payload, req.user);
+                return {
+                    status: 201,
+                    body: {
+                        success: true,
+                        reportId: result.report.id,
+                        task: toHermesTaskDetail(result.task, taskMapperOptions(req)),
+                        meta: {
+                            businessScope: taskBusinessScopeMeta(businessScope),
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
+                            durableReport: 'reports',
+                            linkField: 'tasks.control_meta.reportId',
+                            autoComplete: false
+                        }
+                    }
+                };
+            }, {
+                pool: query,
+                requestPath: `/api/hermes/tasks/${taskId}/completion-report`,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_COMPLETION_REPORT_FAILED', err.message);
+            }
+            log.error('Hermes completion report error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes completion report failed');
         }
     });
 
@@ -1907,6 +2486,60 @@ function createHermesRouter(options = {}) {
         }
     });
 
+    router.patch('/tasks/:id/subtasks/:subtaskId', requireHermesMutationGuard, async (req, res) => {
+        let payload;
+        let businessScope;
+        const taskId = parsePositiveInt(req.params.id);
+        const subtaskId = parsePositiveInt(req.params.subtaskId);
+        if (!taskId || !subtaskId) {
+            return sendHermesError(res, 404, 'HERMES_SUBTASK_NOT_FOUND', 'Subtask not found');
+        }
+
+        try {
+            payload = normalizeHermesSubtaskTogglePayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_SUBTASK_PAYLOAD', err.message);
+            }
+            log.error('Hermes subtask toggle preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes subtask toggle failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const task = await loadHermesMutableTask(mutationPool, taskId, req.user, businessScope);
+                const result = await toggleHermesTaskSubtask(mutationPool, task, subtaskId, payload);
+                return {
+                    status: 200,
+                    body: {
+                        success: true,
+                        subtask: toHermesSubtaskApi(result.subtask),
+                        parent: hermesSubtaskParentSummary(task, result.subtasks, result.parentUpdate),
+                        meta: {
+                            businessScope: taskBusinessScopeMeta(businessScope),
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
+                            action: 'subtask_toggle'
+                        }
+                    }
+                };
+            }, {
+                pool: query,
+                requestPath: `/api/hermes/tasks/${taskId}/subtasks/${subtaskId}`,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_SUBTASK_TOGGLE_FAILED', err.message);
+            }
+            log.error('Hermes subtask toggle error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes subtask toggle failed');
+        }
+    });
+
     router.post('/tasks/:id/status', requireHermesMutationGuard, async (req, res) => {
         let payload;
         let businessScope;
@@ -2036,6 +2669,47 @@ function createHermesRouter(options = {}) {
             }
             log.error('Hermes task history error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task history failed');
+        }
+    });
+
+    router.get('/tasks/:id/subtasks', async (req, res) => {
+        try {
+            const taskId = parsePositiveInt(req.params.id);
+            if (!taskId) {
+                return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
+            }
+            const queryParts = taskWhereForRequest(req, { res, taskId });
+            if (!queryParts) return;
+
+            const visible = await query.query(
+                `SELECT t.id, t.status, t.updated_at, t.version
+                 FROM tasks t
+                 WHERE ${queryParts.whereParts.join('\n                   AND ')}
+                 LIMIT 1`,
+                queryParts.params
+            );
+            if (!visible.rows.length) {
+                return sendHermesError(res, 404, 'HERMES_TASK_NOT_FOUND', 'Task not found');
+            }
+
+            const subtasks = await listTaskSubtasks(query, taskId);
+            res.json({
+                success: true,
+                subtasks: subtasks.map(toHermesSubtaskApi),
+                parent: hermesSubtaskParentSummary(visible.rows[0], subtasks),
+                meta: {
+                    businessScope: taskBusinessScopeMeta(queryParts.businessScope),
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    readOnly: true
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_REQUEST', err.message);
+            }
+            log.error('Hermes subtask list error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes subtask list failed');
         }
     });
 

@@ -112,15 +112,105 @@ class FakeNotificationOutboxPool {
         this.rows = new Map(rows.map(row => [row.event_id, cloneRow(row)]));
         this.calls = [];
         this.now = options.now || NOW;
+        this.tasks = new Map((options.tasks || []).map(row => [Number(row.id), cloneRow(row)]));
+        this.users = new Map((options.users || []).map(row => [Number(row.id), cloneRow(row)]));
     }
 
     nextIso(seconds = 0) {
         return new Date(new Date(this.now).getTime() + seconds * 1000).toISOString();
     }
 
+    ownerLabel(ownerUserId) {
+        const user = this.users.get(Number(ownerUserId)) || {};
+        const label = String(user.name || user.username || '').trim();
+        return label || `User #${ownerUserId}`;
+    }
+
+    ownerWorkloadDiagnosticRows(params = []) {
+        const scopedContexts = params
+            .flatMap(value => Array.isArray(value) ? value : [value])
+            .map(value => String(value || '').trim())
+            .filter(Boolean);
+        const contexts = new Set(scopedContexts.length ? scopedContexts : ['event_genix']);
+        const scopedTasks = Array.from(this.tasks.values()).filter(task => {
+            const ownerUserId = Number(task.owner_user_id || task.ownerUserId || 0);
+            const businessContext = String(task.business_context || task.businessContext || 'event_genix');
+            return ownerUserId > 0 && contexts.has(businessContext);
+        });
+        const scopedTasksById = new Map(scopedTasks.map(task => [Number(task.id), task]));
+        const byOwner = new Map();
+        const ensureOwner = ownerUserId => {
+            const id = Number(ownerUserId);
+            if (!byOwner.has(id)) {
+                byOwner.set(id, {
+                    owner_user_id: id,
+                    owner_label: this.ownerLabel(id),
+                    active: 0,
+                    urgent: 0,
+                    outbox_pending: 0,
+                    outbox_skipped: 0,
+                    blocked_missing_route: 0
+                });
+            }
+            return byOwner.get(id);
+        };
+
+        for (const task of scopedTasks) {
+            const ownerUserId = Number(task.owner_user_id || task.ownerUserId);
+            const row = ensureOwner(ownerUserId);
+            const status = String(task.status || 'todo').toLowerCase();
+            const priority = String(task.priority || 'normal').toLowerCase();
+            if (!['done', 'cancelled', 'archived'].includes(status)) {
+                row.active += 1;
+                if (['urgent', 'critical'].includes(priority)) row.urgent += 1;
+            }
+        }
+
+        for (const outbox of this.rows.values()) {
+            const task = scopedTasksById.get(Number(outbox.task_id));
+            if (!task) continue;
+            const row = ensureOwner(Number(task.owner_user_id || task.ownerUserId));
+            if (outbox.status === 'pending') row.outbox_pending += 1;
+            if (outbox.status === 'skipped') {
+                row.outbox_skipped += 1;
+                if (outbox.last_error_code === 'MISSING_TELEGRAM_ROUTE') {
+                    row.blocked_missing_route += 1;
+                }
+            }
+        }
+
+        return Array.from(byOwner.values())
+            .filter(row =>
+                row.active > 0
+                || row.urgent > 0
+                || row.outbox_pending > 0
+                || row.outbox_skipped > 0
+                || row.blocked_missing_route > 0
+            )
+            .sort((a, b) =>
+                (b.urgent - a.urgent)
+                || (b.active - a.active)
+                || (b.blocked_missing_route - a.blocked_missing_route)
+                || (b.outbox_pending - a.outbox_pending)
+                || (a.owner_user_id - b.owner_user_id)
+            )
+            .map(row => ({
+                ...row,
+                active: String(row.active),
+                urgent: String(row.urgent),
+                outbox_pending: String(row.outbox_pending),
+                outbox_skipped: String(row.outbox_skipped),
+                blocked_missing_route: String(row.blocked_missing_route)
+            }));
+    }
+
     async query(sql, params = []) {
         const text = sql.replace(/\s+/g, ' ').trim();
         this.calls.push({ text, params });
+
+        if (text.startsWith('WITH task_scope AS')) {
+            return { rows: this.ownerWorkloadDiagnosticRows(params) };
+        }
 
         if (text.startsWith('SELECT COUNT(*) FILTER')) {
             const rows = Array.from(this.rows.values());
@@ -144,6 +234,9 @@ class FakeNotificationOutboxPool {
                     failed: String(rows.filter(row => row.status === 'failed').length),
                     dead_letter: String(rows.filter(row => row.status === 'dead_letter').length),
                     skipped: String(rows.filter(row => row.status === 'skipped').length),
+                    blocked_missing_route: String(rows.filter(row =>
+                        row.status === 'skipped' && row.last_error_code === 'MISSING_TELEGRAM_ROUTE'
+                    ).length),
                     oldest_pending_at: oldestPending,
                     last_sent_at: lastSent
                 }]
@@ -170,7 +263,8 @@ class FakeNotificationOutboxPool {
                     attempts: row.attempts,
                     created_at: row.created_at,
                     available_at: row.available_at,
-                    last_error_code: row.last_error_code
+                    last_error_code: row.last_error_code,
+                    last_error: row.last_error
                 }));
             return { rows };
         }
@@ -243,6 +337,18 @@ class FakeNotificationOutboxPool {
             return { rows: [cloneRow(row)] };
         }
 
+        if (text.startsWith("UPDATE notification_outbox SET status = 'skipped'")) {
+            const [eventId, reasonMessage, reasonCode] = params;
+            const row = this.rows.get(eventId);
+            row.status = 'skipped';
+            row.available_at = this.now;
+            row.last_error = reasonMessage;
+            row.last_error_code = reasonCode;
+            row.locked_until = null;
+            row.updated_at = this.now;
+            return { rows: [cloneRow(row)] };
+        }
+
         if (text.startsWith('UPDATE notification_outbox SET status = $2')) {
             const [eventId, status, attempts, backoffMinutes, errorMessage, errorCode] = params;
             const row = this.rows.get(eventId);
@@ -262,15 +368,19 @@ class FakeNotificationOutboxPool {
     }
 }
 
-async function withHermesOutboxApp(rows, work) {
+async function withHermesOutboxApp(rows, work, options = {}) {
     const app = express();
-    const pool = new FakeNotificationOutboxPool(rows);
+    const pool = new FakeNotificationOutboxPool(rows, {
+        now: options.now,
+        tasks: options.tasks,
+        users: options.users
+    });
     app.use(express.json());
     app.use('/api/hermes', createHermesRouter({
         authMiddleware: hermesOutboxAuth,
         pool,
         rateLimit: false,
-        env: {}
+        env: options.env || {}
     }));
     const { server, baseUrl } = await listen(app);
     try {
@@ -297,17 +407,67 @@ describe('Hermes notification_outbox routes', () => {
         });
     });
 
+    it('requires auth for owner workload diagnostics', async () => {
+        await withHermesOutboxApp([outboxRow({ id: 1 })], async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/diagnostics/owner-workload', undefined, {});
+            assert.equal(res.status, 401);
+            assert.equal(res.data.success, false);
+        });
+    });
+
     it('advertises notification_outbox capabilities', async () => {
         await withHermesOutboxApp([], async ({ baseUrl }) => {
             const res = await request(baseUrl, 'GET', '/api/hermes/capabilities');
             assert.equal(res.status, 200);
             assert.equal(res.data.features.notificationOutbox, true);
+            assert.equal(res.data.features.taskOutboxEmitEnabled, false);
             assert.equal(res.data.endpoints.notificationOutbox.maxLimit, 50);
             assert.equal(res.data.endpoints.notificationOutbox.claim, 'POST /api/hermes/notification-outbox/:eventId/claim');
+            assert.equal(res.data.endpoints.notificationOutbox.skip, 'POST /api/hermes/notification-outbox/:eventId/skip');
             assert.equal(res.data.endpoints.notificationOutbox.stats, 'GET /api/hermes/notification-outbox/stats');
             assert.equal(res.data.endpoints.notificationOutbox.debug, 'GET /api/hermes/notification-outbox/debug');
+            assert.equal(res.data.endpoints.diagnostics.ownerWorkload, 'GET /api/hermes/diagnostics/owner-workload');
             assert.ok(res.data.supportedActions.includes('notification_outbox.claim'));
+            assert.ok(res.data.supportedActions.includes('notification_outbox.skip'));
             assert.ok(res.data.supportedActions.includes('notification_outbox.stats'));
+            assert.ok(res.data.supportedActions.includes('diagnostics.owner_workload'));
+        });
+    });
+
+    it('reports effective task outbox emit status from safe env-derived rules', async () => {
+        await withHermesOutboxApp([], async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/capabilities');
+            assert.equal(res.status, 200);
+            assert.equal(res.data.features.taskOutboxEmitEnabled, true);
+        }, { env: { NODE_ENV: 'test' } });
+
+        await withHermesOutboxApp([], async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/capabilities');
+            assert.equal(res.status, 200);
+            assert.equal(res.data.features.taskOutboxEmitEnabled, true);
+        }, { env: { NODE_ENV: 'production', HERMES_TASK_OUTBOX_ENABLED: 'true' } });
+
+        await withHermesOutboxApp([], async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/capabilities');
+            assert.equal(res.status, 200);
+            assert.equal(res.data.features.taskOutboxEmitEnabled, false);
+        }, { env: { NODE_ENV: 'production', HERMES_TASK_OUTBOX_ENABLED: 'false' } });
+    });
+
+    it('does not leak raw env names or secret values in capabilities', async () => {
+        await withHermesOutboxApp([], async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/capabilities');
+            assert.equal(res.status, 200);
+            const serialized = JSON.stringify(res.data);
+            assert.equal(serialized.includes('HERMES_TASK_OUTBOX_ENABLED'), false);
+            assert.equal(serialized.includes('TELEGRAM_BOT_TOKEN'), false);
+            assert.equal(serialized.includes('super-secret-token'), false);
+        }, {
+            env: {
+                NODE_ENV: 'production',
+                HERMES_TASK_OUTBOX_ENABLED: 'true',
+                TELEGRAM_BOT_TOKEN: 'super-secret-token'
+            }
         });
     });
 
@@ -321,7 +481,12 @@ describe('Hermes notification_outbox routes', () => {
             outboxRow({ id: 6, event_id: 'task_created:6:owner:4', status: 'sent', sent_at: '2026-06-27T11:50:00.000Z' }),
             outboxRow({ id: 7, event_id: 'task_created:7:owner:4', status: 'failed' }),
             outboxRow({ id: 8, event_id: 'task_created:8:owner:4', status: 'dead_letter' }),
-            outboxRow({ id: 9, event_id: 'task_created:9:owner:4', status: 'skipped' })
+            outboxRow({
+                id: 9,
+                event_id: 'task_created:9:owner:4',
+                status: 'skipped',
+                last_error_code: 'MISSING_TELEGRAM_ROUTE'
+            })
         ], async ({ baseUrl }) => {
             const res = await request(baseUrl, 'GET', '/api/hermes/notification-outbox/stats');
             assert.equal(res.status, 200);
@@ -331,11 +496,144 @@ describe('Hermes notification_outbox routes', () => {
                 sent_24h: 1,
                 failed: 1,
                 dead_letter: 1,
-                skipped: 1
+                skipped: 1,
+                blocked_missing_route: 1
             });
             assert.equal(res.data.oldestPendingAt, '2026-06-29T10:00:00.000Z');
             assert.equal(res.data.lastSentAt, '2026-06-29T11:50:00.000Z');
             assert.equal(res.data.payload_json, undefined);
+        });
+    });
+
+    it('returns read-only owner workload and route-risk diagnostics by business scope', async () => {
+        await withHermesOutboxApp([
+            outboxRow({
+                id: 101,
+                event_id: 'task_created:101:owner:1',
+                task_id: 101,
+                owner_user_id: 1,
+                status: 'pending',
+                payload_json: {
+                    title: 'Private title should not leak',
+                    clientPhone: '+380001112233',
+                    token: 'secret-token'
+                }
+            }),
+            outboxRow({
+                id: 102,
+                event_id: 'task_created:102:owner:1',
+                task_id: 102,
+                owner_user_id: 1,
+                status: 'skipped',
+                last_error_code: 'MISSING_TELEGRAM_ROUTE',
+                last_error: 'No Telegram route configured',
+                payload_json: {
+                    description: 'Private description should not leak',
+                    cookie: 'secret-cookie'
+                }
+            }),
+            outboxRow({
+                id: 201,
+                event_id: 'task_created:201:owner:2',
+                task_id: 201,
+                owner_user_id: 2,
+                status: 'pending'
+            }),
+            outboxRow({
+                id: 301,
+                event_id: 'task_created:301:owner:1',
+                task_id: 301,
+                owner_user_id: 1,
+                status: 'pending',
+                payload_json: {
+                    title: 'Foreign business title should not leak'
+                }
+            })
+        ], async ({ baseUrl, pool }) => {
+            const updateCallsBefore = pool.calls.filter(call => call.text.startsWith('UPDATE ')).length;
+            const res = await request(baseUrl, 'GET', '/api/hermes/diagnostics/owner-workload?businessContext=event_genix');
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.meta.routeTruthSource, 'not_configured_in_crm');
+            assert.equal(res.data.meta.sanitized, true);
+            assert.equal(res.data.meta.readOnly, true);
+            assert.equal(res.data.meta.businessScope.activeContext, 'event_genix');
+
+            const owner1 = res.data.owners.find(owner => owner.ownerUserId === 1);
+            const owner2 = res.data.owners.find(owner => owner.ownerUserId === 2);
+            assert.ok(owner1);
+            assert.ok(owner2);
+            assert.equal(owner1.ownerLabel, 'Віталіна');
+            assert.equal(owner1.active, 2);
+            assert.equal(owner1.urgent, 1);
+            assert.equal(owner1.outboxPending, 1);
+            assert.equal(owner1.outboxSkipped, 1);
+            assert.equal(owner1.blockedMissingRoute, 1);
+            assert.equal(owner1.deliveryRouteStatus, 'unknown');
+            assert.equal(owner2.active, 1);
+            assert.equal(owner2.urgent, 0);
+            assert.equal(owner2.outboxPending, 1);
+            assert.equal(res.data.owners.some(owner => owner.ownerUserId === 3), false);
+
+            const serialized = JSON.stringify(res.data);
+            assert.equal(serialized.includes('Private title should not leak'), false);
+            assert.equal(serialized.includes('Private description should not leak'), false);
+            assert.equal(serialized.includes('Foreign business title should not leak'), false);
+            assert.equal(serialized.includes('+380001112233'), false);
+            assert.equal(serialized.includes('secret-token'), false);
+            assert.equal(serialized.includes('secret-cookie'), false);
+            assert.equal(serialized.includes('payload_json'), false);
+
+            const updateCallsAfter = pool.calls.filter(call => call.text.startsWith('UPDATE ')).length;
+            assert.equal(updateCallsAfter, updateCallsBefore);
+            assert.equal(pool.rows.get('task_created:101:owner:1').status, 'pending');
+            assert.equal(pool.rows.get('task_created:301:owner:1').status, 'pending');
+        }, {
+            users: [
+                { id: 1, name: 'Віталіна' },
+                { id: 2, name: 'Сергій' }
+            ],
+            tasks: [
+                {
+                    id: 101,
+                    owner_user_id: 1,
+                    status: 'todo',
+                    priority: 'urgent',
+                    business_context: 'event_genix',
+                    title: 'Private title should not leak'
+                },
+                {
+                    id: 102,
+                    owner_user_id: 1,
+                    status: 'in_progress',
+                    priority: 'normal',
+                    business_context: 'event_genix',
+                    description: 'Private description should not leak'
+                },
+                {
+                    id: 103,
+                    owner_user_id: 1,
+                    status: 'done',
+                    priority: 'urgent',
+                    business_context: 'event_genix'
+                },
+                {
+                    id: 201,
+                    owner_user_id: 2,
+                    status: 'todo',
+                    priority: 'high',
+                    business_context: 'event_genix'
+                },
+                {
+                    id: 301,
+                    owner_user_id: 1,
+                    status: 'todo',
+                    priority: 'urgent',
+                    business_context: 'dar',
+                    title: 'Foreign business title should not leak'
+                }
+            ]
         });
     });
 
@@ -355,7 +653,7 @@ describe('Hermes notification_outbox routes', () => {
             assert.equal(res.data.items[0].event_id.startsWith('task_created:'), true);
             assert.equal(res.data.items[0].payload_json, undefined);
             assert.equal(res.data.items[0].payload, undefined);
-            assert.equal(res.data.items[0].last_error, undefined);
+            assert.equal(res.data.items[0].last_error, null);
             assert.equal(Object.hasOwn(res.data.items[0], 'last_error_code'), true);
         });
     });
@@ -487,6 +785,107 @@ describe('Hermes notification_outbox routes', () => {
         });
     });
 
+    it('skips missing-route events with sanitized reason and removes them from claimable pending', async () => {
+        await withHermesOutboxApp([
+            outboxRow({ id: 45, event_id: 'task_created:45:owner:1', status: 'pending' })
+        ], async ({ baseUrl, pool }) => {
+            const skipped = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:45:owner:1/skip', {
+                workerId: 'worker-a',
+                reasonCode: 'MISSING_TELEGRAM_ROUTE',
+                reasonMessage: 'No Telegram\nroute configured for ownerUserId=1'
+            });
+            assert.equal(skipped.status, 200, skipped.text);
+            assert.equal(skipped.data.alreadySkipped, false);
+            assert.equal(skipped.data.event.status, 'skipped');
+            assert.equal(skipped.data.event.lastErrorCode, 'MISSING_TELEGRAM_ROUTE');
+            assert.equal(skipped.data.event.lastError, 'No Telegram route configured for ownerUserId=1');
+            assert.equal(pool.rows.get('task_created:45:owner:1').status, 'skipped');
+
+            const claim = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:45:owner:1/claim', {
+                workerId: 'worker-b'
+            });
+            assert.equal(claim.status, 409);
+            assert.equal(claim.data.code, 'OUTBOX_EVENT_NOT_CLAIMABLE');
+
+            const stats = await request(baseUrl, 'GET', '/api/hermes/notification-outbox/stats');
+            assert.equal(stats.status, 200);
+            assert.equal(stats.data.stats.skipped, 1);
+            assert.equal(stats.data.stats.blocked_missing_route, 1);
+
+            const debug = await request(baseUrl, 'GET', '/api/hermes/notification-outbox/debug?status=skipped');
+            assert.equal(debug.status, 200);
+            assert.equal(debug.data.items[0].last_error_code, 'MISSING_TELEGRAM_ROUTE');
+            assert.equal(debug.data.items[0].last_error, 'No Telegram route configured for ownerUserId=1');
+            assert.equal(debug.data.items[0].payload_json, undefined);
+
+            const duplicate = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:45:owner:1/skip', {
+                workerId: 'worker-a',
+                reasonCode: 'MISSING_TELEGRAM_ROUTE',
+                reasonMessage: 'No Telegram route configured for ownerUserId=1'
+            });
+            assert.equal(duplicate.status, 200);
+            assert.equal(duplicate.data.alreadySkipped, true);
+        });
+    });
+
+    it('allows claimed events to be skipped only by the claiming worker', async () => {
+        await withHermesOutboxApp([
+            outboxRow({
+                id: 46,
+                event_id: 'task_created:46:owner:1',
+                status: 'claimed',
+                claimed_by: 'worker-a',
+                locked_until: '2026-06-29T12:10:00.000Z'
+            }),
+            outboxRow({
+                id: 47,
+                event_id: 'task_created:47:owner:1',
+                status: 'claimed',
+                claimed_by: 'worker-a',
+                locked_until: '2026-06-29T12:10:00.000Z'
+            })
+        ], async ({ baseUrl }) => {
+            const wrongWorker = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:46:owner:1/skip', {
+                workerId: 'worker-b',
+                reasonCode: 'MISSING_TELEGRAM_ROUTE',
+                reasonMessage: 'No Telegram route configured'
+            });
+            assert.equal(wrongWorker.status, 409);
+            assert.equal(wrongWorker.data.code, 'OUTBOX_EVENT_CLAIMED_BY_DIFFERENT_WORKER');
+
+            const sameWorker = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:47:owner:1/skip', {
+                workerId: 'worker-a',
+                reasonCode: 'MISSING_TELEGRAM_ROUTE',
+                reasonMessage: 'No Telegram route configured'
+            });
+            assert.equal(sameWorker.status, 200, sameWorker.text);
+            assert.equal(sameWorker.data.event.status, 'skipped');
+        });
+    });
+
+    it('rejects skip for sent and dead-letter events', async () => {
+        await withHermesOutboxApp([
+            outboxRow({ id: 48, event_id: 'task_created:48:owner:1', status: 'sent' }),
+            outboxRow({ id: 49, event_id: 'task_created:49:owner:1', status: 'dead_letter' })
+        ], async ({ baseUrl }) => {
+            const sent = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:48:owner:1/skip', {
+                workerId: 'worker-a',
+                reasonCode: 'MISSING_TELEGRAM_ROUTE',
+                reasonMessage: 'No Telegram route configured'
+            });
+            assert.equal(sent.status, 409);
+            assert.equal(sent.data.code, 'OUTBOX_EVENT_ALREADY_SENT');
+
+            const deadLetter = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:49:owner:1/skip', {
+                workerId: 'worker-a',
+                reasonCode: 'MISSING_TELEGRAM_ROUTE',
+                reasonMessage: 'No Telegram route configured'
+            });
+            assert.equal(deadLetter.status, 409);
+            assert.equal(deadLetter.data.code, 'OUTBOX_EVENT_NOT_SKIPPABLE');
+        });
+    });
+
     it('fails retryable events with backoff', async () => {
         await withHermesOutboxApp([
             outboxRow({
@@ -523,6 +922,12 @@ describe('Hermes notification_outbox routes', () => {
                 event_id: 'task_created:56:owner:4',
                 status: 'failed',
                 attempts: 1
+            }),
+            outboxRow({
+                id: 57,
+                event_id: 'task_created:57:owner:4',
+                status: 'skipped',
+                last_error_code: 'MISSING_TELEGRAM_ROUTE'
             })
         ], async ({ baseUrl }) => {
             const pending = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:55:owner:4/fail', {
@@ -540,6 +945,14 @@ describe('Hermes notification_outbox routes', () => {
             });
             assert.equal(failed.status, 409);
             assert.equal(failed.data.code, 'OUTBOX_EVENT_NOT_CLAIMED');
+
+            const skipped = await request(baseUrl, 'POST', '/api/hermes/notification-outbox/task_created:57:owner:4/fail', {
+                workerId: 'worker-a',
+                errorCode: 'DELIVERY_FAILED',
+                retryable: true
+            });
+            assert.equal(skipped.status, 409);
+            assert.equal(skipped.data.code, 'OUTBOX_EVENT_NOT_FAILABLE');
         });
     });
 

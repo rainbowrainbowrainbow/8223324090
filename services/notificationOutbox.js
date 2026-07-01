@@ -364,7 +364,8 @@ function toNotificationOutboxDebugItem(row = null) {
         attempts: Number(row.attempts || 0),
         created_at: isoOrNull(row.created_at),
         available_at: isoOrNull(row.available_at),
-        last_error_code: safeTextOrNull(row.last_error_code, 120)
+        last_error_code: safeTextOrNull(row.last_error_code, 120),
+        last_error: safeTextOrNull(row.last_error, 500)
     };
 }
 
@@ -438,6 +439,22 @@ function requireDeliveryTarget(value) {
         throw notificationOutboxHttpError(400, 'OUTBOX_DELIVERY_TARGET_REQUIRED', 'target is required');
     }
     return target;
+}
+
+function requireSkipReasonCode(value) {
+    const reasonCode = safeTextOrNull(value, 120);
+    if (!reasonCode) {
+        throw notificationOutboxHttpError(400, 'OUTBOX_SKIP_REASON_CODE_REQUIRED', 'reasonCode is required');
+    }
+    return reasonCode;
+}
+
+function requireSkipReasonMessage(value) {
+    const reasonMessage = safeTextOrNull(value, 500);
+    if (!reasonMessage) {
+        throw notificationOutboxHttpError(400, 'OUTBOX_SKIP_REASON_REQUIRED', 'reasonMessage is required');
+    }
+    return reasonMessage;
 }
 
 function canWorkerMutateClaim(row, workerId) {
@@ -570,6 +587,7 @@ async function getNotificationOutboxStats(options = {}) {
              COUNT(*) FILTER (WHERE status = 'failed') AS failed,
              COUNT(*) FILTER (WHERE status = 'dead_letter') AS dead_letter,
              COUNT(*) FILTER (WHERE status = 'skipped') AS skipped,
+             COUNT(*) FILTER (WHERE status = 'skipped' AND last_error_code = 'MISSING_TELEGRAM_ROUTE') AS blocked_missing_route,
              MIN(COALESCE(available_at, created_at)) FILTER (WHERE status = 'pending') AS oldest_pending_at,
              MAX(sent_at) FILTER (WHERE status = 'sent') AS last_sent_at
          FROM notification_outbox`
@@ -582,7 +600,8 @@ async function getNotificationOutboxStats(options = {}) {
             sent_24h: Number(row.sent_24h || 0),
             failed: Number(row.failed || 0),
             dead_letter: Number(row.dead_letter || 0),
-            skipped: Number(row.skipped || 0)
+            skipped: Number(row.skipped || 0),
+            blocked_missing_route: Number(row.blocked_missing_route || 0)
         },
         oldestPendingAt: isoOrNull(row.oldest_pending_at),
         lastSentAt: isoOrNull(row.last_sent_at)
@@ -611,7 +630,8 @@ async function listNotificationOutboxDebugEvents(filters = {}, options = {}) {
              attempts,
              created_at,
              available_at,
-             last_error_code
+             last_error_code,
+             last_error
          FROM notification_outbox
          ${whereSql}
          ORDER BY created_at DESC, id DESC
@@ -766,6 +786,67 @@ async function failNotificationOutboxEvent(eventId, input = {}, options = {}) {
     };
 }
 
+async function skipNotificationOutboxEvent(eventId, input = {}, options = {}) {
+    const query = options.pool || defaultPool;
+    const normalizedEventId = textOrNull(eventId);
+    if (!normalizedEventId) {
+        throw notificationOutboxHttpError(404, 'OUTBOX_EVENT_NOT_FOUND', 'notification_outbox event was not found');
+    }
+
+    const workerId = requireWorkerId(input.workerId || input.worker_id);
+    const reasonCode = requireSkipReasonCode(input.reasonCode || input.reason_code);
+    const reasonMessage = requireSkipReasonMessage(input.reasonMessage || input.reason_message || input.message);
+    const existing = await findNotificationOutboxEventByEventId(normalizedEventId, { pool: query });
+    if (!existing) {
+        throw notificationOutboxHttpError(404, 'OUTBOX_EVENT_NOT_FOUND', 'notification_outbox event was not found');
+    }
+    if (existing.status === 'skipped') {
+        return {
+            event: existing,
+            alreadySkipped: true,
+            workerId
+        };
+    }
+    if (existing.status === 'sent') {
+        throw notificationOutboxHttpError(409, 'OUTBOX_EVENT_ALREADY_SENT', 'notification_outbox event is already sent');
+    }
+    if (existing.status === 'dead_letter') {
+        throw notificationOutboxHttpError(409, 'OUTBOX_EVENT_NOT_SKIPPABLE', 'notification_outbox event cannot be skipped from its current status', {
+            status: existing.status
+        });
+    }
+    if (!['pending', 'failed', 'claimed'].includes(existing.status)) {
+        throw notificationOutboxHttpError(409, 'OUTBOX_EVENT_NOT_SKIPPABLE', 'notification_outbox event cannot be skipped from its current status', {
+            status: existing.status
+        });
+    }
+    if (existing.status === 'claimed' && !canWorkerMutateClaim(existing, workerId)) {
+        throw notificationOutboxHttpError(409, 'OUTBOX_EVENT_CLAIMED_BY_DIFFERENT_WORKER', 'notification_outbox event is claimed by another worker', {
+            claimedBy: safeTextOrNull(existing.claimed_by, 120),
+            lockedUntil: isoOrNull(existing.locked_until)
+        });
+    }
+
+    const updated = await query.query(
+        `UPDATE notification_outbox
+         SET status = 'skipped',
+             available_at = NOW(),
+             last_error = $2,
+             last_error_code = $3,
+             locked_until = NULL,
+             updated_at = NOW()
+         WHERE event_id = $1
+         RETURNING *`,
+        [normalizedEventId, reasonMessage, reasonCode]
+    );
+
+    return {
+        event: normalizeOutboxRow(updated.rows?.[0] || existing),
+        alreadySkipped: false,
+        workerId
+    };
+}
+
 async function createNotificationOutboxEvent(input = {}, options = {}) {
     const query = options.pool || defaultPool;
     const task = input.task || input;
@@ -880,6 +961,7 @@ module.exports = {
     isActiveTaskForHermesOutbox,
     listNotificationOutboxDebugEvents,
     listNotificationOutboxEvents,
+    skipNotificationOutboxEvent,
     stableJsonStringify,
     toNotificationOutboxApiEvent,
     toNotificationOutboxDebugItem

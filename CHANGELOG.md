@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.90 - Hermes CRM Tasker Hardening
+
+### Hermes CRM Tasker / notification_outbox / Tasker endpoints / Diagnostics / Regression QA / (Клешня, 01.07.2026) [codex]
+- **Hermes task delivery переведено на outbox як джерело правди** - CRM створює durable `notification_outbox` події для задач, а legacy Telegram notification більше не дублює Hermes-owned доставку.
+- **Додано безпечний skip flow для missing Telegram route** - Hermes може переводити недоставні події у `skipped` з sanitized причиною `MISSING_TELEGRAM_ROUTE`, без dead-letter noise і без live Telegram викликів.
+- **Tasker отримав CRM-safe endpoints для текстових сценаріїв** - додано completion report, comments і read/toggle subtasks через Hermes auth, mutation guard та idempotency.
+- **Додано read-only owner workload diagnostics** - `/api/hermes/diagnostics/owner-workload` показує тільки агрегати active/urgent/outbox risk і не розкриває task titles, payload, телефони чи secrets.
+- **Capabilities стали явними** - `/api/hermes/capabilities` показує effective `taskOutboxEmitEnabled`, нові supported actions і endpoints без raw env values.
+- **Runbook оновлено під фактичний контракт** - docs більше не подають старий Hermes V0.6 polling fallback як активну CRM-інструкцію і фіксують межі: no deploy, no Telegram live, no route config changes.
+- **Додано regression coverage** - локальні Hermes/outbox/task tests покривають emit status, skip lifecycle, duplicate delivery prevention, completion reports, comments, subtasks і owner diagnostics.
+
+---
+
 ## v0.77.89 - Standalone Activity Open Hotfix
 
 ### Timeline standalone activities / Detail fallback / Create projection / Cache safety / Regression QA / (Клешня, 01.07.2026) [codex]

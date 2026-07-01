@@ -34,6 +34,16 @@ async function request(baseUrl, method, path, body, headers = {}) {
     return { status: res.status, data, text, headers: res.headers };
 }
 
+function installMock(modulePath, exports) {
+    const id = require.resolve(modulePath);
+    const previous = require.cache[id] || null;
+    require.cache[id] = { id, filename: id, loaded: true, exports };
+    return () => {
+        if (previous) require.cache[id] = previous;
+        else delete require.cache[id];
+    };
+}
+
 function hermesTestAuth(req, res, next) {
     req.user = {
         id: 7,
@@ -350,6 +360,7 @@ function createHermesCreateFakePool(options = {}) {
     const records = new Map();
     const createdTasks = [];
     const historyEvents = [];
+    const outbox = [];
     const users = new Map([
         [7, { id: 7, username: 'hermes.actor', name: 'Hermes Actor', role: 'creator' }],
         [8, { id: 8, username: 'ops.user', name: 'Ops User', role: 'manager' }],
@@ -357,6 +368,22 @@ function createHermesCreateFakePool(options = {}) {
     ]);
     const tasks = new Map(
         (options.tasks || []).map(([id, task]) => [Number(id), { ...task }])
+    );
+    const subtasks = new Map(
+        Object.entries(options.subtasks || {}).map(([taskId, rows]) => [
+            Number(taskId),
+            (Array.isArray(rows) ? rows : []).map((row, index) => ({
+                id: row.id || (9000 + index),
+                task_id: Number(taskId),
+                title: row.title || `Subtask ${index + 1}`,
+                is_done: row.is_done === true || row.isDone === true,
+                sort_order: row.sort_order ?? row.sortOrder ?? index,
+                source_type: row.source_type || row.sourceType || 'manual',
+                created_at: row.created_at || '2026-06-27T07:20:00.000Z',
+                updated_at: row.updated_at || '2026-06-27T07:20:00.000Z',
+                completed_at: row.completed_at || (row.is_done || row.isDone ? '2026-06-27T07:20:00.000Z' : null)
+            }))
+        ])
     );
     const products = new Map(
         (options.products || []).map(([id, product]) => [String(id), { ...product }])
@@ -367,9 +394,11 @@ function createHermesCreateFakePool(options = {}) {
         Object.entries(options.subtaskStates || {}).map(([id, state]) => [Number(id), state])
     );
     const reportIds = new Set(options.reportIds || [321]);
+    const reports = [];
     let nextId = 2000;
     let nextSubtaskId = 9000;
     let nextHistoryId = 12000;
+    let nextReportId = options.nextReportId || 41000;
 
     function key(integrationId, idempotencyKey) {
         return `${integrationId}:${idempotencyKey}`;
@@ -377,6 +406,24 @@ function createHermesCreateFakePool(options = {}) {
 
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
+    }
+
+    function subtaskRows(taskId) {
+        return (subtasks.get(Number(taskId)) || [])
+            .slice()
+            .sort((a, b) => (Number(a.sort_order || 0) - Number(b.sort_order || 0)) || (Number(a.id) - Number(b.id)));
+    }
+
+    function subtaskCounts(taskId) {
+        const rows = subtaskRows(taskId);
+        if (rows.length) {
+            return {
+                total: rows.length,
+                done: rows.filter(row => row.is_done === true).length
+            };
+        }
+        const state = subtaskStates.get(Number(taskId)) || { total: 0, done: 0 };
+        return { total: state.total || 0, done: state.done || 0 };
     }
 
     async function query(text, params = []) {
@@ -465,14 +512,90 @@ function createHermesCreateFakePool(options = {}) {
             };
         }
 
+        if (/SELECT t\.id(?:, t\.status, t\.updated_at, t\.version)? FROM tasks t WHERE t\.id = \$1/i.test(compact)) {
+            const id = Number(params[0]);
+            if (hiddenIds.has(id)) return { rows: [], rowCount: 0 };
+            const task = tasks.get(id);
+            if (!task) return { rows: [], rowCount: 0 };
+            return {
+                rows: [{
+                    id: task.id,
+                    status: task.status || 'todo',
+                    updated_at: task.updated_at || null,
+                    version: task.version || 1
+                }],
+                rowCount: 1
+            };
+        }
+
+        if (/SELECT t\.id, t\.title, t\.description/i.test(compact)
+            && /FROM tasks t LEFT JOIN users u ON u\.id = t\.owner_user_id LEFT JOIN users creator ON creator\.id = t\.created_by_user_id/i.test(compact)
+            && /WHERE t\.id = \$1/i.test(compact)) {
+            const id = Number(params[0]);
+            if (hiddenIds.has(id)) return { rows: [], rowCount: 0 };
+            const task = tasks.get(id);
+            if (!task) return { rows: [], rowCount: 0 };
+            const owner = users.get(Number(task.owner_user_id || 0));
+            const rowSubtasks = subtaskRows(id);
+            return {
+                rows: [{
+                    ...clone(task),
+                    owner_name: owner?.name || task.owner_name || null,
+                    owner_username: owner?.username || task.owner_username || null,
+                    creator_name: task.creator_name || 'Creator Name',
+                    created_by_username: task.created_by_username || 'creator',
+                    subtasks: compact.includes('COALESCE(subtask_rows.subtasks') ? clone(rowSubtasks) : task.subtasks
+                }],
+                rowCount: 1
+            };
+        }
+
         if (/SELECT COUNT\(\*\)::int AS total, COUNT\(\*\) FILTER \(WHERE is_done = true\)::int AS done FROM task_subtasks WHERE task_id = \$1/i.test(compact)) {
-            const state = subtaskStates.get(Number(params[0])) || { total: 0, done: 0 };
+            const state = subtaskCounts(params[0]);
             return { rows: [{ total: state.total || 0, done: state.done || 0 }], rowCount: 1 };
         }
 
         if (/SELECT id FROM reports WHERE id = \$1/i.test(compact)) {
             const id = Number(params[0]);
             return { rows: reportIds.has(id) ? [{ id }] : [], rowCount: reportIds.has(id) ? 1 : 0 };
+        }
+
+        if (compact.startsWith('INSERT INTO reports')) {
+            const report = {
+                id: nextReportId++,
+                business_context: params[0],
+                type: params[1],
+                amount: params[2],
+                description: params[3],
+                category: params[4],
+                submitted_by: params[5],
+                submitted_via: 'web',
+                raw_data: JSON.parse(params[6]),
+                hashtags: JSON.parse(params[7]),
+                created_at: '2026-06-27T08:55:00.000Z',
+                assigned_to: null
+            };
+            reports.push(report);
+            reportIds.add(report.id);
+            return {
+                rows: [{
+                    id: report.id,
+                    category: report.category,
+                    amount: report.amount,
+                    created_at: report.created_at
+                }],
+                rowCount: 1
+            };
+        }
+
+        if (compact.startsWith('SELECT id FROM accountants')) {
+            return { rows: options.accountantId ? [{ id: options.accountantId }] : [], rowCount: options.accountantId ? 1 : 0 };
+        }
+
+        if (compact.startsWith('UPDATE reports SET assigned_to =')) {
+            const report = reports.find(item => item.id === Number(params[1]));
+            if (report) report.assigned_to = Number(params[0]);
+            return { rows: [], rowCount: report ? 1 : 0 };
         }
 
         if (/FROM tasks t WHERE COALESCE\(t\.status, 'todo'\) NOT IN/i.test(compact)) {
@@ -579,12 +702,70 @@ function createHermesCreateFakePool(options = {}) {
             return { rows: [], rowCount: 1 };
         }
 
+        if (compact.startsWith('INSERT INTO notification_outbox')) {
+            const duplicate = outbox.find(row =>
+                row.event_id === params[0]
+                || (
+                    row.task_id === params[1]
+                    && row.owner_user_id === params[2]
+                    && row.event_type === params[3]
+                    && row.payload_hash === params[5]
+                )
+            );
+            if (duplicate) return { rows: [], rowCount: 0 };
+            const row = {
+                id: outbox.length + 1,
+                event_id: params[0],
+                task_id: params[1],
+                owner_user_id: params[2],
+                event_type: params[3],
+                payload_json: JSON.parse(params[4]),
+                payload_hash: params[5],
+                status: 'pending',
+                attempts: 0,
+                available_at: params[6] || '2026-06-27T07:10:00.000Z',
+                created_at: '2026-06-27T07:10:00.000Z',
+                updated_at: '2026-06-27T07:10:00.000Z',
+                claimed_at: null,
+                sent_at: null,
+                last_error: null,
+                last_error_code: null,
+                last_delivery_channel: null,
+                last_delivery_target: null,
+                claimed_by: null,
+                locked_until: null
+            };
+            outbox.push(row);
+            return { rows: [row], rowCount: 1 };
+        }
+
+        if (compact.startsWith('SELECT * FROM notification_outbox WHERE event_id = $1 OR')) {
+            const row = outbox.find(item => item.event_id === params[0])
+                || outbox.find(item =>
+                    item.task_id === params[1]
+                    && item.owner_user_id === params[2]
+                    && item.event_type === params[3]
+                    && item.payload_hash === params[4]
+                );
+            return { rows: row ? [clone(row)] : [], rowCount: row ? 1 : 0 };
+        }
+
         if (compact.startsWith('UPDATE tasks SET status =')) {
             const task = tasks.get(Number(params[0]));
             if (!task || ['done', 'cancelled', 'archived'].includes(String(task.status || 'todo'))) {
                 return { rows: [], rowCount: 0 };
             }
             const isHermesStatusUpdate = compact.includes('status = $2::text');
+            const incomingReportId = isHermesStatusUpdate ? null : Number(params[2] || 0);
+            if (incomingReportId > 0) {
+                task.control_meta = {
+                    ...(task.control_meta || {}),
+                    reportRequired: true,
+                    reportId: incomingReportId,
+                    reportSubmittedAt: '2026-06-27T09:00:00.000Z',
+                    reportSubmittedBy: params[3] || 'Hermes Actor'
+                };
+            }
             Object.assign(task, isHermesStatusUpdate ? {
                 status: params[1],
                 workflow_state: params[1] === 'in_progress' ? 'in_progress' : 'todo',
@@ -598,6 +779,23 @@ function createHermesCreateFakePool(options = {}) {
                 updated_at: '2026-06-27T08:00:00.000Z',
                 version: Number(task.version || 1) + 1
             });
+            return { rows: [clone(task)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('UPDATE tasks SET control_meta =')) {
+            const task = tasks.get(Number(params[0]));
+            if (!task || String(task.business_context || 'event_genix') !== String(params[3] || 'event_genix')) {
+                return { rows: [], rowCount: 0 };
+            }
+            task.control_meta = {
+                ...(task.control_meta || {}),
+                reportRequired: true,
+                reportId: Number(params[1]),
+                reportSubmittedAt: '2026-06-27T08:56:00.000Z',
+                reportSubmittedBy: params[2]
+            };
+            task.updated_at = '2026-06-27T08:56:00.000Z';
+            task.version = Number(task.version || 1) + 1;
             return { rows: [clone(task)], rowCount: 1 };
         }
 
@@ -653,6 +851,24 @@ function createHermesCreateFakePool(options = {}) {
             return { rows: [event], rowCount: 1 };
         }
 
+        if (/SELECT \*\s+FROM task_subtasks WHERE task_id = \$1 ORDER BY sort_order ASC, id ASC/i.test(compact)) {
+            const rows = subtaskRows(params[0]);
+            return { rows: clone(rows), rowCount: rows.length };
+        }
+
+        if (compact.startsWith('UPDATE task_subtasks SET is_done =')) {
+            const taskId = Number(params[0]);
+            const subtaskId = Number(params[1]);
+            const isDone = params[2] === true;
+            const rows = subtasks.get(taskId) || [];
+            const row = rows.find(item => Number(item.id) === subtaskId);
+            if (!row) return { rows: [], rowCount: 0 };
+            row.is_done = isDone;
+            row.completed_at = isDone ? '2026-06-27T09:15:00.000Z' : null;
+            row.updated_at = '2026-06-27T09:15:00.000Z';
+            return { rows: [clone(row)], rowCount: 1 };
+        }
+
         if (compact.startsWith('SELECT id FROM task_subtasks WHERE task_id = $1')) {
             return { rows: [], rowCount: 0 };
         }
@@ -673,7 +889,18 @@ function createHermesCreateFakePool(options = {}) {
                 updated_at: '2026-06-27T07:11:00.000Z',
                 completed_at: params[2] === true ? '2026-06-27T07:11:00.000Z' : null
             };
+            const rows = subtasks.get(Number(params[0])) || [];
+            rows.push(subtask);
+            subtasks.set(Number(params[0]), rows);
             return { rows: [subtask], rowCount: 1 };
+        }
+
+        if (compact.startsWith('UPDATE tasks SET updated_at = NOW(), version = COALESCE(version, 1) + 1')) {
+            const task = tasks.get(Number(params[0]));
+            if (!task) return { rows: [], rowCount: 0 };
+            task.updated_at = '2026-06-27T09:16:00.000Z';
+            task.version = Number(task.version || 1) + 1;
+            return { rows: [{ id: task.id, updated_at: task.updated_at, version: task.version }], rowCount: 1 };
         }
 
         if (compact.startsWith('UPDATE tasks SET task_kind')) {
@@ -688,6 +915,9 @@ function createHermesCreateFakePool(options = {}) {
         records,
         createdTasks,
         historyEvents,
+        outbox,
+        reports,
+        subtasks,
         tasks,
         products,
         async query(text, params = []) {
@@ -708,7 +938,8 @@ async function withHermesCreateServer(fakePool, testFn, options = {}) {
     app.use('/api/hermes', createHermesRouter({
         authMiddleware: hermesTestAuth,
         pool: fakePool,
-        skipNotifications: options.skipNotifications !== false
+        skipNotifications: options.skipNotifications !== false,
+        env: options.env || {}
     }));
     const { server, baseUrl } = await listen(app);
     try {
@@ -785,6 +1016,10 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('tasks.my_cabinet'));
         assert.ok(res.data.supportedActions.includes('tasks.create'));
         assert.ok(res.data.supportedActions.includes('tasks.complete'));
+        assert.ok(res.data.supportedActions.includes('tasks.completion_report'));
+        assert.ok(res.data.supportedActions.includes('tasks.comment'));
+        assert.ok(res.data.supportedActions.includes('tasks.subtasks.read'));
+        assert.ok(res.data.supportedActions.includes('tasks.subtask.toggle'));
         assert.ok(res.data.supportedActions.includes('tasks.reassign'));
         assert.ok(res.data.supportedActions.includes('tasks.reschedule'));
         assert.ok(res.data.supportedActions.includes('menu_photos.read'));
@@ -798,6 +1033,22 @@ describe('Hermes read-only task routes', () => {
             ownerAllowlistEnabled: false
         });
         assert.deepEqual(res.data.plannedMutationActions, []);
+        assert.equal(
+            res.data.endpoints.tasks.completionReport,
+            'POST /api/hermes/tasks/:id/completion-report'
+        );
+        assert.equal(
+            res.data.endpoints.tasks.comment,
+            'POST /api/hermes/tasks/:id/comments'
+        );
+        assert.equal(
+            res.data.endpoints.tasks.subtasks,
+            'GET /api/hermes/tasks/:id/subtasks'
+        );
+        assert.equal(
+            res.data.endpoints.tasks.subtaskToggle,
+            'PATCH /api/hermes/tasks/:id/subtasks/:subtaskId'
+        );
     });
 
     it('protects Hermes my-cabinet with x-api-key auth', async () => {
@@ -1459,6 +1710,58 @@ describe('Hermes task create route', () => {
         });
     });
 
+    it('does not trigger legacy notifications when Hermes create is outbox-owned', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const telegramCalls = [];
+        const taskNotificationCalls = [];
+        const kleshnyaId = require.resolve('../services/kleshnya');
+        const previousKleshnya = require.cache[kleshnyaId] || null;
+        delete require.cache[kleshnyaId];
+        const restoreTelegram = installMock('../services/telegram', {
+            getConfiguredChatId: async () => 'legacy-group-chat',
+            getConfiguredThreadId: async () => null,
+            telegramRequest: async (method, body) => {
+                telegramCalls.push({ method, body });
+                return { ok: true };
+            },
+            sendTelegramMessage: async (chatId, text, options) => {
+                telegramCalls.push({ method: 'sendTelegramMessage', body: { chat_id: chatId, text, options } });
+                return { ok: true };
+            }
+        });
+        const restoreTaskNotifications = installMock('../services/taskNotifications', {
+            emitTaskAssignedToOwner: (...args) => {
+                taskNotificationCalls.push(args);
+            }
+        });
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                const res = await request(baseUrl, 'POST', '/api/hermes/tasks', {
+                    title: 'Outbox-owned route create',
+                    ownerUserId: 8,
+                    businessContext: 'event_genix'
+                }, mutationHeaders('create-outbox-owned-no-legacy'));
+                await new Promise(resolve => setImmediate(resolve));
+
+                assert.equal(res.status, 201, res.text);
+                assert.equal(fakePool.createdTasks.length, 1);
+                assert.equal(fakePool.outbox.length, 1);
+                assert.equal(fakePool.outbox[0].event_type, 'task_created');
+                assert.equal(telegramCalls.length, 0);
+                assert.equal(taskNotificationCalls.length, 0);
+            }, {
+                skipNotifications: false,
+                env: { NODE_ENV: 'production', HERMES_TASK_OUTBOX_ENABLED: 'true' }
+            });
+        } finally {
+            restoreTaskNotifications();
+            restoreTelegram();
+            if (previousKleshnya) require.cache[kleshnyaId] = previousKleshnya;
+            else delete require.cache[kleshnyaId];
+        }
+    });
+
     it('rejects invalid title before creating a task', async () => {
         const fakePool = createHermesCreateFakePool();
         await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
@@ -1543,6 +1846,580 @@ describe('Hermes task create route', () => {
 });
 
 describe('Hermes task write routes', () => {
+    it('lists subtasks through a read-only Hermes endpoint', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[730, taskRow(730, {
+                status: 'todo',
+                workflow_state: 'todo',
+                version: 2
+            })]],
+            subtasks: {
+                730: [
+                    { id: 9301, title: 'Open part', is_done: false, sort_order: 0 },
+                    { id: 9302, title: 'Done part', is_done: true, sort_order: 1, completed_at: '2026-06-27T08:00:00.000Z' }
+                ]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/tasks/730/subtasks?businessContext=event_genix');
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.deepEqual(res.data.subtasks.map(item => item.id), ['9301', '9302']);
+            assert.deepEqual(res.data.subtasks.map(item => item.status), ['open', 'done']);
+            assert.equal(res.data.parent.subtaskCount, 2);
+            assert.equal(res.data.parent.subtaskDoneCount, 1);
+            assert.equal(res.data.parent.subtaskOpenCount, 1);
+            assert.equal(res.data.parent.canCompleteParent, false);
+            assert.equal(res.data.meta.readOnly, true);
+            assert.equal(fakePool.records.size, 0);
+            assert.equal(JSON.stringify(res.data).includes('control_meta'), false);
+        });
+    });
+
+    it('toggles a Hermes subtask done and keeps task detail subtasks current', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[730, taskRow(730, {
+                status: 'todo',
+                workflow_state: 'todo',
+                version: 2
+            })]],
+            subtasks: {
+                730: [
+                    { id: 9301, title: 'Open part', is_done: false, sort_order: 0 },
+                    { id: 9302, title: 'Done part', is_done: true, sort_order: 1, completed_at: '2026-06-27T08:00:00.000Z' }
+                ]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/730/subtasks/9301?businessContext=event_genix',
+                { is_done: true },
+                mutationHeaders('subtask-toggle-done')
+            );
+            const detail = await request(baseUrl, 'GET', '/api/hermes/tasks/730?businessContext=event_genix');
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.subtask.id, '9301');
+            assert.equal(res.data.subtask.status, 'done');
+            assert.equal(res.data.subtask.is_done, true);
+            assert.ok(res.data.subtask.completed_at);
+            assert.equal(res.data.parent.subtaskDoneCount, 2);
+            assert.equal(res.data.parent.subtaskOpenCount, 0);
+            assert.equal(res.data.parent.canCompleteParent, true);
+            assert.equal(res.data.parent.version, 3);
+            assert.equal(res.data.meta.action, 'subtask_toggle');
+            assert.equal(fakePool.subtasks.get(730).find(item => item.id === 9301).is_done, true);
+            assert.equal(detail.status, 200, detail.text);
+            assert.deepEqual(detail.data.task.subtasks.map(item => item.status), ['done', 'done']);
+            const serialized = JSON.stringify(res.data);
+            assert.equal(serialized.includes('task_id'), false);
+            assert.equal(serialized.includes('control_meta'), false);
+        });
+    });
+
+    it('toggles a Hermes subtask back to open', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[731, taskRow(731, {
+                status: 'todo',
+                workflow_state: 'todo',
+                version: 1
+            })]],
+            subtasks: {
+                731: [
+                    { id: 9311, title: 'Done part', is_done: true, sort_order: 0, completed_at: '2026-06-27T08:00:00.000Z' },
+                    { id: 9312, title: 'Still done', is_done: true, sort_order: 1, completed_at: '2026-06-27T08:00:00.000Z' }
+                ]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/731/subtasks/9311?businessContext=event_genix',
+                { isDone: false },
+                mutationHeaders('subtask-toggle-open')
+            );
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.subtask.status, 'open');
+            assert.equal(res.data.subtask.is_done, false);
+            assert.equal(res.data.subtask.completed_at, null);
+            assert.equal(res.data.parent.subtaskDoneCount, 1);
+            assert.equal(res.data.parent.subtaskOpenCount, 1);
+            assert.equal(res.data.parent.canCompleteParent, false);
+            assert.equal(fakePool.subtasks.get(731).find(item => item.id === 9311).completed_at, null);
+        });
+    });
+
+    it('requires confirmation and idempotency headers on the Hermes subtask toggle endpoint', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[732, taskRow(732)]],
+            subtasks: {
+                732: [{ id: 9321, title: 'Open', is_done: false }]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const missingConfirmation = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
+                { is_done: true },
+                { 'Idempotency-Key': 'subtask-missing-confirmation' }
+            );
+            const missingIdempotency = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
+                { is_done: true },
+                { 'X-Hermes-User-Confirmed': 'true' }
+            );
+
+            assert.equal(missingConfirmation.status, 400, missingConfirmation.text);
+            assert.equal(missingConfirmation.data.code, 'HERMES_CONFIRMATION_REQUIRED');
+            assert.equal(missingIdempotency.status, 400, missingIdempotency.text);
+            assert.equal(missingIdempotency.data.code, 'IDEMPOTENCY_KEY_REQUIRED');
+            assert.equal(fakePool.subtasks.get(732)[0].is_done, false);
+        });
+    });
+
+    it('rejects invalid Hermes subtask toggle payloads before mutation', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[732, taskRow(732)]],
+            subtasks: {
+                732: [{ id: 9321, title: 'Open', is_done: false }]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const unsupported = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
+                { is_done: true, title: 'Not allowed' },
+                mutationHeaders('subtask-unsupported')
+            );
+            const missing = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/732/subtasks/9321?businessContext=event_genix',
+                {},
+                mutationHeaders('subtask-missing-state')
+            );
+
+            assert.equal(unsupported.status, 400, unsupported.text);
+            assert.equal(unsupported.data.code, 'HERMES_UNSUPPORTED_FIELD');
+            assert.equal(missing.status, 400, missing.text);
+            assert.equal(missing.data.code, 'HERMES_INVALID_SUBTASK_PAYLOAD');
+            assert.equal(fakePool.subtasks.get(732)[0].is_done, false);
+        });
+    });
+
+    it('does not mutate subtasks for invisible tasks', async () => {
+        const fakePool = createHermesCreateFakePool({
+            hiddenIds: [733],
+            tasks: [[733, taskRow(733)]],
+            subtasks: {
+                733: [{ id: 9331, title: 'Hidden open', is_done: false }]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/733/subtasks/9331?businessContext=event_genix',
+                { is_done: true },
+                mutationHeaders('subtask-hidden')
+            );
+
+            assert.equal(res.status, 404, res.text);
+            assert.equal(res.data.code, 'TASK_NOT_VISIBLE');
+            assert.equal(fakePool.subtasks.get(733)[0].is_done, false);
+        });
+    });
+
+    it('replays the stored Hermes subtask toggle response on idempotent retry', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[736, taskRow(736, {
+                status: 'todo',
+                workflow_state: 'todo',
+                version: 1
+            })]],
+            subtasks: {
+                736: [{ id: 9361, title: 'Open', is_done: false }]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const path = '/api/hermes/tasks/736/subtasks/9361?businessContext=event_genix';
+            const body = { is_done: true };
+            const first = await request(baseUrl, 'PATCH', path, body, mutationHeaders('subtask-toggle-retry'));
+            const retry = await request(baseUrl, 'PATCH', path, body, mutationHeaders('subtask-toggle-retry'));
+
+            assert.equal(first.status, 200, first.text);
+            assert.equal(retry.status, 200, retry.text);
+            assert.deepEqual(retry.data, first.data);
+            assert.equal(fakePool.subtasks.get(736)[0].is_done, true);
+            assert.equal(fakePool.tasks.get(736).version, 2);
+        });
+    });
+
+    it('keeps parent completion blocked while Hermes subtasks remain incomplete', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[735, taskRow(735, {
+                status: 'todo',
+                workflow_state: 'todo',
+                version: 1
+            })]],
+            subtasks: {
+                735: [
+                    { id: 9351, title: 'First open', is_done: false, sort_order: 0 },
+                    { id: 9352, title: 'Second open', is_done: false, sort_order: 1 }
+                ]
+            }
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const toggle = await request(
+                baseUrl,
+                'PATCH',
+                '/api/hermes/tasks/735/subtasks/9351?businessContext=event_genix',
+                { is_done: true },
+                mutationHeaders('subtask-one-done')
+            );
+            const complete = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/tasks/735/complete',
+                {},
+                mutationHeaders('complete-still-blocked')
+            );
+
+            assert.equal(toggle.status, 200, toggle.text);
+            assert.equal(toggle.data.parent.subtaskDoneCount, 1);
+            assert.equal(toggle.data.parent.subtaskOpenCount, 1);
+            assert.equal(toggle.data.parent.canCompleteParent, false);
+            assert.equal(complete.status, 409, complete.text);
+            assert.equal(complete.data.code, 'SUBTASKS_INCOMPLETE');
+        });
+    });
+
+    it('requires Hermes auth on the task comment endpoint', async () => {
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'POST', '/api/hermes/tasks/720/comments', {
+                text: 'Done from Telegram',
+                source: 'telegram_tasker'
+            }, mutationHeaders('comment-missing-auth'));
+
+            assert.equal(res.status, 401, res.text);
+            assert.equal(res.data.code, 'HERMES_AUTH_REQUIRED');
+        });
+    });
+
+    it('requires confirmation and idempotency headers on the task comment endpoint', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[720, taskRow(720)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const missingConfirmation = await request(baseUrl, 'POST', '/api/hermes/tasks/720/comments', {
+                text: 'Done'
+            }, {
+                'Idempotency-Key': 'comment-missing-confirmation'
+            });
+            const missingIdempotency = await request(baseUrl, 'POST', '/api/hermes/tasks/720/comments', {
+                text: 'Done'
+            }, {
+                'X-Hermes-User-Confirmed': 'true'
+            });
+
+            assert.equal(missingConfirmation.status, 400, missingConfirmation.text);
+            assert.equal(missingConfirmation.data.code, 'HERMES_CONFIRMATION_REQUIRED');
+            assert.equal(missingIdempotency.status, 400, missingIdempotency.text);
+            assert.equal(missingIdempotency.data.code, 'IDEMPOTENCY_KEY_REQUIRED');
+            assert.equal(fakePool.historyEvents.length, 0);
+        });
+    });
+
+    it('rejects invalid task comment payloads before writing history', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[720, taskRow(720)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const unsupported = await request(baseUrl, 'POST', '/api/hermes/tasks/720/comments', {
+                text: 'Done',
+                rawPayload: 'must not be accepted'
+            }, mutationHeaders('comment-unsupported'));
+            const emptyText = await request(baseUrl, 'POST', '/api/hermes/tasks/720/comments', {
+                text: '   '
+            }, mutationHeaders('comment-empty-text'));
+
+            assert.equal(unsupported.status, 400, unsupported.text);
+            assert.equal(unsupported.data.code, 'HERMES_UNSUPPORTED_FIELD');
+            assert.equal(emptyText.status, 400, emptyText.text);
+            assert.equal(emptyText.data.code, 'TASK_COMMENT_TEXT_REQUIRED');
+            assert.equal(fakePool.historyEvents.length, 0);
+        });
+    });
+
+    it('does not create comments for hidden tasks', async () => {
+        const fakePool = createHermesCreateFakePool({
+            hiddenIds: [723],
+            tasks: [[723, taskRow(723)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/723/comments', {
+                text: 'Should not be saved',
+                source: 'telegram_tasker',
+                businessContext: 'event_genix'
+            }, mutationHeaders('comment-hidden'));
+
+            assert.equal(res.status, 404, res.text);
+            assert.equal(res.data.code, 'TASK_NOT_VISIBLE');
+            assert.equal(fakePool.historyEvents.length, 0);
+        });
+    });
+
+    it('writes a structured task_action_history comment without leaking raw text in the response', async () => {
+        const longSecretText = `Line 1\r\nsecret-token-456\u0000${'x'.repeat(4100)}`;
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[720, taskRow(720, {
+                status: 'todo',
+                workflow_state: 'todo'
+            })]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/720/comments', {
+                text: longSecretText,
+                source: 'telegram tasker',
+                businessContext: 'event_genix'
+            }, mutationHeaders('comment-create'));
+
+            assert.equal(res.status, 201, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.commentId, 12000);
+            assert.equal(res.data.logId, 12000);
+            assert.equal(res.data.task.id, '720');
+            assert.equal(res.data.meta.durableLog, 'task_action_history');
+            assert.equal(res.data.meta.actionType, 'task_commented');
+            assert.equal(res.data.meta.commentSource, 'telegram_tasker');
+            assert.equal(fakePool.historyEvents.length, 1);
+            assert.equal(fakePool.historyEvents[0].action_type, 'task_commented');
+            assert.equal(fakePool.historyEvents[0].source_surface, 'hermes');
+            assert.equal(fakePool.historyEvents[0].new_value_json.comment.text.includes('\u0000'), false);
+            assert.equal(fakePool.historyEvents[0].new_value_json.comment.text.length, 4000);
+            assert.equal(fakePool.historyEvents[0].meta_json.route, 'hermes_task_comment');
+            assert.equal(fakePool.historyEvents[0].meta_json.source, 'telegram_tasker');
+            assert.equal(fakePool.historyEvents[0].meta_json.textLength, 4000);
+            const serialized = JSON.stringify(res.data);
+            assert.equal(serialized.includes('Line 1'), false);
+            assert.equal(serialized.includes('secret-token-456'), false);
+            assert.equal(serialized.includes('rawPayload'), false);
+            assert.equal(serialized.includes('new_value_json'), false);
+        });
+    });
+
+    it('replays the stored task comment response on idempotent retry', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[721, taskRow(721)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const body = {
+                text: 'Retry-safe comment',
+                source: 'telegram_tasker',
+                businessContext: 'event_genix'
+            };
+            const first = await request(baseUrl, 'POST', '/api/hermes/tasks/721/comments', body, mutationHeaders('comment-retry'));
+            const retry = await request(baseUrl, 'POST', '/api/hermes/tasks/721/comments', body, mutationHeaders('comment-retry'));
+
+            assert.equal(first.status, 201, first.text);
+            assert.equal(retry.status, 201, retry.text);
+            assert.deepEqual(retry.data, first.data);
+            assert.equal(fakePool.historyEvents.length, 1);
+            assert.equal(first.data.commentId, fakePool.historyEvents[0].id);
+        });
+    });
+
+    it('requires Hermes auth on the completion report endpoint', async () => {
+        await withHermesCabinetServer(async ({ baseUrl: cabinetBaseUrl }) => {
+            const res = await request(cabinetBaseUrl, 'POST', '/api/hermes/tasks/710/completion-report', {
+                reportText: 'Done'
+            }, mutationHeaders('completion-report-missing-auth'));
+
+            assert.equal(res.status, 401, res.text);
+            assert.equal(res.data.code, 'HERMES_AUTH_REQUIRED');
+        });
+    });
+
+    it('requires confirmation and idempotency headers on the completion report endpoint', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[710, taskRow(710)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const missingConfirmation = await request(baseUrl, 'POST', '/api/hermes/tasks/710/completion-report', {
+                reportText: 'Done'
+            }, {
+                'Idempotency-Key': 'completion-report-missing-confirmation'
+            });
+            const missingIdempotency = await request(baseUrl, 'POST', '/api/hermes/tasks/710/completion-report', {
+                reportText: 'Done'
+            }, {
+                'X-Hermes-User-Confirmed': 'true'
+            });
+
+            assert.equal(missingConfirmation.status, 400, missingConfirmation.text);
+            assert.equal(missingConfirmation.data.code, 'HERMES_CONFIRMATION_REQUIRED');
+            assert.equal(missingIdempotency.status, 400, missingIdempotency.text);
+            assert.equal(missingIdempotency.data.code, 'IDEMPOTENCY_KEY_REQUIRED');
+            assert.equal(fakePool.reports.length, 0);
+        });
+    });
+
+    it('rejects invalid completion report payloads before writing reports', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[710, taskRow(710)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const unsupported = await request(baseUrl, 'POST', '/api/hermes/tasks/710/completion-report', {
+                reportText: 'Done',
+                rawPayload: 'must not be accepted'
+            }, mutationHeaders('completion-report-unsupported'));
+            const emptyText = await request(baseUrl, 'POST', '/api/hermes/tasks/710/completion-report', {
+                reportText: '   '
+            }, mutationHeaders('completion-report-empty-text'));
+
+            assert.equal(unsupported.status, 400, unsupported.text);
+            assert.equal(unsupported.data.code, 'HERMES_UNSUPPORTED_FIELD');
+            assert.equal(emptyText.status, 400, emptyText.text);
+            assert.equal(emptyText.data.code, 'TASK_REPORT_TEXT_REQUIRED');
+            assert.equal(fakePool.reports.length, 0);
+        });
+    });
+
+    it('does not create completion reports for hidden tasks', async () => {
+        const fakePool = createHermesCreateFakePool({
+            hiddenIds: [713],
+            tasks: [[713, taskRow(713)]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/713/completion-report', {
+                reportText: 'Should not be saved',
+                businessContext: 'event_genix'
+            }, mutationHeaders('completion-report-hidden'));
+
+            assert.equal(res.status, 404, res.text);
+            assert.equal(res.data.code, 'TASK_NOT_VISIBLE');
+            assert.equal(fakePool.reports.length, 0);
+        });
+    });
+
+    it('creates a durable completion report and links reportId without auto-completing the task', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[710, taskRow(710, {
+                status: 'todo',
+                workflow_state: 'todo',
+                control_meta: { reportRequired: true }
+            })]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/710/completion-report', {
+                reportText: 'Finished private secret-token-123',
+                type: 'expense',
+                amount: 0,
+                category: '\u0417\u0430\u0434\u0430\u0447\u0430',
+                businessContext: 'event_genix'
+            }, mutationHeaders('completion-report-create'));
+
+            assert.equal(res.status, 201, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.reportId, 41000);
+            assert.equal(res.data.task.id, '710');
+            assert.equal(res.data.task.status, 'open');
+            assert.equal(res.data.meta.durableReport, 'reports');
+            assert.equal(res.data.meta.linkField, 'tasks.control_meta.reportId');
+            assert.equal(res.data.meta.autoComplete, false);
+            assert.equal(fakePool.reports.length, 1);
+            assert.equal(fakePool.reports[0].id, 41000);
+            assert.equal(fakePool.reports[0].raw_data.taskCompletionReport.sourceSurface, 'hermes');
+            assert.equal(fakePool.reports[0].raw_data.taskCompletionReport.taskId, 710);
+            assert.equal(fakePool.tasks.get(710).control_meta.reportId, 41000);
+            assert.equal(fakePool.tasks.get(710).status, 'todo');
+            const serialized = JSON.stringify(res.data);
+            assert.equal(serialized.includes('Finished private'), false);
+            assert.equal(serialized.includes('secret-token-123'), false);
+            assert.equal(serialized.includes('raw_data'), false);
+            assert.equal(serialized.includes('"control_meta":'), false);
+        });
+    });
+
+    it('replays the stored completion report response on idempotent retry', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[711, taskRow(711, {
+                status: 'todo',
+                workflow_state: 'todo',
+                control_meta: { reportRequired: true }
+            })]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const body = {
+                reportText: 'Retry-safe report',
+                businessContext: 'event_genix'
+            };
+            const first = await request(baseUrl, 'POST', '/api/hermes/tasks/711/completion-report', body, mutationHeaders('completion-report-retry'));
+            const retry = await request(baseUrl, 'POST', '/api/hermes/tasks/711/completion-report', body, mutationHeaders('completion-report-retry'));
+
+            assert.equal(first.status, 201, first.text);
+            assert.equal(retry.status, 201, retry.text);
+            assert.deepEqual(retry.data, first.data);
+            assert.equal(fakePool.reports.length, 1);
+            assert.equal(fakePool.tasks.get(711).control_meta.reportId, first.data.reportId);
+        });
+    });
+
+    it('allows a report-required task to complete with the Hermes-created reportId', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[712, taskRow(712, {
+                status: 'todo',
+                workflow_state: 'todo',
+                control_meta: { reportRequired: true }
+            })]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const report = await request(baseUrl, 'POST', '/api/hermes/tasks/712/completion-report', {
+                reportText: 'Completion evidence',
+                businessContext: 'event_genix'
+            }, mutationHeaders('completion-report-before-complete'));
+            const complete = await request(baseUrl, 'POST', '/api/hermes/tasks/712/complete', {
+                reportId: report.data.reportId
+            }, mutationHeaders('complete-with-hermes-report'));
+
+            assert.equal(report.status, 201, report.text);
+            assert.equal(complete.status, 200, complete.text);
+            assert.equal(complete.data.task.id, '712');
+            assert.equal(complete.data.task.status, 'done');
+            assert.equal(complete.data.meta.historyEvent.actionType, 'task_completed');
+            assert.equal(fakePool.reports.length, 1);
+            assert.equal(fakePool.tasks.get(712).control_meta.reportId, report.data.reportId);
+        });
+    });
+
     it('completes a visible task through taskExecution', async () => {
         const fakePool = createHermesCreateFakePool({
             tasks: [[700, taskRow(700, {

@@ -68,8 +68,12 @@ async function emitTaskCreatedHermesOutbox(task, options = {}) {
         return await emitTaskCreatedNotificationOutboxEvent(task, options);
     } catch (err) {
         log.error(`Task Hermes notification outbox error: ${err.message}`);
-        throw err;
+        return { created: false, reason: 'hermes_outbox_error', error: err };
     }
+}
+
+function hermesOutboxOwnsTaskDelivery(result) {
+    return Boolean(result?.event && !result?.reason);
 }
 
 async function resolveTaskOwnerSnapshot({ assigned_to, owner, owner_user_id, created_by_user_id, created_by }, options = {}) {
@@ -230,22 +234,27 @@ async function createTask(data, options = {}) {
 
     // Log creation
     await logTaskAction(task.id, 'created', null, title, created_by, { pool: query });
-    await emitTaskCreatedHermesOutbox(task, {
+    const hermesOutboxResult = await emitTaskCreatedHermesOutbox(task, {
         pool: query,
         skipHermesOutbox,
         hermesOutboxEnabled: options.hermesOutboxEnabled,
         hermesOutboxContext: options.hermesOutboxContext,
         notificationContext: options.notificationContext
     });
+    const hermesOutboxOwnsDelivery = hermesOutboxOwnsTaskDelivery(hermesOutboxResult);
 
     // Notify assigned person (fire-and-forget — never block task creation)
-    if (!skipNotifications && task.assigned_to && task_type === 'human') {
+    if (!skipNotifications && !hermesOutboxOwnsDelivery && task.assigned_to && task_type === 'human') {
         const notifyCreatedTask = () => {
             notifyTaskAssigned(task).catch(err => log.error(`Task notification error: ${err.message}`));
-            emitTaskAssignedToOwner(task, { id: created_by_user_id, username: created_by }, {
-                assignmentEvent: 'created',
-                source: 'services/kleshnya.createTask'
-            });
+            try {
+                emitTaskAssignedToOwner(task, { id: created_by_user_id, username: created_by }, {
+                    assignmentEvent: 'created',
+                    source: 'services/kleshnya.createTask'
+                });
+            } catch (err) {
+                log.error(`Task assignment event error: ${err.message}`);
+            }
         };
         if (afterCommit) afterCommit.push(notifyCreatedTask);
         else notifyCreatedTask();

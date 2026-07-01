@@ -37,6 +37,7 @@ class FakeKleshnyaPool {
         this.nextTaskId = options.nextTaskId || 100;
         this.fixedTaskId = options.fixedTaskId || null;
         this.taskStatus = options.taskStatus || 'todo';
+        this.failOutboxInsert = options.failOutboxInsert === true;
         this.users = new Map(options.users || [
             [4, { id: 4, username: 'sergiy', name: 'Сергій' }]
         ]);
@@ -100,6 +101,9 @@ class FakeKleshnyaPool {
         }
 
         if (compact.startsWith('INSERT INTO notification_outbox')) {
+            if (this.failOutboxInsert) {
+                throw new Error('simulated outbox insert failure');
+            }
             const duplicate = this.outbox.find(row =>
                 row.event_id === params[0]
                 || (
@@ -164,17 +168,19 @@ class FakeKleshnyaPool {
     }
 }
 
-function loadKleshnya(pool, telegramCalls = []) {
+function loadKleshnya(pool, telegramCalls = [], options = {}) {
     clearModules();
     installMock('../db', { pool });
     installMock('../services/telegram', {
         getConfiguredChatId: async () => 'legacy-group-chat',
         getConfiguredThreadId: async () => null,
         telegramRequest: async (method, body) => {
+            if (options.telegramRequestError) throw new Error('simulated telegram request failure');
             telegramCalls.push({ method, body });
             return { ok: true };
         },
         sendTelegramMessage: async (chatId, text, options) => {
+            if (options.sendTelegramMessageError) throw new Error('simulated telegram send failure');
             telegramCalls.push({ method: 'sendTelegramMessage', body: { chat_id: chatId, text, options } });
             return { ok: true };
         }
@@ -188,7 +194,10 @@ function loadKleshnya(pool, telegramCalls = []) {
         taskBusinessContextFromPayload: () => 'event_genix'
     });
     installMock('../services/taskNotifications', {
-        emitTaskAssignedToOwner: () => {}
+        emitTaskAssignedToOwner: (...args) => {
+            if (Array.isArray(options.taskNotificationCalls)) options.taskNotificationCalls.push(args);
+            if (options.taskNotificationError) throw new Error('simulated task notification event failure');
+        }
     });
     installMock('../utils/logger', {
         createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {} })
@@ -340,25 +349,29 @@ test('createTask with terminal status does not emit notification_outbox event', 
 
 test('createTask duplicate outbox event id is idempotent', async () => {
     const pool = new FakeKleshnyaPool({ fixedTaskId: 501 });
-    const { createTask } = loadKleshnya(pool);
+    const telegramCalls = [];
+    const taskNotificationCalls = [];
+    const { createTask } = loadKleshnya(pool, telegramCalls, { taskNotificationCalls });
 
     await createTask(taskPayload(), {
-        skipNotifications: true,
         hermesOutboxEnabled: true
     });
     await createTask(taskPayload(), {
-        skipNotifications: true,
         hermesOutboxEnabled: true
     });
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(pool.outbox.length, 1);
     assert.equal(pool.outbox[0].event_id, 'task_created:501:owner:4');
+    assert.equal(telegramCalls.length, 0);
+    assert.equal(taskNotificationCalls.length, 0);
 });
 
-test('legacy task notification remains controlled by skipNotifications, not Hermes outbox', async () => {
+test('createTask with Hermes outbox enabled uses outbox instead of legacy notification', async () => {
     const pool = new FakeKleshnyaPool();
     const telegramCalls = [];
-    const { createTask } = loadKleshnya(pool, telegramCalls);
+    const taskNotificationCalls = [];
+    const { createTask } = loadKleshnya(pool, telegramCalls, { taskNotificationCalls });
 
     await createTask(taskPayload(), {
         hermesOutboxEnabled: true
@@ -366,6 +379,57 @@ test('legacy task notification remains controlled by skipNotifications, not Herm
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(pool.outbox.length, 1);
+    assert.equal(telegramCalls.length, 0);
+    assert.equal(taskNotificationCalls.length, 0);
+});
+
+test('createTask with Hermes outbox disabled preserves legacy notification fallback', async () => {
+    const pool = new FakeKleshnyaPool();
+    const telegramCalls = [];
+    const taskNotificationCalls = [];
+    const { createTask } = loadKleshnya(pool, telegramCalls, { taskNotificationCalls });
+
+    await createTask(taskPayload(), {
+        hermesOutboxEnabled: false
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(pool.outbox.length, 0);
     assert.ok(telegramCalls.some(call => call.method === 'sendMessage' || call.method === 'sendTelegramMessage'));
     assert.equal(JSON.stringify(telegramCalls).includes('Hermes'), false);
+    assert.equal(taskNotificationCalls.length, 1);
+});
+
+test('createTask with skipped Hermes outbox preserves legacy notification fallback', async () => {
+    const pool = new FakeKleshnyaPool();
+    const telegramCalls = [];
+    const taskNotificationCalls = [];
+    const { createTask } = loadKleshnya(pool, telegramCalls, { taskNotificationCalls });
+
+    await createTask(taskPayload(), {
+        hermesOutboxEnabled: true,
+        skipHermesOutbox: true
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(pool.outbox.length, 0);
+    assert.ok(telegramCalls.some(call => call.method === 'sendMessage' || call.method === 'sendTelegramMessage'));
+    assert.equal(taskNotificationCalls.length, 1);
+});
+
+test('notification path errors do not block task creation', async () => {
+    const pool = new FakeKleshnyaPool({ failOutboxInsert: true });
+    const telegramCalls = [];
+    const { createTask } = loadKleshnya(pool, telegramCalls, {
+        telegramRequestError: true,
+        taskNotificationError: true
+    });
+
+    const task = await createTask(taskPayload(), {
+        hermesOutboxEnabled: true
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(task.id, 100);
+    assert.equal(pool.outbox.length, 0);
 });

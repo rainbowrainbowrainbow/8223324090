@@ -230,6 +230,18 @@ class LifecyclePool {
             return { rows: [clone(row)], rowCount: 1 };
         }
 
+        if (text.startsWith("UPDATE notification_outbox SET status = 'skipped'")) {
+            const [eventId, reasonMessage, reasonCode] = params;
+            const row = this.outboxByEventId(eventId);
+            row.status = 'skipped';
+            row.available_at = this.now;
+            row.last_error = reasonMessage;
+            row.last_error_code = reasonCode;
+            row.locked_until = null;
+            row.updated_at = this.now;
+            return { rows: [clone(row)], rowCount: 1 };
+        }
+
         if (text.startsWith('UPDATE notification_outbox SET status = $2')) {
             const [eventId, status, attempts, backoffMinutes, errorMessage, errorCode] = params;
             const row = this.outboxByEventId(eventId);
@@ -526,6 +538,36 @@ test('notification_outbox lifecycle H: retryable fail increments attempts and sc
         assert.equal(pool.outbox[0].attempts, 1);
         assert.equal(pool.outbox[0].last_error_code, 'TELEGRAM_RATE_LIMIT');
         assert.ok(new Date(pool.outbox[0].available_at).getTime() > new Date(NOW).getTime());
+    });
+
+    assert.equal(telegramCalls.length, 0);
+});
+
+test('notification_outbox lifecycle H2: missing route skip marks event skipped without Telegram delivery', async () => {
+    const pool = new LifecyclePool();
+    const telegramCalls = [];
+    const task = await createOwnedTask(pool, telegramCalls);
+    const eventId = `task_created:${task.id}:owner:4`;
+
+    await withHermesApp(pool, async baseUrl => {
+        const skipped = await request(baseUrl, 'POST', `/api/hermes/notification-outbox/${eventId}/skip`, {
+            workerId: 'worker-a',
+            reasonCode: 'MISSING_TELEGRAM_ROUTE',
+            reasonMessage: 'No Telegram\nroute configured for ownerUserId=4'
+        });
+        assert.equal(skipped.status, 200, skipped.text);
+        assert.equal(skipped.data.event.status, 'skipped');
+        assert.equal(skipped.data.event.lastErrorCode, 'MISSING_TELEGRAM_ROUTE');
+        assert.equal(skipped.data.event.lastError, 'No Telegram route configured for ownerUserId=4');
+        assert.equal(pool.outbox[0].status, 'skipped');
+        assert.equal(pool.outbox[0].last_error_code, 'MISSING_TELEGRAM_ROUTE');
+
+        const claim = await request(baseUrl, 'POST', `/api/hermes/notification-outbox/${eventId}/claim`, {
+            workerId: 'worker-b',
+            lockSeconds: 120
+        });
+        assert.equal(claim.status, 409);
+        assert.equal(claim.data.code, 'OUTBOX_EVENT_NOT_CLAIMABLE');
     });
 
     assert.equal(telegramCalls.length, 0);

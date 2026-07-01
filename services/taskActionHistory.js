@@ -17,7 +17,8 @@ const TASK_ACTION_TYPES = Object.freeze({
     SCHEDULE_MANUAL_OVERRIDE: 'task_schedule_manual_override',
     SCHEDULE_PROPOSAL_CREATED: 'task_schedule_proposal_created',
     SLOT_MISSED: 'task_slot_missed',
-    DISCIPLINE_PENALTY_APPLIED: 'task_discipline_penalty_applied'
+    DISCIPLINE_PENALTY_APPLIED: 'task_discipline_penalty_applied',
+    COMMENTED: 'task_commented'
 });
 
 function actorSnapshot(actor = {}) {
@@ -66,6 +67,8 @@ function summaryForAction(actionType) {
             return 'Task slot missed';
         case TASK_ACTION_TYPES.DISCIPLINE_PENALTY_APPLIED:
             return 'Task discipline penalty applied';
+        case TASK_ACTION_TYPES.COMMENTED:
+            return 'Task comment added';
         default:
             return 'Task execution action';
     }

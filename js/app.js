@@ -119,29 +119,12 @@ function syncTimelineCompactToggleAria() {
     }
 }
 
-function timelineActiveControlText(selector, fallback = '') {
-    const active = document.querySelector(selector);
-    if (!active) return fallback;
-    return (active.getAttribute('aria-label') || active.textContent || fallback).trim().replace(/\s+/g, ' ');
-}
-
-function syncTimelineViewPanelSummary() {
-    const summary = document.getElementById('timelineViewPanelSummary');
-    if (!summary) return;
-    const status = timelineActiveControlText('#timelineViewPanel .status-filter-btn.active, #timelineViewPanel .status-filter-btn[aria-pressed="true"]', 'Всі');
-    const period = timelineActiveControlText('#timelineViewPanel [data-schedule-view-mode].active, #timelineViewPanel [data-schedule-view-mode][aria-pressed="true"]', 'День');
-    const type = timelineActiveControlText('#timelineViewPanel [data-timeline-view].active, #timelineViewPanel [data-timeline-view][aria-pressed="true"]', 'Банкети');
-    const zoom = timelineActiveControlText('#timelineViewPanel .zoom-btn.active, #timelineViewPanel .zoom-btn[aria-pressed="true"]', '15 хв');
-    summary.textContent = [status, period, type, zoom].filter(Boolean).join(' / ');
-}
-
 function setTimelineViewPanelOpen(open, options = {}) {
     const toggle = document.getElementById('timelineViewPanelToggle');
     const panel = document.getElementById('timelineViewPanel');
     if (!toggle || !panel) return;
 
     const nextOpen = Boolean(open);
-    syncTimelineViewPanelSummary();
     panel.hidden = !nextOpen;
     toggle.classList.toggle('is-open', nextOpen);
     toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
@@ -164,9 +147,6 @@ function initTimelineViewPanel() {
 
     window.__timelineViewPanelBound = true;
     setTimelineViewPanelOpen(false);
-    panel.addEventListener('click', () => {
-        window.setTimeout(syncTimelineViewPanelSummary, 0);
-    });
 
     toggle.addEventListener('click', event => {
         event.preventDefault();

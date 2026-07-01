@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.82">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.82">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.82">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.82">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.82">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.82">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.82">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.82">
-    <link rel="stylesheet" href="css/features.css?v=0.77.82">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.82">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.82">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.82">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.82">
+    <link rel="stylesheet" href="css/base.css?v=0.77.83">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.83">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.83">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.83">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.83">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.83">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.83">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.83">
+    <link rel="stylesheet" href="css/features.css?v=0.77.83">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.83">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.83">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.83">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.83">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.82">✨ 0.77.82</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.83">✨ 0.77.83</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.82 — Timeline Filter Popover</p>
+                <p class="tagline">AI First CRM v0.77.83 — Timeline Filter Shelf Polish</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.82</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.83</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -105,7 +105,6 @@
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel timeline-header-actions">
-                    <button type="button" id="historyBtn" class="btn-history timeline-header-history-btn toolbarButton toolbarGhostButton hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span class="toolbar-label-full">Історія змін</span><span class="toolbar-label-short" aria-hidden="true">Історія</span></button>
                     <span id="currentUser" class="user-name user-name-clickable" role="button" tabindex="0" title="Особистий кабінет"></span>
                     <button type="button" id="logoutBtn" class="btn-logout timeline-header-logout">Вийти</button>
                 </div>
@@ -126,7 +125,7 @@
                             </label>
                             <button type="button" id="todayBtn" class="btn-today toolbarButton toolbarGhostButton" title="Перейти на сьогодні" aria-label="Перейти на сьогодні">Зараз</button>
                             <button type="button" id="nextDay" class="btn-nav toolbarIconButton toolbarGhostButton" title="Наступний день" aria-label="Наступний день">›</button>
-                            <button type="button" id="timelineViewPanelToggle" class="timeline-header-view-btn toolbarButton toolbarGhostButton" title="Відкрити фільтри таймлайну" aria-label="Відкрити фільтри таймлайну" aria-controls="timelineViewPanel" aria-expanded="false"><span class="timeline-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M8 5v4"/><path d="M15 10v4"/><path d="M11 15v4"/></svg></span><span class="timeline-filter-label">Фільтри</span><span class="timeline-filter-summary" id="timelineViewPanelSummary" aria-hidden="true"></span></button>
+                            <button type="button" id="timelineViewPanelToggle" class="timeline-header-view-btn toolbarButton toolbarGhostButton" title="Відкрити фільтри таймлайну" aria-label="Відкрити фільтри таймлайну" aria-controls="timelineViewPanel" aria-expanded="false"><span class="timeline-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M8 5v4"/><path d="M15 10v4"/><path d="M11 15v4"/></svg></span><span class="timeline-filter-label">Фільтри</span></button>
                         </div>
                     </div>
                 </div>
@@ -164,6 +163,9 @@
                                 <button type="button" class="zoom-btn segmentedItem" data-zoom="60" title="Масштаб: 60 хвилин на клітинку" aria-pressed="false">60 хв</button>
                             </div>
                         </div>
+                    </div>
+                    <div class="timeline-view-panel-actions" aria-label="Додаткові дії таймлайну">
+                        <button type="button" id="historyBtn" class="btn-history timeline-header-history-btn timeline-view-panel-history-btn toolbarButton toolbarGhostButton hidden" title="Історія змін бронювань" aria-label="Відкрити історію змін"><span class="timeline-control-icon" aria-hidden="true">📋</span><span class="toolbar-label-full">Історія змін</span><span class="toolbar-label-short" aria-hidden="true">Історія</span></button>
                     </div>
                 </div>
                 <div class="schedule-command-row schedule-command-row--actions toolbarRow">
@@ -1743,14 +1745,23 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.77.83 — Timeline Filter Shelf Polish</h4>
+                    <ul>
+                        <li><b>Popover замінено на розкладну shelf-панель</b> — <code>#timelineViewPanel</code> відкривається у normal flow під date row, не перекриває шкалу часу й не блокує timeline.</li>
+                        <li><b>Кнопка <code>Фільтри</code> стала простішою</b> — прибрано summary активних налаштувань, лишилась коротка кнопка з іконкою і текстом без зайвого шуму.</li>
+                        <li><b><code>Історія змін</code> прибрано з правого topbar</b> — дія живе у filter shelf як secondary control, а <code>Вийти</code> лишається останньою правою topbar-дією.</li>
+                        <li><b>Timeline workspace отримав легку texture</b> — чистий чорний void замінено scoped CRM surface background для dark/light режимів.</li>
+                        <li><b>Regression guards оновлено під shelf UX</b> — static і browser smoke перевіряють hidden closed state, normal-flow shelf, відсутність старого <code>Вигляд</code>/summary/popover і logout rightmost.</li>
+                        <li><b>Auth, booking, API і БД не змінювались</b> — правка обмежена timeline header presentation, CSS, release markers і тестами.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.82 — Timeline Filter Popover</h4>
                     <ul>
-                        <li><b>Фільтри знову сховані за однією кнопкою</b> — date row показує тільки навігацію датою і <code>Фільтри</code>, а статус, період, тип і масштаб відкриваються компактним popover.</li>
-                        <li><b>Прибрано лякаючий ряд із багатьох кнопок</b> — <code>#timelineViewPanel</code> більше не розтягує control-line, не займає місце у closed state і не перетворює верхню зону на нескінченний toolbar.</li>
-                        <li><b>Кнопка <code>Фільтри</code> показує короткий summary активних налаштувань</b> — користувач бачить поточний зріз без відкриття панелі, а на вузьких екранах summary ховається, щоб не ламати date row.</li>
-                        <li><b>Topbar actions впорядковано</b> — theme і settings лишаються utility controls, <code>Історія змін</code> стоїть перед <code>Вийти</code>, а <code>Вийти</code> лишається останньою правою дією.</li>
-                        <li><b>Regression guards оновлено</b> — static і browser smoke тепер очікують compact popover, stable <code>z-index</code>, hidden closed state, logout rightmost і відсутність старого inline-ряду фільтрів.</li>
-                        <li><b>Auth, booking, API і БД не змінювались</b> — правка обмежена timeline header presentation, CSS, release markers і тестами.</li>
+                        <li><b>Фільтри сховано за одним trigger</b> — <code>#timelineViewPanelToggle</code> залишився у date row як єдина точка входу до статусу, періоду, типу й масштабу.</li>
+                        <li><b>Closed state зроблено тихішим</b> — date row не показує всі filter controls одразу, щоб не перевантажувати верхню зону timeline.</li>
+                        <li><b>Popover-state зафіксовано тестами</b> — regression guards перевіряли label <code>Фільтри</code>, відсутність старого <code>Вигляд</code>, hidden state і базові взаємодії controls.</li>
+                        <li><b>Auth, booking, API і БД не змінювались</b> — правка була обмежена timeline header presentation, CSS, release markers і тестами.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -15299,42 +15310,42 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.82"></script>
-    <script src="js/timeline-visibility.js?v=0.77.82"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.82"></script>
-    <script src="js/config.js?v=0.77.82"></script>
-    <script src="js/api.js?v=0.77.82"></script>
-    <script src="js/ui.js?v=0.77.82"></script>
-    <script src="js/auth.js?v=0.77.82"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.82"></script>
-    <script src="js/timeline-cache.js?v=0.77.82"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.82"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.82"></script>
-    <script src="js/event-cards.js?v=0.77.82"></script>
-    <script src="js/invite-config.js?v=0.77.82"></script>
-    <script src="js/invite-share.js?v=0.77.82"></script>
-    <script src="js/timeline.js?v=0.77.82"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.82"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.82"></script>
-    <script src="js/booking-save-path.js?v=0.77.82"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.82"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.82"></script>
-    <script src="js/booking.js?v=0.77.82"></script>
-    <script src="js/settings.js?v=0.77.82"></script>
-    <script src="js/booking-form.js?v=0.77.82"></script>
-    <script src="js/booking-linked.js?v=0.77.82"></script>
-    <script src="js/settings-dashboard.js?v=0.77.82"></script>
-    <script src="js/settings-history.js?v=0.77.82"></script>
-    <script src="js/settings-afisha.js?v=0.77.82"></script>
-    <script src="js/settings-certificates.js?v=0.77.82"></script>
-    <script src="js/offline.js?v=0.77.82"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.82"></script>
-    <script src="js/search.js?v=0.77.82"></script>
-    <script src="js/ws.js?v=0.77.82"></script>
-    <script src="js/app.js?v=0.77.82"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.82"></script>
-    <script src="js/components/sidebar.js?v=0.77.82"></script>
+    <script src="js/timeline-context.js?v=0.77.83"></script>
+    <script src="js/timeline-visibility.js?v=0.77.83"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.83"></script>
+    <script src="js/config.js?v=0.77.83"></script>
+    <script src="js/api.js?v=0.77.83"></script>
+    <script src="js/ui.js?v=0.77.83"></script>
+    <script src="js/auth.js?v=0.77.83"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.83"></script>
+    <script src="js/timeline-cache.js?v=0.77.83"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.83"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.83"></script>
+    <script src="js/event-cards.js?v=0.77.83"></script>
+    <script src="js/invite-config.js?v=0.77.83"></script>
+    <script src="js/invite-share.js?v=0.77.83"></script>
+    <script src="js/timeline.js?v=0.77.83"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.83"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.83"></script>
+    <script src="js/booking-save-path.js?v=0.77.83"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.83"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.83"></script>
+    <script src="js/booking.js?v=0.77.83"></script>
+    <script src="js/settings.js?v=0.77.83"></script>
+    <script src="js/booking-form.js?v=0.77.83"></script>
+    <script src="js/booking-linked.js?v=0.77.83"></script>
+    <script src="js/settings-dashboard.js?v=0.77.83"></script>
+    <script src="js/settings-history.js?v=0.77.83"></script>
+    <script src="js/settings-afisha.js?v=0.77.83"></script>
+    <script src="js/settings-certificates.js?v=0.77.83"></script>
+    <script src="js/offline.js?v=0.77.83"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.83"></script>
+    <script src="js/search.js?v=0.77.83"></script>
+    <script src="js/ws.js?v=0.77.83"></script>
+    <script src="js/app.js?v=0.77.83"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.83"></script>
+    <script src="js/components/sidebar.js?v=0.77.83"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.77.82"></script>
+    <script src="js/alerts.js?v=0.77.83"></script>
 </body>
 </html>

@@ -607,7 +607,7 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.getAttribute('aria-pressed') === 'true';
     });
 
-    await setTimelineViewPanelOpen(page, false);
+    await setTimelineViewPanelOpen(page, true);
     const history = await page.evaluate(() => {
         const btn = document.getElementById('historyBtn');
         const rect = btn?.getBoundingClientRect?.();
@@ -624,6 +624,7 @@ async function assertTimelineViewPanelInteractions(page) {
         return {
             exists: Boolean(btn),
             inTopbar: Boolean(btn?.closest('.timeline-header-actions')),
+            inViewPanel: Boolean(btn?.closest('#timelineViewPanel .timeline-view-panel-actions')),
             visible,
             disabled: Boolean(btn?.disabled),
             title: btn?.getAttribute('title') || '',
@@ -632,10 +633,11 @@ async function assertTimelineViewPanelInteractions(page) {
         };
     });
     assert.equal(history.exists, true, 'history button exists');
-    assert.equal(history.inTopbar, true, 'history button is mounted in the topbar');
+    assert.equal(history.inTopbar, false, 'history button is not mounted in the topbar');
+    assert.equal(history.inViewPanel, true, 'history button is mounted in the timeline filter panel actions');
     assert.match(`${history.title} ${history.ariaLabel}`, /Історія|історію/i, 'history button keeps accessible labeling');
     if (history.canView !== false) {
-        assert.equal(history.visible, true, 'history button is reachable for the authenticated timeline user');
+        assert.equal(history.visible, true, 'history button is reachable from the opened filter panel for the authenticated timeline user');
         assert.equal(history.disabled, false, 'history button is enabled for the authenticated timeline user');
         await page.locator('#historyBtn').click();
         await page.waitForFunction(() => {
@@ -644,6 +646,7 @@ async function assertTimelineViewPanelInteractions(page) {
         });
         await page.evaluate(() => document.getElementById('historyModal')?.classList.add('hidden'));
     }
+    await setTimelineViewPanelOpen(page, false);
 }
 
 async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
@@ -775,7 +778,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const filters = document.querySelector('.timeline-header-filters');
         const headerContent = document.querySelector('.header .header-content');
         const actions = document.querySelector('.header .timeline-header-actions');
-        const history = document.querySelector('.header .timeline-header-actions #historyBtn');
+        const history = document.getElementById('historyBtn');
         const logout = document.querySelector('.header .timeline-header-actions #logoutBtn');
         const viewToggle = document.getElementById('timelineViewPanelToggle');
         const settings = document.querySelector('.header .timeline-header-actions #timelineConstructorBtn');
@@ -783,12 +786,16 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const utilityRow = document.querySelector('.schedule-command-row--utility');
         const dateControls = document.querySelector('.schedule-command-row--utility .date-controls');
         const timelineContainer = document.querySelector('.timeline-container');
+        const timeScale = document.querySelector('.timeline-container .time-scale');
+        const timelineLines = document.querySelector('.timeline-container .timeline-lines');
         const dateInteractive = Array.from(document.querySelectorAll('.schedule-command-row--utility .date-controls button, .schedule-command-row--utility .date-controls input'));
         const dateInteractiveRects = dateInteractive.map(el => el.getBoundingClientRect?.()).filter(Boolean);
         const commandCenterRect = commandCenter?.getBoundingClientRect?.();
         const utilityRowRect = utilityRow?.getBoundingClientRect?.();
         const dateControlsRect = dateControls?.getBoundingClientRect?.();
         const timelineContainerRect = timelineContainer?.getBoundingClientRect?.();
+        const timeScaleRect = timeScale?.getBoundingClientRect?.();
+        const timelineLinesRect = timelineLines?.getBoundingClientRect?.();
         const panelRect = panel?.getBoundingClientRect?.();
         const filtersRect = filters?.getBoundingClientRect?.();
         const headerRect = headerContent?.getBoundingClientRect?.();
@@ -857,6 +864,14 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const headerOverflowX = headerContent ? Math.max(0, headerContent.scrollWidth - headerContent.clientWidth) : Number.NaN;
         const dateControlsOverflowX = dateControls ? Math.max(0, dateControls.scrollWidth - dateControls.clientWidth) : Number.NaN;
         const bodyOverflowX = Math.max(0, document.documentElement.scrollWidth - viewportWidth);
+        const overlaps = (a, b) => Boolean(
+            a
+            && b
+            && a.right > b.left + 1
+            && a.left < b.right - 1
+            && a.bottom > b.top + 1
+            && a.top < b.bottom - 1
+        );
         const closedDateToTimelineGap = utilityRowRect && timelineContainerRect
             ? Math.round((timelineContainerRect.top - utilityRowRect.bottom) * 100) / 100
             : Number.NaN;
@@ -891,8 +906,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             viewToggleInDateRow: Boolean(viewToggle?.closest('.schedule-command-row--utility .date-controls')),
             historyExists: Boolean(history),
             historyInTopbar: Boolean(history?.closest('.timeline-header-actions')),
+            historyInViewPanel: Boolean(history?.closest('#timelineViewPanel .timeline-view-panel-actions')),
             historyVisible,
-            historyBeforeLogout: Boolean(historyRect && logoutRect && historyRect.right <= logoutRect.left + 1),
             topbarRightmostId: topbarRightmost?.id || '',
             viewToggleLabel: viewToggle?.querySelector('.timeline-filter-label')?.textContent.trim() || viewToggle?.textContent.trim() || '',
             visibleTimelineViewLabels,
@@ -906,6 +921,11 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             dateControlsHeight: dateControlsRect ? Math.round(dateControlsRect.height * 100) / 100 : 0,
             actionsWidth: actionsRect ? Math.round(actionsRect.width * 100) / 100 : 0,
             timelineTop: timelineContainerRect ? Math.round(timelineContainerRect.top * 100) / 100 : Number.NaN,
+            timeScaleTop: timeScaleRect ? Math.round(timeScaleRect.top * 100) / 100 : Number.NaN,
+            timelineLinesTop: timelineLinesRect ? Math.round(timelineLinesRect.top * 100) / 100 : Number.NaN,
+            viewPanelCoversTimeline: overlaps(panelRect, timelineContainerRect),
+            viewPanelCoversTimeScale: overlaps(panelRect, timeScaleRect),
+            viewPanelCoversTimelineLines: overlaps(panelRect, timelineLinesRect),
             closedDateToTimelineGap,
             dateInteractiveIds: dateInteractive.map(el => el.id).join('|'),
             dateInteractiveNonzeroCount: dateInteractiveRects.filter(rect => rect.width > 0 && rect.height > 0).length,
@@ -967,9 +987,9 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at ${label}`);
-        assert.equal(metrics.historyInTopbar, true, `history button stays in the topbar at ${label}`);
-        assert.equal(metrics.historyVisible, true, `history button is visible for the authenticated user at ${label}`);
-        assert.equal(metrics.historyBeforeLogout, true, `history button stays before logout at ${label}`);
+        assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at ${label}`);
+        assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at ${label}`);
+        assert.equal(metrics.historyVisible, false, `history button is hidden with the collapsed filter panel at ${label}`);
         assert.equal(metrics.topbarRightmostId, 'logoutBtn', `logout button is the rightmost visible topbar control at ${label}`);
         assert.equal(metrics.viewToggleLabel, 'Фільтри', `view trigger is renamed to filters at ${label}`);
         assert.equal(metrics.visibleTimelineViewLabels.includes('Вигляд'), false, `old view label is not visible at ${label}`);
@@ -1008,15 +1028,19 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
 
         await setTimelineViewPanelOpen(page, true);
         const openMetrics = await readMetrics();
-        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens as a compact filter popover at ${label}`);
+        assert.equal(openMetrics.viewPanelHidden, false, `timeline view panel opens as a compact filter shelf at ${label}`);
         assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at ${label}`);
         assert.equal(openMetrics.viewPanelInCommandCenter, true, `view panel is mounted inside the command center at ${label}`);
-        assert.equal(openMetrics.viewPanelPosition, 'absolute', `view panel is a popover, not an always-visible inline row, at ${label}`);
+        assert.equal(openMetrics.viewPanelPosition, 'relative', `view panel is a normal-flow shelf, not a popover, at ${label}`);
         assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1, `view panel opens below the date command line at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
         assert.ok(openMetrics.viewPanelTop <= openMetrics.utilityRowBottom + 18, `view panel stays attached to the filter trigger at ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
-        assert.ok(openMetrics.commandCenterHeight <= metrics.commandCenterHeight + 2, `opening filters does not grow the command center at ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
-        assert.ok(Math.abs(openMetrics.timelineTop - metrics.timelineTop) <= 2, `opening filters does not push timeline down at ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
-        assert.ok(openMetrics.viewPanelWidth <= Math.min(620, openMetrics.viewportWidth - 48) + 2, `open view panel stays compact at ${label}: ${openMetrics.viewPanelWidth}px`);
+        assert.ok(openMetrics.commandCenterHeight > metrics.commandCenterHeight + 8, `opening filters grows the command center as a shelf at ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
+        assert.ok(openMetrics.timelineTop >= openMetrics.viewPanelBottom - 1, `timeline starts below the open filter shelf at ${label}: timeline=${openMetrics.timelineTop}px shelf=${openMetrics.viewPanelBottom}px`);
+        assert.ok(openMetrics.timelineTop >= metrics.timelineTop, `opening filters does not overlay timeline at ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.equal(openMetrics.viewPanelCoversTimeline, false, `open filter shelf does not cover the timeline container at ${label}`);
+        assert.equal(openMetrics.viewPanelCoversTimeScale, false, `open filter shelf does not cover timeline time labels at ${label}: shelf=${openMetrics.viewPanelBottom}px scale=${openMetrics.timeScaleTop}px`);
+        assert.equal(openMetrics.viewPanelCoversTimelineLines, false, `open filter shelf does not cover timeline rows at ${label}: shelf=${openMetrics.viewPanelBottom}px lines=${openMetrics.timelineLinesTop}px`);
+        assert.ok(openMetrics.viewPanelWidth <= Math.min(1040, openMetrics.viewportWidth) + 2, `open view panel stays shelf-width at ${label}: ${openMetrics.viewPanelWidth}px`);
         assert.ok(openMetrics.viewPanelHeight <= 220, `open view panel avoids a large blank area at ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.viewPanelRight <= openMetrics.viewportWidth + 1, `open view panel stays inside viewport at ${label}: ${openMetrics.viewPanelRight}px`);
         assert.ok(openMetrics.bodyOverflowX <= 2, `open attached view panel does not create body overflow at ${label}: ${openMetrics.bodyOverflowX}`);
@@ -1038,8 +1062,9 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at narrow ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at narrow ${label}`);
-        assert.equal(metrics.historyInTopbar, true, `history button stays in the topbar at narrow ${label}`);
-        assert.equal(metrics.historyBeforeLogout, true, `history button stays before logout at narrow ${label}`);
+        assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at narrow ${label}`);
+        assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at narrow ${label}`);
+        assert.equal(metrics.historyVisible, false, `history button is hidden with the collapsed filter panel at narrow ${label}`);
         assert.equal(metrics.topbarRightmostId, 'logoutBtn', `logout button is the rightmost visible topbar control at narrow ${label}`);
         assert.equal(metrics.viewToggleLabel, 'Фільтри', `view trigger is renamed to filters at narrow ${label}`);
         assert.equal(metrics.visibleTimelineViewLabels.includes('Вигляд'), false, `old view label is not visible at narrow ${label}`);
@@ -1059,10 +1084,14 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(openMetrics.viewPanelLayoutVisible, true, `open timeline view panel is layout-visible at narrow ${label}`);
         assert.equal(openMetrics.viewToggleExpanded, 'true', `timeline view toggle expands at narrow ${label}`);
         assert.equal(openMetrics.viewPanelInCommandCenter, true, `view panel is mounted inside the command center at narrow ${label}`);
-        assert.equal(openMetrics.viewPanelPosition, 'absolute', `view panel is a compact popover at narrow ${label}`);
+        assert.equal(openMetrics.viewPanelPosition, 'relative', `view panel is a normal-flow shelf at narrow ${label}`);
         assert.ok(openMetrics.viewPanelTop >= openMetrics.utilityRowBottom - 1, `view panel opens below the command area at narrow ${label}: panel=${openMetrics.viewPanelTop}px row=${openMetrics.utilityRowBottom}px`);
-        assert.ok(openMetrics.commandCenterHeight <= metrics.commandCenterHeight + 2, `opening filters does not grow command center at narrow ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
-        assert.ok(Math.abs(openMetrics.timelineTop - metrics.timelineTop) <= 2, `opening filters does not push timeline down at narrow ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.ok(openMetrics.commandCenterHeight > metrics.commandCenterHeight + 8, `opening filters grows command center as a shelf at narrow ${label}: closed=${metrics.commandCenterHeight}px open=${openMetrics.commandCenterHeight}px`);
+        assert.ok(openMetrics.timelineTop >= openMetrics.viewPanelBottom - 1, `timeline starts below the open filter shelf at narrow ${label}: timeline=${openMetrics.timelineTop}px shelf=${openMetrics.viewPanelBottom}px`);
+        assert.ok(openMetrics.timelineTop >= metrics.timelineTop, `opening filters does not overlay timeline at narrow ${label}: closed=${metrics.timelineTop}px open=${openMetrics.timelineTop}px`);
+        assert.equal(openMetrics.viewPanelCoversTimeline, false, `open filter shelf does not cover the timeline container at narrow ${label}`);
+        assert.equal(openMetrics.viewPanelCoversTimeScale, false, `open filter shelf does not cover timeline time labels at narrow ${label}: shelf=${openMetrics.viewPanelBottom}px scale=${openMetrics.timeScaleTop}px`);
+        assert.equal(openMetrics.viewPanelCoversTimelineLines, false, `open filter shelf does not cover timeline rows at narrow ${label}: shelf=${openMetrics.viewPanelBottom}px lines=${openMetrics.timelineLinesTop}px`);
         assert.ok(openMetrics.viewPanelHeight <= 320, `open view panel wraps without a huge blank area at narrow ${label}: ${openMetrics.viewPanelHeight}px`);
         assert.ok(openMetrics.bodyOverflowX <= 2, `open view panel does not create body overflow at narrow ${label}: ${openMetrics.bodyOverflowX}`);
         assert.ok(openMetrics.viewPanelLeft >= -1, `open view panel stays inside the left viewport edge at narrow ${label}: ${openMetrics.viewPanelLeft}px`);

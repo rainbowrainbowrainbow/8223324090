@@ -4,15 +4,25 @@
 
 ---
 
+## v0.77.83 - Timeline Filter Shelf Polish
+
+### Timeline filters / Collapsible shelf / Topbar cleanup / Surface texture / Regression guards / Release hygiene / (Клешня, 01.07.2026) [codex]
+- **Popover замінено на розкладну shelf-панель** - `#timelineViewPanel` відкривається у normal flow під date row, не має `position: absolute`, не перекриває шкалу часу й не блокує timeline.
+- **Кнопка `Фільтри` стала простішою** - прибрано summary `Всі / День / Свята / 15 хв`, лишилась коротка кнопка з іконкою і текстом без зайвого шуму.
+- **`Історія змін` прибрано з правого topbar** - дія живе у filter shelf як secondary control, а `Вийти` лишається останньою правою topbar-дією поруч із theme/settings.
+- **Фон timeline workspace отримав легку texture** - чистий чорний void замінено scoped CRM surface background з subtle CSS-текстурою для dark/light режимів.
+- **Regression guards оновлено під shelf UX** - static і browser smoke перевіряють hidden closed state, normal-flow shelf, відсутність old `Вигляд`/summary/popover, logout rightmost і те, що shelf не накриває timeline/time-scale.
+- **Auth, booking, API і БД не змінювались** - правка обмежена timeline header presentation, CSS, release markers і тестами.
+
+---
+
 ## v0.77.82 - Timeline Filter Popover
 
-### Timeline controls / Filter popover / Topbar order / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]
-- **Фільтри знову сховані за однією кнопкою** - date row показує тільки навігацію датою і `Фільтри`, а статус, період, тип і масштаб відкриваються компактним popover.
-- **Прибрано лякаючий ряд із багатьох кнопок** - `#timelineViewPanel` більше не розтягує control-line, не займає місце у closed state і не перетворює верхню зону на нескінченний toolbar.
-- **Кнопка `Фільтри` показує короткий summary активних налаштувань** - користувач бачить поточний зріз без відкриття панелі, а на вузьких екранах summary ховається, щоб не ламати date row.
-- **Topbar actions впорядковано** - theme і settings лишаються utility controls, `Історія змін` стоїть перед `Вийти`, а `Вийти` лишається останньою правою дією.
-- **Regression guards оновлено** - static і browser smoke тепер очікують compact popover, stable `z-index`, hidden closed state, logout rightmost і відсутність старого inline-ряду фільтрів.
-- **Auth, booking, API і БД не змінювались** - правка обмежена timeline header presentation, CSS, release markers і тестами.
+### Timeline filters / Compact trigger / Popover state / Regression guards / Release hygiene / (Клешня, 30.06.2026) [codex]
+- **Фільтри сховано за одним trigger** - `#timelineViewPanelToggle` залишився у date row як єдина точка входу до статусу, періоду, типу й масштабу.
+- **Closed state зроблено тихішим** - date row не показує всі filter controls одразу, щоб не перевантажувати верхню зону timeline.
+- **Popover-state зафіксовано тестами** - regression guards перевіряли label `Фільтри`, відсутність старого `Вигляд`, hidden state і базові взаємодії controls.
+- **Auth, booking, API і БД не змінювались** - правка була обмежена timeline header presentation, CSS, release markers і тестами.
 
 ---
 

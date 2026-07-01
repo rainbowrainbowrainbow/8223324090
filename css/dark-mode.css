@@ -3488,7 +3488,22 @@ body.dark-mode .guardian-stats-summary {
 
 .timeline-dashboard-page .main-content {
     background: var(--eg-app-bg);
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--eg-grid-major) 22%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--eg-grid-minor) 48%, transparent) 1px, transparent 1px),
+        repeating-linear-gradient(135deg, color-mix(in srgb, var(--eg-accent) 7%, transparent) 0 1px, transparent 1px 18px);
+    background-size: 52px 52px, 52px 52px, 28px 28px;
+    background-position: 0 0, 0 0, 0 0;
     padding: 20px 24px 24px;
+}
+
+.timeline-dashboard-page.dark-mode .main-content,
+body.dark-mode.timeline-dashboard-page .main-content,
+html[data-theme="dark"] body.timeline-dashboard-page .main-content {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--eg-grid-major) 32%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--eg-grid-minor) 62%, transparent) 1px, transparent 1px),
+        repeating-linear-gradient(135deg, color-mix(in srgb, var(--eg-accent) 8%, transparent) 0 1px, transparent 1px 18px);
 }
 
 .timeline-dashboard-page .header {

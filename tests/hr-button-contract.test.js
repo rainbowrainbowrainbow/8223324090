@@ -436,8 +436,10 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
     for (const token of [
         'flex-wrap: nowrap;',
         'width: auto;',
-        'flex: 0 0 clamp(172px, 15vw, 210px);',
-        'max-width: 210px;',
+        'width: fit-content;',
+        'content: none;',
+        'flex: 0 0 clamp(168px, 14vw, 196px);',
+        'max-width: 196px;',
         '@media (max-width: 1120px)',
         'overflow-x: auto;',
         'scrollbar-width: none;'

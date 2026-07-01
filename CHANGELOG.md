@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.87 - HR Pulse Compact Visual Pass
+
+### HR pulse / Compact hero / Tabs cleanup / Visual QA / Release hygiene / (Клешня, 01.07.2026) [codex]
+- **Пульс зміни став помітно компактнішим** - hero зменшено, фонову ілюстрацію приглушено, а дата лишилась у щільному операційному badge без sticky overlap.
+- **Верхні HR tabs більше не малюють порожню праву плашку** - навігація займає тільки реальні вкладки `Сьогодні`, `Графік`, `Звіти` і не створює декоративний fake-slot.
+- **Картки tabs ущільнено без зміни routing** - icon square, title/subtitle і badge стали менші, старі JS-селектори та переходи лишились незмінними.
+- **Search/filter block став більш робочим** - пошук, лічильник і department chips отримали менші padding/radius, щоб більше співробітників було видно у першому viewport.
+- **Live staff board став щільнішим** - плитки співробітників і контейнер зменшено, без зміни логіки фільтрації, статусів або attendance actions.
+- **Оновлено regression guards** - `test:ui` і `hr-button-contract` тепер захищають compact HR Pulse contract і забороняють повернення порожньої декоративної tail-плашки.
+- **Auth, API, БД і ролі не змінювались** - правка обмежена HR CSS, UI static guards, release markers і changelog.
+
+---
+
 ## v0.77.86 - HR Workspace UI Unification
 
 ### HR workspace / Staff schedule / Reports UI contract / Inline CSS debt lock / Regression QA / (Клешня, 01.07.2026) [codex]

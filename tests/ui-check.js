@@ -4455,6 +4455,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !htmlContains('hr.html', 'data-tab="ratings"')
     && !htmlContains('hr.html', 'id="tab-leaves"'));
 const hrPulseNavSurfaceRule = cssRuleText(hrPageCss, '.hr-nav--pulse');
+const hrPulseNavEmptyTailRule = cssRuleText(hrPageCss, '.hr-nav--pulse::after');
 const hrPulseNavItemsRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-nav-items');
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardIconRule = cssRuleText(hrPageCss, '.hr-pulse-card-icon');
@@ -4510,12 +4511,15 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible')
     && /overflow:\s*hidden;/.test(hrPulseNavSurfaceRule)
     && /contain:\s*layout paint;/.test(hrPulseNavSurfaceRule)
+    && /width:\s*fit-content;/.test(hrPulseNavSurfaceRule)
+    && /content:\s*none;/.test(hrPulseNavEmptyTailRule)
+    && /display:\s*none;/.test(hrPulseNavEmptyTailRule)
     && /display:\s*flex;/.test(hrPulseNavItemsRule)
     && /flex-wrap:\s*nowrap;/.test(hrPulseNavItemsRule)
     && /width:\s*auto;/.test(hrPulseNavItemsRule)
     && /display:\s*grid;/.test(hrPulseCardRule)
-    && /flex:\s*0 0 clamp\(172px,\s*15vw,\s*210px\);/.test(hrPulseCardRule)
-    && /max-width:\s*210px;/.test(hrPulseCardRule)
+    && /flex:\s*0 0 clamp\(168px,\s*14vw,\s*196px\);/.test(hrPulseCardRule)
+    && /max-width:\s*196px;/.test(hrPulseCardRule)
     && /overflow:\s*hidden;/.test(hrPulseCardRule)
     && /contain:\s*layout paint;/.test(hrPulseCardRule)
     && /display:\s*grid;/.test(hrPulseCardIconRule)
@@ -4548,7 +4552,7 @@ const hrTodayHoneycombMobileBoardRule = cssRuleText(hrTodayHoneycombMobileBlock,
 const hrTodayHexTileRule = cssRuleText(hrPageCss, '.hr-today-hex-tile');
 const hrTodayHexNameRule = cssRuleText(hrPageCss, '.hr-today-hex-name');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
-check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*32px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
+check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*30px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
 check('HR Pulse Today has premium hero, search, department segmentation, and compact live staff board on the Today surface',
     fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
     && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-light.png'))

@@ -163,10 +163,13 @@ body.dark-mode .night-settings-select {
    COMPACT MODE
    ========================================== */
 
-.timeline-container.compact .grid-cell,
-.timeline-container.compact .time-mark {
+.timeline-container.compact .grid-cell {
     width: var(--timeline-cell-w, 32px);
     min-width: var(--timeline-cell-w, 32px);
+}
+
+.timeline-container.compact .time-mark {
+    font-size: 9px;
 }
 
 .timeline-container.compact .line-header {
@@ -195,10 +198,13 @@ body.dark-mode .night-settings-select {
    ========================================== */
 
 /* When CELL_MINUTES = 30, cell width is 50px for 30 min — enforce minimum row height */
-.timeline-container[data-zoom="30"] .grid-cell,
-.timeline-container[data-zoom="30"] .time-mark {
+.timeline-container[data-zoom="30"] .grid-cell {
     width: 80px;
     min-width: 80px;
+}
+
+.timeline-container[data-zoom="30"] .time-mark {
+    font-size: 11px;
 }
 
 .timeline-container[data-zoom="30"] .timeline-line {
@@ -214,10 +220,13 @@ body.dark-mode .night-settings-select {
 }
 
 /* 60-min zoom */
-.timeline-container[data-zoom="60"] .grid-cell,
-.timeline-container[data-zoom="60"] .time-mark {
+.timeline-container[data-zoom="60"] .grid-cell {
     width: 120px;
     min-width: 120px;
+}
+
+.timeline-container[data-zoom="60"] .time-mark {
+    font-size: 11px;
 }
 
 .timeline-container[data-zoom="60"] .timeline-line {

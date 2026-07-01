@@ -980,10 +980,12 @@ const Sidebar = (() => {
     function _renderExtraMenuLink(item, currentPath, currentHash, options = {}) {
         const isActive = _isSidebarItemActive(item, currentPath, currentHash);
         const statusText = _navStatusFor(item);
+        const statusTone = _navStatusToneFor(item);
+        const statusToneAttr = statusText && statusTone ? ` data-sidebar-status-tone="${_escAttr(statusTone)}"` : '';
         const badgeType = _badgeTypeFor(item);
         const badgeClass = badgeType === 'alerts' ? ' sidebar-design-extra-badge alert' : ' sidebar-design-extra-badge';
         const description = item.statusKey
-            ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>`
+            ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusToneAttr}${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>`
             : `<small>${_escAttr(item.description || EXTRA_MENU_DEFAULT_DESCRIPTION)}</small>`;
         const body = `
             ${_renderIcon(item.icon, 'sidebar-design-extra-icon')}
@@ -1352,6 +1354,8 @@ const Sidebar = (() => {
             const badgeClass = badgeType === 'alerts' ? ' nav-badge alert' : ' nav-badge';
 
             const statusText = _navStatusFor(item);
+            const statusTone = _navStatusToneFor(item);
+            const statusToneAttr = statusText && statusTone ? ` data-sidebar-status-tone="${_escAttr(statusTone)}"` : '';
             const itemHref = _sidebarHrefForBusinessItem(item, savedUser);
             const legacyClass = item.navLegacy ? ' nav-link--legacy' : '';
             const legacyAttr = item.navLegacy ? ' data-sidebar-legacy="hr"' : '';
@@ -1360,7 +1364,7 @@ const Sidebar = (() => {
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>
-    ${item.statusKey ? `<span class="nav-status" data-sidebar-status-key="${item.statusKey}"${statusText ? '' : ' hidden'}>${statusText || ''}</span>` : ''}
+    ${item.statusKey ? `<span class="nav-status" data-sidebar-status-key="${item.statusKey}"${statusToneAttr}${statusText ? '' : ' hidden'}>${statusText || ''}</span>` : ''}
   </span>
   ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
 </a>`;
@@ -1578,12 +1582,36 @@ const Sidebar = (() => {
         }
     }
 
+    function _navStatusToneFor(item) {
+        switch (item?.statusKey) {
+            case 'tasks':
+                if (_commandState.tasksOverdue > 0) return 'critical';
+                if (_commandState.tasksActive > 0) return 'neutral';
+                return '';
+            case 'leads':
+                if (_commandState.hotLeads > 0) return 'warning';
+                if (_commandState.newLeads > 0) return 'neutral';
+                return '';
+            case 'chat': {
+                const unread = typeof ChatState !== 'undefined' ? Number(ChatState.totalUnread || 0) : 0;
+                return unread > 0 ? 'neutral' : '';
+            }
+            case 'omni':
+                return _commandState.alertsCritical > 0 ? 'critical' : '';
+            default:
+                return '';
+        }
+    }
+
     function _syncNavStatusLabels() {
         document.querySelectorAll('[data-sidebar-status-key]').forEach((el) => {
             const key = el.dataset.sidebarStatusKey;
             const text = _navStatusFor({ statusKey: key });
+            const tone = text ? _navStatusToneFor({ statusKey: key }) : '';
             el.textContent = text;
             el.hidden = !text;
+            if (tone) el.dataset.sidebarStatusTone = tone;
+            else el.removeAttribute('data-sidebar-status-tone');
         });
     }
 
@@ -3189,7 +3217,7 @@ const Sidebar = (() => {
             _setCommandDescription(widget, `${funnelTitle} ${scopeLabel}.`);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
-            _setFocusChipOperationalState(widget, displayCount, { kind: 'leads', hot: actionCount > 0 || newCount > 0 });
+            _setFocusChipOperationalState(widget, displayCount, { kind: 'leads', hot: actionCount > 0 });
             widget.href = '/sales-funnel';
         } catch {}
         _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);

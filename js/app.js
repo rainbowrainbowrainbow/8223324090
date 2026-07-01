@@ -102,6 +102,57 @@ function syncTimelineStatusFilterButtons() {
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    syncTimelineViewPanelBadge();
+}
+
+function getTimelineDefaultZoomLevel() {
+    const fallback = typeof TIMELINE_DEFAULT_ZOOM_MINUTES !== 'undefined'
+        ? TIMELINE_DEFAULT_ZOOM_MINUTES
+        : 15;
+    return typeof normalizeTimelineZoomLevel === 'function'
+        ? normalizeTimelineZoomLevel(fallback, 15)
+        : (Number.parseInt(fallback, 10) || 15);
+}
+
+function getTimelineShelfPeriodMode() {
+    const timelineModeState = typeof window !== 'undefined' ? window.TimelineView?.state?.() : null;
+    const stateMode = String(timelineModeState?.viewMode || '').trim().toLowerCase();
+    if (stateMode === 'week') return 'week';
+    if (stateMode === 'day') return 'day';
+    return AppState.multiDayMode ? 'week' : 'day';
+}
+
+function getTimelineViewPanelActiveFilterCount() {
+    let count = 0;
+    const status = String(AppState.statusFilter || 'all').trim().toLowerCase();
+    if (status && status !== 'all') count += 1;
+    if (getTimelineShelfPeriodMode() !== 'day') count += 1;
+    const defaultZoom = getTimelineDefaultZoomLevel();
+    const currentZoom = typeof normalizeTimelineZoomLevel === 'function'
+        ? normalizeTimelineZoomLevel(AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || defaultZoom, defaultZoom)
+        : (Number.parseInt(AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES, 10) || defaultZoom);
+    if (currentZoom !== defaultZoom) count += 1;
+    return count;
+}
+
+function syncTimelineViewPanelBadge() {
+    const toggle = document.getElementById('timelineViewPanelToggle');
+    if (!toggle) return;
+    const badge = document.getElementById('timelineViewPanelBadge') || toggle.querySelector('[data-filter-badge]');
+    const count = getTimelineViewPanelActiveFilterCount();
+    const active = count > 0;
+    toggle.classList.toggle('has-active-filters', active);
+    toggle.dataset.filterCount = String(count);
+    toggle.setAttribute('data-filter-state', active ? 'custom' : 'default');
+    if (badge) {
+        badge.textContent = active ? String(count) : '';
+        badge.dataset.count = String(count);
+        badge.classList.toggle('is-visible', active);
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.syncTimelineViewPanelBadge = syncTimelineViewPanelBadge;
 }
 
 function syncTimelineCompactToggleAria() {
@@ -131,6 +182,7 @@ function setTimelineViewPanelOpen(open, options = {}) {
     toggle.title = nextOpen ? 'Закрити фільтри таймлайну' : 'Відкрити фільтри таймлайну';
     toggle.setAttribute('aria-label', toggle.title);
     panel.closest('.schedule-command-center')?.classList.toggle('is-view-panel-open', nextOpen);
+    syncTimelineViewPanelBadge();
 
     if (nextOpen && options.focusPanel) {
         const firstControl = panel.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
@@ -172,7 +224,10 @@ function syncTimelinePeriodSelector(root = document.getElementById('periodSelect
     if (typeof normalizeTimelineModeState === 'function') {
         normalizeTimelineModeState(AppState);
     }
-    if (!root) return;
+    if (!root) {
+        syncTimelineViewPanelBadge();
+        return;
+    }
     const activePeriod = AppState.multiDayMode ? TIMELINE_PERIOD_WEEK : TIMELINE_PERIOD_DAY;
     const timelineModeState = typeof window !== 'undefined' ? window.TimelineView?.state?.() : null;
     const activeViewMode = timelineModeState?.viewMode
@@ -188,6 +243,7 @@ function syncTimelinePeriodSelector(root = document.getElementById('periodSelect
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    syncTimelineViewPanelBadge();
 }
 
 function applyTimelinePeriod(period, root = document.getElementById('periodSelector')) {
@@ -273,6 +329,7 @@ function loadPreferences() {
         applyTimelineResponsiveDensity();
     }
     if (typeof updateZoomButtons === 'function') updateZoomButtons();
+    syncTimelineViewPanelBadge();
 }
 
 // v5.0: Only initialize local storage data that isn't user credentials
@@ -1241,7 +1298,10 @@ if (typeof window !== 'undefined') {
 
 function initUIControlListeners() {
     document.querySelectorAll('.zoom-btn').forEach(btn => {
-        btn.addEventListener('click', () => changeZoom(parseInt(btn.dataset.zoom)));
+        btn.addEventListener('click', () => {
+            changeZoom(parseInt(btn.dataset.zoom));
+            syncTimelineViewPanelBadge();
+        });
     });
 
     const compactToggle = document.getElementById('compactModeToggle');

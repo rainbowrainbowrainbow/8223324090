@@ -4,6 +4,31 @@
 
 ---
 
+## v0.77.85 - Timeline UI Clarity
+
+### Timeline toolbar / Filters / Grid polish / Overlay stability / Regression QA / (Клешня, 01.07.2026) [codex]
+- **`Банкети / Свята` тепер видно одразу** - перемикач типу таймлайну винесено з прихованої полиці фільтрів у верхню панель поруч із датою.
+- **Панель таймлайну стала спокійнішою** - дата читається як головний контроль, `Зараз` і другорядні дії стали менш нав'язливими, а фільтри не виглядають активними у стандартному стані.
+- **`Фільтри` показують легкий індикатор змін** - бейдж з'являється тільки коли статус, період або масштаб відрізняються від дефолтних значень.
+- **Прибрано native tooltip-и з кастомних segmented controls** - `День`, `Тиждень`, статуси, тип таймлайну і масштаб зберігають доступні labels без чорних браузерних підказок.
+- **Сітка, часові мітки і now-line вирівняні за спільною геометрією** - година читається чіткіше, дрібні поділки стали тихішими, а поточний час не перекриває важливі шари.
+- **Booking tooltip і overlay stack стабільніші** - tooltip створюється як один контрольований елемент, не дублюється і не конфліктує з dropdown/modal шарами.
+- **Другорядні timeline поверхні стали легшими** - `Додати аніматора`, рядок Афіші та порожні клітинки отримали тихіші affordance-и без зміни поведінки бронювань.
+- **Додано regression guards для timeline UI** - static і focused timeline тести покривають toolbar layout, relocation `Банкети / Свята`, filters badge, overlay invariants, grid/now-line geometry і responsive matrix.
+
+---
+
+## v0.77.84 - Production Error Fixes
+
+### Production startup / Scheduler reminders / DB migration guardrails / Release hygiene / (Клешня, 01.07.2026) [codex]
+- **Закрито production failure у migration 261** - додано окрему schema migration для `leads.updated_at`, щоб data-fix `261_leads_customer_card_canonical_customers` більше не падав на відсутній колонці.
+- **`leads.updated_at` додається без destructive changes** - нова migration робить idempotent `ADD COLUMN IF NOT EXISTS`, backfill з `created_at` або `NOW()` і default для нових рядків.
+- **Виправлено scheduler `checkBookingPushReminders`** - SQL більше не порівнює integer-поле `b.hosts` з порожнім рядком, що прибирає production error `invalid input syntax for type integer: ""`.
+- **Додано regression guards** - тести захищають integer-safe predicate для booking push reminders і перевіряють, що `leads.updated_at` має незалежну schema migration поза data-fix 261.
+- **Production data cleanup не виконувався** - правка обмежена additive schema migration, scheduler SQL predicate, release markers і тестами.
+
+---
+
 ## v0.77.83 - Timeline Filter Shelf Polish
 
 ### Timeline filters / Collapsible shelf / Topbar cleanup / Surface texture / Regression guards / Release hygiene / (Клешня, 01.07.2026) [codex]

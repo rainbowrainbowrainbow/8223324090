@@ -426,9 +426,11 @@ test('timeline view isolation matrix includes horizontal scroll scope and reset'
     assert.match(booking, /cacheKey === key \|\| cacheKey\.endsWith\(`\|\$\{key\}`\)/);
 });
 
-test('timeline width contract is shared by animator and room surfaces without service-marker inflation', () => {
+test('timeline width, grid mark and now-line geometry contracts stay shared without service-marker inflation', () => {
     const timeline = readProjectFile('js/timeline.js');
     const css = readProjectFile('css/timeline.css');
+    const controlsCss = readProjectFile('css/controls.css');
+    const ui = readProjectFile('js/ui.js');
     const syncWidthBlock = timeline.slice(
         timeline.indexOf('function syncTimelineContentWidth'),
         timeline.indexOf('function visibleTimelineAddLineParts')
@@ -436,6 +438,14 @@ test('timeline width contract is shared by animator and room surfaces without se
     const renderTimelineBlock = timeline.slice(
         timeline.indexOf('async function renderTimeline'),
         timeline.indexOf('function getBookingDragGroup')
+    );
+    const renderTimeScaleBlock = timeline.slice(
+        timeline.indexOf('function renderTimeScale'),
+        timeline.indexOf('function timelineShouldRenderAfisha')
+    );
+    const renderGridCellsBlock = timeline.slice(
+        timeline.indexOf('function renderGridCells'),
+        timeline.indexOf('function parseBookingExtraData')
     );
     const roomServiceMarkerBlock = timeline.slice(
         timeline.indexOf('function renderTimelineRoomServiceMarkers'),
@@ -448,14 +458,19 @@ test('timeline width contract is shared by animator and room surfaces without se
 
     assert.match(syncWidthBlock, /const gridWidth = Math\.ceil\(timelineRangeCellCount\(date\) \* cellWidth\)/);
     assert.doesNotMatch(syncWidthBlock, /timelineRangeMarkCount\(date\) \* cellWidth/);
+    assert.match(markerGeometryBlock, /function timelineGridMarkKind\(totalMinutes\)/);
+    assert.match(markerGeometryBlock, /const gridWidth = Math\.ceil\(geometry\?\.gridWidth \|\| \(timelineRangeCellCount\(date\) \* cellWidth\)\)/);
     assert.match(markerGeometryBlock, /function timelineTimeMarkPlacements\(date, anchor, geometry = null\)/);
     assert.match(markerGeometryBlock, /function timelineMiniTimeMarkPlacements\(start, end, hourWidth\)/);
     assert.match(markerGeometryBlock, /timelineLabelPlacement\(entry\.x, entry\.labelWidth, gridWidth/);
+    assert.match(markerGeometryBlock, /markKind,\s*[\r\n]+\s*className: `time-mark \$\{markKind\}/);
     assert.match(markerGeometryBlock, /function timelineResolveTimeMarkCollisions\(placements, gridWidth/);
     assert.match(markerGeometryBlock, /pushFromStart\(\);[\s\S]*pullFromEnd\(\);/);
     assert.match(markerGeometryBlock, /options\.edge === 'start' \? -\(safeWidth \/ 2\) : 0/);
     assert.match(renderTimelineBlock, /syncTimelineContentWidth\(selectedDate, container\.querySelector\('\.line-grid\[data-line-id\]'\)\)/);
     assert.match(renderTimelineBlock, /renderTimeScale\(selectedDate\)/);
+    assert.match(renderTimeScaleBlock, /mark\.dataset\.markKind = entry\.markKind \|\| 'minor'/);
+    assert.match(renderGridCellsBlock, /data-grid-mark="\$\{markKind\}"/);
     assert.doesNotMatch(renderTimelineBlock, /isRoomTimelineView\(\)[\s\S]*renderTimeScale\(selectedDate\)[\s\S]*else[\s\S]*renderTimeScale\(selectedDate\)/);
     assert.match(renderTimelineBlock, /if \(isRoomTimelineView\(\)\) \{[\s\S]*syncTimelineRoomOperationalLayout\(lineGrid\);[\s\S]*\}/);
     assert.match(roomServiceMarkerBlock, /const gridWidth = lineGrid\.scrollWidth \|\| lineGrid\.getBoundingClientRect\?\.\(\)\.width \|\| 0/);
@@ -463,6 +478,12 @@ test('timeline width contract is shared by animator and room surfaces without se
     assert.match(roomServiceMarkerBlock, /const left = Math\.max\(0, Math\.min\(leftRaw, maxLeft\)\)/);
     assert.doesNotMatch(roomServiceMarkerBlock, /lineGrid\.style\.(?:width|setProperty\(['"]--timeline-grid-width)/);
     assert.match(css, /\.line-grid\.has-timeline-room-service-markers,[\s\S]*overflow: visible/);
+    assert.match(css, /body\.timeline-dashboard-page \.line-grid \.grid-cell\[data-grid-mark="hour"\][\s\S]*border-right: 1px solid/);
+    assert.doesNotMatch(css, /\.grid-cell\.hour\s*\{[\s\S]*border-right:\s*2px/);
+    assert.doesNotMatch(controlsCss, /\.timeline-container\[data-zoom="(?:30|60)"\] \.grid-cell,\s*[\r\n]+\.timeline-container\[data-zoom="(?:30|60)"\] \.time-mark/);
+    assert.match(css, /\.now-line-global\s*\{[\s\S]*transform: translateX\(-50%\)/);
+    assert.match(ui, /timelineMinutesToPixels\(nowMin - startMin, gridAnchor\)/);
+    assert.match(ui, /gridRect\.left - scrollRect\.left \+ timelineScroll\.scrollLeft \+ left/);
 });
 
 test('phase 4 matrix is wired into unit and UI proof stack', () => {

@@ -2633,7 +2633,7 @@ async function checkBookingPushReminders() {
             WHERE b.date = $1
               AND b.status IN ('confirmed', 'pending')
               AND b.time = $2
-              AND b.hosts IS NOT NULL AND b.hosts != ''
+              AND b.hosts IS NOT NULL AND b.hosts > 0
               AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
         `, bookingParams);

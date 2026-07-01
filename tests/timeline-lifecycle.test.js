@@ -114,7 +114,13 @@ function createHarness() {
     window.isAdmin = () => true;
     window.hasMinRole = () => true;
     window.getUserRole = () => 'creator';
-    window.hideTooltip = () => {};
+    window.hideTooltip = () => {
+        const tooltip = window.document.getElementById('bookingTooltip');
+        if (!tooltip) return;
+        tooltip.hidden = true;
+        tooltip.classList.add('hidden');
+        tooltip.setAttribute('aria-hidden', 'true');
+    };
     window.showNotification = () => {};
     window.showWarning = () => {};
     window.handleError = () => {};
@@ -170,6 +176,9 @@ function createHarness() {
             timelineTimeMarkPlacements,
             timelineMiniTimeMarkPlacements,
             timelineTimeToPixel,
+            ensureTimelineBookingTooltip,
+            showAfishaTooltip,
+            timelineTooltipSuppressed,
             hasActiveTimelineInteractionState,
             setSaveInFlight(value) { _timelineInteractionSaveInFlight = Boolean(value); },
             getSaveInFlight() { return _timelineInteractionSaveInFlight; },
@@ -177,6 +186,10 @@ function createHarness() {
             getBookingDragState() { return _bookingDragState; },
             setResizeState(value) { _resizeState = value; },
             getResizeState() { return _resizeState; },
+            setAfishaDragState(value) { _afishaDragState = value; },
+            getAfishaDragState() { return _afishaDragState; },
+            setBanquetLinkDraft(value) { _banquetLinkDraft = value; },
+            getBanquetLinkDraft() { return _banquetLinkDraft; },
             detectTargetLine: _detectTargetLine
         };
     `;
@@ -241,6 +254,58 @@ function banquetPreviewSnapshot(date = '2026-05-26') {
         ]
     };
 }
+
+test('booking tooltip lifecycle creates one accessible singleton without pre-rendered HTML', () => {
+    const { window, api } = createHarness();
+
+    assert.equal(window.document.getElementById('bookingTooltip'), null);
+
+    const tooltip = api.ensureTimelineBookingTooltip();
+    assert.ok(tooltip, 'tooltip should be created on demand');
+    assert.equal(tooltip.id, 'bookingTooltip');
+    assert.equal(tooltip.classList.contains('booking-tooltip'), true);
+    assert.equal(tooltip.getAttribute('role'), 'tooltip');
+    assert.equal(tooltip.getAttribute('aria-hidden'), 'true');
+    assert.equal(tooltip.hidden, true);
+    assert.equal(tooltip.style.pointerEvents, 'none');
+
+    const duplicate = window.document.createElement('div');
+    duplicate.id = 'bookingTooltip';
+    duplicate.className = 'booking-tooltip';
+    duplicate.dataset.bookingTooltip = 'true';
+    window.document.body.appendChild(duplicate);
+
+    const deduped = api.ensureTimelineBookingTooltip();
+    assert.equal(deduped, tooltip);
+    assert.equal(window.document.querySelectorAll('#bookingTooltip').length, 1);
+
+    api.showAfishaTooltip({ pageX: 120, pageY: 180 }, {
+        id: 'afisha-1',
+        type: 'event',
+        title: 'Премʼєра',
+        time: '14:00',
+        duration: 45
+    });
+    assert.equal(tooltip.hidden, false);
+    assert.equal(tooltip.classList.contains('hidden'), false);
+    assert.equal(tooltip.getAttribute('aria-hidden'), 'false');
+    assert.match(tooltip.innerHTML, /Прем/);
+    assert.equal(tooltip.style.left, '130px');
+    assert.equal(tooltip.style.top, '190px');
+
+    api.setBookingDragState({ moved: true });
+    api.showAfishaTooltip({ pageX: 200, pageY: 220 }, {
+        id: 'afisha-2',
+        type: 'regular',
+        title: 'Drag suppressed',
+        time: '15:00',
+        duration: 30
+    });
+    assert.equal(api.timelineTooltipSuppressed(), true);
+    assert.equal(tooltip.hidden, true);
+    assert.equal(tooltip.getAttribute('aria-hidden'), 'true');
+    assert.doesNotMatch(tooltip.innerHTML, /Drag suppressed/);
+});
 
 test('timeline date cache helpers accept ISO date keys without breaking strict formatDate', async () => {
     const { window, api } = createHarness();

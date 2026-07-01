@@ -154,6 +154,16 @@ describe('booking push reminders scheduler', () => {
         assert.match(state.sentMessages[0].text, /12:30/);
     });
 
+    it('uses an integer-safe hosts predicate for due booking lookup', async () => {
+        const scheduler = loadScheduler();
+
+        await scheduler.checkBookingPushReminders();
+
+        assert.equal(state.bookingQueries.length, 1);
+        assert.doesNotMatch(state.bookingQueries[0].text, /b\.hosts\s*!=\s*''/);
+        assert.match(state.bookingQueries[0].text, /b\.hosts IS NOT NULL AND b\.hosts > 0/);
+    });
+
     it('uses configured chat fallback when staff telegram id is missing', async () => {
         resetState({
             staff: [{ id: 10, name: 'Host One', telegram_id: null }],

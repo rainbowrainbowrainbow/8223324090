@@ -77,6 +77,8 @@ checkPage('index.html', (doc, html) => {
     const timelineBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'timeline-browser-smoke.js'), 'utf8');
     const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
     const responsiveCss = cssTextWithImports('css/responsive.css');
+    const timelineVisualHierarchyCss = darkModeCss.slice(Math.max(0, darkModeCss.indexOf('/* Task 5: timeline visual hierarchy')));
+    const timelineToolbarHierarchyCss = responsiveCss.slice(Math.max(0, responsiveCss.indexOf('/* Task 5: keep cyan')));
     const timelineHeaderWideDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 2160px) and (min-width: 1537px) {');
     const timelineViewPanelResponsiveCss = sourceBlock(responsiveCss, '/* v0.77.77: header/topbar wrapping guard for the timeline shell.', '@media (max-width: 430px) {');
     const timelineCompactCommandCss = sourceBlock(
@@ -308,12 +310,13 @@ checkPage('index.html', (doc, html) => {
         && !doc.getElementById('digestBtn')
         && !doc.querySelector('.timeline-header-filters-label')
         && !doc.querySelector('.timeline-header-filter-icon--sliders')
-        && Array.from(doc.querySelectorAll('.timeline-view-panel-label')).map(el => el.textContent.trim()).join('|') === 'Статус|Період|Тип|Масштаб'
+        && Array.from(doc.querySelectorAll('.timeline-view-panel-label')).map(el => el.textContent.trim()).join('|') === 'Статус|Період|Масштаб'
         && !!doc.querySelector('.timeline-header-filters .status-filter-controls.toolbarGroup.segmentedControl')
         && !!doc.querySelector('.timeline-header-filters #periodSelector[data-schedule-view-mode-selector]')
-        && !!doc.querySelector('.timeline-header-filters .view-mode-controls.toolbarGroup')
-        && !!doc.querySelector('.timeline-header-filters [data-timeline-type-selector] [data-timeline-view="rooms"]')
-        && !!doc.querySelector('.timeline-header-filters [data-timeline-type-selector] [data-timeline-view="animators"]')
+        && !!doc.querySelector('.schedule-command-row--utility .timeline-visible-type-switch #timelineTypeSelector[data-timeline-type-selector]')
+        && !!doc.querySelector('.schedule-command-row--utility [data-timeline-type-selector] [data-timeline-view="rooms"]')
+        && !!doc.querySelector('.schedule-command-row--utility [data-timeline-type-selector] [data-timeline-view="animators"]')
+        && !doc.querySelector('#timelineViewPanel [data-timeline-type-selector]')
         && !!doc.querySelector('.timeline-header-filters .v32-controls.toolbarGroup .zoom-controls')
         && !doc.querySelector('.timeline-header-filters .timeline-compact-toggle')
         && !doc.getElementById('compactModeToggle')
@@ -332,7 +335,8 @@ checkPage('index.html', (doc, html) => {
         && !doc.querySelector('.schedule-command-row--main')
         && !!doc.querySelector('.schedule-command-center #timelineViewPanel .status-filter-controls')
         && !!doc.querySelector('.schedule-command-center #timelineViewPanel .timeline-view-mode-selector')
-        && !!doc.querySelector('.schedule-command-center #timelineViewPanel .timeline-type-selector')
+        && !!doc.querySelector('.schedule-command-center .timeline-visible-type-switch .timeline-type-selector')
+        && !doc.querySelector('.schedule-command-center #timelineViewPanel .timeline-type-selector')
         && !!doc.querySelector('.schedule-command-center #timelineViewPanel .zoom-controls')
         && !!doc.querySelector('.schedule-command-center #timelineViewPanel .timeline-view-panel-actions #historyBtn')
         && !doc.querySelector('.v32-controls #historyBtn')
@@ -411,34 +415,33 @@ checkPage('index.html', (doc, html) => {
         Array.from(doc.querySelector('.timeline-header-filters')?.children || []).map(el => {
             if (el.matches('.timeline-header-filter-group--status') && el.querySelector('.status-filter-controls')) return 'status';
             if (el.matches('.timeline-header-filter-group--period') && el.querySelector('#periodSelector[data-schedule-view-mode-selector]')) return 'period';
-            if (el.matches('.timeline-header-filter-group--type') && el.querySelector('[data-timeline-type-selector]')) return 'type';
             if (el.matches('.timeline-header-filter-group--zoom') && el.querySelector('.zoom-controls')) return 'zoom';
             return `unexpected:${el.className || el.id || el.tagName}`;
-        }).join('|') === 'status|period|type|zoom'
+        }).join('|') === 'status|period|zoom'
         && !doc.querySelector('.timeline-header-filters-label')
         && !doc.querySelector('.timeline-header-filter-icon--sliders')
         && !doc.querySelector('.timeline-header-filters .timeline-compact-toggle')
         && !doc.getElementById('compactModeToggle')
-        && Array.from(doc.querySelectorAll('.timeline-header-filter-group > .timeline-view-panel-label')).map(el => el.textContent.trim()).join('|') === 'Статус|Період|Тип|Масштаб'
+        && Array.from(doc.querySelectorAll('.timeline-header-filter-group > .timeline-view-panel-label')).map(el => el.textContent.trim()).join('|') === 'Статус|Період|Масштаб'
         && Array.from(doc.querySelectorAll('.timeline-header-filters .status-filter-btn')).map(btn => btn.dataset.filter).join('|') === 'all|confirmed|preliminary'
         && Array.from(doc.querySelectorAll('.timeline-header-filters [data-schedule-view-mode]')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week'
-        && Array.from(doc.querySelectorAll('.timeline-header-filters [data-timeline-view]')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
+        && Array.from(doc.querySelectorAll('.timeline-header-filters [data-timeline-view]')).length === 0
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility [data-timeline-view]')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
         && Array.from(doc.querySelectorAll('.timeline-header-filters .zoom-btn')).map(btn => btn.dataset.zoom).join('|') === '15|30|60'
         && !!doc.querySelector('.header .timeline-header-actions #logoutBtn[type="button"]:not([onclick])')
         && !doc.querySelector('.timeline-header-filters #logoutBtn'));
-    check('Timeline view panel keeps status, period, type, and scale controls distributed',
+    check('Timeline view panel keeps status, period, and scale controls distributed',
         !!doc.querySelector('.timeline-header-filter-group--status .status-filter-controls')
         && !!doc.querySelector('.timeline-header-filter-group--period .timeline-view-mode-selector')
-        && !!doc.querySelector('.timeline-header-filter-group--type .timeline-type-selector')
         && !!doc.querySelector('.timeline-header-filter-group--zoom .zoom-controls')
-        && !!doc.querySelector('.timeline-header-filters [data-timeline-type-selector] [data-timeline-view="rooms"]')
-        && !!doc.querySelector('.timeline-header-filters [data-timeline-type-selector] [data-timeline-view="animators"]')
+        && !!doc.querySelector('.schedule-command-row--utility .timeline-visible-type-switch [data-timeline-type-selector] [data-timeline-view="rooms"]')
+        && !!doc.querySelector('.schedule-command-row--utility .timeline-visible-type-switch [data-timeline-type-selector] [data-timeline-view="animators"]')
+        && !doc.querySelector('#timelineViewPanel [data-timeline-type-selector]')
         && !!doc.querySelector('.schedule-command-center #timelineViewPanel .status-filter-controls')
-        && !doc.querySelector('.timeline-header-filter-group--type .timeline-view-mode-selector [data-schedule-view-mode="rooms"]')
         && !doc.querySelector('.timeline-header-filters #timelineHolidaysToggle')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .status-filter-controls')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .period-selector')
-        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .timeline-type-selector')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center .timeline-visible-type-switch')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters .zoom-controls')
         && htmlContains('css/responsive.css', 'grid-template-columns: repeat(2, minmax(0, 1fr))')
         && htmlContains('css/responsive.css', 'grid-template-columns: repeat(3, minmax(0, 1fr))')
@@ -459,7 +462,9 @@ checkPage('index.html', (doc, html) => {
         && /overflow-x:\s*auto\s*!important;/.test(timelineMediumCenterRule)
         && htmlContains('css/responsive.css', 'gap: 5px !important;'));
     check('Timeline toolbar controls use shared classes and requested design tokens',
-        doc.querySelectorAll('.timeline-header-filters .segmentedControl').length >= 4
+        doc.querySelectorAll('.schedule-command-center .segmentedControl').length >= 4
+        && doc.querySelectorAll('.timeline-header-filters .segmentedControl').length === 3
+        && !!doc.querySelector('.schedule-command-row--utility .timeline-visible-type-switch .timeline-type-selector.segmentedControl')
         && Array.from(doc.querySelectorAll('.status-filter-controls .segmentedItem')).map(btn => btn.dataset.filter).join('|') === 'all|confirmed|preliminary'
         && Array.from(doc.querySelectorAll('.timeline-view-mode-selector .segmentedItem')).map(btn => btn.dataset.scheduleViewMode).join('|') === 'day|week'
         && Array.from(doc.querySelectorAll('.timeline-type-selector .segmentedItem')).map(btn => `${btn.dataset.timelineView}:${btn.textContent.trim()}`).join('|') === 'rooms:Банкети|animators:Свята'
@@ -535,17 +540,26 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', '.schedule-command-center.toolbarContainer .schedule-command-zone--view .timeline-type-btn')
         && htmlContains('css/responsive.css', '.schedule-command-center.toolbarContainer .date-navigation-cluster .date-button-shell.toolbarGhostButton')
         && htmlContains('css/responsive.css', 'box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;'));
-    check('Timeline dashboard dark mode uses CRM surface background instead of pure black void',
+    check('Timeline dashboard background and toolbar hierarchy reduce passive neon noise',
         darkModeCss.includes('.timeline-dashboard-page.dark-mode')
         && darkModeCss.includes('--eg-app-bg: #101827')
         && !darkModeCss.includes('--eg-app-bg: #070B10')
-        && darkModeCss.includes('.timeline-dashboard-page .main-content')
-        && darkModeCss.includes('background: var(--eg-app-bg)')
-        && darkModeCss.includes('background-image:')
-        && darkModeCss.includes('color-mix(in srgb, var(--eg-grid-major) 22%, transparent)')
-        && darkModeCss.includes('repeating-linear-gradient(135deg, color-mix(in srgb, var(--eg-accent) 7%, transparent)')
-        && darkModeCss.includes('.timeline-dashboard-page.dark-mode .main-content')
-        && darkModeCss.includes('repeating-linear-gradient(135deg, color-mix(in srgb, var(--eg-accent) 8%, transparent)')
+        && timelineVisualHierarchyCss.includes('Task 5: timeline visual hierarchy reduces neon background noise.')
+        && timelineVisualHierarchyCss.includes('background: var(--eg-app-bg) !important')
+        && timelineVisualHierarchyCss.includes('rgba(100, 116, 139, 0.035)')
+        && timelineVisualHierarchyCss.includes('rgba(148, 163, 184, 0.035)')
+        && timelineVisualHierarchyCss.includes('body.timeline-dashboard-page .grid-cell:hover')
+        && timelineVisualHierarchyCss.includes('background: rgba(148, 163, 184, 0.10) !important')
+        && timelineVisualHierarchyCss.includes('body.timeline-dashboard-page .grid-cell.selected')
+        && timelineVisualHierarchyCss.includes('background: rgba(14, 165, 134, 0.14) !important')
+        && timelineVisualHierarchyCss.includes('body.timeline-dashboard-page.dark-mode .booking-block')
+        && timelineVisualHierarchyCss.includes('0 8px 18px rgba(2, 6, 23, 0.24)')
+        && timelineToolbarHierarchyCss.includes('Task 5: keep cyan for active timeline state, not passive hover.')
+        && timelineToolbarHierarchyCss.includes('--toolbar-hover-bg: rgba(71, 85, 105, 0.16)')
+        && timelineToolbarHierarchyCss.includes('body.timeline-dashboard-page .schedule-command-center .timeline-type-btn:hover:not(:disabled):not(.active):not(:focus-visible)')
+        && timelineToolbarHierarchyCss.includes('border-color: rgba(148, 163, 184, 0.22) !important')
+        && timelineToolbarHierarchyCss.includes('body.timeline-dashboard-page .schedule-command-center .timeline-type-btn.active')
+        && timelineToolbarHierarchyCss.includes('box-shadow: none !important')
         && !/\.timeline-dashboard-page \.main-content\s*\{[^}]*url\(/.test(darkModeCss));
     check('Timeline view panel opens as a collapsible shelf under the date command row',
         htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .header-content')
@@ -582,7 +596,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-view-panel[hidden]')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filters')
         && htmlContains('css/responsive.css', 'display: grid !important;')
-        && htmlContains('css/responsive.css', 'grid-template-columns: minmax(230px, 1.25fr) minmax(150px, 0.8fr) minmax(170px, 0.9fr) minmax(210px, 0.9fr)')
+        && htmlContains('css/responsive.css', 'grid-template-columns: minmax(230px, 1.25fr) minmax(150px, 0.8fr) minmax(210px, 0.9fr)')
         && htmlContains('css/responsive.css', 'grid-template-columns: minmax(220px, 1.1fr) minmax(150px, 0.8fr)')
         && htmlContains('css/responsive.css', 'gap: 9px')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .timeline-header-filter-group--status')
@@ -623,7 +637,7 @@ checkPage('index.html', (doc, html) => {
         && timelineViewPanelHiddenRule.includes('display: none !important')
         && timelineHeaderFiltersRule.includes('display: grid !important')
         && timelineInlineViewPanelRule.includes('display: flex !important')
-        && responsiveCss.includes('grid-template-columns: minmax(230px, 1.25fr) minmax(150px, 0.8fr) minmax(170px, 0.9fr) minmax(210px, 0.9fr) !important')
+        && responsiveCss.includes('grid-template-columns: minmax(230px, 1.25fr) minmax(150px, 0.8fr) minmax(210px, 0.9fr) !important')
         && responsiveCss.includes('grid-template-columns: minmax(220px, 1.1fr) minmax(150px, 0.8fr) !important')
         && timelineViewPanelResponsiveCss.includes('@media (max-width: 768px)')
         && responsiveCss.includes('grid-template-columns: 1fr !important')
@@ -647,15 +661,17 @@ checkPage('index.html', (doc, html) => {
     check('Timeline browser smoke guards header visibility and 15-minute geometry thresholds',
         timelineBrowserSmokeCode.includes('function assertTimelineHeaderAnd15MinuteGeometry')
         && timelineBrowserSmokeCode.includes('function assertTimelineViewPanelInteractions')
-        && timelineBrowserSmokeCode.includes('page.setViewportSize({ width: 2048, height: 1152 })')
+        && timelineBrowserSmokeCode.includes('page.setViewportSize({ width: 1920, height: 1080 })')
         && timelineBrowserSmokeCode.includes('{ width: 1920, height: 1080 }')
-        && timelineBrowserSmokeCode.includes('{ width: 1536, height: 864 }')
+        && timelineBrowserSmokeCode.includes('{ width: 1440, height: 900 }')
+        && timelineBrowserSmokeCode.includes('{ width: 1366, height: 768 }')
         && timelineBrowserSmokeCode.includes('{ width: 768, height: 900 }')
+        && timelineBrowserSmokeCode.includes('{ width: 430, height: 932 }')
         && timelineBrowserSmokeCode.includes('{ width: 390, height: 844 }')
         && timelineBrowserSmokeCode.includes("await page.locator('#timelineViewPanelToggle').click()")
         && timelineBrowserSmokeCode.includes('#timelineViewPanel .status-filter-btn[data-filter="confirmed"]')
         && timelineBrowserSmokeCode.includes('#timelineViewPanel [data-schedule-view-mode="week"]')
-        && timelineBrowserSmokeCode.includes('#timelineViewPanel [data-timeline-view="rooms"]')
+        && timelineBrowserSmokeCode.includes('[data-timeline-type-selector] [data-timeline-view="rooms"]')
         && timelineBrowserSmokeCode.includes('#timelineViewPanel .zoom-btn[data-zoom="${expected}"]')
         && timelineBrowserSmokeCode.includes("document.getElementById('timelineViewPanel')")
         && timelineBrowserSmokeCode.includes("document.getElementById('timelineViewPanelToggle')")
@@ -682,11 +698,13 @@ checkPage('index.html', (doc, html) => {
         && timelineBrowserSmokeCode.includes("metrics.visibleTimelineViewLabels.includes('Вигляд'), false")
         && timelineBrowserSmokeCode.includes('metrics.historyInTopbar, false')
         && timelineBrowserSmokeCode.includes('metrics.historyInViewPanel, true')
+        && timelineBrowserSmokeCode.includes('metrics.typeSwitchVisible, true')
+        && timelineBrowserSmokeCode.includes('metrics.typeSwitchInViewPanel, false')
         && timelineBrowserSmokeCode.includes("metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle'")
         && timelineBrowserSmokeCode.includes('metrics.utilityRowHeight <= 48')
         && timelineBrowserSmokeCode.includes('metrics.commandCenterHeight <= 96')
         && timelineBrowserSmokeCode.includes('metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64')
-        && timelineBrowserSmokeCode.includes('metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth, metrics.actionsWidth) + 32')
+        && timelineBrowserSmokeCode.includes('metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, metrics.actionsWidth) + 32')
         && timelineBrowserSmokeCode.includes('metrics.utilityRowHeight <= 104')
         && timelineBrowserSmokeCode.includes('metrics.commandCenterHeight <= 156')
         && timelineBrowserSmokeCode.includes('metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 96')
@@ -736,14 +754,54 @@ checkPage('index.html', (doc, html) => {
         && !doc.getElementById('digestBtn')
         && htmlContains('js/app.js', 'function syncTimelineStatusFilterButtons')
         && htmlContains('js/app.js', 'function syncTimelineCompactToggleAria')
+        && htmlContains('js/app.js', 'function syncTimelineViewPanelBadge')
         && htmlContains('js/timeline.js', "b.setAttribute('aria-pressed', active ? 'true' : 'false')")
         && htmlContains('js/ui.js', "btn.setAttribute('aria-pressed', active ? 'true' : 'false')")
         && htmlContains('css/responsive.css', ':focus-visible')
         && htmlContains('css/responsive.css', 'box-shadow: 0 0 0 3px var(--toolbar-focus-ring) !important;'));
+    check('Timeline filter trigger uses a stable default-state badge contract',
+        !!doc.querySelector('#timelineViewPanelToggle #timelineViewPanelBadge.timeline-filter-badge[data-filter-badge][aria-hidden="true"]')
+        && doc.querySelector('#timelineViewPanelToggle')?.textContent.trim() === 'Фільтри'
+        && htmlContains('js/app.js', 'function getTimelineDefaultZoomLevel')
+        && htmlContains('js/app.js', 'function getTimelineViewPanelActiveFilterCount')
+        && htmlContains('js/app.js', "const status = String(AppState.statusFilter || 'all')")
+        && htmlContains('js/app.js', "if (getTimelineShelfPeriodMode() !== 'day') count += 1")
+        && htmlContains('js/app.js', 'const defaultZoom = getTimelineDefaultZoomLevel()')
+        && htmlContains('js/app.js', "toggle.classList.toggle('has-active-filters', active)")
+        && htmlContains('js/app.js', "toggle.dataset.filterCount = String(count)")
+        && htmlContains('js/app.js', "toggle.setAttribute('data-filter-state', active ? 'custom' : 'default')")
+        && htmlContains('js/app.js', "badge.textContent = active ? String(count) : ''")
+        && htmlContains('js/app.js', 'window.syncTimelineViewPanelBadge = syncTimelineViewPanelBadge')
+        && htmlContains('js/app.js', 'syncTimelineViewPanelBadge();')
+        && htmlContains('css/responsive.css', '.timeline-filter-badge')
+        && htmlContains('css/responsive.css', 'width: 16px')
+        && htmlContains('css/responsive.css', 'min-width: 16px')
+        && htmlContains('css/responsive.css', 'visibility: hidden')
+        && htmlContains('css/responsive.css', '.timeline-header-view-btn.has-active-filters .timeline-filter-badge')
+        && htmlContains('css/responsive.css', '.timeline-header-view-btn.has-active-filters')
+        && htmlContains('css/responsive.css', '.schedule-command-row--utility #todayBtn')
+        && htmlContains('css/responsive.css', 'background: transparent !important')
+        && htmlContains('css/responsive.css', '.date-button-shell.toolbarGhostButton #timelineDate')
+        && timelineBrowserSmokeCode.includes('readFilterBadgeState')
+        && timelineBrowserSmokeCode.includes("filter badge starts at zero in default state")
+        && timelineBrowserSmokeCode.includes("filter badge counts non-default status")
+        && timelineBrowserSmokeCode.includes("filter badge counts non-default week period")
+        && timelineBrowserSmokeCode.includes("filter badge reflects zoom default state"));
+    check('Timeline segmented controls avoid native title tooltips and press transforms',
+        Array.from(doc.querySelectorAll('.schedule-command-center :is(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn)')).length === 10
+        && Array.from(doc.querySelectorAll('.schedule-command-center :is(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn)')).every(btn => !btn.hasAttribute('title'))
+        && Array.from(doc.querySelectorAll('.schedule-command-center :is(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn)')).every(btn => btn.hasAttribute('aria-label'))
+        && !doc.querySelector('.period-btn[data-schedule-view-mode="week"][title]')
+        && !doc.querySelector('.timeline-header-filters [title]')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .schedule-command-center :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn):where(:hover, :focus, :focus-visible, :active)')
+        && htmlContains('css/responsive.css', 'transform: none !important;'));
     check('Timeline header filter accessibility keeps semantic tab order and decorative icons quiet',
         Array.from(doc.querySelectorAll('.timeline-header-filters :is(button, input)')).map(el => (
             el.id || el.dataset.filter || el.dataset.scheduleViewMode || el.dataset.timelineView || el.dataset.zoom || el.textContent.trim()
-        )).join('|') === 'all|confirmed|preliminary|day|week|rooms|animators|15|30|60'
+        )).join('|') === 'all|confirmed|preliminary|day|week|15|30|60'
+        && Array.from(doc.querySelectorAll('.schedule-command-row--utility [data-timeline-type-selector] :is(button, input)')).map(el => (
+            el.id || el.dataset.timelineView || el.textContent.trim()
+        )).join('|') === 'rooms|animators'
         && Array.from(doc.querySelectorAll('.header :is(button, input, [tabindex="0"])')).map(el => (
             el.id || el.dataset.filter || el.dataset.scheduleViewMode || el.dataset.timelineView || el.dataset.zoom || el.textContent.trim()
         )).includes('logoutBtn')
@@ -1889,6 +1947,7 @@ const timelineConfigCode = fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf
 const timelineConstructorCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
 const controlsCss = fs.readFileSync(path.join(ROOT, 'css/controls.css'), 'utf8');
 const timelineSettingsCss = fs.readFileSync(path.join(ROOT, 'css/timeline-settings.css'), 'utf8');
+const timelineInlineViewPanelRuleGlobal = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel');
 const timelineBaseCellWidthBlock = sourceBlock(uiCode, 'function _timelineBaseCellWidth', 'function _timelineViewportWidth');
 const timelineBaseCellWidthRows = [...timelineBaseCellWidthBlock.matchAll(/return\s+level\s*===\s*15\s*\?\s*(\d+)\s*:\s*level\s*===\s*30\s*\?\s*(\d+)\s*:\s*(\d+);/g)]
     .map(match => match.slice(1).map(Number));
@@ -2333,6 +2392,48 @@ check('Timeline add animator lane spans content while CTA stays visible-centered
     && timelineConstructorCss.includes('.btn-add-line-big--centered-cta > span')
     && timelineConstructorCss.includes('transform: translateX(var(--timeline-add-cta-x, 0px))')
     && timelineConstructorCss.includes('.btn-add-line-big--icon-only > span:not(:first-child)'));
+check('Timeline secondary UX keeps add animator, Afisha, and empty cells quiet',
+    timelineCode.includes('function formatAfishaEventCount(count)')
+    && timelineCode.includes('const afishaEventLabel = formatAfishaEventCount(events.length)')
+    && timelineCode.includes('<span class="line-name">🎪 Афіша</span>')
+    && timelineCode.includes('<span class="line-sub"><span class="afisha-line-count">${afishaEventLabel}</span>${distBtnHtml}</span>')
+    && !timelineCode.includes('birthdayLabel')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .btn-add-line-big')
+    && timelineConstructorCss.includes('min-height: 44px !important')
+    && timelineConstructorCss.includes('border-style: dashed !important')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .afisha-timeline-line .afisha-line-header')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .afisha-line-count')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .afisha-dist-btn')
+    && cssRuleText(timelineConstructorCss, '.grid-cell').includes('position: relative')
+    && timelineConstructorCss.includes('.grid-cell::after')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .line-grid .grid-cell:not([data-line="afisha"]):hover::after')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .line-grid .grid-cell[data-line="afisha"]::after')
+    && timelineCode.includes("cell.dataset.line !== 'afisha'")
+    && timelineCode.includes("contextSource: 'timeline_empty_cell'"));
+check('Timeline overlays use singleton tooltip and modal-safe stacking',
+    !htmlContains('index.html', 'id="bookingTooltip"')
+    && uiCode.includes('window.ensureBookingTooltip = function ensureBookingTooltip()')
+    && uiCode.includes("tooltip.setAttribute('role', 'tooltip')")
+    && uiCode.includes("tooltip.setAttribute('aria-hidden', hidden ? 'true' : 'false')")
+    && uiCode.includes('tooltip.hidden = false')
+    && timelineCode.includes('function ensureTimelineBookingTooltip()')
+    && timelineCode.includes('const tooltip = ensureTimelineBookingTooltip()')
+    && timelineCode.includes('function timelineTooltipSuppressed()')
+    && timelineCode.includes('|| _banquetLinkDraft')
+    && timelineCode.includes('|| _afishaDragState')
+    && timelineConstructorCss.includes('--timeline-overlay-dropdown-z: 22000')
+    && timelineConstructorCss.includes('--timeline-overlay-menu-z: 22100')
+    && timelineConstructorCss.includes('--timeline-overlay-tooltip-z: 29000')
+    && cssRuleText(timelineConstructorCss, '.booking-tooltip').includes('z-index: var(--timeline-overlay-tooltip-z, 29000)')
+    && cssRuleText(timelineConstructorCss, '.booking-tooltip').includes('pointer-events: none')
+    && timelineConstructorCss.includes('.booking-tooltip[hidden]')
+    && responsiveCss.includes('z-index: var(--timeline-overlay-dropdown-z, 22000) !important')
+    && responsiveCss.includes('z-index: var(--timeline-overlay-menu-z, 22100) !important')
+    && timelineInlineViewPanelRuleGlobal.includes('position: relative !important')
+    && timelineInlineViewPanelRuleGlobal.includes('z-index: auto !important')
+    && globalModalsCss.includes('z-index: var(--z-modal, 30000)')
+    && globalModalsCss.includes('z-index: var(--z-modal-confirm, 30100)')
+    && htmlContains('tests/timeline-lifecycle.test.js', 'booking tooltip lifecycle creates one accessible singleton without pre-rendered HTML'));
 check('Timeline scale rows and add zone share a dynamic width contract',
     timelineCode.includes('function timelineRangeBoundMinutes(value)')
     && timelineCode.includes('function syncTimelineContentWidth(date, anchor)')
@@ -2399,7 +2500,37 @@ check('Timeline compact fit-screen width uses interval cells without adding the 
     && timelineFitCellWidthBlock.includes('const cells = _timelineRangeCellCount(range, level)')
     && !timelineFitCellWidthBlock.includes('+ 1')
     && !timelineFitCellWidthBlock.includes('range.end - range.start'));
-check('Timeline now-line is measured to rows instead of covering the sticky time scale', uiCode.includes("document.getElementById('timelineLines')") && uiCode.includes('timelineLines.scrollHeight') && uiCode.includes('--timeline-now-line-top') && uiCode.includes('--timeline-now-line-height') && timelineConstructorCss.includes('top: var(--timeline-now-line-top, 0)') && timelineConstructorCss.includes('height: var(--timeline-now-line-height, 100%)') && !timelineConstructorCss.includes('.now-line-global {\n    position: absolute;\n    top: 0;\n    bottom: 0;'));
+check('Timeline now-line is measured to rows instead of covering the sticky time scale',
+    uiCode.includes("document.getElementById('timelineLines')")
+    && uiCode.includes('timelineLines.scrollHeight')
+    && uiCode.includes('timelineMinutesToPixels(nowMin - startMin, gridAnchor)')
+    && uiCode.includes('gridRect.left - scrollRect.left + timelineScroll.scrollLeft + left')
+    && uiCode.includes('--timeline-now-line-top')
+    && uiCode.includes('--timeline-now-line-height')
+    && timelineConstructorCss.includes('top: var(--timeline-now-line-top, 0)')
+    && timelineConstructorCss.includes('height: var(--timeline-now-line-height, 100%)')
+    && timelineConstructorCss.includes('--timeline-now-line-width: 1px')
+    && timelineConstructorCss.includes('z-index: var(--timeline-now-line-z, 15)')
+    && timelineConstructorCss.includes('transform: translateX(-50%)')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .timeline-scroll .now-line-global')
+    && !timelineConstructorCss.includes('.now-line-global {\n    position: absolute;\n    top: 0;\n    bottom: 0;'));
+check('Timeline grid marks and now-line share measured geometry',
+    timelineCode.includes('function timelineGridMarkKind(totalMinutes)')
+    && timelineCode.includes('const markKind = timelineGridMarkKind(displayMinutes)')
+    && timelineCode.includes('const gridWidth = Math.ceil(geometry?.gridWidth || (timelineRangeCellCount(date) * cellWidth))')
+    && timelineCode.includes("mark.dataset.markKind = entry.markKind || 'minor'")
+    && timelineCode.includes('data-grid-mark="${markKind}"')
+    && timelineConstructorCss.includes('--timeline-grid-minor-line')
+    && timelineConstructorCss.includes('--timeline-grid-half-line')
+    && timelineConstructorCss.includes('--timeline-grid-hour-line')
+    && timelineConstructorCss.includes('.time-mark.minor')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .line-grid .grid-cell[data-grid-mark="hour"]')
+    && timelineConstructorCss.includes('body.timeline-dashboard-page .line-grid .grid-cell[data-grid-mark="half"]')
+    && cssRuleText(timelineConstructorCss, '.grid-cell').includes('box-sizing: border-box')
+    && cssRuleText(timelineConstructorCss, '.grid-cell.hour').includes('border-right: 1px solid')
+    && !cssRuleText(timelineConstructorCss, '.grid-cell.hour').includes('border-right: 2px')
+    && !/\.timeline-container\[data-zoom="(?:30|60)"\] \.grid-cell,\s*[\r\n]+\.timeline-container\[data-zoom="(?:30|60)"\] \.time-mark/.test(controlsCss)
+    && htmlContains('tests/timeline-release-proof.test.js', 'timeline release proof stack covers grid mark and now-line geometry regressions'));
 check('Timeline period selector and timeline type selector stay separate',
     htmlContains('index.html', 'data-schedule-view-mode="day"')
     && htmlContains('index.html', 'data-schedule-view-mode="week"')
@@ -2536,6 +2667,31 @@ check('Shared formModal keeps actions on-screen on tall forms', uiCode.includes(
 check('Timeline canvas exports have mobile Safari fallback instead of raw toDataURL downloads', uiCode.includes('openTouchImageExportWindow') && uiCode.includes('finishCanvasImageExport') && uiCode.includes('timeline_canvas_context_unavailable') && !uiCode.includes("link.href = canvas.toDataURL('image/png')"));
 check('Timeline image export uses room-aware line booking matching', uiCode.includes('function getTimelineExportLineBookings') && uiCode.includes('timelineBookingsForLine(bookings, line)') && uiCode.includes('normalizeTimelineExportBookings') && uiCode.includes('normalizeTimelineExportLines') && uiCode.includes('getTimelineExportLineBookings(dd.bookings, line)') && !uiCode.includes("String(b.lineId || '') === String(line.id || '')"));
 check('Sidebar visual contract defines command deck, focus chips, and quiet nav states', sidebarAuroraCss.includes('.sidebar-command-deck') && sidebarAuroraCss.includes('.focus-chip') && sidebarAuroraCss.includes('.nav-status') && sidebarAuroraCss.includes('.sidebar-group-signal') && sidebarAuroraCss.includes('display: none !important'));
+check('Sidebar status colors use semantic tones after late sidebar layers',
+    sidebarCode.includes('function _navStatusToneFor(item)')
+    && sidebarCode.includes('data-sidebar-status-tone')
+    && sidebarCode.includes("case 'tasks':")
+    && sidebarCode.includes("case 'leads':")
+    && sidebarCode.includes("case 'chat':")
+    && sidebarCode.includes("case 'omni':")
+    && sidebarCode.includes("_setFocusChipOperationalState(widget, displayCount, { kind: 'leads', hot: actionCount > 0 });")
+    && !sidebarCode.includes("hot: actionCount > 0 || newCount > 0")
+    && sidebarAuroraCss.includes('Task 9: final semantic sidebar status colors')
+    && sidebarAuroraCss.includes('--sb-semantic-critical')
+    && sidebarAuroraCss.includes('--sb-semantic-warning')
+    && sidebarAuroraCss.includes('--sb-semantic-success')
+    && sidebarAuroraCss.includes('--sb-semantic-neutral')
+    && sidebarAuroraCss.includes('[data-sidebar-status-tone="critical"]')
+    && sidebarAuroraCss.includes('[data-sidebar-status-tone="warning"]')
+    && sidebarAuroraCss.includes('[data-sidebar-status-tone="neutral"]')
+    && sidebarAuroraCss.includes('.nav-badge[data-badge-type="unread"]')
+    && sidebarAuroraCss.includes('.nav-badge[data-badge-type="leads_new"]')
+    && sidebarAuroraCss.includes('.nav-badge[data-badge-type="alerts"]')
+    && sidebarAuroraCss.includes('.sidebar-group-signal.is-hot')
+    && sidebarAuroraCss.includes('.sidebar-group-signal.is-critical')
+    && sidebarAuroraCss.includes('.focus-chip--tasks.has-overdue')
+    && sidebarAuroraCss.includes('.focus-chip--funnel.has-new:not(.has-action)')
+    && sidebarAuroraCss.includes('.focus-chip-task-part--done'));
 check('Sidebar v0.61.22 refresh covers light, dark, active, and collapsed rail states', sidebarAuroraCss.includes('v0.61.22: global sidebar theme refresh') && sidebarAuroraCss.includes('--sb-polish-active') && sidebarAuroraCss.includes('body:not(.dark-mode) .sidebar-nav') && sidebarAuroraCss.includes('body.dark-mode .sidebar-nav') && sidebarAuroraCss.includes('.sidebar-nav.collapsed .sidebar-mini-link.active') && sidebarAuroraCss.includes('box-shadow: inset 3px 0 0 var(--sb-enterprise-accent)'));
 check('Timeline legacy menu cleanup self-hides empty contextual action menu', layoutCss.includes('v0.61.22: timeline action menu cleanup') && layoutCss.includes('.admin-dropdown.is-empty') && appCode.includes('function refreshTimelineActionMenuVisibility') && appCode.includes('sidebar owns navigation') && !appCode.includes("document.getElementById('afishaBtn')"));
 check('Timeline action menu lifecycle force-closes stale toolbar overlays after refresh', appCode.includes('function setTimelineActionMenuOpen') && appCode.includes('function closeTimelineActionMenu') && appCode.includes('function normalizeTimelineToolbarTransientState') && appCode.includes('content.hidden = !nextOpen') && appCode.includes("content.setAttribute('aria-hidden'") && appCode.includes('dataset.timelineActionMenuBound') && timelineCode.includes("normalizeTimelineToolbarTransientState('render-start')") && timelineCode.includes("refreshTimelineActionMenuVisibility({ forceClosed: true, reason: 'render-actions' })") && timelineCode.includes("normalizeTimelineToolbarTransientState('render-complete')") && layoutCss.includes('v0.73.1: closed Timeline action menu must leave no toolbar ghost block') && layoutCss.includes('.dropdown-content[hidden]') && layoutCss.includes('.dropdown-content[aria-hidden=\"true\"]') && layoutCss.includes('.is-open .dropdown-content'));

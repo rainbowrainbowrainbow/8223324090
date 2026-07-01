@@ -133,3 +133,23 @@ test('timeline release proof stack covers start and end marker alignment regress
     assert.ok(regressionMatrixTest.includes("options\\.edge === 'start' \\? -\\(safeWidth \\/ 2\\) : 0"));
     assert.match(uiCheck, /Timeline time marker collision resolver handles start and end edges/);
 });
+
+test('timeline release proof stack covers grid mark and now-line geometry regressions', () => {
+    const timeline = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
+    const timelineCss = fs.readFileSync(path.join(ROOT, 'css', 'timeline.css'), 'utf8');
+    const controlsCss = fs.readFileSync(path.join(ROOT, 'css', 'controls.css'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+    const regressionMatrixTest = fs.readFileSync(path.join(ROOT, 'tests', 'timeline-regression-matrix.test.js'), 'utf8');
+    const uiCheck = fs.readFileSync(path.join(ROOT, 'tests', 'ui-check.js'), 'utf8');
+
+    assert.match(timeline, /function timelineGridMarkKind\(totalMinutes\)/);
+    assert.match(timeline, /data-grid-mark="\$\{markKind\}"/);
+    assert.match(timeline, /mark\.dataset\.markKind = entry\.markKind \|\| 'minor'/);
+    assert.match(timelineCss, /body\.timeline-dashboard-page \.line-grid \.grid-cell\[data-grid-mark="hour"\]/);
+    assert.doesNotMatch(timelineCss, /\.grid-cell\.hour\s*\{[\s\S]*border-right:\s*2px/);
+    assert.doesNotMatch(controlsCss, /\.timeline-container\[data-zoom="(?:30|60)"\] \.grid-cell,\s*[\r\n]+\.timeline-container\[data-zoom="(?:30|60)"\] \.time-mark/);
+    assert.match(timelineCss, /\.now-line-global\s*\{[\s\S]*transform: translateX\(-50%\)/);
+    assert.match(ui, /gridRect\.left - scrollRect\.left \+ timelineScroll\.scrollLeft \+ left/);
+    assert.match(regressionMatrixTest, /grid mark and now-line geometry/);
+    assert.match(uiCheck, /Timeline grid marks and now-line share measured geometry/);
+});

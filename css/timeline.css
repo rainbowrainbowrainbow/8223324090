@@ -6,6 +6,12 @@
    MULTI-DAY TIMELINE
    ========================================== */
 
+body.timeline-dashboard-page {
+    --timeline-overlay-dropdown-z: 22000;
+    --timeline-overlay-menu-z: 22100;
+    --timeline-overlay-tooltip-z: 29000;
+}
+
 .multi-day-container {
     display: flex;
     flex-direction: column;
@@ -203,6 +209,19 @@
     --timeline-scroll-pad: 20px;
     --timeline-content-width: 100%;
     --timeline-grid-width: max-content;
+    --timeline-grid-minor-line: rgba(148, 163, 184, 0.10);
+    --timeline-grid-half-line: rgba(100, 116, 139, 0.16);
+    --timeline-grid-hour-line: rgba(71, 85, 105, 0.24);
+    --timeline-grid-hour-shadow: rgba(71, 85, 105, 0.10);
+    --timeline-grid-hover-bg: rgba(148, 163, 184, 0.09);
+    --timeline-grid-selected-bg: rgba(14, 165, 134, 0.14);
+    --timeline-grid-selected-ring: rgba(14, 165, 134, 0.22);
+    --timeline-time-minor-text: rgba(100, 116, 139, 0.54);
+    --timeline-time-half-text: rgba(100, 116, 139, 0.68);
+    --timeline-time-hour-text: rgba(51, 65, 85, 0.92);
+    --timeline-now-line-width: 1px;
+    --timeline-now-line-color: rgba(239, 68, 68, 0.72);
+    --timeline-now-line-z: 15;
     padding: var(--timeline-scroll-pad, 20px);
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
@@ -266,7 +285,7 @@
     text-align: center;
     font-size: 10px;
     font-weight: 600;
-    color: var(--gray-400);
+    color: var(--timeline-time-minor-text, var(--gray-400));
     position: absolute;
     left: var(--time-mark-label-left, 0);
     top: 1px;
@@ -277,14 +296,21 @@
 }
 
 .time-mark.hour {
-    color: var(--gray-700);
+    color: var(--timeline-time-hour-text, var(--gray-700));
     font-size: 12px;
     font-weight: 800;
 }
 
 .time-mark.half {
-    color: var(--gray-400);
+    color: var(--timeline-time-half-text, var(--gray-400));
     font-size: 10px;
+    font-weight: 700;
+}
+
+.time-mark.minor {
+    color: var(--timeline-time-minor-text, var(--gray-400));
+    font-size: 9px;
+    font-weight: 600;
 }
 
 .time-scale .time-mark.start-mark {
@@ -416,25 +442,174 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
 .grid-cell {
     width: 50px;
     min-width: 50px;
-    border-right: 1px solid var(--gray-100);
+    box-sizing: border-box;
+    position: relative;
+    border-right: 1px solid var(--timeline-grid-minor-line, var(--gray-100));
     cursor: pointer;
+    overflow: hidden;
     transition: background var(--speed-fast);
 }
 
+.grid-cell::after {
+    content: "";
+    position: absolute;
+    inset: 6px 7px;
+    border: 1px dashed transparent;
+    border-radius: 6px;
+    background: transparent;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.96);
+    transition:
+        opacity var(--speed-fast) var(--ease-smooth),
+        transform var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        background var(--speed-fast) var(--ease-smooth);
+}
+
 .grid-cell:hover {
-    background: rgba(16,185,129,0.1);
+    background: var(--timeline-grid-hover-bg, rgba(16,185,129,0.1));
+}
+
+.grid-cell:hover::after {
+    opacity: 1;
+    transform: scale(1);
 }
 
 .grid-cell.selected {
-    background: rgba(16,185,129,0.2);
+    background: var(--timeline-grid-selected-bg, rgba(16,185,129,0.2));
+    box-shadow: inset 0 0 0 1px var(--timeline-grid-selected-ring, rgba(16,185,129,0.24));
+}
+
+.grid-cell.selected::after {
+    opacity: 0;
 }
 
 .grid-cell.hour {
-    border-right: 2px solid var(--gray-200);
+    border-right: 1px solid var(--timeline-grid-hour-line, var(--gray-200));
+    box-shadow: inset -1px 0 0 var(--timeline-grid-hour-shadow, rgba(15, 23, 42, 0.06));
 }
 
 .grid-cell.half {
-    border-right: 1px dashed var(--gray-200);
+    border-right: 1px dashed var(--timeline-grid-half-line, var(--gray-200));
+}
+
+.grid-cell.minor {
+    border-right-color: var(--timeline-grid-minor-line, var(--gray-100));
+}
+
+body.timeline-dashboard-page .line-grid .grid-cell,
+body.timeline-dashboard-page .pending-grid .grid-cell {
+    border-right: 1px solid var(--timeline-grid-minor-line, var(--eg-grid-minor, rgba(148, 163, 184, 0.10))) !important;
+}
+
+body.timeline-dashboard-page .line-grid .grid-cell[data-grid-mark="half"],
+body.timeline-dashboard-page .pending-grid .grid-cell[data-grid-mark="half"] {
+    border-right: 1px dashed var(--timeline-grid-half-line, rgba(100, 116, 139, 0.16)) !important;
+}
+
+body.timeline-dashboard-page .line-grid .grid-cell[data-grid-mark="hour"],
+body.timeline-dashboard-page .pending-grid .grid-cell[data-grid-mark="hour"] {
+    border-right: 1px solid var(--timeline-grid-hour-line, var(--eg-grid-major, rgba(71, 85, 105, 0.24))) !important;
+    box-shadow: inset -1px 0 0 var(--timeline-grid-hour-shadow, rgba(71, 85, 105, 0.10)) !important;
+}
+
+body.timeline-dashboard-page .line-grid .grid-cell:not([data-line="afisha"]):hover::after {
+    border-color: rgba(14, 165, 134, 0.22);
+    background: rgba(14, 165, 134, 0.055);
+}
+
+body.timeline-dashboard-page .line-grid .grid-cell[data-line="afisha"] {
+    cursor: default;
+}
+
+body.timeline-dashboard-page .line-grid .grid-cell[data-line="afisha"]::after {
+    display: none;
+}
+
+body.timeline-dashboard-page .afisha-timeline-line {
+    background: rgba(139, 92, 246, 0.035);
+    border-bottom-color: rgba(139, 92, 246, 0.12) !important;
+}
+
+body.timeline-dashboard-page .afisha-timeline-line .afisha-line-header {
+    background: rgba(139, 92, 246, 0.07) !important;
+    border-left-color: rgba(139, 92, 246, 0.48) !important;
+    cursor: default;
+}
+
+body.timeline-dashboard-page .afisha-timeline-line .afisha-line-header .line-name {
+    color: var(--gray-700, #334155) !important;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+body.timeline-dashboard-page .afisha-timeline-line .afisha-line-header .line-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: var(--gray-500, #64748B) !important;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+body.timeline-dashboard-page .afisha-line-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.timeline-dashboard-page .afisha-line-grid {
+    background: rgba(139, 92, 246, 0.025);
+}
+
+body.timeline-dashboard-page .afisha-line-grid .grid-cell:hover {
+    background: rgba(139, 92, 246, 0.035) !important;
+}
+
+body.timeline-dashboard-page .afisha-dist-btn {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid rgba(139, 92, 246, 0.22);
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.06);
+    color: #6D28D9;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+    transform: none;
+    transition:
+        background var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        color var(--speed-fast) var(--ease-smooth);
+}
+
+body.timeline-dashboard-page .afisha-dist-btn:hover,
+body.timeline-dashboard-page .afisha-dist-btn:focus-visible {
+    border-color: rgba(109, 40, 217, 0.38);
+    background: rgba(139, 92, 246, 0.12);
+    color: #5B21B6;
+    outline: none;
+}
+
+body.timeline-dashboard-page .afisha-dist-btn:focus-visible {
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+body.timeline-dashboard-page .afisha-undist-btn {
+    border-color: rgba(100, 116, 139, 0.24);
+    background: rgba(100, 116, 139, 0.06);
+    color: var(--gray-500, #64748B);
 }
 
 /* ==========================================
@@ -2995,6 +3170,37 @@ html[data-theme="dark"] .booking-block .booking-block-room {
     white-space: nowrap;
 }
 
+body.timeline-dashboard-page .btn-add-line-big {
+    min-height: 44px !important;
+    padding: 11px 14px !important;
+    border: 1px dashed rgba(100, 116, 139, 0.34) !important;
+    border-radius: 10px !important;
+    background: rgba(148, 163, 184, 0.065) !important;
+    color: var(--gray-600, #475569) !important;
+    font-weight: 760 !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .btn-add-line-big:hover,
+body.timeline-dashboard-page .btn-add-line-big:focus-visible {
+    border-style: dashed !important;
+    border-color: rgba(14, 165, 134, 0.34) !important;
+    background: rgba(14, 165, 134, 0.075) !important;
+    color: var(--primary-dark, #047857) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+body.timeline-dashboard-page .btn-add-line-big span:first-child {
+    width: 22px;
+    height: 22px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 18px;
+    line-height: 1;
+}
+
 .btn-add-line-big--compact-cta {
     gap: 6px;
 }
@@ -3157,10 +3363,12 @@ html[data-theme="dark"] .booking-block .booking-block-room {
     position: absolute;
     top: var(--timeline-now-line-top, 0);
     height: var(--timeline-now-line-height, 100%);
-    width: 1.5px;
-    background: rgba(239, 68, 68, 0.45);
-    z-index: 15;
+    width: var(--timeline-now-line-width, 1px);
+    background: var(--timeline-now-line-color, rgba(239, 68, 68, 0.62));
+    z-index: var(--timeline-now-line-z, 15);
     pointer-events: none;
+    transform: translateX(-50%);
+    transform-origin: top center;
 }
 
 /* Legacy per-grid now-line (kept for backward compat but no longer generated) */
@@ -3168,20 +3376,34 @@ html[data-theme="dark"] .booking-block .booking-block-room {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 1.5px;
-    background: rgba(239, 68, 68, 0.45);
-    z-index: 15;
+    width: var(--timeline-now-line-width, 1px);
+    background: var(--timeline-now-line-color, rgba(239, 68, 68, 0.62));
+    z-index: var(--timeline-now-line-z, 15);
     pointer-events: none;
+    transform: translateX(-50%);
+    transform-origin: top center;
 }
 
 .now-line-top {
     position: absolute;
     bottom: -6px;
-    width: 1.5px;
+    width: var(--timeline-now-line-width, 1px);
     height: 20px;
-    background: rgba(239, 68, 68, 0.45);
-    z-index: 15;
+    background: var(--timeline-now-line-color, rgba(239, 68, 68, 0.62));
+    z-index: var(--timeline-now-line-z, 15);
     pointer-events: none;
+    transform: translateX(-50%);
+    transform-origin: bottom center;
+}
+
+body.timeline-dashboard-page .timeline-scroll .now-line-global,
+body.timeline-dashboard-page .line-grid .now-line,
+body.timeline-dashboard-page .time-scale .now-line-top {
+    width: var(--timeline-now-line-width, 1px) !important;
+    background: var(--eg-danger, #EF4444) !important;
+    opacity: 0.82;
+    z-index: var(--timeline-now-line-z, 15) !important;
+    transform: translateX(-50%);
 }
 
 /* ==========================================
@@ -3190,7 +3412,7 @@ html[data-theme="dark"] .booking-block .booking-block-room {
 
 .booking-tooltip {
     position: absolute;
-    z-index: var(--z-tooltip);
+    z-index: var(--timeline-overlay-tooltip-z, 29000);
     background: linear-gradient(135deg, var(--gray-800) 0%, var(--gray-900) 100%);
     color: var(--white);
     padding: 12px 16px;
@@ -3202,6 +3424,12 @@ html[data-theme="dark"] .booking-block .booking-block-room {
     pointer-events: none;
     white-space: normal;
     border: 1px solid rgba(255,255,255,0.08);
+}
+
+.booking-tooltip.hidden,
+.booking-tooltip[hidden],
+.booking-tooltip[aria-hidden="true"] {
+    display: none !important;
 }
 
 /* ==========================================

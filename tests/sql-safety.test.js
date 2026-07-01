@@ -4,7 +4,16 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { safeOrderBy, safeTableName, safeSets } = require('../utils/sqlSafe');
+
+const ROOT = path.join(__dirname, '..');
+const MIGRATIONS_DIR = path.join(ROOT, 'db', 'migrations');
+
+function readMigration(file) {
+    return fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+}
 
 describe('safeOrderBy', () => {
     const allowed = {
@@ -109,5 +118,38 @@ describe('safeSets', () => {
         assert.ok(result.sets[1].includes('$4'));
         assert.ok(result.sets[2].includes('$5'));
         assert.equal(result.nextIdx, 6);
+    });
+});
+
+describe('lead migration prerequisites', () => {
+    it('keeps leads.updated_at schema support independent of the 261 data-fix', () => {
+        const migration261 = readMigration('261_leads_customer_card_canonical_customers.sql');
+        const migrationFiles = fs.readdirSync(MIGRATIONS_DIR).filter(file => file.endsWith('.sql'));
+        const supportMigrations = migrationFiles
+            .filter(file => file !== '261_leads_customer_card_canonical_customers.sql')
+            .map(file => ({ file, sql: readMigration(file) }))
+            .filter(({ sql }) => (
+                /MIGRATION_KIND:\s*schema/i.test(sql)
+                && /ALTER\s+TABLE\s+leads/i.test(sql)
+                && /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+updated_at\s+TIMESTAMPTZ/i.test(sql)
+            ));
+
+        assert.match(migration261, /MIGRATION_KIND:\s*data-fix/i);
+        assert.match(migration261, /updated_at\s*=\s*NOW\(\)/i);
+        assert.doesNotMatch(
+            migration261,
+            /\b(?:ALTER\s+TABLE|CREATE\s+(?:TABLE|INDEX)|DROP\s+TABLE)\b/i,
+            'migration 261 must remain a skippable data-fix so later independent schema migrations can run'
+        );
+
+        assert.equal(
+            supportMigrations.some(({ file }) => file === '274_add_leads_updated_at.sql'),
+            true,
+            'leads.updated_at must be created by a dedicated schema migration outside migration 261'
+        );
+
+        const supportSql = supportMigrations.map(({ sql }) => sql).join('\n');
+        assert.match(supportSql, /UPDATE\s+leads\s+SET\s+updated_at\s*=\s*COALESCE\(created_at::timestamptz,\s*NOW\(\)\)\s+WHERE\s+updated_at\s+IS\s+NULL/i);
+        assert.match(supportSql, /ALTER\s+TABLE\s+leads[\s\S]*ALTER\s+COLUMN\s+updated_at\s+SET\s+DEFAULT\s+NOW\(\)/i);
     });
 });

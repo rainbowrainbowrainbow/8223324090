@@ -4640,3 +4640,159 @@ body.timeline-dashboard-page.timeline-compact-mode .btn-add-line-big span:first-
         flex-wrap: wrap;
     }
 }
+
+/* Task 5: timeline visual hierarchy reduces neon background noise. */
+body.timeline-dashboard-page {
+    --eg-timeline-bg: #F6F8FB;
+    --eg-timeline-row-bg: #F2F5F9;
+    --eg-timeline-row-header-bg: #EEF2F7;
+    --eg-grid-major: rgba(71, 85, 105, 0.14);
+    --eg-grid-minor: rgba(100, 116, 139, 0.055);
+}
+
+body.timeline-dashboard-page.dark-mode,
+body.dark-mode.timeline-dashboard-page,
+html[data-theme="dark"] body.timeline-dashboard-page {
+    --eg-timeline-bg: #121A27;
+    --eg-timeline-row-bg: rgba(30, 41, 59, 0.56);
+    --eg-timeline-row-header-bg: rgba(148, 163, 184, 0.07);
+    --eg-grid-major: rgba(148, 163, 184, 0.13);
+    --eg-grid-minor: rgba(148, 163, 184, 0.045);
+}
+
+body.timeline-dashboard-page .main-content {
+    background: var(--eg-app-bg) !important;
+    background-image:
+        linear-gradient(rgba(100, 116, 139, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 116, 139, 0.026) 1px, transparent 1px) !important;
+    background-size: 56px 56px, 56px 56px !important;
+    background-position: 0 0, 0 0 !important;
+}
+
+body.timeline-dashboard-page.dark-mode .main-content,
+body.dark-mode.timeline-dashboard-page .main-content,
+html[data-theme="dark"] body.timeline-dashboard-page .main-content {
+    background-image:
+        linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.022) 1px, transparent 1px) !important;
+}
+
+body.timeline-dashboard-page .timeline-container {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-color: rgba(148, 163, 184, 0.22) !important;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .timeline-container,
+body.dark-mode.timeline-dashboard-page .timeline-container,
+html[data-theme="dark"] body.timeline-dashboard-page .timeline-container {
+    background: rgba(15, 23, 42, 0.94) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+    box-shadow: 0 12px 28px rgba(2, 6, 23, 0.30) !important;
+}
+
+body.timeline-dashboard-page .timeline-scroll,
+body.timeline-dashboard-page .time-scale,
+body.timeline-dashboard-page .line-grid {
+    background: rgba(248, 250, 252, 0.74) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .timeline-scroll,
+body.dark-mode.timeline-dashboard-page .timeline-scroll,
+html[data-theme="dark"] body.timeline-dashboard-page .timeline-scroll,
+body.timeline-dashboard-page.dark-mode .time-scale,
+body.dark-mode.timeline-dashboard-page .time-scale,
+html[data-theme="dark"] body.timeline-dashboard-page .time-scale,
+body.timeline-dashboard-page.dark-mode .line-grid,
+body.dark-mode.timeline-dashboard-page .line-grid,
+html[data-theme="dark"] body.timeline-dashboard-page .line-grid {
+    background: rgba(15, 23, 42, 0.68) !important;
+}
+
+body.timeline-dashboard-page .timeline-line,
+body.timeline-dashboard-page .timeline-line:nth-child(even) {
+    background: rgba(241, 245, 249, 0.88) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .timeline-line,
+body.dark-mode.timeline-dashboard-page .timeline-line,
+html[data-theme="dark"] body.timeline-dashboard-page .timeline-line,
+body.timeline-dashboard-page.dark-mode .timeline-line:nth-child(even),
+body.dark-mode.timeline-dashboard-page .timeline-line:nth-child(even),
+html[data-theme="dark"] body.timeline-dashboard-page .timeline-line:nth-child(even) {
+    background: rgba(30, 41, 59, 0.54) !important;
+}
+
+body.timeline-dashboard-page .line-header,
+body.timeline-dashboard-page .timeline-line:nth-child(even) .line-header {
+    background: rgba(241, 245, 249, 0.86) !important;
+}
+
+body.timeline-dashboard-page .line-header:hover {
+    background: rgba(226, 232, 240, 0.88) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .line-header,
+body.dark-mode.timeline-dashboard-page .line-header,
+html[data-theme="dark"] body.timeline-dashboard-page .line-header,
+body.timeline-dashboard-page.dark-mode .timeline-line:nth-child(even) .line-header,
+body.dark-mode.timeline-dashboard-page .timeline-line:nth-child(even) .line-header,
+html[data-theme="dark"] body.timeline-dashboard-page .timeline-line:nth-child(even) .line-header {
+    background: rgba(30, 41, 59, 0.62) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .line-header:hover,
+body.dark-mode.timeline-dashboard-page .line-header:hover,
+html[data-theme="dark"] body.timeline-dashboard-page .line-header:hover {
+    background: rgba(51, 65, 85, 0.72) !important;
+}
+
+body.timeline-dashboard-page .grid-cell:hover {
+    background: rgba(148, 163, 184, 0.10) !important;
+}
+
+body.timeline-dashboard-page .grid-cell.selected {
+    background: rgba(14, 165, 134, 0.14) !important;
+    box-shadow: inset 0 0 0 1px rgba(14, 165, 134, 0.20) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .grid-cell:hover,
+body.dark-mode.timeline-dashboard-page .grid-cell:hover,
+html[data-theme="dark"] body.timeline-dashboard-page .grid-cell:hover {
+    background: rgba(148, 163, 184, 0.09) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .grid-cell.selected,
+body.dark-mode.timeline-dashboard-page .grid-cell.selected,
+html[data-theme="dark"] body.timeline-dashboard-page .grid-cell.selected {
+    background: rgba(32, 214, 176, 0.12) !important;
+    box-shadow: inset 0 0 0 1px rgba(32, 214, 176, 0.24) !important;
+}
+
+body.timeline-dashboard-page .booking-block,
+body.timeline-dashboard-page .mini-booking-block {
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08) !important;
+}
+
+body.timeline-dashboard-page .booking-block:hover,
+body.timeline-dashboard-page .mini-booking-block:hover {
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .booking-block,
+body.timeline-dashboard-page.dark-mode .mini-booking-block,
+body.dark-mode.timeline-dashboard-page .booking-block,
+body.dark-mode.timeline-dashboard-page .mini-booking-block,
+html[data-theme="dark"] body.timeline-dashboard-page .booking-block,
+html[data-theme="dark"] body.timeline-dashboard-page .mini-booking-block {
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+body.timeline-dashboard-page.dark-mode .booking-block:hover,
+body.timeline-dashboard-page.dark-mode .mini-booking-block:hover,
+body.dark-mode.timeline-dashboard-page .booking-block:hover,
+body.dark-mode.timeline-dashboard-page .mini-booking-block:hover,
+html[data-theme="dark"] body.timeline-dashboard-page .booking-block:hover,
+html[data-theme="dark"] body.timeline-dashboard-page .mini-booking-block:hover {
+    box-shadow: 0 10px 22px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+}

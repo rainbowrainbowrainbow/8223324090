@@ -31,6 +31,43 @@ const TIMELINE_BANQUET_SNAPSHOT_CACHE = {
 const TIMELINE_BANQUET_ROOM_PREVIEWS = new Map();
 let TIMELINE_ACTIVE_BANQUET_CONTEXT = null;
 
+if (typeof window.ensureBookingTooltip !== 'function') {
+    window.ensureBookingTooltip = function ensureBookingTooltip() {
+        if (!document.body) return null;
+        const candidates = Array.from(document.querySelectorAll('#bookingTooltip, .booking-tooltip[data-booking-tooltip="true"]'));
+        let tooltip = candidates.find(el => el.id === 'bookingTooltip') || candidates[0] || null;
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.className = 'booking-tooltip hidden';
+            tooltip.hidden = true;
+            document.body.appendChild(tooltip);
+        } else if (!tooltip.isConnected) {
+            document.body.appendChild(tooltip);
+        }
+        candidates.forEach(el => {
+            if (el !== tooltip) el.remove();
+        });
+        tooltip.id = 'bookingTooltip';
+        tooltip.classList.add('booking-tooltip');
+        tooltip.dataset.bookingTooltip = 'true';
+        tooltip.setAttribute('role', 'tooltip');
+        tooltip.style.pointerEvents = 'none';
+
+        const hidden = tooltip.hidden || tooltip.classList.contains('hidden') || tooltip.style.display === 'none';
+        tooltip.hidden = hidden;
+        tooltip.classList.toggle('hidden', hidden);
+        tooltip.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+        return tooltip;
+    };
+}
+
+function ensureTimelineBookingTooltip() {
+    if (typeof window.ensureBookingTooltip === 'function') {
+        return window.ensureBookingTooltip();
+    }
+    return document.getElementById('bookingTooltip');
+}
+
 function timelineActiveBanquetSourceBookings(summary = {}) {
     return [
         summary.carrierBooking,
@@ -1041,6 +1078,13 @@ function timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMin
     return safeCellWidth >= minimumReadableStep;
 }
 
+function timelineGridMarkKind(totalMinutes) {
+    const displayMinutes = ((Math.round(totalMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+    if (displayMinutes % 60 === 0) return 'hour';
+    if (displayMinutes % 30 === 0) return 'half';
+    return 'minor';
+}
+
 function timelineTimeMarkPlacements(date, anchor, geometry = null) {
     const { start, end } = getTimeRange(date);
     const startMinutes = timelineRangeBoundMinutes(start);
@@ -1049,20 +1093,22 @@ function timelineTimeMarkPlacements(date, anchor, geometry = null) {
 
     const cellMinutes = Math.max(1, Number(CONFIG.TIMELINE.CELL_MINUTES) || 30);
     const cellWidth = getTimelineCellWidth(anchor);
-    const gridWidth = Math.ceil(geometry?.gridWidth || (timelineRangeCellCount(date) * getTimelineCellWidth(anchor)));
+    const gridWidth = Math.ceil(geometry?.gridWidth || (timelineRangeCellCount(date) * cellWidth));
     const entries = [];
 
     for (let markMinutes = startMinutes; markMinutes < endMinutes; markMinutes += cellMinutes) {
         if (!timelineShouldRenderTimeMarkAtDensity(markMinutes, startMinutes, endMinutes, cellMinutes, cellWidth)) continue;
         const label = timelineDisplayTimeLabel(markMinutes);
         const displayMinutes = ((Math.round(markMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
-        const isHour = displayMinutes % 60 === 0;
+        const markKind = timelineGridMarkKind(displayMinutes);
+        const isHour = markKind === 'hour';
         entries.push({
             label,
             markMinutes,
             x: timelineMarkToPixel(markMinutes, startMinutes, anchor),
             labelWidth: timelineTimeMarkLabelWidth(label, isHour),
-            className: `time-mark ${isHour ? 'hour' : 'half'}${timelineIsEdgeMark(markMinutes, startMinutes, endMinutes) ? ' start-mark' : ''}`,
+            markKind,
+            className: `time-mark ${markKind}${timelineIsEdgeMark(markMinutes, startMinutes, endMinutes) ? ' start-mark' : ''}`,
             edge: Math.round(markMinutes) === Math.round(startMinutes) ? 'start' : ''
         });
     }
@@ -1073,6 +1119,7 @@ function timelineTimeMarkPlacements(date, anchor, geometry = null) {
         markMinutes: endMinutes,
         x: gridWidth,
         labelWidth: timelineTimeMarkLabelWidth(endLabel, true),
+        markKind: 'hour',
         className: 'time-mark hour end-mark',
         edge: 'end'
     });
@@ -1417,6 +1464,7 @@ function renderTimeScale(date) {
         const mark = document.createElement('div');
         mark.className = `${entry.className}${entry.edgeClamped ? ' edge-clamped' : ''}`;
         mark.textContent = entry.label;
+        mark.dataset.markKind = entry.markKind || 'minor';
         mark.dataset.markMinutes = String(entry.markMinutes);
         mark.dataset.markX = String(Math.round(entry.x));
         mark.style.setProperty('--time-mark-label-left', `${Math.round(entry.left)}px`);
@@ -3603,7 +3651,8 @@ function renderGridCells(lineId, date) {
     for (let h = start; h < end; h++) {
         for (let m = 0; m < 60; m += CONFIG.TIMELINE.CELL_MINUTES) {
             const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            html += `<div class="grid-cell${m === 0 ? ' hour' : m === 30 ? ' half' : ''}" data-time="${time}" data-line="${lineId}"></div>`;
+            const markKind = timelineGridMarkKind((h * 60) + m);
+            html += `<div class="grid-cell ${markKind}" data-grid-mark="${markKind}" data-time="${time}" data-line="${lineId}"></div>`;
         }
     }
     return html;
@@ -4377,18 +4426,27 @@ async function removeBookingBanquetLink(sourceId, targetId, relationType = 'banq
 }
 window.removeBookingBanquetLink = removeBookingBanquetLink;
 
+function formatAfishaEventCount(count) {
+    const safeCount = Math.max(0, Number(count) || 0);
+    const lastTwo = safeCount % 100;
+    const last = safeCount % 10;
+    let word = 'подій';
+    if (lastTwo < 11 || lastTwo > 14) {
+        if (last === 1) {
+            word = 'подія';
+        } else if (last >= 2 && last <= 4) {
+            word = 'події';
+        }
+    }
+    return `${safeCount} ${word}`;
+}
+
 function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     const lineEl = document.createElement('div');
     lineEl.className = 'timeline-line afisha-timeline-line';
 
     const birthdays = events.filter(ev => ev.type === 'birthday');
-    const birthdayLabel = birthdays.length > 0
-        ? ` · 🎂 ${birthdays.map(b => b.title).join(', ')}`
-        : '';
-
-    const nonBirthdayCount = events.filter(ev => ev.type !== 'birthday').length;
-    const birthdayBlockCount = birthdays.length * 2;
-    const totalBlocks = nonBirthdayCount + birthdayBlockCount;
+    const afishaEventLabel = formatAfishaEventCount(events.length);
 
     // v8.6: Distribute/undistribute buttons
     const distBtnHtml = isViewer() ? '' : (hasAssigned
@@ -4397,8 +4455,8 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
 
     lineEl.innerHTML = `
         <div class="line-header afisha-line-header" style="border-left-color: #8B5CF6">
-            <span class="line-name">🎪 Афіша${birthdayLabel}</span>
-            <span class="line-sub">${totalBlocks > 0 ? totalBlocks + ' подій' : ''}${distBtnHtml}</span>
+            <span class="line-name">🎪 Афіша</span>
+            <span class="line-sub"><span class="afisha-line-count">${afishaEventLabel}</span>${distBtnHtml}</span>
         </div>
         <div class="line-grid afisha-line-grid" data-line-id="afisha">
             ${renderGridCells('afisha', date)}
@@ -4524,8 +4582,20 @@ function createAfishaBlock(event, startHour, anchor) {
         });
     }
 
-    block.addEventListener('mouseenter', (e) => showAfishaTooltip(e, event));
-    block.addEventListener('mousemove', (e) => { if (!_afishaDragState) moveTooltip(e); });
+    block.addEventListener('mouseenter', (e) => {
+        if (timelineTooltipSuppressed()) {
+            hideTooltip();
+            return;
+        }
+        showAfishaTooltip(e, event);
+    });
+    block.addEventListener('mousemove', (e) => {
+        if (timelineTooltipSuppressed()) {
+            hideTooltip();
+            return;
+        }
+        moveTooltip(e);
+    });
     block.addEventListener('mouseleave', hideTooltip);
 
     return block;
@@ -4537,15 +4607,25 @@ function showAfishaTooltip(e, event) {
     const duration = event.duration || 60;
     const endTime = minutesToTime(timeToMinutes(event.time) + duration);
 
-    const tooltip = document.getElementById('bookingTooltip');
+    if (timelineTooltipSuppressed()) {
+        hideTooltip();
+        return;
+    }
+
+    const tooltip = ensureTimelineBookingTooltip();
     if (!tooltip) return;
 
+    tooltip._lastBookingId = `afisha:${event.id || event.title || event.time}`;
+    tooltip._lastStatus = 'afisha';
     tooltip.innerHTML = `
         <strong>${typeIcons[event.type] || '🎭'} ${escapeHtml(event.title)}</strong><br>
         ${typeLabels[event.type] || 'Подія'}<br>
         🕐 ${event.time} - ${endTime} (${duration} хв)
     `;
-    tooltip.style.display = 'block';
+    tooltip.style.display = '';
+    tooltip.hidden = false;
+    tooltip.classList.remove('hidden');
+    tooltip.setAttribute('aria-hidden', 'false');
     tooltip.style.left = `${e.pageX + 10}px`;
     tooltip.style.top = `${e.pageY + 10}px`;
 }
@@ -4572,6 +4652,17 @@ let _graduationSegmentDragState = null;
 let _graduationSegmentResizeState = null;
 let _banquetLinkDraft = null;
 let _timelineInteractionSaveInFlight = false;
+
+function timelineTooltipSuppressed() {
+    return Boolean(
+        _bookingDragState
+        || _resizeState
+        || _graduationSegmentDragState
+        || _graduationSegmentResizeState
+        || _banquetLinkDraft
+        || _afishaDragState
+    );
+}
 
 const BANQUET_LINK_SVG_NS = 'http://www.w3.org/2000/svg';
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';

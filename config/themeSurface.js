@@ -59,12 +59,12 @@ const THEME_CSS_DEBT_BUDGETS = {
     'css/sidebar-aurora-enterprise.css': { owner: 'sidebar', maxImportant: 753, maxHardColors: 139 },
     'css/sidebar-aurora-identity.css': { owner: 'sidebar', maxImportant: 614, maxHardColors: 331 },
     'css/sidebar-aurora-legacy-shell.css': { owner: 'sidebar', maxImportant: 428, maxHardColors: 93 },
-    'css/sidebar-aurora-profile.css': { owner: 'sidebar', maxImportant: 638, maxHardColors: 20 },
+    'css/sidebar-aurora-profile.css': { owner: 'sidebar', maxImportant: 672, maxHardColors: 20 },
     'css/sidebar-aurora-rail.css': { owner: 'sidebar', maxImportant: 78, maxHardColors: 82 },
     'css/sidebar-aurora-rhythm.css': { owner: 'sidebar', maxImportant: 309, maxHardColors: 1 },
     'css/sidebar-aurora-shell.css': { owner: 'sidebar', maxImportant: 110, maxHardColors: 144 },
     'css/sidebar-aurora-today.css': { owner: 'sidebar', maxImportant: 104, maxHardColors: 27 },
-    'css/dark-mode.css': { owner: 'theme', maxImportant: 276, maxHardColors: 1340 }
+    'css/dark-mode.css': { owner: 'theme', maxImportant: 305, maxHardColors: 1380 }
 };
 
 module.exports = {

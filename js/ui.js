@@ -2171,14 +2171,41 @@ function renderNowLine() {
 // TOOLTIP
 // ==========================================
 
-function showTooltip(e, booking) {
-    let tooltip = document.getElementById('bookingTooltip');
-    if (!tooltip) {
-        tooltip = document.createElement('div');
+if (typeof window.ensureBookingTooltip !== 'function') {
+    window.ensureBookingTooltip = function ensureBookingTooltip() {
+        if (!document.body) return null;
+        const candidates = Array.from(document.querySelectorAll('#bookingTooltip, .booking-tooltip[data-booking-tooltip="true"]'));
+        let tooltip = candidates.find(el => el.id === 'bookingTooltip') || candidates[0] || null;
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.className = 'booking-tooltip hidden';
+            tooltip.hidden = true;
+            document.body.appendChild(tooltip);
+        } else if (!tooltip.isConnected) {
+            document.body.appendChild(tooltip);
+        }
+        candidates.forEach(el => {
+            if (el !== tooltip) el.remove();
+        });
         tooltip.id = 'bookingTooltip';
-        tooltip.className = 'booking-tooltip hidden';
-        document.body.appendChild(tooltip);
-    }
+        tooltip.classList.add('booking-tooltip');
+        tooltip.dataset.bookingTooltip = 'true';
+        tooltip.setAttribute('role', 'tooltip');
+        tooltip.style.pointerEvents = 'none';
+
+        const hidden = tooltip.hidden || tooltip.classList.contains('hidden') || tooltip.style.display === 'none';
+        tooltip.hidden = hidden;
+        tooltip.classList.toggle('hidden', hidden);
+        tooltip.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+        return tooltip;
+    };
+}
+
+function showTooltip(e, booking) {
+    const tooltip = typeof window.ensureBookingTooltip === 'function'
+        ? window.ensureBookingTooltip()
+        : document.getElementById('bookingTooltip');
+    if (!tooltip) return;
     if (tooltip._lastBookingId !== booking.id || tooltip._lastStatus !== booking.status) {
         tooltip._lastBookingId = booking.id;
         tooltip._lastStatus = booking.status;
@@ -2194,7 +2221,10 @@ function showTooltip(e, booking) {
     }
     tooltip.style.left = `${e.pageX + 12}px`;
     tooltip.style.top = `${e.pageY - 10}px`;
+    tooltip.style.display = '';
+    tooltip.hidden = false;
     tooltip.classList.remove('hidden');
+    tooltip.setAttribute('aria-hidden', 'false');
 }
 
 function moveTooltip(e) {
@@ -2208,7 +2238,10 @@ function moveTooltip(e) {
 function hideTooltip() {
     const tooltip = document.getElementById('bookingTooltip');
     if (tooltip) {
+        tooltip.hidden = true;
         tooltip.classList.add('hidden');
+        tooltip.setAttribute('aria-hidden', 'true');
+        tooltip.style.display = '';
         tooltip._lastBookingId = null;
     }
 }

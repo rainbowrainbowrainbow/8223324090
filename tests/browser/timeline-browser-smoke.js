@@ -544,7 +544,54 @@ async function setTimelineViewPanelOpen(page, open) {
 async function assertTimelineViewPanelInteractions(page) {
     assert.equal(await page.locator('#digestBtn').count(), 0, 'digest button is not rendered on the timeline page');
 
+    const readFilterBadgeState = () => page.evaluate(() => {
+        const toggle = document.getElementById('timelineViewPanelToggle');
+        const badge = document.getElementById('timelineViewPanelBadge');
+        const badgeStyle = badge ? getComputedStyle(badge) : null;
+        return {
+            count: toggle?.dataset.filterCount || '',
+            state: toggle?.getAttribute('data-filter-state') || '',
+            hasActiveClass: Boolean(toggle?.classList.contains('has-active-filters')),
+            badgeText: badge?.textContent.trim() || '',
+            badgeVisible: Boolean(
+                badge
+                && badgeStyle
+                && badgeStyle.visibility !== 'hidden'
+                && Number(badgeStyle.opacity) > 0
+            )
+        };
+    });
+
     await setTimelineViewPanelOpen(page, false);
+    let badgeState = await readFilterBadgeState();
+    assert.equal(badgeState.count, '0', 'filter badge starts at zero in default state');
+    assert.equal(badgeState.state, 'default', 'filter toggle starts in default state');
+    assert.equal(badgeState.hasActiveClass, false, 'filter toggle is not visually active by default');
+    assert.equal(badgeState.badgeVisible, false, 'filter badge is hidden in default state');
+
+    const typeSwitch = await page.evaluate(() => {
+        const selector = document.querySelector('[data-timeline-type-selector]');
+        const rect = selector?.getBoundingClientRect?.();
+        const style = selector ? getComputedStyle(selector) : null;
+        return {
+            exists: Boolean(selector),
+            visible: Boolean(
+                selector
+                && rect
+                && rect.width > 0
+                && rect.height > 0
+                && style?.display !== 'none'
+                && style?.visibility !== 'hidden'
+            ),
+            inViewPanel: Boolean(selector?.closest('#timelineViewPanel')),
+            labels: Array.from(selector?.querySelectorAll('[data-timeline-view]') || []).map(btn => btn.textContent.trim()).join('|')
+        };
+    });
+    assert.equal(typeSwitch.exists, true, 'timeline type switch exists');
+    assert.equal(typeSwitch.visible, true, 'timeline type switch is visible without opening filters');
+    assert.equal(typeSwitch.inViewPanel, false, 'timeline type switch is outside the hidden filters shelf');
+    assert.equal(typeSwitch.labels, 'Банкети|Свята', 'timeline type switch keeps expected labels');
+
     await page.locator('#timelineViewPanelToggle').click();
     await page.waitForFunction(() => {
         const panel = document.getElementById('timelineViewPanel');
@@ -569,6 +616,11 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
+    badgeState = await readFilterBadgeState();
+    assert.equal(badgeState.count, '1', 'filter badge counts non-default status');
+    assert.equal(badgeState.state, 'custom', 'filter toggle marks custom state for status');
+    assert.equal(badgeState.badgeText, '1', 'filter badge text is minimal for status');
+    assert.equal(badgeState.badgeVisible, true, 'filter badge is visible for non-default status');
     await page.locator('#timelineViewPanel .status-filter-btn[data-filter="all"]').click();
     await page.waitForFunction(() => {
         const btn = document.querySelector('#timelineViewPanel .status-filter-btn[data-filter="all"]');
@@ -576,6 +628,9 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
+    badgeState = await readFilterBadgeState();
+    assert.equal(badgeState.count, '0', 'filter badge clears when status returns to all');
+    assert.equal(badgeState.badgeVisible, false, 'filter badge hides after status default is restored');
 
     await page.locator('#timelineViewPanel [data-schedule-view-mode="week"]').click();
     await page.waitForFunction(() => {
@@ -584,6 +639,9 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
+    badgeState = await readFilterBadgeState();
+    assert.equal(badgeState.count, '1', 'filter badge counts non-default week period');
+    assert.equal(badgeState.badgeVisible, true, 'filter badge is visible for week period');
     await page.locator('#timelineViewPanel [data-schedule-view-mode="day"]').click();
     await page.waitForFunction(() => {
         const btn = document.querySelector('#timelineViewPanel [data-schedule-view-mode="day"]');
@@ -591,18 +649,29 @@ async function assertTimelineViewPanelInteractions(page) {
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
+    badgeState = await readFilterBadgeState();
+    assert.equal(badgeState.count, '0', 'filter badge clears when period returns to day');
+    assert.equal(badgeState.badgeVisible, false, 'filter badge hides after period default is restored');
 
-    await page.locator('#timelineViewPanel [data-timeline-view="rooms"]').click();
+    await setTimelineViewPanelOpen(page, false);
+    await page.locator('[data-timeline-type-selector] [data-timeline-view="rooms"]').click();
     await page.waitForFunction(() => {
-        const btn = document.querySelector('#timelineViewPanel [data-timeline-view="rooms"]');
+        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]');
         return window.TimelineView?.current?.() === 'rooms'
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
-    await page.locator('#timelineViewPanel [data-timeline-view="animators"]').click();
+    await page.locator('[data-timeline-type-selector] [data-timeline-view="animators"]').click();
     await page.waitForFunction(() => {
-        const btn = document.querySelector('#timelineViewPanel [data-timeline-view="animators"]');
+        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="animators"]');
         return window.TimelineView?.current?.() === 'animators'
+            && btn?.classList.contains('active')
+            && btn?.getAttribute('aria-pressed') === 'true';
+    });
+    await page.locator('[data-timeline-type-selector] [data-timeline-view="rooms"]').click();
+    await page.waitForFunction(() => {
+        const btn = document.querySelector('[data-timeline-type-selector] [data-timeline-view="rooms"]');
+        return window.TimelineView?.current?.() === 'rooms'
             && btn?.classList.contains('active')
             && btn?.getAttribute('aria-pressed') === 'true';
     });
@@ -651,12 +720,13 @@ async function assertTimelineViewPanelInteractions(page) {
 
 async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
     const desktopViewports = [
-        { width: 2048, height: 1152 },
         { width: 1920, height: 1080 },
-        { width: 1536, height: 864 }
+        { width: 1440, height: 900 },
+        { width: 1366, height: 768 }
     ];
     const narrowViewports = [
         { width: 768, height: 900 },
+        { width: 430, height: 932 },
         { width: 390, height: 844 }
     ];
     const readZoomState = () => page.evaluate(() => {
@@ -671,6 +741,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             appZoomLevel: Number(AppState?.zoomLevel),
             savedZoom: localStorage.getItem(key),
             activeZoom: buttons.find(btn => btn.active)?.zoom || '',
+            filterBadgeCount: document.getElementById('timelineViewPanelToggle')?.dataset.filterCount || '',
+            filterBadgeVisible: document.getElementById('timelineViewPanelToggle')?.classList.contains('has-active-filters') || false,
             buttons
         };
     });
@@ -695,13 +767,15 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(state.appZoomLevel, level, `${label}: AppState.zoomLevel is ${level}`);
         assert.equal(state.savedZoom, expected, `${label}: saved zoom preference is ${expected}`);
         assert.equal(state.activeZoom, expected, `${label}: active zoom button is ${expected}`);
+        assert.equal(state.filterBadgeCount, level === 15 ? '0' : '1', `${label}: filter badge reflects zoom default state`);
+        assert.equal(state.filterBadgeVisible, level !== 15, `${label}: filter badge visibility follows zoom default state`);
         for (const button of state.buttons) {
             assert.equal(button.pressed, button.zoom === expected ? 'true' : 'false', `${label}: aria-pressed for ${button.zoom}`);
             assert.equal(button.active, button.zoom === expected, `${label}: active class for ${button.zoom}`);
         }
     };
 
-    await page.setViewportSize({ width: 2048, height: 1152 });
+    await page.setViewportSize({ width: 1920, height: 1080 });
     await page.evaluate(() => {
         if (typeof AppState !== 'undefined') AppState.compactMode = true;
         localStorage.setItem('pzp_compact_mode', 'true');
@@ -785,6 +859,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const commandCenter = document.querySelector('.schedule-command-center.toolbarContainer');
         const utilityRow = document.querySelector('.schedule-command-row--utility');
         const dateControls = document.querySelector('.schedule-command-row--utility .date-controls');
+        const typeSwitch = document.querySelector('.schedule-command-row--utility .timeline-visible-type-switch');
         const timelineContainer = document.querySelector('.timeline-container');
         const timeScale = document.querySelector('.timeline-container .time-scale');
         const timelineLines = document.querySelector('.timeline-container .timeline-lines');
@@ -793,6 +868,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const commandCenterRect = commandCenter?.getBoundingClientRect?.();
         const utilityRowRect = utilityRow?.getBoundingClientRect?.();
         const dateControlsRect = dateControls?.getBoundingClientRect?.();
+        const typeSwitchRect = typeSwitch?.getBoundingClientRect?.();
         const timelineContainerRect = timelineContainer?.getBoundingClientRect?.();
         const timeScaleRect = timeScale?.getBoundingClientRect?.();
         const timelineLinesRect = timelineLines?.getBoundingClientRect?.();
@@ -807,6 +883,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const historyStyle = history ? getComputedStyle(history) : null;
         const settingsStyle = settings ? getComputedStyle(settings) : null;
         const panelStyle = panel ? getComputedStyle(panel) : null;
+        const typeSwitchStyle = typeSwitch ? getComputedStyle(typeSwitch) : null;
         const historyVisible = Boolean(
             history
             && historyRect
@@ -919,6 +996,17 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             utilityRowBottom: utilityRowRect ? Math.round(utilityRowRect.bottom * 100) / 100 : Number.NaN,
             dateControlsWidth: dateControlsRect ? Math.round(dateControlsRect.width * 100) / 100 : 0,
             dateControlsHeight: dateControlsRect ? Math.round(dateControlsRect.height * 100) / 100 : 0,
+            typeSwitchWidth: typeSwitchRect ? Math.round(typeSwitchRect.width * 100) / 100 : 0,
+            typeSwitchHeight: typeSwitchRect ? Math.round(typeSwitchRect.height * 100) / 100 : 0,
+            typeSwitchVisible: Boolean(
+                typeSwitch
+                && typeSwitchRect
+                && typeSwitchRect.width > 0
+                && typeSwitchRect.height > 0
+                && typeSwitchStyle?.display !== 'none'
+                && typeSwitchStyle?.visibility !== 'hidden'
+            ),
+            typeSwitchInViewPanel: Boolean(typeSwitch?.closest('#timelineViewPanel')),
             actionsWidth: actionsRect ? Math.round(actionsRect.width * 100) / 100 : 0,
             timelineTop: timelineContainerRect ? Math.round(timelineContainerRect.top * 100) / 100 : Number.NaN,
             timeScaleTop: timeScaleRect ? Math.round(timeScaleRect.top * 100) / 100 : Number.NaN,
@@ -986,6 +1074,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at ${label}`);
+        assert.equal(metrics.typeSwitchVisible, true, `timeline type switch is visible in the utility row at ${label}`);
+        assert.equal(metrics.typeSwitchInViewPanel, false, `timeline type switch is not duplicated in the filter shelf at ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at ${label}`);
         assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at ${label}`);
         assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at ${label}`);
@@ -999,8 +1089,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.dateControlsHeight <= 48, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 96, `command center does not create a large empty band at ${label}: ${metrics.commandCenterHeight}px`);
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 64, `closed filters state keeps date row close to timeline at ${label}: ${metrics.closedDateToTimelineGap}px`);
-        assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px actions=${metrics.actionsWidth}px`);
-        assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + 4, `date utility row does not stretch beyond the date cluster at ${label}: row=${metrics.utilityRowWidth}px cluster=${metrics.dateControlsWidth}px`);
+        assert.ok(metrics.commandCenterWidth <= Math.max(metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, metrics.actionsWidth) + 32, `command center shrink-wraps visible controls at ${label}: command=${metrics.commandCenterWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px actions=${metrics.actionsWidth}px`);
+        assert.ok(metrics.utilityRowWidth <= metrics.dateControlsWidth + metrics.typeSwitchWidth + 24, `utility row does not stretch beyond the date and type controls at ${label}: row=${metrics.utilityRowWidth}px date=${metrics.dateControlsWidth}px type=${metrics.typeSwitchWidth}px`);
         assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at ${label}: ${metrics.bodyOverflowX}`);
         assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
@@ -1061,6 +1151,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.viewToggleExpanded, 'false', `timeline view toggle is collapsed by default at narrow ${label}`);
         assert.equal(metrics.viewToggleInTopbar, false, `view panel toggle is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.viewToggleInDateRow, true, `view panel toggle is mounted in the date utility row at narrow ${label}`);
+        assert.equal(metrics.typeSwitchVisible, true, `timeline type switch is visible in the utility row at narrow ${label}`);
+        assert.equal(metrics.typeSwitchInViewPanel, false, `timeline type switch is not duplicated in the filter shelf at narrow ${label}`);
         assert.equal(metrics.historyExists, true, `history button exists at narrow ${label}`);
         assert.equal(metrics.historyInTopbar, false, `history button is not mounted in the topbar at narrow ${label}`);
         assert.equal(metrics.historyInViewPanel, true, `history button is mounted in the filter panel actions at narrow ${label}`);

@@ -1357,3 +1357,121 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-aux,
   border-radius: 0 0 8px 8px !important;
   box-shadow: inset 0 -1px 0 color-mix(in srgb, #ffffff 5%, transparent) !important;
 }
+
+/* Task 9: final semantic sidebar status colors after enterprise/profile layers. */
+.sidebar-nav {
+  --sb-semantic-critical: var(--sb-enterprise-danger, var(--sb-danger, currentColor));
+  --sb-semantic-critical-bg: color-mix(in srgb, var(--sb-semantic-critical) 13%, var(--sb-enterprise-surface-2, transparent));
+  --sb-semantic-critical-border: color-mix(in srgb, var(--sb-semantic-critical) 42%, var(--sb-enterprise-border, transparent));
+  --sb-semantic-warning: var(--sb-enterprise-warning, var(--sb-amber, currentColor));
+  --sb-semantic-warning-bg: color-mix(in srgb, var(--sb-semantic-warning) 13%, var(--sb-enterprise-surface-2, transparent));
+  --sb-semantic-warning-border: color-mix(in srgb, var(--sb-semantic-warning) 38%, var(--sb-enterprise-border, transparent));
+  --sb-semantic-success: var(--sb-enterprise-success, var(--sb-primary, currentColor));
+  --sb-semantic-success-bg: color-mix(in srgb, var(--sb-semantic-success) 12%, var(--sb-enterprise-surface-2, transparent));
+  --sb-semantic-success-border: color-mix(in srgb, var(--sb-semantic-success) 34%, var(--sb-enterprise-border, transparent));
+  --sb-semantic-neutral: var(--sb-enterprise-muted, currentColor);
+  --sb-semantic-neutral-bg: color-mix(in srgb, var(--sb-semantic-neutral) 12%, var(--sb-enterprise-surface-2, transparent));
+  --sb-semantic-neutral-border: color-mix(in srgb, var(--sb-semantic-neutral) 26%, var(--sb-enterprise-border, transparent));
+}
+
+.sidebar-nav:not(.collapsed) [data-sidebar-status-tone="critical"] {
+  color: var(--sb-semantic-critical) !important;
+}
+
+.sidebar-nav:not(.collapsed) [data-sidebar-status-tone="warning"] {
+  color: var(--sb-semantic-warning) !important;
+}
+
+.sidebar-nav:not(.collapsed) [data-sidebar-status-tone="success"] {
+  color: var(--sb-semantic-success) !important;
+}
+
+.sidebar-nav:not(.collapsed) [data-sidebar-status-tone="neutral"] {
+  color: var(--sb-semantic-neutral) !important;
+}
+
+.sidebar-nav:not(.collapsed) .nav-badge[data-badge-type="unread"],
+.sidebar-nav:not(.collapsed) .nav-badge[data-badge-type="leads_new"],
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-badge[data-badge-type="unread"],
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-badge[data-badge-type="leads_new"],
+.sidebar-nav.collapsed .sidebar-mini-badge[data-badge-type="unread"],
+.sidebar-nav.collapsed .sidebar-mini-badge[data-badge-type="leads_new"],
+.sidebar-nav.collapsed .sidebar-mini-count {
+  border-color: var(--sb-semantic-neutral-border) !important;
+  background: var(--sb-semantic-neutral-bg) !important;
+  color: var(--sb-semantic-neutral) !important;
+}
+
+.sidebar-nav:not(.collapsed) .nav-badge.alert,
+.sidebar-nav:not(.collapsed) .nav-badge[data-badge-type="alerts"],
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-badge.alert,
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-badge[data-badge-type="alerts"],
+.sidebar-nav.collapsed .sidebar-mini-badge[data-badge-type="alerts"] {
+  border-color: var(--sb-semantic-critical-border) !important;
+  background: var(--sb-semantic-critical-bg) !important;
+  color: var(--sb-semantic-critical) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-group-signal {
+  border-color: var(--sb-semantic-neutral-border) !important;
+  background: var(--sb-semantic-neutral-bg) !important;
+  color: var(--sb-semantic-neutral) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-group-signal.is-hot {
+  border-color: var(--sb-semantic-warning-border) !important;
+  background: var(--sb-semantic-warning-bg) !important;
+  color: var(--sb-semantic-warning) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-group-signal.is-critical {
+  border-color: var(--sb-semantic-critical-border) !important;
+  background: var(--sb-semantic-critical-bg) !important;
+  color: var(--sb-semantic-critical) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks:not(.has-overdue),
+.sidebar-nav:not(.collapsed) .focus-chip--funnel.has-new:not(.has-action) {
+  border-color: var(--sb-semantic-neutral-border) !important;
+  background: var(--sb-semantic-neutral-bg) !important;
+  color: var(--sb-semantic-neutral) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks.has-overdue,
+.sidebar-nav:not(.collapsed) .focus-chip--alerts.has-critical,
+.sidebar-nav:not(.collapsed) .focus-chip--alerts.is-critical {
+  border-color: var(--sb-semantic-critical-border) !important;
+  background: var(--sb-semantic-critical-bg) !important;
+  color: var(--sb-semantic-critical) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--alerts.has-alerts:not(.has-critical),
+.sidebar-nav:not(.collapsed) .focus-chip--alerts.is-hot:not(.is-critical),
+.sidebar-nav:not(.collapsed) .focus-chip--funnel.has-action {
+  border-color: var(--sb-semantic-warning-border) !important;
+  background: var(--sb-semantic-warning-bg) !important;
+  color: var(--sb-semantic-warning) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-task-part--done {
+  background: var(--sb-semantic-success-bg) !important;
+  color: var(--sb-semantic-success) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip-task-part--done .focus-chip-task-number,
+.sidebar-nav:not(.collapsed) .focus-chip-task-part--done .focus-chip-task-mark {
+  color: var(--sb-semantic-success) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks:not(.has-overdue) .focus-chip-task-part--remaining,
+.sidebar-nav:not(.collapsed) .focus-chip--tasks:not(.has-overdue) .focus-chip-task-part--remaining .focus-chip-task-number,
+.sidebar-nav:not(.collapsed) .focus-chip--tasks:not(.has-overdue) .focus-chip-task-part--remaining .focus-chip-task-mark {
+  color: var(--sb-semantic-neutral) !important;
+}
+
+.sidebar-nav:not(.collapsed) .focus-chip--tasks.has-overdue .focus-chip-task-part--remaining,
+.sidebar-nav:not(.collapsed) .focus-chip--tasks.has-overdue .focus-chip-task-part--remaining .focus-chip-task-number,
+.sidebar-nav:not(.collapsed) .focus-chip--tasks.has-overdue .focus-chip-task-part--remaining .focus-chip-task-mark {
+  background: var(--sb-semantic-critical-bg) !important;
+  color: var(--sb-semantic-critical) !important;
+}

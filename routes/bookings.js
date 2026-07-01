@@ -2982,21 +2982,24 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             businessContext,
             req.user
         );
-        booking.timelineProjection = await bookingDayProjectionStatus(client, {
-            id: booking.id || b.id,
-            date: b.date || booking.date,
-            businessContext,
-            user: req.user
-        });
-        if (booking.timelineProjection.visible === false) {
-            log.warn(`Created booking ${booking.id || b.id} is not visible in same day timeline projection`, {
-                date: booking.timelineProjection.date,
-                businessContext: booking.timelineProjection.businessContext,
-                userId: req.user?.id || null
+        const allCreatedBookings = [booking, ...linkedBookings];
+        await Promise.all(allCreatedBookings.map(async createdBooking => {
+            createdBooking.timelineProjection = await bookingDayProjectionStatus(client, {
+                id: createdBooking.id || b.id,
+                date: createdBooking.linkedTo ? (createdBooking.date || b.date) : (b.date || createdBooking.date),
+                businessContext,
+                user: req.user
             });
-        }
+            if (createdBooking.timelineProjection.visible === false) {
+                log.warn(`Created booking ${createdBooking.id || b.id} is not visible in same day timeline projection`, {
+                    date: createdBooking.timelineProjection.date,
+                    businessContext: createdBooking.timelineProjection.businessContext,
+                    userId: req.user?.id || null
+                });
+            }
+        }));
 
-        let allBookings = projectCreatedBookingsForTimelineResponse([booking, ...linkedBookings], timelineView);
+        let allBookings = projectCreatedBookingsForTimelineResponse(allCreatedBookings, timelineView);
         try {
             allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
         } catch (linkErr) {

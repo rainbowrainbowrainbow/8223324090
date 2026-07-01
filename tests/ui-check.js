@@ -232,8 +232,9 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/timeline.css', '.line-header.has-timeline-banquet-room-preview'));
     check('Timeline block click falls back when linked parent is hidden in current view',
         timelineCode.includes('function openTimelineBookingDetailsFromBlock')
-        && timelineCode.includes("showBookingDetails(targetId, { silentMissing: Boolean(linkedId), source: 'timeline_block_click' })")
-        && timelineCode.includes("showBookingDetails(ownId, { source: 'timeline_block_click_fallback' })")
+        && timelineCode.includes('fallbackBooking: renderBooking')
+        && timelineCode.includes("{ silentMissing: false, ...ownDetailsOptions }")
+        && timelineCode.includes("source: 'timeline_block_click_fallback'")
         && bookingCode.includes('async function showBookingDetails(bookingId, options = {})')
         && bookingCode.includes('options.silentMissing !== true')
         && !timelineCode.includes('showBookingDetails(renderBooking.linkedTo)'));
@@ -2347,7 +2348,8 @@ check('Room timeline banquet activity blocks open booking modal instead of compa
     && /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/.test(timelineCode)
     && /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/.test(timelineCode)
     && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/.test(timelineCode)
-    && timelineCode.includes("showBookingDetails(ownId, { source: 'timeline_block_click_fallback' })"));
+    && timelineCode.includes("source: 'timeline_block_click_fallback'")
+    && timelineCode.includes('fallbackBooking: renderBooking'));
 check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
     timelineBanquetInspectorHelpersCode.includes('function timelineBanquetServingInfo')
     && timelineBanquetInspectorHelpersCode.includes('timelineBanquetMenuPositions(booking)')

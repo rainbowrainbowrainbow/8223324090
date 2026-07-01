@@ -3160,10 +3160,16 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     const targetId = linkedId || ownId;
     const timelineView = typeof timelineCurrentViewKey === 'function' ? timelineCurrentViewKey() : null;
     if (!targetId) return false;
+    const ownDetailsOptions = {
+        source: 'timeline_block_click',
+        fallbackBooking: renderBooking
+    };
 
     let opened = false;
     try {
-        opened = await showBookingDetails(targetId, { silentMissing: Boolean(linkedId), source: 'timeline_block_click' });
+        opened = await showBookingDetails(targetId, linkedId
+            ? { silentMissing: true, source: 'timeline_block_click' }
+            : { silentMissing: false, ...ownDetailsOptions });
     } catch (err) {
         console.warn('[timeline] Failed to open booking details from block', {
             targetId,
@@ -3177,7 +3183,10 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
 
     if (linkedId && ownId && ownId !== linkedId) {
         try {
-            opened = await showBookingDetails(ownId, { source: 'timeline_block_click_fallback' });
+            opened = await showBookingDetails(ownId, {
+                source: 'timeline_block_click_fallback',
+                fallbackBooking: renderBooking
+            });
         } catch (err) {
             console.warn('[timeline] Failed to open linked booking fallback details', {
                 ownId,

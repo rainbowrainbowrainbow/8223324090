@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.89 - Standalone Activity Open Hotfix
+
+### Timeline standalone activities / Detail fallback / Create projection / Cache safety / Regression QA / (Клешня, 01.07.2026) [codex]
+- **Standalone-анімашки знову відкриваються з timeline block** - клік по видимому блоку тепер має безпечний fallback на вже намальований record, якщо date cache або `detail/:id` тимчасово не повернули запис.
+- **Fallback не підмішує чужий або wrong-view запис** - frontend приймає видимий block record тільки коли збігаються id, дата, бізнес-контекст і поточний `timelineView`.
+- **Simple-create response вирівняно з `/api/bookings/full`** - записи, створені через звичайний `/api/bookings`, отримують `timelineProjection` і `timelineVisibility` для всіх created rows, включно з auto-linked другим аніматором.
+- **Банкетно-linked сценарій не змінювався** - parent/child fallback для linked блоків лишився, але власний visible block тепер може відкритися навіть після cache miss.
+- **Додано regression coverage** - тести покривають visible-block detail fallback, simple-create second animator projection і оновлений click contract без PII diagnostics.
+- **БД, migrations, auth/roles і production config не змінювались** - fix обмежений timeline/booking API projection, frontend open fallback, release cache tags і тестами.
+
+---
+
 ## v0.77.88 - Timeline Create-Click Customer Fix
 
 ### Timeline / Booking create / Customer payload / Cache safety / Regression QA / (Клешня, 01.07.2026) [codex]

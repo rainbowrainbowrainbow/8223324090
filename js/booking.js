@@ -8444,6 +8444,12 @@ function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate =
     return Boolean(id && (lineId || projection?.visible === true));
 }
 
+function bookingDetailsFallbackMatchesCurrentSlice(booking = {}, cleanBookingId = '', currentDate = formatDate(AppState.selectedDate)) {
+    const id = String(booking?.id || booking?.bookingId || booking?.booking_id || '').trim();
+    if (!id || id !== String(cleanBookingId || '').trim()) return false;
+    return createdBookingProjectionMatchesCurrentSlice(booking, currentDate);
+}
+
 function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) {
     const primary = createdBookings[0] || {};
     const primaryId = primary?.id || primary?.bookingId || '';
@@ -10258,8 +10264,18 @@ async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
     const bookings = Array.isArray(currentDateBookings) ? currentDateBookings : [];
     const cachedBooking = bookings.find(b => String(b.id) === cleanBookingId);
     if (cachedBooking) return { booking: cachedBooking, bookings, source: 'date-cache' };
+    const fallbackBooking = options.fallbackBooking || options.visibleBooking || null;
+    const fallbackMatchesCurrentSlice = bookingDetailsFallbackMatchesCurrentSlice(fallbackBooking, cleanBookingId);
 
     if (typeof apiGetBookingById !== 'function') {
+        if (fallbackMatchesCurrentSlice) {
+            return {
+                booking: fallbackBooking,
+                bookings: [fallbackBooking, ...bookings.filter(b => String(b.id) !== cleanBookingId)],
+                source: 'visible-block-fallback',
+                error: 'apiGetBookingById unavailable'
+            };
+        }
         return { booking: null, bookings, source: 'date-cache-miss', error: 'apiGetBookingById unavailable' };
     }
 
@@ -10268,6 +10284,15 @@ async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
         ? response.booking
         : null;
     if (!response?.success || !fetchedBooking) {
+        if (fallbackMatchesCurrentSlice) {
+            return {
+                booking: fallbackBooking,
+                bookings: [fallbackBooking, ...bookings.filter(b => String(b.id) !== cleanBookingId)],
+                source: 'visible-block-fallback',
+                status: response?.status || null,
+                error: response?.error || 'Booking not found'
+            };
+        }
         return {
             booking: null,
             bookings,

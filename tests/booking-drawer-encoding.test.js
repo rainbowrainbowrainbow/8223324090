@@ -211,6 +211,67 @@ test('created booking recovery rejects wrong timeline-view projections before ca
     assert.equal(matches({ ...baseBooking, timelineProjection: { ...baseBooking.timelineProjection, timelineView: 'animators' } }), true);
 });
 
+test('booking details can open from current visible timeline block when cache and id fetch miss', () => {
+    const bookingJs = read('js', 'booking.js');
+    const projectionStart = bookingJs.indexOf('function createdBookingTimelineProjection');
+    const resolverEnd = bookingJs.indexOf('async function showBookingDetails', projectionStart);
+    assert.ok(projectionStart >= 0 && resolverEnd > projectionStart, 'booking detail resolver helper slice exists');
+
+    const context = {
+        window: {
+            TimelineView: {
+                current: () => 'rooms'
+            },
+            TimelineBusinessContext: {
+                state: () => ({ activeBusinessContext: 'event_genix' }),
+                current: () => ({ apiValue: 'event_genix' })
+            }
+        },
+        AppState: { selectedDate: '2099-02-10' },
+        formatDate: value => String(value || '').slice(0, 10),
+        normalizeBookingDateKey: value => String(value || '').slice(0, 10),
+        timelineBookingResourceIdentity: booking => ({
+            resourceId: booking.resourceId || booking.resource_id || booking.lineId || booking.line_id || booking.timelineProjection?.resourceId || ''
+        }),
+        getBookingsForDate: async () => [],
+        apiGetBookingById: async () => ({ success: false, status: 404, error: 'Booking not found' })
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(projectionStart, resolverEnd)}
+        this.__detailResolverHooks = {
+            resolveBookingDetailsRecord,
+            bookingDetailsFallbackMatchesCurrentSlice
+        };
+    `, context, { filename: 'js/booking.js' });
+
+    const fallbackBooking = {
+        id: 'BK-STANDALONE-ACTIVITY',
+        date: '2099-02-10',
+        businessContext: 'event_genix',
+        resourceId: 'Room A',
+        timelineProjection: {
+            date: '2099-02-10',
+            businessContext: 'event_genix',
+            timelineView: 'rooms',
+            resourceId: 'Room A',
+            visible: true
+        }
+    };
+    assert.equal(
+        context.__detailResolverHooks.bookingDetailsFallbackMatchesCurrentSlice(fallbackBooking, 'BK-STANDALONE-ACTIVITY', '2099-02-10'),
+        true
+    );
+
+    return context.__detailResolverHooks.resolveBookingDetailsRecord('BK-STANDALONE-ACTIVITY', { fallbackBooking })
+        .then(result => {
+            assert.equal(result.source, 'visible-block-fallback');
+            assert.equal(result.status, 404);
+            assert.equal(result.booking.id, 'BK-STANDALONE-ACTIVITY');
+            assert.deepEqual(plain(result.bookings.map(item => item.id)), ['BK-STANDALONE-ACTIVITY']);
+        });
+});
+
 test('booking detail scenario row is hidden only for kitchen bookings', () => {
     const bookingJs = read('js', 'booking.js');
     const helperStart = bookingJs.indexOf('function shouldHideBookingWorkspaceScenarioDetail');

@@ -886,7 +886,8 @@ test('booking create response projection is derived from the request timeline vi
     const source = read('routes', 'bookings.js');
 
     assert.match(source, /function timelineViewFromRequest\(req, fallback = 'animators'\)/);
-    assert.match(source, /projectCreatedBookingsForTimelineResponse\(\[booking, \.\.\.linkedBookings\], timelineView\)/);
+    assert.match(source, /const allCreatedBookings = \[booking, \.\.\.linkedBookings\]/);
+    assert.match(source, /projectCreatedBookingsForTimelineResponse\(allCreatedBookings, timelineView\)/);
     assert.match(source, /projectCreatedBookingsForTimelineResponse\(allBookings, timelineView\)/);
     assert.doesNotMatch(source, /projectCreatedBookingsForTimelineResponse\(allBookings,\s*['"]animators['"]\)/);
 });
@@ -927,6 +928,34 @@ test('POST /api/bookings projects created response for requested room timeline v
         assert.equal(res.data.booking.timelineVisibility.visible, true);
         assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001']);
         assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['Room A']);
+    });
+});
+
+test('POST /api/bookings keeps standalone second animator response fully projected for animator timeline', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createBooking(baseUrl, {
+            date: '2099-02-13',
+            lineId: 'line-main',
+            lineName: 'Anna',
+            secondAnimator: 'Second Animator',
+            secondAnimatorLineId: 'line-second',
+            hosts: 2
+        }, { timelineView: 'animators' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.timelineView, 'animators');
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.linkedBookings.length, 1);
+        assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001', 'BK-2099-0002']);
+        assert.deepEqual(res.data.allBookings.map(item => item.timelineProjection.lineId), ['line-main', 'line-second']);
+        assert.deepEqual(res.data.allBookings.map(item => item.timelineVisibility.visible), [true, true]);
+        assert.equal(res.data.linkedBookings[0].linkedTo, res.data.booking.id);
+        assert.equal(res.data.linkedBookings[0].timelineProjection.lineId, 'line-second');
+        assert.equal(res.data.linkedBookings[0].timelineVisibility.visible, true);
+
+        const linkedRow = state.rows.find(row => row.linked_to === res.data.booking.id);
+        assert.ok(linkedRow, 'simple create inserts second animator linked row');
+        assert.equal(linkedRow.line_id, 'line-second');
     });
 });
 

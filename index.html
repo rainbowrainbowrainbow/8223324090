@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.85">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.85">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.85">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.85">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.85">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.85">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.85">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.85">
-    <link rel="stylesheet" href="css/features.css?v=0.77.85">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.85">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.85">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.85">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.85">
+    <link rel="stylesheet" href="css/base.css?v=0.77.86">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.86">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.86">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.86">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.86">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.86">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.86">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.86">
+    <link rel="stylesheet" href="css/features.css?v=0.77.86">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.86">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.86">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.86">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.86">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.85">✨ 0.77.85</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.86">✨ 0.77.86</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.85 — Timeline UI Clarity</p>
+                <p class="tagline">AI First CRM v0.77.86 — HR Workspace UI Unification</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.85</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.86</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1742,15 +1742,26 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.77.86 — HR Workspace UI Unification</h4>
+                    <ul>
+                        <li><b>HR, графік і звіти приведено до одного UI-контракту</b> — кнопки, chips, верхні tabs, hero і command bar використовують спільні класи та однакові стани.</li>
+                        <li><b>Графік роботи і звіти стали щільнішими</b> — decorative hero зменшено, toolbar дії винесено в command bar, primary лишився для головних дій.</li>
+                        <li><b>Action buttons очищено від emoji text icons</b> — export, print, account і bulk дії тепер читаються як одна система кнопок.</li>
+                        <li><b>Inline CSS debt залочено нижчими budgets</b> — великі <code>&lt;style&gt;</code> blocks зі <code>staff.html</code> і <code>reports.html</code> винесено в page CSS.</li>
+                        <li><b>Додано regression guards і screenshot proof</b> — static checks захищають shared UI primitives, відсутність inline style blocks і emoji в action buttons.</li>
+                        <li><b>Auth, API, БД і ролі не змінювались</b> — правка обмежена HTML, CSS, JS presentation, release markers, docs і тестами.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.85 — Timeline UI Clarity</h4>
                     <ul>
                         <li><b><code>Банкети / Свята</code> тепер видно одразу</b> — перемикач типу таймлайну винесено з прихованої полиці фільтрів у верхню панель поруч із датою.</li>
-                        <li><b>Панель таймлайну стала спокійнішою</b> — дата лишається головним контролем, <code>Зараз</code> і другорядні дії стали менш нав'язливими.</li>
-                        <li><b><code>Фільтри</code> показують зміни тільки коли вони є</b> — легкий бейдж з'являється для нестандартного статусу, періоду або масштабу і зникає після повернення до дефолту.</li>
-                        <li><b>Прибрано native tooltip-и з кастомних перемикачів</b> — кнопки <code>День</code>, <code>Тиждень</code>, статусів, типу таймлайну і масштабу більше не показують чорні браузерні підказки.</li>
-                        <li><b>Сітка і now-line стали чистішими</b> — часові мітки, клітинки, бронювання і лінія поточного часу краще тримають спільне вирівнювання.</li>
-                        <li><b>Tooltip-и, dropdown-и і modal-и поводяться стабільніше</b> — booking tooltip не дублюється і не перекриває modal-шари.</li>
-                        <li><b>Додано regression QA для timeline UI</b> — тести захищають toolbar, filters badge, responsive widths, overlay stack і геометрію timeline-сітки.</li>
+                        <li><b>Панель таймлайну стала спокійнішою</b> — дата читається як головний контроль, <code>Зараз</code> і другорядні дії стали менш нав'язливими.</li>
+                        <li><b><code>Фільтри</code> показують легкий індикатор змін</b> — бейдж з'являється тільки коли статус, період або масштаб відрізняються від дефолтних значень.</li>
+                        <li><b>Прибрано native tooltip-и з кастомних segmented controls</b> — перемикачі зберігають доступні labels без чорних браузерних підказок.</li>
+                        <li><b>Сітка, часові мітки і now-line вирівняні за спільною геометрією</b> — поточний час не перекриває важливі шари.</li>
+                        <li><b>Booking tooltip і overlay stack стабільніші</b> — tooltip не дублюється і не конфліктує з dropdown/modal шарами.</li>
+                        <li><b>Додано regression guards для timeline UI</b> — static і focused timeline тести покривають toolbar layout, filters badge, overlay invariants і responsive matrix.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -15329,42 +15340,42 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.85"></script>
-    <script src="js/timeline-visibility.js?v=0.77.85"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.85"></script>
-    <script src="js/config.js?v=0.77.85"></script>
-    <script src="js/api.js?v=0.77.85"></script>
-    <script src="js/ui.js?v=0.77.85"></script>
-    <script src="js/auth.js?v=0.77.85"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.85"></script>
-    <script src="js/timeline-cache.js?v=0.77.85"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.85"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.85"></script>
-    <script src="js/event-cards.js?v=0.77.85"></script>
-    <script src="js/invite-config.js?v=0.77.85"></script>
-    <script src="js/invite-share.js?v=0.77.85"></script>
-    <script src="js/timeline.js?v=0.77.85"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.85"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.85"></script>
-    <script src="js/booking-save-path.js?v=0.77.85"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.85"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.85"></script>
-    <script src="js/booking.js?v=0.77.85"></script>
-    <script src="js/settings.js?v=0.77.85"></script>
-    <script src="js/booking-form.js?v=0.77.85"></script>
-    <script src="js/booking-linked.js?v=0.77.85"></script>
-    <script src="js/settings-dashboard.js?v=0.77.85"></script>
-    <script src="js/settings-history.js?v=0.77.85"></script>
-    <script src="js/settings-afisha.js?v=0.77.85"></script>
-    <script src="js/settings-certificates.js?v=0.77.85"></script>
-    <script src="js/offline.js?v=0.77.85"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.85"></script>
-    <script src="js/search.js?v=0.77.85"></script>
-    <script src="js/ws.js?v=0.77.85"></script>
-    <script src="js/app.js?v=0.77.85"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.85"></script>
-    <script src="js/components/sidebar.js?v=0.77.85"></script>
+    <script src="js/timeline-context.js?v=0.77.86"></script>
+    <script src="js/timeline-visibility.js?v=0.77.86"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.86"></script>
+    <script src="js/config.js?v=0.77.86"></script>
+    <script src="js/api.js?v=0.77.86"></script>
+    <script src="js/ui.js?v=0.77.86"></script>
+    <script src="js/auth.js?v=0.77.86"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.86"></script>
+    <script src="js/timeline-cache.js?v=0.77.86"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.86"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.86"></script>
+    <script src="js/event-cards.js?v=0.77.86"></script>
+    <script src="js/invite-config.js?v=0.77.86"></script>
+    <script src="js/invite-share.js?v=0.77.86"></script>
+    <script src="js/timeline.js?v=0.77.86"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.86"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.86"></script>
+    <script src="js/booking-save-path.js?v=0.77.86"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.86"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.86"></script>
+    <script src="js/booking.js?v=0.77.86"></script>
+    <script src="js/settings.js?v=0.77.86"></script>
+    <script src="js/booking-form.js?v=0.77.86"></script>
+    <script src="js/booking-linked.js?v=0.77.86"></script>
+    <script src="js/settings-dashboard.js?v=0.77.86"></script>
+    <script src="js/settings-history.js?v=0.77.86"></script>
+    <script src="js/settings-afisha.js?v=0.77.86"></script>
+    <script src="js/settings-certificates.js?v=0.77.86"></script>
+    <script src="js/offline.js?v=0.77.86"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.86"></script>
+    <script src="js/search.js?v=0.77.86"></script>
+    <script src="js/ws.js?v=0.77.86"></script>
+    <script src="js/app.js?v=0.77.86"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.86"></script>
+    <script src="js/components/sidebar.js?v=0.77.86"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.77.85"></script>
+    <script src="js/alerts.js?v=0.77.86"></script>
 </body>
 </html>

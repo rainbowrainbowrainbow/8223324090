@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.86 - HR Workspace UI Unification
+
+### HR workspace / Staff schedule / Reports UI contract / Inline CSS debt lock / Regression QA / (Клешня, 01.07.2026) [codex]
+- **HR, графік і звіти приведено до одного UI-контракту** - кнопки, chips, верхні tabs, hero і command bar використовують спільні класи та однакові стани.
+- **Графік роботи і звіти стали щільнішими** - decorative hero зменшено, toolbar дії винесено в command bar, primary лишився для головних дій.
+- **Action buttons очищено від emoji text icons** - export, print, account і bulk дії тепер читаються як одна система кнопок.
+- **Inline CSS debt залочено нижчими budgets** - великі `<style>` blocks зі `staff.html` і `reports.html` винесено в page CSS, а `hr.html`, `staff.html`, `reports.html` мають нульовий inline style-byte budget.
+- **Додано regression guards і QA proof** - static checks захищають shared UI primitives, відсутність inline `<style>` blocks і emoji в action buttons; screenshots для `/hr`, `/staff`, `/reports` desktop/mobile зафіксовано в `output/playwright`.
+- **Auth, API, БД і ролі не змінювались** - правка обмежена HTML/CSS/JS presentation, release markers, docs і тестами.
+
+---
+
 ## v0.77.85 - Timeline UI Clarity
 
 ### Timeline toolbar / Filters / Grid polish / Overlay stability / Regression QA / (Клешня, 01.07.2026) [codex]

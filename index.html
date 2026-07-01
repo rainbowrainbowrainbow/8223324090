@@ -1752,6 +1752,16 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.77.88 — Timeline Create-Click Customer Fix</h4>
+                    <ul>
+                        <li><b>Нові записи в <code>Свята</code> і <code>Банкети</code> знову відкриваються з таймлайну</b> — create responses поважають поточний <code>timelineView</code>.</li>
+                        <li><b>Wrong-view записи більше не підмішуються</b> — frontend recovery перевіряє view/date/context перед cache або DOM fallback.</li>
+                        <li><b>Створення бронювання з новим клієнтом відновлено</b> — форма знову формує <code>customer</code> payload для нового клієнта.</li>
+                        <li><b>Timeline click fallback став безпечнішим</b> — diagnostics містять тільки технічні поля без телефонів, імен, дитячих даних або secrets.</li>
+                        <li><b>Додано regression coverage</b> — тести закривають create contract, wrong-view recovery, click fallback і customer payload.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.87 — HR Pulse Compact Visual Pass</h4>
                     <ul>
                         <li><b>Пульс зміни став помітно компактнішим</b> — hero зменшено, фонову ілюстрацію приглушено, а дата лишилась у щільному операційному badge без sticky overlap.</li>

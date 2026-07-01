@@ -245,8 +245,8 @@ function bookingPackageBusinessRowsSummary({ menuCount = 0, legacyMenu = false, 
 
 function renderBookingPackageDetail(booking, options = {}) {
     const bookingPackage = getBookingPackageFromBooking(booking);
-    const positions = bookingPackage?.menuPositions || [];
-    const serviceEvents = bookingPackage?.serviceEvents || [];
+    const positions = Array.isArray(bookingPackage?.menuPositions) ? bookingPackage.menuPositions : [];
+    const serviceEvents = Array.isArray(bookingPackage?.serviceEvents) ? bookingPackage.serviceEvents : [];
     const entertainmentRows = normalizeBookingPackageEntertainmentRows(options.entertainmentRows || options.entertainment_rows || []);
     if (!bookingPackage && !booking?.banquetMenu && !entertainmentRows.length) return '';
     const title = options.title || 'Меню / сервісні позиції';

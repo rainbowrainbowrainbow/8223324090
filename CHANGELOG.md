@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.91 - Timeline Detail Package Hotfix
+
+### Timeline details / Booking package renderer / Legacy payload tolerance / Regression QA / (Клешня, 01.07.2026) [codex]
+- **Анімація на `04.07.2026` більше не має падати при відкритті з timeline block** - detail modal тепер не валиться, якщо у старому `extraData.bookingPackage` поля `menuPositions` або `serviceEvents` збережені не масивами.
+- **Package renderer став defensive для legacy records** - frontend нормалізує некоректні package sublists у порожні масиви замість `.map is not a function`.
+- **Timeline click path не змінювався** - блок як і раніше відкривається через booking details, але malformed package payload більше не зриває рендер модалки.
+- **Додано regression coverage** - тест покриває persisted package payload з невалідними `menuPositions` і `serviceEvents`.
+- **БД, migrations, auth/roles, env і production config не змінювались** - fix обмежений frontend detail rendering, release cache tags і тестом.
+
+---
+
 ## v0.77.90 - Hermes CRM Tasker Hardening
 
 ### Hermes CRM Tasker / notification_outbox / Tasker endpoints / Diagnostics / Regression QA / (Клешня, 01.07.2026) [codex]

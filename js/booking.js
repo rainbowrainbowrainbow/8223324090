@@ -4511,10 +4511,12 @@ function getBookingPackageFromBooking(booking) {
         || extraData?.booking_package
         || null;
     if (packageData) {
-        const menuPositions = (packageData.menuPositions || packageData.menu_positions || [])
+        const rawMenuPositions = packageData.menuPositions || packageData.menu_positions || [];
+        const rawServiceEvents = packageData.serviceEvents || packageData.service_events || [];
+        const menuPositions = (Array.isArray(rawMenuPositions) ? rawMenuPositions : [])
             .map((item, index) => normalizeBookingMenuPosition(item, index))
             .filter(Boolean);
-        const serviceEvents = (packageData.serviceEvents || packageData.service_events || [])
+        const serviceEvents = (Array.isArray(rawServiceEvents) ? rawServiceEvents : [])
             .map((item, index) => normalizeBookingServiceEvent(item, index))
             .filter(Boolean);
         return {

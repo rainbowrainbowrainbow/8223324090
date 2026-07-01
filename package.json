@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.90",
+  "version": "0.77.91",
   "eventGenix": {
-    "releaseLabel": "Hermes CRM Tasker Hardening"
+    "releaseLabel": "Timeline Detail Package Hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

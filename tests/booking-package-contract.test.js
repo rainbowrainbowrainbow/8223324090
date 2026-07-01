@@ -1278,6 +1278,28 @@ test('booking package detail accepts top-level menuPositions as a compatibility 
     assert.equal(packageData.source, 'booking_workspace_compat');
 });
 
+test('booking package detail tolerates malformed persisted package arrays', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const packageData = ctx.getBookingPackageFromBooking({
+        price: 1500,
+        extraData: {
+            bookingPackage: {
+                finalTotal: 1500,
+                menuPositions: { unexpected: true },
+                serviceEvents: { unexpected: true },
+                source: 'legacy_corrupt_record'
+            }
+        }
+    });
+
+    assert.ok(packageData, 'legacy package object is still returned');
+    assert.equal(Array.isArray(packageData.menuPositions), true);
+    assert.equal(Array.isArray(packageData.serviceEvents), true);
+    assert.equal(packageData.menuPositions.length, 0);
+    assert.equal(packageData.serviceEvents.length, 0);
+    assert.equal(packageData.finalTotal, 1500);
+});
+
 test('booking package persists final total into booking price and extraData', () => {
     const booking = applyBookingPackage({
         price: 2200,

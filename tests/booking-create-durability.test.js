@@ -718,7 +718,7 @@ async function withApp(dbOptions, fn) {
     }
 }
 
-async function createBooking(baseUrl, overrides = {}) {
+async function createBooking(baseUrl, overrides = {}, options = {}) {
     const payload = {
         businessContext: 'event_genix',
         date: '2099-02-10',
@@ -736,13 +736,15 @@ async function createBooking(baseUrl, overrides = {}) {
         createdBy: 'creator-user',
         ...overrides
     };
-    const res = await fetch(`${baseUrl}/api/bookings`, {
+    const url = new URL(`${baseUrl}/api/bookings`);
+    if (options.timelineView) url.searchParams.set('timelineView', options.timelineView);
+    const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
     const data = await res.json().catch(() => ({}));
-    return { status: res.status, data };
+    return { status: res.status, data, timelineView: res.headers.get('x-timeline-view') };
 }
 
 async function withMockedKyivNow(iso, fn) {
@@ -789,7 +791,7 @@ function kitchenOperationalTimePayload(overrides = {}) {
     };
 }
 
-async function createFullBooking(baseUrl, overrides = {}) {
+async function createFullBooking(baseUrl, overrides = {}, options = {}) {
     const main = {
         businessContext: 'event_genix',
         date: '2099-02-13',
@@ -842,13 +844,15 @@ async function createFullBooking(baseUrl, overrides = {}) {
     if (Array.isArray(overrides.banquetActivities)) {
         body.banquetActivities = overrides.banquetActivities;
     }
-    const res = await fetch(`${baseUrl}/api/bookings/full`, {
+    const url = new URL(`${baseUrl}/api/bookings/full`);
+    if (options.timelineView) url.searchParams.set('timelineView', options.timelineView);
+    const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
     });
     const data = await res.json().catch(() => ({}));
-    return { status: res.status, data };
+    return { status: res.status, data, timelineView: res.headers.get('x-timeline-view') };
 }
 
 async function updateBooking(baseUrl, id, payload) {
@@ -878,6 +882,15 @@ function timelineProjectionSnapshot(booking = {}) {
     };
 }
 
+test('booking create response projection is derived from the request timeline view', () => {
+    const source = read('routes', 'bookings.js');
+
+    assert.match(source, /function timelineViewFromRequest\(req, fallback = 'animators'\)/);
+    assert.match(source, /projectCreatedBookingsForTimelineResponse\(\[booking, \.\.\.linkedBookings\], timelineView\)/);
+    assert.match(source, /projectCreatedBookingsForTimelineResponse\(allBookings, timelineView\)/);
+    assert.doesNotMatch(source, /projectCreatedBookingsForTimelineResponse\(allBookings,\s*['"]animators['"]\)/);
+});
+
 test('POST /api/bookings keeps booking durable when optional finance write fails', async () => {
     await withApp({}, async ({ baseUrl, state }) => {
         const res = await createBooking(baseUrl);
@@ -895,6 +908,25 @@ test('POST /api/bookings keeps booking durable when optional finance write fails
         assert.ok(state.tx.includes('ROLLBACK TO SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('RELEASE SAVEPOINT booking_optional_step'));
         assert.ok(state.tx.includes('COMMIT'));
+    });
+});
+
+test('POST /api/bookings projects created response for requested room timeline view', async () => {
+    await withApp({}, async ({ baseUrl }) => {
+        const res = await createBooking(baseUrl, {}, { timelineView: 'rooms' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.timelineView, 'rooms');
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.booking.id, 'BK-2099-0001');
+        assert.equal(res.data.booking.resourceId, 'Room A');
+        assert.equal(res.data.booking.resourceType, 'room');
+        assert.equal(res.data.booking.timelineProjection.view, 'rooms');
+        assert.equal(res.data.booking.timelineProjection.resourceId, 'Room A');
+        assert.equal(res.data.booking.timelineProjection.resourceType, 'room');
+        assert.equal(res.data.booking.timelineVisibility.visible, true);
+        assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001']);
+        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['Room A']);
     });
 });
 
@@ -1738,6 +1770,37 @@ test('POST /api/bookings/full keeps second animator linked booking on its own ti
         assert.notEqual(reloadedLinked.timelineProjection.hiddenReason, 'missing_animator_resource');
         assert.deepEqual(timelineProjectionSnapshot(res.data.mainBooking), timelineProjectionSnapshot(reloadedMain));
         assert.deepEqual(timelineProjectionSnapshot(res.data.linkedBookings[0]), timelineProjectionSnapshot(reloadedLinked));
+    });
+});
+
+test('POST /api/bookings/full projects created response for requested room timeline view', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {}, { timelineView: 'rooms' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.timelineView, 'rooms');
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.serverVerified, true);
+        assert.equal(res.data.mainBooking.id, 'BK-2099-0001');
+        assert.equal(res.data.mainBooking.resourceId, 'Room A');
+        assert.equal(res.data.mainBooking.resourceType, 'room');
+        assert.equal(res.data.mainBooking.timelineProjection.view, 'rooms');
+        assert.equal(res.data.mainBooking.timelineProjection.resourceId, 'Room A');
+        assert.equal(res.data.mainBooking.timelineProjection.resourceType, 'room');
+        assert.equal(res.data.mainBooking.timelineVisibility.visible, true);
+        assert.deepEqual(res.data.linkedBookings, []);
+        assert.deepEqual(res.data.allBookings.map(item => item.id), ['BK-2099-0001']);
+        assert.deepEqual(res.data.projection.bookings.map(item => item.resourceId), ['Room A']);
+
+        const linkedRow = state.rows.find(row => row.linked_to === res.data.mainBooking.id);
+        assert.ok(linkedRow, 'linked animator row must still be inserted even when room response filters it out');
+
+        const reload = await fetch(`${baseUrl}/api/bookings/2099-02-13?timelineView=rooms&businessContext=event_genix`);
+        const reloadData = await reload.json();
+        assert.equal(reload.status, 200, JSON.stringify(reloadData));
+        assert.deepEqual(reloadData.map(item => item.id), [res.data.mainBooking.id]);
+        assert.equal(reloadData[0].timelineProjection.view, 'rooms');
+        assert.equal(reloadData[0].timelineProjection.resourceId, 'Room A');
     });
 });
 

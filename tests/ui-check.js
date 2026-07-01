@@ -158,7 +158,7 @@ checkPage('index.html', (doc, html) => {
     check('sidebarLinks exists', !!doc.getElementById('sidebarLinks'));
     check('Timeline product sales button exists', !!doc.getElementById('productSalesBtn'));
     check('Timeline create booking toolbar button is absent', !doc.getElementById('newBookingBtn'));
-    check('Booking customer UI reads canonical children without writing one-child payload', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('Діти:') && bookingCode.includes('bookingCustomerChildLine') && !bookingCode.includes('obj.customer ='));
+    check('Booking customer UI reads canonical children and writes new-customer payload from the form draft', bookingCode.includes('function bookingCustomerChildrenProjection') && bookingCode.includes('function bookingCustomerChildrenDisplay') && bookingCode.includes('Діти:') && bookingCode.includes('bookingCustomerChildLine') && bookingCode.includes('function bookingCustomerPayloadFromDraft') && bookingCode.includes('if (customer) obj.customer = customer;'));
     check('Timeline period and timeline type controls are split',
         !!doc.querySelector('#periodSelector[data-schedule-view-mode-selector]')
         && !!doc.querySelector('[data-schedule-view-mode="day"][data-period="1"]')
@@ -3927,15 +3927,18 @@ check('Booking detail modal renders full banquet group details with controlled m
     && timelineConstructorCss.includes('.booking-banquet-candidate-role')
     && timelineConstructorCss.includes('.booking-banquet-warning')
     && globalModalsCss.includes('.booking-customer-block--priority'));
-check('Timeline booking links only an existing customer card',
+check('Timeline booking accepts an existing customer card or a valid new customer draft',
     htmlContains('index.html', 'Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання.')
     && htmlContains('index.html', 'bookingNewCustomerForm" class="booking-new-customer-form hidden" hidden aria-hidden="true"')
     && !htmlContains('index.html', 'bookingCreateCustomerBtn')
     && bookingCode.includes("const nextMode = mode === 'new' ? 'search' : mode;")
-    && bookingCode.includes('const hasClient = hasSelectedCustomer;')
-    && bookingCode.includes("errors.push('Оберіть існуючого клієнта з пошуку.');")
-    && bookingCode.includes('obj.customerId = parseInt(existingId);')
-    && !bookingCode.includes('obj.customer =')
+    && bookingCode.includes('function bookingCustomerDraftFromForm()')
+    && bookingCode.includes('function bookingCustomerPayloadFromDraft')
+    && bookingCode.includes('const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid(customerDraft);')
+    && bookingCode.includes('const hasClient = hasSelectedCustomer || hasNewCustomer;')
+    && bookingCode.includes('customerDraft.search && !customerDraft.name')
+    && bookingCode.includes('obj.customerId = parseInt(existingId, 10);')
+    && bookingCode.includes('if (customer) obj.customer = customer;')
     && !bookingCode.includes("setBookingClientMode('new'")
     && !bookingCode.includes('bookingCreateCustomerBtn')
     && !bookingCode.includes('isValidNewBookingClient'));

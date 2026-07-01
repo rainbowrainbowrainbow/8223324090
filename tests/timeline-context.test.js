@@ -43,6 +43,27 @@ test('timeline API calls do not inherit the global CRM business header', () => {
     assert.match(apiCode, /apiCreateBooking[\s\S]*getTimelineAuthHeaders\(\)/);
 });
 
+test('timeline create API calls include the current timeline view without dropping business context', () => {
+    const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
+    const createBookingStart = apiCode.indexOf('async function apiCreateBooking(');
+    const createFullStart = apiCode.indexOf('async function apiCreateBookingFull(');
+    const createFullEnd = apiCode.indexOf('async function apiGetBanquetByBooking', createFullStart);
+    assert.notEqual(createBookingStart, -1);
+    assert.notEqual(createFullStart, -1);
+    assert.notEqual(createFullEnd, -1);
+
+    const createBookingBlock = apiCode.slice(createBookingStart, createFullStart);
+    const createFullBlock = apiCode.slice(createFullStart, createFullEnd);
+
+    assert.match(apiCode, /function timelineApiUrlWithView\(url, options = \{\}\)[\s\S]*let path = timelineApiUrl\(url\)/);
+    assert.match(apiCode, /window\.TimelineView\?\.current\?\.\(\)/);
+    assert.match(createBookingBlock, /async function apiCreateBooking\(booking, options = \{\}\)/);
+    assert.match(createBookingBlock, /timelineApiUrlWithView\('\/bookings', options\)/);
+    assert.doesNotMatch(createBookingBlock, /timelineApiUrl\('\/bookings'\)/);
+    assert.match(createFullBlock, /timelineApiUrlWithView\('\/bookings\/full', options\)/);
+    assert.doesNotMatch(createFullBlock, /timelineApiUrl\('\/bookings\/full'\)/);
+});
+
 test('server-hydrated timeline display settings override stale local storage', () => {
     const contextCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-context.js'), 'utf8');
     const events = [];

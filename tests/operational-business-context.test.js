@@ -321,8 +321,8 @@ test('timeline booking and line mutations stay inside the active timeline busine
     assert.match(bookingService, /COALESCE\(business_context, 'event_genix'\) = \$3/);
     assert.match(bookingService, /COALESCE\(b\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\) = COALESCE\(l\.business_context, '\$\{DEFAULT_TIMELINE_CONTEXT\}'\)/);
 
-    assert.match(api, /timelineApiUrl\('\/bookings'\)/);
-    assert.match(api, /timelineApiUrl\('\/bookings\/full'\)/);
+    assert.match(api, /timelineApiUrlWithView\('\/bookings', options\)/);
+    assert.match(api, /timelineApiUrlWithView\('\/bookings\/full', options\)/);
     assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/confirm`\)/);
     assert.match(api, /timelineApiUrl\(`\/bookings\/\$\{encodeURIComponent\(id\)\}\/linked-atomic`\)/);
 

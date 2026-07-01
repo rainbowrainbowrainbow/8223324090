@@ -1450,9 +1450,9 @@ async function apiGetBookingById(id, options = {}) {
     }
 }
 
-async function apiCreateBooking(booking) {
+async function apiCreateBooking(booking, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings')}`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrlWithView('/bookings', options)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
@@ -1539,7 +1539,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
         if (Array.isArray(options.banquetActivities) && options.banquetActivities.length > 0) {
             payload.banquetActivities = options.banquetActivities.map(item => timelineApiPayload(item));
         }
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings/full')}`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrlWithView('/bookings/full', options)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload))

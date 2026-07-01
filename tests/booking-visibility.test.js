@@ -254,8 +254,13 @@ test('booking details can fall back to id read when current timeline projection 
     assert.ok(detailRouteIndex >= 0, 'booking detail-by-id route exists');
     assert.ok(dateRouteIndex > detailRouteIndex, 'detail-by-id route must be registered before date route');
     const detailRouteBlock = routes.slice(detailRouteIndex, dateRouteIndex);
+    assert.match(detailRouteBlock, /const businessContext = timelineContextFromRequest\(req\)/);
+    assert.match(detailRouteBlock, /requireTimelineContext\(req, res, businessContext\)/);
+    assert.match(detailRouteBlock, /bookingContextSql\('b', '\$2'\)/);
     assert.match(detailRouteBlock, /bookingActiveStatusSql\('b'\)/);
     assert.match(detailRouteBlock, /canViewBooking\(req\.user, row\)/);
+    assert.match(detailRouteBlock, /sendBookingDenied\(req, res, row\)/);
+    assert.match(detailRouteBlock, /Booking not found/);
     assert.match(detailRouteBlock, /attachBanquetLinksToBookings\(\[mapBookingRow\(row\)\], businessContext\)/);
 
     assert.match(api, /async function apiGetBookingById\(id, options = \{\}\)/);

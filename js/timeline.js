@@ -3158,13 +3158,20 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     const ownId = String(renderBooking?.id || '').trim();
     const linkedId = String(renderBooking?.linkedTo || renderBooking?.linked_to || '').trim();
     const targetId = linkedId || ownId;
+    const timelineView = typeof timelineCurrentViewKey === 'function' ? timelineCurrentViewKey() : null;
     if (!targetId) return false;
 
     let opened = false;
     try {
         opened = await showBookingDetails(targetId, { silentMissing: Boolean(linkedId), source: 'timeline_block_click' });
     } catch (err) {
-        console.warn('[timeline] Failed to open booking details from block', { targetId, ownId, linkedId, err });
+        console.warn('[timeline] Failed to open booking details from block', {
+            targetId,
+            ownId,
+            linkedId,
+            timelineView,
+            error: err?.message || String(err || '')
+        });
     }
     if (opened) return true;
 
@@ -3172,11 +3179,23 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
         try {
             opened = await showBookingDetails(ownId, { source: 'timeline_block_click_fallback' });
         } catch (err) {
-            console.warn('[timeline] Failed to open linked booking fallback details', { ownId, linkedId, err });
+            console.warn('[timeline] Failed to open linked booking fallback details', {
+                ownId,
+                linkedId,
+                timelineView,
+                error: err?.message || String(err || '')
+            });
         }
         if (opened) return true;
     }
 
+    console.warn('[timeline] Booking block could not be opened in current timeline view', {
+        targetId,
+        ownId,
+        linkedId,
+        timelineView,
+        source: 'timeline_block_click'
+    });
     if (typeof showNotification === 'function') {
         showNotification('Бронювання не знайдено в поточному режимі таймлайну. Оновіть сторінку або перемкніть режим.', 'warning');
     }

@@ -1318,6 +1318,16 @@ function normalizeTimelineView(value) {
     return String(value || '').trim().toLowerCase() === 'rooms' ? 'rooms' : 'animators';
 }
 
+function timelineViewFromRequest(req, fallback = 'animators') {
+    const body = req?.body || {};
+    return normalizeTimelineView(
+        req?.query?.timelineView
+        || body.timelineView
+        || body.main?.timelineView
+        || fallback
+    );
+}
+
 function bookingTimelineIdentity(booking = {}) {
     const candidates = [
         booking.timelineIdentity,
@@ -2656,6 +2666,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     // v39.9: Validate BEFORE pool.connect() to prevent connection leaks on early returns
     const b = req.body;
     const businessContext = timelineContextFromRequest(req);
+    const timelineView = timelineViewFromRequest(req);
     if (!requireTimelineContext(req, res, businessContext)) return;
     if (!requireTimelineAction(req, res, businessContext, 'create')) return;
     b.businessContext = businessContext;
@@ -2985,7 +2996,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
-        let allBookings = [booking, ...linkedBookings];
+        let allBookings = projectCreatedBookingsForTimelineResponse([booking, ...linkedBookings], timelineView);
         try {
             allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
         } catch (linkErr) {
@@ -3173,6 +3184,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
+        res.set('X-Timeline-View', timelineView);
         res.json({
             success: true,
             booking: responseBooking,
@@ -3444,6 +3456,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const linked = Array.isArray(req.body?.linked) ? req.body.linked : [];
         const banquetActivities = Array.isArray(req.body?.banquetActivities) ? req.body.banquetActivities : [];
         const businessContext = timelineContextFromRequest(req);
+        const timelineView = timelineViewFromRequest(req);
         if (!requireTimelineContext(req, res, businessContext)) return;
         if (!requireTimelineAction(req, res, businessContext, 'create')) return;
         if (!main || !main.date || !main.time || !main.lineId) {
@@ -3944,7 +3957,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 });
             }
         }));
-        allBookings = projectCreatedBookingsForTimelineResponse(allBookings, 'animators');
+        allBookings = projectCreatedBookingsForTimelineResponse(allBookings, timelineView);
         try {
             allBookings = await attachBanquetLinksToBookings(allBookings, businessContext);
         } catch (linkErr) {
@@ -3961,6 +3974,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             broadcast('booking:created', booking, req.user?.id?.toString(), booking.date || main.date);
         });
 
+        res.set('X-Timeline-View', timelineView);
         res.json({
             success: true,
             mainBooking: responseMainBooking,

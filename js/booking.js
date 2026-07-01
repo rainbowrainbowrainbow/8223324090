@@ -1513,6 +1513,35 @@ function renderBookingCustomerSearchState(message = '', options = {}) {
     }
 }
 
+function bookingCustomerDraftFromForm() {
+    return {
+        search: document.getElementById('customerSearch')?.value?.trim() || '',
+        name: document.getElementById('customerName')?.value?.trim() || '',
+        phone: document.getElementById('customerPhone')?.value?.trim() || '',
+        instagram: document.getElementById('customerInstagram')?.value?.trim() || '',
+        childName: document.getElementById('customerChildName')?.value?.trim() || '',
+        childBirthday: document.getElementById('customerChildBirthday')?.value || '',
+        source: document.getElementById('customerSource')?.value || ''
+    };
+}
+
+function bookingNewCustomerDraftIsValid(draft = bookingCustomerDraftFromForm()) {
+    return Boolean(String(draft?.name || '').trim());
+}
+
+function bookingCustomerPayloadFromDraft(draft = bookingCustomerDraftFromForm()) {
+    if (!bookingNewCustomerDraftIsValid(draft)) return null;
+    const customer = {
+        name: String(draft.name || '').trim()
+    };
+    if (draft.phone) customer.phone = draft.phone;
+    if (draft.instagram) customer.instagram = draft.instagram;
+    if (draft.childName) customer.childName = draft.childName;
+    if (draft.childBirthday) customer.childBirthday = draft.childBirthday;
+    if (draft.source) customer.source = draft.source;
+    return customer;
+}
+
 function getSmartBookingValidationState() {
     const formData = getBookingFormData();
     const presentation = window.TimelineBusinessContext?.presentation?.() || { mode: 'park' };
@@ -1520,7 +1549,9 @@ function getSmartBookingValidationState() {
     const hasDateTime = Boolean(formData?.time) && Boolean(AppState.selectedDate);
     const hasRoom = Boolean(formData?.room);
     const hasSelectedCustomer = Boolean(document.getElementById('selectedCustomerId')?.value);
-    const hasClient = hasSelectedCustomer;
+    const customerDraft = bookingCustomerDraftFromForm();
+    const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid(customerDraft);
+    const hasClient = hasSelectedCustomer || hasNewCustomer;
     const isEducation = presentation.mode === 'education';
     const lessonTitle = document.getElementById('educationLessonTitle')?.value?.trim() || '';
     const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
@@ -1536,8 +1567,11 @@ function getSmartBookingValidationState() {
         invalidFields.push('roomSelect');
     }
     if (!hasClient) {
-        errors.push('Оберіть існуючого клієнта з пошуку.');
-        invalidFields.push('customerSearch');
+        const hasSearchOnly = Boolean(customerDraft.search && !customerDraft.name);
+        errors.push(hasSearchOnly
+            ? 'Вкажіть імʼя нового клієнта або оберіть існуючого клієнта з пошуку.'
+            : 'Оберіть існуючого клієнта з пошуку або введіть імʼя нового клієнта.');
+        invalidFields.push(hasSearchOnly ? 'customerName' : 'customerSearch');
     }
     if (programRequired && !hasProgram) {
         errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.');
@@ -4426,7 +4460,7 @@ function renderBookingPackageSummary() {
     const roomValue = roomSelect?.value || '';
     const roomLabel = roomSelect?.selectedOptions?.[0]?.textContent?.trim() || roomValue || 'не вибрано';
     const selectedCustomerName = document.querySelector('#bookingSelectedCustomerCard strong')?.textContent?.trim() || '';
-    const resolvedCustomerName = selectedCustomerName || (customerId ? customerName : '') || (customerId ? 'Існуючий клієнт' : 'не вибрано');
+    const resolvedCustomerName = selectedCustomerName || customerName || (customerId ? 'Існуючий клієнт' : 'не вибрано');
     const totals = getBookingPackageTotals(program);
     const roomFirst = isRoomFirstTimelineView();
     const kitchenEnabled = isBookingKitchenEnabled();
@@ -7761,7 +7795,10 @@ function buildBookingObject(formData, program) {
     // v15.1+: CRM customer is a first-class booking package field.
     const existingId = document.getElementById('selectedCustomerId')?.value;
     if (existingId) {
-        obj.customerId = parseInt(existingId);
+        obj.customerId = parseInt(existingId, 10);
+    } else {
+        const customer = bookingCustomerPayloadFromDraft();
+        if (customer) obj.customer = customer;
     }
 
     if (!AppState.editingBookingId && AppState.leadConversionContext?.leadId) {
@@ -8343,10 +8380,53 @@ function createdBookingTimelineProjection(booking = {}) {
         || null;
 }
 
+function normalizeCreatedBookingTimelineView(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return '';
+    return normalized === 'rooms' ? 'rooms' : 'animators';
+}
+
+function currentCreatedBookingTimelineView() {
+    const current = typeof window !== 'undefined'
+        ? window.TimelineView?.current?.()
+        : null;
+    return normalizeCreatedBookingTimelineView(current || 'animators') || 'animators';
+}
+
+function createdBookingProjectionTimelineView(projection = {}) {
+    return normalizeCreatedBookingTimelineView(
+        projection?.timelineView
+        || projection?.timeline_view
+        || projection?.view
+        || ''
+    );
+}
+
+function createdBookingDiagnosticSummary(booking = {}) {
+    const projection = createdBookingTimelineProjection(booking) || {};
+    const resourceIdentity = typeof timelineBookingResourceIdentity === 'function'
+        ? timelineBookingResourceIdentity(booking)
+        : null;
+    return {
+        id: booking?.id || booking?.bookingId || null,
+        date: normalizeBookingDateKey(projection?.date || booking?.date) || null,
+        status: booking?.status || null,
+        businessContext: projection?.businessContext
+            || projection?.business_context
+            || booking?.businessContext
+            || booking?.business_context
+            || null,
+        timelineView: createdBookingProjectionTimelineView(projection) || currentCreatedBookingTimelineView(),
+        lineId: String(resourceIdentity?.resourceId || booking?.resourceId || booking?.resource_id || booking?.lineId || booking?.line_id || '').trim() || null
+    };
+}
+
 function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate = formatDate(AppState.selectedDate)) {
     const projection = createdBookingTimelineProjection(booking);
     const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
         || window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const expectedTimelineView = currentCreatedBookingTimelineView();
+    const projectedTimelineView = createdBookingProjectionTimelineView(projection);
     const projectedDate = normalizeBookingDateKey(projection?.date || booking.date);
     const projectedContext = projection?.businessContext
         || projection?.business_context
@@ -8355,6 +8435,7 @@ function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate =
         || '';
     if (projectedDate && projectedDate !== currentDate) return false;
     if (projectedContext && expectedContext && projectedContext !== expectedContext) return false;
+    if (projectedTimelineView && expectedTimelineView && projectedTimelineView !== expectedTimelineView) return false;
     const id = booking?.id || booking?.bookingId;
     const resourceIdentity = typeof timelineBookingResourceIdentity === 'function'
         ? timelineBookingResourceIdentity(booking)
@@ -8815,7 +8896,7 @@ async function handleBookingSubmit(e) {
             }
             if (visibility.expectedCount > 0 && visibility.visibleCount === 0) {
                 console.error('Created booking is not visible after timeline refresh', {
-                    createdBookings,
+                    createdBookings: createdBookings.map(createdBookingDiagnosticSummary),
                     visibility,
                     diagnostics: createdBookingVisibilityDiagnostics(createdBookings, timelineSnapshot)
                 });
@@ -10216,6 +10297,9 @@ async function showBookingDetails(bookingId, options = {}) {
             bookingId: cleanBookingId,
             source: options.source || 'unknown',
             date: AppState.selectedDate,
+            timelineView: currentCreatedBookingTimelineView(),
+            businessContext: window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+                || window.TimelineBusinessContext?.current?.()?.apiValue || null,
             lookupSource: detailRecord.source,
             status: detailRecord.status || null,
             error: detailRecord.error || null

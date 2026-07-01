@@ -8,6 +8,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
 const packageJson = JSON.parse(read('package.json'));
 const escapedAssetVersion = packageJson.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const plain = value => JSON.parse(JSON.stringify(value));
 
 const mojibakeMarkers = [
     'Рџ', 'РЎ', 'Рќ', 'Рљ', 'Рђ', 'Р†', 'Р ', 'Р‘', 'Р’', 'Р“', 'Р”', 'Р—', 'Рњ', 'Р©',
@@ -30,6 +31,184 @@ test('booking drawer frontend sources do not contain mojibake markers', () => {
     assert.ok(start >= 0, 'booking panel markup exists');
     assert.ok(end > start, 'booking panel slice end exists');
     assertCleanEncoding('index.html booking panel', html.slice(start, end + '</aside>'.length));
+});
+
+test('booking create payload supports existing and new customer flows', () => {
+    const bookingJs = read('js', 'booking.js');
+
+    const helperStart = bookingJs.indexOf('function bookingCustomerDraftFromForm');
+    const helperEnd = bookingJs.indexOf('function getSmartBookingValidationState', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'customer payload helper block exists');
+    const helperBlock = bookingJs.slice(helperStart, helperEnd);
+    assert.match(helperBlock, /search: document\.getElementById\('customerSearch'\)\?\.value\?\.trim\(\) \|\| ''/);
+    assert.match(helperBlock, /name: document\.getElementById\('customerName'\)\?\.value\?\.trim\(\) \|\| ''/);
+    assert.match(helperBlock, /function bookingNewCustomerDraftIsValid\(draft = bookingCustomerDraftFromForm\(\)\)/);
+    assert.match(helperBlock, /return Boolean\(String\(draft\?\.name \|\| ''\)\.trim\(\)\);/);
+    assert.match(helperBlock, /if \(draft\.phone\) customer\.phone = draft\.phone;/);
+    assert.match(helperBlock, /if \(draft\.instagram\) customer\.instagram = draft\.instagram;/);
+    assert.match(helperBlock, /if \(draft\.childName\) customer\.childName = draft\.childName;/);
+    assert.match(helperBlock, /if \(draft\.childBirthday\) customer\.childBirthday = draft\.childBirthday;/);
+    assert.match(helperBlock, /if \(draft\.source\) customer\.source = draft\.source;/);
+
+    const validationStart = bookingJs.indexOf('function getSmartBookingValidationState');
+    const validationEnd = bookingJs.indexOf('function formatBookingValidationList', validationStart);
+    assert.ok(validationStart >= 0 && validationEnd > validationStart, 'customer validation block exists');
+    const validationBlock = bookingJs.slice(validationStart, validationEnd);
+    assert.match(validationBlock, /const hasSelectedCustomer = Boolean\(document\.getElementById\('selectedCustomerId'\)\?\.value\);/);
+    assert.match(validationBlock, /const customerDraft = bookingCustomerDraftFromForm\(\);/);
+    assert.match(validationBlock, /const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid\(customerDraft\);/);
+    assert.match(validationBlock, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
+    assert.match(validationBlock, /const hasSearchOnly = Boolean\(customerDraft\.search && !customerDraft\.name\);/);
+    assert.match(validationBlock, /invalidFields\.push\(hasSearchOnly \? 'customerName' : 'customerSearch'\);/);
+
+    const payloadStart = bookingJs.indexOf('function buildBookingObject');
+    const payloadEnd = bookingJs.indexOf('function shouldCreateEducationLessonSeries', payloadStart);
+    assert.ok(payloadStart >= 0 && payloadEnd > payloadStart, 'booking payload block exists');
+    const payloadBlock = bookingJs.slice(payloadStart, payloadEnd);
+    assert.match(payloadBlock, /const existingId = document\.getElementById\('selectedCustomerId'\)\?\.value;/);
+    assert.match(payloadBlock, /if \(existingId\) \{[\s\S]*obj\.customerId = parseInt\(existingId, 10\);[\s\S]*\} else \{[\s\S]*const customer = bookingCustomerPayloadFromDraft\(\);[\s\S]*if \(customer\) obj\.customer = customer;[\s\S]*\}/);
+});
+
+test('booking customer validation and payload distinguish existing, new, search-only, and empty states', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function bookingCustomerDraftFromForm');
+    const validationStart = bookingJs.indexOf('function getSmartBookingValidationState', helperStart);
+    const validationEnd = bookingJs.indexOf('function formatBookingValidationList', validationStart);
+    assert.ok(helperStart >= 0 && validationStart > helperStart && validationEnd > validationStart, 'customer validation helper slice exists');
+
+    const fields = new Map();
+    const ensureField = id => {
+        if (!fields.has(id)) fields.set(id, { value: '' });
+        return fields.get(id);
+    };
+    [
+        'selectedCustomerId',
+        'customerSearch',
+        'customerName',
+        'customerPhone',
+        'customerInstagram',
+        'customerChildName',
+        'customerChildBirthday',
+        'customerSource',
+        'educationLessonTitle'
+    ].forEach(ensureField);
+
+    const context = {
+        document: { getElementById: id => ensureField(id) },
+        window: {
+            TimelineBusinessContext: {
+                presentation: () => ({ mode: 'park' })
+            }
+        },
+        AppState: { selectedDate: '2099-02-10' },
+        getBookingFormData: () => ({ time: '12:00', room: 'Room A', programId: 'bubble' }),
+        isOptionalTimelineRoomBookingMode: () => false,
+        getBookingWorkspaceHasEvent: () => true
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(helperStart, validationEnd)}
+        this.__bookingCustomerHooks = {
+            bookingCustomerPayloadFromDraft,
+            getSmartBookingValidationState
+        };
+    `, context, { filename: 'js/booking.js' });
+
+    const setFields = values => {
+        for (const field of fields.values()) field.value = '';
+        for (const [id, value] of Object.entries(values)) ensureField(id).value = value;
+    };
+    const hooks = context.__bookingCustomerHooks;
+
+    setFields({ selectedCustomerId: '42' });
+    assert.equal(hooks.getSmartBookingValidationState().canSubmit, true, 'selected existing customer is valid');
+    assert.equal(hooks.bookingCustomerPayloadFromDraft(), null, 'empty draft does not create a customer payload');
+
+    setFields({
+        customerSearch: 'Test Customer',
+        customerName: 'Test Customer',
+        customerPhone: '+380000000000',
+        customerInstagram: 'test_customer',
+        customerChildName: 'Test Child',
+        customerChildBirthday: '2099-01-02',
+        customerSource: 'instagram'
+    });
+    assert.equal(hooks.getSmartBookingValidationState().canSubmit, true, 'new customer with a name is valid');
+    assert.deepEqual(plain(hooks.bookingCustomerPayloadFromDraft()), {
+        name: 'Test Customer',
+        phone: '+380000000000',
+        instagram: 'test_customer',
+        childName: 'Test Child',
+        childBirthday: '2099-01-02',
+        source: 'instagram'
+    });
+
+    setFields({ customerSearch: 'Typed search text' });
+    const searchOnly = hooks.getSmartBookingValidationState();
+    assert.equal(searchOnly.canSubmit, false, 'search-only text is not enough to create a customer');
+    assert.deepEqual(plain(searchOnly.invalidFields), ['customerName']);
+    assert.equal(hooks.bookingCustomerPayloadFromDraft(), null);
+
+    setFields({});
+    const empty = hooks.getSmartBookingValidationState();
+    assert.equal(empty.canSubmit, false, 'empty customer state is invalid');
+    assert.deepEqual(plain(empty.invalidFields), ['customerSearch']);
+    assert.equal(hooks.bookingCustomerPayloadFromDraft(), null);
+});
+
+test('created booking recovery rejects wrong timeline-view projections before cache merge', () => {
+    const bookingJs = read('js', 'booking.js');
+    const projectionStart = bookingJs.indexOf('function createdBookingTimelineProjection');
+    const projectionEnd = bookingJs.indexOf('function createdBookingVisibilityMessage', projectionStart);
+    assert.ok(projectionStart >= 0 && projectionEnd > projectionStart, 'created booking projection helper slice exists');
+
+    let context;
+    context = {
+        currentTimelineView: 'rooms',
+        window: {
+            TimelineView: {
+                current: () => context.currentTimelineView
+            },
+            TimelineBusinessContext: {
+                state: () => ({ activeBusinessContext: 'event_genix' }),
+                current: () => ({ apiValue: 'event_genix' })
+            }
+        },
+        AppState: { selectedDate: '2099-02-10' },
+        formatDate: value => String(value || '').slice(0, 10),
+        normalizeBookingDateKey: value => String(value || '').slice(0, 10),
+        timelineBookingResourceIdentity: booking => ({
+            resourceId: booking.resourceId || booking.resource_id || booking.lineId || booking.line_id || booking.timelineProjection?.resourceId || ''
+        })
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(projectionStart, projectionEnd)}
+        this.__createdBookingProjectionHooks = {
+            createdBookingProjectionMatchesCurrentSlice
+        };
+    `, context, { filename: 'js/booking.js' });
+
+    const matches = booking => context.__createdBookingProjectionHooks.createdBookingProjectionMatchesCurrentSlice(booking, '2099-02-10');
+    const baseBooking = {
+        id: 'BK-2099-ROOM',
+        date: '2099-02-10',
+        resourceId: 'Room A',
+        timelineProjection: {
+            date: '2099-02-10',
+            businessContext: 'event_genix',
+            resourceId: 'Room A',
+            visible: true
+        }
+    };
+
+    assert.equal(matches({ ...baseBooking, timelineProjection: { ...baseBooking.timelineProjection, timelineView: 'rooms' } }), true);
+    assert.equal(matches({ ...baseBooking, timelineProjection: { ...baseBooking.timelineProjection, timelineView: 'animators' } }), false);
+    assert.equal(matches(baseBooking), true, 'legacy projections without timelineView keep old compatibility');
+    assert.equal(matches({ ...baseBooking, date: '2099-02-11', timelineProjection: { ...baseBooking.timelineProjection, date: '2099-02-11', timelineView: 'rooms' } }), false);
+
+    context.currentTimelineView = 'animators';
+    assert.equal(matches({ ...baseBooking, timelineProjection: { ...baseBooking.timelineProjection, timelineView: 'animators' } }), true);
 });
 
 test('booking detail scenario row is hidden only for kitchen bookings', () => {
@@ -407,6 +586,12 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
     assert.match(bookingJs, /function createdBookingTimelineProjection/);
     assert.match(bookingJs, /function createdBookingProjectionMatchesCurrentSlice/);
+    assert.match(bookingJs, /function currentCreatedBookingTimelineView/);
+    assert.match(bookingJs, /function createdBookingProjectionTimelineView/);
+    assert.match(bookingJs, /projection\?\.timelineView\s*\|\|\s*projection\?\.timeline_view\s*\|\|\s*projection\?\.view/);
+    assert.match(bookingJs, /const expectedTimelineView = currentCreatedBookingTimelineView\(\)/);
+    assert.match(bookingJs, /const projectedTimelineView = createdBookingProjectionTimelineView\(projection\)/);
+    assert.match(bookingJs, /if \(projectedTimelineView && expectedTimelineView && projectedTimelineView !== expectedTimelineView\) return false/);
     assert.doesNotMatch(bookingJs, /if \(projection && projection\.visible === false\) return false/);
     assert.match(bookingJs, /lineId \|\| projection\?\.visible === true/);
     assert.match(bookingJs, /серверна проекція не бачить запис/);
@@ -415,6 +600,53 @@ test('timeline caches are scoped by business and display mode before booking vis
     assert.match(bookingJs, /bookings: changedDateKey !== selectedDateKey/);
     assert.match(bookingJs, /серверний список дня не повернув запис/);
     assert.match(bookingJs, /createdBookingVisibilityMessage\(createdBookings, timelineSnapshot\)/);
+    assert.match(bookingJs, /Details target not found[\s\S]*timelineView: currentCreatedBookingTimelineView\(\)[\s\S]*businessContext:/);
+});
+
+test('booking detail miss diagnostics stay scoped and avoid customer data', () => {
+    const bookingJs = read('js', 'booking.js');
+    const warningStart = bookingJs.indexOf("console.warn('[booking] Details target not found'");
+    const warningEnd = bookingJs.indexOf('return false;', warningStart);
+    assert.ok(warningStart >= 0 && warningEnd > warningStart, 'booking detail miss diagnostic block exists');
+    const warningBlock = bookingJs.slice(warningStart, warningEnd);
+
+    assert.match(warningBlock, /bookingId: cleanBookingId/);
+    assert.match(warningBlock, /source: options\.source \|\| 'unknown'/);
+    assert.match(warningBlock, /date: AppState\.selectedDate/);
+    assert.match(warningBlock, /timelineView: currentCreatedBookingTimelineView\(\)/);
+    assert.match(warningBlock, /businessContext:/);
+    assert.match(warningBlock, /lookupSource: detailRecord\.source/);
+    assert.match(warningBlock, /status: detailRecord\.status \|\| null/);
+    assert.match(warningBlock, /error: detailRecord\.error \|\| null/);
+    assert.doesNotMatch(
+        warningBlock,
+        /customer(?:Id|Name|Phone|Instagram|Email)|child(?:Name|Birthday)|phone|instagram|authorization|bearer|token|password|secret/i
+    );
+});
+
+test('created booking visibility diagnostics avoid customer data', () => {
+    const bookingJs = read('js', 'booking.js');
+    const helperStart = bookingJs.indexOf('function createdBookingDiagnosticSummary');
+    const helperEnd = bookingJs.indexOf('function createdBookingProjectionMatchesCurrentSlice', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'created booking diagnostic summary helper exists');
+    const helperBlock = bookingJs.slice(helperStart, helperEnd);
+    assert.match(helperBlock, /id: booking\?\.id \|\| booking\?\.bookingId \|\| null/);
+    assert.match(helperBlock, /date: normalizeBookingDateKey\(projection\?\.date \|\| booking\?\.date\) \|\| null/);
+    assert.match(helperBlock, /status: booking\?\.status \|\| null/);
+    assert.match(helperBlock, /businessContext:/);
+    assert.match(helperBlock, /timelineView: createdBookingProjectionTimelineView\(projection\) \|\| currentCreatedBookingTimelineView\(\)/);
+    assert.match(helperBlock, /lineId:/);
+    assert.doesNotMatch(
+        helperBlock,
+        /customer(?:Id|Name|Phone|Instagram|Email)|child(?:Name|Birthday)|phone|instagram|authorization|bearer|token|password|secret/i
+    );
+
+    const errorStart = bookingJs.indexOf("console.error('Created booking is not visible after timeline refresh'");
+    const errorEnd = bookingJs.indexOf('await waitForCreatedBookingBlocks', errorStart);
+    assert.ok(errorStart >= 0 && errorEnd > errorStart, 'created booking visibility error diagnostic exists');
+    const errorBlock = bookingJs.slice(errorStart, errorEnd);
+    assert.match(errorBlock, /createdBookings: createdBookings\.map\(createdBookingDiagnosticSummary\)/);
+    assert.doesNotMatch(errorBlock, /createdBookings,\s*$/m);
 });
 
 test('booking lifecycle actions force fresh day snapshots before mutating the server', () => {

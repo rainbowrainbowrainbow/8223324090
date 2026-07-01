@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.88 - Timeline Create-Click Customer Fix
+
+### Timeline / Booking create / Customer payload / Cache safety / Regression QA / (Клешня, 01.07.2026) [codex]
+- **Нові записи в `Свята` і `Банкети` знову відкриваються з таймлайну** - create responses тепер поважають поточний `timelineView`, тому щойно створений блок має правильну проекцію для активного режиму.
+- **Wrong-view записи більше не підмішуються в поточний таймлайн** - frontend recovery перевіряє view/date/context і не додає невалідні записи в cache або DOM.
+- **Створення бронювання з новим клієнтом відновлено** - форма знову формує `customer` payload для нового клієнта, а existing customer flow лишається через `customerId`.
+- **Клік по timeline block став безпечнішим для debug** - fallback відкриття пише технічні diagnostics з id/status/source/date/view/context без телефонів, імен, дитячих даних або secrets.
+- **Додано regression coverage** - тести закривають `animators`/`rooms` create contract, wrong-view recovery, click fallback, customer payload і access-boundary diagnostics.
+- **Auth, ролі, БД, migrations і production config не змінювались** - fix обмежений booking/timeline API contract, frontend cache/click behavior, customer payload і тестами.
+
+---
+
 ## v0.77.87 - HR Pulse Compact Visual Pass
 
 ### HR pulse / Compact hero / Tabs cleanup / Visual QA / Release hygiene / (Клешня, 01.07.2026) [codex]

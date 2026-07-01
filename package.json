@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.87",
+  "version": "0.77.88",
   "eventGenix": {
-    "releaseLabel": "HR Pulse Compact Visual Pass"
+    "releaseLabel": "Timeline Create-Click Customer Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -46,6 +46,10 @@ function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+function plain(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
 function createConfigHarness() {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
     const context = {
@@ -2943,13 +2947,90 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(openDetailsFunction, /const ownId = String\(renderBooking\?\.id \|\| ''\)\.trim\(\)/);
     assert.match(openDetailsFunction, /const linkedId = String\(renderBooking\?\.linkedTo \|\| renderBooking\?\.linked_to \|\| ''\)\.trim\(\)/);
     assert.match(openDetailsFunction, /const targetId = linkedId \|\| ownId/);
+    assert.match(openDetailsFunction, /const timelineView = typeof timelineCurrentViewKey === 'function' \? timelineCurrentViewKey\(\) : null/);
     assert.match(openDetailsFunction, /showBookingDetails\(targetId, \{ silentMissing: Boolean\(linkedId\), source: 'timeline_block_click' \}\)/);
     assert.match(openDetailsFunction, /if \(linkedId && ownId && ownId !== linkedId\)/);
     assert.match(openDetailsFunction, /showBookingDetails\(ownId, \{ source: 'timeline_block_click_fallback' \}\)/);
+    assert.match(openDetailsFunction, /Booking block could not be opened in current timeline view/);
+    assert.match(openDetailsFunction, /source: 'timeline_block_click'/);
+    assert.doesNotMatch(
+        openDetailsFunction,
+        /customer(?:Id|Name|Phone|Instagram|Email)|child(?:Name|Birthday)|phone|instagram|authorization|bearer|token|password|secret/i
+    );
     assert.doesNotMatch(openDetailsFunction, /showBookingDetails\(\s*renderBooking\.(?:linkedTo|linked_to)\s*\)/);
     assert.doesNotMatch(timeline, /showBookingDetails\(\s*booking\.(?:linkedTo|linked_to)\s*\)/);
     assert.match(linkedClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
     assert.match(ownClickBlock, /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/);
+});
+
+test('timeline block click open helper calls booking details with expected ids and fallback behavior', async () => {
+    const timeline = read('js/timeline.js');
+    const openStart = timeline.indexOf('async function openTimelineBookingDetailsFromBlock');
+    const openEnd = timeline.indexOf('document.addEventListener', openStart);
+    assert.ok(openStart >= 0 && openEnd > openStart, 'timeline block open helper source exists');
+
+    const warnings = [];
+    const notifications = [];
+    const context = {
+        console: {
+            warn: (...args) => warnings.push(args)
+        },
+        timelineCurrentViewKey: () => 'rooms',
+        showNotification: (...args) => notifications.push(args),
+        showBookingDetails: async () => false
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${timeline.slice(openStart, openEnd)}
+        this.__openTimelineBookingDetailsFromBlock = openTimelineBookingDetailsFromBlock;
+    `, context, { filename: 'js/timeline.js' });
+
+    const openFromBlock = context.__openTimelineBookingDetailsFromBlock;
+
+    let calls = [];
+    context.showBookingDetails = async (id, options) => {
+        calls.push({ id, options });
+        return id === 'BK-OWN';
+    };
+    assert.equal(await openFromBlock({ id: 'BK-OWN' }), true);
+    assert.deepEqual(plain(calls), [
+        { id: 'BK-OWN', options: { silentMissing: false, source: 'timeline_block_click' } }
+    ]);
+    assert.equal(notifications.length, 0, 'valid own block does not show a missing-booking toast');
+
+    calls = [];
+    context.showBookingDetails = async (id, options) => {
+        calls.push({ id, options });
+        return id === 'BK-LINKED-CHILD';
+    };
+    assert.equal(await openFromBlock({ id: 'BK-LINKED-CHILD', linkedTo: 'BK-PARENT' }), true);
+    assert.deepEqual(plain(calls), [
+        { id: 'BK-PARENT', options: { silentMissing: true, source: 'timeline_block_click' } },
+        { id: 'BK-LINKED-CHILD', options: { source: 'timeline_block_click_fallback' } }
+    ]);
+    assert.equal(notifications.length, 0, 'valid linked fallback does not show a missing-booking toast');
+
+    calls = [];
+    warnings.length = 0;
+    notifications.length = 0;
+    context.showBookingDetails = async (id, options) => {
+        calls.push({ id, options });
+        return false;
+    };
+    assert.equal(await openFromBlock({ id: 'BK-MISSING', linked_to: 'BK-MISSING-PARENT' }), false);
+    assert.deepEqual(plain(calls), [
+        { id: 'BK-MISSING-PARENT', options: { silentMissing: true, source: 'timeline_block_click' } },
+        { id: 'BK-MISSING', options: { source: 'timeline_block_click_fallback' } }
+    ]);
+    assert.equal(notifications.length, 1, 'full miss shows a single manager-facing toast');
+    assert.equal(warnings.at(-1)?.[0], '[timeline] Booking block could not be opened in current timeline view');
+    assert.equal(warnings.at(-1)?.[1]?.timelineView, 'rooms');
+    assert.equal(warnings.at(-1)?.[1]?.targetId, 'BK-MISSING-PARENT');
+    assert.equal(
+        Object.keys(warnings.at(-1)?.[1] || {}).some(key => /customer|phone|instagram|child|authorization|bearer|token|password|secret/i.test(key)),
+        false,
+        'timeline miss diagnostics should not include customer, auth, or secret keys'
+    );
 });
 
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {
@@ -3022,6 +3103,9 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
     assert.match(smoke, /\.timeline-room-service-marker\[data-booking-id/);
     assert.match(smoke, /assertKitchenHiddenFromAnimator/);
     assert.match(smoke, /assertRoomMarkerVisible/);
+    assert.match(smoke, /async function runRevealAction/);
+    assert.match(smoke, /await showBookingDetails\(id\)/);
+    assert.match(smoke, /window\.TimelineView\?\.set\)\s*await window\.TimelineView\.set\('animators', \{ render: false \}\)/);
 });
 
 test('room-to-animator timeline view switch reconciles vertical shell height', () => {

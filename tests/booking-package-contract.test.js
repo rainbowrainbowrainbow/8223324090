@@ -2250,10 +2250,15 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /clearSelectedCustomerLinkIfEdited/);
     assert.match(bookingJs, /customer-search-state/);
     assert.match(bookingJs, /const nextMode = mode === 'new' \? 'search' : mode;/);
-    assert.match(bookingJs, /const hasClient = hasSelectedCustomer;/);
+    assert.match(bookingJs, /function bookingCustomerDraftFromForm\(\)/);
+    assert.match(bookingJs, /function bookingNewCustomerDraftIsValid/);
+    assert.match(bookingJs, /function bookingCustomerPayloadFromDraft/);
+    assert.match(bookingJs, /const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid\(customerDraft\);/);
+    assert.match(bookingJs, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
+    assert.match(bookingJs, /customerDraft\.search && !customerDraft\.name/);
     assert.match(bookingJs, /Оберіть існуючого клієнта з пошуку/);
-    assert.match(bookingJs, /obj\.customerId = parseInt\(existingId\)/);
-    assert.doesNotMatch(bookingJs, /obj\.customer =/);
+    assert.match(bookingJs, /obj\.customerId = parseInt\(existingId, 10\)/);
+    assert.match(bookingJs, /if \(customer\) obj\.customer = customer;/);
     assert.doesNotMatch(bookingJs, /bookingCreateCustomerBtn/);
     assert.doesNotMatch(bookingJs, /setBookingClientMode\('new'/);
     assert.match(bookingJs, /role="button" tabindex="0"/);

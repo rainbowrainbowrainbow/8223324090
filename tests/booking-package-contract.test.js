@@ -550,6 +550,7 @@ function createBanquetModalDetailHarness() {
             || null,
         bookingMenuMissingServingTimeCount: positions => (positions || []).filter(item => !item?.servingTime).length,
         bookingKitchenTypeLabel: type => (type === 'cake' ? 'ТОРТ' : 'МЕНЮ'),
+        renderBookingBanquetLinksDetail: () => '',
         isViewer: () => true
     };
     vm.createContext(context);
@@ -3321,6 +3322,51 @@ test('booking modal banquet UX renders root menu, service checklist, and activit
     assert.equal(text.includes('group-first'), false);
     assert.ok(document.querySelector('details.booking-banquet-technical'), 'technical details stay available but collapsed by default');
     assert.equal(document.querySelector('details.booking-banquet-technical')?.hasAttribute('open'), false);
+});
+
+test('booking modal skips full banquet detail for standalone activities without banquet signals', () => {
+    const context = createBanquetModalDetailHarness();
+    const activity = {
+        id: 'BK-STANDALONE-ACTIVITY',
+        businessContext: 'event_genix',
+        date: '2026-06-29',
+        time: '16:30',
+        duration: 90,
+        room: 'Room 3',
+        label: 'KV6(90)',
+        programName: 'Forest Academy',
+        programId: 'forest-academy',
+        status: 'confirmed',
+        price: 2700
+    };
+
+    assert.equal(context.renderFullBanquetDetail(activity, [], null), '');
+
+    const kitchen = {
+        id: 'BK-STANDALONE-KITCHEN',
+        businessContext: 'event_genix',
+        date: '2026-06-29',
+        time: '17:00',
+        room: 'Room 3',
+        label: 'Kitchen',
+        status: 'confirmed',
+        extraData: {
+            bookingPackage: {
+                finalTotal: 1200,
+                menuPositions: [{
+                    id: 'menu-standalone',
+                    title: 'Test menu',
+                    kitchenType: 'menu',
+                    quantity: 1,
+                    servingUnit: 'portion',
+                    unitPrice: 1200,
+                    subtotal: 1200,
+                    servingTime: '17:00'
+                }]
+            }
+        }
+    };
+    assert.match(context.renderFullBanquetDetail(kitchen, [], null), /booking-banquet-full-detail/);
 });
 
 function renderScreenshotBanquetMenuRegressionFixture() {

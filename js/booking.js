@@ -8449,7 +8449,27 @@ function createdBookingProjectionMatchesCurrentSlice(booking = {}, currentDate =
 function bookingDetailsFallbackMatchesCurrentSlice(booking = {}, cleanBookingId = '', currentDate = formatDate(AppState.selectedDate)) {
     const id = String(booking?.id || booking?.bookingId || booking?.booking_id || '').trim();
     if (!id || id !== String(cleanBookingId || '').trim()) return false;
-    return createdBookingProjectionMatchesCurrentSlice(booking, currentDate);
+    if (createdBookingProjectionMatchesCurrentSlice(booking, currentDate)) return true;
+
+    const projection = createdBookingTimelineProjection(booking);
+    const expectedContext = window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+        || window.TimelineBusinessContext?.current?.()?.apiValue || '';
+    const expectedTimelineView = currentCreatedBookingTimelineView();
+    const projectedTimelineView = createdBookingProjectionTimelineView(projection);
+    const projectedDate = normalizeBookingDateKey(projection?.date || booking.date);
+    const projectedContext = projection?.businessContext
+        || projection?.business_context
+        || booking.businessContext
+        || booking.business_context
+        || '';
+    if (projectedDate && projectedDate !== currentDate) return false;
+    if (projectedContext && expectedContext && projectedContext !== expectedContext) return false;
+    if (projectedTimelineView && expectedTimelineView && projectedTimelineView !== expectedTimelineView) return false;
+
+    const matchKeys = typeof timelineBookingMatchKeys === 'function'
+        ? timelineBookingMatchKeys(booking)
+        : null;
+    return Boolean(matchKeys && matchKeys.size > 0);
 }
 
 function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) {

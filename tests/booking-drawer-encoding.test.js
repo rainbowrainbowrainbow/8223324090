@@ -233,6 +233,14 @@ test('booking details can open from current visible timeline block when cache an
         timelineBookingResourceIdentity: booking => ({
             resourceId: booking.resourceId || booking.resource_id || booking.lineId || booking.line_id || booking.timelineProjection?.resourceId || ''
         }),
+        timelineBookingMatchKeys: booking => new Set([
+            booking.resourceId,
+            booking.resource_id,
+            booking.lineId,
+            booking.line_id,
+            booking.extraData?.timelineIdentity?.resourceName,
+            booking.extra_data?.timeline_identity?.resource_name
+        ].map(value => String(value || '').trim()).filter(Boolean)),
         getBookingsForDate: async () => [],
         apiGetBookingById: async () => ({ success: false, status: 404, error: 'Booking not found' })
     };
@@ -261,6 +269,34 @@ test('booking details can open from current visible timeline block when cache an
     assert.equal(
         context.__detailResolverHooks.bookingDetailsFallbackMatchesCurrentSlice(fallbackBooking, 'BK-STANDALONE-ACTIVITY', '2099-02-10'),
         true
+    );
+
+    const metadataMatchedFallbackBooking = {
+        id: 'BK-METADATA-ACTIVITY',
+        date: '2099-02-10',
+        businessContext: 'event_genix',
+        extraData: {
+            timelineIdentity: {
+                resourceName: 'Animator 1'
+            }
+        }
+    };
+    assert.equal(
+        context.__detailResolverHooks.bookingDetailsFallbackMatchesCurrentSlice(metadataMatchedFallbackBooking, 'BK-METADATA-ACTIVITY', '2099-02-10'),
+        true,
+        'visible blocks matched by timeline metadata can open when detail fetch misses'
+    );
+    assert.equal(
+        context.__detailResolverHooks.bookingDetailsFallbackMatchesCurrentSlice({
+            ...metadataMatchedFallbackBooking,
+            timelineProjection: {
+                date: '2099-02-10',
+                businessContext: 'event_genix',
+                timelineView: 'animators'
+            }
+        }, 'BK-METADATA-ACTIVITY', '2099-02-10'),
+        false,
+        'wrong-view fallback is still rejected'
     );
 
     return context.__detailResolverHooks.resolveBookingDetailsRecord('BK-STANDALONE-ACTIVITY', { fallbackBooking })

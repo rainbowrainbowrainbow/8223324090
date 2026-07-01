@@ -361,10 +361,17 @@ function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot 
     const isLegacy = snapshot?.legacyFallback || snapshot?.source === 'legacy_booking_banquet_links';
     const isSingle = snapshot?.source === 'single_booking' || !snapshot;
     const members = Array.isArray(snapshot?.members) ? snapshot.members : [];
+    const hasExplicitLinks = [
+        anchorBooking?.bookingLinks,
+        anchorBooking?.banquetLinks,
+        anchorBooking?.sharedRoomLinks
+    ].some(items => Array.isArray(items) && items.length > 0);
+    const hasStandaloneBanquetSurface = bookingDetailIsKitchenCandidate(anchorBooking)
+        || bookingDetailHasServiceOverview(anchorBooking)
+        || hasExplicitLinks;
     const shouldShow = hasGroup
         || isLegacy
-        || bookingDetailIsRoot(anchorBooking)
-        || bookingDetailIsKitchenCandidate(anchorBooking)
+        || hasStandaloneBanquetSurface
         || members.length > 1;
     if (!shouldShow) return '';
 

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.92 - Timeline Standalone Activity Detail Hotfix
+
+### Timeline standalone activities / Visible block fallback / Banquet detail guard / Regression QA / (Клешня, 01.07.2026) [codex]
+- **Standalone-активності в `Свята` більше не мають падати з toast "бронювання не знайдено"** - frontend fallback тепер приймає видимий timeline block, якщо запис збігається за id/date/context/view і має ті самі timeline match keys, через які він був намальований.
+- **Звичайна активність без `linkedTo` більше не вважається банкетним root-записом** - full banquet detail renderer запускається тільки для реальних банкетних сигналів: group/snapshot, кухня/меню/сервіс або явні booking links.
+- **Wrong-view захист лишився** - fallback все ще відкидає блоки з projection для іншого `timelineView`, щоб не відкривати запис із неправильного режиму.
+- **Додано regression coverage** - тести покривають metadata-based visible block fallback і заборону full banquet detail для standalone activity без банкетних ознак.
+- **БД, migrations, auth/roles, env і production config не змінювались** - fix обмежений frontend detail fallback, banquet detail renderer guard, release cache tags і тестами.
+
+---
+
 ## v0.77.91 - Timeline Detail Package Hotfix
 
 ### Timeline details / Booking package renderer / Legacy payload tolerance / Regression QA / (Клешня, 01.07.2026) [codex]

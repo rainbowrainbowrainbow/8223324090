@@ -1264,7 +1264,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                 ${group.items.map(item => {
                     const tabId = item.tab || item.id;
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
-                    const tabClass = pulseMode ? 'hr-tab hr-pulse-card' : 'hr-tab';
+                    const tabClass = pulseMode ? 'hr-tab hr-pulse-card ui-tab-card' : 'hr-tab';
                     const toneAttr = pulseMode && item.tone ? ` data-pulse-tone="${escapeHtml(item.tone)}"` : '';
                     const pulseBadge = item.badge ? String(item.badge) : '';
                     const content = pulseMode ? `
@@ -3221,7 +3221,7 @@ function renderTeamCards(staff) {
             ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-warning-note">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
             <div class="hr-team-actions">
                 ${accountActions}
-                ${canManage ? `<button type="button" class="hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${Number(s.id)})" title="Скани документів" aria-label="Скани документів: ${escapeHtml(s.name)}">📎</button>
+                ${canManage ? `<button type="button" class="hr-team-document" data-ui-contract="hr-staff-document-paperclip" onclick="openStaffDocuments(${Number(s.id)})" title="Скани документів" aria-label="Скани документів: ${escapeHtml(s.name)}">Док.</button>
                     <button type="button" class="hr-team-move" onclick="openStaffMoveMenu(${Number(s.id)}, this)">Перемістити</button>
                     <button type="button" class="hr-team-delete" onclick="deleteStaffProfile(${Number(s.id)})">Видалити</button>` : ''}
             </div>
@@ -5946,7 +5946,7 @@ function renderCompanyOrgNode(node) {
                 ${description ? `<span class="hr-org-node-description">${escapeHtml(description)}</span>` : ''}
             </button>
             <button type="button" class="hr-org-port hr-org-port--parent" data-org-link-parent-port="${escapeHtml(node.id)}" aria-label="Точка керівника для ${escapeHtml(node.title)}" title="Ця роль керує іншою"></button>
-            <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">✎</button>
+            <button type="button" class="hr-org-node-edit" data-org-edit="${escapeHtml(node.id)}" aria-label="Редагувати ${escapeHtml(node.title)}">Ред.</button>
         </span>`;
 }
 
@@ -7643,7 +7643,7 @@ async function showDepremiumPicker(staffId, initialAmount, initialReason, month)
                     ${selectedTpl ? renderDecisionPanel(selectedTpl) : ''}
                 </div>
                 <div style="display:flex;gap:8px;margin-top:16px">
-                    <button type="button" id="dpApply" style="flex:1;padding:12px;border:none;border-radius:12px;background:${selectedTpl?'#7c3aed':'#3D3D5C'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;transition:all .15s" ${selectedTpl?'':'disabled'}>✅ Застосувати</button>
+                    <button type="button" id="dpApply" style="flex:1;padding:12px;border:none;border-radius:12px;background:${selectedTpl?'#7c3aed':'#3D3D5C'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;transition:all .15s" ${selectedTpl?'':'disabled'}>Застосувати</button>
                     <button type="button" id="dpCustom" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Довільна причина</button>
                     <button type="button" id="dpCancel" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Скасувати</button>
                 </div>`;
@@ -8387,10 +8387,10 @@ async function loadVacancies() {
             ${v.salary_from || v.salary_to ? `<div class="vac-meta">💰 ${v.salary_from || '?'}–${v.salary_to || '?'} ₴</div>` : ''}
             ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
             <div class="vac-actions" onclick="event.stopPropagation()">
-                ${v.status === 'open' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">⏸</button>` : ''}
-                ${v.status !== 'filled' && v.status !== 'closed' ? `<button type="button" class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">✅ Заповнено</button>` : ''}
-                ${v.status === 'paused' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">▶ Відкрити</button>` : ''}
-                <button type="button" class="btn-vac-action danger" onclick="patchVacancy(${v.id},'closed')">✕</button>
+                ${v.status === 'open' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">Призупинити</button>` : ''}
+                ${v.status !== 'filled' && v.status !== 'closed' ? `<button type="button" class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">Заповнено</button>` : ''}
+                ${v.status === 'paused' ? `<button type="button" class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">Відкрити</button>` : ''}
+                <button type="button" class="btn-vac-action danger" onclick="patchVacancy(${v.id},'closed')">Закрити</button>
             </div>
         </div>
     `).join('');
@@ -8446,8 +8446,8 @@ async function refreshCandidates() {
                         <div class="kc-actions">
                             <button type="button" class="kc-btn" onclick="openCandidateDetail(${a.id})">Резюме</button>
                             ${s !== 'offer' ? `<button type="button" class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
-                            ${s === 'offer' ? `<button type="button" class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
-                            <button type="button" class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">✕</button>
+                            ${s === 'offer' ? `<button type="button" class="kc-btn success" onclick="hireCandidate(${a.id})">Найняти</button>` : ''}
+                            <button type="button" class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">Відхилити</button>
                         </div>
                     </div>
                 `).join('') || '<div style="color:var(--gray-400);font-size:12px;padding:8px">Порожньо</div>'}

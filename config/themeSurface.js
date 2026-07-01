@@ -30,13 +30,13 @@ const THEME_INLINE_DEBT_BUDGETS = {
     'designer.html': { owner: 'designer', maxStyleBytes: 3000, maxInlineStyleAttrs: 36, maxHardColors: 45 },
     'designs.html': { owner: 'designs', maxStyleBytes: 61000, maxInlineStyleAttrs: 167, maxHardColors: 440 },
     'finance.html': { owner: 'finance', maxStyleBytes: 41000, maxInlineStyleAttrs: 74, maxHardColors: 190 },
-    'hr.html': { owner: 'hr', maxStyleBytes: 123000, maxInlineStyleAttrs: 32, maxHardColors: 610 },
+    'hr.html': { owner: 'hr', maxStyleBytes: 0, maxInlineStyleAttrs: 28, maxHardColors: 0 },
     'leads.html': { owner: 'leads', maxStyleBytes: 37000, maxInlineStyleAttrs: 8, maxHardColors: 320 },
     'omni.html': { owner: 'omnichannel', maxStyleBytes: 60000, maxInlineStyleAttrs: 19, maxHardColors: 370 },
     'profile.html': { owner: 'profile', maxStyleBytes: 148000, maxInlineStyleAttrs: 4, maxHardColors: 490 },
     'programs.html': { owner: 'programs', maxStyleBytes: 43000, maxInlineStyleAttrs: 18, maxHardColors: 200 },
-    'reports.html': { owner: 'reports', maxStyleBytes: 47000, maxInlineStyleAttrs: 8, maxHardColors: 245 },
-    'staff.html': { owner: 'staff', maxStyleBytes: 43500, maxInlineStyleAttrs: 36, maxHardColors: 235 },
+    'reports.html': { owner: 'reports', maxStyleBytes: 0, maxInlineStyleAttrs: 7, maxHardColors: 0 },
+    'staff.html': { owner: 'staff', maxStyleBytes: 0, maxInlineStyleAttrs: 7, maxHardColors: 0 },
     'tasks.html': { owner: 'tasks', maxStyleBytes: 65000, maxInlineStyleAttrs: 6, maxHardColors: 415 },
     'warehouse.html': { owner: 'warehouse', maxStyleBytes: 31500, maxInlineStyleAttrs: 72, maxHardColors: 105 }
 };

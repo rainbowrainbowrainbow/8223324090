@@ -308,7 +308,7 @@
                                 <span>Період</span>
                                 <select id="reportMonth" class="hr-team-select"></select>
                             </label>
-                            <button type="button" id="reportExport" class="btn-export">📥 Експорт CSV</button>
+                            <button type="button" id="reportExport" class="btn-export btn-page-toolbar">Експорт CSV</button>
                         </div>
                     </div>
                 </section>
@@ -348,8 +348,8 @@
                         <button type="button" id="btnApplySalaryPeriod" class="btn-add hr-salary-secondary">Показати</button>
                         <button type="button" id="btnResetSalaryPeriod" class="btn-add hr-salary-secondary">Місяць</button>
                     </div>
-                    <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус / Депреміювання</button>
-                    <button type="button" id="btnCommitSalary" class="btn-add hr-salary-commit-btn">💰 Нарахувати зарплати</button>
+                    <button type="button" id="btnAddAdjustment" class="btn-add hr-salary-secondary">+ Бонус / Депреміювання</button>
+                    <button type="button" id="btnCommitSalary" class="btn-add hr-salary-commit-btn">Нарахувати зарплати</button>
                     <button type="button" id="btnRefreshSalaryReconciliation" class="btn-add hr-salary-secondary">Звірка</button>
                     <button type="button" id="btnLockSalaryPeriod" class="btn-add hr-salary-secondary">Закрити період</button>
                     <button type="button" id="btnUnlockSalaryPeriod" class="btn-add hr-salary-secondary" hidden>Відкрити період</button>
@@ -433,11 +433,11 @@
                         <div class="hr-team-filters" style="justify-content:space-between">
                             <div style="display:flex;gap:8px;flex-wrap:wrap">
                                 <select id="vacStatusFilter" class="hr-team-select">
-                                    <option value="open">🟢 Відкриті</option>
+                                    <option value="open">Відкриті</option>
                                     <option value="all">Всі</option>
-                                    <option value="paused">⏸ Призупинені</option>
-                                    <option value="filled">✅ Заповнені</option>
-                                    <option value="closed">❌ Закриті</option>
+                                    <option value="paused">Призупинені</option>
+                                    <option value="filled">Заповнені</option>
+                                    <option value="closed">Закриті</option>
                                 </select>
                             </div>
                             <button type="button" id="btnAddVacancy" class="btn-add">+ Вакансія</button>
@@ -819,7 +819,7 @@
                         <strong>Документи й скани</strong>
                         <span>Файли зберігаються приватно в базі й не доступні через публічний /uploads.</span>
                     </div>
-                    <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">📎 Додати скан</button>
+                    <button type="button" id="editDocumentUpload" class="btn-secondary" onclick="uploadStaffDocument()">Додати скан</button>
                 </div>
                 <div class="hr-staff-foundation-grid">
                     <div class="form-group">
@@ -998,10 +998,10 @@
 
     <!-- Context menu -->
     <div id="contextMenu" class="hr-context-menu">
-        <button type="button" class="hr-context-item" data-action="sick">🏥 Позначити хворобу</button>
-        <button type="button" class="hr-context-item" data-action="vacation">🌴 Позначити відпустку</button>
-        <button type="button" class="hr-context-item" data-action="day_off">📴 Позначити вихідний</button>
-        <button type="button" class="hr-context-item" data-action="correct">✏️ Виправити час</button>
+        <button type="button" class="hr-context-item" data-action="sick">Позначити хворобу</button>
+        <button type="button" class="hr-context-item" data-action="vacation">Позначити відпустку</button>
+        <button type="button" class="hr-context-item" data-action="day_off">Позначити вихідний</button>
+        <button type="button" class="hr-context-item" data-action="correct">Виправити час</button>
     </div>
 
     <!-- Profile modal -->

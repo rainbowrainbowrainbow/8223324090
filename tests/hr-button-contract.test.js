@@ -885,7 +885,7 @@ test('HR staff documents are reachable from team card paperclip', () => {
         'id="editStaffDocumentsPanel"',
         'data-ui-contract="hr-staff-documents-panel"',
         'Документи й скани',
-        '📎 Додати скан',
+        'Додати скан',
         'Файл або скан'
     ]) {
         assert.ok(HR_HTML.includes(token), `missing HR document panel token ${token}`);

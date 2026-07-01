@@ -51,6 +51,7 @@ describe('backoffice foundation v2 contracts', () => {
     const designsHtml = readRepoFile('designs.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
+    const staffCss = readCssWithImports('css/pages.css');
     const linesRoute = readRepoFile('routes', 'lines.js');
     const bookingService = readRepoFile('services', 'booking.js');
     const timelinePage = readRepoFile('js', 'timeline.js');
@@ -173,10 +174,10 @@ describe('backoffice foundation v2 contracts', () => {
     });
 
     it('keeps the schedule all-departments chip readable in dark theme', () => {
-        assert.match(staffHtml, /body\.dark-mode \.dept-chip\[data-dept="all"\]\.active/);
-        assert.match(staffHtml, /\[data-theme="dark"\] \.dept-chip\[data-dept="all"\]\.active/);
-        assert.match(staffHtml, /color:\s*#F8FAFC/);
-        assert.match(staffHtml, /hover[\s\S]*color:\s*#FFFFFF/);
+        assert.match(staffCss, /body\.dark-mode \.dept-chip\[data-dept="all"\]\.active/);
+        assert.match(staffCss, /\[data-theme="dark"\] \.dept-chip\[data-dept="all"\]\.active/);
+        assert.match(staffCss, /color:\s*#F8FAFC/);
+        assert.match(staffCss, /hover[\s\S]*color:\s*#FFFFFF/);
     });
 
     it('keeps staff Excel import extension-first and parser-backed', () => {

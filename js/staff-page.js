@@ -2182,7 +2182,7 @@ function renderDeptFilter() {
     }
     let html = `<button class="dept-chip ${StaffState.activeDept === 'all' ? 'active' : ''}" data-dept="all">Всі</button>`;
     for (const { value: key, label, count } of options) {
-        html += `<button class="dept-chip ${StaffState.activeDept === key ? 'active' : ''}" data-dept="${key}">${DEPT_ICONS[key] || ''} ${label} (${count})</button>`;
+        html += `<button class="dept-chip ${StaffState.activeDept === key ? 'active' : ''}" data-dept="${key}">${label} (${count})</button>`;
     }
     container.innerHTML = html;
 

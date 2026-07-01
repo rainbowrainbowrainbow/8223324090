@@ -2870,18 +2870,18 @@ const ReportsPage = (() => {
         const buttonClass = compact ? 'rpt-action-btn' : 'rpt-action-btn text';
         const buttons = [];
         if (!report.approvalTaskId && !['approved', 'rejected'].includes(status)) {
-            buttons.push(`<button class="${buttonClass} primary" onclick="event.stopPropagation();ReportsPage.requestApproval(${report.id})" title="Поставити задачу на перевірку">${compact ? '📌' : 'Поставити задачу'}</button>`);
+            buttons.push(`<button class="${buttonClass} primary" onclick="event.stopPropagation();ReportsPage.requestApproval(${report.id})" title="Поставити задачу на перевірку">${compact ? 'Task' : 'Поставити задачу'}</button>`);
         }
         if (['pending', 'task_created', 'none'].includes(status) && !['approved', 'rejected'].includes(status)) {
-            buttons.push(`<button class="${buttonClass}" onclick="event.stopPropagation();ReportsPage.startApprovalReview(${report.id})" title="Взяти звіт в перевірку">${compact ? '🔎' : 'Взяти в перевірку'}</button>`);
+            buttons.push(`<button class="${buttonClass}" onclick="event.stopPropagation();ReportsPage.startApprovalReview(${report.id})" title="Взяти звіт в перевірку">${compact ? 'Review' : 'Взяти в перевірку'}</button>`);
         }
         if (!['approved', 'rejected'].includes(status)) {
-            buttons.push(`<button class="${buttonClass} success" onclick="event.stopPropagation();ReportsPage.approveReport(${report.id})" title="Затвердити звіт">${compact ? '✅' : 'Затвердити'}</button>`);
-            buttons.push(`<button class="${buttonClass} danger" onclick="event.stopPropagation();ReportsPage.rejectReport(${report.id})" title="Повернути звіт">${compact ? '↩' : 'Повернути'}</button>`);
+            buttons.push(`<button class="${buttonClass} success" onclick="event.stopPropagation();ReportsPage.approveReport(${report.id})" title="Затвердити звіт">${compact ? 'OK' : 'Затвердити'}</button>`);
+            buttons.push(`<button class="${buttonClass} danger" onclick="event.stopPropagation();ReportsPage.rejectReport(${report.id})" title="Повернути звіт">${compact ? 'Back' : 'Повернути'}</button>`);
         }
         if (!closed) {
-            buttons.push(`<button class="${buttonClass}" onclick="event.stopPropagation();ReportsPage.editReport(${report.id})" title="Редагувати">${compact ? '✏️' : 'Редагувати'}</button>`);
-            buttons.push(`<button class="${buttonClass} danger" onclick="event.stopPropagation();ReportsPage.deleteReport(${report.id})" title="Видалити">${compact ? '🗑️' : 'Видалити'}</button>`);
+            buttons.push(`<button class="${buttonClass}" onclick="event.stopPropagation();ReportsPage.editReport(${report.id})" title="Редагувати">${compact ? 'Edit' : 'Редагувати'}</button>`);
+            buttons.push(`<button class="${buttonClass} danger" onclick="event.stopPropagation();ReportsPage.deleteReport(${report.id})" title="Видалити">${compact ? 'Del' : 'Видалити'}</button>`);
         }
         return buttons.join('');
     }
@@ -2897,11 +2897,11 @@ const ReportsPage = (() => {
 
         tbody.innerHTML = _reports.map(r => {
             const typeClass = r.type === 'income' ? 'income' : 'expense';
-            const typeLabel = r.type === 'income' ? '📈 Дохід' : '📉 Витрата';
+            const typeLabel = r.type === 'income' ? 'Дохід' : 'Витрата';
             const statusLabel = STATUS_LABELS[r.status] || r.status;
             const closed = isClosedReport(r);
             const photoBtn = r.photoUrl
-                ? `<button class="rpt-photo-btn" onclick="event.stopPropagation();ReportsPage.showPhoto('${esc(r.photoUrl)}')" title="Переглянути фото">📸</button>`
+                ? `<button class="rpt-photo-btn" onclick="event.stopPropagation();ReportsPage.showPhoto('${esc(r.photoUrl)}')" title="Переглянути фото">Фото</button>`
                 : '—';
             const tags = visibleReportHashtags(r.hashtags).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join('');
             const inactiveClass = r.hashtagActive === false ? ' style="opacity:0.5"' : '';

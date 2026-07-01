@@ -162,6 +162,7 @@
     grid-template-columns: 32px minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
+    box-sizing: border-box;
     flex: 0 0 clamp(172px, 15vw, 210px);
     width: clamp(172px, 15vw, 210px);
     min-height: 58px;
@@ -184,6 +185,12 @@
         color var(--speed-fast) var(--ease-smooth);
     white-space: normal;
     contain: layout paint;
+}
+.hr-nav--pulse .hr-tab.hr-pulse-card.ui-tab-card {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    min-height: 58px;
+    max-width: 210px;
+    border-radius: 12px;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="people"] {
     --hr-pulse-accent: 168, 85, 247;
@@ -1324,14 +1331,14 @@ body.dark-mode .hr-org-detail {
 
 .hr-today-hero {
     position: relative;
-    min-height: 154px;
+    min-height: 118px;
     max-width: 100%;
-    margin: 0 0 16px;
+    margin: 0 0 12px;
     overflow: hidden;
     border: 1px solid rgba(34,211,238,0.14);
     border-radius: 16px;
     background: #EEF6FF;
-    box-shadow: 0 10px 26px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: 0 8px 20px rgba(15,23,42,0.09), inset 0 1px 0 rgba(255,255,255,0.08);
     isolation: isolate;
 }
 .hr-today-hero-media,
@@ -1361,8 +1368,8 @@ body.dark-mode .hr-org-detail {
 .hr-today-hero-overlay {
     z-index: 1;
     background:
-        linear-gradient(90deg, rgba(248,250,252,0.94), rgba(248,250,252,0.46) 46%, rgba(248,250,252,0.78)),
-        linear-gradient(180deg, rgba(255,255,255,0.12), rgba(219,234,254,0.28));
+        linear-gradient(90deg, rgba(248,250,252,0.96), rgba(248,250,252,0.58) 46%, rgba(248,250,252,0.82)),
+        linear-gradient(180deg, rgba(255,255,255,0.10), rgba(219,234,254,0.22));
 }
 .hr-today-hero-content {
     position: relative;
@@ -1372,8 +1379,8 @@ body.dark-mode .hr-org-detail {
     flex-wrap: wrap;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 18px;
-    padding: 24px;
+    gap: 14px;
+    padding: 18px 20px;
 }
 .hr-today-hero-copy {
     max-width: 560px;
@@ -1393,9 +1400,9 @@ body.dark-mode .hr-org-detail {
     line-height: 1;
 }
 .hr-today-hero-copy h3 {
-    margin: 8px 0 5px;
+    margin: 7px 0 4px;
     color: #0F172A;
-    font-size: 25px;
+    font-size: 22px;
     font-weight: 850;
     line-height: 1.05;
     letter-spacing: 0;
@@ -1404,7 +1411,7 @@ body.dark-mode .hr-org-detail {
 .hr-today-hero-copy p {
     margin: 0;
     color: rgba(51,65,85,0.88);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     line-height: 1.35;
     text-shadow: 0 1px 0 rgba(255,255,255,0.62);
@@ -1441,7 +1448,7 @@ body.dark-mode .hr-org-detail {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin: 0 0 16px;
+    margin: 0 0 14px;
     padding: 12px;
     border: 1px solid rgba(148,163,184,0.12);
     border-radius: 16px;
@@ -1837,7 +1844,12 @@ button.hr-today-hex-tile {
     text-align: left;
     cursor: pointer;
 }
-.hr-context-item:hover { background: var(--gray-50); }
+.hr-context-item:hover,
+.hr-context-item:focus-visible {
+    outline: none;
+    background: var(--gray-50);
+    color: var(--gray-900);
+}
 
 /* ==========================================
    TAB 2: SCHEDULE
@@ -3475,6 +3487,138 @@ button.hr-today-hex-tile {
 }
 .btn-add:hover { opacity: 0.9; }
 
+/* HR workspace aliases for the shared page-control contract. */
+body[data-page-group="hr"] .page-container .btn-add,
+body[data-page-group="hr"] .page-container .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 10px 18px;
+    border: 1px solid color-mix(in srgb, var(--primary) 42%, transparent);
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #FFFFFF;
+    font-family: inherit;
+    font-size: var(--font-sm);
+    font-weight: 850;
+    line-height: 1.1;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 10px 22px rgba(16,185,129,0.22), inset 0 1px 0 rgba(255,255,255,0.22);
+    transition:
+        transform var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        background var(--speed-fast) var(--ease-smooth),
+        color var(--speed-fast) var(--ease-smooth),
+        box-shadow var(--speed-fast) var(--ease-smooth),
+        opacity var(--speed-fast) var(--ease-smooth);
+}
+
+body[data-page-group="hr"] .page-container .btn-secondary,
+body[data-page-group="hr"] .page-container .btn-add.hr-salary-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 1px solid color-mix(in srgb, var(--gray-300) 78%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--white) 92%, transparent);
+    color: var(--gray-700);
+    font-family: inherit;
+    font-size: var(--font-sm);
+    font-weight: 850;
+    line-height: 1.1;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition:
+        transform var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        background var(--speed-fast) var(--ease-smooth),
+        color var(--speed-fast) var(--ease-smooth),
+        box-shadow var(--speed-fast) var(--ease-smooth),
+        opacity var(--speed-fast) var(--ease-smooth);
+}
+
+body[data-page-group="hr"] .page-container .btn-danger,
+body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 1px solid rgba(239,68,68,0.28);
+    border-radius: 12px;
+    background: rgba(239,68,68,0.08);
+    color: #B91C1C;
+    font-family: inherit;
+    font-size: var(--font-sm);
+    font-weight: 850;
+    line-height: 1.1;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        transform var(--speed-fast) var(--ease-smooth),
+        border-color var(--speed-fast) var(--ease-smooth),
+        background var(--speed-fast) var(--ease-smooth),
+        color var(--speed-fast) var(--ease-smooth),
+        box-shadow var(--speed-fast) var(--ease-smooth),
+        opacity var(--speed-fast) var(--ease-smooth);
+}
+
+body[data-page-group="hr"] .page-container .btn-add:hover,
+body[data-page-group="hr"] .page-container .btn-primary:hover,
+body[data-page-group="hr"] .page-container .btn-add:focus-visible,
+body[data-page-group="hr"] .page-container .btn-primary:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--primary-dark) 54%, transparent);
+    background: linear-gradient(135deg, var(--primary-dark) 0%, #059669 100%);
+    color: #FFFFFF;
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 14px 28px rgba(16,185,129,0.28), inset 0 1px 0 rgba(255,255,255,0.24);
+}
+
+body[data-page-group="hr"] .page-container .btn-secondary:hover,
+body[data-page-group="hr"] .page-container .btn-secondary:focus-visible,
+body[data-page-group="hr"] .page-container .btn-add.hr-salary-secondary:hover,
+body[data-page-group="hr"] .page-container .btn-add.hr-salary-secondary:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--primary) 38%, var(--gray-300));
+    background: color-mix(in srgb, var(--primary) 8%, var(--white));
+    color: var(--primary-dark);
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.38);
+}
+
+body[data-page-group="hr"] .page-container .btn-danger:hover,
+body[data-page-group="hr"] .page-container .btn-danger:focus-visible,
+body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:hover,
+body[data-page-group="hr"] .page-container .btn-add.hr-salary-danger:focus-visible {
+    outline: none;
+    border-color: rgba(239,68,68,0.44);
+    background: rgba(239,68,68,0.14);
+    color: #991B1B;
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(239,68,68,0.12);
+}
+
 .hr-professions-head {
     display: flex;
     justify-content: space-between;
@@ -4503,7 +4647,11 @@ body.dark-mode .hr-role-pill.bad,
 }
 body.dark-mode .hr-context-menu { background: #2A2A4A; border-color: #3D3D5C; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
 body.dark-mode .hr-context-item { color: #E2E8F0; }
-body.dark-mode .hr-context-item:hover { background: #3D3D5C; }
+body.dark-mode .hr-context-item:hover,
+body.dark-mode .hr-context-item:focus-visible {
+    background: #3D3D5C;
+    color: #FFFFFF;
+}
 body.dark-mode .hr-missing-banner {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(239, 68, 68, 0.05));
     border-color: rgba(245, 158, 11, 0.2);

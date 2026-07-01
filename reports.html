@@ -21,1420 +21,6 @@
     <link rel="stylesheet" href="css/responsive.css?v=0.77.85">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <style>
-        /* ==========================================
-           REPORTS PAGE STYLES
-           ========================================== */
-
-        .rpt-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        .rpt-header h2 { margin: 0; font-weight: 900; font-size: 22px; }
-        .rpt-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .rpt-bot-link {
-            font-size: 12px;
-            color: var(--primary);
-            font-weight: 700;
-            text-decoration: none;
-            background: rgba(99,102,241,0.06);
-            padding: 6px 12px;
-            border-radius: var(--radius-sm);
-        }
-
-        /* Summary cards */
-        .rpt-summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .rpt-card {
-            background: var(--white);
-            border-radius: var(--radius);
-            padding: 18px;
-            border: 1px solid var(--gray-100);
-            box-shadow: var(--shadow-xs);
-            text-align: center;
-        }
-        .rpt-card-icon { font-size: 24px; margin-bottom: 4px; }
-        .rpt-card-value {
-            font-size: 26px;
-            font-weight: 900;
-            line-height: 1.2;
-        }
-        .rpt-card-label {
-            font-size: 11px;
-            font-weight: 700;
-            color: var(--gray-500);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 4px;
-        }
-        .rpt-card.income .rpt-card-value { color: #10B981; }
-        .rpt-card.expense .rpt-card-value { color: #EF4444; }
-        .rpt-card.profit .rpt-card-value { color: #6366F1; }
-        .rpt-card.pending .rpt-card-value { color: #F59E0B; }
-
-        /* Filters */
-        .rpt-filters {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 16px;
-            padding: 12px 16px;
-            background: var(--white);
-            border: 1px solid var(--gray-100);
-            border-radius: var(--radius);
-        }
-        .rpt-filter-select, .rpt-filter-date {
-            padding: 8px 10px;
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-family: inherit;
-            background: var(--white);
-            min-height: 44px;
-            color: var(--gray-700);
-        }
-        .rpt-filter-select { min-width: 120px; }
-        .rpt-filter-date { min-width: 130px; }
-        .rpt-filter-btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-family: inherit;
-            font-weight: 700;
-            cursor: pointer;
-            min-height: 44px;
-        }
-        .rpt-filter-btn.primary { background: var(--primary); color: white; }
-        .rpt-filter-btn.secondary { background: var(--gray-100); color: var(--gray-600); }
-
-        /* Template-driven table workspace */
-        .rpt-template-workspace {
-            margin: 0 0 20px;
-            padding: 18px;
-            border: 1px solid rgba(99,102,241,0.16);
-            border-radius: 18px;
-            background:
-                linear-gradient(135deg, rgba(16,185,129,0.08), rgba(99,102,241,0.05)),
-                var(--white);
-            box-shadow: var(--shadow-xs);
-        }
-        .rpt-template-head {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 16px;
-            align-items: start;
-            margin-bottom: 14px;
-        }
-        .rpt-template-eyebrow {
-            margin: 0 0 4px;
-            font-size: 11px;
-            font-weight: 900;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-            color: #059669;
-        }
-        .rpt-template-head h3 {
-            margin: 0;
-            font-size: 20px;
-            font-weight: 900;
-            color: var(--gray-800);
-        }
-        .rpt-template-head p {
-            margin: 6px 0 0;
-            max-width: 760px;
-            font-size: 13px;
-            line-height: 1.45;
-            color: var(--gray-500);
-        }
-        .rpt-template-actions {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: 8px;
-        }
-        .rpt-template-action {
-            min-height: 40px;
-            padding: 8px 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(99,102,241,0.20);
-            background: rgba(255,255,255,0.82);
-            color: var(--gray-700);
-            font: inherit;
-            font-size: 13px;
-            font-weight: 850;
-            cursor: pointer;
-            transition: transform .15s ease, border-color .15s ease, background .15s ease, color .15s ease;
-        }
-        .rpt-template-action:hover {
-            transform: translateY(-1px);
-            border-color: rgba(16,185,129,0.45);
-            color: #047857;
-        }
-        .rpt-template-action:disabled {
-            opacity: 0.52;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .rpt-template-action.primary {
-            background: linear-gradient(135deg, #10B981, #059669);
-            color: white;
-            border-color: transparent;
-        }
-        .rpt-template-action.danger {
-            background: rgba(239,68,68,0.10);
-            color: #B91C1C;
-            border-color: rgba(239,68,68,0.24);
-        }
-        .rpt-template-action.danger:hover {
-            border-color: rgba(239,68,68,0.45);
-            color: #991B1B;
-        }
-        .rpt-template-picker {
-            display: grid;
-            grid-template-columns: auto minmax(220px, 420px) minmax(0, 1fr);
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 14px;
-        }
-        .rpt-template-picker label {
-            color: var(--gray-500);
-            font-size: 11px;
-            font-weight: 900;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-        }
-        .rpt-template-select {
-            width: 100%;
-            min-height: 42px;
-            border: 1px solid rgba(148,163,184,0.28);
-            border-radius: 12px;
-            background: rgba(255,255,255,0.86);
-            color: var(--gray-800);
-            padding: 8px 11px;
-            font: inherit;
-            font-size: 13px;
-            font-weight: 850;
-        }
-        .rpt-template-active-chip {
-            min-width: 0;
-            padding: 8px 11px;
-            border-radius: 999px;
-            background: rgba(16,185,129,0.10);
-            color: #047857;
-            font-size: 12px;
-            font-weight: 900;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .rpt-template-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-            gap: 10px;
-            margin-bottom: 14px;
-        }
-        .rpt-template-card {
-            border: 1px solid rgba(148,163,184,0.24);
-            border-radius: 14px;
-            background: rgba(255,255,255,0.76);
-            padding: 14px;
-            text-align: left;
-            cursor: pointer;
-            min-height: 116px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
-        }
-        .rpt-template-card:hover,
-        .rpt-template-card:focus-visible {
-            outline: none;
-            transform: translateY(-1px);
-            border-color: rgba(16,185,129,0.50);
-            box-shadow: 0 12px 28px rgba(15,23,42,0.08);
-        }
-        .rpt-template-card.active {
-            border-color: rgba(16,185,129,0.75);
-            background: linear-gradient(135deg, rgba(16,185,129,0.14), rgba(255,255,255,0.86));
-            box-shadow: 0 0 0 3px rgba(16,185,129,0.10);
-        }
-        .rpt-template-card-title {
-            font-size: 14px;
-            font-weight: 900;
-            color: var(--gray-800);
-        }
-        .rpt-template-card-desc {
-            font-size: 12px;
-            line-height: 1.35;
-            color: var(--gray-500);
-        }
-        .rpt-template-card-meta {
-            margin-top: auto;
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-        .rpt-template-chip {
-            padding: 3px 7px;
-            border-radius: 999px;
-            background: rgba(99,102,241,0.10);
-            color: #4F46E5;
-            font-size: 10px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-        .rpt-drafts-strip {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin: 0 0 14px;
-            min-height: 0;
-        }
-        .rpt-draft-chip {
-            min-height: 34px;
-            padding: 7px 10px;
-            border: 1px solid rgba(148,163,184,0.26);
-            border-radius: 999px;
-            background: rgba(255,255,255,0.74);
-            color: var(--gray-700);
-            font: inherit;
-            font-size: 12px;
-            font-weight: 850;
-            cursor: pointer;
-        }
-        .rpt-draft-chip:hover {
-            border-color: rgba(16,185,129,0.48);
-            color: #047857;
-        }
-        .rpt-sheet-panel {
-            border: 1px solid rgba(148,163,184,0.22);
-            border-radius: 16px;
-            background: rgba(248,250,252,0.78);
-            overflow: hidden;
-        }
-        .rpt-sheet-toolbar {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 12px;
-            align-items: center;
-            padding: 14px 16px;
-            border-bottom: 1px solid rgba(148,163,184,0.20);
-        }
-        .rpt-sheet-title {
-            margin: 0;
-            font-size: 16px;
-            font-weight: 900;
-            color: var(--gray-800);
-        }
-        .rpt-sheet-title-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
-            align-items: center;
-            margin-top: 9px;
-            max-width: 680px;
-        }
-        .rpt-sheet-title-field {
-            display: grid;
-            gap: 4px;
-        }
-        .rpt-sheet-title-field label {
-            color: var(--gray-500);
-            font-size: 10px;
-            font-weight: 900;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-        }
-        .rpt-sheet-title-input {
-            width: 100%;
-            min-height: 40px;
-            border: 1px solid rgba(148,163,184,0.28);
-            border-radius: 12px;
-            background: rgba(255,255,255,0.86);
-            color: var(--gray-800);
-            padding: 8px 11px;
-            font: inherit;
-            font-size: 14px;
-            font-weight: 850;
-            box-sizing: border-box;
-        }
-        .rpt-sheet-title-input:focus {
-            outline: none;
-            border-color: rgba(16,185,129,0.62);
-            box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
-        }
-        .rpt-sheet-mode-chip,
-        .rpt-sheet-dirty-chip {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 30px;
-            padding: 5px 9px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 900;
-            white-space: nowrap;
-        }
-        .rpt-sheet-mode-chip {
-            background: rgba(99,102,241,0.10);
-            color: #4F46E5;
-        }
-        .rpt-sheet-mode-chip.closed {
-            background: rgba(239,68,68,0.10);
-            color: #B91C1C;
-        }
-        .rpt-sheet-dirty-chip {
-            margin-left: 8px;
-            background: rgba(245,158,11,0.13);
-            color: #B45309;
-        }
-        .rpt-sheet-meta {
-            margin: 4px 0 0;
-            font-size: 12px;
-            color: var(--gray-500);
-        }
-        .rpt-sheet-status {
-            min-height: 18px;
-            margin-top: 8px;
-            color: #047857;
-            font-size: 12px;
-            font-weight: 800;
-        }
-        .rpt-sheet-buttons {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-        .rpt-sheet-table-wrap {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            background: #FFFFFF;
-        }
-        .rpt-final-handoff {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
-            gap: 16px;
-            align-items: center;
-            padding: 18px;
-            border-top: 1px solid rgba(16,185,129,0.28);
-            background:
-                linear-gradient(135deg, rgba(16,185,129,0.14), rgba(14,165,233,0.08)),
-                rgba(248,250,252,0.88);
-        }
-        .rpt-final-handoff-copy {
-            display: grid;
-            gap: 5px;
-            min-width: 0;
-        }
-        .rpt-final-eyebrow {
-            width: fit-content;
-            padding: 4px 9px;
-            border-radius: 999px;
-            background: rgba(16,185,129,0.14);
-            color: #047857;
-            font-size: 10px;
-            font-weight: 950;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-        }
-        .rpt-final-handoff-copy strong {
-            color: #0F172A;
-            font-size: 18px;
-            font-weight: 950;
-            line-height: 1.2;
-        }
-        .rpt-final-handoff-copy p {
-            margin: 0;
-            max-width: 760px;
-            color: #475569;
-            font-size: 13px;
-            line-height: 1.45;
-            font-weight: 750;
-        }
-        .rpt-final-handoff-btn {
-            width: 100%;
-            min-height: 76px;
-            display: inline-flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            border: 0;
-            border-radius: 18px;
-            padding: 14px 18px;
-            background: linear-gradient(135deg, #10B981, #059669);
-            color: #FFFFFF;
-            box-shadow: 0 18px 34px rgba(5,150,105,0.26);
-            cursor: pointer;
-            font: inherit;
-            text-align: center;
-            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease, opacity .15s ease;
-        }
-        .rpt-final-handoff-btn span {
-            font-size: 16px;
-            font-weight: 950;
-            line-height: 1.2;
-        }
-        .rpt-final-handoff-btn small {
-            color: rgba(255,255,255,0.84);
-            font-size: 11px;
-            font-weight: 850;
-            line-height: 1.25;
-        }
-        .rpt-final-handoff-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 22px 42px rgba(5,150,105,0.34);
-            filter: saturate(1.04);
-        }
-        .rpt-final-handoff-btn:focus-visible {
-            outline: 3px solid rgba(16,185,129,0.26);
-            outline-offset: 4px;
-        }
-        .rpt-final-handoff-btn:disabled {
-            cursor: not-allowed;
-            opacity: 0.62;
-            transform: none;
-            box-shadow: none;
-            filter: grayscale(0.12);
-        }
-        .rpt-final-handoff.is-locked {
-            border-top-color: rgba(99,102,241,0.28);
-            background:
-                linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.08)),
-                rgba(248,250,252,0.88);
-        }
-        .rpt-final-handoff.is-locked .rpt-final-eyebrow {
-            background: rgba(99,102,241,0.12);
-            color: #4F46E5;
-        }
-        .rpt-final-handoff.is-locked .rpt-final-handoff-btn {
-            background: linear-gradient(135deg, #64748B, #475569);
-        }
-        .rpt-sheet-summary {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            padding: 12px 16px;
-            border-bottom: 1px solid rgba(148,163,184,0.20);
-            background: rgba(255,255,255,0.60);
-        }
-        .rpt-sheet-summary-card {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            min-height: 40px;
-            padding: 8px 12px;
-            border: 1px solid rgba(148,163,184,0.22);
-            border-radius: 12px;
-            background: rgba(248,250,252,0.90);
-            color: #475569;
-            font-size: 12px;
-            font-weight: 900;
-        }
-        .rpt-sheet-summary-card strong {
-            color: #0F172A;
-            font-size: 16px;
-        }
-        .rpt-sheet-summary-card.accent {
-            border-color: rgba(16,185,129,0.32);
-            background: rgba(16,185,129,0.10);
-            color: #047857;
-        }
-        .rpt-sheet-table {
-            width: 100%;
-            min-width: 760px;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        .rpt-sheet-table th,
-        .rpt-sheet-table td {
-            border: 1px solid rgba(148,163,184,0.22);
-            padding: 0;
-            vertical-align: stretch;
-        }
-        .rpt-sheet-table th {
-            background: #F1F5F9;
-            color: #475569;
-            font-size: 11px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            padding: 9px 10px;
-            white-space: nowrap;
-        }
-        .rpt-sheet-th-content {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-        }
-        .rpt-sheet-column-delete,
-        .rpt-sheet-row-action {
-            min-width: 30px;
-            min-height: 30px;
-            border: 1px solid rgba(148,163,184,0.24);
-            border-radius: 9px;
-            background: rgba(255,255,255,0.74);
-            color: #64748B;
-            cursor: pointer;
-            font-weight: 900;
-            line-height: 1;
-        }
-        .rpt-sheet-column-delete:hover,
-        .rpt-sheet-row-action:hover {
-            border-color: rgba(239,68,68,0.45);
-            color: #EF4444;
-        }
-        .rpt-sheet-row-index {
-            width: 46px;
-            min-width: 46px;
-            text-align: center;
-            background: #F8FAFC;
-            color: #64748B;
-            font-weight: 900;
-            user-select: none;
-        }
-        .rpt-sheet-input {
-            width: 100%;
-            min-width: 130px;
-            min-height: 42px;
-            border: 0;
-            border-radius: 0;
-            background: transparent;
-            color: #0F172A;
-            padding: 10px 11px;
-            font: inherit;
-            font-size: 13px;
-            font-weight: 700;
-            box-sizing: border-box;
-        }
-        .rpt-sheet-input:focus {
-            outline: 2px solid rgba(16,185,129,0.55);
-            outline-offset: -2px;
-            background: rgba(236,253,245,0.68);
-        }
-        .rpt-sheet-input:disabled {
-            opacity: 1;
-            color: #334155;
-            background: rgba(248,250,252,0.72);
-            cursor: default;
-        }
-        .rpt-sheet-select {
-            appearance: auto;
-        }
-        .rpt-sheet-total-row td {
-            background: #F8FAFC;
-            padding: 10px 11px;
-            font-weight: 900;
-            color: #0F172A;
-        }
-        .rpt-sheet-delete {
-            min-width: 42px;
-            min-height: 42px;
-            border: 0;
-            background: transparent;
-            color: #EF4444;
-            cursor: pointer;
-            font-weight: 900;
-        }
-        .rpt-sheet-row-actions {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-            padding: 6px;
-        }
-        .rpt-raw-table-preview {
-            margin-top: 8px;
-            border: 1px solid rgba(148,163,184,0.22);
-            border-radius: 10px;
-            overflow: hidden;
-            background: var(--white);
-        }
-        .rpt-raw-table-preview-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 10px;
-            background: rgba(248,250,252,0.86);
-            border-bottom: 1px solid rgba(148,163,184,0.18);
-        }
-        .rpt-raw-table-preview-head .rpt-template-action {
-            min-height: 30px;
-            padding: 5px 9px;
-            border-radius: 9px;
-            font-size: 11px;
-        }
-        .rpt-raw-table-preview table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-        }
-        .rpt-raw-table-preview th,
-        .rpt-raw-table-preview td {
-            padding: 6px 8px;
-            border-bottom: 1px solid rgba(148,163,184,0.18);
-            text-align: left;
-        }
-        .rpt-raw-table-preview th {
-            background: rgba(99,102,241,0.08);
-            font-weight: 900;
-        }
-
-        body.dark-mode .rpt-template-workspace {
-            background:
-                linear-gradient(135deg, rgba(16,185,129,0.16), rgba(99,102,241,0.08)),
-                #111827;
-            border-color: rgba(52,211,153,0.20);
-        }
-        body.dark-mode .rpt-template-head h3,
-        body.dark-mode .rpt-template-card-title,
-        body.dark-mode .rpt-sheet-title {
-            color: #F8FAFC;
-        }
-        body.dark-mode .rpt-template-head p,
-        body.dark-mode .rpt-template-card-desc,
-        body.dark-mode .rpt-sheet-meta {
-            color: #94A3B8;
-        }
-        body.dark-mode .rpt-template-action,
-        body.dark-mode .rpt-template-card,
-        body.dark-mode .rpt-draft-chip,
-        body.dark-mode .rpt-template-select,
-        body.dark-mode .rpt-sheet-title-input {
-            background: rgba(15,23,42,0.82);
-            border-color: rgba(148,163,184,0.24);
-            color: #E2E8F0;
-        }
-        body.dark-mode .rpt-template-active-chip {
-            background: rgba(16,185,129,0.18);
-            color: #6EE7B7;
-        }
-        body.dark-mode .rpt-sheet-title-field label {
-            color: #94A3B8;
-        }
-        body.dark-mode .rpt-sheet-mode-chip {
-            background: rgba(129,140,248,0.16);
-            color: #C4B5FD;
-        }
-        body.dark-mode .rpt-sheet-dirty-chip {
-            background: rgba(245,158,11,0.16);
-            color: #FCD34D;
-        }
-        body.dark-mode .rpt-sheet-mode-chip.closed {
-            background: rgba(248,113,113,0.16);
-            color: #FCA5A5;
-        }
-        body.dark-mode .rpt-template-card.active {
-            background: linear-gradient(135deg, rgba(16,185,129,0.20), rgba(15,23,42,0.92));
-            border-color: rgba(52,211,153,0.58);
-        }
-        body.dark-mode .rpt-sheet-panel {
-            background: rgba(15,23,42,0.78);
-            border-color: rgba(148,163,184,0.22);
-        }
-        body.dark-mode .rpt-sheet-table-wrap,
-        body.dark-mode .rpt-raw-table-preview {
-            background: #0F172A;
-        }
-        body.dark-mode .rpt-final-handoff {
-            border-top-color: rgba(52,211,153,0.26);
-            background:
-                linear-gradient(135deg, rgba(16,185,129,0.16), rgba(14,165,233,0.08)),
-                rgba(15,23,42,0.88);
-        }
-        body.dark-mode .rpt-final-eyebrow {
-            background: rgba(16,185,129,0.18);
-            color: #6EE7B7;
-        }
-        body.dark-mode .rpt-final-handoff-copy strong {
-            color: #F8FAFC;
-        }
-        body.dark-mode .rpt-final-handoff-copy p {
-            color: #CBD5E1;
-        }
-        body.dark-mode .rpt-final-handoff.is-locked {
-            border-top-color: rgba(129,140,248,0.24);
-            background:
-                linear-gradient(135deg, rgba(99,102,241,0.14), rgba(16,185,129,0.08)),
-                rgba(15,23,42,0.88);
-        }
-        body.dark-mode .rpt-final-handoff.is-locked .rpt-final-eyebrow {
-            background: rgba(129,140,248,0.16);
-            color: #C4B5FD;
-        }
-        body.dark-mode .rpt-sheet-summary {
-            background: rgba(15,23,42,0.62);
-            border-bottom-color: rgba(148,163,184,0.18);
-        }
-        body.dark-mode .rpt-sheet-summary-card {
-            background: rgba(15,23,42,0.82);
-            border-color: rgba(148,163,184,0.22);
-            color: #CBD5E1;
-        }
-        body.dark-mode .rpt-sheet-summary-card strong {
-            color: #F8FAFC;
-        }
-        body.dark-mode .rpt-sheet-summary-card.accent {
-            background: rgba(16,185,129,0.16);
-            border-color: rgba(52,211,153,0.32);
-            color: #6EE7B7;
-        }
-        body.dark-mode .rpt-raw-table-preview-head {
-            background: rgba(15,23,42,0.86);
-            border-bottom-color: rgba(148,163,184,0.18);
-            color: #E2E8F0;
-        }
-        body.dark-mode .rpt-sheet-table th,
-        body.dark-mode .rpt-sheet-row-index,
-        body.dark-mode .rpt-sheet-total-row td,
-        body.dark-mode .rpt-raw-table-preview th {
-            background: #172033;
-            color: #CBD5E1;
-        }
-        body.dark-mode .rpt-sheet-table th,
-        body.dark-mode .rpt-sheet-table td,
-        body.dark-mode .rpt-raw-table-preview th,
-        body.dark-mode .rpt-raw-table-preview td {
-            border-color: rgba(148,163,184,0.18);
-        }
-        body.dark-mode .rpt-sheet-input {
-            color: #F8FAFC;
-        }
-        body.dark-mode .rpt-sheet-input:disabled {
-            background: rgba(15,23,42,0.74);
-            color: #CBD5E1;
-        }
-        body.dark-mode .rpt-sheet-input:focus {
-            background: rgba(16,185,129,0.14);
-        }
-        body.dark-mode .rpt-approval-workflow,
-        body.dark-mode .rpt-approval-panel {
-            background:
-                linear-gradient(135deg, rgba(16,185,129,0.16), rgba(99,102,241,0.08)),
-                rgba(15,23,42,0.86);
-            border-color: rgba(52,211,153,0.26);
-        }
-        body.dark-mode .rpt-approval-header h4,
-        body.dark-mode .rpt-detail-content strong {
-            color: #F8FAFC;
-        }
-        body.dark-mode .rpt-approval-header p,
-        body.dark-mode .rpt-approval-hint {
-            color: #94A3B8;
-        }
-        body.dark-mode .rpt-approval-current {
-            background: rgba(16,185,129,0.20);
-            color: #6EE7B7;
-        }
-        body.dark-mode .rpt-approval-field label,
-        body.dark-mode .rpt-approval-badge + small {
-            color: #94A3B8;
-        }
-        body.embed-mode .rpt-template-workspace {
-            padding: 14px;
-        }
-        body.embed-mode .rpt-template-head p,
-        body.embed-mode .rpt-template-cards,
-        body.embed-mode .rpt-drafts-strip,
-        body.embed-mode .rpt-on-duty,
-        body.embed-mode .rpt-approval-workflow,
-        body.embed-mode .rpt-hashtag-dashboard {
-            display: none;
-        }
-
-        /* Table */
-        .rpt-table-wrap {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            margin-bottom: 12px;
-        }
-        .rpt-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-            background: var(--white);
-            border: 1px solid var(--gray-100);
-            border-radius: var(--radius);
-            overflow: hidden;
-        }
-        .rpt-table th {
-            padding: 10px 14px;
-            text-align: left;
-            font-size: 11px;
-            font-weight: 700;
-            color: var(--gray-500);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 2px solid var(--gray-100);
-            white-space: nowrap;
-            cursor: pointer;
-            user-select: none;
-        }
-        .rpt-table th:hover { color: var(--primary); }
-        .rpt-table th .sort-arrow { font-size: 10px; margin-left: 4px; }
-        .rpt-table td {
-            padding: 10px 14px;
-            border-bottom: 1px solid var(--gray-50);
-            vertical-align: middle;
-        }
-        .rpt-table tbody tr { cursor: pointer; transition: background 0.15s; }
-        .rpt-table tbody tr:hover { background: rgba(99,102,241,0.03); }
-
-        .rpt-type-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 700;
-        }
-        .rpt-type-badge.income { background: #ECFDF5; color: #059669; }
-        .rpt-type-badge.expense { background: #FEF2F2; color: #DC2626; }
-
-        .rpt-status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 700;
-        }
-        .rpt-status-badge.new { background: #FEF3C7; color: #B45309; }
-        .rpt-status-badge.processing { background: #DBEAFE; color: #1D4ED8; }
-        .rpt-status-badge.done { background: #ECFDF5; color: #059669; }
-        .rpt-status-badge.rejected { background: #FEF2F2; color: #DC2626; }
-
-        .rpt-amount-income { color: #10B981; font-weight: 700; }
-        .rpt-amount-expense { color: #EF4444; font-weight: 700; }
-
-        .rpt-photo-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-            padding: 4px;
-            min-width: 44px;
-            min-height: 44px;
-        }
-
-        .rpt-action-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 4px 6px;
-            min-width: 36px;
-            min-height: 44px;
-            border-radius: var(--radius-sm);
-            transition: background 0.15s;
-        }
-        .rpt-action-btn:hover { background: var(--gray-100); }
-        .rpt-row-actions {
-            display: flex;
-            gap: 4px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .rpt-action-btn.primary {
-            background: rgba(14,165,233,0.12);
-            color: #0369A1;
-        }
-        .rpt-action-btn.success {
-            background: rgba(16,185,129,0.12);
-            color: #047857;
-        }
-        .rpt-action-btn.danger {
-            background: rgba(239,68,68,0.10);
-            color: #B91C1C;
-        }
-        .rpt-action-btn.text {
-            min-height: 38px;
-            min-width: auto;
-            padding: 8px 12px;
-            border: 1px solid rgba(148,163,184,0.24);
-            font-size: 12px;
-            font-weight: 850;
-        }
-
-        .rpt-approval-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            margin-top: 4px;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 900;
-            letter-spacing: .02em;
-            background: rgba(148,163,184,0.14);
-            color: var(--gray-600);
-        }
-        .rpt-approval-badge a {
-            color: inherit;
-            text-decoration: underline;
-            text-underline-offset: 2px;
-        }
-        .rpt-approval-badge + small {
-            display: block;
-            margin-top: 3px;
-            color: var(--gray-400);
-            font-size: 10px;
-            font-weight: 800;
-        }
-        .rpt-approval-badge.task_created,
-        .rpt-approval-badge.pending { background: rgba(245,158,11,0.14); color: #B45309; }
-        .rpt-approval-badge.in_review { background: rgba(59,130,246,0.14); color: #1D4ED8; }
-        .rpt-approval-badge.approved { background: rgba(16,185,129,0.15); color: #047857; }
-        .rpt-approval-badge.rejected { background: rgba(239,68,68,0.14); color: #B91C1C; }
-
-        /* Detail row */
-        .rpt-detail-row td {
-            padding: 8px 14px;
-            background: var(--gray-50);
-            font-size: 12px;
-            color: var(--gray-600);
-        }
-        .rpt-detail-content { max-width: 800px; }
-        .rpt-detail-content p { margin: 4px 0; }
-        .rpt-detail-content strong { color: var(--gray-700); }
-        .rpt-approval-panel {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 12px;
-            align-items: center;
-            margin: 10px 0;
-            padding: 12px;
-            border: 1px solid rgba(99,102,241,0.16);
-            border-radius: 14px;
-            background: rgba(99,102,241,0.05);
-        }
-        .rpt-detail-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            justify-content: flex-end;
-        }
-
-        /* Pagination */
-        .rpt-pagination {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            margin-top: 12px;
-        }
-        .rpt-pagination button {
-            padding: 6px 12px;
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius-sm);
-            background: var(--white);
-            font-size: 13px;
-            font-family: inherit;
-            cursor: pointer;
-            min-height: 44px;
-        }
-        .rpt-pagination button.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-        .rpt-pagination button:disabled { opacity: 0.5; cursor: default; }
-
-        /* On-duty block */
-        .rpt-on-duty {
-            background: var(--white);
-            border: 1px solid var(--gray-100);
-            border-radius: var(--radius);
-            padding: 16px;
-            margin-bottom: 20px;
-        }
-        .rpt-on-duty h4 { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
-        .rpt-on-duty-list { list-style: none; padding: 0; margin: 0; }
-        .rpt-on-duty-list li {
-            padding: 4px 0;
-            font-size: 13px;
-            color: var(--gray-600);
-        }
-        .rpt-approval-workflow {
-            display: grid;
-            gap: 12px;
-            margin-bottom: 20px;
-            padding: 16px;
-            border-radius: 18px;
-            border: 1px solid rgba(16,185,129,0.18);
-            background:
-                linear-gradient(135deg, rgba(16,185,129,0.10), rgba(99,102,241,0.05)),
-                var(--white);
-            box-shadow: var(--shadow-xs);
-        }
-        .rpt-approval-header {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            align-items: flex-start;
-            flex-wrap: wrap;
-        }
-        .rpt-approval-header h4 {
-            margin: 0;
-            font-size: 15px;
-            font-weight: 900;
-            color: var(--gray-800);
-        }
-        .rpt-approval-header p,
-        .rpt-approval-hint {
-            margin: 4px 0 0;
-            color: var(--gray-500);
-            font-size: 12px;
-            line-height: 1.45;
-        }
-        .rpt-approval-current {
-            display: inline-flex;
-            align-items: center;
-            min-height: 32px;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: rgba(16,185,129,0.12);
-            color: #047857;
-            font-size: 12px;
-            font-weight: 900;
-            white-space: nowrap;
-        }
-        .rpt-approval-controls {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: end;
-        }
-        .rpt-approval-field {
-            display: grid;
-            gap: 5px;
-            min-width: min(100%, 280px);
-        }
-        .rpt-approval-field label {
-            color: var(--gray-500);
-            font-size: 11px;
-            font-weight: 900;
-            letter-spacing: .06em;
-            text-transform: uppercase;
-        }
-
-        /* Hashtag badges */
-        .rpt-hashtag {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 700;
-            background: rgba(99,102,241,0.1);
-            color: #6366F1;
-            margin: 1px 2px;
-            white-space: nowrap;
-        }
-        .rpt-hashtag-input {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            flex-wrap: wrap;
-        }
-        .rpt-hashtag-input .rpt-hashtag {
-            cursor: pointer;
-        }
-        .rpt-hashtag-input .rpt-hashtag:hover {
-            background: rgba(239,68,68,0.15);
-            color: #EF4444;
-        }
-        .rpt-hashtag-add-btn {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 700;
-            background: var(--gray-100);
-            color: var(--gray-500);
-            border: 1px dashed var(--gray-300);
-            cursor: pointer;
-            min-height: 24px;
-        }
-        .rpt-hashtag-add-btn:hover { background: var(--gray-200); }
-
-        /* Hashtag dashboard cards */
-        .rpt-hashtag-dashboard {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .rpt-hashtag-card {
-            background: var(--white);
-            border: 1px solid var(--gray-100);
-            border-radius: var(--radius);
-            padding: 16px;
-            cursor: pointer;
-            transition: box-shadow 0.15s, border-color 0.15s;
-        }
-        .rpt-hashtag-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 2px 8px rgba(99,102,241,0.15);
-        }
-        .rpt-hashtag-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-        .rpt-hashtag-card-name {
-            font-size: 15px;
-            font-weight: 800;
-            color: var(--primary);
-        }
-        .rpt-hashtag-toggle {
-            position: relative;
-            width: 36px;
-            height: 20px;
-            cursor: pointer;
-        }
-        .rpt-hashtag-toggle input { display: none; }
-        .rpt-hashtag-toggle-slider {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: var(--gray-300);
-            border-radius: 10px;
-            transition: background 0.2s;
-        }
-        .rpt-hashtag-toggle-slider::after {
-            content: '';
-            position: absolute;
-            width: 16px; height: 16px;
-            left: 2px; bottom: 2px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.2s;
-        }
-        .rpt-hashtag-toggle input:checked + .rpt-hashtag-toggle-slider {
-            background: #10B981;
-        }
-        .rpt-hashtag-toggle input:checked + .rpt-hashtag-toggle-slider::after {
-            transform: translateX(16px);
-        }
-        .rpt-hashtag-card-stats {
-            font-size: 12px;
-            color: var(--gray-500);
-        }
-        .rpt-hashtag-card-amount {
-            font-size: 20px;
-            font-weight: 900;
-            color: var(--gray-700);
-            margin: 4px 0;
-        }
-
-        /* Lightbox */
-        .rpt-lightbox {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            cursor: pointer;
-        }
-        .rpt-lightbox img {
-            max-width: 90vw;
-            max-height: 90vh;
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        }
-
-        /* Manual report modal */
-        #reportModal .rpt-report-modal {
-            width: min(92vw, 640px);
-            padding: 0;
-            overflow: hidden;
-        }
-        #reportModal .rpt-report-modal h3 {
-            margin: 0;
-            padding: 26px 32px 20px;
-        }
-        #reportForm {
-            padding: 24px 32px 32px;
-        }
-        #reportForm .form-group {
-            margin-bottom: 18px;
-        }
-        #reportForm label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 13px;
-            font-weight: 850;
-            color: var(--gray-700);
-        }
-        #reportForm .form-control {
-            width: 100%;
-            min-height: 52px;
-            box-sizing: border-box;
-            border: 2px solid rgba(99, 102, 241, 0.28);
-            border-radius: 12px;
-            background: #FFFFFF;
-            color: var(--gray-800);
-            padding: 12px 16px;
-            font: inherit;
-            font-size: 16px;
-            font-weight: 700;
-            transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
-        }
-        #reportForm .form-control::placeholder {
-            color: var(--gray-400);
-            font-weight: 650;
-        }
-        #reportForm .form-control:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
-        }
-        #reportForm select.form-control {
-            appearance: none;
-            -webkit-appearance: none;
-            cursor: pointer;
-            padding-right: 44px;
-            background-image:
-                linear-gradient(45deg, transparent 50%, currentColor 50%),
-                linear-gradient(135deg, currentColor 50%, transparent 50%);
-            background-position:
-                calc(100% - 24px) 50%,
-                calc(100% - 17px) 50%;
-            background-size: 7px 7px, 7px 7px;
-            background-repeat: no-repeat;
-        }
-        #reportForm .rpt-report-row {
-            display: grid;
-            grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
-            gap: 14px;
-            align-items: end;
-        }
-        #reportForm .rpt-hashtag-controls {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
-            margin-top: 8px;
-        }
-        #reportForm .rpt-hashtag-controls .btn-page-secondary {
-            min-width: 128px;
-            min-height: 52px;
-            border-radius: 12px;
-            font-weight: 850;
-            white-space: nowrap;
-        }
-        #reportForm .rpt-report-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            margin-top: 22px;
-        }
-        #reportForm .rpt-report-actions button {
-            min-width: 132px;
-            min-height: 52px;
-            border-radius: 12px;
-            font-size: 15px;
-            font-weight: 850;
-        }
-        body.dark-mode #reportModal .rpt-report-modal {
-            background: #1E1E38;
-            border-color: rgba(148, 163, 184, 0.22);
-        }
-        body.dark-mode #reportModal .rpt-report-modal h3 {
-            background: #1B1B33;
-            color: #F8FAFC;
-            border-bottom-color: rgba(148, 163, 184, 0.18);
-        }
-        body.dark-mode #reportForm label {
-            color: #E2E8F0;
-        }
-        body.dark-mode #reportForm .form-control {
-            background-color: #292945;
-            border-color: rgba(129, 140, 248, 0.34);
-            color: #F8FAFC;
-        }
-        body.dark-mode #reportForm .form-control::placeholder {
-            color: #94A3B8;
-        }
-        body.dark-mode #reportForm .form-control:focus {
-            border-color: #34D399;
-            box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.16);
-            background-color: #2E2E50;
-        }
-        body.dark-mode #reportForm select.form-control option {
-            background: #252540;
-            color: #F8FAFC;
-        }
-
-        @media (max-width: 768px) {
-            .rpt-header { flex-direction: column; align-items: stretch; }
-            .rpt-filters { flex-direction: column; }
-            .rpt-approval-header,
-            .rpt-approval-controls,
-            .rpt-approval-panel {
-                grid-template-columns: 1fr;
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .rpt-detail-actions { justify-content: flex-start; }
-            .rpt-table { font-size: 12px; }
-            .rpt-table th, .rpt-table td { padding: 8px 10px; }
-            #reportModal .rpt-report-modal {
-                width: min(94vw, 640px);
-            }
-            #reportModal .rpt-report-modal h3 {
-                padding: 22px 22px 16px;
-            }
-            #reportForm {
-                padding: 20px 22px 24px;
-            }
-            #reportForm .rpt-report-row,
-            #reportForm .rpt-hashtag-controls {
-                grid-template-columns: 1fr;
-            }
-            #reportForm .rpt-report-actions {
-                flex-direction: column-reverse;
-            }
-            #reportForm .rpt-report-actions button,
-            #reportForm .rpt-hashtag-controls .btn-page-secondary {
-                width: 100%;
-            }
-            .rpt-template-head,
-            .rpt-sheet-toolbar {
-                grid-template-columns: 1fr;
-            }
-            .rpt-template-actions,
-            .rpt-sheet-buttons {
-                justify-content: stretch;
-            }
-            .rpt-template-action {
-                flex: 1 1 100%;
-            }
-            .rpt-sheet-title-row {
-                grid-template-columns: 1fr;
-            }
-            .rpt-final-handoff {
-                grid-template-columns: 1fr;
-                padding: 16px;
-            }
-            .rpt-final-handoff-btn {
-                min-height: 70px;
-            }
-        }
-    </style>
 </head>
 <body data-page-group="mgmt">
     <script>
@@ -1486,38 +72,131 @@
         </header>
 
         <main id="main-content" class="page-container">
-            <div class="rpt-header">
+            <nav class="staff-pulse-nav" aria-label="Навігація пульсу компанії">
+                <div class="staff-pulse-nav-items">
+                    <a class="staff-pulse-tab ui-tab-card" href="/hr#today" data-pulse-tone="people">
+                        <span class="staff-pulse-tab-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M8 2v4M16 2v4M4 10h16M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
+                                <path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"></path>
+                            </svg>
+                        </span>
+                        <span class="staff-pulse-tab-content">
+                            <span class="staff-pulse-tab-title">Сьогодні</span>
+                            <span class="staff-pulse-tab-subtitle">Огляд дня</span>
+                        </span>
+                        <span class="staff-pulse-tab-badge hidden" data-pulse-badge="today"></span>
+                        <span class="staff-pulse-tab-line" aria-hidden="true"></span>
+                    </a>
+                    <a class="staff-pulse-tab ui-tab-card" href="/staff" data-pulse-tone="schedule">
+                        <span class="staff-pulse-tab-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="9"></circle>
+                                <path d="M12 7v5l3 2"></path>
+                            </svg>
+                        </span>
+                        <span class="staff-pulse-tab-content">
+                            <span class="staff-pulse-tab-title">Графік</span>
+                            <span class="staff-pulse-tab-subtitle">Розклад змін</span>
+                        </span>
+                        <span class="staff-pulse-tab-badge hidden" data-pulse-badge="schedule"></span>
+                        <span class="staff-pulse-tab-line" aria-hidden="true"></span>
+                    </a>
+                    <a class="staff-pulse-tab ui-tab-card active" href="/reports" aria-current="page" data-pulse-tone="reports">
+                        <span class="staff-pulse-tab-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path>
+                                <path d="M14 3v5h5M8 15h8M8 18h5M8 12h3"></path>
+                            </svg>
+                        </span>
+                        <span class="staff-pulse-tab-content">
+                            <span class="staff-pulse-tab-title">Звіти</span>
+                            <span class="staff-pulse-tab-subtitle">Аналітика</span>
+                        </span>
+                        <span class="staff-pulse-tab-badge hidden" data-pulse-badge="reports"></span>
+                        <span class="staff-pulse-tab-line" aria-hidden="true"></span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="rpt-header workspace-hero">
                 <div>
                     <h2>Звіти</h2>
                     <p style="margin:4px 0 0;font-size:13px;color:var(--gray-500)">Фінансові звіти від команди</p>
                 </div>
                 <div class="rpt-header-actions">
-                    <a href="/finance" class="btn-page-secondary" style="text-decoration:none;font-size:13px">💰 Фінанси</a>
-                    <a href="/center" class="btn-page-secondary" style="text-decoration:none;font-size:13px">💲 Центр цін</a>
+                    <a href="/finance" class="btn-page-secondary" style="text-decoration:none;font-size:13px">Фінанси</a>
+                    <a href="/center" class="btn-page-secondary" style="text-decoration:none;font-size:13px">Центр цін</a>
                     <a class="rpt-bot-link" href="https://t.me/EGen_Park_Report_bot" target="_blank">@EGen_Park_Report_bot — надсилай чеки боту!</a>
                     <button type="button" id="addReportBtn" class="btn-page-primary">+ Додати звіт</button>
                 </div>
             </div>
 
+            <!-- Filters -->
+            <div class="rpt-filters workspace-command-bar">
+                <select id="periodFilter" class="rpt-filter-select">
+                    <option value="today">Сьогодні</option>
+                    <option value="week">Тиждень</option>
+                    <option value="month" selected>Місяць</option>
+                    <option value="custom">Довільний</option>
+                </select>
+                <input type="date" id="dateFromFilter" class="rpt-filter-date" style="display:none" title="Від">
+                <input type="date" id="dateToFilter" class="rpt-filter-date" style="display:none" title="До">
+                <select id="hashtagFilter" class="rpt-filter-select">
+                    <option value="">Всі хештеги</option>
+                </select>
+                <select id="typeFilter" class="rpt-filter-select">
+                    <option value="">Всі типи</option>
+                    <option value="income">Доходи</option>
+                    <option value="expense">Витрати</option>
+                </select>
+                <select id="statusFilter" class="rpt-filter-select">
+                    <option value="">Всі статуси</option>
+                    <option value="new">Нові</option>
+                    <option value="processing">В обробці</option>
+                    <option value="done">Опрацьовані</option>
+                    <option value="rejected">Відхилені</option>
+                </select>
+                <select id="submittedByFilter" class="rpt-filter-select">
+                    <option value="">Хто подав</option>
+                </select>
+                <select id="categoryFilter" class="rpt-filter-select">
+                    <option value="">Всі категорії</option>
+                    <option value="Афіша">Афіша</option>
+                    <option value="ЗП">ЗП</option>
+                    <option value="Майстер-класи">Майстер-класи</option>
+                    <option value="ДАР">ДАР</option>
+                    <option value="Костюми">Костюми</option>
+                    <option value="Квести">Квести</option>
+                    <option value="Реквізит">Реквізит</option>
+                    <option value="Аквагрим">Аквагрим</option>
+                    <option value="Декорації">Декорації</option>
+                    <option value="Офіс">Офіс</option>
+                    <option value="Інше">Інше</option>
+                </select>
+                <button type="button" id="filterBtn" class="rpt-filter-btn primary btn-page-primary" onclick="ReportsPage.applyFilters()">Фільтрувати</button>
+                <button type="button" class="rpt-filter-btn secondary btn-page-ghost" onclick="ReportsPage.resetFilters()">Скинути</button>
+            </div>
+
             <!-- Summary cards -->
             <div class="rpt-summary" id="summaryCards">
                 <div class="rpt-card income">
-                    <div class="rpt-card-icon">💰</div>
+                    <div class="rpt-card-icon" aria-hidden="true">IN</div>
                     <div class="rpt-card-value" id="sumIncome">0 ₴</div>
                     <div class="rpt-card-label">Доходи сьогодні</div>
                 </div>
                 <div class="rpt-card expense">
-                    <div class="rpt-card-icon">💸</div>
+                    <div class="rpt-card-icon" aria-hidden="true">OUT</div>
                     <div class="rpt-card-value" id="sumExpense">0 ₴</div>
                     <div class="rpt-card-label">Витрати сьогодні</div>
                 </div>
                 <div class="rpt-card profit">
-                    <div class="rpt-card-icon">📈</div>
+                    <div class="rpt-card-icon" aria-hidden="true">NET</div>
                     <div class="rpt-card-value" id="sumProfit">0 ₴</div>
                     <div class="rpt-card-label">Прибуток</div>
                 </div>
                 <div class="rpt-card pending">
-                    <div class="rpt-card-icon">⏳</div>
+                    <div class="rpt-card-icon" aria-hidden="true">WAIT</div>
                     <div class="rpt-card-value" id="sumPending">0</div>
                     <div class="rpt-card-label">Очікують</div>
                 </div>
@@ -1535,13 +214,13 @@
                         </p>
                     </div>
                     <div class="rpt-template-actions">
-                        <button type="button" class="rpt-template-action" id="reportTemplateUploadBtn">Завантажити шаблон</button>
+                        <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateUploadBtn">Завантажити шаблон</button>
                         <input type="file" id="reportTemplateUpload" accept="application/json,.json" hidden>
-                        <button type="button" class="rpt-template-action" id="reportTemplateImportCsvBtn">Імпорт CSV</button>
+                        <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateImportCsvBtn">Імпорт CSV</button>
                         <input type="file" id="reportTableImportCsv" accept=".csv,text/csv" hidden>
-                        <button type="button" class="rpt-template-action" id="reportTemplateResetBtn">Скинути таблицю</button>
-                        <button type="button" class="rpt-template-action" id="reportTemplateDraftBtn">Зберегти чернетку</button>
-                        <button type="button" class="rpt-template-action primary" id="reportTemplateSaveBtn">Створити звіт з таблиці</button>
+                        <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateResetBtn">Скинути таблицю</button>
+                        <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateDraftBtn">Зберегти чернетку</button>
+                        <button type="button" class="rpt-template-action primary btn-page-primary" id="reportTemplateSaveBtn">Створити звіт з таблиці</button>
                     </div>
                 </div>
 
@@ -1570,10 +249,10 @@
                             </div>
                         </div>
                         <div class="rpt-sheet-buttons">
-                            <button type="button" class="rpt-template-action" id="reportTemplateAddRowBtn">+ Рядок</button>
-                            <button type="button" class="rpt-template-action" id="reportTemplateAddColumnBtn">+ Колонка</button>
-                            <button type="button" class="rpt-template-action" id="reportTemplateExportCsvBtn">CSV</button>
-                            <button type="button" class="rpt-template-action" id="reportTemplateExportXlsxBtn">XLSX</button>
+                            <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateAddRowBtn">+ Рядок</button>
+                            <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateAddColumnBtn">+ Колонка</button>
+                            <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateExportCsvBtn">CSV</button>
+                            <button type="button" class="rpt-template-action btn-page-toolbar" id="reportTemplateExportXlsxBtn">XLSX</button>
                         </div>
                     </div>
                     <div class="rpt-sheet-summary hidden" id="reportSheetSummary" aria-live="polite"></div>
@@ -1620,56 +299,10 @@
                             <option value="">Завантаження...</option>
                         </select>
                     </div>
-                    <button type="button" class="rpt-filter-btn primary" id="reportApprovalSaveBtn">Зберегти маршрут</button>
+                    <button type="button" class="rpt-filter-btn primary btn-page-primary" id="reportApprovalSaveBtn">Зберегти маршрут</button>
                 </div>
                 <p class="rpt-approval-hint" id="reportApprovalHint">Завантаження...</p>
             </section>
-
-            <!-- Filters -->
-            <div class="rpt-filters">
-                <select id="periodFilter" class="rpt-filter-select">
-                    <option value="today">Сьогодні</option>
-                    <option value="week">Тиждень</option>
-                    <option value="month" selected>Місяць</option>
-                    <option value="custom">Довільний</option>
-                </select>
-                <input type="date" id="dateFromFilter" class="rpt-filter-date" style="display:none" title="Від">
-                <input type="date" id="dateToFilter" class="rpt-filter-date" style="display:none" title="До">
-                <select id="hashtagFilter" class="rpt-filter-select">
-                    <option value="">Всі хештеги</option>
-                </select>
-                <select id="typeFilter" class="rpt-filter-select">
-                    <option value="">Всі типи</option>
-                    <option value="income">Доходи</option>
-                    <option value="expense">Витрати</option>
-                </select>
-                <select id="statusFilter" class="rpt-filter-select">
-                    <option value="">Всі статуси</option>
-                    <option value="new">Нові</option>
-                    <option value="processing">В обробці</option>
-                    <option value="done">Опрацьовані</option>
-                    <option value="rejected">Відхилені</option>
-                </select>
-                <select id="submittedByFilter" class="rpt-filter-select">
-                    <option value="">Хто подав</option>
-                </select>
-                <select id="categoryFilter" class="rpt-filter-select">
-                    <option value="">Всі категорії</option>
-                    <option value="Афіша">Афіша</option>
-                    <option value="ЗП">ЗП</option>
-                    <option value="Майстер-класи">Майстер-класи</option>
-                    <option value="ДАР">ДАР</option>
-                    <option value="Костюми">Костюми</option>
-                    <option value="Квести">Квести</option>
-                    <option value="Реквізит">Реквізит</option>
-                    <option value="Аквагрим">Аквагрим</option>
-                    <option value="Декорації">Декорації</option>
-                    <option value="Офіс">Офіс</option>
-                    <option value="Інше">Інше</option>
-                </select>
-                <button type="button" id="filterBtn" class="rpt-filter-btn primary" onclick="ReportsPage.applyFilters()">Фільтрувати</button>
-                <button type="button" class="rpt-filter-btn secondary" onclick="ReportsPage.resetFilters()">Скинути</button>
-            </div>
 
             <!-- Table -->
             <div class="rpt-table-wrap">

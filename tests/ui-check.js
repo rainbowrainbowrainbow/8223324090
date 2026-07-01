@@ -46,6 +46,52 @@ function cssImportVersionTagsAreCurrent(filename) {
 check('Aggregate CSS imports carry current asset versions',
     ['css/assistant-rail.css', 'css/pages.css', 'css/sidebar-aurora.css'].every(cssImportVersionTagsAreCurrent));
 
+const HR_WORKSPACE_PAGES = ['hr.html', 'staff.html', 'reports.html'];
+const HR_WORKSPACE_ACTION_BUTTON_SELECTOR = [
+    'button[class*="btn-page"]',
+    'button[class*="btn-primary"]',
+    'button[class*="btn-secondary"]',
+    'button[class*="btn-danger"]',
+    'button[class*="toolbar"]',
+    'button[class*="action"]',
+    'button[id*="Export"]',
+    'button[id*="export"]',
+    'button[id*="Print"]',
+    'button[id*="print"]'
+].join(',');
+const UI_ACTION_EMOJI_PATTERN = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+function inlineStyleBlockBytes(filename) {
+    return [...fileText(filename).matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
+        .reduce((total, match) => total + match[1].length, 0);
+}
+
+function actionButtonEmojiTexts(filename) {
+    const doc = new JSDOM(fileText(filename)).window.document;
+    return [...doc.querySelectorAll(HR_WORKSPACE_ACTION_BUTTON_SELECTOR)]
+        .map(button => button.textContent.trim())
+        .filter(text => UI_ACTION_EMOJI_PATTERN.test(text));
+}
+
+const pagesCoreCssForContract = fileText('css/pages-core.css');
+check('HR workspace shared UI contract exposes reusable primitives',
+    [
+        '.btn-page-primary',
+        '.btn-page-secondary',
+        '.btn-page-danger',
+        '.btn-page-ghost',
+        '.btn-page-toolbar',
+        '.ui-chip',
+        '.ui-chip.active',
+        '.ui-tab-card',
+        '.workspace-hero',
+        '.workspace-command-bar'
+    ].every(token => pagesCoreCssForContract.includes(token)));
+check('HR workspace pages keep extracted CSS out of inline style blocks',
+    HR_WORKSPACE_PAGES.every(filename => inlineStyleBlockBytes(filename) === 0));
+check('HR workspace action buttons avoid emoji text icons',
+    HR_WORKSPACE_PAGES.every(filename => actionButtonEmojiTexts(filename).length === 0));
+
 function cssRuleSetsDisplay(css, selector, display) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rulePattern = new RegExp(`${escapedSelector}\\s*\\{[^}]*display\\s*:\\s*${display}\\s*;`, 'm');
@@ -1440,7 +1486,7 @@ checkPage('staff.html', (doc, html) => {
     const staffCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
     check('Staff schedule edit modal exists', !!doc.getElementById('schModalOverlay'));
     check('Staff fill-week modal exists', !!doc.getElementById('fillWeekOverlay'));
-    check('Staff schedule modal uses shared top modal layer', html.includes('z-index: var(--z-modal, 30000)'));
+    check('Staff schedule modal uses shared top modal layer', staffPagesCss.includes('z-index: var(--z-modal, 30000)'));
     check('Base modal layer is above assistant and drawer surfaces', baseCss.includes('--z-modal: 30000') && baseCss.includes('--z-modal-confirm: 30100'));
     check('Confirm overlay uses modal confirm token', modalCss.includes('z-index: var(--z-modal-confirm, 30100)'));
     check('Shared ModalLayer guard exists', uiCode.includes('window.ModalLayer') && uiCode.includes('ensureTopLayer') && uiCode.includes('.sch-modal-overlay.visible'));
@@ -1448,7 +1494,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff employee cells open HR profiles', staffCode.includes('data-hr-profile') && staffCode.includes('openHrProfile') && staffCode.includes('/hr?employee='));
     check('Staff employee cells keep account linking separate', staffCode.includes('[data-link-staff]') && staffCode.includes('e.target.closest'));
     check('Staff employee cells are keyboard accessible links', staffCode.includes('role="link"') && staffCode.includes("e.key !== 'Enter'") && staffCode.includes("e.key !== ' '"));
-    check('Staff employee cells have profile affordance styling', html.includes('.emp-cell:hover') && html.includes('.emp-cell:focus-visible'));
+    check('Staff employee cells have profile affordance styling', staffPagesCss.includes('.emp-cell:hover') && staffPagesCss.includes('.emp-cell:focus-visible'));
     check('Staff schedule exposes managed replacement controls and state', !!doc.getElementById('schReplaceBtn') && !!doc.getElementById('schClearReplacementBtn') && !!doc.getElementById('schReplacementDetails') && staffCode.includes('async function replaceScheduleEntry') && staffCode.includes('async function clearScheduleReplacement') && staffCode.includes('function scheduleReplacementCandidates') && staffCode.includes('sch-replacement-badge') && staffPagesCss.includes('.sch-cell.is-replacement') && staffPagesCss.includes('.sch-replacement-details[hidden]'));
     const staffPulseTabs = [...doc.querySelectorAll('.staff-pulse-nav .staff-pulse-tab')];
     const staffPulseNavRule = cssRuleText(staffPagesCss, '.staff-pulse-nav');
@@ -1637,11 +1683,12 @@ checkPage('tasks.html', (doc, html) => {
 checkPage('reports.html', (doc, html) => {
     const reportsCode = fs.readFileSync(path.join(ROOT, 'js', 'reports-page.js'), 'utf8');
     const reportsRoutes = fs.readFileSync(path.join(ROOT, 'routes', 'reports.js'), 'utf8');
+    const reportsCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-reports.css'), 'utf8');
     const removedChartText = ['Динаміка прибутку', 'Витрати по категоріях', 'Доходи vs Витрати (по днях)'];
     check('Reports page removes low-signal chart blocks', removedChartText.every(text => !html.includes(text)));
     check('Reports page has no chart canvases or Chart.js CDN', !doc.getElementById('barChart') && !doc.getElementById('pieChart') && !doc.getElementById('lineChart') && !html.includes('cdn.jsdelivr.net/npm/chart.js'));
     check('Reports page script no longer renders Chart.js widgets', !reportsCode.includes('renderCharts') && !reportsCode.includes('new Chart(') && !reportsCode.includes('rpt-chart'));
-    check('Reports manual modal uses page-scoped polished controls', !!doc.querySelector('#reportModal .rpt-report-modal') && html.includes('#reportForm select.form-control') && html.includes('appearance: none') && html.includes('rpt-hashtag-controls') && !html.includes('id="reportHashtagSelect" class="form-control" style='));
+    check('Reports manual modal uses page-scoped polished controls', !!doc.querySelector('#reportModal .rpt-report-modal') && reportsCss.includes('#reportForm select.form-control') && reportsCss.includes('appearance: none') && html.includes('rpt-hashtag-controls') && !html.includes('id="reportHashtagSelect" class="form-control" style='));
     check('Reports page exposes compact template-driven table workspace', !!doc.getElementById('report-template-workspace') && !!doc.getElementById('reportTemplatePicker') && !!doc.getElementById('reportTemplateActiveChip') && !!doc.getElementById('reportSheetTable') && !!doc.getElementById('reportTemplateUpload'));
     check('Reports template workflow supports standard/uploaded schemas and CSV export', reportsCode.includes('const REPORT_TABLE_TEMPLATES') && reportsCode.includes('function loadReportTemplate') && reportsCode.includes('function importReportTemplateFile') && reportsCode.includes('function exportReportTemplateCsv') && reportsCode.includes('reportTableTemplate'));
     check('Reports standard park template has controlled category/document fields and dar subtotal', reportsCode.includes('park-standard-report') && reportsCode.includes('PARK_STANDARD_CATEGORIES') && reportsCode.includes('PARK_STANDARD_DOCUMENTS') && reportsCode.includes('Ітого ДАР') && reportsCode.includes("type: 'select'"));
@@ -3362,7 +3409,7 @@ const authCss = fs.readFileSync(path.join(ROOT, 'css/auth.css'), 'utf8');
 const hrPageCss = fs.readFileSync(path.join(ROOT, 'css/hr-page.css'), 'utf8');
 const hrFoundationCss = fs.readFileSync(path.join(ROOT, 'css/pages-hr-foundation.css'), 'utf8');
 const inviteHtmlForUiPolish = fs.readFileSync(path.join(ROOT, 'invite.html'), 'utf8');
-const staffHtmlForUiPolish = fs.readFileSync(path.join(ROOT, 'staff.html'), 'utf8');
+const staffCssForUiPolish = cssTextWithImports('css/pages.css');
 const hrPayrollPeriodServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const staffRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
 const hrAttendanceServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'hrAttendance.js'), 'utf8');
@@ -4639,9 +4686,9 @@ check('HR/invite/changelog polish prevents long labels from overflowing compact 
     && hrFoundationCss.includes('@media (max-width: 560px)')
     && hrFoundationCss.includes('.hr-offboarding-readiness-grid {\n        grid-template-columns: 1fr;')
     && hrFoundationCss.includes('.hr-lifecycle-item {\n        grid-template-columns: 1fr;')
-    && staffHtmlForUiPolish.includes('.schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover')
-    && staffHtmlForUiPolish.includes('.sub-group-row td')
-    && staffHtmlForUiPolish.includes('overflow-wrap: anywhere')
+    && staffCssForUiPolish.includes('.schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover')
+    && staffCssForUiPolish.includes('.sub-group-row td')
+    && staffCssForUiPolish.includes('overflow-wrap: anywhere')
     && inviteHtmlForUiPolish.includes('.invite-info-row .info {\nflex: 1;\nmin-width: 0;')
     && inviteHtmlForUiPolish.includes('.map-link')
     && inviteHtmlForUiPolish.includes('overflow-wrap: anywhere')

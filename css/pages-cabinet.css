@@ -1493,6 +1493,18 @@ body.dark-mode .cabinet-capture .cabinet-task-composer-toggle:focus-visible {
         width: 100%;
         padding-inline: 6px;
     }
+
+    .cabinet-task-section--all-group .cabinet-section-head {
+        gap: 6px;
+    }
+
+    .cabinet-section-toggle {
+        flex: 1 1 auto;
+    }
+
+    .cabinet-section-head-meta {
+        flex: 0 0 auto;
+    }
 }
 
 body.dark-mode .cabinet-link-btn--secondary {
@@ -1600,6 +1612,10 @@ body.dark-mode .cabinet-link-btn--secondary:focus-visible {
     font-size: 14px;
 }
 
+.cabinet-task-section--all-group.is-collapsed {
+    padding-bottom: 8px;
+}
+
 .cabinet-list-head {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
@@ -1635,6 +1651,62 @@ body.dark-mode .cabinet-link-btn--secondary:focus-visible {
 .cabinet-section-head h3 {
     margin: 0;
     font-size: 15px;
+}
+
+.cabinet-section-toggle {
+    appearance: none;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 30px;
+    padding: 2px 4px;
+    text-align: left;
+}
+
+.cabinet-section-toggle:hover {
+    background: rgba(20, 184, 166, 0.08);
+}
+
+.cabinet-section-toggle:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.62);
+    outline-offset: 2px;
+}
+
+.cabinet-section-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.cabinet-section-toggle-icon {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform 0.16s ease;
+}
+
+.cabinet-task-section.is-collapsed .cabinet-section-toggle-icon {
+    transform: rotate(-45deg);
+}
+
+.cabinet-section-body {
+    display: grid;
+    gap: 8px;
+}
+
+.cabinet-section-body[hidden] {
+    display: none !important;
 }
 
 .cabinet-section-head-meta {

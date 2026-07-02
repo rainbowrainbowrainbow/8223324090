@@ -24,6 +24,9 @@ const {
     taskBusinessScopeMeta
 } = require('./taskBusinessScope');
 
+const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;
+const MAX_TASK_CABINET_PLANNING_ROW_LIMIT = 500;
+
 function workflowFromStatus(status = 'todo') {
     if (status === 'done') return 'done';
     if (status === 'archived') return 'archived';
@@ -84,6 +87,21 @@ function monthEndDate(dateText) {
     const d = new Date(`${dateText}T12:00:00Z`);
     d.setUTCMonth(d.getUTCMonth() + 1, 0);
     return d.toISOString().slice(0, 10);
+}
+
+function normalizeTaskCabinetFocusDate(value) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    const text = String(raw || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
+    const parsed = new Date(`${text}T12:00:00Z`);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10) === text ? text : '';
+}
+
+function normalizeTaskCabinetPlanningLimit(value) {
+    const numeric = Number(value);
+    if (!Number.isInteger(numeric) || numeric <= 0) return DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT;
+    return Math.min(numeric, MAX_TASK_CABINET_PLANNING_ROW_LIMIT);
 }
 
 function taskSnoozedUntilDate(task = {}) {
@@ -292,6 +310,9 @@ async function buildTaskCabinetProjection(options = {}) {
     const plusThreeDays = addDays(today, 3);
     const monthEnd = monthEndDate(today);
     const planningEnd = monthEnd > plusThreeDays ? monthEnd : plusThreeDays;
+    const focusDate = normalizeTaskCabinetFocusDate(options.focusDate);
+    const planningRowLimit = normalizeTaskCabinetPlanningLimit(options.planningRowLimit);
+    const planningFetchLimit = planningRowLimit + 1;
     const nextWeek = addDays(today, 7);
     const completedHistoryLimit = Number.isInteger(options.completedHistoryLimit) && options.completedHistoryLimit > 0
         ? options.completedHistoryLimit
@@ -361,12 +382,20 @@ async function buildTaskCabinetProjection(options = {}) {
         plusThreeDays,
         monthEnd,
         planningEnd,
+        focusDate: focusDate || null,
         planningWindow: 'overdue_undated_through_planning_end'
     };
     const planningParams = [...ownParams, today, planningEnd];
     const planningStartParam = ownParams.length + 1;
     const planningEndParam = ownParams.length + 2;
+    const planningFocusParam = focusDate ? planningParams.length + 1 : null;
+    if (focusDate) planningParams.push(focusDate);
+    const planningLimitParam = planningParams.length + 1;
+    planningParams.push(planningFetchLimit);
     const planningDateSql = taskWorkloadDateSql('t');
+    const planningFocusDateSql = focusDate
+        ? `OR ${planningDateSql} = $${planningFocusParam}::date`
+        : '';
     const planningResult = await queryable.query(
         `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
                 COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
@@ -404,6 +433,7 @@ async function buildTaskCabinetProjection(options = {}) {
                 ${planningDateSql} IS NULL
                 OR ${planningDateSql} < $${planningStartParam}::date
                 OR ${planningDateSql} BETWEEN $${planningStartParam}::date AND $${planningEndParam}::date
+                ${planningFocusDateSql}
            )
          ORDER BY
              CASE
@@ -419,11 +449,29 @@ async function buildTaskCabinetProjection(options = {}) {
              COALESCE(t.focus_rank, 99),
              ${canonicalTaskOrderSql('t')},
              t.created_at DESC,
-             t.id DESC`,
+             t.id DESC
+         LIMIT $${planningLimitParam}`,
         planningParams
     );
-    const planningRows = planningResult.rows.map(normalizeTaskPayload);
+    const planningResultRows = Array.isArray(planningResult.rows) ? planningResult.rows : [];
+    const planningIsPartial = planningResultRows.length > planningRowLimit;
+    const planningRows = planningResultRows
+        .slice(0, planningRowLimit)
+        .map(normalizeTaskPayload);
     const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);
+    const planningVisibleCounts = Object.fromEntries(
+        Object.entries(planning).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0])
+    );
+    const planningMeta = {
+        rowLimit: planningRowLimit,
+        returnedRows: planningRows.length,
+        fetchedRows: planningResultRows.length,
+        isPartial: planningIsPartial,
+        hasMore: planningIsPartial,
+        overflowRowsSampled: planningIsPartial ? planningResultRows.length - planningRows.length : 0,
+        visibleCounts: planningVisibleCounts,
+        order: 'overdue_today_later_no_date'
+    };
 
     const completedHistoryParams = [...ownParams, completedHistoryLimit];
     const completedHistoryResult = await queryable.query(
@@ -610,6 +658,7 @@ async function buildTaskCabinetProjection(options = {}) {
             canonicalOwnerField: 'tasks.owner_user_id',
             projection: 'my_cabinet',
             calendar,
+            planning: planningMeta,
             privacyRule: 'private/me_only tasks are owner-only',
             businessScope: taskBusinessScopeMeta(businessScope)
         }
@@ -620,6 +669,7 @@ module.exports = {
     buildTaskCabinetProjection,
     defaultTaskPreferences,
     ensureTaskPreferences,
+    normalizeTaskCabinetFocusDate,
     normalizeTaskPayload,
     readTaskPreferences
 };

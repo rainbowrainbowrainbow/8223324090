@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.105 - Мій день: завершення планування
+
+### My Day follow-up / Custom date / Collapse groups / Projection guard / Test hygiene / (Клешня, 02.07.2026) [codex]
+- **`Інша дата` стала повноцінним planning-фокусом** - `/api/tasks/my-cabinet` приймає additive `focusDate=YYYY-MM-DD`, строго валідує дату і додає її у planning projection без зміни старих полів.
+- **`Всі` стало компактнішим** - групи `Прострочені`, `Сьогодні`, `Завтра`, `Пізніше`, `Без дати` отримали collapse/expand, видимі counts, `aria-expanded` і keyboard focus.
+- **Planning projection отримав performance guard** - backend бере обмежену кількість рядків через `LIMIT rowLimit + 1` і повертає `meta.planning.hasMore/isPartial/visibleCounts`, щоб великий backlog не роздував payload.
+- **Focused My Day tests більше не шумлять stack trace-ами** - test harness мокнув тільки `/business/live-counters`, не приховуючи реальні assertion failures і не додаючи fake success у create-flow.
+- **Release audit пройдено після техборгів** - перевірено custom date, collapse, performance guard, clean tests, відсутність DB migrations і відсутність auth/env/deploy config змін.
+- **Cache tags оновлено до `0.77.105`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані для follow-up bundle.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - реліз обмежений My Day frontend/backend projection, тестами, release markers і changelog.
+
 ## v0.77.104 - Мій день: планування задач
 
 ### Мій день / Планування задач / Composer / Regression QA / (Клешня, 02.07.2026) [codex]

@@ -146,6 +146,9 @@ const CABINET_MY_DAY_LIST_MODE_OPTIONS = [
     { value: 'focused', label: 'Обрана дата' },
     { value: 'all', label: 'Всі' }
 ];
+const CABINET_MY_DAY_ALL_GROUP_IDS = ['overdue', 'today', 'tomorrow', 'later', 'no_date'];
+const CABINET_MY_DAY_ALL_DEFAULT_COLLAPSED = ['later', 'no_date'];
+const collapsedCabinetAllGroupIds = new Set(CABINET_MY_DAY_ALL_DEFAULT_COLLAPSED);
 
 const CABINET_TASK_SOUND_THEMES = [
     { value: 'subtle', label: 'Мʼякий' },
@@ -1174,7 +1177,13 @@ function setMyCabinetProjectionData(data, options = {}) {
 }
 
 async function loadMyCabinetProjection(options = {}) {
-    const data = await apiGet('/tasks/my-cabinet');
+    const focusDate = normalizeCabinetDuePreset(cabinetCreateDuePreset) === 'custom'
+        ? cabinetSelectedDueDate()
+        : '';
+    const path = focusDate
+        ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
+        : '/tasks/my-cabinet';
+    const data = await apiGet(path);
     return setMyCabinetProjectionData(data, {
         keepExistingOnError: options.keepExistingOnError,
         message: options.message
@@ -3666,7 +3675,7 @@ function setCabinetMyDayListMode(mode = 'focused', options = {}) {
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-    if (options.rerender === true && typeof document?.getElementById === 'function') {
+    if (options.rerender === true && typeof document !== 'undefined' && typeof document.getElementById === 'function') {
         renderCabinetActiveTab();
     }
     return cabinetMyDayListMode;
@@ -3681,6 +3690,33 @@ function renderCabinetMyDayListModeToggle() {
         <div class="cabinet-day-list-toolbar">
             <div class="cabinet-list-mode-toggle" role="group" aria-label="Режим списку задач">${buttons}</div>
         </div>`;
+}
+
+function normalizeCabinetAllGroupId(groupId = '') {
+    const normalized = String(groupId || '').trim();
+    return CABINET_MY_DAY_ALL_GROUP_IDS.includes(normalized) ? normalized : '';
+}
+
+function isCabinetAllGroupCollapsed(groupId = '') {
+    const normalized = normalizeCabinetAllGroupId(groupId);
+    return Boolean(normalized && collapsedCabinetAllGroupIds.has(normalized));
+}
+
+function setCabinetAllGroupCollapsed(groupId = '', collapsed = true, options = {}) {
+    const normalized = normalizeCabinetAllGroupId(groupId);
+    if (!normalized) return false;
+    if (collapsed) collapsedCabinetAllGroupIds.add(normalized);
+    else collapsedCabinetAllGroupIds.delete(normalized);
+    if (options.rerender === true && typeof document !== 'undefined' && typeof document.getElementById === 'function') {
+        renderCabinetActiveTab();
+    }
+    return collapsedCabinetAllGroupIds.has(normalized);
+}
+
+function toggleCabinetAllGroup(groupId = '', options = {}) {
+    const normalized = normalizeCabinetAllGroupId(groupId);
+    if (!normalized) return false;
+    return setCabinetAllGroupCollapsed(normalized, !isCabinetAllGroupCollapsed(normalized), options);
 }
 
 function setCabinetTaskComposerExpanded(expanded = true, options = {}) {
@@ -4892,13 +4928,22 @@ function renderCabinetTaskCard(task, compact = false) {
 function renderCabinetSection(title, list, emptyText, compact = false, options = {}) {
     const visibleList = options.keepOrder ? [...list] : sortCabinetTasksForDisplay(list);
     const dropTarget = options.dropTarget ? String(options.dropTarget) : '';
+    const sectionId = normalizeCabinetAllGroupId(options.sectionId || '');
+    const isCollapsible = Boolean(options.collapsible && sectionId);
+    const isCollapsed = Boolean(isCollapsible && options.collapsed);
+    const sectionBodyId = isCollapsible ? `cabinetAllGroupBody-${sectionId}` : '';
     const dropAttrs = dropTarget
         ? ` data-cabinet-task-drop-target="${escapeHtml(dropTarget)}" aria-label="${escapeHtml(options.dropLabel || 'Перетягніть задачу сюди')}"`
+        : '';
+    const groupAttrs = sectionId
+        ? ` data-cabinet-all-group="${escapeHtml(sectionId)}" data-cabinet-all-group-collapsed="${isCollapsed ? 'true' : 'false'}"`
         : '';
     const sectionClass = [
         'cabinet-task-section',
         dropTarget ? 'cabinet-task-section--drop-target' : '',
         compact ? 'is-secondary-section' : '',
+        isCollapsible ? 'is-collapsible' : '',
+        isCollapsed ? 'is-collapsed' : '',
         options.tone ? `is-${options.tone}` : '',
         options.className || '',
         visibleList.length ? '' : 'is-compact-empty'
@@ -4906,18 +4951,28 @@ function renderCabinetSection(title, list, emptyText, compact = false, options =
     const dropHint = dropTarget
         ? `<span class="cabinet-section-drop-hint">${escapeHtml(options.dropHint || 'Можна перетягнути задачу сюди')}</span>`
         : '';
+    const titleMarkup = isCollapsible
+        ? `<button type="button" class="cabinet-section-toggle" data-cabinet-all-group-toggle="${escapeHtml(sectionId)}" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-controls="${escapeHtml(sectionBodyId)}">
+                <span class="cabinet-section-title">${escapeHtml(title)}</span>
+                <span class="cabinet-section-toggle-icon" aria-hidden="true"></span>
+            </button>`
+        : `<h3>${escapeHtml(title)}</h3>`;
+    const bodyContent = visibleList.length
+        ? (isCollapsed ? '' : visibleList.map(task => renderCabinetTaskCard(task, compact)).join(''))
+        : (isCollapsed ? '' : `<div class="cabinet-empty">${escapeHtml(emptyText)}</div>`);
+    const bodyAttrs = isCollapsible
+        ? ` id="${escapeHtml(sectionBodyId)}"${isCollapsed ? ' hidden' : ''}`
+        : '';
     return `
-        <section class="${sectionClass}"${dropAttrs}>
+        <section class="${sectionClass}"${dropAttrs}${groupAttrs}>
             <div class="cabinet-section-head">
-                <h3>${escapeHtml(title)}</h3>
+                ${titleMarkup}
                 <div class="cabinet-section-head-meta">
                     ${dropHint}
                     <span>${visibleList.length}</span>
                 </div>
             </div>
-            ${visibleList.length
-                ? visibleList.map(task => renderCabinetTaskCard(task, compact)).join('')
-                : `<div class="cabinet-empty">${escapeHtml(emptyText)}</div>`}
+            <div class="cabinet-section-body"${bodyAttrs}>${bodyContent}</div>
         </section>`;
 }
 
@@ -5301,7 +5356,10 @@ function renderCabinetAllMyDayGroups(groups = cabinetAllMyDayGroups()) {
     }
     return visibleGroups.map(group => renderCabinetSection(group.title, group.tasks, group.emptyText, true, {
         className: 'cabinet-task-section--all-group',
+        collapsible: true,
+        collapsed: isCabinetAllGroupCollapsed(group.id),
         keepOrder: true,
+        sectionId: group.id,
         tone: group.tone || ''
     })).join('');
 }
@@ -7173,6 +7231,11 @@ function attachProfileListeners() {
         button.dataset.cabinetListModeBound = 'true';
         button.addEventListener('click', () => setCabinetMyDayListMode(button.dataset.cabinetListMode, { rerender: true }));
     });
+    document.querySelectorAll('[data-cabinet-all-group-toggle]').forEach(button => {
+        if (button.dataset.cabinetAllGroupBound === 'true') return;
+        button.dataset.cabinetAllGroupBound = 'true';
+        button.addEventListener('click', () => toggleCabinetAllGroup(button.dataset.cabinetAllGroupToggle, { rerender: true }));
+    });
     document.querySelectorAll('[data-cabinet-refresh]').forEach(button => {
         if (button.dataset.cabinetRefreshBound === 'true') return;
         button.dataset.cabinetRefreshBound = 'true';
@@ -7202,10 +7265,16 @@ function attachProfileListeners() {
     const cabinetDate = document.getElementById('cabinetTaskDate');
     if (cabinetDate && cabinetDate.dataset.cabinetDateBound !== 'true') {
         cabinetDate.dataset.cabinetDateBound = 'true';
-        cabinetDate.addEventListener('change', () => setCabinetDuePreset('custom', {
-            source: 'date-input',
-            rerender: true
-        }));
+        cabinetDate.addEventListener('change', () => {
+            setCabinetDuePreset('custom', {
+                source: 'date-input',
+                rerender: true
+            });
+            const focusDate = cabinetSelectedDueDate();
+            if (!focusDate) return;
+            refreshMyCabinetTab({ silent: false, keepExistingOnError: true })
+                .catch(error => console.warn('Profile cabinet custom focus refresh failed', error));
+        });
     }
     document.querySelectorAll('[data-cabinet-composer-toggle]').forEach(button => {
         if (button.dataset.cabinetComposerToggleBound === 'true') return;

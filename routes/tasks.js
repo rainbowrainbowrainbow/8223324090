@@ -101,7 +101,8 @@ const {
 } = require('../services/taskNotifications');
 const {
     buildTaskCabinetProjection,
-    ensureTaskPreferences
+    ensureTaskPreferences,
+    normalizeTaskCabinetFocusDate
 } = require('../services/taskCabinetProjection');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
@@ -1552,7 +1553,8 @@ router.get('/my-cabinet', async (req, res) => {
         const projection = await buildTaskCabinetProjection({
             pool,
             user: req.user,
-            businessScope
+            businessScope,
+            focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date)
         });
         res.json(projection);
     } catch (err) {

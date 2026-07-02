@@ -9,6 +9,26 @@ const ROOT = path.resolve(__dirname, '..');
 function loadProfileTaskerContext() {
     const sandbox = {
         console,
+        fetch: async (url) => {
+            const target = String(url || '');
+            if (target.includes('/business/live-counters')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        counters: {
+                            total: { alerts: { active: 0 }, leads: { hot: 0, new: 0 } },
+                            byBusiness: {
+                                event_genix: { alerts: { active: 0 }, leads: { hot: 0, new: 0 } }
+                            }
+                        }
+                    })
+                };
+            }
+            throw new Error(`Unexpected profile tasker fetch in test harness: ${target}`);
+        },
+        getAuthHeaders: () => ({}),
+        handleAuthError: () => false,
         setTimeout,
         clearTimeout,
         document: { addEventListener() {} },
@@ -493,6 +513,8 @@ test('profile My Day all mode groups active tasks without changing the selected 
         cabinetMyDayListMode = 'all';
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
+    ctx.setCabinetAllGroupCollapsed('later', false);
+    ctx.setCabinetAllGroupCollapsed('no_date', false);
 
     const html = ctx.renderMyDayTab();
 
@@ -500,11 +522,11 @@ test('profile My Day all mode groups active tasks without changing the selected 
     assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
     assert.match(html, /data-cabinet-due-preset="tomorrow" aria-pressed="true"/);
     assert.match(html, /data-cabinet-list-mode="all" aria-pressed="true"/);
-    assert.match(html, /<h3>Прострочені<\/h3>[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /<h3>Сьогодні<\/h3>[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /<h3>Завтра<\/h3>[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /<h3>Пізніше<\/h3>[\s\S]*?<span>2<\/span>/);
-    assert.match(html, /<h3>Без дати<\/h3>[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /data-cabinet-all-group="overdue"[\s\S]*?data-cabinet-all-group-toggle="overdue"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /data-cabinet-all-group="today"[\s\S]*?data-cabinet-all-group-toggle="today"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /data-cabinet-all-group="tomorrow"[\s\S]*?data-cabinet-all-group-toggle="tomorrow"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /data-cabinet-all-group="later"[\s\S]*?data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="true"[\s\S]*?<span>2<\/span>/);
+    assert.match(html, /data-cabinet-all-group="no_date"[\s\S]*?data-cabinet-all-group-toggle="no_date"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
     assert.match(html, /All overdue task/);
     assert.match(html, /All today task/);
     assert.match(html, /All tomorrow task/);
@@ -515,6 +537,52 @@ test('profile My Day all mode groups active tasks without changing the selected 
     assert.doesNotMatch(html, /All done task/);
     assert.doesNotMatch(html, /All deferred task/);
     assert.ok(html.indexOf('All later early task') < html.indexOf('All later late task'));
+});
+
+test('profile My Day all mode collapses groups with visible counts and accessible toggles', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const later = addDaysToDateKey(today, 6);
+    vm.runInContext(`
+        myCabinetData = {
+            all: [
+                { id: 31, title: 'Visible today all task', date: '${today}' },
+                { id: 32, title: 'Hidden later all task', date: '${later}' },
+                { id: 33, title: 'Hidden no date all task' }
+            ],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 3 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'all';
+        cabinetCreateDuePreset = 'today';
+    `, ctx);
+
+    let html = ctx.renderMyDayTab();
+
+    assert.equal(ctx.isCabinetAllGroupCollapsed('later'), true);
+    assert.equal(ctx.isCabinetAllGroupCollapsed('no_date'), true);
+    assert.match(html, /data-cabinet-all-group="today"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /cabinet-task-section[\s\S]*?is-collapsed[\s\S]*?data-cabinet-all-group="later"[\s\S]*?data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="false"[\s\S]*?hidden><\/div>/);
+    assert.match(html, /data-cabinet-all-group="no_date"[\s\S]*?data-cabinet-all-group-toggle="no_date"[\s\S]*?aria-expanded="false"[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /Visible today all task/);
+    assert.doesNotMatch(html, /Hidden later all task/);
+    assert.doesNotMatch(html, /Hidden no date all task/);
+
+    ctx.setCabinetAllGroupCollapsed('later', false);
+    html = ctx.renderMyDayTab();
+
+    assert.match(html, /data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="true"/);
+    assert.match(html, /Hidden later all task/);
+    assert.equal(ctx.toggleCabinetAllGroup('later'), true);
+    assert.equal(ctx.isCabinetAllGroupCollapsed('later'), true);
 });
 
 test('profile My Day all mode merges planning and legacy all projection without duplicates', () => {
@@ -554,6 +622,8 @@ test('profile My Day all mode merges planning and legacy all projection without 
         cabinetMyDayListMode = 'all';
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
+    ctx.setCabinetAllGroupCollapsed('later', false);
+    ctx.setCabinetAllGroupCollapsed('no_date', false);
 
     const html = ctx.renderMyDayTab();
 
@@ -561,6 +631,46 @@ test('profile My Day all mode merges planning and legacy all projection without 
     assert.match(html, /Planning no date task/);
     assert.match(html, /Legacy later task/);
     assert.doesNotMatch(html, /Legacy duplicate title/);
+});
+
+test('profile My Day custom date projection requests focusDate without sending invalid dates', async () => {
+    const ctx = loadProfileTaskerContext();
+    const requested = [];
+    const controls = new Map([
+        ['cabinetTaskDate', { value: '2026-09-15' }]
+    ]);
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            return controls.get(id) || null;
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+    ctx.apiGet = async url => {
+        requested.push(url);
+        return {
+            all: [],
+            planning: { all: [{ id: 91, title: 'Future custom task', date: '2026-09-15' }] },
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            private: [],
+            completedHistory: []
+        };
+    };
+    vm.runInContext(`cabinetCreateDuePreset = 'custom';`, ctx);
+
+    await ctx.loadMyCabinetProjection();
+
+    assert.equal(requested.at(-1), '/tasks/my-cabinet?focusDate=2026-09-15');
+
+    controls.get('cabinetTaskDate').value = 'not-a-date';
+    await ctx.loadMyCabinetProjection();
+
+    assert.equal(requested.at(-1), '/tasks/my-cabinet');
 });
 
 function installCabinetCreateDom(ctx, title) {
@@ -1221,14 +1331,25 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(routeSource, /router\.get\('\/my-cabinet'/);
     assert.match(routeSource, /const businessScope = requireTaskReadScope\(req, res\);/);
     assert.match(routeSource, /buildTaskCabinetProjection\(\{\s*pool,\s*user: req\.user,\s*businessScope/s);
+    assert.match(routeSource, /focusDate: normalizeTaskCabinetFocusDate\(req\.query\.focusDate \|\| req\.query\.focus_date\)/);
     assert.match(source, /function buildTaskCabinetPlanningProjection/);
+    assert.match(source, /function normalizeTaskCabinetFocusDate/);
     assert.match(source, /const dayAfterTomorrow = addDays\(today, 2\);/);
     assert.match(source, /const plusThreeDays = addDays\(today, 3\);/);
     assert.match(source, /const monthEnd = monthEndDate\(today\);/);
     assert.match(source, /const planningEnd = monthEnd > plusThreeDays \? monthEnd : plusThreeDays;/);
+    assert.match(source, /const focusDate = normalizeTaskCabinetFocusDate\(options\.focusDate\);/);
+    assert.match(source, /const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;/);
+    assert.match(source, /function normalizeTaskCabinetPlanningLimit/);
+    assert.match(source, /const planningFetchLimit = planningRowLimit \+ 1;/);
+    assert.match(source, /focusDate: focusDate \|\| null/);
+    assert.match(source, /OR \$\{planningDateSql\} = \$\$\{planningFocusParam\}::date/);
+    assert.match(source, /LIMIT \$\$\{planningLimitParam\}/);
+    assert.match(source, /planningResultRows\.length > planningRowLimit/);
     assert.match(source, /planningWindow:\s*'overdue_undated_through_planning_end'/);
     assert.match(source, /planning,\s*\n\s*preferences:/);
-    assert.match(source, /calendar,\s*\n\s*privacyRule:/);
+    assert.match(source, /calendar,\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
+    assert.match(source, /planning:\s*planningMeta/);
     assert.match(source, /planningDateSql\} IS NULL/);
     assert.match(source, /planningDateSql\} BETWEEN/);
     assert.match(profileSource, /function cabinetPlanningList/);
@@ -1236,8 +1357,162 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(profileSource, /CABINET_PLANNING_TASK_BUCKETS/);
     assert.match(profileSource, /forEachCabinetProjectionTaskList/);
     assert.match(profileSource, /function loadMyCabinetProjection/);
-    assert.match(profileSource, /apiGet\('\/tasks\/my-cabinet'\)/);
+    assert.match(profileSource, /focusDate=\$\{encodeURIComponent\(focusDate\)\}/);
+    assert.match(profileSource, /refreshMyCabinetTab\(\{ silent: false, keepExistingOnError: true \}\)/);
     assert.doesNotMatch(profileSource, /apiGet\('\/tasks'\)/);
+});
+
+test('my cabinet planning projection includes a valid custom focus date beyond month end', async () => {
+    const {
+        buildTaskCabinetProjection,
+        normalizeTaskCabinetFocusDate
+    } = require('../services/taskCabinetProjection');
+    const calls = [];
+    const focusTask = {
+        id: 915,
+        title: 'September custom focus',
+        date: '2026-09-15',
+        status: 'todo'
+    };
+    const pool = {
+        async query(text, params = []) {
+            calls.push({ text, params });
+            if (/SELECT COUNT\(\*\)::int AS open_count/.test(text)) {
+                return { rows: [{ open_count: 1 }] };
+            }
+            if (/done_total/.test(text)) {
+                return {
+                    rows: [{
+                        done_total: 0,
+                        done_today: 0,
+                        parent_done_today: 0,
+                        subtask_done_today: 0,
+                        subtask_done_total: 0,
+                        remaining_today: 0,
+                        overdue_carryover: 0,
+                        active_my_day: 1
+                    }]
+                };
+            }
+            if (/SELECT t\.\*/.test(text) && /BETWEEN/.test(text) && /= \$\d+::date/.test(text)) {
+                return { rows: [focusTask] };
+            }
+            return { rows: [] };
+        }
+    };
+
+    assert.equal(normalizeTaskCabinetFocusDate('2026-09-15'), '2026-09-15');
+    assert.equal(normalizeTaskCabinetFocusDate('2026-02-30'), '');
+    assert.equal(normalizeTaskCabinetFocusDate('2026-9-15'), '');
+
+    const projection = await buildTaskCabinetProjection({
+        pool,
+        user: {
+            id: 7,
+            username: 'serhiy',
+            name: 'Serhiy',
+            role: 'creator'
+        },
+        businessScope: {
+            mode: 'single',
+            activeContext: 'event_genix',
+            selectedContexts: ['event_genix']
+        },
+        ensurePreferences: false,
+        focusDate: '2026-09-15',
+        now: new Date('2026-07-02T10:00:00.000Z')
+    });
+
+    const planningCall = calls.find(call => /SELECT t\.\*/.test(call.text)
+        && /BETWEEN/.test(call.text)
+        && /= \$\d+::date/.test(call.text));
+
+    assert.equal(projection.meta.calendar.focusDate, '2026-09-15');
+    assert.equal(projection.planning.all[0].id, 915);
+    assert.ok(planningCall, 'planning query should include custom focus date');
+    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', '2026-09-15', 261]);
+});
+
+test('my cabinet planning projection limits rows and exposes partial meta', async () => {
+    const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
+    const calls = [];
+    const planningRows = [
+        { id: 201, title: 'Limited today task', date: '2026-07-02', status: 'todo' },
+        { id: 202, title: 'Limited tomorrow task', date: '2026-07-03', status: 'todo' },
+        { id: 203, title: 'Overflow no date task', status: 'todo' }
+    ];
+    const pool = {
+        async query(text, params = []) {
+            calls.push({ text, params });
+            if (/SELECT COUNT\(\*\)::int AS open_count/.test(text)) {
+                return { rows: [{ open_count: 25 }] };
+            }
+            if (/done_total/.test(text)) {
+                return {
+                    rows: [{
+                        done_total: 0,
+                        done_today: 0,
+                        parent_done_today: 0,
+                        subtask_done_today: 0,
+                        subtask_done_total: 0,
+                        remaining_today: 1,
+                        overdue_carryover: 0,
+                        active_my_day: 2
+                    }]
+                };
+            }
+            if (/SELECT t\.\*/.test(text) && /BETWEEN/.test(text) && /LIMIT \$\d+/.test(text)) {
+                return { rows: planningRows };
+            }
+            return { rows: [] };
+        }
+    };
+
+    const projection = await buildTaskCabinetProjection({
+        pool,
+        user: {
+            id: 7,
+            username: 'serhiy',
+            name: 'Serhiy',
+            role: 'creator'
+        },
+        businessScope: {
+            mode: 'single',
+            activeContext: 'event_genix',
+            selectedContexts: ['event_genix']
+        },
+        ensurePreferences: false,
+        planningRowLimit: 2,
+        now: new Date('2026-07-02T10:00:00.000Z')
+    });
+
+    const planningCall = calls.find(call => /SELECT t\.\*/.test(call.text)
+        && /BETWEEN/.test(call.text)
+        && /LIMIT \$\d+/.test(call.text));
+
+    assert.ok(planningCall, 'planning query should be limited');
+    assert.match(planningCall.text, /ORDER BY[\s\S]*LIMIT \$\d+/);
+    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', 3]);
+    assert.deepEqual(projection.planning.all.map(task => task.id), [201, 202]);
+    assert.deepEqual(projection.planning.today.map(task => task.id), [201]);
+    assert.deepEqual(projection.planning.tomorrow.map(task => task.id), [202]);
+    assert.equal(projection.planning.noDate.length, 0);
+    assert.deepEqual(projection.meta.planning.visibleCounts, {
+        all: 2,
+        overdue: 0,
+        today: 1,
+        tomorrow: 1,
+        dayAfterTomorrow: 0,
+        plusThreeDays: 0,
+        monthEnd: 0,
+        noDate: 0
+    });
+    assert.equal(projection.meta.planning.rowLimit, 2);
+    assert.equal(projection.meta.planning.returnedRows, 2);
+    assert.equal(projection.meta.planning.fetchedRows, 3);
+    assert.equal(projection.meta.planning.isPartial, true);
+    assert.equal(projection.meta.planning.hasMore, true);
+    assert.equal(projection.meta.planning.overflowRowsSampled, 1);
 });
 
 test('my cabinet planning projection keeps owner and business scope guards', async () => {
@@ -1294,7 +1569,7 @@ test('my cabinet planning projection keeps owner and business scope guards', asy
     assert.match(planningCall.text, /t\.owner IN \(\$\d+,\$\d+\)/);
     assert.match(planningCall.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/);
     assert.match(planningCall.text, /COALESCE\(t\.status, 'todo'\) NOT IN \('done','cancelled','archived'\)/);
-    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31']);
+    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', 261]);
 });
 
 test('urgent priority has dashboard alert escalation and alert-panel commitment action', () => {

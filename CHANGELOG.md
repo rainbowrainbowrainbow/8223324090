@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.103 - HR Pulse UI Follow-up
+
+### HR Pulse shared switcher / Header metrics contracts / Asset cleanup / Rollback safety / (Клешня, 02.07.2026) [codex]
+- **HR і Staff Pulse switcher отримали спільний frontend contract** - винесено спільний helper для трьох вкладок `Сьогодні`, `Графік`, `Звіти`, щоб розмітка, іконки, labels, badges і routing не розʼїжджались між сторінками.
+- **Header metrics стали підтримуванішими** - Today, Staff і Reports chips мають named helpers для джерел даних, стабільні empty/error values і окремий helper для Reports risk formula `late + absent + overdue tasks`.
+- **Legacy HR Pulse bitmap assets прибрано** - видалено невикористані `images/hr-pulse/*.png` hero/nav/honeycomb файли після CSS-only redesign, без зачіпання інших media folders.
+- **Release hygiene і rollback readiness додано в docs** - зафіксовано правило розділяти UI commit і version/cache-sync commit, а також підготовлено rollback plan для HR Pulse UI release.
+- **Cache tags оновлено до `0.77.103`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані для follow-up frontend bundle.
+- **БД, migrations, API routes, auth/roles, env, secrets і Railway config не змінювались** - follow-up обмежений frontend UI contracts, cleanup, tests і release docs/cache tags.
+
 ## v0.77.102 - HR Pulse UI Polish
 
 ### HR Pulse / Today / Staff schedule / Reports / Responsive QA / (Клешня, 02.07.2026) [codex]

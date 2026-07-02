@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.77.94">
-    <link rel="stylesheet" href="css/auth.css?v=0.77.94">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.94">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.94">
-    <link rel="stylesheet" href="css/timeline.css?v=0.77.94">
-    <link rel="stylesheet" href="css/panel.css?v=0.77.94">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.94">
-    <link rel="stylesheet" href="css/controls.css?v=0.77.94">
-    <link rel="stylesheet" href="css/features.css?v=0.77.94">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.94">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.94">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.94">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.94">
+    <link rel="stylesheet" href="css/base.css?v=0.77.95">
+    <link rel="stylesheet" href="css/auth.css?v=0.77.95">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.95">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.95">
+    <link rel="stylesheet" href="css/timeline.css?v=0.77.95">
+    <link rel="stylesheet" href="css/panel.css?v=0.77.95">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.95">
+    <link rel="stylesheet" href="css/controls.css?v=0.77.95">
+    <link rel="stylesheet" href="css/features.css?v=0.77.95">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.95">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.95">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.95">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.77.95">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.77.94">✨ 0.77.94</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.77.95">✨ 0.77.95</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.77.94 — Timeline Header Controls Reorder</p>
+                <p class="tagline">AI First CRM v0.77.95 — Lead Customer Auto Link Fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.94</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.77.95</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1741,6 +1741,17 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.77.95 — Lead Customer Auto Link Fix</h4>
+                    <ul>
+                        <li><b>Прямий перехід ліда у <code>Завдаток</code> знову створює або прив'язує картку клієнта</b> — Kanban move більше не пропускає customer-контекст, якщо менеджер оминає етап <code>Угода</code>.</li>
+                        <li><b>Пошук клієнта у бронюванні бачить нову картку одразу після руху по воронці</b> — backend повертає <code>customer</code>, а Sales Funnel оновлює workspace state для клієнтських етапів.</li>
+                        <li><b>Legacy <code>status=booked</code> також захищено</b> — старі API-оновлення, які мапляться у <code>pipeline_stage=deposit_received</code>, проходять через той самий durable customer link path.</li>
+                        <li><b>Audit A-E і safe repair CLI</b> — перевіряє missing customer cards, searchability, duplicate risks, business context isolation і lead celebrants → <code>customer_children</code>, а repair scripts працюють через <code>--dry-run</code> і only same-business fixes.</li>
+                        <li><b>Business context і children sync захищено тестами</b> — cross-business candidate тільки потрапляє у report з <code>reason=context_mismatch</code>, а lead-owned children sync не перетирає manual children.</li>
+                        <li><b>Додано regression guards</b> — route smoke, deposit hook test і UI smoke фіксують auto-link для етапів після угоди.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.77.94 — Timeline Header Controls Reorder</h4>
                     <ul>
@@ -15417,42 +15428,42 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.77.94"></script>
-    <script src="js/timeline-visibility.js?v=0.77.94"></script>
-    <script src="js/kitchen-menu-images.js?v=0.77.94"></script>
-    <script src="js/config.js?v=0.77.94"></script>
-    <script src="js/api.js?v=0.77.94"></script>
-    <script src="js/ui.js?v=0.77.94"></script>
-    <script src="js/auth.js?v=0.77.94"></script>
-    <script src="js/timeline-interaction-model.js?v=0.77.94"></script>
-    <script src="js/timeline-cache.js?v=0.77.94"></script>
-    <script src="js/timeline-resource-identity.js?v=0.77.94"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.94"></script>
-    <script src="js/event-cards.js?v=0.77.94"></script>
-    <script src="js/invite-config.js?v=0.77.94"></script>
-    <script src="js/invite-share.js?v=0.77.94"></script>
-    <script src="js/timeline.js?v=0.77.94"></script>
-    <script src="js/booking-drawer-state.js?v=0.77.94"></script>
-    <script src="js/booking-banquet-selector.js?v=0.77.94"></script>
-    <script src="js/booking-save-path.js?v=0.77.94"></script>
-    <script src="js/booking-package-renderer.js?v=0.77.94"></script>
-    <script src="js/booking-banquet-detail.js?v=0.77.94"></script>
-    <script src="js/booking.js?v=0.77.94"></script>
-    <script src="js/settings.js?v=0.77.94"></script>
-    <script src="js/booking-form.js?v=0.77.94"></script>
-    <script src="js/booking-linked.js?v=0.77.94"></script>
-    <script src="js/settings-dashboard.js?v=0.77.94"></script>
-    <script src="js/settings-history.js?v=0.77.94"></script>
-    <script src="js/settings-afisha.js?v=0.77.94"></script>
-    <script src="js/settings-certificates.js?v=0.77.94"></script>
-    <script src="js/offline.js?v=0.77.94"></script>
-    <script src="js/crm-feature-registry.js?v=0.77.94"></script>
-    <script src="js/search.js?v=0.77.94"></script>
-    <script src="js/ws.js?v=0.77.94"></script>
-    <script src="js/app.js?v=0.77.94"></script>
-    <script src="js/kleshnya-widget.js?v=0.77.94"></script>
-    <script src="js/components/sidebar.js?v=0.77.94"></script>
+    <script src="js/timeline-context.js?v=0.77.95"></script>
+    <script src="js/timeline-visibility.js?v=0.77.95"></script>
+    <script src="js/kitchen-menu-images.js?v=0.77.95"></script>
+    <script src="js/config.js?v=0.77.95"></script>
+    <script src="js/api.js?v=0.77.95"></script>
+    <script src="js/ui.js?v=0.77.95"></script>
+    <script src="js/auth.js?v=0.77.95"></script>
+    <script src="js/timeline-interaction-model.js?v=0.77.95"></script>
+    <script src="js/timeline-cache.js?v=0.77.95"></script>
+    <script src="js/timeline-resource-identity.js?v=0.77.95"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.77.95"></script>
+    <script src="js/event-cards.js?v=0.77.95"></script>
+    <script src="js/invite-config.js?v=0.77.95"></script>
+    <script src="js/invite-share.js?v=0.77.95"></script>
+    <script src="js/timeline.js?v=0.77.95"></script>
+    <script src="js/booking-drawer-state.js?v=0.77.95"></script>
+    <script src="js/booking-banquet-selector.js?v=0.77.95"></script>
+    <script src="js/booking-save-path.js?v=0.77.95"></script>
+    <script src="js/booking-package-renderer.js?v=0.77.95"></script>
+    <script src="js/booking-banquet-detail.js?v=0.77.95"></script>
+    <script src="js/booking.js?v=0.77.95"></script>
+    <script src="js/settings.js?v=0.77.95"></script>
+    <script src="js/booking-form.js?v=0.77.95"></script>
+    <script src="js/booking-linked.js?v=0.77.95"></script>
+    <script src="js/settings-dashboard.js?v=0.77.95"></script>
+    <script src="js/settings-history.js?v=0.77.95"></script>
+    <script src="js/settings-afisha.js?v=0.77.95"></script>
+    <script src="js/settings-certificates.js?v=0.77.95"></script>
+    <script src="js/offline.js?v=0.77.95"></script>
+    <script src="js/crm-feature-registry.js?v=0.77.95"></script>
+    <script src="js/search.js?v=0.77.95"></script>
+    <script src="js/ws.js?v=0.77.95"></script>
+    <script src="js/app.js?v=0.77.95"></script>
+    <script src="js/kleshnya-widget.js?v=0.77.95"></script>
+    <script src="js/components/sidebar.js?v=0.77.95"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.77.94"></script>
+    <script src="js/alerts.js?v=0.77.95"></script>
 </body>
 </html>

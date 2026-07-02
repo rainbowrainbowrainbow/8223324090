@@ -4465,6 +4465,9 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.lead.pipeline_stage, 'deposit_received');
         assert.equal(res.data.lead.status, 'booked');
+        assert.equal(res.data.customer.id, 8701);
+        assert.equal(res.data.customer.name, 'Lead Smoke');
+        assert.equal(res.data.customerLinkMode, 'created_new');
     });
 
     it('rejects unknown lead status values instead of storing arbitrary statuses', async () => {

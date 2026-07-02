@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.95 - Lead Customer Auto Link Fix
+
+### Sales funnel / Customer auto-link / Booking search / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Прямий перехід ліда у `deposit_received` знову створює або прив'язує SQL-картку клієнта** - customer materialization більше не обмежена тільки етапом `deal`.
+- **Пошук клієнта у бронюванні отримує актуальний customer-контекст** - після Kanban move backend повертає `customer`, а frontend оновлює workspace customer state для будь-якого клієнтського етапу.
+- **Legacy `status=booked` також проходить через той самий safe path** - старі API-клієнти, які мапляться у `pipeline_stage=deposit_received`, не пропускають створення customer-картки.
+- **Додано read-only audit пакет A-E** - missing customer card, searchability через `/api/customers/search`, duplicate risk, business context isolation і lead celebrants -> `customer_children` тепер мають окремі CLI-звіти.
+- **Додано safe repair CLI для A/E** - `repair:lead-customers` і `repair:lead-customer-children` працюють у `--dry-run` за замовчуванням і застосовують тільки same-business create/link/sync без merge/delete.
+- **Business context isolation забороняє cross-business auto-link** - навіть якщо candidate customer збігається телефоном або Instagram в іншому бізнесі, runtime не лінкує його автоматично, а аудит повертає тільки `reason=context_mismatch`.
+- **Children sync закріплено за safe lead-owned rows** - auto-create/link синхронізує celebrants у `customer_children` через `source_kind='lead_celebrant'` і `lead_id`, не перетираючи manual children.
+- **Додано regression coverage** - `customer-data-audits`, `lead-deposit-hook`, `route-smoke` і UI smoke фіксують customer auto-link, context isolation, children sync і searchability guardrails.
+- **БД, migrations, auth/roles, env і production config не змінювались** - fix обмежений lead/customer link логікою, frontend state sync, release cache tags і тестами.
+
+---
+
 ## v0.77.94 - Timeline Header Controls Reorder
 
 ### Timeline header / Controls order / Gear divider cleanup / Timeline-only scope / (Клешня, 02.07.2026) [codex]

@@ -99,6 +99,13 @@ const PIPELINE_STAGE_ORDER = [
 ];
 
 const VALID_PIPELINE_STAGES = new Set(PIPELINE_STAGE_ORDER);
+const CUSTOMER_CARD_PIPELINE_STAGES = new Set([
+    'deal',
+    'deposit_received',
+    'waiting',
+    'completed',
+    'closed'
+]);
 const VALID_LEAD_STATUSES = new Set(Object.keys(STATUS_TO_STAGE));
 const LEAD_TYPE_ORDER = [
     'quality',
@@ -1447,6 +1454,13 @@ async function linkLeadCustomer(queryable, {
     return result.rows[0] || null;
 }
 
+function customerMatchesBusinessContext(customer, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    if (!customer) return false;
+    const expected = normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+    const actual = normalizeBusinessContext(customer.business_context ?? customer.businessContext ?? DEFAULT_BUSINESS_CONTEXT);
+    return actual === expected;
+}
+
 async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const leadId = parseInt(lead.id, 10);
     if (Number.isInteger(leadId) && leadId > 0) {
@@ -1461,7 +1475,9 @@ async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAU
              LIMIT 1`,
             [leadId, businessContext]
         );
-        if (linkResult.rows.length) return linkResult.rows[0];
+        if (linkResult.rows.length && customerMatchesBusinessContext(linkResult.rows[0], businessContext)) {
+            return linkResult.rows[0];
+        }
 
         const linked = await queryable.query(
             `SELECT *
@@ -1472,7 +1488,9 @@ async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAU
              LIMIT 1`,
             [leadId, businessContext]
         );
-        if (linked.rows.length) return linked.rows[0];
+        if (linked.rows.length && customerMatchesBusinessContext(linked.rows[0], businessContext)) {
+            return linked.rows[0];
+        }
     }
 
     const phoneDigits = normalizeDigits(lead.phone);
@@ -1498,7 +1516,9 @@ async function findCustomerForLead(queryable, lead = {}, businessContext = DEFAU
          LIMIT 1`,
         [businessContext, phoneDigits || '', instagram || '', Number.isInteger(leadId) ? leadId : null]
     );
-    return matched.rows[0] || null;
+    return matched.rows.length && customerMatchesBusinessContext(matched.rows[0], businessContext)
+        ? matched.rows[0]
+        : null;
 }
 
 async function findDurablyLinkedCustomerForLead(queryable, lead = {}, businessContext = DEFAULT_BUSINESS_CONTEXT) {
@@ -2153,9 +2173,9 @@ router.patch('/:id', async (req, res) => {
         let previousLead = null;
         let stageTransition = null;
         const effectivePipelineStage = stageStatus.stageProvided ? stageStatus.stage : undefined;
-        const shouldEnsureDealCustomer = effectivePipelineStage === 'deal';
-        const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureDealCustomer;
-        const updateClient = shouldEnsureDealCustomer || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
+        const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage);
+        const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureCustomerCard;
+        const updateClient = shouldEnsureCustomerCard || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
         try {
             if (updateClient) await updateClient.query('BEGIN');
             const queryable = updateClient || pool;
@@ -2202,7 +2222,7 @@ router.patch('/:id', async (req, res) => {
                     });
                 }
             }
-            if (shouldEnsureDealCustomer) {
+            if (shouldEnsureCustomerCard) {
                 dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext, {
                     userId: req.user?.id,
                     source: 'leads.patch',

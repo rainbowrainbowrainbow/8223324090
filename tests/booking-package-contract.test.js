@@ -2082,6 +2082,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     const panelCss = read('css', 'panel.css');
     const route = read('routes', 'bookings.js');
     const customerRoute = read('routes', 'customers.js');
+    const customerSearchQuery = read('services', 'customerSearchQuery.js');
     const panelStart = html.indexOf('<aside id="bookingPanel"');
     const panelEnd = html.indexOf('</aside>', panelStart);
     const bookingPanelHtml = panelStart >= 0 && panelEnd > panelStart
@@ -2296,7 +2297,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(apiJs, /options\.fresh/);
     assert.match(apiJs, /Array\.isArray\(payload\?\.customers\)/);
     assert.match(customerRoute, /child_birthday/);
-    assert.match(customerRoute, /regexp_replace\(COALESCE\(c\.phone/);
+    assert.match(customerRoute, /buildCustomerSearchQuery/);
+    assert.match(customerSearchQuery, /regexp_replace\(COALESCE\(c\.phone/);
 
     assert.match(route, /applyBookingPackage/);
     assert.match(route, /applyEffectiveBookingPrice/);

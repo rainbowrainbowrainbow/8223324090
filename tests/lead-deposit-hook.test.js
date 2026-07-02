@@ -46,10 +46,24 @@ function createLead(overrides = {}) {
     };
 }
 
-function createPoolFixture({ oldStage = 'deal', depositProjection = {}, depositTaskId = null } = {}) {
+function createPoolFixture({
+    oldStage = 'deal',
+    depositProjection = {},
+    depositTaskId = null,
+    foreignCustomerCandidate = null,
+    initialCustomerChildren = [],
+    leadOverrides = {}
+} = {}) {
     const queries = [];
     const state = {
-        lead: createLead({ pipeline_stage: oldStage, status: oldStage === 'deposit_received' ? 'booked' : 'proposal' })
+        lead: createLead({
+            pipeline_stage: oldStage,
+            status: oldStage === 'deposit_received' ? 'booked' : 'proposal',
+            ...leadOverrides
+        }),
+        customer: null,
+        customerChildren: initialCustomerChildren.map(row => ({ ...row })),
+        foreignCustomerCandidate
     };
     const client = {
         async query(text, params = []) {
@@ -80,6 +94,96 @@ function createPoolFixture({ oldStage = 'deal', depositProjection = {}, depositT
                 return { rows: [next], rowCount: 1 };
             }
             if (/INSERT INTO lead_interactions/i.test(sql)) return { rows: [], rowCount: 1 };
+            if (/FROM customers\s+WHERE lead_id = \$1\s+AND COALESCE\(business_context, 'event_genix'\) = \$2\s+ORDER BY updated_at DESC NULLS LAST, id DESC\s+LIMIT 1/i.test(sql)) {
+                return { rows: state.customer && Number(state.customer.lead_id) === Number(params[0]) ? [state.customer] : [] };
+            }
+            if (/FROM lead_customer_links lcl\s+JOIN customers c ON c\.id = lcl\.customer_id/i.test(sql)) {
+                return { rows: [] };
+            }
+            if (/FROM customers\s+WHERE COALESCE\(business_context, 'event_genix'\) = \$1\s+AND \(/i.test(sql) && /regexp_replace\(COALESCE\(phone, ''\)/i.test(sql)) {
+                return { rows: state.foreignCustomerCandidate ? [state.foreignCustomerCandidate] : [] };
+            }
+            if (/INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(sql)) {
+                state.customer = {
+                    id: 8701,
+                    business_context: params[0],
+                    name: params[1],
+                    phone: params[2],
+                    instagram: params[3],
+                    child_name: params[4],
+                    source: params[5],
+                    notes: params[6],
+                    lead_id: params[7],
+                    social_identities: params[8] ? JSON.parse(params[8]) : [],
+                    created_at: '2099-05-02T10:05:00Z',
+                    updated_at: '2099-05-02T10:05:00Z'
+                };
+                return { rows: [state.customer], rowCount: 1 };
+            }
+            if (/INSERT INTO lead_customer_links \(business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at\)/i.test(sql)) {
+                return {
+                    rows: [{
+                        id: 9901,
+                        business_context: params[0],
+                        lead_id: params[1],
+                        customer_id: params[2],
+                        link_type: params[3],
+                        source: params[4],
+                        metadata: params[5] ? JSON.parse(params[5]) : {},
+                        created_by: params[6] || null,
+                        updated_at: '2099-05-02T10:05:00Z'
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/DELETE FROM customer_children[\s\S]*AND source_kind = \$3[\s\S]*AND lead_id = \$4/i.test(sql)) {
+                state.customerChildren = state.customerChildren.filter(row =>
+                    !(Number(row.customer_id) === Number(params[0])
+                        && row.business_context === params[1]
+                        && row.source_kind === params[2]
+                        && Number(row.lead_id) === Number(params[3]))
+                );
+                return { rows: [], rowCount: 0 };
+            }
+            if (/INSERT INTO customer_children/i.test(sql)) {
+                state.customerChildren.push({
+                    id: 12000 + state.customerChildren.length,
+                    business_context: params[0],
+                    customer_id: params[1],
+                    lead_id: params[2],
+                    booking_id: params[3],
+                    name: params[4],
+                    birthday: params[5],
+                    age_snapshot: params[6],
+                    note: params[7],
+                    source_kind: params[8],
+                    source_payload: params[9] ? JSON.parse(params[9]) : {},
+                    sort_order: params[10],
+                    created_at: '2099-05-02T10:05:00Z',
+                    updated_at: '2099-05-02T10:05:00Z'
+                });
+                return { rows: [], rowCount: 1 };
+            }
+            if (/FROM customer_children/i.test(sql)) {
+                return {
+                    rows: state.customerChildren.filter(row =>
+                        Number(row.customer_id) === Number(params[0])
+                        && row.business_context === params[1]
+                    ),
+                    rowCount: state.customerChildren.length
+                };
+            }
+            if (/UPDATE customers\s+SET child_name = CASE/i.test(sql)) {
+                state.customer = {
+                    ...(state.customer || {}),
+                    id: params[1],
+                    business_context: params[2],
+                    child_name: params[0],
+                    lead_id: params[3],
+                    updated_at: '2099-05-02T10:06:00Z'
+                };
+                return { rows: [state.customer], rowCount: 1 };
+            }
             throw new Error(`Unexpected client query: ${sql}`);
         },
         release() {}
@@ -105,6 +209,7 @@ function createPoolFixture({ oldStage = 'deal', depositProjection = {}, depositT
     };
     return {
         pool,
+        state,
         queries,
         depositRow: {
             id: 77,
@@ -225,7 +330,7 @@ async function withLeadApp(options, run) {
     };
 
     try {
-        await run({ request, calls, waitForHook, queries: fixture.queries });
+        await run({ request, calls, waitForHook, queries: fixture.queries, state: fixture.state });
     } finally {
         await new Promise(resolve => server.close(resolve));
         clearModules();
@@ -236,6 +341,9 @@ test('deal to deposit_received creates exactly one accountant banquet deposit ta
     await withLeadApp({ oldStage: 'deal' }, async ({ request, calls, waitForHook }) => {
         const res = await request({ pipeline_stage: 'deposit_received' });
         assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.customer.id, 8701);
+        assert.equal(res.data.customer.name, 'Client Deposit');
+        assert.equal(res.data.customerLinkMode, 'created_new');
 
         await waitForHook();
 
@@ -254,6 +362,81 @@ test('deal to deposit_received creates exactly one accountant banquet deposit ta
         assert.match(accountantTasks[0].description, /Client Deposit/);
         assert.match(accountantTasks[0].description, /2099-07-20/);
         assert.match(accountantTasks[0].description, /Booking is not linked yet/);
+    });
+});
+
+test('customer card auto-link ignores same-phone customer from another business context', async () => {
+    await withLeadApp({
+        oldStage: 'deal',
+        foreignCustomerCandidate: {
+            id: 7600,
+            business_context: 'dar',
+            name: 'Foreign Customer',
+            phone: '+380000000001',
+            instagram: 'client_deposit',
+            lead_id: null,
+            notes: null,
+            social_identities: []
+        }
+    }, async ({ request, queries, waitForHook }) => {
+        const res = await request({ pipeline_stage: 'deposit_received' });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.customer.id, 8701);
+        assert.equal(res.data.customerLinkMode, 'created_new');
+
+        await waitForHook();
+
+        const candidateLookup = queries.find(query =>
+            /FROM customers\s+WHERE COALESCE\(business_context, 'event_genix'\) = \$1\s+AND \(/i.test(query.text)
+        );
+        assert.equal(candidateLookup.params[0], 'event_genix');
+        const linkInsert = queries.find(query => /INSERT INTO lead_customer_links/i.test(query.text));
+        assert.equal(linkInsert.params[2], 8701);
+        assert.notEqual(linkInsert.params[2], 7600);
+    });
+});
+
+test('customer card creation syncs lead celebrants without replacing manual children', async () => {
+    await withLeadApp({
+        oldStage: 'deal',
+        leadOverrides: {
+            celebrants: [{ name: 'Lead Child', birthday: '2019-01-02' }]
+        },
+        initialCustomerChildren: [{
+            id: 42,
+            business_context: 'event_genix',
+            customer_id: 8701,
+            lead_id: null,
+            booking_id: null,
+            name: 'Manual Child',
+            birthday: null,
+            age_snapshot: null,
+            note: null,
+            source_kind: 'customer_api',
+            source_payload: {},
+            sort_order: 0
+        }]
+    }, async ({ request, state, queries, waitForHook }) => {
+        const res = await request({ pipeline_stage: 'deposit_received' });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+
+        await waitForHook();
+
+        const scopedDelete = queries.find(query =>
+            /DELETE FROM customer_children[\s\S]*AND source_kind = \$3[\s\S]*AND lead_id = \$4/i.test(query.text)
+        );
+        assert.deepEqual(scopedDelete.params, [8701, 'event_genix', 'lead_celebrant', 501]);
+        assert.ok(!queries.some(query =>
+            /DELETE FROM customer_children[\s\S]*WHERE customer_id = \$1[\s\S]*AND business_context = \$2\s*$/i.test(query.text)
+        ));
+
+        assert.deepEqual(state.customerChildren.map(child => child.name).sort(), ['Lead Child', 'Manual Child']);
+        const manualChild = state.customerChildren.find(child => child.name === 'Manual Child');
+        const syncedChild = state.customerChildren.find(child => child.name === 'Lead Child');
+        assert.equal(manualChild.source_kind, 'customer_api');
+        assert.equal(syncedChild.source_kind, 'lead_celebrant');
+        assert.equal(syncedChild.lead_id, 501);
+        assert.equal(syncedChild.source_payload.source_lead_id, 501);
     });
 });
 

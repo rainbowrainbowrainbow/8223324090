@@ -443,6 +443,117 @@ body.dark-mode .task-priority-select--low {
     cursor: pointer;
 }
 
+.cabinet-day-list-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-width: 0;
+    margin-top: -4px;
+}
+
+.cabinet-list-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    max-width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.20);
+    border-radius: 10px;
+    background: rgba(248, 250, 252, 0.88);
+    padding: 3px;
+}
+
+.cabinet-list-mode-chip {
+    min-width: 0;
+    min-height: 28px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--gray-600, #4b5563);
+    padding: 0 9px;
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 950;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.cabinet-list-mode-chip:hover {
+    background: rgba(20, 184, 166, 0.08);
+    color: #0f766e;
+}
+
+.cabinet-list-mode-chip:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.46);
+    outline-offset: 2px;
+}
+
+.cabinet-list-mode-chip:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.cabinet-list-mode-chip.active {
+    background: #14b8a6;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(20, 184, 166, 0.18);
+}
+
+.cabinet-list-mode-chip.active:hover {
+    color: #fff;
+}
+
+.cabinet-load-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 10px;
+    background: rgba(255, 251, 235, 0.86);
+    color: #92400e;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.cabinet-load-notice span {
+    min-width: 0;
+}
+
+.cabinet-load-notice button {
+    flex: 0 0 auto;
+    min-height: 28px;
+    border: 1px solid rgba(217, 119, 6, 0.32);
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.10);
+    color: #78350f;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 950;
+    cursor: pointer;
+}
+
+.cabinet-load-notice button:hover {
+    background: rgba(245, 158, 11, 0.18);
+}
+
+.cabinet-load-notice button:focus-visible {
+    outline: 2px solid rgba(245, 158, 11, 0.42);
+    outline-offset: 2px;
+}
+
+.cabinet-load-notice button:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
 .cabinet-day-workspace {
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
@@ -702,6 +813,49 @@ html[data-theme="dark"] .cabinet-day-command-bar {
     box-shadow: none;
 }
 
+body.dark-mode .cabinet-list-mode-toggle,
+html[data-theme="dark"] .cabinet-list-mode-toggle {
+    border-color: rgba(148, 163, 184, 0.16);
+    background: rgba(15, 23, 42, 0.76);
+}
+
+body.dark-mode .cabinet-list-mode-chip,
+html[data-theme="dark"] .cabinet-list-mode-chip {
+    color: #cbd5e1;
+}
+
+body.dark-mode .cabinet-list-mode-chip:hover,
+html[data-theme="dark"] .cabinet-list-mode-chip:hover {
+    background: rgba(20, 184, 166, 0.14);
+    color: #ccfbf1;
+}
+
+body.dark-mode .cabinet-list-mode-chip.active,
+html[data-theme="dark"] .cabinet-list-mode-chip.active {
+    background: #0f766e;
+    color: #ecfeff;
+    box-shadow: none;
+}
+
+body.dark-mode .cabinet-load-notice,
+html[data-theme="dark"] .cabinet-load-notice {
+    border-color: rgba(245, 158, 11, 0.22);
+    background: rgba(69, 45, 10, 0.44);
+    color: #fde68a;
+}
+
+body.dark-mode .cabinet-load-notice button,
+html[data-theme="dark"] .cabinet-load-notice button {
+    border-color: rgba(245, 158, 11, 0.26);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fef3c7;
+}
+
+body.dark-mode .cabinet-load-notice button:hover,
+html[data-theme="dark"] .cabinet-load-notice button:hover {
+    background: rgba(245, 158, 11, 0.18);
+}
+
 body.dark-mode .cabinet-day-stat,
 html[data-theme="dark"] .cabinet-day-stat {
     background: rgba(30, 41, 59, 0.72);
@@ -737,6 +891,28 @@ html[data-theme="dark"] .cabinet-day-stat.is-hot {
 
     .cabinet-day-actions > * {
         flex: 1 1 auto;
+    }
+
+    .cabinet-day-list-toolbar {
+        justify-content: stretch;
+    }
+
+    .cabinet-list-mode-toggle {
+        width: 100%;
+    }
+
+    .cabinet-list-mode-chip {
+        flex: 1 1 0;
+        padding-inline: 6px;
+    }
+
+    .cabinet-load-notice {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cabinet-load-notice button {
+        width: 100%;
     }
 
     .task-card.task-work-row {

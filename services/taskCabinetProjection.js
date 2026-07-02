@@ -80,6 +80,12 @@ function addDays(dateText, days) {
     return d.toISOString().slice(0, 10);
 }
 
+function monthEndDate(dateText) {
+    const d = new Date(`${dateText}T12:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() + 1, 0);
+    return d.toISOString().slice(0, 10);
+}
+
 function taskSnoozedUntilDate(task = {}) {
     const raw = task.snoozedUntil || task.snoozed_until || '';
     const parsed = raw ? new Date(raw) : null;
@@ -89,6 +95,43 @@ function taskSnoozedUntilDate(task = {}) {
 function isTaskDeferred(task = {}, now = new Date()) {
     const snoozedUntil = taskSnoozedUntilDate(task);
     return Boolean(snoozedUntil && snoozedUntil > now);
+}
+
+function taskProjectionUniqueKey(task = {}, fallback = '') {
+    return task.id || task.taskId || task.task_id || fallback;
+}
+
+function buildTaskCabinetPlanningProjection(rows = [], calendar = {}, now = new Date()) {
+    const planning = {
+        all: [],
+        overdue: [],
+        today: [],
+        tomorrow: [],
+        dayAfterTomorrow: [],
+        plusThreeDays: [],
+        monthEnd: [],
+        noDate: []
+    };
+    const seen = new Set();
+    rows.forEach((task, index) => {
+        if (isTaskDeferred(task, now)) return;
+        const key = taskProjectionUniqueKey(task, `planning:${index}`);
+        if (seen.has(key)) return;
+        seen.add(key);
+        planning.all.push(task);
+        const dueDate = taskWorkloadDate(task);
+        if (!dueDate) {
+            planning.noDate.push(task);
+            return;
+        }
+        if (calendar.today && dueDate < calendar.today) planning.overdue.push(task);
+        if (dueDate === calendar.today) planning.today.push(task);
+        if (dueDate === calendar.tomorrow) planning.tomorrow.push(task);
+        if (dueDate === calendar.dayAfterTomorrow) planning.dayAfterTomorrow.push(task);
+        if (dueDate === calendar.plusThreeDays) planning.plusThreeDays.push(task);
+        if (dueDate === calendar.monthEnd) planning.monthEnd.push(task);
+    });
+    return planning;
 }
 
 function normalizeTaskPayload(row) {
@@ -245,6 +288,10 @@ async function buildTaskCabinetProjection(options = {}) {
     const now = options.now instanceof Date ? options.now : new Date();
     const today = todayKyivDate(now);
     const tomorrow = addDays(today, 1);
+    const dayAfterTomorrow = addDays(today, 2);
+    const plusThreeDays = addDays(today, 3);
+    const monthEnd = monthEndDate(today);
+    const planningEnd = monthEnd > plusThreeDays ? monthEnd : plusThreeDays;
     const nextWeek = addDays(today, 7);
     const completedHistoryLimit = Number.isInteger(options.completedHistoryLimit) && options.completedHistoryLimit > 0
         ? options.completedHistoryLimit
@@ -296,6 +343,7 @@ async function buildTaskCabinetProjection(options = {}) {
         ownParams
     );
     const rows = result.rows.map(normalizeTaskPayload);
+
     const openCountResult = await queryable.query(
         `SELECT COUNT(*)::int AS open_count
          FROM tasks t
@@ -305,6 +353,77 @@ async function buildTaskCabinetProjection(options = {}) {
         ownParams
     );
     const openTaskCount = Number(openCountResult.rows[0]?.open_count || rows.length);
+    const calendar = {
+        timezone: 'Europe/Kyiv',
+        today,
+        tomorrow,
+        dayAfterTomorrow,
+        plusThreeDays,
+        monthEnd,
+        planningEnd,
+        planningWindow: 'overdue_undated_through_planning_end'
+    };
+    const planningParams = [...ownParams, today, planningEnd];
+    const planningStartParam = ownParams.length + 1;
+    const planningEndParam = ownParams.length + 2;
+    const planningDateSql = taskWorkloadDateSql('t');
+    const planningResult = await queryable.query(
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
+                COALESCE(st.total, 0)::int AS subtask_count,
+                COALESCE(st.done, 0)::int AS subtask_done_count
+         FROM tasks t
+         LEFT JOIN users u ON u.id = t.owner_user_id
+         LEFT JOIN (
+            SELECT task_id,
+                   COUNT(*)::int AS total,
+                   COUNT(*) FILTER (WHERE is_done = true)::int AS done
+            FROM task_subtasks
+            GROUP BY task_id
+         ) st ON st.task_id = t.id
+         LEFT JOIN (
+            SELECT task_id,
+                   json_agg(json_build_object(
+                       'id', id,
+                       'task_id', task_id,
+                       'title', title,
+                       'is_done', is_done,
+                       'sort_order', sort_order,
+                       'source_type', COALESCE(source_type, 'manual'),
+                       'created_at', created_at,
+                       'completed_at', completed_at,
+                       'updated_at', updated_at
+                   ) ORDER BY sort_order ASC, id ASC) AS subtasks
+            FROM task_subtasks
+            GROUP BY task_id
+         ) subtask_rows ON subtask_rows.task_id = t.id
+         WHERE ${ownMatch}
+           ${ownBusinessCondition}
+           AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+           AND (
+                ${planningDateSql} IS NULL
+                OR ${planningDateSql} < $${planningStartParam}::date
+                OR ${planningDateSql} BETWEEN $${planningStartParam}::date AND $${planningEndParam}::date
+           )
+         ORDER BY
+             CASE
+                 WHEN ${planningDateSql} IS NULL THEN 4
+                 WHEN ${planningDateSql} < $${planningStartParam}::date THEN 0
+                 WHEN ${planningDateSql} = $${planningStartParam}::date THEN 1
+                 ELSE 2
+             END,
+             ${planningDateSql} ASC NULLS LAST,
+             ${taskPriorityOrderSql('t')},
+             CASE WHEN COALESCE(st.total, 0) > 0 THEN 0 ELSE 1 END,
+             CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
+             COALESCE(t.focus_rank, 99),
+             ${canonicalTaskOrderSql('t')},
+             t.created_at DESC,
+             t.id DESC`,
+        planningParams
+    );
+    const planningRows = planningResult.rows.map(normalizeTaskPayload);
+    const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);
 
     const completedHistoryParams = [...ownParams, completedHistoryLimit];
     const completedHistoryResult = await queryable.query(
@@ -448,6 +567,7 @@ async function buildTaskCabinetProjection(options = {}) {
         inbox: buckets.inbox,
         completedHistory,
         all: rows,
+        planning,
         preferences: prefs,
         stats: {
             todayDone: quickStats.done_today || 0,
@@ -489,6 +609,7 @@ async function buildTaskCabinetProjection(options = {}) {
         meta: {
             canonicalOwnerField: 'tasks.owner_user_id',
             projection: 'my_cabinet',
+            calendar,
             privacyRule: 'private/me_only tasks are owner-only',
             businessScope: taskBusinessScopeMeta(businessScope)
         }

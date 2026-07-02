@@ -20,17 +20,56 @@
         { key: 'crm_sales_followup', label: 'CRM / продаж' }
     ];
 
+    function dateKeyForKyiv(value = new Date()) {
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return '';
+        try {
+            const parts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Europe/Kyiv',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).formatToParts(d).reduce((acc, part) => {
+                if (part.type !== 'literal') acc[part.type] = part.value;
+                return acc;
+            }, {});
+            return `${parts.year}-${parts.month}-${parts.day}`;
+        } catch (error) {
+            return d.toISOString().slice(0, 10);
+        }
+    }
+
+    function addDaysToDateKey(dateText, days = 0) {
+        const base = new Date(`${dateText || todayStr()}T12:00:00Z`);
+        base.setUTCDate(base.getUTCDate() + Number(days || 0));
+        return base.toISOString().slice(0, 10);
+    }
+
+    function monthEndDateKey(dateText = todayStr()) {
+        const base = new Date(`${dateText}T12:00:00Z`);
+        base.setUTCMonth(base.getUTCMonth() + 1, 0);
+        return base.toISOString().slice(0, 10);
+    }
+
+    function normalizeDuePresetValue(preset = 'today') {
+        const raw = String(preset || 'today');
+        if (raw === 'day_after') return 'day_after_tomorrow';
+        return raw;
+    }
+
     function todayStr() {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return dateKeyForKyiv(new Date());
     }
 
     function dateForDuePresetValue(preset = 'today', manualDate = '') {
-        if (preset === 'no_date') return '';
-        if (preset === 'custom') return manualDate || '';
-        const d = new Date();
-        if (preset === 'tomorrow') d.setDate(d.getDate() + 1);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const normalized = normalizeDuePresetValue(preset);
+        if (normalized === 'no_date') return '';
+        if (normalized === 'custom') return manualDate || '';
+        if (normalized === 'tomorrow') return addDaysToDateKey(todayStr(), 1);
+        if (normalized === 'day_after_tomorrow') return addDaysToDateKey(todayStr(), 2);
+        if (normalized === 'plus_3_days') return addDaysToDateKey(todayStr(), 3);
+        if (normalized === 'month_end') return monthEndDateKey();
+        return todayStr();
     }
 
     function defaultVisibilityForTaskMode(mode, explicitVisibility) {

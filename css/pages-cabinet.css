@@ -981,18 +981,19 @@ body.dark-mode .cabinet-segments button b {
 }
 
 .cabinet-task-composer-essential {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: start;
+    gap: 7px 9px;
 }
 
-.cabinet-task-composer-hint {
-    color: var(--gray-500, #6b7280);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1.35;
+.cabinet-task-control-group {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.cabinet-task-control-group--priority {
+    justify-self: end;
 }
 
 .cabinet-task-composer-meta-advanced {
@@ -1218,15 +1219,20 @@ body.dark-mode .cabinet-segments button b {
 .cabinet-due-presets {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .cabinet-priority-presets {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    justify-content: flex-end;
+    gap: 4px;
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .cabinet-due-chip {
@@ -1234,10 +1240,16 @@ body.dark-mode .cabinet-segments button b {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.78);
     color: var(--gray-700, #374151);
-    padding: 8px 11px;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 5px 8px;
     font: inherit;
-    font-size: 12px;
+    font-size: 10.5px;
     font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     cursor: pointer;
 }
 
@@ -1246,11 +1258,37 @@ body.dark-mode .cabinet-segments button b {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.78);
     color: var(--gray-700, #374151);
-    padding: 8px 11px;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 5px 8px;
     font: inherit;
-    font-size: 12px;
+    font-size: 10.5px;
     font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     cursor: pointer;
+}
+
+.cabinet-due-chip:hover,
+.cabinet-priority-chip:hover {
+    border-color: rgba(20, 184, 166, 0.38);
+    background: rgba(20, 184, 166, 0.08);
+    color: #0f766e;
+}
+
+.cabinet-due-chip:focus-visible,
+.cabinet-priority-chip:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.46);
+    outline-offset: 2px;
+    border-color: rgba(15, 118, 110, 0.52);
+}
+
+.cabinet-due-chip:disabled,
+.cabinet-priority-chip:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .cabinet-due-chip.active {
@@ -1281,6 +1319,15 @@ body.dark-mode .cabinet-segments button b {
     border-color: rgba(100, 116, 139, 0.34);
     background: #64748b;
     color: #fff;
+}
+
+.cabinet-due-chip.active:hover,
+.cabinet-priority-chip.active:hover {
+    color: #fff;
+}
+
+.cabinet-priority-chip--high.active:hover {
+    color: #1f2937;
 }
 
 .cabinet-task-create-submit {
@@ -1323,7 +1370,16 @@ body.dark-mode .cabinet-segments button b {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.78);
     color: var(--gray-700, #374151);
-    padding: 8px 11px;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 5px 8px;
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     box-shadow: none;
 }
 
@@ -1369,15 +1425,28 @@ body.dark-mode .cabinet-segments button b {
 
 .cabinet-capture .cabinet-task-composer-toggle:hover,
 .cabinet-capture .cabinet-task-composer-toggle:focus-visible {
-    outline: none;
     border-color: rgba(15, 118, 110, 0.46);
     background: rgba(20, 184, 166, 0.10);
+}
+
+.cabinet-capture .cabinet-task-composer-toggle:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.46);
+    outline-offset: 2px;
 }
 
 body.dark-mode .cabinet-capture .cabinet-due-chip {
     border-color: rgba(148, 163, 184, 0.20);
     background: rgba(15, 23, 42, 0.72);
     color: var(--profile-dark-text, #f8fafc);
+}
+
+body.dark-mode .cabinet-due-chip:hover,
+body.dark-mode .cabinet-priority-chip:hover,
+body.dark-mode .cabinet-capture .cabinet-due-chip:hover,
+body.dark-mode .cabinet-capture .cabinet-priority-chip:hover {
+    border-color: rgba(45, 212, 191, 0.34);
+    background: rgba(20, 184, 166, 0.14);
+    color: #ccfbf1;
 }
 
 body.dark-mode .cabinet-capture .cabinet-due-chip.active {
@@ -1398,6 +1467,34 @@ body.dark-mode .cabinet-capture .cabinet-task-composer-toggle:focus-visible {
     background: rgba(20, 184, 166, 0.14);
 }
 
+@media (max-width: 1100px) {
+    .cabinet-task-composer-essential {
+        grid-template-columns: 1fr;
+    }
+
+    .cabinet-task-control-group--priority {
+        justify-self: stretch;
+    }
+
+    .cabinet-priority-presets {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .cabinet-due-presets,
+    .cabinet-priority-presets {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .cabinet-due-chip,
+    .cabinet-priority-chip {
+        width: 100%;
+        padding-inline: 6px;
+    }
+}
+
 body.dark-mode .cabinet-link-btn--secondary {
     border-color: rgba(45, 212, 191, 0.24);
     background: rgba(20, 184, 166, 0.10);
@@ -1408,10 +1505,6 @@ body.dark-mode .cabinet-link-btn--secondary:hover,
 body.dark-mode .cabinet-link-btn--secondary:focus-visible {
     border-color: rgba(45, 212, 191, 0.46);
     background: rgba(20, 184, 166, 0.18);
-}
-
-body.dark-mode .cabinet-task-composer-hint {
-    color: rgba(226, 232, 240, 0.68);
 }
 
 .cabinet-toolbar--tasker p {
@@ -1489,6 +1582,22 @@ body.dark-mode .cabinet-task-composer-hint {
     border-radius: 8px;
     background: var(--white, #fff);
     padding: 12px;
+}
+
+.cabinet-day-primary.is-all-mode {
+    gap: 8px;
+}
+
+.cabinet-task-section--all-group {
+    padding: 10px;
+}
+
+.cabinet-task-section--all-group .cabinet-section-head {
+    margin-bottom: 6px;
+}
+
+.cabinet-task-section--all-group .cabinet-section-head h3 {
+    font-size: 14px;
 }
 
 .cabinet-list-head {

@@ -26,6 +26,30 @@ function loadProfileTaskerContext() {
     return sandbox;
 }
 
+function loadTaskCreateContext() {
+    const sandbox = {
+        console,
+        fetch: async () => ({ ok: true, json: async () => ({}) }),
+        window: null
+    };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'task-create.js'), 'utf8'), sandbox);
+    return sandbox;
+}
+
+function addDaysToDateKey(dateText, days = 0) {
+    const date = new Date(`${dateText}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+}
+
+function monthEndDateKey(dateText) {
+    const date = new Date(`${dateText}T12:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() + 1, 0);
+    return date.toISOString().slice(0, 10);
+}
+
 test('profile tasker segments match canonical task mode, visibility, workflow and kind fields', () => {
     const ctx = loadProfileTaskerContext();
     const tasks = [
@@ -150,9 +174,20 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(collapsedHtml, /Більше параметрів/);
     assert.match(collapsedHtml, /id="cabinetTaskTitle"/);
     assert.match(collapsedHtml, /class="cabinet-due-presets"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="today"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="tomorrow"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="day_after_tomorrow"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="plus_3_days"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="month_end"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="no_date"/);
+    assert.match(collapsedHtml, /data-cabinet-due-preset="custom"/);
+    assert.doesNotMatch(collapsedHtml, /data-cabinet-due-preset="all"/);
+    assert.doesNotMatch(collapsedHtml, /data-cabinet-due-preset="normal"/);
     assert.match(collapsedHtml, /class="cabinet-priority-presets"/);
     assert.match(collapsedHtml, /data-cabinet-priority-preset="urgent"/);
+    assert.match(collapsedHtml, /data-cabinet-priority-preset="normal"/);
     assert.match(collapsedHtml, /Терміново/);
+    assert.doesNotMatch(collapsedHtml, /cabinet-task-composer-hint/);
     assert.match(collapsedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
 
     vm.runInContext('cabinetTaskComposerExpanded = true;', ctx);
@@ -161,6 +196,371 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(expandedHtml, /data-cabinet-composer-state="expanded"/);
     assert.match(expandedHtml, /Згорнути/);
     assert.doesNotMatch(expandedHtml, /data-cabinet-composer-advanced aria-hidden="true"[^>]*hidden/);
+});
+
+test('profile task composer keeps date presets separate from priority presets', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext('cabinetTaskComposerExpanded = false; cabinetCreatePriority = "normal"; cabinetCreateDuePreset = "today";', ctx);
+
+    const html = ctx.renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' });
+    const dueRow = html.match(/<div class="cabinet-due-presets"[\s\S]*?<\/div>/)?.[0] || '';
+    const priorityRow = html.match(/<div class="cabinet-priority-presets"[\s\S]*?<\/div>/)?.[0] || '';
+    const normalPriorityLabel = vm.runInContext("CABINET_TASK_PRIORITIES.find(item => item.value === 'normal').label", ctx);
+
+    assert.match(dueRow, /data-cabinet-due-preset="today"/);
+    assert.match(dueRow, /data-cabinet-due-preset="tomorrow"/);
+    assert.match(dueRow, /data-cabinet-due-preset="day_after_tomorrow"/);
+    assert.match(dueRow, /data-cabinet-due-preset="plus_3_days"/);
+    assert.match(dueRow, /data-cabinet-due-preset="month_end"/);
+    assert.match(dueRow, /data-cabinet-due-preset="no_date"/);
+    assert.match(dueRow, /data-cabinet-due-preset="custom"/);
+    assert.doesNotMatch(dueRow, /data-cabinet-priority-preset=/);
+    assert.doesNotMatch(dueRow, /data-cabinet-due-preset="normal"/);
+    assert.equal(dueRow.includes(normalPriorityLabel), false);
+
+    assert.match(priorityRow, /data-cabinet-priority-preset="urgent"/);
+    assert.match(priorityRow, /data-cabinet-priority-preset="high"/);
+    assert.match(priorityRow, /data-cabinet-priority-preset="normal"/);
+    assert.match(priorityRow, /data-cabinet-priority-preset="low"/);
+    assert.match(priorityRow, /aria-pressed="true"/);
+    assert.match(priorityRow, new RegExp(normalPriorityLabel));
+    assert.doesNotMatch(priorityRow, /data-cabinet-due-preset=/);
+});
+
+test('shared TaskCreate adapter resolves extended due presets from Kyiv date context', () => {
+    const ctx = loadTaskCreateContext();
+    const today = ctx.TaskCreate.todayStr();
+
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('today'), today);
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('tomorrow'), addDaysToDateKey(today, 1));
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('day_after_tomorrow'), addDaysToDateKey(today, 2));
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('day_after'), addDaysToDateKey(today, 2));
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('plus_3_days'), addDaysToDateKey(today, 3));
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('month_end'), monthEndDateKey(today));
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('no_date'), '');
+    assert.equal(ctx.TaskCreate.dateForDuePresetValue('custom', '2026-07-18'), '2026-07-18');
+});
+
+test('profile My Day state keeps list mode separate from due preset', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const controls = new Map([
+        ['cabinetTaskDate', { value: '' }]
+    ]);
+    ctx.TaskCreate = taskCreateCtx.TaskCreate;
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            return controls.get(id) || null;
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+
+    assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'today');
+    assert.equal(ctx.getCabinetMyDayState().listMode, 'focused');
+
+    assert.equal(ctx.setCabinetMyDayListMode('all'), 'all');
+    ctx.setCabinetDuePreset('day_after_tomorrow');
+    const state = ctx.getCabinetMyDayState();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+
+    assert.equal(state.selectedDuePreset, 'day_after_tomorrow');
+    assert.equal(state.selectedDueDate, addDaysToDateKey(today, 2));
+    assert.equal(state.selectedPriority, 'normal');
+    assert.equal(state.listMode, 'all');
+    assert.equal(controls.get('cabinetTaskDate').value, addDaysToDateKey(today, 2));
+
+    ctx.setCabinetDuePreset('not-real');
+    assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'today');
+    assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
+});
+
+test('profile My Day focused mode filters primary tasks by selected due preset', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const tomorrow = addDaysToDateKey(today, 1);
+    const afterTomorrow = addDaysToDateKey(today, 2);
+    const plusThree = addDaysToDateKey(today, 3);
+    const monthEnd = monthEndDateKey(today);
+    const overdue = addDaysToDateKey(today, -1);
+    const tasks = [
+        { id: 1, title: 'Today focus task', date: today },
+        { id: 2, title: 'No date focus task' },
+        { id: 3, title: 'Tomorrow focus task', date: tomorrow },
+        { id: 4, title: 'After tomorrow focus task', date: afterTomorrow },
+        { id: 5, title: 'Plus three focus task', date: plusThree },
+        { id: 6, title: 'Month end focus task', date: monthEnd },
+        { id: 7, title: 'Overdue focus task', date: overdue },
+        { id: 8, title: 'Deferred tomorrow task', date: tomorrow, snoozedUntil: '2999-01-01T09:00:00.000Z' }
+    ];
+    vm.runInContext(`
+        myCabinetData = {
+            all: ${JSON.stringify(tasks)},
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: ${tasks.length} } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'tomorrow';
+    `, ctx);
+
+    vm.runInContext(`cabinetCreateDuePreset = 'today';`, ctx);
+    let html = ctx.renderMyDayTab();
+    assert.match(html, /Today focus task/);
+    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /Tomorrow focus task/);
+    assert.doesNotMatch(html, /No date focus task/);
+    assert.doesNotMatch(html, /Deferred tomorrow task/);
+
+    vm.runInContext(`cabinetCreateDuePreset = 'tomorrow';`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.match(html, /Tomorrow focus task/);
+    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /Today focus task/);
+    assert.doesNotMatch(html, /No date focus task/);
+    assert.doesNotMatch(html, /Deferred tomorrow task/);
+
+    vm.runInContext(`cabinetCreateDuePreset = 'no_date';`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.match(html, /No date focus task/);
+    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /Tomorrow focus task/);
+
+    vm.runInContext(`cabinetCreateDuePreset = 'day_after_tomorrow';`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.match(html, /After tomorrow focus task/);
+    assert.doesNotMatch(html, /Tomorrow focus task/);
+
+    vm.runInContext(`cabinetCreateDuePreset = 'plus_3_days';`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.match(html, /Plus three focus task/);
+    assert.doesNotMatch(html, /After tomorrow focus task/);
+
+    vm.runInContext(`cabinetCreateDuePreset = 'month_end';`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.match(html, /Month end focus task/);
+});
+
+test('profile My Day focused mode uses the selected custom date safely', () => {
+    const ctx = loadProfileTaskerContext();
+    const customDate = '2026-07-18';
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            return id === 'cabinetTaskDate' ? { value: customDate } : null;
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+    vm.runInContext(`
+        myCabinetData = {
+            all: [
+                { id: 11, title: 'Custom date focus task', date: '${customDate}' },
+                { id: 12, title: 'Other date focus task', date: '2026-07-19' }
+            ],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 2 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'custom';
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /Custom date focus task/);
+    assert.doesNotMatch(html, /Other date focus task/);
+});
+
+test('profile My Day focused mode ignores invalid custom dates without throwing', () => {
+    const ctx = loadProfileTaskerContext();
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            return id === 'cabinetTaskDate' ? { value: 'not-a-date' } : null;
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+    vm.runInContext(`
+        myCabinetData = {
+            all: [
+                { id: 14, title: 'Invalid custom date task', date: '2026-07-18' }
+            ],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'custom';
+    `, ctx);
+
+    const state = ctx.getCabinetMyDayState();
+    const html = ctx.renderMyDayTab();
+    assert.equal(state.selectedDueDate, '');
+    assert.doesNotMatch(html, /Invalid custom date task/);
+});
+
+test('profile My Day focused mode can read the additive planning projection', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const monthEnd = monthEndDateKey(today);
+    vm.runInContext(`
+        myCabinetData = {
+            all: [],
+            planning: {
+                all: [
+                    { id: 18, title: 'Planning month end task', date: '${monthEnd}' }
+                ],
+                monthEnd: [
+                    { id: 18, title: 'Planning month end task', date: '${monthEnd}' }
+                ]
+            },
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'month_end';
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+
+    assert.match(html, /Planning month end task/);
+});
+
+test('profile My Day all mode groups active tasks without changing the selected due preset', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const tomorrow = addDaysToDateKey(today, 1);
+    const laterEarly = addDaysToDateKey(today, 2);
+    const laterLate = addDaysToDateKey(today, 5);
+    const overdue = addDaysToDateKey(today, -1);
+    const tasks = [
+        { id: 21, title: 'All overdue task', date: overdue },
+        { id: 22, title: 'All today task', date: today },
+        { id: 22, title: 'All today duplicate task', date: today },
+        { id: 23, title: 'All tomorrow task', date: tomorrow },
+        { id: 24, title: 'All later late task', date: laterLate },
+        { id: 25, title: 'All later early task', date: laterEarly },
+        { id: 26, title: 'All no date task' },
+        { id: 27, title: 'All done task', date: today, status: 'done' },
+        { id: 28, title: 'All deferred task', date: tomorrow, snoozedUntil: '2999-01-01T09:00:00.000Z' }
+    ];
+    vm.runInContext(`
+        myCabinetData = {
+            all: ${JSON.stringify(tasks)},
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: ${tasks.length} } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'all';
+        cabinetCreateDuePreset = 'tomorrow';
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+
+    assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'tomorrow');
+    assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
+    assert.match(html, /data-cabinet-due-preset="tomorrow" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-list-mode="all" aria-pressed="true"/);
+    assert.match(html, /<h3>Прострочені<\/h3>[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /<h3>Сьогодні<\/h3>[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /<h3>Завтра<\/h3>[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /<h3>Пізніше<\/h3>[\s\S]*?<span>2<\/span>/);
+    assert.match(html, /<h3>Без дати<\/h3>[\s\S]*?<span>1<\/span>/);
+    assert.match(html, /All overdue task/);
+    assert.match(html, /All today task/);
+    assert.match(html, /All tomorrow task/);
+    assert.match(html, /All later early task/);
+    assert.match(html, /All later late task/);
+    assert.match(html, /All no date task/);
+    assert.doesNotMatch(html, /All today duplicate task/);
+    assert.doesNotMatch(html, /All done task/);
+    assert.doesNotMatch(html, /All deferred task/);
+    assert.ok(html.indexOf('All later early task') < html.indexOf('All later late task'));
+});
+
+test('profile My Day all mode merges planning and legacy all projection without duplicates', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const tomorrow = addDaysToDateKey(today, 1);
+    const later = addDaysToDateKey(today, 4);
+    vm.runInContext(`
+        myCabinetData = {
+            all: [
+                { id: 41, title: 'Legacy duplicate title', date: '${tomorrow}' },
+                { id: 42, title: 'Legacy later task', date: '${later}' }
+            ],
+            planning: {
+                all: [
+                    { id: 41, title: 'Planning tomorrow task', date: '${tomorrow}' },
+                    { id: 43, title: 'Planning no date task' }
+                ],
+                tomorrow: [
+                    { id: 41, title: 'Planning tomorrow task', date: '${tomorrow}' }
+                ],
+                noDate: [
+                    { id: 43, title: 'Planning no date task' }
+                ]
+            },
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 3 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'all';
+        cabinetCreateDuePreset = 'tomorrow';
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+
+    assert.match(html, /Planning tomorrow task/);
+    assert.match(html, /Planning no date task/);
+    assert.match(html, /Legacy later task/);
+    assert.doesNotMatch(html, /Legacy duplicate title/);
 });
 
 function installCabinetCreateDom(ctx, title) {
@@ -371,6 +771,10 @@ test('profile routes mytasks compatibility into the single My Day projection', (
 
     assert.match(myDayHtml, /cabinet-quick-cluster/);
     assert.match(myDayHtml, /cabinet-task-composer/);
+    assert.match(myDayHtml, /cabinet-list-mode-toggle/);
+    assert.match(myDayHtml, /data-cabinet-list-mode="focused"/);
+    assert.match(myDayHtml, /data-cabinet-list-mode="all"/);
+    assert.doesNotMatch(myDayHtml, /data-cabinet-due-preset="all"/);
     assert.match(myDayHtml, /data-cabinet-task-drop-target="today"/);
     assert.match(myTasksHtml, /cabinet-quick-cluster/);
     assert.match(myTasksHtml, /cabinet-task-composer/);
@@ -381,6 +785,38 @@ test('profile routes mytasks compatibility into the single My Day projection', (
     assert.match(source, /addEventListener\('popstate'/);
     assert.doesNotMatch(source, /cabinet-shell--mytasks/);
     assert.doesNotMatch(source, /href="\/profile\?tab=mytasks"/);
+});
+
+test('profile My Day keeps existing projection and shows a non-sensitive load notice on refresh failure', async () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = {
+            all: [{ id: 81, title: 'Sensitive existing task title', date: cabinetDateKeyOffset(0) }],
+            today: [],
+            overdue: [],
+            waiting: [],
+            private: [],
+            completedHistory: [],
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+        };
+        myCabinetLoadError = '';
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+        apiGet = async function() { return null; };
+        refreshCabinetPulseCounts = async function() {};
+    `, ctx);
+
+    const result = await ctx.refreshMyCabinetTab({ silent: true, keepExistingOnError: true });
+    const state = vm.runInContext('({ data: myCabinetData, error: myCabinetLoadError })', ctx);
+    const html = ctx.renderMyDayTab();
+    const noticeHtml = html.match(/<div class="cabinet-load-notice"[\s\S]*?<\/div>/)?.[0] || '';
+
+    assert.equal(result, null);
+    assert.equal(state.data.all[0].title, 'Sensitive existing task title');
+    assert.match(state.error, /Не вдалося завантажити задачі/);
+    assert.match(noticeHtml, /data-cabinet-refresh/);
+    assert.doesNotMatch(noticeHtml, /Sensitive existing task title/);
 });
 
 test('profile my day renders compact completed task history with hover/focus details', () => {
@@ -744,7 +1180,7 @@ test('profile unfinished gamification tabs use soon lockdown by role', () => {
 });
 
 test('my cabinet task projection counts today, undated and overdue carry-over workload', () => {
-    const source = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const source = fs.readFileSync(path.join(ROOT, 'services', 'taskCabinetProjection.js'), 'utf8');
     const authSource = fs.readFileSync(path.join(ROOT, 'routes', 'auth.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
@@ -766,7 +1202,6 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /scheduled_start_at/);
     assert.match(source, /snoozed_until/);
     assert.match(source, /taskPriorityOrderSql/);
-    assert.match(source, /applyUrgentPriorityDefaults/);
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
     assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
@@ -776,6 +1211,90 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(authSource, /subtasksDoneToday/);
     assert.doesNotMatch(source, /const openTaskCount = rows\.length;/);
     assert.doesNotMatch(sidebarSource, /Number\(tasks\.assigned \|\| 0\) \+ Number\(tasks\.in_progress \|\| 0\)/);
+});
+
+test('my cabinet projection exposes additive planning calendar contract', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'services', 'taskCabinetProjection.js'), 'utf8');
+    const routeSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+
+    assert.match(routeSource, /router\.get\('\/my-cabinet'/);
+    assert.match(routeSource, /const businessScope = requireTaskReadScope\(req, res\);/);
+    assert.match(routeSource, /buildTaskCabinetProjection\(\{\s*pool,\s*user: req\.user,\s*businessScope/s);
+    assert.match(source, /function buildTaskCabinetPlanningProjection/);
+    assert.match(source, /const dayAfterTomorrow = addDays\(today, 2\);/);
+    assert.match(source, /const plusThreeDays = addDays\(today, 3\);/);
+    assert.match(source, /const monthEnd = monthEndDate\(today\);/);
+    assert.match(source, /const planningEnd = monthEnd > plusThreeDays \? monthEnd : plusThreeDays;/);
+    assert.match(source, /planningWindow:\s*'overdue_undated_through_planning_end'/);
+    assert.match(source, /planning,\s*\n\s*preferences:/);
+    assert.match(source, /calendar,\s*\n\s*privacyRule:/);
+    assert.match(source, /planningDateSql\} IS NULL/);
+    assert.match(source, /planningDateSql\} BETWEEN/);
+    assert.match(profileSource, /function cabinetPlanningList/);
+    assert.match(profileSource, /cabinetPlanningList\('all'\)/);
+    assert.match(profileSource, /CABINET_PLANNING_TASK_BUCKETS/);
+    assert.match(profileSource, /forEachCabinetProjectionTaskList/);
+    assert.match(profileSource, /function loadMyCabinetProjection/);
+    assert.match(profileSource, /apiGet\('\/tasks\/my-cabinet'\)/);
+    assert.doesNotMatch(profileSource, /apiGet\('\/tasks'\)/);
+});
+
+test('my cabinet planning projection keeps owner and business scope guards', async () => {
+    const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
+    const calls = [];
+    const pool = {
+        async query(text, params = []) {
+            calls.push({ text, params });
+            if (/SELECT COUNT\(\*\)::int AS open_count/.test(text)) {
+                return { rows: [{ open_count: 0 }] };
+            }
+            if (/done_total/.test(text)) {
+                return {
+                    rows: [{
+                        done_total: 0,
+                        done_today: 0,
+                        parent_done_today: 0,
+                        subtask_done_today: 0,
+                        subtask_done_total: 0,
+                        remaining_today: 0,
+                        overdue_carryover: 0,
+                        active_my_day: 0
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+
+    await buildTaskCabinetProjection({
+        pool,
+        user: {
+            id: 7,
+            username: 'serhiy',
+            name: 'Serhiy',
+            role: 'creator'
+        },
+        businessScope: {
+            mode: 'single',
+            activeContext: 'event_genix',
+            selectedContexts: ['event_genix']
+        },
+        ensurePreferences: false,
+        now: new Date('2026-07-02T10:00:00.000Z')
+    });
+
+    const planningCall = calls.find(call => /SELECT t\.\*/.test(call.text)
+        && /BETWEEN/.test(call.text)
+        && /COALESCE\(t\.status, 'todo'\) NOT IN/.test(call.text));
+
+    assert.ok(planningCall, 'planning query should be executed');
+    assert.match(planningCall.text, /t\.owner_user_id = \$\d+/);
+    assert.match(planningCall.text, /t\.assigned_to IN \(\$\d+,\$\d+\)/);
+    assert.match(planningCall.text, /t\.owner IN \(\$\d+,\$\d+\)/);
+    assert.match(planningCall.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/);
+    assert.match(planningCall.text, /COALESCE\(t\.status, 'todo'\) NOT IN \('done','cancelled','archived'\)/);
+    assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31']);
 });
 
 test('urgent priority has dashboard alert escalation and alert-panel commitment action', () => {
@@ -810,7 +1329,7 @@ test('task create post steps degrade to warnings after the row is created', () =
 });
 
 test('my cabinet and tasks expose explicit deferred task bucket', () => {
-    const tasksSource = fs.readFileSync(path.join(ROOT, 'routes', 'tasks.js'), 'utf8');
+    const tasksSource = fs.readFileSync(path.join(ROOT, 'services', 'taskCabinetProjection.js'), 'utf8');
     const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
     const tasksPageSource = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
     const tasksHtml = fs.readFileSync(path.join(ROOT, 'tasks.html'), 'utf8');

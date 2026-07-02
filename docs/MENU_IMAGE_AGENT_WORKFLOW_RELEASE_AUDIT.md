@@ -5,7 +5,9 @@ Branch: `codex/timeline-leads-hardening`
 Package version audited before release prep: `0.77.95`
 Prepared release version: `0.77.96` (`Menu Image Agent Workflow`)
 Scope: pre-release audit and local release preparation for the Hermes/manual kitchen menu image workflow.
-Production deploy: not performed.
+Production deploy: performed after explicit user approval.
+Release commit: `e30f61f05` (`Release menu image agent workflow`).
+Live URL: `https://8223324090-production.up.railway.app`.
 
 ## Summary
 
@@ -249,8 +251,31 @@ No critical release blockers found.
 - Local release version prepared: `0.77.96`.
 - Ukrainian release notes were added to `CHANGELOG.md` and the visible `index.html` changelog modal.
 - Version cache tags were synchronized through the existing `version-sync.js` flow.
-- Commit, PR, push, deploy, and infrastructure changes were not performed.
-- Production deploy remains blocked until explicit user approval.
+- Release commit was pushed to `origin/codex/timeline-leads-hardening`.
+- Production deploy was approved by the user and completed through the production target branch.
+- PR and infrastructure changes were not performed.
+
+## Post-Deploy Verification
+
+Recorded: 2026-07-02 15:39:49 +03:00.
+
+```text
+git push origin codex/timeline-leads-hardening
+Result: pushed e30f61f05 to production target branch.
+
+npx -y -p node@22 -p npm@10 -c "npm run version:smoke -- https://8223324090-production.up.railway.app"
+Initial result: live was still v0.77.95 while Railway deploy was in progress.
+Retry result: passed, live v0.77.96 - Menu Image Agent Workflow.
+
+LIVE_SMOKE_PUBLIC_ONLY=true npx -y -p node@22 -p npm@10 -c "npm run smoke:live -- https://8223324090-production.up.railway.app"
+Result: passed public smoke.
+Covered: /api/version v0.77.96, /api/health ok, /api/ready schema ok, /api/health/deep schema ok.
+
+npx -y -p node@22 -p npm@10 -c "npm run release:timeline-proof -- https://8223324090-production.up.railway.app"
+Result: passed, root and Maysternya Doli timeline asset tags and Service Worker cache names are on v0.77.96.
+```
+
+Protected authenticated `smoke:live` was not run because `LIVE_SMOKE_TOKEN`, `LIVE_SMOKE_USER`, `LIVE_SMOKE_PASS`, `TEST_USER`, and `TEST_PASS` were not present in the local environment. No secrets were printed.
 
 ## Rollback Plan
 

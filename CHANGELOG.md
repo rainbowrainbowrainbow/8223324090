@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.98 - Hermes Menu Photo SQL Hotfix
+
+### Hermes / Menu photo context / SQL compatibility / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Hermes menu-photo endpoints більше не падають на live schema** - `GET /api/hermes/menu-photos/candidates` і `GET /api/hermes/menu-photos/:productId/context` більше не вибирають неіснуюче поле `p.legacy_price`.
+- **Ціна позиції лишилась у контракті без міграції** - route повертає `products.price AS legacy_price`, тож downstream context може й далі працювати з legacy alias, але SQL використовує реальну колонку.
+- **Workflow для фото меню розблоковано** - Hermes знову може отримати context для `Піца Маргарита` перед external-draft/apply flow, не змінюючи active image на етапі context.
+- **Додано regression guard** - `tests/hermes-routes.test.js` перевіряє, що Hermes menu-photo SELECT не повертає `p.legacy_price` і використовує `p.price AS legacy_price`.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - hotfix обмежений SQL projection, тестом, release cache tags і changelog.
+
+---
+
 ## v0.77.97 - Lead Kanban Image Removal
 
 ### Sales funnel / Kanban cards / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]

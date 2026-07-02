@@ -1189,7 +1189,7 @@ function menuPhotoSelectSql(whereSql, options = {}) {
                 p.allergens,
                 p.tech_card,
                 p.price,
-                p.legacy_price,
+                p.price AS legacy_price,
                 p.availability_status,
                 p.is_active,
                 p.created_at,

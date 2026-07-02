@@ -1466,6 +1466,13 @@ describe('Hermes read-only task routes', () => {
 });
 
 describe('Hermes menu photo routes', () => {
+    it('uses real products.price as the menu photo legacy price alias', async () => {
+        const source = await fsp.readFile(path.join(__dirname, '..', 'routes', 'hermes.js'), 'utf8');
+
+        assert.doesNotMatch(source, /\bp\.legacy_price\b/);
+        assert.match(source, /\bp\.price\s+AS\s+legacy_price\b/);
+    });
+
     it('lists menu photo candidates with safe product fields', async () => {
         const fakePool = createHermesCreateFakePool({
             products: [[

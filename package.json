@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.97",
+  "version": "0.77.98",
   "eventGenix": {
-    "releaseLabel": "Lead Kanban Image Removal"
+    "releaseLabel": "Hermes Menu Photo SQL Hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -75,50 +75,7 @@
 
         <main id="main-content" class="page-container">
             <nav class="staff-pulse-nav" aria-label="Навігація пульсу компанії">
-                <div class="staff-pulse-nav-items">
-                    <a class="staff-pulse-tab ui-tab-card" href="/hr#today" data-pulse-tone="people">
-                        <span class="staff-pulse-tab-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M8 2v4M16 2v4M4 10h16M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
-                                <path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"></path>
-                            </svg>
-                        </span>
-                        <span class="staff-pulse-tab-content">
-                            <span class="staff-pulse-tab-title">Сьогодні</span>
-                            <span class="staff-pulse-tab-subtitle">Огляд дня</span>
-                        </span>
-                        <span class="staff-pulse-tab-badge hidden" data-pulse-badge="today"></span>
-                        <span class="staff-pulse-tab-line" aria-hidden="true"></span>
-                    </a>
-                    <a class="staff-pulse-tab ui-tab-card active" href="/staff" aria-current="page" data-pulse-tone="schedule">
-                        <span class="staff-pulse-tab-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="9"></circle>
-                                <path d="M12 7v5l3 2"></path>
-                            </svg>
-                        </span>
-                        <span class="staff-pulse-tab-content">
-                            <span class="staff-pulse-tab-title">Графік</span>
-                            <span class="staff-pulse-tab-subtitle">Розклад змін</span>
-                        </span>
-                        <span class="staff-pulse-tab-badge hidden" data-pulse-badge="schedule"></span>
-                        <span class="staff-pulse-tab-line" aria-hidden="true"></span>
-                    </a>
-                    <a class="staff-pulse-tab ui-tab-card" href="/hr#reports" data-pulse-tone="reports">
-                        <span class="staff-pulse-tab-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path>
-                                <path d="M14 3v5h5M8 15h8M8 18h5M8 12h3"></path>
-                            </svg>
-                        </span>
-                        <span class="staff-pulse-tab-content">
-                            <span class="staff-pulse-tab-title">Звіти</span>
-                            <span class="staff-pulse-tab-subtitle">Аналітика</span>
-                        </span>
-                        <span class="staff-pulse-tab-badge hidden" data-pulse-badge="reports"></span>
-                        <span class="staff-pulse-tab-line" aria-hidden="true"></span>
-                    </a>
-                </div>
+                <div class="staff-pulse-nav-items" id="staffPulseNavItems" data-pulse-switcher="staff"></div>
             </nav>
 
             <section class="staff-schedule-command" aria-label="Керування графіком роботи">
@@ -360,6 +317,7 @@
     <script src="js/api.js?v=0.77.102"></script>
     <script src="js/auth.js?v=0.77.102"></script>
     <script src="js/components/sidebar.js?v=0.77.102"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.77.102"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/staff-page.js?v=0.77.102"></script><script src="js/alerts.js?v=0.77.102"></script>
 </body>

@@ -33,6 +33,13 @@ function setStaffPulseCardBadge(navId, value, options = {}) {
     else badge.removeAttribute('aria-label');
 }
 
+function renderStaffPulseSwitcher() {
+    const container = document.getElementById('staffPulseNavItems');
+    const switcher = typeof window !== 'undefined' ? window.HrPulseSwitcher : null;
+    if (!container || !switcher || typeof switcher.renderStaffNav !== 'function') return;
+    switcher.renderStaffNav(container, { activeId: 'schedule' });
+}
+
 // ==========================================
 // STATE
 // ==========================================
@@ -2213,7 +2220,7 @@ function renderWeekLabel() {
 
 function setScheduleHeaderMetricText(id, value) {
     const element = document.getElementById(id);
-    if (element) element.textContent = value;
+    if (element) element.textContent = value === null || value === undefined || value === '' ? '-' : String(value);
 }
 
 function formatScheduleActiveLabel(active) {
@@ -2222,26 +2229,40 @@ function formatScheduleActiveLabel(active) {
     return `${count} активні`;
 }
 
-function updateScheduleHeaderMetrics(summary = null, staffList = null) {
+function scheduleHeaderMetricsFromState(summary = null, staffList = null) {
     const period = document.getElementById('weekLabel')?.textContent?.trim() || '-';
     const department = StaffState.activeDept === 'all'
         ? 'Всі'
         : scheduleDisplayDepartmentLabel(StaffState.activeDept);
     const visibleStaff = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
-    const activeSummary = summary || summarizeScheduleToday(visibleStaff);
-    const active = Number(activeSummary.working || 0) + Number(activeSummary.remote || 0);
+    const safeVisibleStaff = Array.isArray(visibleStaff) ? visibleStaff : [];
+    const activeSummary = summary || summarizeScheduleToday(safeVisibleStaff);
+    const active = Number(activeSummary?.working || 0) + Number(activeSummary?.remote || 0);
 
-    setScheduleHeaderMetricText('scheduleHeaderPeriod', period);
-    setScheduleHeaderMetricText('scheduleHeaderDepartment', department);
-    setScheduleHeaderMetricText('scheduleHeaderStaffCount', String(visibleStaff.length));
-    setScheduleHeaderMetricText('scheduleHeaderStatus', formatScheduleActiveLabel(active));
+    return {
+        period,
+        department,
+        visibleStaffCount: safeVisibleStaff.length,
+        activeTodayLabel: formatScheduleActiveLabel(active)
+    };
+}
+
+function updateScheduleHeaderMetrics(summary = null, staffList = null) {
+    // Staff header chips come from local schedule state: week label, active department, visible rows, and today's active shifts.
+    const metrics = scheduleHeaderMetricsFromState(summary, staffList);
+
+    setScheduleHeaderMetricText('scheduleHeaderPeriod', metrics.period);
+    setScheduleHeaderMetricText('scheduleHeaderDepartment', metrics.department);
+    setScheduleHeaderMetricText('scheduleHeaderStaffCount', metrics.visibleStaffCount);
+    setScheduleHeaderMetricText('scheduleHeaderStatus', metrics.activeTodayLabel);
 }
 
 function summarizeScheduleToday(staffList = null) {
     const today = todayStr();
     const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
-    const summary = { date: today, total: filtered.length, working: 0, dayoff: 0, vacation: 0, sick: 0, remote: 0, unset: 0, replacements: 0 };
-    for (const s of filtered) {
+    const safeFiltered = Array.isArray(filtered) ? filtered : [];
+    const summary = { date: today, total: safeFiltered.length, working: 0, dayoff: 0, vacation: 0, sick: 0, remote: 0, unset: 0, replacements: 0 };
+    for (const s of safeFiltered) {
         const entry = StaffState.schedule[`${s.id}_${today}`];
         if (!entry) {
             summary.unset++;
@@ -3812,6 +3833,7 @@ async function openAddStaffModal() {
 
 async function initPage() {
     initDarkMode();
+    renderStaffPulseSwitcher();
 
     const user = await apiVerifyToken();
     if (!user) {

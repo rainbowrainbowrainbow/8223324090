@@ -121,17 +121,32 @@ const STAFF_DEPARTMENT_LABELS = {
     security: 'Охорона'
 };
 
-function withPulseCommand(item, command) {
-    return { ...item, ...command };
+function hrPulseSwitcher() {
+    return typeof window !== 'undefined' ? window.HrPulseSwitcher : null;
 }
 
-function renderHrPulseIcon(icon) {
-    const icons = {
-        calendar: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4M4 10h16M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg>',
-        clock: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
-        report: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5M8 15h8M8 18h5M8 12h3"/></svg>'
-    };
-    return icons[icon] || icons.calendar;
+function hrPulseNavItems() {
+    const switcher = hrPulseSwitcher();
+    if (!switcher || typeof switcher.items !== 'function') return [];
+    return switcher.items().map(item => ({
+        ...item,
+        href: item.hrHref || ''
+    }));
+}
+
+function renderHrPulseNavButton(item, badge) {
+    const switcher = hrPulseSwitcher();
+    if (!switcher || typeof switcher.renderTab !== 'function') return '';
+    return switcher.renderTab({ ...item, badge }, {
+        tag: 'button',
+        className: 'hr-tab hr-pulse-card ui-tab-card',
+        classPrefix: 'hr-pulse-card',
+        attrs: pulseItem => ({
+            'data-nav-id': pulseItem.id,
+            'data-tab': pulseItem.tab || pulseItem.id,
+            'data-href': pulseItem.href || ''
+        })
+    });
 }
 
 const hrPulseCardBadges = new Map([
@@ -187,32 +202,7 @@ const HR_NAV_GROUPS = [
     {
         id: 'pulse',
         label: 'Пульс компанії',
-        items: [
-            withPulseCommand(
-                { id: 'today', label: 'Сьогодні' },
-                {
-                    subtitle: 'Огляд дня',
-                    icon: 'calendar',
-                    tone: 'people'
-                }
-            ),
-            withPulseCommand(
-                { id: 'schedule', label: 'Графік', href: '/staff' },
-                {
-                    subtitle: 'Розклад змін',
-                    icon: 'clock',
-                    tone: 'schedule'
-                }
-            ),
-            withPulseCommand(
-                { id: 'reports', label: 'Звіти' },
-                {
-                    subtitle: 'Аналітика',
-                    icon: 'report',
-                    tone: 'reports'
-                }
-            )
-        ]
+        items: hrPulseNavItems()
     },
     {
         id: 'people',
@@ -1264,20 +1254,11 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                 ${group.items.map(item => {
                     const tabId = item.tab || item.id;
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
-                    const tabClass = pulseMode ? 'hr-tab hr-pulse-card ui-tab-card' : 'hr-tab';
-                    const toneAttr = pulseMode && item.tone ? ` data-pulse-tone="${escapeHtml(item.tone)}"` : '';
                     const pulseBadge = item.badge ? String(item.badge) : '';
-                    const content = pulseMode ? `
-                        <span class="hr-pulse-card-icon" aria-hidden="true">${renderHrPulseIcon(item.icon)}</span>
-                        <span class="hr-pulse-card-content">
-                            <span class="hr-pulse-card-title">${escapeHtml(item.label)}</span>
-                            <span class="hr-pulse-card-subtitle">${escapeHtml(item.subtitle || '')}</span>
-                        </span>
-                        <span class="hr-pulse-card-badge${pulseBadge ? '' : ' hidden'}" data-pulse-badge="${escapeHtml(item.id)}">${escapeHtml(pulseBadge)}</span>
-                        <span class="hr-pulse-card-line" aria-hidden="true"></span>
-                    ` : `${escapeHtml(item.label)}${countBadge}`;
+                    if (pulseMode) return renderHrPulseNavButton(item, pulseBadge);
+                    const content = `${escapeHtml(item.label)}${countBadge}`;
                     return `
-                    <button type="button" class="${tabClass}" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}${toneAttr}>${content}</button>
+                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${content}</button>
                 `;
                 }).join('')}
             </div>
@@ -1471,8 +1452,9 @@ function todayDepartmentOptions(items = []) {
 }
 
 function summarizeTodayItems(items = []) {
-    const summary = { total_staff: items.length, present: 0, late: 0, absent: 0, on_vacation: 0, sick: 0 };
-    items.forEach(item => {
+    const rows = Array.isArray(items) ? items : [];
+    const summary = { total_staff: rows.length, present: 0, late: 0, absent: 0, on_vacation: 0, sick: 0 };
+    rows.forEach(item => {
         const rec = item.record;
         if (rec) {
             const status = rec.status;
@@ -1678,38 +1660,61 @@ function renderTodayFilterInfo(allItems = [], filteredItems = []) {
         : `${allItems.length} співробітників у пульсі`;
 }
 
-function setTodayMetricText(id, value) {
+function setTodayHeaderMetricText(id, value) {
     const element = document.getElementById(id);
-    if (element) element.textContent = value;
+    if (element) element.textContent = value === null || value === undefined || value === '' ? '-' : String(value);
+}
+
+function formatTodayHeaderDate(date = new Date()) {
+    const dayName = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота'][date.getDay()];
+    return `${dayName}, ${date.getDate()} ${MONTHS_UK[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function updateTodayHeaderDate(date = new Date()) {
+    setTodayHeaderMetricText('todayDate', formatTodayHeaderDate(date));
+}
+
+function todayMetricNumber(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? number : 0;
 }
 
 function formatTodayRiskCount(count) {
-    const value = Number(count || 0);
+    const value = todayMetricNumber(count);
     if (value === 1) return '1 ризик';
     if (value >= 2 && value <= 4) return `${value} ризики`;
     return `${value} ризиків`;
 }
 
-function updateTodayHeroMetrics(summary = {}) {
-    const total = Number(summary.total_staff || 0);
-    const present = Number(summary.present || 0);
-    const late = Number(summary.late || 0);
-    const absent = Number(summary.absent || 0);
+function todayHeaderMetricsFromSummary(summary = {}) {
+    const total = todayMetricNumber(summary.total_staff);
+    const present = todayMetricNumber(summary.present);
+    const late = todayMetricNumber(summary.late);
+    const absent = todayMetricNumber(summary.absent);
     const risks = Math.max(0, late + absent);
     const readiness = total > 0 ? Math.max(0, Math.min(100, Math.round(((total - risks) / total) * 100))) : 0;
 
-    setTodayMetricText('todayOnShiftMetric', String(present));
-    setTodayMetricText('todayOnShiftMeta', total > 0 ? `${present} з ${total}` : 'немає активних');
-    setTodayMetricText('todayLateMetric', String(late));
-    setTodayMetricText('todayLateMeta', late > 0 ? `${late} потребують уваги` : 'без запізнень');
-    setTodayMetricText('todayReadinessMetric', `${readiness}%`);
-    setTodayMetricText('todayReadinessMeta', formatTodayRiskCount(risks));
+    return { total, present, late, risks, readiness };
+}
+
+function updateTodayHeaderMetrics(summary = {}) {
+    // Today header chips use the current attendance summary: on-shift, late, and risk-based readiness.
+    const metrics = todayHeaderMetricsFromSummary(summary);
+
+    setTodayHeaderMetricText('todayOnShiftMetric', metrics.present);
+    setTodayHeaderMetricText('todayOnShiftMeta', metrics.total > 0 ? `${metrics.present} з ${metrics.total}` : 'немає активних');
+    setTodayHeaderMetricText('todayLateMetric', metrics.late);
+    setTodayHeaderMetricText('todayLateMeta', metrics.late > 0 ? `${metrics.late} потребують уваги` : 'без запізнень');
+    setTodayHeaderMetricText('todayReadinessMetric', `${metrics.readiness}%`);
+    setTodayHeaderMetricText('todayReadinessMeta', formatTodayRiskCount(metrics.risks));
 }
 
 async function loadToday() {
     if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const data = await hrFetch('/today');
     if (!data || !data.success) {
+        updateTodayHeaderDate();
+        updateTodayHeaderMetrics();
         setPulseCardBadge('today', null, { hidden: true });
         return;
     }
@@ -1718,9 +1723,7 @@ async function loadToday() {
 }
 
 function renderToday(data) {
-    const today = new Date();
-    const dayName = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота'][today.getDay()];
-    document.getElementById('todayDate').textContent =         `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
+    updateTodayHeaderDate();
 
     const allItems = Array.isArray(data.data) ? data.data : [];
     const pulseSummary = summarizeTodayItems(allItems);
@@ -1736,7 +1739,7 @@ function renderToday(data) {
     renderTodayHoneycombBoard(visibleItems);
 
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
-    updateTodayHeroMetrics(s);
+    updateTodayHeaderMetrics(s);
     document.getElementById('todaySummary').innerHTML = `
         <div class="hr-summary-card green"><div class="value">${s.present}</div><div class="label">На роботі</div></div>
         <div class="hr-summary-card yellow"><div class="value">${s.late}</div><div class="label">Запізнились</div></div>
@@ -6824,37 +6827,92 @@ async function setPoolStatus(staffId, status) {
 // TAB 4: REPORTS
 // ==========================================
 
-function setReportHeroChipText(id, value) {
+function setReportHeaderMetricText(id, value) {
     const element = document.getElementById(id);
-    if (element) element.textContent = value;
+    if (element) element.textContent = value === null || value === undefined || value === '' ? '-' : String(value);
+}
+
+function reportMetricNumber(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? number : 0;
 }
 
 function formatReportPeopleCount(count) {
-    const value = Number(count || 0);
+    const value = reportMetricNumber(count);
     if (value === 1) return '1 людина';
     if (value >= 2 && value <= 4) return `${value} людини`;
     return `${value} людей`;
 }
 
 function formatReportRiskCount(count) {
-    const value = Number(count || 0);
+    const value = reportMetricNumber(count);
     if (value === 1) return '1 ризик';
     if (value >= 2 && value <= 4) return `${value} ризики`;
     return `${value} ризиків`;
 }
 
-function updateReportHeroChips(metrics = {}) {
-    const staffCount = Number(metrics.staffCount || 0);
-    const taskDoneRate = Number(metrics.taskDoneRate || 0);
-    const totalLate = Number(metrics.totalLate || 0);
-    const totalAbsent = Number(metrics.totalAbsent || 0);
-    const totalTasksOverdue = Number(metrics.totalTasksOverdue || 0);
-    const risks = Math.max(0, totalLate + totalAbsent + totalTasksOverdue);
+function reportRiskSummaryFromMetrics(metrics = {}) {
+    const late = reportMetricNumber(metrics.totalLate);
+    const absent = reportMetricNumber(metrics.totalAbsent);
+    const overdueTasks = reportMetricNumber(metrics.totalTasksOverdue);
+    return {
+        late,
+        absent,
+        overdueTasks,
+        total: Math.max(0, late + absent + overdueTasks)
+    };
+}
 
-    setReportHeroChipText('reportHeroCsv', 'Готовий');
-    setReportHeroChipText('reportHeroKpi', `${Math.max(0, Math.min(100, taskDoneRate))}%`);
-    setReportHeroChipText('reportHeroRisks', formatReportRiskCount(risks));
-    setReportHeroChipText('reportHeroSummary', formatReportPeopleCount(staffCount));
+function reportHeaderMetricsFromRows(rows = []) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    let totalPresent = 0;
+    let totalLate = 0;
+    let totalAbsent = 0;
+    let totalOvertime = 0;
+    let totalScheduled = 0;
+    let totalTasksAssigned = 0;
+    let totalTasksDone = 0;
+    let totalTasksOverdue = 0;
+
+    for (const row of safeRows) {
+        totalPresent += reportMetricNumber(row.days_worked);
+        totalLate += reportMetricNumber(row.late_count);
+        totalAbsent += reportMetricNumber(row.days_absent);
+        totalOvertime += reportMetricNumber(row.total_overtime_hours);
+        totalScheduled += reportMetricNumber(row.days_scheduled);
+        totalTasksAssigned += reportMetricNumber(row.task_kpi?.tasks_assigned);
+        totalTasksDone += reportMetricNumber(row.task_kpi?.tasks_done);
+        totalTasksOverdue += reportMetricNumber(row.task_kpi?.tasks_overdue);
+    }
+
+    const attendanceRate = totalScheduled > 0 ? Math.round(totalPresent / totalScheduled * 100) : 0;
+    const taskDoneRate = totalTasksAssigned > 0 ? Math.round(totalTasksDone / totalTasksAssigned * 100) : 0;
+
+    return {
+        staffCount: safeRows.length,
+        totalPresent,
+        totalLate,
+        totalAbsent,
+        totalOvertime,
+        totalScheduled,
+        totalTasksAssigned,
+        totalTasksDone,
+        totalTasksOverdue,
+        attendanceRate,
+        taskDoneRate
+    };
+}
+
+function updateReportHeaderMetrics(metrics = {}) {
+    // Reports header chips mirror the monthly rows rendered below: CSV availability, KPI, risks, and people count.
+    const staffCount = reportMetricNumber(metrics.staffCount);
+    const taskDoneRate = reportMetricNumber(metrics.taskDoneRate);
+    const risks = reportRiskSummaryFromMetrics(metrics);
+
+    setReportHeaderMetricText('reportHeroCsv', 'Готовий');
+    setReportHeaderMetricText('reportHeroKpi', `${Math.max(0, Math.min(100, taskDoneRate))}%`);
+    setReportHeaderMetricText('reportHeroRisks', formatReportRiskCount(risks.total));
+    setReportHeaderMetricText('reportHeroSummary', formatReportPeopleCount(staffCount));
 }
 
 async function loadReports() {
@@ -6879,7 +6937,7 @@ async function loadReports() {
     const month = sel.value;
     const data = await hrFetch(`/report/monthly?month=${month}`);
     if (!data || !data.success) {
-        updateReportHeroChips();
+        updateReportHeaderMetrics();
         await loadRoleAssignmentsReport();
         return;
     }
@@ -6895,27 +6953,18 @@ function renderReports(data) {
     });
     // Summary
     const rows = Array.isArray(data.data) ? data.data : [];
-    let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalOvertime = 0;
-    let totalTasksAssigned = 0, totalTasksDone = 0, totalTasksOverdue = 0;
-    for (const r of rows) {
-        totalPresent += r.days_worked;
-        totalLate += r.late_count;
-        totalAbsent += r.days_absent;
-        totalOvertime += r.total_overtime_hours;
-        totalTasksAssigned += r.task_kpi?.tasks_assigned || 0;
-        totalTasksDone += r.task_kpi?.tasks_done || 0;
-        totalTasksOverdue += r.task_kpi?.tasks_overdue || 0;
-    }
-    const totalScheduled = rows.reduce((a, r) => a + r.days_scheduled, 0);
-    const attendanceRate = totalScheduled > 0 ? Math.round(totalPresent / totalScheduled * 100) : 0;
-    const taskDoneRate = totalTasksAssigned > 0 ? Math.round(totalTasksDone / totalTasksAssigned * 100) : 0;
-    updateReportHeroChips({
-        staffCount: rows.length,
-        taskDoneRate,
+    const metrics = reportHeaderMetricsFromRows(rows);
+    const {
         totalLate,
         totalAbsent,
-        totalTasksOverdue
-    });
+        totalOvertime,
+        totalTasksAssigned,
+        totalTasksDone,
+        totalTasksOverdue,
+        attendanceRate,
+        taskDoneRate
+    } = metrics;
+    updateReportHeaderMetrics(metrics);
 
     document.getElementById('reportSummary').innerHTML = `
         <div class="hr-report-stat hr-report-stat--presence"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>

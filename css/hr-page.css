@@ -57,22 +57,20 @@
     flex-direction: row;
 }
 .hr-nav--pulse {
-    --hr-pulse-violet: 168, 85, 247;
     position: relative;
     top: auto;
     z-index: 2;
     flex-direction: row;
     align-items: center;
-    gap: 8px;
+    gap: var(--pulse-switcher-shell-gap);
     width: fit-content;
     max-width: 100%;
     margin-bottom: 12px;
-    padding: 6px;
-    border: 1px solid rgba(148,163,184,0.12);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(18,24,42,0.86), rgba(9,14,26,0.90));
-    box-shadow: 0 8px 22px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.045);
+    padding: var(--pulse-switcher-shell-padding);
+    border: 1px solid var(--pulse-switcher-shell-border);
+    border-radius: var(--pulse-switcher-shell-radius);
+    background: var(--pulse-switcher-shell-bg);
+    box-shadow: var(--pulse-switcher-shell-shadow);
     overflow: hidden;
     contain: layout paint;
 }
@@ -150,26 +148,25 @@
     box-shadow: 0 10px 22px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card {
-    --hr-pulse-accent: 148, 163, 184;
     position: relative;
     display: grid;
-    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-columns: var(--pulse-switcher-card-grid);
     align-items: center;
-    gap: 9px;
+    gap: var(--pulse-switcher-card-gap);
     box-sizing: border-box;
-    flex: 0 0 clamp(168px, 14vw, 196px);
-    width: clamp(168px, 14vw, 196px);
-    min-height: 54px;
-    max-width: 196px;
-    padding: 9px 11px 12px;
-    border: 1px solid rgba(148,163,184,0.14);
+    flex: 0 0 var(--pulse-switcher-card-width);
+    width: var(--pulse-switcher-card-width);
+    min-height: var(--pulse-switcher-card-min-height);
+    max-width: var(--pulse-switcher-card-max);
+    padding: var(--pulse-switcher-card-padding);
+    border: 1px solid var(--pulse-switcher-card-border);
     overflow: hidden;
     isolation: isolate;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(17,24,39,0.86), rgba(21,27,48,0.84));
-    color: #F8FAFC;
+    border-radius: var(--pulse-switcher-card-radius);
+    background: var(--pulse-switcher-card-bg);
+    color: var(--pulse-switcher-card-color);
     text-align: left;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+    box-shadow: var(--pulse-switcher-card-shadow);
     transform: translateZ(0);
     transition:
         transform var(--speed-fast) var(--ease-smooth),
@@ -181,26 +178,17 @@
     contain: layout paint;
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.ui-tab-card {
-    grid-template-columns: 30px minmax(0, 1fr) auto;
-    min-height: 54px;
-    max-width: 196px;
-    border-radius: 12px;
-}
-.hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="people"] {
-    --hr-pulse-accent: 168, 85, 247;
-}
-.hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="schedule"] {
-    --hr-pulse-accent: 45, 212, 191;
-}
-.hr-nav--pulse .hr-tab.hr-pulse-card[data-pulse-tone="reports"] {
-    --hr-pulse-accent: 251, 191, 36;
+    grid-template-columns: var(--pulse-switcher-card-grid);
+    min-height: var(--pulse-switcher-card-min-height);
+    max-width: var(--pulse-switcher-card-max);
+    border-radius: var(--pulse-switcher-card-radius);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card::before {
     content: "";
     position: absolute;
     inset: 0;
     z-index: 0;
-    background: linear-gradient(90deg, rgba(var(--hr-pulse-accent),0.08), transparent 48%);
+    background: var(--pulse-switcher-before-bg);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--speed-fast) var(--ease-smooth);
@@ -210,13 +198,13 @@
     z-index: 1;
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
-    border-radius: 10px;
-    background: rgba(var(--hr-pulse-accent),0.12);
-    color: rgb(var(--hr-pulse-accent));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    width: var(--pulse-switcher-icon-size);
+    height: var(--pulse-switcher-icon-size);
+    min-width: var(--pulse-switcher-icon-size);
+    border-radius: var(--pulse-switcher-icon-radius);
+    background: var(--pulse-switcher-icon-bg);
+    color: var(--pulse-switcher-icon-color);
+    box-shadow: var(--pulse-switcher-icon-shadow);
     transition:
         transform var(--speed-fast) var(--ease-smooth),
         background var(--speed-fast) var(--ease-smooth),
@@ -224,8 +212,8 @@
 }
 .hr-pulse-card-icon svg {
     display: block;
-    width: 17px;
-    height: 17px;
+    width: var(--pulse-switcher-icon-svg-size);
+    height: var(--pulse-switcher-icon-svg-size);
 }
 .hr-pulse-card-content {
     position: relative;
@@ -241,8 +229,8 @@
 }
 .hr-pulse-card-title,
 .hr-pulse-card-label {
-    color: #F8FAFC;
-    font-size: 13px;
+    color: var(--pulse-switcher-title-color);
+    font-size: var(--pulse-switcher-title-size);
     font-weight: 900;
     line-height: 1.12;
     overflow: hidden;
@@ -256,8 +244,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #8F9AB3;
-    font-size: 10px;
+    color: var(--pulse-switcher-subtitle-color);
+    font-size: var(--pulse-switcher-subtitle-size);
     font-weight: 800;
     line-height: 1.2;
 }
@@ -271,8 +259,8 @@
     min-height: 22px;
     padding: 0 7px;
     border-radius: 999px;
-    background: rgba(148,163,184,0.11);
-    color: #CBD5E1;
+    background: var(--pulse-switcher-badge-bg);
+    color: var(--pulse-switcher-badge-color);
     font-size: 11px;
     font-weight: 900;
     line-height: 1;
@@ -289,7 +277,7 @@
     z-index: 1;
     height: 2px;
     border-radius: 999px;
-    background: linear-gradient(90deg, transparent, rgba(var(--hr-pulse-violet),0.94), transparent);
+    background: var(--pulse-switcher-line-bg);
     opacity: 0.18;
     transform: scaleX(0.24);
     transform-origin: left;
@@ -300,10 +288,10 @@
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible {
     transform: translateY(-1px);
-    border-color: rgba(168,85,247,0.34);
-    background: linear-gradient(135deg, rgba(31,41,68,0.92), rgba(27,33,58,0.90));
+    border-color: var(--pulse-switcher-hover-border);
+    background: var(--pulse-switcher-hover-bg);
     color: #FFFFFF;
-    box-shadow: 0 8px 18px rgba(0,0,0,0.20), 0 0 0 1px rgba(168,85,247,0.08);
+    box-shadow: var(--pulse-switcher-hover-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover::before,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible::before {
@@ -311,7 +299,7 @@
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-accent),0.18);
+    background: rgba(var(--pulse-switcher-accent-rgb),0.18);
     transform: scale(1.03);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-line,
@@ -324,32 +312,26 @@
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible {
     outline: none;
-    box-shadow:
-        0 8px 18px rgba(0,0,0,0.20),
-        0 0 0 2px rgba(168,85,247,0.40),
-        0 0 0 5px rgba(168,85,247,0.14);
+    box-shadow: var(--pulse-switcher-focus-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active {
-    border-color: rgba(var(--hr-pulse-violet),0.56);
-    background: linear-gradient(135deg, rgba(var(--hr-pulse-violet),0.34), rgba(38,31,63,0.88));
+    border-color: var(--pulse-switcher-active-border);
+    background: var(--pulse-switcher-active-bg);
     color: #FFFFFF;
-    box-shadow:
-        0 10px 22px rgba(0,0,0,0.28),
-        0 0 0 1px rgba(var(--hr-pulse-violet),0.14),
-        inset 0 1px 0 rgba(255,255,255,0.10);
+    box-shadow: var(--pulse-switcher-active-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-violet),0.24);
-    color: #F5F3FF;
+    background: var(--pulse-switcher-active-icon-bg);
+    color: var(--pulse-switcher-active-icon-color);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-line {
     opacity: 1;
     transform: scaleX(1);
-    box-shadow: 0 0 12px rgba(var(--hr-pulse-violet),0.42);
+    box-shadow: var(--pulse-switcher-active-line-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge {
-    background: rgba(var(--hr-pulse-violet),0.24);
-    color: #FFFFFF;
+    background: var(--pulse-switcher-active-icon-bg);
+    color: var(--pulse-switcher-active-badge-color);
 }
 .hr-tab {
     flex: 0 1 150px;
@@ -439,16 +421,16 @@ body.dark-mode .hr-nav--pulse .hr-tab.active {
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card {
-    border-color: rgba(148,163,184,0.14);
-    background: linear-gradient(135deg, rgba(17,24,39,0.86), rgba(21,27,48,0.84));
-    color: #F8FAFC;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+    border-color: var(--pulse-switcher-card-border);
+    background: var(--pulse-switcher-card-bg);
+    color: var(--pulse-switcher-card-color);
+    box-shadow: var(--pulse-switcher-card-shadow);
 }
 body.dark-mode .hr-pulse-card-icon,
 [data-theme="dark"] .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-accent),0.12);
-    color: rgb(var(--hr-pulse-accent));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    background: var(--pulse-switcher-icon-bg);
+    color: var(--pulse-switcher-icon-color);
+    box-shadow: var(--pulse-switcher-icon-shadow);
 }
 body.dark-mode .hr-pulse-card-title,
 body.dark-mode .hr-pulse-card-label,
@@ -462,8 +444,8 @@ body.dark-mode .hr-pulse-card-subtitle,
 }
 body.dark-mode .hr-pulse-card-badge,
 [data-theme="dark"] .hr-pulse-card-badge {
-    background: rgba(148,163,184,0.11);
-    color: #CBD5E1;
+    background: var(--pulse-switcher-badge-bg);
+    color: var(--pulse-switcher-badge-color);
 }
 body.dark-mode .hr-pulse-card-line,
 [data-theme="dark"] .hr-pulse-card-line {
@@ -473,33 +455,30 @@ body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:hover,
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:hover,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible {
-    border-color: rgba(168,85,247,0.34);
-    background: linear-gradient(135deg, rgba(31,41,68,0.92), rgba(27,33,58,0.90));
+    border-color: var(--pulse-switcher-hover-border);
+    background: var(--pulse-switcher-hover-bg);
     color: #FFFFFF;
-    box-shadow: 0 8px 18px rgba(0,0,0,0.20), 0 0 0 1px rgba(168,85,247,0.08);
+    box-shadow: var(--pulse-switcher-hover-shadow);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:hover .hr-pulse-card-icon,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible .hr-pulse-card-icon {
-    background: rgba(var(--hr-pulse-accent),0.18);
+    background: rgba(var(--pulse-switcher-accent-rgb),0.18);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active {
-    border-color: rgba(var(--hr-pulse-violet),0.56);
-    background: linear-gradient(135deg, rgba(var(--hr-pulse-violet),0.34), rgba(38,31,63,0.88));
+    border-color: var(--pulse-switcher-active-border);
+    background: var(--pulse-switcher-active-bg);
     color: #FFFFFF;
-    box-shadow:
-        0 10px 22px rgba(0,0,0,0.28),
-        0 0 0 1px rgba(var(--hr-pulse-violet),0.14),
-        inset 0 1px 0 rgba(255,255,255,0.10);
+    box-shadow: var(--pulse-switcher-active-shadow);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge,
 [data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge {
-    background: rgba(var(--hr-pulse-violet),0.24);
-    color: #FFFFFF;
+    background: var(--pulse-switcher-active-icon-bg);
+    color: var(--pulse-switcher-active-badge-color);
 }
 body.dark-mode .hr-today-date {
     border-color: rgba(34,211,238,0.14);
@@ -4799,6 +4778,17 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         padding: 6px;
     }
     .hr-nav--pulse {
+        --pulse-switcher-card-width: 168px;
+        --pulse-switcher-card-grid: 30px minmax(0, 1fr) auto;
+        --pulse-switcher-card-gap: 8px;
+        --pulse-switcher-card-min-height: 60px;
+        --pulse-switcher-card-padding: 10px 10px 12px;
+        --pulse-switcher-card-radius: 10px;
+        --pulse-switcher-icon-size: 30px;
+        --pulse-switcher-icon-svg-size: 16px;
+        --pulse-switcher-icon-radius: 9px;
+        --pulse-switcher-title-size: 12px;
+        --pulse-switcher-subtitle-size: 10px;
         top: auto;
         align-items: stretch;
         width: 100%;
@@ -4842,36 +4832,18 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         font-size: 12px;
     }
     .hr-nav--pulse .hr-tab.hr-pulse-card {
-        flex-basis: 168px;
-        width: 168px;
-        grid-template-columns: 30px minmax(0, 1fr) auto;
-        gap: 8px;
-        min-height: 60px;
-        padding: 10px 10px 12px;
-        border-radius: 10px;
-    }
-    .hr-pulse-card-icon {
-        width: 30px;
-        height: 30px;
-        min-width: 30px;
-        border-radius: 9px;
-    }
-    .hr-pulse-card-icon svg {
-        width: 16px;
-        height: 16px;
+        flex-basis: var(--pulse-switcher-card-width);
     }
     .hr-pulse-card-content {
         gap: 1px;
     }
     .hr-pulse-card-title,
     .hr-pulse-card-label {
-        font-size: 12px;
         line-height: 1.08;
         white-space: normal;
         overflow-wrap: anywhere;
     }
     .hr-pulse-card-subtitle {
-        font-size: 10px;
         line-height: 1.12;
         white-space: normal;
         overflow-wrap: anywhere;
@@ -5134,6 +5106,17 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 
 @media (max-width: 480px) {
     .hr-nav--pulse {
+        --pulse-switcher-card-width: 148px;
+        --pulse-switcher-card-grid: 26px minmax(0, 1fr);
+        --pulse-switcher-card-gap: 6px;
+        --pulse-switcher-card-min-height: 56px;
+        --pulse-switcher-card-padding: 8px 7px 11px;
+        --pulse-switcher-card-radius: 10px;
+        --pulse-switcher-icon-size: 26px;
+        --pulse-switcher-icon-svg-size: 15px;
+        --pulse-switcher-icon-radius: 8px;
+        --pulse-switcher-title-size: 11px;
+        --pulse-switcher-subtitle-size: 9px;
         margin-left: -2px;
         margin-right: -2px;
     }
@@ -5143,23 +5126,7 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     }
 
     .hr-nav--pulse .hr-tab.hr-pulse-card {
-        flex-basis: 148px;
-        width: 148px;
-        grid-template-columns: 26px minmax(0, 1fr);
-        gap: 6px;
-        min-height: 56px;
-        padding: 8px 7px 11px;
-        border-radius: 10px;
-    }
-    .hr-pulse-card-icon {
-        width: 26px;
-        height: 26px;
-        min-width: 26px;
-        border-radius: 8px;
-    }
-    .hr-pulse-card-icon svg {
-        width: 15px;
-        height: 15px;
+        flex-basis: var(--pulse-switcher-card-width);
     }
 
     .hr-pulse-card-content {
@@ -5169,12 +5136,10 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 
     .hr-pulse-card-title,
     .hr-pulse-card-label {
-        font-size: 11px;
         line-height: 1.08;
     }
 
     .hr-pulse-card-subtitle {
-        font-size: 9px;
         line-height: 1.1;
     }
 

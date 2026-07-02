@@ -98,6 +98,7 @@ Notes:
 - Active release train follows `package.json`. At this update the current package version is `0.77.43`, so mini updates increment the `0.77.x` patch only unless the user explicitly requests a new version-policy transition.
 - Do not return active release markers to old `43.x.x`, `0.44.x`, `0.45.x`, `0.46.x`, `0.47.x`, `0.48.x`, `0.49.x`, or older `0.50.x`-`0.76.x` lines without an explicit version-policy task. Existing historical changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
 - `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
+- For large UI or product work, prefer reviewable release hygiene: commit the product/UI change first, then make a separate version/cache-sync commit (`package.json`, `package-lock.json`, `index.html`, `CHANGELOG.md`, `sw.js`, and generated cache tags) only when preparing the release. Do not mix generated cache-tag churn into the main UI diff unless the user explicitly asks for a single release commit.
 - For user-visible or deployable product changes:
   - update `package.json` version intentionally;
   - run `node scripts/version-sync.js` to check current state;

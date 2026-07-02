@@ -60,6 +60,7 @@ const HR_HTML = [
     fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8')
 ].join('\n');
 const HR_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+const HR_PULSE_SWITCHER_JS = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');
 const HR_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'hr.js'), 'utf8');
 const HR_PAYROLL_PERIOD_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollPeriod.js'), 'utf8');
 const HR_PAYROLL_SCHEMES_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrPayrollSchemes.js'), 'utf8');
@@ -359,7 +360,9 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         'const HR_NAV_GROUPS',
         "id: 'pulse'",
         "label: 'Пульс компанії'",
-        "{ id: 'schedule', label: 'Графік', href: '/staff' }",
+        'function hrPulseNavItems',
+        'items: hrPulseNavItems()',
+        'function renderHrPulseNavButton',
         "{ id: 'workers', label: 'Робітники', tab: 'team', bucket: 'workers', visible: () => canSeeHrTeamBucket('workers') }",
         "{ id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: () => canSeeHrTeamBucket('interns') }",
         "{ id: 'blacklist', label: 'Чорний список', tab: 'team', bucket: 'blacklist', visible: () => canSeeHrTeamBucket('blacklist') }",
@@ -395,28 +398,46 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
 
 test('HR Pulse command cards replace legacy nav PNG switcher without weakening routing', () => {
     for (const token of [
-        'function withPulseCommand',
-        'function renderHrPulseIcon',
+        'function hrPulseSwitcher',
+        'function hrPulseNavItems',
+        'function renderHrPulseNavButton',
+        'switcher.renderTab',
+        "className: 'hr-tab hr-pulse-card ui-tab-card'",
+        "classPrefix: 'hr-pulse-card'",
+        "'data-nav-id': pulseItem.id",
+        "'data-tab': pulseItem.tab || pulseItem.id",
+        "'data-href': pulseItem.href || ''",
+        'applyPulseCardBadges',
+        'setPulseCardBadge'
+    ]) {
+        assert.ok(HR_JS.includes(token), `missing HR Pulse command-card token ${token}`);
+    }
+
+    for (const token of [
+        'const PULSE_ITEMS',
+        "id: 'today'",
+        "id: 'schedule'",
+        "id: 'reports'",
         "icon: 'calendar'",
         "icon: 'clock'",
         "icon: 'report'",
         "tone: 'people'",
         "tone: 'schedule'",
         "tone: 'reports'",
-        "{ id: 'schedule', label: 'Графік', href: '/staff' }",
-        'span class="hr-pulse-card-icon"',
-        'span class="hr-pulse-card-content"',
-        'span class="hr-pulse-card-title"',
-        'span class="hr-pulse-card-subtitle"',
-        'span class="hr-pulse-card-badge',
+        "href: '/staff'",
+        "hrHref: '/staff'",
+        'function renderTab',
+        'function renderStaffNav',
+        'span class="${prefix}-icon"',
+        'span class="${prefix}-content"',
+        'span class="${prefix}-title"',
+        'span class="${prefix}-subtitle"',
+        'span class="${prefix}-badge',
         'data-pulse-badge=',
-        'span class="hr-pulse-card-line"',
-        'data-href=',
-        'data-pulse-tone=',
-        'applyPulseCardBadges',
-        'setPulseCardBadge'
+        'span class="${prefix}-line"',
+        'data-pulse-tone='
     ]) {
-        assert.ok(HR_JS.includes(token), `missing HR Pulse command-card token ${token}`);
+        assert.ok(HR_PULSE_SWITCHER_JS.includes(token), `missing shared HR Pulse switcher token ${token}`);
     }
 
     for (const token of [
@@ -438,8 +459,8 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         'width: auto;',
         'width: fit-content;',
         'content: none;',
-        'flex: 0 0 clamp(168px, 14vw, 196px);',
-        'max-width: 196px;',
+        'flex: 0 0 var(--pulse-switcher-card-width);',
+        'max-width: var(--pulse-switcher-card-max);',
         '@media (max-width: 1120px)',
         'overflow-x: auto;',
         'scrollbar-width: none;'

@@ -2669,8 +2669,8 @@ function bookingMenuImageManifestUrl(product = {}) {
     return bookingMenuSafeImageUrl(`${basePath}${String(manifestValue).replace(/^\/+/, '')}`);
 }
 
-function bookingMenuProductImageUrl(product = {}) {
-    const explicitUrl = bookingMenuSafeImageUrl(
+function bookingMenuProductExplicitImageUrl(product = {}) {
+    return bookingMenuSafeImageUrl(
         product.imageUrl
         || product.image_url
         || product.photoUrl
@@ -2683,7 +2683,15 @@ function bookingMenuProductImageUrl(product = {}) {
         || product.icon_url
         || ''
     );
-    return explicitUrl || bookingMenuImageManifestUrl(product);
+}
+
+function bookingMenuProductImageUrl(product = {}) {
+    return bookingMenuProductExplicitImageUrl(product) || bookingMenuImageManifestUrl(product);
+}
+
+function bookingMenuProductImageFallbackUrl(product = {}, currentUrl = '') {
+    const manifestUrl = bookingMenuImageManifestUrl(product);
+    return manifestUrl && manifestUrl !== currentUrl ? manifestUrl : '';
 }
 
 function bookingMenuProductEmoji(product = {}) {
@@ -2713,6 +2721,7 @@ const BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '/images/kitchen-menu/fallback-burge
 function bookingMenuCatalogVisualHtml(product = {}, title = '', modifier = '') {
     const productImageUrl = bookingMenuProductImageUrl(product);
     const imageUrl = productImageUrl || BOOKING_MENU_CATALOG_FALLBACK_IMAGE;
+    const manifestFallbackUrl = productImageUrl ? bookingMenuProductImageFallbackUrl(product, productImageUrl) : '';
     const usesFallback = !productImageUrl;
     const emoji = bookingMenuProductEmoji(product);
     const classes = [
@@ -2724,7 +2733,7 @@ function bookingMenuCatalogVisualHtml(product = {}, title = '', modifier = '') {
     return `
         <div class="${classes}" title="${escapeHtml(title || bookingMenuProductTitle(product) || 'Позиція меню')}">
             ${imageUrl
-                ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="" data-menu-catalog-fallback="${usesFallback ? '1' : '0'}" onerror="window.bookingMenuCatalogHandleImageError && window.bookingMenuCatalogHandleImageError(this)">`
+                ? `<img loading="lazy" decoding="async" src="${escapeHtml(imageUrl)}" alt="" data-menu-catalog-fallback="${usesFallback ? '1' : '0'}" data-menu-catalog-next-src="${escapeHtml(manifestFallbackUrl)}" onerror="window.bookingMenuCatalogHandleImageError && window.bookingMenuCatalogHandleImageError(this)">`
                 : ''}
             <span aria-hidden="true">${escapeHtml(emoji)}</span>
         </div>
@@ -2734,6 +2743,13 @@ function bookingMenuCatalogVisualHtml(product = {}, title = '', modifier = '') {
 function bookingMenuCatalogHandleImageError(img) {
     const thumb = img?.closest?.('.booking-menu-catalog-thumb');
     if (!img || !thumb) return;
+    const nextSrc = bookingMenuSafeImageUrl(img.dataset.menuCatalogNextSrc || '');
+    if (nextSrc && img.getAttribute('src') !== nextSrc) {
+        img.dataset.menuCatalogNextSrc = '';
+        img.src = nextSrc;
+        thumb.classList.add('uses-manifest-fallback-image');
+        return;
+    }
     if (img.dataset.menuCatalogFallback !== '1') {
         img.dataset.menuCatalogFallback = '1';
         img.src = BOOKING_MENU_CATALOG_FALLBACK_IMAGE;

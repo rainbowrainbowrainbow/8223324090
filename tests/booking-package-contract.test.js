@@ -831,7 +831,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="allergens"/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="pairings"/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/uploads\/catalog-images\/items\/menu-juice-generated\.png/);
-    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/juice\.webp/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-next-src="\/images\/kitchen-menu\/juice\.webp"/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/uploads\/catalog-images\/items\/cake-generated\.png/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
     ctx.setBookingMenuCatalogOpen(true);
@@ -842,6 +842,10 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
 
     const generatedImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img[src="/uploads/catalog-images/items/menu-juice-generated.png"]');
     assert.ok(generatedImg, 'product iconUrl is rendered before manifest fallback');
+    ctx.bookingMenuCatalogHandleImageError(generatedImg);
+    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-manifest-fallback-image'), true);
+    assert.equal(generatedImg.getAttribute('src'), '/images/kitchen-menu/juice.webp');
+    assert.equal(generatedImg.dataset.menuCatalogFallback, '0');
     ctx.bookingMenuCatalogHandleImageError(generatedImg);
     assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-fallback-image'), true);
     assert.equal(generatedImg.getAttribute('src'), '/images/kitchen-menu/fallback-burger-wide.jpg');
@@ -968,6 +972,7 @@ test('booking menu catalog keeps active product images ahead of manifest and gen
             explicit_icon_url: 'manifest-icon-url.webp',
             explicit_icon_snake: 'manifest-icon-snake.webp',
             manifest_only: 'manifest-only.webp',
+            menu_2026_031_item: 'products/menu-031.jpg',
             uploads_active: 'manifest-uploads.webp'
         }),
         byCode: Object.freeze({
@@ -992,12 +997,23 @@ test('booking menu catalog keeps active product images ahead of manifest and gen
         icon_url: '/uploads/catalog-images/items/icon-snake-applied.png'
     }), '/uploads/catalog-images/items/icon-snake-applied.png');
 
-    assert.equal(ctx.bookingMenuProductImageUrl({
+    const uploadedProduct = {
         id: 'uploads_active',
         code: 'MENU_UPLOADED',
         name: 'Uploaded active image',
         iconUrl: '/uploads/catalog-images/items/uploaded-active.png'
-    }), '/uploads/catalog-images/items/uploaded-active.png');
+    };
+    assert.equal(ctx.bookingMenuProductImageUrl(uploadedProduct), '/uploads/catalog-images/items/uploaded-active.png');
+    assert.equal(ctx.bookingMenuProductImageFallbackUrl(uploadedProduct, '/uploads/catalog-images/items/uploaded-active.png'), '/images/kitchen-menu/manifest-uploads.webp');
+
+    const margaritaProduct = {
+        id: 'menu_2026_031_item',
+        code: 'MENU-031',
+        name: 'Піца Маргарита',
+        iconUrl: '/uploads/catalog-images/items/missing-margarita.png'
+    };
+    assert.equal(ctx.bookingMenuProductImageUrl(margaritaProduct), '/uploads/catalog-images/items/missing-margarita.png');
+    assert.equal(ctx.bookingMenuProductImageFallbackUrl(margaritaProduct, '/uploads/catalog-images/items/missing-margarita.png'), '/images/kitchen-menu/products/menu-031.jpg');
 
     assert.equal(ctx.bookingMenuProductImageUrl({
         id: 'manifest_only',
@@ -1026,14 +1042,14 @@ test('booking menu catalog keeps active product images ahead of manifest and gen
     assert.match(fallbackHtml, /uses-fallback-image/);
     assert.match(fallbackHtml, /data-menu-catalog-fallback="1"/);
 
-    const uploadedHtml = ctx.bookingMenuCatalogVisualHtml({
-        id: 'uploads_active',
-        code: 'MENU_UPLOADED',
-        name: 'Uploaded active image',
-        iconUrl: '/uploads/catalog-images/items/uploaded-active.png'
-    }, 'Uploaded active image');
-    assert.match(uploadedHtml, /\/uploads\/catalog-images\/items\/uploaded-active\.png/);
-    assert.doesNotMatch(uploadedHtml, /manifest-uploads\.webp|manifest-by-code\.webp/);
+    const margaritaHtml = ctx.bookingMenuCatalogVisualHtml(margaritaProduct, 'Піца Маргарита');
+    assert.match(margaritaHtml, /src="\/uploads\/catalog-images\/items\/missing-margarita\.png"/);
+    assert.match(margaritaHtml, /data-menu-catalog-next-src="\/images\/kitchen-menu\/products\/menu-031\.jpg"/);
+
+    const uploadedHtml = ctx.bookingMenuCatalogVisualHtml(uploadedProduct, 'Uploaded active image');
+    assert.match(uploadedHtml, /src="\/uploads\/catalog-images\/items\/uploaded-active\.png"/);
+    assert.match(uploadedHtml, /data-menu-catalog-next-src="\/images\/kitchen-menu\/manifest-uploads\.webp"/);
+    assert.doesNotMatch(uploadedHtml, /(^|\s)src="\/images\/kitchen-menu\/manifest-uploads\.webp"/);
     assert.match(uploadedHtml, /data-menu-catalog-fallback="0"/);
 });
 

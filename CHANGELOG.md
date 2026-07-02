@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.100 - Menu Manifest Fallback Hotfix
+
+### Booking menu / Broken upload fallback / Manifest image safety / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Broken active фото більше не валить картку в generic burger** - якщо applied/upload URL не завантажився, каталог спершу пробує manifest-фото позиції.
+- **Піца Маргарита має fallback на `menu-031.jpg`** - для `MENU-031` після невдалого upload картка переходить на deploy-stable pizza image, а не на burger fallback.
+- **Generic burger лишився тільки останнім аварійним fallback** - він використовується лише якщо немає manifest-фото або manifest теж не завантажився.
+- **Додано regression guard** - `tests/booking-package-contract.test.js` перевіряє active upload, manifest fallback і конкретний кейс `Піца Маргарита`.
+- **Cache tags оновлено до `0.77.100`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані для нового frontend bundle.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - hotfix обмежений frontend fallback chain, тестом, release cache tags і changelog.
+
 ## v0.77.99 - Menu Image Mapper Hotfix
 
 ### Booking menu / Timeline product mapper / Applied image priority / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]

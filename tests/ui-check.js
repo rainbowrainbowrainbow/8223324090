@@ -150,10 +150,6 @@ checkPage('index.html', (doc, html) => {
     const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
     const timelineHeaderActionsRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions');
     const timelineHeaderLogoutRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout');
-    const timelineHeaderSettingsSeparatedRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated');
-    const timelineHeaderSettingsDividerRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before');
-    const assistantTopbarSettingsSeparatedRule = cssRuleText(assistantTopbarCss, '.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated');
-    const assistantTopbarSettingsDividerRule = cssRuleText(assistantTopbarCss, '.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before');
     const timelineConstructorExistingButtonBlock = sourceBlock(
         timelineVisibilityCode,
         "if (document.getElementById('timelineConstructorBtn'))",
@@ -166,7 +162,6 @@ checkPage('index.html', (doc, html) => {
     );
     const timelineConstructorHeaderButtonTokens = [
         'timeline-header-settings-btn',
-        'timeline-header-settings-btn--separated',
         'toolbarIconButton',
         'toolbarGhostButton'
     ];
@@ -451,6 +446,8 @@ checkPage('index.html', (doc, html) => {
         && !doc.querySelector('.timeline-header-filters #logoutBtn')
         && !!doc.querySelector('.header .timeline-header-actions #logoutBtn.timeline-header-logout[type="button"]')
         && htmlContains('js/timeline-visibility.js', "document.querySelector('.timeline-header-actions')")
+        && htmlContains('js/timeline-visibility.js', "host.querySelector('#headerThemeToggle')")
+        && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, themeAction)')
         && htmlContains('js/timeline-visibility.js', "host.querySelector('.timeline-header-logout')")
         && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, logoutAction)')
         && !htmlContains('js/timeline-visibility.js', 'actionButtons.appendChild(button)')
@@ -724,6 +721,8 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/timeline-visibility.js', 'function constructorButtonHost()')
         && htmlContains('js/timeline-visibility.js', "document.querySelector('.timeline-header-actions')")
         && htmlContains('js/timeline-visibility.js', 'function placeConstructorButton(button)')
+        && htmlContains('js/timeline-visibility.js', "host.querySelector('#headerThemeToggle')")
+        && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, themeAction)')
         && htmlContains('js/timeline-visibility.js', "host.querySelector('.timeline-header-logout')")
         && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, logoutAction)')
         && !responsiveCss.includes('body.timeline-dashboard-page .timeline-header-filters .timeline-header-logout')
@@ -795,8 +794,11 @@ checkPage('index.html', (doc, html) => {
         && timelineBrowserSmokeCode.includes('openMetrics.bodyOverflowX <= 2')
         && timelineBrowserSmokeCode.includes('metrics.settingsAllowed')
         && timelineBrowserSmokeCode.includes('metrics.settingsVisible')
-        && timelineBrowserSmokeCode.includes('metrics.settingsRight <= metrics.logoutLeft')
-        && timelineBrowserSmokeCode.includes('metrics.logoutLeft - metrics.settingsRight <= 18')
+        && timelineBrowserSmokeCode.includes("metrics.visibleTimelineControlIds, 'timelineConstructorBtn|headerThemeToggle|logoutBtn'")
+        && timelineBrowserSmokeCode.includes('metrics.settingsRight <= metrics.themeLeft')
+        && timelineBrowserSmokeCode.includes('metrics.themeRight <= metrics.logoutLeft')
+        && timelineBrowserSmokeCode.includes('metrics.settingsDividerVisible, false')
+        && timelineBrowserSmokeCode.includes('metrics.actionsBorderLeftWidth >= 1')
         && timelineBrowserSmokeCode.includes('metrics.hiddenControls')
         && timelineBrowserSmokeCode.includes('metrics.bodyOverflowX <= 2')
         && timelineBrowserSmokeCode.includes("localStorage.setItem('pzp_compact_mode', 'true')")
@@ -972,17 +974,13 @@ checkPage('index.html', (doc, html) => {
         && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions :where(.timeline-header-settings-btn, .timeline-header-logout, .header-theme-toggle)')
         && !assistantTopbarCss.includes('#historyBtn')
         && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #currentUser {\n    order: 5;')
-        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {\n    order: 10;')
-        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {\n    order: 20;')
+        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {\n    order: 10;')
+        && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {\n    order: 20;')
         && !assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #historyBtn')
         && !assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn')
         && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {\n    order: 50;')
         && assistantTopbarCss.includes('order: 50;')
-        && assistantTopbarSettingsSeparatedRule.includes('position: relative')
-        && assistantTopbarSettingsSeparatedRule.includes('margin-left: 8px')
-        && assistantTopbarSettingsDividerRule.includes('content: ""')
-        && assistantTopbarSettingsDividerRule.includes('background: var(--timeline-topbar-border)')
-        && assistantTopbarSettingsDividerRule.includes('pointer-events: none')
+        && !assistantTopbarCss.includes('timeline-header-settings-btn--separated')
         && !assistantTopbarCss.includes('timelineViewPanelToggle')
         && !assistantTopbarCss.includes('timeline-header-view-btn')
         && !assistantTopbarCss.includes('timeline-view-panel')
@@ -1056,7 +1054,10 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('js/timeline-visibility.js', "button.setAttribute('aria-label', 'Налаштування')")
         && textHasAll(timelineConstructorExistingButtonBlock, timelineConstructorHeaderButtonTokens)
         && textHasAll(timelineConstructorNewButtonBlock, ['timeline-constructor-btn', 'hidden', ...timelineConstructorHeaderButtonTokens])
+        && !timelineVisibilityCode.includes('timeline-header-settings-btn--separated')
         && htmlContains('js/timeline-visibility.js', "document.querySelector('.timeline-header-actions')")
+        && htmlContains('js/timeline-visibility.js', "host.querySelector('#headerThemeToggle')")
+        && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, themeAction)')
         && htmlContains('js/timeline-visibility.js', "host.querySelector('.timeline-header-logout')")
         && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, logoutAction)')
         && !htmlContains('js/timeline-visibility.js', 'actionButtons.appendChild(button)')
@@ -1064,11 +1065,7 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn:focus-visible')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn.hidden')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn')
-        && timelineHeaderSettingsSeparatedRule.includes('position: relative')
-        && timelineHeaderSettingsSeparatedRule.includes('margin-left: 8px')
-        && timelineHeaderSettingsDividerRule.includes('content: ""')
-        && timelineHeaderSettingsDividerRule.includes('background: var(--timeline-topbar-border)')
-        && timelineHeaderSettingsDividerRule.includes('pointer-events: none')
+        && !responsiveCss.includes('timeline-header-settings-btn--separated')
         && htmlContains('css/responsive.css', 'width: 40px !important;')
         && htmlContains('css/responsive.css', 'border-radius: 14px !important;')
         && htmlContains('css/responsive.css', 'clip-path: inset(50%)')
@@ -1095,7 +1092,8 @@ checkPage('index.html', (doc, html) => {
         && !htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions > #historyBtn')
         && !htmlContains('css/assistant-rail-topbar.css', '.timeline-dashboard-page .header .timeline-header-actions > #historyBtn')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle')
-        && htmlContains('css/responsive.css', 'order: 10;')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {\n    order: 10;')
+        && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {\n    order: 20;')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn')
         && htmlContains('css/responsive.css', 'order: 50;')
         && htmlContains('css/responsive.css', '.schedule-command-zone--actions')

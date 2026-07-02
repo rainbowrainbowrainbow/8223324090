@@ -1574,11 +1574,11 @@ body.timeline-dashboard-page.dark-mode .header {
 }
 
 .timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
-    order: 10;
+    order: 20;
 }
 
 .timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {
-    order: 20;
+    order: 10;
 }
 
 .timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {
@@ -1634,23 +1634,6 @@ body.timeline-dashboard-page.dark-mode .header {
     min-width: var(--timeline-topbar-control-h);
     flex-basis: var(--timeline-topbar-control-h);
     padding: 0;
-}
-
-.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated {
-    position: relative;
-    margin-left: 8px;
-}
-
-.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before {
-    content: "";
-    position: absolute;
-    left: -9px;
-    top: 8px;
-    bottom: 8px;
-    width: 1px;
-    border-radius: 999px;
-    background: var(--timeline-topbar-border);
-    pointer-events: none;
 }
 
 .timeline-dashboard-page .header .timeline-header-actions .timeline-constructor-btn-label {

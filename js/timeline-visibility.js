@@ -661,6 +661,11 @@
     function placeConstructorButton(button) {
         const host = constructorButtonHost();
         if (!button || !host) return;
+        const themeAction = host.querySelector('#headerThemeToggle');
+        if (themeAction && themeAction !== button && themeAction.parentElement === host) {
+            host.insertBefore(button, themeAction);
+            return;
+        }
         const logoutAction = host.querySelector('.timeline-header-logout');
         if (logoutAction && logoutAction !== button && logoutAction.parentElement === host) {
             host.insertBefore(button, logoutAction);
@@ -672,7 +677,7 @@
     function createConstructorButton() {
         if (document.getElementById('timelineConstructorBtn')) {
             state.toggleBtn = document.getElementById('timelineConstructorBtn');
-            state.toggleBtn.classList.add('timeline-header-settings-btn', 'timeline-header-settings-btn--separated', 'toolbarIconButton', 'toolbarGhostButton');
+            state.toggleBtn.classList.add('timeline-header-settings-btn', 'toolbarIconButton', 'toolbarGhostButton');
             placeConstructorButton(state.toggleBtn);
             bindConstructorButton(state.toggleBtn);
             return;
@@ -683,7 +688,7 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.id = 'timelineConstructorBtn';
-        button.className = 'timeline-constructor-btn timeline-header-settings-btn timeline-header-settings-btn--separated toolbarIconButton toolbarGhostButton hidden';
+        button.className = 'timeline-constructor-btn timeline-header-settings-btn toolbarIconButton toolbarGhostButton hidden';
         button.title = 'Налаштування';
         button.setAttribute('aria-label', 'Налаштування');
         button.setAttribute('aria-pressed', 'false');

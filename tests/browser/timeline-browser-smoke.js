@@ -887,6 +887,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const settingsDividerStyle = settings ? getComputedStyle(settings, '::before') : null;
         const panelStyle = panel ? getComputedStyle(panel) : null;
         const typeSwitchStyle = typeSwitch ? getComputedStyle(typeSwitch) : null;
+        const actionsStyle = actions ? getComputedStyle(actions) : null;
         const historyVisible = Boolean(
             history
             && historyRect
@@ -909,9 +910,6 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         const settingsAllowed = Boolean(window.TimelineBusinessContext?.canUseAction?.('settings', window.AppState?.currentUser || null));
         const settingsDividerWidth = settingsDividerStyle ? Number.parseFloat(settingsDividerStyle.width) || 0 : 0;
         const settingsDividerHeight = settingsDividerStyle ? Number.parseFloat(settingsDividerStyle.height) || 0 : 0;
-        const settingsDividerLeft = settingsRect && settingsDividerStyle
-            ? settingsRect.left + (Number.parseFloat(settingsDividerStyle.left) || 0)
-            : Number.NaN;
         const visibleTopbarControls = Array.from(actions?.children || []).filter(el => {
             const rect = el.getBoundingClientRect?.();
             const style = getComputedStyle(el);
@@ -925,6 +923,10 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
                 && !el.classList.contains('hidden')
             );
         });
+        const visibleTimelineControlIds = visibleTopbarControls
+            .filter(el => ['timelineConstructorBtn', 'headerThemeToggle', 'logoutBtn'].includes(el.id))
+            .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
+            .map(el => el.id);
         const topbarRightmost = visibleTopbarControls.reduce((rightmost, el) => {
             if (!rightmost) return el;
             return el.getBoundingClientRect().right > rightmost.getBoundingClientRect().right ? el : rightmost;
@@ -1029,6 +1031,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             filtersHeight: filtersRect ? Math.round(filtersRect.height * 100) / 100 : 0,
             actionsOverflowX,
             headerOverflowX,
+            actionsBorderLeftWidth: actionsStyle ? Number.parseFloat(actionsStyle.borderLeftWidth) || 0 : 0,
             dateControlsOverflowX,
             bodyOverflowX,
             configCellMinutes: Number(CONFIG?.TIMELINE?.CELL_MINUTES),
@@ -1041,7 +1044,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
             viewToggleRight: viewToggleRect ? Math.round(viewToggleRect.right * 100) / 100 : Number.NaN,
             settingsAllowed,
             settingsVisible,
-            settingsSeparated: settings?.classList?.contains('timeline-header-settings-btn--separated') || false,
+            visibleTimelineControlIds: visibleTimelineControlIds.join('|'),
             settingsDividerVisible: Boolean(
                 settingsVisible
                 && settingsDividerStyle
@@ -1050,8 +1053,7 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
                 && settingsDividerWidth >= 1
                 && settingsDividerHeight >= 12
             ),
-            settingsDividerLeft: Number.isNaN(settingsDividerLeft) ? Number.NaN : Math.round(settingsDividerLeft * 100) / 100,
-            settingsDividerRight: Number.isNaN(settingsDividerLeft) ? Number.NaN : Math.round((settingsDividerLeft + settingsDividerWidth) * 100) / 100,
+            themeLeft: themeToggleRect ? Math.round(themeToggleRect.left * 100) / 100 : Number.NaN,
             themeRight: themeToggleRect ? Math.round(themeToggleRect.right * 100) / 100 : Number.NaN,
             settingsLeft: settingsRect ? Math.round(settingsRect.left * 100) / 100 : Number.NaN,
             settingsRight: settingsRect ? Math.round(settingsRect.right * 100) / 100 : Number.NaN,
@@ -1137,19 +1139,19 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at ${label}: ${metrics.bodyOverflowX}`);
         assert.ok(metrics.actionsOverflowX <= 2, `timeline topbar action group does not overflow on desktop at ${label}: ${metrics.actionsOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not overflow on desktop at ${label}: ${metrics.headerOverflowX}`);
+        assert.ok(metrics.actionsBorderLeftWidth >= 1, `main right control panel divider remains at ${label}: ${metrics.actionsBorderLeftWidth}px`);
         assert.ok(metrics.actionsRightGap >= 0 && metrics.actionsRightGap <= 96, `logout action zone stays pinned to the right at ${label}: ${metrics.actionsRightGap}px`);
         assert.ok(metrics.logoutTop >= 0 && metrics.logoutTop <= 120, `logout stays in the top header row at ${label}: ${metrics.logoutTop}px`);
         assert.ok(metrics.logoutWidth >= 72, `logout button stays visibly highlighted at ${label}: ${metrics.logoutWidth}px`);
         if (metrics.settingsAllowed) {
             assert.equal(metrics.settingsVisible, true, `settings gear is visible for settings-capable user at ${label}`);
-            assert.equal(metrics.settingsSeparated, true, `settings gear carries separated divider class at ${label}`);
-            assert.equal(metrics.settingsDividerVisible, true, `settings gear divider is visible before gear at ${label}`);
-            assert.ok(metrics.settingsDividerLeft >= metrics.themeRight - 1, `settings divider stays after theme toggle at ${label}: divider=${metrics.settingsDividerLeft}px theme=${metrics.themeRight}px`);
-            assert.ok(metrics.settingsDividerRight <= metrics.settingsLeft + 1, `settings divider stays before gear at ${label}: divider=${metrics.settingsDividerRight}px gear=${metrics.settingsLeft}px`);
+            assert.equal(metrics.settingsDividerVisible, false, `settings gear has no local divider at ${label}`);
+            assert.equal(metrics.visibleTimelineControlIds, 'timelineConstructorBtn|headerThemeToggle|logoutBtn', `timeline topbar controls are ordered settings, theme, logout at ${label}`);
             assert.ok(metrics.settingsWidth >= 32, `settings gear keeps usable hit target at ${label}: ${metrics.settingsWidth}px`);
+            assert.ok(metrics.settingsRight <= metrics.themeLeft + 1, `settings gear stays before theme toggle at ${label}: ${metrics.settingsRight}px vs ${metrics.themeLeft}px`);
+            assert.ok(metrics.themeRight <= metrics.logoutLeft + 1, `theme toggle stays before logout at ${label}: ${metrics.themeRight}px vs ${metrics.logoutLeft}px`);
             assert.ok(metrics.settingsRight <= metrics.logoutLeft + 1, `settings gear stays before logout at ${label}: ${metrics.settingsRight}px vs ${metrics.logoutLeft}px`);
             assert.ok(Math.abs(metrics.settingsTop - metrics.logoutTop) <= 16, `settings gear stays near logout vertically at ${label}: ${metrics.settingsTop}px vs ${metrics.logoutTop}px`);
-            assert.ok(metrics.logoutLeft - metrics.settingsRight <= 18, `settings gear stays close to logout at ${label}: ${metrics.logoutLeft - metrics.settingsRight}px`);
         } else {
             assert.equal(metrics.settingsDividerVisible, false, `settings divider is not visible without settings access at ${label}`);
         }
@@ -1218,13 +1220,14 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.ok(metrics.closedDateToTimelineGap >= 0 && metrics.closedDateToTimelineGap <= 96, `closed filters state keeps date row close to timeline at narrow ${label}: ${metrics.closedDateToTimelineGap}px`);
         assert.ok(metrics.bodyOverflowX <= 2, `timeline page does not create uncontrolled horizontal overflow at narrow ${label}: ${metrics.bodyOverflowX}`);
         assert.ok(metrics.headerOverflowX <= 2, `timeline header does not leak horizontal overflow at narrow ${label}: ${metrics.headerOverflowX}`);
+        assert.ok(metrics.actionsBorderLeftWidth >= 1, `main right control panel divider remains at narrow ${label}: ${metrics.actionsBorderLeftWidth}px`);
         assert.ok(metrics.headerLeft >= -1 && metrics.headerRight <= metrics.viewportWidth + 1, `timeline header remains within viewport at narrow ${label}: ${metrics.headerLeft}px..${metrics.headerRight}px`);
         if (metrics.settingsAllowed) {
             assert.equal(metrics.settingsVisible, true, `settings gear is visible for settings-capable user at narrow ${label}`);
-            assert.equal(metrics.settingsSeparated, true, `settings gear carries separated divider class at narrow ${label}`);
-            assert.equal(metrics.settingsDividerVisible, true, `settings gear divider is visible before gear at narrow ${label}`);
-            assert.ok(metrics.settingsDividerLeft >= metrics.themeRight - 1, `settings divider stays after theme toggle at narrow ${label}: divider=${metrics.settingsDividerLeft}px theme=${metrics.themeRight}px`);
-            assert.ok(metrics.settingsDividerRight <= metrics.settingsLeft + 1, `settings divider stays before gear at narrow ${label}: divider=${metrics.settingsDividerRight}px gear=${metrics.settingsLeft}px`);
+            assert.equal(metrics.settingsDividerVisible, false, `settings gear has no local divider at narrow ${label}`);
+            assert.equal(metrics.visibleTimelineControlIds, 'timelineConstructorBtn|headerThemeToggle|logoutBtn', `timeline topbar controls are ordered settings, theme, logout at narrow ${label}`);
+            assert.ok(metrics.settingsRight <= metrics.themeLeft + 1, `settings gear stays before theme toggle at narrow ${label}: ${metrics.settingsRight}px vs ${metrics.themeLeft}px`);
+            assert.ok(metrics.themeRight <= metrics.logoutLeft + 1, `theme toggle stays before logout at narrow ${label}: ${metrics.themeRight}px vs ${metrics.logoutLeft}px`);
             assert.ok(metrics.settingsRight <= metrics.logoutLeft + 1, `settings gear stays before logout at narrow ${label}: ${metrics.settingsRight}px vs ${metrics.logoutLeft}px`);
         } else {
             assert.equal(metrics.settingsDividerVisible, false, `settings divider is not visible without settings access at narrow ${label}`);

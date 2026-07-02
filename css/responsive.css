@@ -5074,11 +5074,11 @@ body.timeline-dashboard-page .header .timeline-header-actions > #currentUser {
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions > #headerThemeToggle {
-    order: 10;
+    order: 20;
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions > #timelineConstructorBtn {
-    order: 20;
+    order: 10;
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {
@@ -5125,23 +5125,6 @@ body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-s
     min-width: var(--timeline-topbar-control-h) !important;
     flex: 0 0 var(--timeline-topbar-control-h) !important;
     padding: 0 !important;
-}
-
-body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated {
-    position: relative;
-    margin-left: 8px !important;
-}
-
-body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before {
-    content: "";
-    position: absolute;
-    left: -9px;
-    top: 8px;
-    bottom: 8px;
-    width: 1px;
-    border-radius: 999px;
-    background: var(--timeline-topbar-border);
-    pointer-events: none;
 }
 
 body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn.hidden {
@@ -5843,14 +5826,6 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-row--uti
     body.timeline-dashboard-page .header .timeline-header-actions {
         gap: 6px;
         padding-left: 8px;
-    }
-
-    body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated {
-        margin-left: 6px !important;
-    }
-
-    body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before {
-        left: -7px;
     }
 
     body.timeline-dashboard-page .timeline-header-filters :where(.status-filter-btn, .period-btn, .timeline-type-btn, .zoom-btn) {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.94 - Timeline Header Controls Reorder
+
+### Timeline header / Controls order / Gear divider cleanup / Timeline-only scope / (Клешня, 02.07.2026) [codex]
+- **Settings gear у timeline header перенесено ліворуч у правій панелі controls** - порядок став `settings`, `theme toggle`, `Вийти`.
+- **Зайвий divider біля gear прибрано** - локальна риска перед шестернею більше не дублює основний divider, який відділяє всю праву панель controls від решти header.
+- **Поведінка theme toggle, logout і settings збережена** - handler-и, permissions, route `/timeline-settings`, session/logout і theme storage не змінювались.
+- **Global CRM header unification не входить у цей реліз** - зміна лишається timeline-only, а вирівнювання інших CRM header-ів відкладено до окремої версії після візуального підтвердження.
+
+---
+
 ## v0.77.93 - Timeline Header Settings Divider
 
 ### Timeline header / Settings divider / Shared header contract / (Клешня, 02.07.2026) [codex]

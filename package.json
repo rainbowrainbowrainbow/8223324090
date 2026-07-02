@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.105",
+  "version": "0.77.106",
   "eventGenix": {
-    "releaseLabel": "Мій день: завершення планування"
+    "releaseLabel": "Коди помилок таймлайну"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -8481,6 +8481,52 @@ function bookingDetailsFallbackMatchesCurrentSlice(booking = {}, cleanBookingId 
     return Boolean(matchKeys && matchKeys.size > 0);
 }
 
+function bookingDetailsOpenFailureCode(detailRecord = {}) {
+    const status = Number(detailRecord.status || 0);
+    if (detailRecord.offline) return 'TL-BK-OFFLINE';
+    if (detailRecord.error === 'apiGetBookingById unavailable') return 'TL-BK-API-MISSING';
+    if (status === 400) return 'TL-BK-BAD-ID';
+    if (status === 401) return 'TL-BK-AUTH';
+    if (status === 403) return 'TL-BK-FORBIDDEN';
+    if (status === 404) return 'TL-BK-NOT-FOUND';
+    if (status >= 500) return 'TL-BK-SERVER';
+    if (detailRecord.source === 'date-cache-miss') return 'TL-BK-CACHE-MISS';
+    if (detailRecord.source === 'id-fetch-miss') return 'TL-BK-ID-MISS';
+    return 'TL-BK-OPEN-MISS';
+}
+
+function bookingDetailsMissingDiagnostic(cleanBookingId, detailRecord = {}, options = {}) {
+    return {
+        code: bookingDetailsOpenFailureCode(detailRecord),
+        bookingId: cleanBookingId,
+        source: options.source || 'unknown',
+        date: formatDate(AppState.selectedDate),
+        timelineView: currentCreatedBookingTimelineView(),
+        businessContext: window.TimelineBusinessContext?.state?.()?.activeBusinessContext
+            || window.TimelineBusinessContext?.current?.()?.apiValue || null,
+        lookupSource: detailRecord.source,
+        status: detailRecord.status || null,
+        apiCode: detailRecord.code || null,
+        offline: detailRecord.offline === true,
+        error: detailRecord.error || null
+    };
+}
+
+function emitBookingDetailsMissingDiagnostic(diagnostic, options = {}) {
+    window.__lastBookingDetailsOpenFailure = diagnostic;
+    if (typeof options.onMissing === 'function') {
+        try {
+            options.onMissing(diagnostic);
+        } catch (err) {
+            console.warn('[booking] Details missing diagnostic callback failed', {
+                code: diagnostic?.code || 'TL-BK-DIAGNOSTIC-CALLBACK',
+                source: diagnostic?.source || options.source || 'unknown',
+                error: err?.message || String(err || '')
+            });
+        }
+    }
+}
+
 function createdBookingVisibilityMessage(createdBookings = [], snapshot = null) {
     const primary = createdBookings[0] || {};
     const primaryId = primary?.id || primary?.bookingId || '';
@@ -10321,6 +10367,8 @@ async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
                 bookings: [fallbackBooking, ...bookings.filter(b => String(b.id) !== cleanBookingId)],
                 source: 'visible-block-fallback',
                 status: response?.status || null,
+                code: response?.code || null,
+                offline: response?.offline === true,
                 error: response?.error || 'Booking not found'
             };
         }
@@ -10329,6 +10377,8 @@ async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
             bookings,
             source: 'id-fetch-miss',
             status: response?.status || null,
+            code: response?.code || null,
+            offline: response?.offline === true,
             error: response?.error || 'Booking not found'
         };
     }
@@ -10346,10 +10396,13 @@ async function showBookingDetails(bookingId, options = {}) {
     const detailRecord = await resolveBookingDetailsRecord(cleanBookingId, options);
     const { booking, bookings } = detailRecord;
     if (!booking) {
+        const diagnostic = bookingDetailsMissingDiagnostic(cleanBookingId, detailRecord, options);
+        emitBookingDetailsMissingDiagnostic(diagnostic, options);
         if (options.silentMissing !== true && typeof showNotification === 'function') {
-            showNotification('Не вдалося відкрити бронювання: запис недоступний або у вас немає прав.', 'warning');
+            showNotification(`Не вдалося відкрити бронювання (${diagnostic.code}): запис недоступний або у вас немає прав.`, 'warning');
         }
         console.warn('[booking] Details target not found', {
+            code: diagnostic.code,
             bookingId: cleanBookingId,
             source: options.source || 'unknown',
             date: AppState.selectedDate,
@@ -10358,6 +10411,8 @@ async function showBookingDetails(bookingId, options = {}) {
                 || window.TimelineBusinessContext?.current?.()?.apiValue || null,
             lookupSource: detailRecord.source,
             status: detailRecord.status || null,
+            apiCode: detailRecord.code || null,
+            offline: detailRecord.offline === true,
             error: detailRecord.error || null
         });
         return false;

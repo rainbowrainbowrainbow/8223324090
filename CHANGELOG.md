@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.106 - Коди помилок таймлайну
+
+### Timeline diagnostics / Booking open failure codes / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Жовта помилка відкриття картки таймлайну отримала коди `TL-BK-*`** - toast тепер показує конкретний клас причини: `TL-BK-NOT-FOUND`, `TL-BK-FORBIDDEN`, `TL-BK-OFFLINE`, `TL-BK-CACHE-MISS`, `TL-BK-ID-MISS`, `TL-BK-SERVER` або споріднені коди.
+- **Linked-картки відкриваються з контрольованим fallback** - таймлайн перевіряє parent booking і child booking тихо, збирає diagnostics і показує один підсумковий toast замість загального повідомлення без причини.
+- **Console diagnostics стали безпечними для репортів** - warning містить booking id, lookup source, HTTP status, API code, timeline view і business context, але не логить клієнтів, телефони, Instagram, auth headers, tokens або secrets.
+- **Збережено існуючу поведінку відкриття деталей** - зміна не вводить новий API, не змінює booking visibility rules і не зачіпає auth/roles.
+- **Додано regression guards** - `tests/timeline-resources.test.js`, `tests/booking-visibility.test.js` і `tests/ui-check.js` закріплюють fallback, silent miss handling і показ коду.
+- **Cache tags оновлено до `0.77.106`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані, щоб продакшн підтягнув нові `js/booking.js` та `js/timeline.js`.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - реліз обмежений frontend diagnostics, тестами, release markers і changelog.
+
 ## v0.77.105 - Мій день: завершення планування
 
 ### My Day follow-up / Custom date / Collapse groups / Projection guard / Test hygiene / (Клешня, 02.07.2026) [codex]

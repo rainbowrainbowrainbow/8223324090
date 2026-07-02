@@ -3159,19 +3159,35 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     const linkedId = String(renderBooking?.linkedTo || renderBooking?.linked_to || '').trim();
     const targetId = linkedId || ownId;
     const timelineView = typeof timelineCurrentViewKey === 'function' ? timelineCurrentViewKey() : null;
-    if (!targetId) return false;
+    if (!targetId) {
+        console.warn('[timeline] Booking block has no openable identity', {
+            code: 'TL-BK-NO-ID',
+            timelineView,
+            source: 'timeline_block_click'
+        });
+        if (typeof showNotification === 'function') {
+            showNotification('Не вдалося відкрити бронювання. Код: TL-BK-NO-ID.', 'warning');
+        }
+        return false;
+    }
     const ownDetailsOptions = {
         source: 'timeline_block_click',
         fallbackBooking: renderBooking
+    };
+    const detailMisses = [];
+    const collectDetailMiss = phase => diagnostic => {
+        if (!diagnostic || typeof diagnostic !== 'object') return;
+        detailMisses.push({ phase, ...diagnostic });
     };
 
     let opened = false;
     try {
         opened = await showBookingDetails(targetId, linkedId
-            ? { silentMissing: true, source: 'timeline_block_click' }
-            : { silentMissing: false, ...ownDetailsOptions });
+            ? { silentMissing: true, source: 'timeline_block_click', onMissing: collectDetailMiss('linked_parent') }
+            : { silentMissing: true, ...ownDetailsOptions, onMissing: collectDetailMiss('direct') });
     } catch (err) {
         console.warn('[timeline] Failed to open booking details from block', {
+            code: 'TL-BK-OPEN-EXCEPTION',
             targetId,
             ownId,
             linkedId,
@@ -3184,11 +3200,14 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     if (linkedId && ownId && ownId !== linkedId) {
         try {
             opened = await showBookingDetails(ownId, {
+                silentMissing: true,
                 source: 'timeline_block_click_fallback',
-                fallbackBooking: renderBooking
+                fallbackBooking: renderBooking,
+                onMissing: collectDetailMiss('linked_child')
             });
         } catch (err) {
             console.warn('[timeline] Failed to open linked booking fallback details', {
+                code: 'TL-BK-FALLBACK-EXCEPTION',
                 ownId,
                 linkedId,
                 timelineView,
@@ -3198,15 +3217,41 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
         if (opened) return true;
     }
 
+    const lastDiagnostic = detailMisses.slice().reverse().find(item => item?.code) || null;
+    const publicCode = lastDiagnostic?.code || 'TL-BK-OPEN-MISS';
+    const reasonByCode = {
+        'TL-BK-BAD-ID': 'Картка таймлайну має некоректний ID бронювання.',
+        'TL-BK-AUTH': 'Сесія не підтверджена для відкриття бронювання.',
+        'TL-BK-FORBIDDEN': 'Немає доступу до цього бронювання.',
+        'TL-BK-NOT-FOUND': 'Бронювання не знайдено або вже не активне в цьому бізнес-контексті.',
+        'TL-BK-SERVER': 'Сервер не зміг повернути деталі бронювання.',
+        'TL-BK-OFFLINE': 'Немає стабільного звʼязку із сервером.',
+        'TL-BK-API-MISSING': 'Клієнт не має доступного detail API для бронювання.',
+        'TL-BK-CACHE-MISS': 'Поточний кеш таймлайну не містить це бронювання.',
+        'TL-BK-ID-MISS': 'Detail API не повернув запис за ID бронювання.'
+    };
     console.warn('[timeline] Booking block could not be opened in current timeline view', {
+        code: publicCode,
         targetId,
         ownId,
         linkedId,
         timelineView,
-        source: 'timeline_block_click'
+        source: 'timeline_block_click',
+        detailMisses: detailMisses.map(item => ({
+            phase: item.phase,
+            code: item.code || null,
+            bookingId: item.bookingId || null,
+            source: item.source || null,
+            lookupSource: item.lookupSource || null,
+            status: item.status || null,
+            apiCode: item.apiCode || null,
+            offline: item.offline === true,
+            error: item.error || null
+        }))
     });
     if (typeof showNotification === 'function') {
-        showNotification('Бронювання не знайдено в поточному режимі таймлайну. Оновіть сторінку або перемкніть режим.', 'warning');
+        const reason = reasonByCode[publicCode] || 'Поточний режим таймлайну не зміг відкрити цей запис.';
+        showNotification(`${reason} Код: ${publicCode}. Оновіть таймлайн або перемкніть режим.`, 'warning');
     }
     return false;
 }

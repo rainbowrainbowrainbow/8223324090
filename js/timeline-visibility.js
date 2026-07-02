@@ -672,7 +672,7 @@
     function createConstructorButton() {
         if (document.getElementById('timelineConstructorBtn')) {
             state.toggleBtn = document.getElementById('timelineConstructorBtn');
-            state.toggleBtn.classList.add('timeline-header-settings-btn', 'toolbarIconButton', 'toolbarGhostButton');
+            state.toggleBtn.classList.add('timeline-header-settings-btn', 'timeline-header-settings-btn--separated', 'toolbarIconButton', 'toolbarGhostButton');
             placeConstructorButton(state.toggleBtn);
             bindConstructorButton(state.toggleBtn);
             return;
@@ -683,7 +683,7 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.id = 'timelineConstructorBtn';
-        button.className = 'timeline-constructor-btn timeline-header-settings-btn toolbarIconButton toolbarGhostButton hidden';
+        button.className = 'timeline-constructor-btn timeline-header-settings-btn timeline-header-settings-btn--separated toolbarIconButton toolbarGhostButton hidden';
         button.title = 'Налаштування';
         button.setAttribute('aria-label', 'Налаштування');
         button.setAttribute('aria-pressed', 'false');

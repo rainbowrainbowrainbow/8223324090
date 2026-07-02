@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.93 - Timeline Header Settings Divider
+
+### Timeline header / Settings divider / Shared header contract / (Клешня, 02.07.2026) [codex]
+- **Settings gear у timeline header отримав окремий divider** - шестерня налаштувань тепер візуально відділена тонкою вертикальною рискою перед кнопкою.
+- **Top-right header controls стабілізовано** - theme toggle, settings gear і `Вийти` зберігають узгоджений порядок та mobile/desktop поведінку.
+- **Legacy logout outliers очищено** - Afisha, Certificates і Designs переведені на shared `logoutBtn` binding без окремих inline logout handlers.
+- **Global settings gear не розгортався на всі сторінки CRM** - кнопка налаштувань лишається тільки там, де є реальна settings-дія та існуючий маршрут.
+
+---
+
 ## v0.77.92 - Timeline Standalone Activity Detail Hotfix
 
 ### Timeline standalone activities / Visible block fallback / Banquet detail guard / Regression QA / (Клешня, 01.07.2026) [codex]

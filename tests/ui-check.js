@@ -98,6 +98,10 @@ function cssRuleSetsDisplay(css, selector, display) {
     return rulePattern.test(css);
 }
 
+function textHasAll(source, tokens) {
+    return tokens.every(token => source.includes(token));
+}
+
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS
 // ═══════════════════════════════════════════════════
@@ -121,6 +125,7 @@ checkPage('index.html', (doc, html) => {
     const apiCode = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
     const bookingsRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'bookings.js'), 'utf8');
     const timelineBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'timeline-browser-smoke.js'), 'utf8');
+    const timelineVisibilityCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8');
     const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
     const responsiveCss = cssTextWithImports('css/responsive.css');
     const timelineVisualHierarchyCss = darkModeCss.slice(Math.max(0, darkModeCss.indexOf('/* Task 5: timeline visual hierarchy')));
@@ -145,6 +150,26 @@ checkPage('index.html', (doc, html) => {
     const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
     const timelineHeaderActionsRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions');
     const timelineHeaderLogoutRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-logout');
+    const timelineHeaderSettingsSeparatedRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated');
+    const timelineHeaderSettingsDividerRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before');
+    const assistantTopbarSettingsSeparatedRule = cssRuleText(assistantTopbarCss, '.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated');
+    const assistantTopbarSettingsDividerRule = cssRuleText(assistantTopbarCss, '.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before');
+    const timelineConstructorExistingButtonBlock = sourceBlock(
+        timelineVisibilityCode,
+        "if (document.getElementById('timelineConstructorBtn'))",
+        'return;'
+    );
+    const timelineConstructorNewButtonBlock = sourceBlock(
+        timelineVisibilityCode,
+        "const button = document.createElement('button');",
+        'bindConstructorButton(button);'
+    );
+    const timelineConstructorHeaderButtonTokens = [
+        'timeline-header-settings-btn',
+        'timeline-header-settings-btn--separated',
+        'toolbarIconButton',
+        'toolbarGhostButton'
+    ];
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales,\s*[\r\n]+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
         || modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
     const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales,\s*[\r\n]+body\.dark-mode\s+\.btn-new-booking\s*\{([\s\S]*?)\}/)?.[1]
@@ -953,6 +978,11 @@ checkPage('index.html', (doc, html) => {
         && !assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions .timeline-header-history-btn')
         && assistantTopbarCss.includes('.timeline-dashboard-page .header .timeline-header-actions > #logoutBtn {\n    order: 50;')
         && assistantTopbarCss.includes('order: 50;')
+        && assistantTopbarSettingsSeparatedRule.includes('position: relative')
+        && assistantTopbarSettingsSeparatedRule.includes('margin-left: 8px')
+        && assistantTopbarSettingsDividerRule.includes('content: ""')
+        && assistantTopbarSettingsDividerRule.includes('background: var(--timeline-topbar-border)')
+        && assistantTopbarSettingsDividerRule.includes('pointer-events: none')
         && !assistantTopbarCss.includes('timelineViewPanelToggle')
         && !assistantTopbarCss.includes('timeline-header-view-btn')
         && !assistantTopbarCss.includes('timeline-view-panel')
@@ -1024,15 +1054,21 @@ checkPage('index.html', (doc, html) => {
     check('Timeline settings toolbar action is a compact header account action with accessible labeling',
         htmlContains('js/timeline-visibility.js', "button.title = 'Налаштування'")
         && htmlContains('js/timeline-visibility.js', "button.setAttribute('aria-label', 'Налаштування')")
-        && htmlContains('js/timeline-visibility.js', "state.toggleBtn.classList.add('timeline-header-settings-btn', 'toolbarIconButton', 'toolbarGhostButton')")
-        && htmlContains('js/timeline-visibility.js', "button.className = 'timeline-constructor-btn timeline-header-settings-btn toolbarIconButton toolbarGhostButton hidden'")
+        && textHasAll(timelineConstructorExistingButtonBlock, timelineConstructorHeaderButtonTokens)
+        && textHasAll(timelineConstructorNewButtonBlock, ['timeline-constructor-btn', 'hidden', ...timelineConstructorHeaderButtonTokens])
         && htmlContains('js/timeline-visibility.js', "document.querySelector('.timeline-header-actions')")
         && htmlContains('js/timeline-visibility.js', "host.querySelector('.timeline-header-logout')")
         && htmlContains('js/timeline-visibility.js', 'host.insertBefore(button, logoutAction)')
         && !htmlContains('js/timeline-visibility.js', 'actionButtons.appendChild(button)')
+        && !doc.getElementById('timelineConstructorBtn')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn:focus-visible')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn.hidden')
         && htmlContains('css/responsive.css', 'body.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn')
+        && timelineHeaderSettingsSeparatedRule.includes('position: relative')
+        && timelineHeaderSettingsSeparatedRule.includes('margin-left: 8px')
+        && timelineHeaderSettingsDividerRule.includes('content: ""')
+        && timelineHeaderSettingsDividerRule.includes('background: var(--timeline-topbar-border)')
+        && timelineHeaderSettingsDividerRule.includes('pointer-events: none')
         && htmlContains('css/responsive.css', 'width: 40px !important;')
         && htmlContains('css/responsive.css', 'border-radius: 14px !important;')
         && htmlContains('css/responsive.css', 'clip-path: inset(50%)')
@@ -1893,10 +1929,38 @@ const nonAuthJsLogoutOwners = walkFiles(path.join(ROOT, 'js'), file => file.ends
 const inlineLogoutOwners = pagesWithLogoutButton.filter(page => (
     getInlineScripts(page.html).some(code => code.includes('logoutBtn') && code.includes('addEventListener'))
 ));
+const legacyHeaderLogoutOutliers = ['afisha.html', 'certificates.html', 'designs.html']
+    .map(file => {
+        const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        const dom = new JSDOM(html);
+        const doc = dom.window.document;
+        const logoutBtn = doc.querySelector('.header .header-content > .user-panel > #logoutBtn.btn-logout[type="button"]:not([onclick])');
+        const result = {
+            file,
+            ok: Boolean(logoutBtn) && scriptIndex(getHtmlScripts(html), 'js/auth.js') >= 0
+        };
+        dom.window.close();
+        return result;
+    });
+const pagesWithStaticHeaderThemeToggle = htmlFiles.filter(file => {
+    const dom = new JSDOM(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+    const hasToggle = !!dom.window.document.getElementById('headerThemeToggle');
+    dom.window.close();
+    return hasToggle;
+});
+const pagesWithStaticTimelineConstructor = htmlFiles.filter(file => {
+    const dom = new JSDOM(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+    const hasConstructor = !!dom.window.document.getElementById('timelineConstructorBtn');
+    dom.window.close();
+    return hasConstructor;
+});
 
 check('Auth exposes shared bindLogoutButton', authCode.includes('function bindLogoutButton()') && authCode.includes("btn.dataset.logoutBound === '1'"));
+check('Auth owns logoutBtn DOM binding', authCode.includes("const btn = document.getElementById('logoutBtn')") && authCode.includes("btn.addEventListener('click'") && authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
 check('Shared logout binding calls canonical logout', authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
 check('Shared logout binding auto-initializes', authCode.includes('initSharedLogoutBinding();') && authCode.includes("document.addEventListener('DOMContentLoaded', bindLogoutButton"));
+check('Auth runtime-injects headerThemeToggle after currentUser or before logout', authCode.includes('function initHeaderThemeToggle()') && authCode.includes("btn.id = 'headerThemeToggle'") && authCode.includes("btn.className = 'header-theme-toggle'") && authCode.includes("currentUser.insertAdjacentElement('afterend', btn)") && authCode.includes('userPanel.insertBefore(btn, logoutBtn)') && pagesWithStaticHeaderThemeToggle.length === 0);
+check('Timeline settings gear stays runtime-only in timeline visibility owner', pagesWithStaticTimelineConstructor.length === 0 && authCode.includes('TimelineVisibility.refreshAccess') && fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8').includes("button.id = 'timelineConstructorBtn'"));
 check('Auth stores refresh sessions, refreshes verify, and revokes logout sessions',
     authCode.includes("const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token'")
     && authCode.includes('function rememberAuthSession')
@@ -1911,9 +1975,10 @@ check('Auth stores refresh sessions, refreshes verify, and revokes logout sessio
 check('Auth separates real working roles from preview roles', authCode.includes("const ROLE_WORKING_STORAGE_KEY = 'pzp_working_role'") && authCode.includes('const WorkingRole = {') && authCode.includes('window.WorkingRole = WorkingRole') && authCode.includes('getAvailableWorkingRoles') && authCode.includes('getStoredPreviewRole(user) || getActiveWorkingRole(user)') && authCode.includes("window.dispatchEvent(new CustomEvent('workingRoleChanged'"));
 check('Assistant idle hints are opt-in instead of boot-time default', authCode.includes('function shouldEnableAssistantIdleHints') && authCode.includes('eg_crm_assistant_idle_hints') && authCode.includes('shouldEnableAssistantIdleHints() && typeof IdleHints') && !authCode.includes("if (typeof IdleHints !== 'undefined') IdleHints.init();"));
 check('Root CRM pages do not reference missing favicon.ico asset', brokenRootFavicons.length === 0);
-check('All logout button pages load auth.js', pagesWithLogoutButton.every(page => getHtmlScripts(page.html).includes('js/auth.js')));
+check('All logout button pages load auth.js', pagesWithLogoutButton.every(page => scriptIndex(getHtmlScripts(page.html), 'js/auth.js') >= 0));
 check('No page JS owns logoutBtn directly outside auth.js', nonAuthJsLogoutOwners.length === 0);
 check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length === 0);
+check('Legacy header logout outliers use shared logoutBtn binding', legacyHeaderLogoutOutliers.every(page => page.ok));
 
 // Check shared layout shell guardrails
 console.log('\nlayout shell guardrails');
@@ -1950,14 +2015,30 @@ const sidebarLinkedPages = htmlFiles
 const sidebarLinkedPagesWithoutShell = sidebarLinkedPages.filter(page => (
     !page.doc.getElementById('sidebarNav') || !page.doc.getElementById('sidebarLinks')
 ));
+const sharedHeaderContractExceptions = new Set(['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html']);
+const headerShellPages = htmlFiles
+    .map(file => {
+        const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        const dom = new JSDOM(html);
+        return { file, dom, doc: dom.window.document };
+    })
+    .filter(page => page.doc.querySelector('.header .header-content'));
+const headerShellPagesMissingUserPanel = headerShellPages.filter(page => (
+    !sharedHeaderContractExceptions.has(page.file)
+    && !page.doc.querySelector('.header .header-content > .user-panel')
+));
 
 check('No standard page nests main-content inside page-container', nestedShellPages.length === 0);
 check('No shell containers use inline left offsets', inlineOffsetPages.length === 0);
 check('Only documented full-app pages use main-content shell', unexpectedMainShellPages.length === 0);
 check('All mainApp shells start from hidden main-app baseline', missingHiddenMainAppPages.length === 0);
 check('Every page that loads shared sidebar assets has sidebarNav/sidebarLinks shell', sidebarLinkedPagesWithoutShell.length === 0);
+check('Shared header shell pages keep direct user-panel contract with explicit exceptions',
+    ['analytics.html', 'booking-summary.html', 'checkin.html', 'invite.html'].every(file => sharedHeaderContractExceptions.has(file))
+    && headerShellPagesMissingUserPanel.length === 0);
 shellPages.forEach(page => page.dom.window.close());
 sidebarLinkedPages.forEach(page => page.dom.window.close());
+headerShellPages.forEach(page => page.dom.window.close());
 
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');

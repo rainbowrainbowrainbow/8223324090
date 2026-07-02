@@ -1636,6 +1636,23 @@ body.timeline-dashboard-page.dark-mode .header {
     padding: 0;
 }
 
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated {
+    position: relative;
+    margin-left: 8px;
+}
+
+.timeline-dashboard-page .header .timeline-header-actions .timeline-header-settings-btn--separated::before {
+    content: "";
+    position: absolute;
+    left: -9px;
+    top: 8px;
+    bottom: 8px;
+    width: 1px;
+    border-radius: 999px;
+    background: var(--timeline-topbar-border);
+    pointer-events: none;
+}
+
 .timeline-dashboard-page .header .timeline-header-actions .timeline-constructor-btn-label {
     position: absolute;
     width: 1px;

@@ -1777,6 +1777,7 @@ body.dark-mode .hr-role-pill.bad {
     width: auto;
     max-width: 100%;
     min-width: 0;
+    overscroll-behavior-inline: contain;
 }
 
 .staff-pulse-tab {
@@ -2013,65 +2014,34 @@ body.dark-mode .hr-role-pill.bad {
 
 .staff-schedule-command {
     position: relative;
-    min-height: 146px;
+    min-height: 0;
     max-width: 100%;
-    margin: 0 0 10px;
+    margin: 0 0 12px;
     overflow: hidden;
-    border: 1px solid rgba(16,185,129,0.20);
-    border-radius: 18px;
-    background: #08111F;
-    box-shadow: 0 12px 30px rgba(15,23,42,0.14), inset 0 1px 0 color-mix(in srgb, var(--white) 10%, transparent);
+    border: 1px solid rgba(14,165,233,0.16);
+    border-radius: 16px;
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.88)),
+        linear-gradient(90deg, rgba(20,184,166,0.10), rgba(245,184,75,0.10));
+    box-shadow: 0 12px 30px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.76);
     isolation: isolate;
     contain: layout paint;
 }
 
-.staff-schedule-command-media,
-.staff-schedule-command-overlay {
+.staff-schedule-command::before {
+    content: "";
     position: absolute;
-    inset: 0;
+    inset: 0 0 auto;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(20,184,166,0.92), rgba(245,184,75,0.88), rgba(59,130,246,0.76));
     pointer-events: none;
-}
-
-.staff-schedule-command-media {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    display: block;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #08111F;
-    border-radius: inherit;
-    contain: paint;
-}
-
-.staff-schedule-command-media img {
-    position: absolute;
-    inset: 0;
-    display: block;
-    width: 100%;
-    height: 100%;
-    min-width: 100%;
-    max-width: none;
-    max-height: none;
-    object-fit: cover;
-    opacity: 0.40;
-}
-
-.staff-schedule-command-overlay {
-    z-index: 1;
-    background:
-        radial-gradient(circle at 18% 12%, rgba(34,211,238,0.12), transparent 32%),
-        radial-gradient(circle at 86% 24%, rgba(16,185,129,0.12), transparent 36%),
-        linear-gradient(90deg, rgba(2,6,23,0.78), rgba(2,6,23,0.52) 48%, rgba(2,6,23,0.72)),
-        linear-gradient(180deg, rgba(2,6,23,0.10), rgba(2,6,23,0.64));
 }
 
 .staff-schedule-command-content {
     position: relative;
-    z-index: 2;
+    z-index: 1;
     display: grid;
-    gap: 10px;
+    gap: 14px;
     min-height: inherit;
     padding: 18px 20px;
     min-width: 0;
@@ -2094,10 +2064,10 @@ body.dark-mode .hr-role-pill.bad {
     align-items: center;
     min-height: 26px;
     padding: 5px 10px;
-    border: 1px solid rgba(94,234,212,0.30);
+    border: 1px solid rgba(14,165,233,0.24);
     border-radius: 999px;
-    background: rgba(15,23,42,0.44);
-    color: #99F6E4;
+    background: rgba(255,255,255,0.64);
+    color: #0F766E;
     font-size: 11px;
     font-weight: 950;
     line-height: 1;
@@ -2106,12 +2076,63 @@ body.dark-mode .hr-role-pill.bad {
 
 .staff-schedule-command .page-header h2 {
     margin: 8px 0 0;
-    color: #FFFFFF;
+    max-width: 100%;
+    color: #0F172A;
     font-size: 26px;
     font-weight: 950;
     line-height: 1.02;
     letter-spacing: 0;
-    text-shadow: 0 2px 18px rgba(0,0,0,0.42);
+    overflow-wrap: anywhere;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.70);
+}
+
+.staff-schedule-command-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+
+.staff-schedule-metric-chip {
+    --staff-schedule-metric-tone: 59, 130, 246;
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    min-width: 0;
+    min-height: 70px;
+    padding: 12px 13px;
+    border: 1px solid rgba(var(--staff-schedule-metric-tone),0.20);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(var(--staff-schedule-metric-tone),0.10), rgba(255,255,255,0.70));
+    box-shadow: 0 8px 20px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.70);
+}
+
+.staff-schedule-metric-chip--period { --staff-schedule-metric-tone: 14, 165, 233; }
+.staff-schedule-metric-chip--dept { --staff-schedule-metric-tone: 245, 184, 75; }
+.staff-schedule-metric-chip--staff { --staff-schedule-metric-tone: 16, 185, 129; }
+.staff-schedule-metric-chip--status { --staff-schedule-metric-tone: 99, 102, 241; }
+
+.staff-schedule-metric-chip span {
+    min-width: 0;
+    color: rgba(51,65,85,0.72);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.staff-schedule-metric-chip strong {
+    min-width: 0;
+    color: #0F172A;
+    font-size: 17px;
+    font-weight: 950;
+    line-height: 1.08;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .staff-schedule-command .btn-page-primary {
@@ -2815,14 +2836,41 @@ body.dark-mode .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge,
 
 body.dark-mode .staff-schedule-command,
 [data-theme="dark"] .staff-schedule-command {
-    border-color: rgba(34,211,238,0.18);
-    background: #070D1A;
-    box-shadow: 0 26px 56px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.08);
+    border-color: rgba(148,163,184,0.16);
+    background:
+        linear-gradient(135deg, rgba(15,23,42,0.96), rgba(2,6,23,0.94)),
+        linear-gradient(90deg, rgba(20,184,166,0.12), rgba(245,184,75,0.10));
+    box-shadow: 0 14px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07);
 }
 
 body.dark-mode .staff-schedule-command .page-header h2,
 [data-theme="dark"] .staff-schedule-command .page-header h2 {
     color: #FFFFFF;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.30);
+}
+
+body.dark-mode .staff-schedule-command-eyebrow,
+[data-theme="dark"] .staff-schedule-command-eyebrow {
+    border-color: rgba(94,234,212,0.30);
+    background: rgba(15,23,42,0.44);
+    color: #99F6E4;
+}
+
+body.dark-mode .staff-schedule-metric-chip,
+[data-theme="dark"] .staff-schedule-metric-chip {
+    border-color: rgba(var(--staff-schedule-metric-tone),0.24);
+    background: linear-gradient(135deg, rgba(var(--staff-schedule-metric-tone),0.14), rgba(15,23,42,0.68));
+    box-shadow: 0 10px 22px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+body.dark-mode .staff-schedule-metric-chip span,
+[data-theme="dark"] .staff-schedule-metric-chip span {
+    color: rgba(203,213,225,0.78);
+}
+
+body.dark-mode .staff-schedule-metric-chip strong,
+[data-theme="dark"] .staff-schedule-metric-chip strong {
+    color: #F8FAFC;
 }
 
 body.dark-mode .staff-schedule-command .btn-page-primary,
@@ -3423,6 +3471,10 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         display: none;
     }
 
+    .staff-pulse-nav {
+        width: 100%;
+    }
+
     .staff-pulse-nav-items {
         width: 100%;
         max-width: 100%;
@@ -3549,16 +3601,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         border-radius: 18px;
     }
 
-    .staff-schedule-command-media img {
-        object-position: center top;
-    }
-
-    .staff-schedule-command-overlay {
-        background:
-            radial-gradient(circle at 18% 12%, rgba(34,211,238,0.18), transparent 34%),
-            linear-gradient(180deg, rgba(2,6,23,0.58), rgba(2,6,23,0.82));
-    }
-
     .staff-schedule-command-content {
         gap: 12px;
         padding: 16px;
@@ -3567,6 +3609,20 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .staff-schedule-command .page-header {
         display: grid;
         gap: 12px;
+    }
+
+    .staff-schedule-command-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .staff-schedule-metric-chip {
+        min-height: 64px;
+        padding: 10px;
+    }
+
+    .staff-schedule-metric-chip strong {
+        font-size: 15px;
     }
 
     .staff-schedule-command-eyebrow {
@@ -3751,6 +3807,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-tab-content {
         min-width: 0;
+        padding-right: 26px;
     }
 
     .staff-pulse-tab-title,
@@ -3768,6 +3825,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         position: absolute;
         top: 5px;
         right: 5px;
+        max-width: 44px;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .staff-pulse-tab-line {
@@ -3781,6 +3841,24 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-schedule-command-content {
         padding: 14px;
+    }
+
+    .staff-schedule-command-metrics {
+        gap: 7px;
+    }
+
+    .staff-schedule-metric-chip {
+        min-height: 60px;
+        padding: 9px;
+        border-radius: 10px;
+    }
+
+    .staff-schedule-metric-chip span {
+        font-size: 9px;
+    }
+
+    .staff-schedule-metric-chip strong {
+        font-size: 13px;
     }
 
     .staff-schedule-command .page-header h2 {
@@ -3801,19 +3879,31 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 @media (prefers-reduced-motion: reduce) {
     .staff-pulse-tab,
     .staff-pulse-tab::before,
+    .staff-pulse-tab *,
     .staff-pulse-tab-icon,
     .staff-pulse-tab-line,
     .staff-schedule-command .btn-page-primary,
     body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary {
-        transition: none;
-        transform: none;
+        animation: none !important;
+        transition: none !important;
     }
 
     .staff-pulse-tab:hover,
     .staff-pulse-tab:focus-visible,
+    .staff-pulse-tab:active,
     .staff-pulse-tab:hover .staff-pulse-tab-icon,
-    .staff-pulse-tab:focus-visible .staff-pulse-tab-icon {
-        transform: none;
+    .staff-pulse-tab:focus-visible .staff-pulse-tab-icon,
+    .staff-schedule-command .btn-page-primary:hover,
+    .staff-schedule-command .btn-page-primary:focus-visible,
+    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:hover,
+    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:focus-visible {
+        transform: none !important;
+    }
+
+    .staff-pulse-tab .staff-pulse-tab-line,
+    .staff-pulse-tab.active .staff-pulse-tab-line,
+    .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-line {
+        transform: none !important;
     }
 }
 

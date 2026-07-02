@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.77.101">
-    <link rel="stylesheet" href="css/layout.css?v=0.77.101">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.101">
-    <link rel="stylesheet" href="css/pages.css?v=0.77.101">
-    <link rel="stylesheet" href="css/modals.css?v=0.77.101">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.101">
-    <link rel="stylesheet" href="css/responsive.css?v=0.77.101">
+    <link rel="stylesheet" href="css/base.css?v=0.77.102">
+    <link rel="stylesheet" href="css/layout.css?v=0.77.102">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.77.102">
+    <link rel="stylesheet" href="css/pages.css?v=0.77.102">
+    <link rel="stylesheet" href="css/modals.css?v=0.77.102">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.77.102">
+    <link rel="stylesheet" href="css/responsive.css?v=0.77.102">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -122,10 +122,6 @@
             </nav>
 
             <section class="staff-schedule-command" aria-label="Керування графіком роботи">
-                <div class="staff-schedule-command-media" aria-hidden="true">
-                    <img src="images/hr-pulse/schedule-operations.png" alt="" loading="lazy" decoding="async">
-                </div>
-                <div class="staff-schedule-command-overlay" aria-hidden="true"></div>
                 <div class="staff-schedule-command-content">
                     <div class="page-header">
                         <div class="staff-schedule-command-title">
@@ -133,6 +129,24 @@
                             <h2>Графік роботи</h2>
                         </div>
                         <button type="button" id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
+                    </div>
+                    <div class="staff-schedule-command-metrics" aria-label="Стан графіка" aria-live="polite">
+                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--period">
+                            <span>Період</span>
+                            <strong id="scheduleHeaderPeriod">-</strong>
+                        </div>
+                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--dept">
+                            <span>Фільтр</span>
+                            <strong id="scheduleHeaderDepartment">Всі</strong>
+                        </div>
+                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--staff">
+                            <span>Працівники</span>
+                            <strong id="scheduleHeaderStaffCount">0</strong>
+                        </div>
+                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--status">
+                            <span>Сьогодні</span>
+                            <strong id="scheduleHeaderStatus">0 активні</strong>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -340,13 +354,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.77.101"></script>
-    <script src="js/config.js?v=0.77.101"></script>
-    <script src="js/notification.js?v=0.77.101"></script>
-    <script src="js/api.js?v=0.77.101"></script>
-    <script src="js/auth.js?v=0.77.101"></script>
-    <script src="js/components/sidebar.js?v=0.77.101"></script>
+    <script src="js/ui.js?v=0.77.102"></script>
+    <script src="js/config.js?v=0.77.102"></script>
+    <script src="js/notification.js?v=0.77.102"></script>
+    <script src="js/api.js?v=0.77.102"></script>
+    <script src="js/auth.js?v=0.77.102"></script>
+    <script src="js/components/sidebar.js?v=0.77.102"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.77.101"></script><script src="js/alerts.js?v=0.77.101"></script>
+    <script src="js/staff-page.js?v=0.77.102"></script><script src="js/alerts.js?v=0.77.102"></script>
 </body>
 </html>

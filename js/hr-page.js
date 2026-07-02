@@ -1678,6 +1678,34 @@ function renderTodayFilterInfo(allItems = [], filteredItems = []) {
         : `${allItems.length} співробітників у пульсі`;
 }
 
+function setTodayMetricText(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+}
+
+function formatTodayRiskCount(count) {
+    const value = Number(count || 0);
+    if (value === 1) return '1 ризик';
+    if (value >= 2 && value <= 4) return `${value} ризики`;
+    return `${value} ризиків`;
+}
+
+function updateTodayHeroMetrics(summary = {}) {
+    const total = Number(summary.total_staff || 0);
+    const present = Number(summary.present || 0);
+    const late = Number(summary.late || 0);
+    const absent = Number(summary.absent || 0);
+    const risks = Math.max(0, late + absent);
+    const readiness = total > 0 ? Math.max(0, Math.min(100, Math.round(((total - risks) / total) * 100))) : 0;
+
+    setTodayMetricText('todayOnShiftMetric', String(present));
+    setTodayMetricText('todayOnShiftMeta', total > 0 ? `${present} з ${total}` : 'немає активних');
+    setTodayMetricText('todayLateMetric', String(late));
+    setTodayMetricText('todayLateMeta', late > 0 ? `${late} потребують уваги` : 'без запізнень');
+    setTodayMetricText('todayReadinessMetric', `${readiness}%`);
+    setTodayMetricText('todayReadinessMeta', formatTodayRiskCount(risks));
+}
+
 async function loadToday() {
     if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const data = await hrFetch('/today');
@@ -1708,6 +1736,7 @@ function renderToday(data) {
     renderTodayHoneycombBoard(visibleItems);
 
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
+    updateTodayHeroMetrics(s);
     document.getElementById('todaySummary').innerHTML = `
         <div class="hr-summary-card green"><div class="value">${s.present}</div><div class="label">На роботі</div></div>
         <div class="hr-summary-card yellow"><div class="value">${s.late}</div><div class="label">Запізнились</div></div>
@@ -6795,6 +6824,39 @@ async function setPoolStatus(staffId, status) {
 // TAB 4: REPORTS
 // ==========================================
 
+function setReportHeroChipText(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+}
+
+function formatReportPeopleCount(count) {
+    const value = Number(count || 0);
+    if (value === 1) return '1 людина';
+    if (value >= 2 && value <= 4) return `${value} людини`;
+    return `${value} людей`;
+}
+
+function formatReportRiskCount(count) {
+    const value = Number(count || 0);
+    if (value === 1) return '1 ризик';
+    if (value >= 2 && value <= 4) return `${value} ризики`;
+    return `${value} ризиків`;
+}
+
+function updateReportHeroChips(metrics = {}) {
+    const staffCount = Number(metrics.staffCount || 0);
+    const taskDoneRate = Number(metrics.taskDoneRate || 0);
+    const totalLate = Number(metrics.totalLate || 0);
+    const totalAbsent = Number(metrics.totalAbsent || 0);
+    const totalTasksOverdue = Number(metrics.totalTasksOverdue || 0);
+    const risks = Math.max(0, totalLate + totalAbsent + totalTasksOverdue);
+
+    setReportHeroChipText('reportHeroCsv', 'Готовий');
+    setReportHeroChipText('reportHeroKpi', `${Math.max(0, Math.min(100, taskDoneRate))}%`);
+    setReportHeroChipText('reportHeroRisks', formatReportRiskCount(risks));
+    setReportHeroChipText('reportHeroSummary', formatReportPeopleCount(staffCount));
+}
+
 async function loadReports() {
     setPulseCardBadge('reports', 'CSV', {
         title: 'CSV експорт',
@@ -6817,6 +6879,7 @@ async function loadReports() {
     const month = sel.value;
     const data = await hrFetch(`/report/monthly?month=${month}`);
     if (!data || !data.success) {
+        updateReportHeroChips();
         await loadRoleAssignmentsReport();
         return;
     }
@@ -6831,7 +6894,7 @@ function renderReports(data) {
         ariaLabel: 'Звіти доступні для CSV експорту'
     });
     // Summary
-    const rows = data.data;
+    const rows = Array.isArray(data.data) ? data.data : [];
     let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalOvertime = 0;
     let totalTasksAssigned = 0, totalTasksDone = 0, totalTasksOverdue = 0;
     for (const r of rows) {
@@ -6846,6 +6909,13 @@ function renderReports(data) {
     const totalScheduled = rows.reduce((a, r) => a + r.days_scheduled, 0);
     const attendanceRate = totalScheduled > 0 ? Math.round(totalPresent / totalScheduled * 100) : 0;
     const taskDoneRate = totalTasksAssigned > 0 ? Math.round(totalTasksDone / totalTasksAssigned * 100) : 0;
+    updateReportHeroChips({
+        staffCount: rows.length,
+        taskDoneRate,
+        totalLate,
+        totalAbsent,
+        totalTasksOverdue
+    });
 
     document.getElementById('reportSummary').innerHTML = `
         <div class="hr-report-stat hr-report-stat--presence"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>

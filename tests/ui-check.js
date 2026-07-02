@@ -1538,8 +1538,18 @@ checkPage('staff.html', (doc, html) => {
     const staffPulseTabIconRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-icon');
     const staffPulseTabLineRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-line');
     const staffScheduleCommandRule = cssRuleText(staffPagesCss, '.staff-schedule-command');
-    const staffScheduleCommandMediaRule = cssRuleText(staffPagesCss, '.staff-schedule-command-media');
-    const staffScheduleCommandMediaImgRule = cssRuleText(staffPagesCss, '.staff-schedule-command-media img');
+    const staffScheduleCommandContentRule = cssRuleText(staffPagesCss, '.staff-schedule-command-content');
+    const staffScheduleCommandMetricsRule = cssRuleText(staffPagesCss, '.staff-schedule-command-metrics');
+    const staffScheduleMetricChipRule = cssRuleText(staffPagesCss, '.staff-schedule-metric-chip');
+    const staffScheduleMetricChipLabelRule = cssRuleText(staffPagesCss, '.staff-schedule-metric-chip span');
+    const staffScheduleCommandHeadingRule = cssRuleText(staffPagesCss, '.staff-schedule-command .page-header h2');
+    const staffPulseTabletBlock = cssAtRuleBlock(staffPagesCss, '@media (max-width: 1120px)');
+    const staffPulseTabletNavRule = cssRuleText(staffPulseTabletBlock, '.staff-pulse-nav');
+    const staffPulseTabletItemsRule = cssRuleText(staffPulseTabletBlock, '.staff-pulse-nav-items');
+    const staffPulseMobileBlock = cssAtRuleBlock(staffPagesCss, '@media (max-width: 480px)');
+    const staffPulseMobileContentRule = cssRuleText(staffPulseMobileBlock, '.staff-pulse-tab-content');
+    const staffPulseMobileBadgeRule = cssRuleText(staffPulseMobileBlock, '.staff-pulse-tab-badge');
+    const staffReducedMotionBlock = cssAtRuleBlock(staffPagesCss, '@media (prefers-reduced-motion: reduce)');
     const legacyStaffPulseNavTokens = [
         'today-nav-light.png',
         'today-nav-dark.png',
@@ -1552,8 +1562,6 @@ checkPage('staff.html', (doc, html) => {
         'staff-pulse-tab-overlay'
     ];
     const staffPulseBoundedContainer = rule => /position:\s*relative;/.test(rule) && /overflow:\s*hidden;/.test(rule) && /contain:\s*layout paint;/.test(rule);
-    const staffPulseMediaLayer = rule => /position:\s*absolute;/.test(rule) && /inset:\s*0;/.test(rule) && /width:\s*100%;/.test(rule) && /height:\s*100%;/.test(rule) && /overflow:\s*hidden;/.test(rule) && /contain:\s*paint;/.test(rule);
-    const staffPulseMediaImage = rule => /position:\s*absolute;/.test(rule) && /inset:\s*0;/.test(rule) && /width:\s*100%;/.test(rule) && /height:\s*100%;/.test(rule) && /max-width:\s*none;/.test(rule) && /max-height:\s*none;/.test(rule) && /object-fit:\s*cover;/.test(rule);
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && staffPulseTabs.length === 3
@@ -1566,7 +1574,11 @@ checkPage('staff.html', (doc, html) => {
         && doc.querySelectorAll('.staff-pulse-tab-badge.hidden[data-pulse-badge]').length === 3
         && doc.querySelectorAll('.staff-pulse-tab-line[aria-hidden="true"]').length === 3
         && html.includes('class="staff-schedule-command"')
-        && html.includes('images/hr-pulse/schedule-operations.png')
+        && html.includes('class="staff-schedule-command-metrics"')
+        && html.includes('id="scheduleHeaderPeriod"')
+        && html.includes('id="scheduleHeaderDepartment"')
+        && html.includes('id="scheduleHeaderStaffCount"')
+        && html.includes('id="scheduleHeaderStatus"')
         && staffPagesCss.includes('v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm')
         && staffPagesCss.includes('.staff-pulse-nav-items')
         && !staffPulseNavItemsRule.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
@@ -1577,6 +1589,8 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-pulse-tab-line')
         && staffPagesCss.includes('.staff-pulse-tab:focus-visible')
         && staffPagesCss.includes('.staff-schedule-command')
+        && staffPagesCss.includes('.staff-schedule-command-metrics')
+        && staffPagesCss.includes('.staff-schedule-metric-chip')
         && staffPagesCss.includes('body.dark-mode .staff-pulse-nav')
         && staffPagesCss.includes('@media (max-width: 480px)')
         && staffPagesCss.includes('@media (prefers-reduced-motion: reduce)'));
@@ -1590,19 +1604,50 @@ checkPage('staff.html', (doc, html) => {
         /display:\s*flex;/.test(staffPulseNavItemsRule)
         && /flex-wrap:\s*nowrap;/.test(staffPulseNavItemsRule)
         && /width:\s*auto;/.test(staffPulseNavItemsRule)
+        && /overscroll-behavior-inline:\s*contain;/.test(staffPulseNavItemsRule)
         && /flex:\s*0 0 clamp\(172px,\s*15vw,\s*210px\);/.test(staffPulseTabRule)
         && /max-width:\s*210px;/.test(staffPulseTabRule)
         && /@media \(max-width:\s*1120px\)/.test(staffPagesCss)
         && /overflow-x:\s*auto;/.test(staffPagesCss)
         && /scrollbar-width:\s*none;/.test(staffPagesCss));
+    check('Staff HR Pulse responsive polish protects tablet scroll, mobile badges, chips, and reduced motion',
+        /width:\s*100%;/.test(staffPulseTabletNavRule)
+        && /overflow-x:\s*auto;/.test(staffPulseTabletItemsRule)
+        && /scrollbar-width:\s*none;/.test(staffPulseTabletItemsRule)
+        && /padding-right:\s*26px;/.test(staffPulseMobileContentRule)
+        && /max-width:\s*44px;/.test(staffPulseMobileBadgeRule)
+        && /overflow:\s*hidden;/.test(staffPulseMobileBadgeRule)
+        && /text-overflow:\s*ellipsis;/.test(staffPulseMobileBadgeRule)
+        && /overflow:\s*hidden;/.test(staffScheduleMetricChipLabelRule)
+        && /text-overflow:\s*ellipsis;/.test(staffScheduleMetricChipLabelRule)
+        && /white-space:\s*nowrap;/.test(staffScheduleMetricChipLabelRule)
+        && /max-width:\s*100%;/.test(staffScheduleCommandHeadingRule)
+        && /overflow-wrap:\s*anywhere;/.test(staffScheduleCommandHeadingRule)
+        && /animation:\s*none\s*!important;/.test(staffReducedMotionBlock)
+        && /transition:\s*none\s*!important;/.test(staffReducedMotionBlock)
+        && /transform:\s*none\s*!important;/.test(staffReducedMotionBlock));
     check('Staff HR Pulse icon cards keep bounded decorative affordances',
         /display:\s*grid;/.test(staffPulseTabIconRule)
         && /place-items:\s*center;/.test(staffPulseTabIconRule)
         && /position:\s*absolute;/.test(staffPulseTabLineRule)
         && /transform:\s*scaleX/.test(staffPulseTabLineRule));
-    check('Staff schedule command media cannot escape hero container',
-        staffPulseMediaLayer(staffScheduleCommandMediaRule)
-        && staffPulseMediaImage(staffScheduleCommandMediaImgRule));
+    check('Staff schedule command header is CSS-only and exposes fixed metrics',
+        !html.includes('images/hr-pulse/schedule-operations.png')
+        && !staffPagesCss.includes('schedule-operations.png')
+        && !staffPagesCss.includes('.staff-schedule-command-media')
+        && !staffPagesCss.includes('.staff-schedule-command-overlay')
+        && /background:\s*[\s\S]*linear-gradient/.test(staffScheduleCommandRule)
+        && !/url\(/.test(staffScheduleCommandRule)
+        && /display:\s*grid;/.test(staffScheduleCommandContentRule)
+        && /display:\s*grid;/.test(staffScheduleCommandMetricsRule)
+        && /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleCommandMetricsRule)
+        && /border:\s*1px solid/.test(staffScheduleMetricChipRule)
+        && /background:\s*linear-gradient/.test(staffScheduleMetricChipRule)
+        && staffCode.includes('function updateScheduleHeaderMetrics')
+        && staffCode.includes("setScheduleHeaderMetricText('scheduleHeaderPeriod'")
+        && staffCode.includes("setScheduleHeaderMetricText('scheduleHeaderDepartment'")
+        && staffCode.includes("setScheduleHeaderMetricText('scheduleHeaderStaffCount'")
+        && staffCode.includes("setScheduleHeaderMetricText('scheduleHeaderStatus'"));
 });
 
 checkPage('leads.html', (doc, html) => {
@@ -4559,6 +4604,13 @@ const hrPulseNavItemsRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-nav-items
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardIconRule = cssRuleText(hrPageCss, '.hr-pulse-card-icon');
 const hrPulseCardLineRule = cssRuleText(hrPageCss, '.hr-pulse-card-line');
+const hrPulseTabletBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 1120px)');
+const hrPulseTabletNavRule = cssRuleText(hrPulseTabletBlock, '.hr-nav--pulse');
+const hrPulseTabletItemsRule = cssRuleText(hrPulseTabletBlock, '.hr-nav--pulse .hr-nav-items');
+const hrPulseSmallMobileBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 480px)');
+const hrPulseSmallMobileContentRule = cssRuleText(hrPulseSmallMobileBlock, '.hr-pulse-card-content');
+const hrPulseSmallMobileBadgeRule = cssRuleText(hrPulseSmallMobileBlock, '.hr-pulse-card-badge');
+const hrReducedMotionBlock = cssAtRuleBlock(hrPageCss, '@media (prefers-reduced-motion: reduce)');
 const legacyHrPulseNavTokens = [
     'today-nav-light.png',
     'today-nav-dark.png',
@@ -4574,15 +4626,13 @@ const legacyHrPulseNavTokens = [
     'hr-pulse-card-overlay'
 ];
 const hrReportsHeroRule = cssRuleText(hrPageCss, '.hr-reports-hero');
-const hrReportsHeroMediaRule = cssRuleText(hrPageCss, '.hr-reports-hero-media');
-const hrReportsHeroMediaImgRule = cssRuleText(hrPageCss, '.hr-reports-hero-media img');
+const hrReportsHeroContentRule = cssRuleText(hrPageCss, '.hr-reports-hero-content');
+const hrReportsHeroPanelRule = cssRuleText(hrPageCss, '.hr-reports-hero-panel');
+const hrReportsHeroChipsRule = cssRuleText(hrPageCss, '.hr-reports-hero-chips');
+const hrReportsChipRule = cssRuleText(hrPageCss, '.hr-reports-chip');
+const hrReportsHeroHeadingRule = cssRuleText(hrPageCss, '.hr-reports-hero h2');
 check('HR Pulse premium switcher keeps icon cards, routing, and accessible decorative affordances',
-    fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'today-honeycomb.png'))
-    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'schedule-operations.png'))
-    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'reports-kpi.png'))
-    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
-    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-light.png'))
-    && hrCode.includes('function withPulseCommand')
+    hrCode.includes('function withPulseCommand')
     && hrCode.includes('function renderHrPulseIcon')
     && hrCode.includes("icon: 'calendar'")
     && hrCode.includes("icon: 'clock'")
@@ -4616,6 +4666,7 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && /display:\s*flex;/.test(hrPulseNavItemsRule)
     && /flex-wrap:\s*nowrap;/.test(hrPulseNavItemsRule)
     && /width:\s*auto;/.test(hrPulseNavItemsRule)
+    && /overscroll-behavior-inline:\s*contain;/.test(hrPulseNavItemsRule)
     && /display:\s*grid;/.test(hrPulseCardRule)
     && /flex:\s*0 0 clamp\(168px,\s*14vw,\s*196px\);/.test(hrPulseCardRule)
     && /max-width:\s*196px;/.test(hrPulseCardRule)
@@ -4627,17 +4678,29 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && /transform:\s*scaleX/.test(hrPulseCardLineRule)
     && /overflow:\s*hidden;/.test(hrReportsHeroRule)
     && /contain:\s*layout paint;/.test(hrReportsHeroRule)
-    && /overflow:\s*hidden;/.test(hrReportsHeroMediaRule)
-    && /contain:\s*paint;/.test(hrReportsHeroMediaRule)
-    && /position:\s*absolute;/.test(hrReportsHeroMediaImgRule)
-    && /inset:\s*0;/.test(hrReportsHeroMediaImgRule)
-    && /max-width:\s*none;/.test(hrReportsHeroMediaImgRule)
+    && /display:\s*grid;/.test(hrReportsHeroContentRule)
+    && /display:\s*grid;/.test(hrReportsHeroPanelRule)
+    && /display:\s*grid;/.test(hrReportsHeroChipsRule)
+    && /display:\s*grid;/.test(hrReportsChipRule)
     && hrPageCss.includes('@media (max-width: 480px)')
     && hrPageCss.includes('@media (max-width: 1120px)')
     && hrPageCss.includes('overflow-x: auto;')
     && hrPageCss.includes('scrollbar-width: none;')
     && !hrPageCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
     && hrPageCss.includes('@media (prefers-reduced-motion: reduce)'));
+check('HR Pulse responsive polish protects tablet scroll, mobile badges, headers, and reduced motion',
+    /width:\s*100%;/.test(hrPulseTabletNavRule)
+    && /overflow-x:\s*auto;/.test(hrPulseTabletItemsRule)
+    && /scrollbar-width:\s*none;/.test(hrPulseTabletItemsRule)
+    && /padding-right:\s*26px;/.test(hrPulseSmallMobileContentRule)
+    && /max-width:\s*44px;/.test(hrPulseSmallMobileBadgeRule)
+    && /overflow:\s*hidden;/.test(hrPulseSmallMobileBadgeRule)
+    && /text-overflow:\s*ellipsis;/.test(hrPulseSmallMobileBadgeRule)
+    && /max-width:\s*100%;/.test(hrReportsHeroHeadingRule)
+    && /overflow-wrap:\s*anywhere;/.test(hrReportsHeroHeadingRule)
+    && /animation:\s*none\s*!important;/.test(hrReducedMotionBlock)
+    && /transition:\s*none\s*!important;/.test(hrReducedMotionBlock)
+    && /transform:\s*none\s*!important;/.test(hrReducedMotionBlock));
 check('HR Pulse command cards do not depend on legacy nav PNG layers',
     legacyHrPulseNavTokens.every(token => !hrCode.includes(token) && !hrPageCss.includes(token)));
 check('Warehouse owns the costume entry point instead of HR temporary navigation', htmlContains('warehouse.html', 'data-page-tab="costumes"') && htmlContains('warehouse.html', 'id="costumesTab"') && htmlContains('warehouse.html', 'id="warehouseCostumesList"') && htmlContains('warehouse.html', 'id="addCostumeBtn"') && htmlContains('warehouse.html', "switchPageTab('costumes')") && warehouseCode.includes("if (tab === 'costumes')") && warehouseCode.includes('loadWarehouseCostumes') && warehouseCode.includes('apiGetWarehouseCostumes') && !warehouseCode.includes("window.location.href = '/art?tab=costumes'") && warehouseCode.includes("hash === 'procurement' || hash === 'pinata' || hash === 'contractors' || hash === 'costumes'") && hrCode.includes("window.location.replace('/warehouse#costumes')") && !hrCode.includes("href: '/art?tab=costumes'"));
@@ -4645,6 +4708,12 @@ const hrPulseNavRule = hrHtmlForContracts.match(/\n\s*\.hr-nav--pulse(?:\s*,\s*\
 const hrPulseMobileNavRule = hrHtmlForContracts.match(/@media \(max-width: 768px\)\s*\{[\s\S]*?\.hr-nav--pulse\s*\{([\s\S]*?)\}/)?.[1] || '';
 const hrTodayDateRule = hrHtmlForContracts.match(/\n\s*\.hr-today-date\s*\{([\s\S]*?)\}/)?.[1] || '';
 const hrTodayDateMobileRule = hrHtmlForContracts.match(/@media \(max-width: 768px\)\s*\{[\s\S]*?\.hr-today-date\s*\{([\s\S]*?)\}/)?.[1] || '';
+const hrTodayHeroRule = cssRuleText(hrPageCss, '.hr-today-hero');
+const hrTodayHeroContentRule = cssRuleText(hrPageCss, '.hr-today-hero-content');
+const hrTodayHeroMetricsRule = cssRuleText(hrPageCss, '.hr-today-hero-metrics');
+const hrTodayMetricChipRule = cssRuleText(hrPageCss, '.hr-today-metric-chip');
+const hrTodayHeroHeadingRule = cssRuleText(hrPageCss, '.hr-today-hero-copy h3');
+const hrTodayMetricLabelRule = cssRuleText(hrPageCss, '.hr-today-metric-label');
 const hrTodayHoneycombBoardRule = cssRuleText(hrPageCss, '.hr-today-honeycomb-board');
 const hrTodayHoneycombMobileBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 768px)');
 const hrTodayHoneycombMobileBoardRule = cssRuleText(hrTodayHoneycombMobileBlock, '.hr-today-honeycomb-board');
@@ -4652,18 +4721,34 @@ const hrTodayHexTileRule = cssRuleText(hrPageCss, '.hr-today-hex-tile');
 const hrTodayHexNameRule = cssRuleText(hrPageCss, '.hr-today-hex-name');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
 check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*30px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
-check('HR Pulse Today has premium hero, search, department segmentation, and compact live staff board on the Today surface',
-    fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-dark.png'))
-    && fs.existsSync(path.join(ROOT, 'images', 'hr-pulse', 'pulse-strip-light.png'))
+check('HR Pulse Today has CSS header metric chips, search, department segmentation, and compact live staff board',
+    !htmlContains('hr.html', 'pulse-strip-dark.png')
+    && !htmlContains('hr.html', 'pulse-strip-light.png')
+    && !htmlContains('hr.html', 'hr-today-hero-img--light')
+    && !htmlContains('hr.html', 'hr-today-hero-img--dark')
+    && !hrPageCss.includes('pulse-strip-dark.png')
+    && !hrPageCss.includes('pulse-strip-light.png')
+    && !hrPageCss.includes('.hr-today-hero-media')
+    && !hrPageCss.includes('.hr-today-hero-overlay')
     && htmlContains('hr.html', 'class="hr-today-hero"')
-    && htmlContains('hr.html', 'images/hr-pulse/pulse-strip-dark.png')
-    && htmlContains('hr.html', 'images/hr-pulse/pulse-strip-light.png')
-    && htmlContains('hr.html', 'hr-today-hero-img--light')
-    && htmlContains('hr.html', 'hr-today-hero-img--dark')
-    && hrPageCss.includes('.hr-today-hero-media .hr-today-hero-img--light')
-    && hrPageCss.includes('.hr-today-hero-media .hr-today-hero-img--dark')
-    && hrPageCss.includes('body.dark-mode .hr-today-hero-media .hr-today-hero-img--dark')
-    && hrPageCss.includes('html[data-theme="dark"] body .hr-today-hero-media .hr-today-hero-img--dark')
+    && htmlContains('hr.html', 'class="hr-today-hero-metrics"')
+    && htmlContains('hr.html', 'class="hr-today-metric-chip hr-today-metric-chip--date"')
+    && htmlContains('hr.html', 'id="todayOnShiftMetric"')
+    && htmlContains('hr.html', 'id="todayLateMetric"')
+    && htmlContains('hr.html', 'id="todayReadinessMetric"')
+    && /background:\s*[\s\S]*linear-gradient/.test(hrTodayHeroRule)
+    && !/url\(/.test(hrTodayHeroRule)
+    && /display:\s*grid;/.test(hrTodayHeroContentRule)
+    && /display:\s*grid;/.test(hrTodayHeroMetricsRule)
+    && /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(hrTodayHeroMetricsRule)
+    && /border:\s*1px solid/.test(hrTodayMetricChipRule)
+    && /background:\s*linear-gradient/.test(hrTodayMetricChipRule)
+    && /max-width:\s*100%;/.test(hrTodayHeroHeadingRule)
+    && /overflow-wrap:\s*anywhere;/.test(hrTodayHeroHeadingRule)
+    && /min-width:\s*0;/.test(hrTodayMetricLabelRule)
+    && /overflow-wrap:\s*anywhere;/.test(hrTodayMetricLabelRule)
+    && hrPageCss.includes('body.dark-mode .hr-today-metric-chip')
+    && hrPageCss.includes('html[data-theme="dark"] body .hr-today-metric-chip')
     && htmlContains('hr.html', 'Команда сьогодні')
     && htmlContains('hr.html', 'Пульс зміни')
     && htmlContains('hr.html', 'id="todayDate"')
@@ -4682,6 +4767,10 @@ check('HR Pulse Today has premium hero, search, department segmentation, and com
     && hrCode.includes('function todayCompactStaffName')
     && hrCode.includes('function renderTodayHoneycombTile')
     && hrCode.includes('function renderTodayHoneycombBoard')
+    && hrCode.includes('function updateTodayHeroMetrics')
+    && hrCode.includes("setTodayMetricText('todayOnShiftMetric'")
+    && hrCode.includes("setTodayMetricText('todayLateMetric'")
+    && hrCode.includes("setTodayMetricText('todayReadinessMetric'")
     && hrCode.includes('renderTodayHoneycombBoard(visibleItems)')
     && hrCode.includes('const displayName = todayCompactStaffName(name)')
     && hrCode.includes('escapeHtml(displayName || name)')
@@ -4735,7 +4824,48 @@ check('HR Pulse Today has premium hero, search, department segmentation, and com
     && !hrCode.includes('todayHoneycombTabs')
     && !hrPageCss.includes('hr-today-honeycomb-menu')
     && !hrPageCss.includes('hr-today-honeycomb-tabs'));
-check('HR Pulse Reports keeps premium hero, controls, export, and report tables', htmlContains('hr.html', 'class="hr-reports-hero"') && htmlContains('hr.html', 'images/hr-pulse/reports-kpi.png') && htmlContains('hr.html', 'id="reportMonth"') && htmlContains('hr.html', 'id="reportExport"') && htmlContains('hr.html', 'id="reportSummary"') && htmlContains('hr.html', 'id="reportHead"') && htmlContains('hr.html', 'id="reportBody"') && hrCode.includes("document.getElementById('reportExport')?.addEventListener('click', exportCSV)") && hrCode.includes('hr-report-stat--presence') && hrCode.includes('hr-report-stat--late') && hrCode.includes('hr-report-stat--absence') && hrCode.includes('hr-report-stat--overtime') && hrCode.includes('hr-report-stat--tasks') && hrCode.includes('hr-report-stat--kpi') && hrCode.includes('hr-report-stat--overdue') && hrPageCss.includes('.hr-reports-hero') && hrPageCss.includes('.hr-report-controls') && hrPageCss.includes('#tab-reports .hr-report-table') && hrPageCss.includes('body.dark-mode #tab-reports .hr-report-table'));
+check('HR Pulse Reports has CSS header controls, summary chips, export, and report tables',
+    !htmlContains('hr.html', 'images/hr-pulse/reports-kpi.png')
+    && !hrPageCss.includes('reports-kpi.png')
+    && !hrPageCss.includes('.hr-reports-hero-media')
+    && !hrPageCss.includes('.hr-reports-hero-overlay')
+    && htmlContains('hr.html', 'class="hr-reports-hero"')
+    && htmlContains('hr.html', 'class="hr-reports-hero-panel"')
+    && htmlContains('hr.html', 'class="hr-reports-hero-chips"')
+    && htmlContains('hr.html', 'id="reportHeroCsv"')
+    && htmlContains('hr.html', 'id="reportHeroKpi"')
+    && htmlContains('hr.html', 'id="reportHeroRisks"')
+    && htmlContains('hr.html', 'id="reportHeroSummary"')
+    && htmlContains('hr.html', 'id="reportMonth"')
+    && htmlContains('hr.html', 'id="reportExport"')
+    && htmlContains('hr.html', 'id="reportSummary"')
+    && htmlContains('hr.html', 'id="reportHead"')
+    && htmlContains('hr.html', 'id="reportBody"')
+    && hrCode.includes("document.getElementById('reportExport')?.addEventListener('click', exportCSV)")
+    && hrCode.includes('function updateReportHeroChips')
+    && hrCode.includes("setReportHeroChipText('reportHeroCsv'")
+    && hrCode.includes("setReportHeroChipText('reportHeroKpi'")
+    && hrCode.includes("setReportHeroChipText('reportHeroRisks'")
+    && hrCode.includes("setReportHeroChipText('reportHeroSummary'")
+    && hrCode.includes('hr-report-stat--presence')
+    && hrCode.includes('hr-report-stat--late')
+    && hrCode.includes('hr-report-stat--absence')
+    && hrCode.includes('hr-report-stat--overtime')
+    && hrCode.includes('hr-report-stat--tasks')
+    && hrCode.includes('hr-report-stat--kpi')
+    && hrCode.includes('hr-report-stat--overdue')
+    && /background:\s*[\s\S]*linear-gradient/.test(hrReportsHeroRule)
+    && !/url\(/.test(hrReportsHeroRule)
+    && /display:\s*grid;/.test(hrReportsHeroContentRule)
+    && /display:\s*grid;/.test(hrReportsHeroPanelRule)
+    && /display:\s*grid;/.test(hrReportsHeroChipsRule)
+    && /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(hrReportsHeroChipsRule)
+    && /border:\s*1px solid/.test(hrReportsChipRule)
+    && /background:\s*linear-gradient/.test(hrReportsChipRule)
+    && hrPageCss.includes('body.dark-mode .hr-reports-chip')
+    && hrPageCss.includes('.hr-report-controls')
+    && hrPageCss.includes('#tab-reports .hr-report-table')
+    && hrPageCss.includes('body.dark-mode #tab-reports .hr-report-table'));
 check('HR Pulse Today moves arrived people to review bottom with color indication', hrCode.includes('const TODAY_ARRIVED_STATUSES') && hrCode.includes('function isTodayItemArrived') && hrCode.includes('function sortTodayItemsForReview') && hrCode.includes('return sortTodayItemsForReview(filtered);') && hrCode.includes('hr-staff-row--arrived') && hrCode.includes('data-attendance-state="${arrived ?') && htmlContains('hr.html', '.hr-staff-row--arrived') && htmlContains('hr.html', 'body.dark-mode .hr-staff-row.hr-staff-row--arrived'));
 check('HR operational routes exclude blacklist and unscheduled reserve from live lists', hrRouteCode.includes('function operationalStaffForDateWhere') && hrRouteCode.includes("COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'") && hrRouteCode.includes("COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'") && hrRouteCode.includes("router.put('/staff/:id/pool-status'") && hrRouteCode.includes('cleanupFutureStaffOperationalSchedule(client, req.params.id') && staffRouteCode.includes('function activeOperationalStaffForDateWhere') && staffRouteCode.includes("router.get('/face-descriptors'") && staffRouteCode.includes("WHERE ${activeOperationalStaffForDateWhere('s', 'hs', 'tr')}") && staffRouteCode.includes("conditions.push(\"COALESCE(hr_pool_status, 'core') <> 'blacklisted'\")"));
 check('Camera check-in syncs into HR Today attendance records', staffRouteCode.includes('const { getKyivDate, getKyivDateStr } = require') && staffRouteCode.includes('function syncHrClockInFromStaffCheckin') && staffRouteCode.includes('function syncHrClockOutFromStaffCheckout') && staffRouteCode.includes('INSERT INTO hr_time_records (business_context, staff_id, record_date, clock_in') && staffRouteCode.includes('hrTimeRecord = await syncHrClockInFromStaffCheckin(client, staffId') && staffRouteCode.includes('hrTimeRecord = await syncHrClockOutFromStaffCheckout(client, staffId') && staffRouteCode.includes('WHERE staff_id = $1 AND date = $2') && staffRouteCode.includes('const date = req.query.date || getKyivDateStr();') && staffRouteCode.includes("broadcast('hr:attendance-updated'") && htmlContains('js/ws.js', "case 'hr:attendance-updated':") && hrCode.includes('function initHrRealtime') && hrCode.includes("window.addEventListener('ws:hr-attendance'") && htmlContains('hr.html', 'js/ws.js'));

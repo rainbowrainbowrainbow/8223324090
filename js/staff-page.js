@@ -1590,9 +1590,14 @@ function scheduleDisplayDepartmentKey(staff = {}) {
 }
 
 function scheduleDepartmentLabels() {
+    const apiDepartmentLabels = {};
+    for (const [key, value] of Object.entries(StaffState.departments || {})) {
+        const label = String(value || '').trim();
+        if (label && !/^\d+$/.test(label)) apiDepartmentLabels[key] = label;
+    }
     return {
         ...LEGACY_DEPARTMENT_FALLBACK,
-        ...(StaffState.departments || {}),
+        ...apiDepartmentLabels,
         reception: 'Рецепшен',
         tech: 'Технічний відділ'
     };
@@ -2194,6 +2199,7 @@ function renderDeptFilter() {
             renderSchedule();
         });
     });
+    updateScheduleHeaderMetrics();
 }
 
 function renderWeekLabel() {
@@ -2202,6 +2208,33 @@ function renderWeekLabel() {
     const to = getScheduleRangeEnd(dates);
     const label = `${from.getDate()} ${MONTHS_UK[from.getMonth()]} — ${to.getDate()} ${MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
     document.getElementById('weekLabel').textContent = label;
+    updateScheduleHeaderMetrics();
+}
+
+function setScheduleHeaderMetricText(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+}
+
+function formatScheduleActiveLabel(active) {
+    const count = Number(active || 0);
+    if (count === 1) return '1 активний';
+    return `${count} активні`;
+}
+
+function updateScheduleHeaderMetrics(summary = null, staffList = null) {
+    const period = document.getElementById('weekLabel')?.textContent?.trim() || '-';
+    const department = StaffState.activeDept === 'all'
+        ? 'Всі'
+        : scheduleDisplayDepartmentLabel(StaffState.activeDept);
+    const visibleStaff = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
+    const activeSummary = summary || summarizeScheduleToday(visibleStaff);
+    const active = Number(activeSummary.working || 0) + Number(activeSummary.remote || 0);
+
+    setScheduleHeaderMetricText('scheduleHeaderPeriod', period);
+    setScheduleHeaderMetricText('scheduleHeaderDepartment', department);
+    setScheduleHeaderMetricText('scheduleHeaderStaffCount', String(visibleStaff.length));
+    setScheduleHeaderMetricText('scheduleHeaderStatus', formatScheduleActiveLabel(active));
 }
 
 function summarizeScheduleToday(staffList = null) {
@@ -2268,6 +2301,7 @@ function renderSummary(staffList = null) {
         ${replacements > 0 ? `<div class="summary-chip summary-chip-replacement"><span class="chip-dot" style="background:#F97316"></span> Заміни: <span class="chip-count">${replacements}</span></div>` : ''}
         ${unset > 0 ? `<div class="summary-chip"><span class="chip-dot" style="background:#CBD5E1"></span> Не заповнено: <span class="chip-count">${unset}</span></div>` : ''}
     `;
+    updateScheduleHeaderMetrics({ total: filtered.length, working, dayoff, vacation, sick, remote, unset, replacements }, filtered);
 }
 
 function renderEmpRow(emp, dates, today, health = null) {

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.102 - HR Pulse UI Polish
+
+### HR Pulse / Today / Staff schedule / Reports / Responsive QA / (Клешня, 02.07.2026) [codex]
+- **HR Pulse switcher став ближчим до нового CRM-стилю** - Сьогодні, Графік і Звіти тепер довші, роздільні, з amber active underline/glow і збереженим keyboard/focus behavior.
+- **Today hero замінено на CSS header з метриками** - bitmap `pulse-strip` більше не потрібен, а дата, на зміні, запізнення і готовність інтегровані в компактні chips.
+- **Staff schedule отримав той самий header rhythm** - прибрано `schedule-operations.png`, додано chips для періоду, фільтра, кількості працівників і активних на сьогодні без зміни table/modals/API логіки.
+- **Reports hero став CSS-only** - прибрано `reports-kpi.png`, а period select, CSV export і summary chips лишились у верхній шапці.
+- **Responsive, dark mode і reduced motion закриті контрактами** - оновлено `tests/ui-check.js`, щоб захистити нові tabs, fixed headers, chips, mobile overflow і відсутність legacy bitmap hero refs.
+- **Cache tags оновлено до `0.77.102`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані для нового frontend bundle.
+- **БД, migrations, API routes, auth/roles, env, secrets і production config не змінювались** - реліз обмежений HR/Staff frontend UI, тестовими контрактами, release cache tags і changelog.
+
 ## v0.77.101 - Generated Menu Image Hotfix
 
 ### Booking menu / Products catalog / Generated image priority / Legacy static image removal / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]

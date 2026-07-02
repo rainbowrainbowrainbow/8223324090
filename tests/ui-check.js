@@ -4081,6 +4081,8 @@ check('Booking kitchen menu uses searchable catalog controls instead of the long
     && bookingCode.includes('window.KITCHEN_MENU_IMAGES')
     && bookingCode.includes('|| product.iconUrl')
     && bookingCode.includes('|| product.icon_url')
+    && configCode.includes('iconUrl: p.iconUrl || p.icon_url || null')
+    && configCode.includes('|| p.iconUrl || p.icon_url || null')
     && bookingCode.includes('bookingMenuCatalogHandleImageError')
     && bookingCode.includes('function setBookingMenuCatalogCartOpen')
     && bookingCode.includes('function isBookingMenuCatalogMobileCartLayout')

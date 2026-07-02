@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.99 - Menu Image Mapper Hotfix
+
+### Booking menu / Timeline product mapper / Applied image priority / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Booking catalog тепер бачить applied фото меню** - timeline product mapper переносить `iconUrl` / `icon_url`, тож активні `/uploads/catalog-images/items/...` фото більше не губляться перед рендером картки.
+- **`imageUrl` отримав безпечний fallback на active icon** - якщо API не повертає окремий `imageUrl`, booking catalog використовує applied `iconUrl` перед static manifest fallback.
+- **Піца Маргарита більше не падає на старий `menu-031.jpg`** - після cache refresh картка має брати новий applied upload замість deploy-stable placeholder з `js/kitchen-menu-images.js`.
+- **Додано regression guard** - `tests/ui-check.js` фіксує, що `mapApiProductToTimelineProduct()` не викидає `iconUrl` і не обходить пріоритет active images.
+- **Cache tags оновлено до `0.77.99`** - HTML, service worker cache names і asset `?v=` посилання синхронізовані, щоб браузер отримав новий `js/config.js`.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - hotfix обмежений frontend mapper, тестовим guard, release cache tags і changelog.
+
+---
+
 ## v0.77.98 - Hermes Menu Photo SQL Hotfix
 
 ### Hermes / Menu photo context / SQL compatibility / Regression QA / (Клешня, 02.07.2026) [codex]

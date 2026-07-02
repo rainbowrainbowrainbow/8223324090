@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.97 - Lead Kanban Image Removal
+
+### Sales funnel / Kanban cards / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Kanban лідів знову став компактним** - із карток Sales Funnel прибрано зайвий event-card банер, який повторювався над кожним лідом і роздував колонки.
+- **Workspace ліда не змінювався** - велика картка кейсу й надалі може використовувати `EventCards.renderEventCardImage(lead, { modifier: 'workspace' })`, тож shared event-card helper лишився для потрібних поверхонь.
+- **Контракт тестів оновлено під нову поведінку** - `tests/event-cards.test.js` більше не вимагає картинку в Kanban, але зберігає перевірки для workspace, booking, programs і afisha.
+- **Cache tags оновлено до `0.77.97`** - HTML, service worker cache names і asset `?v=` посилання синхронізовані, щоб браузер отримав новий `js/leads-page.js`.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - реліз обмежений frontend Kanban markup, тестовим контрактом і release cache tags.
+
+---
+
 ## v0.77.96 - Menu Image Agent Workflow
 
 ### Hermes / Menu image drafts / Manual UI / Booking fallback / Security QA / (Клешня, 02.07.2026) [codex]

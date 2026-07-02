@@ -2686,12 +2686,11 @@ function bookingMenuProductExplicitImageUrl(product = {}) {
 }
 
 function bookingMenuProductImageUrl(product = {}) {
-    return bookingMenuProductExplicitImageUrl(product) || bookingMenuImageManifestUrl(product);
+    return bookingMenuProductExplicitImageUrl(product);
 }
 
 function bookingMenuProductImageFallbackUrl(product = {}, currentUrl = '') {
-    const manifestUrl = bookingMenuImageManifestUrl(product);
-    return manifestUrl && manifestUrl !== currentUrl ? manifestUrl : '';
+    return '';
 }
 
 function bookingMenuProductEmoji(product = {}) {
@@ -2716,13 +2715,13 @@ function bookingMenuProductEmoji(product = {}) {
     return bookingKitchenType(product) === 'cake' ? '🎂' : '🍽️';
 }
 
-const BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '/images/kitchen-menu/fallback-burger-wide.jpg';
+const BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '';
 
 function bookingMenuCatalogVisualHtml(product = {}, title = '', modifier = '') {
     const productImageUrl = bookingMenuProductImageUrl(product);
-    const imageUrl = productImageUrl || BOOKING_MENU_CATALOG_FALLBACK_IMAGE;
-    const manifestFallbackUrl = productImageUrl ? bookingMenuProductImageFallbackUrl(product, productImageUrl) : '';
-    const usesFallback = !productImageUrl;
+    const imageUrl = productImageUrl;
+    const manifestFallbackUrl = '';
+    const usesFallback = false;
     const emoji = bookingMenuProductEmoji(product);
     const classes = [
         'booking-menu-catalog-thumb',
@@ -2748,12 +2747,6 @@ function bookingMenuCatalogHandleImageError(img) {
         img.dataset.menuCatalogNextSrc = '';
         img.src = nextSrc;
         thumb.classList.add('uses-manifest-fallback-image');
-        return;
-    }
-    if (img.dataset.menuCatalogFallback !== '1') {
-        img.dataset.menuCatalogFallback = '1';
-        img.src = BOOKING_MENU_CATALOG_FALLBACK_IMAGE;
-        thumb.classList.add('uses-fallback-image');
         return;
     }
     thumb.classList.add('is-image-missing');

@@ -957,7 +957,7 @@ function productMenuImageManifestUrl(product = {}) {
 }
 
 function productMenuImageUrl(product = {}) {
-    const explicitUrl = productMenuSafeImageUrl(
+    return productMenuSafeImageUrl(
         product.imageUrl
         || product.image_url
         || product.photoUrl
@@ -970,7 +970,6 @@ function productMenuImageUrl(product = {}) {
         || product.icon_url
         || ''
     );
-    return explicitUrl || productMenuImageManifestUrl(product);
 }
 
 function productMenuEmoji(product = {}) {
@@ -996,8 +995,8 @@ function productMenuEmoji(product = {}) {
 
 function renderKitchenCardVisual(product = {}) {
     const productImage = productMenuImageUrl(product);
-    const imageUrl = productImage || PRODUCT_MENU_FALLBACK_IMAGE;
-    const usesFallback = !productImage;
+    const imageUrl = productImage;
+    const usesFallback = false;
     const title = productMenuTitle(product) || 'Позиція меню';
     return `
         <div class="kitchen-product-media${imageUrl ? ' has-image' : ''}${usesFallback ? ' uses-fallback-image' : ''}" title="${escapeHtml(title)}">
@@ -1010,12 +1009,6 @@ function renderKitchenCardVisual(product = {}) {
 function productMenuCardHandleImageError(img) {
     const media = img?.closest?.('.kitchen-product-media');
     if (!img || !media) return;
-    if (img.dataset.productMenuFallback !== '1') {
-        img.dataset.productMenuFallback = '1';
-        img.src = PRODUCT_MENU_FALLBACK_IMAGE;
-        media.classList.add('uses-fallback-image');
-        return;
-    }
     media.classList.add('is-image-missing');
     img.removeAttribute('src');
 }

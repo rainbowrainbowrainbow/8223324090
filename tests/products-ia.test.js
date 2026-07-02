@@ -90,6 +90,10 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /function productMenuImageManifestUrl/);
     assert.match(pageJs, /window\.KITCHEN_MENU_IMAGES/);
     assert.match(pageJs, /function renderKitchenCardVisual/);
+    assert.match(pageJs, /function productMenuImageUrl\(product = \{\}\) \{\s*return productMenuSafeImageUrl/);
+    assert.doesNotMatch(pageJs, /return explicitUrl \|\| productMenuImageManifestUrl\(product\)/);
+    assert.match(pageJs, /const imageUrl = productImage;/);
+    assert.doesNotMatch(pageJs, /img\.src = PRODUCT_MENU_FALLBACK_IMAGE/);
     assert.match(pageJs, /function renderKitchenMenuAiActions/);
     assert.match(pageJs, /function renderKitchenMenuImageStudio/);
     assert.match(pageJs, /function renderKitchenMenuImagePreview/);

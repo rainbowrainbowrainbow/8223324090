@@ -831,27 +831,23 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="allergens"/);
     assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-insight="pairings"/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/uploads\/catalog-images\/items\/menu-juice-generated\.png/);
-    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-next-src="\/images\/kitchen-menu\/juice\.webp"/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /data-menu-catalog-next-src="\/images\/kitchen-menu\/juice\.webp"/);
     assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/uploads\/catalog-images\/items\/cake-generated\.png/);
-    assert.match(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogList').innerHTML, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
     ctx.setBookingMenuCatalogOpen(true);
     assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), true);
 
     const fallbackImg = doc.querySelector('.booking-menu-catalog-thumb.uses-fallback-image img[data-menu-catalog-fallback="1"]');
-    assert.ok(fallbackImg, 'fallback image is rendered when product has no configured photo');
+    assert.equal(fallbackImg, null, 'legacy/static fallback image is not rendered when product has no configured photo');
 
     const generatedImg = doc.querySelector('.booking-menu-catalog-thumb.has-image img[src="/uploads/catalog-images/items/menu-juice-generated.png"]');
-    assert.ok(generatedImg, 'product iconUrl is rendered before manifest fallback');
+    assert.ok(generatedImg, 'product iconUrl is rendered without legacy manifest fallback');
     ctx.bookingMenuCatalogHandleImageError(generatedImg);
-    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-manifest-fallback-image'), true);
-    assert.equal(generatedImg.getAttribute('src'), '/images/kitchen-menu/juice.webp');
-    assert.equal(generatedImg.dataset.menuCatalogFallback, '0');
-    ctx.bookingMenuCatalogHandleImageError(generatedImg);
-    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-fallback-image'), true);
-    assert.equal(generatedImg.getAttribute('src'), '/images/kitchen-menu/fallback-burger-wide.jpg');
-    assert.equal(generatedImg.dataset.menuCatalogFallback, '1');
-    ctx.bookingMenuCatalogHandleImageError(generatedImg);
+    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-manifest-fallback-image'), false);
+    assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('uses-fallback-image'), false);
     assert.equal(generatedImg.closest('.booking-menu-catalog-thumb').classList.contains('is-image-missing'), true);
+    assert.equal(generatedImg.hasAttribute('src'), false);
+    assert.equal(generatedImg.dataset.menuCatalogFallback, '0');
 
     ctx.upsertBookingMenuCatalogProduct('cake_custom', 1);
     assert.equal(ctx.getBookingMenuPositions().length, 1);
@@ -964,7 +960,7 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
 });
 
-test('booking menu catalog keeps active product images ahead of manifest and generic fallback', () => {
+test('booking menu catalog uses active generated images and ignores legacy static fallbacks', () => {
     const ctx = createBookingMenuCatalogHarness();
     ctx.window.KITCHEN_MENU_IMAGES = Object.freeze({
         basePath: '/images/kitchen-menu/',
@@ -1004,7 +1000,7 @@ test('booking menu catalog keeps active product images ahead of manifest and gen
         iconUrl: '/uploads/catalog-images/items/uploaded-active.png'
     };
     assert.equal(ctx.bookingMenuProductImageUrl(uploadedProduct), '/uploads/catalog-images/items/uploaded-active.png');
-    assert.equal(ctx.bookingMenuProductImageFallbackUrl(uploadedProduct, '/uploads/catalog-images/items/uploaded-active.png'), '/images/kitchen-menu/manifest-uploads.webp');
+    assert.equal(ctx.bookingMenuProductImageFallbackUrl(uploadedProduct, '/uploads/catalog-images/items/uploaded-active.png'), '');
 
     const margaritaProduct = {
         id: 'menu_2026_031_item',
@@ -1013,19 +1009,19 @@ test('booking menu catalog keeps active product images ahead of manifest and gen
         iconUrl: '/uploads/catalog-images/items/missing-margarita.png'
     };
     assert.equal(ctx.bookingMenuProductImageUrl(margaritaProduct), '/uploads/catalog-images/items/missing-margarita.png');
-    assert.equal(ctx.bookingMenuProductImageFallbackUrl(margaritaProduct, '/uploads/catalog-images/items/missing-margarita.png'), '/images/kitchen-menu/products/menu-031.jpg');
+    assert.equal(ctx.bookingMenuProductImageFallbackUrl(margaritaProduct, '/uploads/catalog-images/items/missing-margarita.png'), '');
 
     assert.equal(ctx.bookingMenuProductImageUrl({
         id: 'manifest_only',
         code: 'MENU-MANIFEST',
         name: 'Manifest only'
-    }), '/images/kitchen-menu/manifest-only.webp');
+    }), '');
 
     assert.equal(ctx.bookingMenuProductImageUrl({
         id: 'manifest_name_only',
         code: 'MENU-NAME',
         name: 'Manifest By Name'
-    }), '/images/kitchen-menu/manifest-by-name.webp');
+    }), '');
 
     assert.equal(ctx.bookingMenuProductImageUrl({
         id: 'no_image',
@@ -1038,18 +1034,19 @@ test('booking menu catalog keeps active product images ahead of manifest and gen
         code: 'MENU-NO-IMAGE',
         name: 'No image'
     }, 'No image');
-    assert.match(fallbackHtml, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
-    assert.match(fallbackHtml, /uses-fallback-image/);
-    assert.match(fallbackHtml, /data-menu-catalog-fallback="1"/);
+    assert.doesNotMatch(fallbackHtml, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
+    assert.doesNotMatch(fallbackHtml, /uses-fallback-image/);
+    assert.doesNotMatch(fallbackHtml, /<img/);
 
     const margaritaHtml = ctx.bookingMenuCatalogVisualHtml(margaritaProduct, 'Піца Маргарита');
     assert.match(margaritaHtml, /src="\/uploads\/catalog-images\/items\/missing-margarita\.png"/);
-    assert.match(margaritaHtml, /data-menu-catalog-next-src="\/images\/kitchen-menu\/products\/menu-031\.jpg"/);
+    assert.match(margaritaHtml, /data-menu-catalog-next-src=""/);
+    assert.doesNotMatch(margaritaHtml, /products\/menu-031\.jpg/);
 
     const uploadedHtml = ctx.bookingMenuCatalogVisualHtml(uploadedProduct, 'Uploaded active image');
     assert.match(uploadedHtml, /src="\/uploads\/catalog-images\/items\/uploaded-active\.png"/);
-    assert.match(uploadedHtml, /data-menu-catalog-next-src="\/images\/kitchen-menu\/manifest-uploads\.webp"/);
-    assert.doesNotMatch(uploadedHtml, /(^|\s)src="\/images\/kitchen-menu\/manifest-uploads\.webp"/);
+    assert.match(uploadedHtml, /data-menu-catalog-next-src=""/);
+    assert.doesNotMatch(uploadedHtml, /manifest-uploads\.webp/);
     assert.match(uploadedHtml, /data-menu-catalog-fallback="0"/);
 });
 
@@ -2546,13 +2543,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.doesNotMatch(bookingJs, /<option value="cake">Винос торта<\/option>/);
     assert.match(panelCss, /@media \(max-width:\s*900px\)/);
     assert.match(panelCss, /\.booking-menu-catalog-panel::after/);
-    assert.match(bookingJs, /BOOKING_MENU_CATALOG_FALLBACK_IMAGE = '\/images\/kitchen-menu\/fallback-burger-wide\.jpg'/);
+    assert.match(bookingJs, /BOOKING_MENU_CATALOG_FALLBACK_IMAGE = ''/);
     assert.match(bookingJs, /data-menu-catalog-fallback/);
-    assert.equal(
-        fs.existsSync(path.join(repoRoot, 'images', 'kitchen-menu', 'fallback-burger-wide.jpg')),
-        true,
-        'missing kitchen fallback image asset'
-    );
+    assert.doesNotMatch(bookingJs, /img\.src = BOOKING_MENU_CATALOG_FALLBACK_IMAGE/);
 });
 
 test('booking create flow bridges room-source kitchen without an existing banquet group', () => {

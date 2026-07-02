@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.101 - Generated Menu Image Hotfix
+
+### Booking menu / Products catalog / Generated image priority / Legacy static image removal / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]
+- **Старі static/manifest картинки більше не підсовуються замість generated/upload фото** - booking catalog і products/programs картки беруть лише активні `imageUrl` / `iconUrl` / upload-поля.
+- **Піца Маргарита більше не падає на старий `menu-031.jpg`** - якщо active generated фото не завантажилось, картка показує emoji/empty state, а не старий білий static image.
+- **Generic burger fallback вимкнено для меню-карток** - `fallback-burger-wide.jpg` більше не маскує відсутні або биті фото продуктів.
+- **Legacy `KITCHEN_MENU_IMAGES` лишився як завантажений asset для сумісності, але не є fallback у цих картках** - погані старі `images/kitchen-menu/products/menu-*.jpg` не перебивають нові фото.
+- **Додано regression guards** - `tests/booking-package-contract.test.js`, `tests/products-ia.test.js` і `tests/ui-check.js` забороняють повернення static/generic fallback у цьому flow.
+- **Cache tags оновлено до `0.77.101`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані для нового frontend bundle.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - hotfix обмежений frontend fallback logic, тестами, release cache tags і changelog.
+
 ## v0.77.100 - Menu Manifest Fallback Hotfix
 
 ### Booking menu / Broken upload fallback / Manifest image safety / Regression QA / (Клешня, 02.07.2026) [codex]

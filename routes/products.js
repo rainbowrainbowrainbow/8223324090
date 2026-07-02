@@ -47,6 +47,11 @@ const {
     generateAndStoreMenuPhotoDraft,
     resolveMenuImageOpenAIModel
 } = require('../services/menuPhotoGeneration');
+const {
+    buildMenuImageContext,
+    createExternalMenuImageDraft,
+    persistMenuImageDraft
+} = require('../services/menuImageDrafts');
 
 const log = createLogger('Products');
 
@@ -1468,6 +1473,34 @@ function menuImagePublicError(err) {
     };
 }
 
+function menuImageExternalDraftPublicError(err) {
+    const code = String(err?.code || '');
+    const clientErrorCodes = new Set([
+        'menu_image_payload_unsupported_field',
+        'menu_image_source_required',
+        'menu_image_source_conflict',
+        'menu_image_source_invalid',
+        'menu_image_source_forbidden',
+        'menu_image_source_too_large',
+        'menu_image_url_too_long'
+    ]);
+    if (clientErrorCodes.has(code)) {
+        return {
+            status: Number(err.status || 400),
+            code,
+            error: String(err.message || 'Invalid external menu image draft payload')
+        };
+    }
+    if (code === 'menu_image_upload_failed') {
+        return {
+            status: 502,
+            code,
+            error: 'External menu image could not be saved to CRM uploads'
+        };
+    }
+    return null;
+}
+
 async function persistProductMenuImageDraft(productId, businessContext, username, draft) {
     await pool.query(
         `UPDATE products
@@ -1478,6 +1511,63 @@ async function persistProductMenuImageDraft(productId, businessContext, username
            AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
         [JSON.stringify(draft), username, productId, businessContext]
     );
+}
+
+async function handleExternalMenuImageDraftRequest(req, res) {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+
+        const product = await getProductWithPriceRule(pool, id, businessContext);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        if (product.is_active === false || product.availability_status === 'hidden') {
+            return res.status(404).json({ success: false, error: 'Product not found' });
+        }
+
+        const currentDraft = currentMenuAiDraftForProduct(product);
+        const result = await createExternalMenuImageDraft({
+            product,
+            payload: req.body || {},
+            actor: {
+                username: req.user?.username,
+                source: cleanNullableString(req.body?.source, 40) || 'products-menu-external'
+            },
+            currentDraft
+        });
+        await persistMenuImageDraft(pool, {
+            productId: id,
+            businessContext,
+            username: req.user?.username,
+            draft: result.draft
+        });
+
+        const fresh = await getProductWithPriceRule(pool, id, businessContext);
+        res.json({
+            success: true,
+            status: 'ready',
+            provider: result.imageStudio.provider,
+            model: result.imageStudio.model,
+            imageUrl: result.imageStudio.imageUrl,
+            prompt: result.imageStudio.prompt,
+            draft: result.draft,
+            product: mapProductRow(fresh)
+        });
+    } catch (err) {
+        const publicError = menuImageExternalDraftPublicError(err);
+        if (publicError) {
+            return res.status(publicError.status).json({
+                success: false,
+                error: publicError.error,
+                code: publicError.code
+            });
+        }
+        log.error('Create external product menu image draft error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
 }
 
 async function handleMenuImageDraftRequest(req, res) {
@@ -1580,6 +1670,35 @@ router.post('/:id/menu-image/draft', productMenuImageRateLimit, requireRole(...P
 
 // POST /api/products/:id/menu-image/generate - compatibility alias; no immediate icon_url overwrite
 router.post('/:id/menu-image/generate', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleMenuImageDraftRequest);
+
+// POST /api/products/:id/menu-image/external-draft - accept a ready uploaded image as a reviewable draft only
+router.post('/:id/menu-image/external-draft', productMenuImageRateLimit, requireRole(...PRODUCT_MUTATION_ROLES), handleExternalMenuImageDraftRequest);
+
+// GET /api/products/:id/menu-image/context - safe product facts and image rules for external generation
+router.get('/:id/menu-image/context', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+    const { id } = req.params;
+    if (!id || id.length > 80) return res.status(400).json({ success: false, error: 'Invalid product ID' });
+
+    try {
+        const businessContext = requireProductBusinessContext(req, res);
+        if (!businessContext) return;
+        const product = await getProductWithPriceRule(pool, id, businessContext);
+        const check = requireMenuImageProduct(product);
+        if (!check.ok) return res.status(check.status).json({ success: false, error: check.error });
+        if (product.is_active === false || product.availability_status === 'hidden') {
+            return res.status(404).json({ success: false, error: 'Product not found' });
+        }
+
+        const context = buildMenuImageContext(product);
+        res.json({
+            success: true,
+            ...context
+        });
+    } catch (err) {
+        log.error('Get product menu image context error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
 
 router.get('/:id/menu-image/status', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
     const { id } = req.params;

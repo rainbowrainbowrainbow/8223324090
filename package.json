@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.95",
+  "version": "0.77.96",
   "eventGenix": {
-    "releaseLabel": "Lead Customer Auto Link Fix"
+    "releaseLabel": "Menu Image Agent Workflow"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

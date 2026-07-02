@@ -48,7 +48,7 @@ test('program icon service keeps prompt fallback, Kie media default, OpenRouter 
     assert.match(service, /KIE_API_KEY not configured/);
     assert.match(service, /\/api\/v1\/jobs\/createTask/);
     assert.match(service, /\/api\/v1\/jobs\/recordInfo\?taskId=/);
-    assert.match(storage, /startsWith\('data:image\/'\)/);
+    assert.match(storage, /data:image\\\//);
     assert.doesNotMatch(service, /batch-generate|bulk-generate|auto-backfill/i);
 
     const prompt = impl.buildDeterministicProgramIconPrompt({

@@ -34,6 +34,7 @@ test('detailed menu tech-card schema extends products and stock requirements wit
 test('products API exposes detailed tech-card persistence and explicit warehouse write-off', () => {
     const productsRoute = read('routes/products.js');
     const menuPhotoService = read('services/menuPhotoGeneration.js');
+    const menuImageDraftService = read('services/menuImageDrafts.js');
 
     assert.match(productsRoute, /PRODUCT_TECH_CARD_MODES/);
     assert.match(productsRoute, /techCardMode: normalizeTechCardMode/);
@@ -54,11 +55,29 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     assert.match(productsRoute, /OPENAI_MENU_AI_MODEL/);
     assert.match(productsRoute, /\/responses/);
     assert.match(productsRoute, /router\.post\('\/menu-ai-draft'/);
+    assert.match(productsRoute, /buildMenuImageContext/);
+    assert.match(productsRoute, /router\.get\('\/:id\/menu-image\/context'/);
+    assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/external-draft'/);
     assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/draft'/);
     assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/generate'[\s\S]+handleMenuImageDraftRequest/);
     assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/apply'/);
     assert.match(productsRoute, /router\.post\('\/:id\/menu-image\/reject'/);
     assert.match(productsRoute, /router\.get\('\/:id\/menu-image\/status'/);
+    assert.match(productsRoute, /Get product menu image context error/);
+    assert.match(menuImageDraftService, /allowedSizes/);
+    assert.match(menuImageDraftService, /styleRules/);
+    assert.match(menuImageDraftService, /backgroundRules/);
+    assert.match(menuImageDraftService, /negativePrompt/);
+    assert.match(menuImageDraftService, /EXTERNAL_MENU_IMAGE_DRAFT_FIELDS/);
+    assert.match(menuImageDraftService, /menu_image_payload_unsupported_field/);
+    assert.match(menuImageDraftService, /menu_image_source_forbidden/);
+    assert.match(menuImageDraftService, /menu_image_source_conflict/);
+    assert.match(menuImageDraftService, /MAX_EXTERNAL_IMAGE_BYTES/);
+    assert.match(menuImageDraftService, /MAX_EXTERNAL_IMAGE_URL_LENGTH/);
+    assert.match(menuImageDraftService, /ALLOWED_EXTERNAL_IMAGE_EXTENSIONS/);
+    assert.match(menuImageDraftService, /menu_image_url_too_long/);
+    assert.match(menuImageDraftService, /menu_image_upload_failed/);
+    assert.match(productsRoute, /menu_image_url_too_long/);
     assert.match(productsRoute, /status: 'ready'/);
     assert.match(productsRoute, /status: 'failed'/);
     const draftHandlerStart = productsRoute.indexOf('async function handleMenuImageDraftRequest');
@@ -67,6 +86,14 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
     const draftHandler = productsRoute.slice(draftHandlerStart, draftHandlerEnd);
     assert.match(draftHandler, /persistProductMenuImageDraft/);
     assert.doesNotMatch(draftHandler, /SET\s+icon_url\s*=/, 'draft/generate handler must not immediately overwrite icon_url');
+    const externalHandlerStart = productsRoute.indexOf('async function handleExternalMenuImageDraftRequest');
+    const externalHandlerEnd = productsRoute.indexOf('async function handleMenuImageDraftRequest', externalHandlerStart);
+    assert.ok(externalHandlerStart >= 0 && externalHandlerEnd > externalHandlerStart, 'external menu image draft handler should stay discoverable');
+    const externalHandler = productsRoute.slice(externalHandlerStart, externalHandlerEnd);
+    assert.match(externalHandler, /createExternalMenuImageDraft/);
+    assert.match(externalHandler, /persistMenuImageDraft/);
+    assert.match(externalHandler, /status: 'ready'/);
+    assert.doesNotMatch(externalHandler, /SET\s+icon_url\s*=/, 'external draft handler must not immediately overwrite icon_url');
     assert.match(productsRoute, /SET ai_card_draft = \$1::jsonb/);
     assert.match(productsRoute, /SET icon_url = \$1,[\s\S]+ai_card_draft = \$2::jsonb/);
     assert.match(menuPhotoService, /OPENAI_MENU_IMAGE_MODEL/);
@@ -130,11 +157,16 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(programsJs, /renderKitchenMenuImagePreview/);
     assert.match(programsJs, /menuImageDraftStatusLabel/);
     assert.match(programsJs, /generateKitchenMenuImage/);
+    assert.match(programsJs, /createKitchenMenuExternalDraft/);
+    assert.match(programsJs, /readMenuImageFileAsDataUrl/);
     assert.match(programsJs, /applyKitchenMenuImageDraft/);
     assert.match(programsJs, /rejectKitchenMenuImageDraft/);
     assert.match(programsJs, /saveKitchenMenuImageDraft/);
     assert.match(programsJs, /buildKitchenMenuImagePrompt/);
     assert.match(programsJs, /data-menu-image-action="generate"/);
+    assert.match(programsJs, /data-menu-image-action="external-draft"/);
+    assert.match(programsJs, /data-menu-image-file/);
+    assert.match(programsJs, /data-menu-image-url/);
     assert.match(programsJs, /data-menu-image-action="apply"/);
     assert.match(programsJs, /data-menu-image-action="reject"/);
     assert.match(programsJs, /approveMenuAiBlock/);
@@ -142,6 +174,7 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(programsJs, /applyMenuAiReviewFinal/);
     assert.match(programsJs, /apiGenerateProductMenuAiDraft/);
     assert.match(programsJs, /apiGenerateProductMenuImage/);
+    assert.match(programsJs, /apiCreateProductMenuExternalDraft/);
     assert.match(programsJs, /apiSaveProductMenuAiDraft/);
     assert.match(programsJs, /renderTechCardIngredientRows/);
     assert.match(programsJs, /saveProductTechCardIfNeeded/);
@@ -153,6 +186,8 @@ test('products UI lets operators edit rows, persist detailed mode, and trigger w
     assert.match(apiJs, /apiWriteOffProductTechCard/);
     assert.match(apiJs, /apiGenerateProductMenuAiDraft/);
     assert.match(apiJs, /apiGenerateProductMenuImage/);
+    assert.match(apiJs, /apiCreateProductMenuExternalDraft/);
+    assert.match(apiJs, /\/menu-image\/external-draft/);
     assert.match(apiJs, /apiGetProductMenuImageStatus/);
     assert.match(apiJs, /apiApplyProductMenuImage/);
     assert.match(apiJs, /apiRejectProductMenuImage/);

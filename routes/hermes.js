@@ -59,6 +59,11 @@ const {
     normalizeMenuImageStyle,
     resolveMenuImageOpenAIModel
 } = require('../services/menuPhotoGeneration');
+const {
+    buildMenuImageContext,
+    createExternalMenuImageDraft,
+    persistMenuImageDraft
+} = require('../services/menuImageDrafts');
 const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
 const {
     createTaskWatchdogCallbackDryRunHandler,
@@ -96,7 +101,9 @@ const SUPPORTED_ACTIONS = [
     'tasks.status',
     'menu_photos.read',
     'menu_photos.candidates',
+    'menu_photos.context',
     'menu_photos.draft',
+    'menu_photos.external_draft',
     'menu_photos.apply',
     'menu_photos.reject',
     'task_watchdog.preview',
@@ -197,6 +204,25 @@ const HERMES_MENU_PHOTO_DRAFT_ALLOWED_FIELDS = new Set([
     'settings',
     'size',
     'style'
+]);
+
+const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_ALLOWED_FIELDS = new Set([
+    'businessContext',
+    'business_context',
+    'imageUrl',
+    'image_url',
+    'imageBase64',
+    'image_base64',
+    'mimeType',
+    'mime_type',
+    'imageMimeType',
+    'image_mime_type',
+    'prompt',
+    'provider',
+    'model',
+    'size',
+    'style',
+    'source'
 ]);
 
 const HERMES_MENU_PHOTO_REJECT_ALLOWED_FIELDS = new Set([
@@ -1260,6 +1286,34 @@ function menuPhotoPublicError(err) {
     };
 }
 
+function menuPhotoExternalDraftPublicError(err) {
+    const code = String(err?.code || '');
+    const clientErrorCodes = new Set([
+        'menu_image_payload_unsupported_field',
+        'menu_image_source_required',
+        'menu_image_source_conflict',
+        'menu_image_source_invalid',
+        'menu_image_source_forbidden',
+        'menu_image_source_too_large',
+        'menu_image_url_too_long'
+    ]);
+    if (clientErrorCodes.has(code)) {
+        return {
+            status: Number(err.status || 400),
+            code,
+            error: String(err.message || 'Invalid external menu image draft payload')
+        };
+    }
+    if (code === 'menu_image_upload_failed') {
+        return {
+            status: 502,
+            code,
+            error: 'External menu image could not be saved to CRM uploads'
+        };
+    }
+    return null;
+}
+
 function normalizeHermesMenuPhotoDraftPayload(body = {}) {
     if (!isPlainObject(body)) {
         throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'Request body must be a JSON object');
@@ -1270,6 +1324,14 @@ function normalizeHermesMenuPhotoDraftPayload(body = {}) {
         size: body.size || settings.size || null,
         style: body.style || settings.style || null
     };
+}
+
+function normalizeHermesMenuPhotoExternalDraftPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_MENU_PHOTO_EXTERNAL_DRAFT_ALLOWED_FIELDS, 'HERMES_UNSUPPORTED_MENU_PHOTO_FIELD');
+    return body;
 }
 
 function normalizeHermesMenuPhotoRejectPayload(body = {}) {
@@ -1485,6 +1547,15 @@ function buildCapabilitiesPayload(env = process.env) {
                 subtaskToggle: 'PATCH /api/hermes/tasks/:id/subtasks/:subtaskId',
                 status: 'POST /api/hermes/tasks/:id/status'
             },
+            menuPhotos: {
+                candidates: 'GET /api/hermes/menu-photos/candidates',
+                detail: 'GET /api/hermes/menu-photos/:productId',
+                context: 'GET /api/hermes/menu-photos/:productId/context',
+                draft: 'POST /api/hermes/menu-photos/:productId/draft',
+                externalDraft: 'POST /api/hermes/menu-photos/:productId/external-draft',
+                apply: 'POST /api/hermes/menu-photos/:productId/apply',
+                reject: 'POST /api/hermes/menu-photos/:productId/reject'
+            },
             diagnostics: {
                 ownerWorkload: 'GET /api/hermes/diagnostics/owner-workload'
             },
@@ -1522,6 +1593,7 @@ function createHermesRouter(options = {}) {
     const authMiddleware = options.authMiddleware || hermesAuth;
     const query = options.pool || pool;
     const env = options.env || process.env;
+    const menuImageUploadOptions = options.menuImageUploadOptions || {};
     const rateLimiter = options.rateLimiter !== undefined
         ? options.rateLimiter
         : (options.rateLimit === false ? null : createHermesRateLimiter(options.rateLimit || {}));
@@ -1827,6 +1899,37 @@ function createHermesRouter(options = {}) {
         }
     });
 
+    router.get('/menu-photos/:productId/context', async (req, res) => {
+        try {
+            const productId = parseMenuPhotoProductId(req.params.productId);
+            if (!productId) {
+                return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+            }
+            const businessScope = ensureTaskBusinessScope(req, res);
+            if (!businessScope) return;
+            const product = await selectHermesMenuPhotoProduct(query, productId, businessScope);
+            if (!product) {
+                return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+            }
+
+            res.json({
+                success: true,
+                product: toHermesMenuPhotoProduct(product, req),
+                context: buildMenuImageContext(product),
+                meta: {
+                    businessScope: taskBusinessScopeMeta(businessScope),
+                    targetUsage: 'booking_menu_catalog'
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_REQUEST', err.message);
+            }
+            log.error('Hermes menu photo context error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo context failed');
+        }
+    });
+
     router.post('/menu-photos/:productId/draft', requireHermesMutationGuard, async (req, res) => {
         const productId = parseMenuPhotoProductId(req.params.productId);
         if (!productId) {
@@ -1948,6 +2051,89 @@ function createHermesRouter(options = {}) {
             }
             log.error('Hermes menu photo draft error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo draft failed');
+        }
+    });
+
+    router.post('/menu-photos/:productId/external-draft', requireHermesMutationGuard, async (req, res) => {
+        const productId = parseMenuPhotoProductId(req.params.productId);
+        if (!productId) {
+            return sendHermesError(res, 404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+        }
+
+        let payload;
+        let businessScope;
+        try {
+            payload = normalizeHermesMenuPhotoExternalDraftPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', err.message);
+            }
+            log.error('Hermes external menu photo draft preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes external menu photo draft failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const businessContext = activeTaskBusinessContext(businessScope);
+                const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext);
+                if (!product) {
+                    throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+                }
+
+                let result;
+                try {
+                    result = await createExternalMenuImageDraft({
+                        product,
+                        payload,
+                        actor: {
+                            username: req.user?.username || 'hermes',
+                            source: cleanNullableString(payload.source, 40) || 'hermes'
+                        },
+                        uploadOptions: menuImageUploadOptions,
+                        currentDraft: currentHermesMenuPhotoDraft(product)
+                    });
+                } catch (err) {
+                    const publicError = menuPhotoExternalDraftPublicError(err);
+                    if (publicError) {
+                        throw hermesHttpError(publicError.status, publicError.code, publicError.error);
+                    }
+                    throw err;
+                }
+                await persistMenuImageDraft(mutationPool, {
+                    productId,
+                    businessContext,
+                    username: req.user?.username || 'hermes',
+                    draft: result.draft,
+                    defaultBusinessContext: DEFAULT_TASK_BUSINESS_CONTEXT
+                });
+
+                return {
+                    status: 200,
+                    body: hermesMenuPhotoBody(req, businessScope, {
+                        ...product,
+                        ai_card_draft: result.draft
+                    }, {
+                        status: 'ready',
+                        provider: result.imageStudio.provider,
+                        model: result.imageStudio.model
+                    })
+                };
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/menu-photos/:productId/external-draft'
+            });
+        } catch (err) {
+            const publicError = menuPhotoExternalDraftPublicError(err);
+            if (publicError) {
+                return sendHermesError(res, publicError.status, publicError.code, publicError.error);
+            }
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MENU_PHOTO_MUTATION_FAILED', err.message);
+            }
+            log.error('Hermes external menu photo draft error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes external menu photo draft failed');
         }
     });
 

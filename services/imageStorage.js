@@ -11,6 +11,36 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('ImageStorage');
 const DEFAULT_LOCAL_DIR = path.join(__dirname, '..', 'uploads', 'catalog-images');
 const PUBLIC_PREFIX = '/uploads/catalog-images';
+const DEFAULT_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const DEFAULT_MAX_REDIRECTS = 4;
+const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30000;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+
+function imageSourcePreview(sourceUrl) {
+    const text = String(sourceUrl || '').trim();
+    if (!text) return 'empty-source';
+    if (/^data:image\//i.test(text)) return 'data:image/...';
+    try {
+        const parsed = new URL(text);
+        return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.slice(0, 120);
+    } catch {
+        return text.slice(0, 60);
+    }
+}
+
+function normalizeMimeType(value) {
+    return String(value || '').split(';')[0].trim().toLowerCase();
+}
+
+function normalizeMimeSet(value) {
+    if (!value) return ALLOWED_IMAGE_MIME_TYPES;
+    return new Set(Array.from(value).map(normalizeMimeType).filter(Boolean));
+}
+
+function parsePositiveInt(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
+}
 
 /**
  * Download image from URL and store it in the CRM local upload surface.
@@ -21,13 +51,11 @@ const PUBLIC_PREFIX = '/uploads/catalog-images';
  */
 async function uploadFromUrl(sourceUrl, filename, options = {}) {
     try {
-        const sourcePreview = String(sourceUrl || '').startsWith('data:image/')
-            ? 'data:image/...'
-            : String(sourceUrl || '').substring(0, 60);
+        const sourcePreview = imageSourcePreview(sourceUrl);
         log.info(`Downloading image from ${sourcePreview}...`);
-        const imageBuffer = await downloadImage(sourceUrl);
+        const imageBuffer = await downloadImage(sourceUrl, options);
         if (!imageBuffer || imageBuffer.length === 0) {
-            log.error('Downloaded empty image from', sourceUrl);
+            log.error('Downloaded empty image from', sourcePreview);
             return null;
         }
         log.info(`Downloaded ${Math.round(imageBuffer.length / 1024)}KB`);
@@ -50,31 +78,124 @@ async function uploadFromUrl(sourceUrl, filename, options = {}) {
 /**
  * Download image buffer from URL
  */
-function downloadImage(url) {
+function downloadImage(url, options = {}) {
+    const maxBytes = parsePositiveInt(options.maxBytes || options.maxImageBytes) || DEFAULT_MAX_IMAGE_BYTES;
+    const allowedMimeTypes = normalizeMimeSet(options.allowedMimeTypes);
+    const maxRedirects = Number.isInteger(options.maxRedirects) ? options.maxRedirects : DEFAULT_MAX_REDIRECTS;
+    const timeoutMs = parsePositiveInt(options.timeoutMs) || DEFAULT_DOWNLOAD_TIMEOUT_MS;
+    return downloadImageInternal(String(url || '').trim(), {
+        maxBytes,
+        allowedMimeTypes,
+        maxRedirects,
+        timeoutMs,
+        validateUrl: typeof options.validateUrl === 'function' ? options.validateUrl : null
+    });
+}
+
+function downloadImageInternal(url, options) {
     return new Promise((resolve, reject) => {
-        if (String(url || '').startsWith('data:image/')) {
+        if (/^data:image\//i.test(url)) {
             try {
-                const match = String(url).match(/^data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/);
+                const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
                 if (!match) return reject(new Error('Invalid data URL image'));
-                return resolve(Buffer.from(match[1], 'base64'));
+                const mime = normalizeMimeType(match[1]);
+                if (!options.allowedMimeTypes.has(mime)) {
+                    return reject(new Error('Unsupported image MIME type'));
+                }
+                const base64 = match[2].replace(/\s+/g, '');
+                const estimatedBytes = Math.floor((base64.length * 3) / 4);
+                if (estimatedBytes > options.maxBytes) {
+                    return reject(new Error('Image exceeds maximum size'));
+                }
+                return resolve(Buffer.from(base64, 'base64'));
             } catch (err) {
                 return reject(err);
             }
         }
-        const client = url.startsWith('https') ? https : http;
-        client.get(url, { timeout: 30000 }, (res) => {
+
+        let parsed;
+        try {
+            parsed = new URL(url);
+        } catch {
+            return reject(new Error('Invalid image URL'));
+        }
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return reject(new Error('Unsupported image URL protocol'));
+        }
+        if (options.validateUrl) {
+            try {
+                options.validateUrl(parsed.toString());
+            } catch (err) {
+                return reject(err);
+            }
+        }
+
+        const client = parsed.protocol === 'https:' ? https : http;
+        const req = client.get(parsed, { timeout: options.timeoutMs }, (res) => {
             // Follow redirects
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return downloadImage(res.headers.location).then(resolve).catch(reject);
+                if (options.maxRedirects <= 0) {
+                    res.resume();
+                    return reject(new Error('Too many image redirects'));
+                }
+                let nextUrl;
+                try {
+                    nextUrl = new URL(res.headers.location, parsed).toString();
+                } catch {
+                    res.resume();
+                    return reject(new Error('Invalid image redirect URL'));
+                }
+                res.resume();
+                return downloadImageInternal(nextUrl, {
+                    ...options,
+                    maxRedirects: options.maxRedirects - 1
+                }).then(resolve).catch(reject);
             }
             if (res.statusCode !== 200) {
+                res.resume();
                 return reject(new Error(`HTTP ${res.statusCode}`));
             }
+
+            const mime = normalizeMimeType(res.headers['content-type']);
+            if (!mime || !options.allowedMimeTypes.has(mime)) {
+                res.resume();
+                return reject(new Error('Unsupported image MIME type'));
+            }
+
+            const contentLength = parsePositiveInt(res.headers['content-length']);
+            if (contentLength && contentLength > options.maxBytes) {
+                res.resume();
+                return reject(new Error('Image exceeds maximum size'));
+            }
+
             const chunks = [];
-            res.on('data', c => chunks.push(c));
-            res.on('end', () => resolve(Buffer.concat(chunks)));
-            res.on('error', reject);
-        }).on('error', reject);
+            let totalBytes = 0;
+            let settled = false;
+            const fail = (err) => {
+                if (settled) return;
+                settled = true;
+                res.destroy();
+                reject(err);
+            };
+            res.on('data', chunk => {
+                totalBytes += chunk.length;
+                if (totalBytes > options.maxBytes) {
+                    fail(new Error('Image exceeds maximum size'));
+                    return;
+                }
+                chunks.push(chunk);
+            });
+            res.on('end', () => {
+                if (settled) return;
+                settled = true;
+                resolve(Buffer.concat(chunks));
+            });
+            res.on('error', fail);
+        });
+        req.setTimeout(options.timeoutMs, () => {
+            req.destroy(new Error('Image download timed out'));
+        });
+        req.on('error', reject);
     });
 }
 
@@ -100,4 +221,10 @@ function makeFilename(catalogId, itemName, ext = 'png') {
     return `${safeId}-${slug}-${Date.now()}.${ext}`;
 }
 
-module.exports = { uploadFromUrl, makeFilename, safeImageFilename };
+module.exports = {
+    uploadFromUrl,
+    makeFilename,
+    safeImageFilename,
+    ALLOWED_IMAGE_MIME_TYPES,
+    DEFAULT_MAX_IMAGE_BYTES
+};

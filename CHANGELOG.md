@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.96 - Menu Image Agent Workflow
+
+### Hermes / Menu image drafts / Manual UI / Booking fallback / Security QA / (Клешня, 02.07.2026) [codex]
+- **Hermes отримав контрольований workflow для фото меню** - додано `GET /api/hermes/menu-photos/:productId/context` і `POST /api/hermes/menu-photos/:productId/external-draft`, щоб агент міг отримати safe product context і повернути готову картинку як draft без auto-apply.
+- **Product API тепер має спільний контракт для агентів і manual UI** - додано `GET /api/products/:id/menu-image/context` та `POST /api/products/:id/menu-image/external-draft`, а вся draft-логіка винесена у `services/menuImageDrafts.js`.
+- **Активне фото меню змінюється тільки через Apply** - external/manual/Hermes draft записує лише `products.ai_card_draft.imageStudio`, а `products.icon_url` лишається write path тільки для існуючого apply flow.
+- **Manual operator UI додано в kitchen menu image studio** - оператор може створити draft із файлу або pasted image URL, побачити controlled loading/error/success states і застосувати або відхилити draft стандартними кнопками.
+- **Booking menu image priority зафіксовано тестами** - `iconUrl`, `icon_url` і `/uploads/catalog-images/items/...` мають перевагу над `js/kitchen-menu-images.js`, який лишається fallback.
+- **External image ingestion посилено для MVP production safety** - перевіряються протокол, MIME, URL length, image extension, base64 формат/розмір, response size, redirects і obvious private/local hosts; base64 payload не друкується у помилки.
+- **Додано audit/runbook пакет для Hermes handoff** - `docs/MENU_IMAGE_AGENT_WORKFLOW.md`, historical audit і release audit описують endpoints, stop conditions, rollback, verification і no-auto-apply policy.
+- **Додано regression coverage і повний release gate** - Product/Hermes routes, shared service, image storage, booking priority, UI static wiring, `npm test` і `check:version` пройшли на Node 22/npm 10.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - реліз обмежений backend routes/services, frontend image studio, docs, release cache tags і тестами.
+
+---
+
 ## v0.77.95 - Lead Customer Auto Link Fix
 
 ### Sales funnel / Customer auto-link / Booking search / Regression QA / (Клешня, 02.07.2026) [codex]

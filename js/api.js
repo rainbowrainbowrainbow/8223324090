@@ -2557,6 +2557,28 @@ async function apiGenerateProductMenuImage(id, payload = {}) {
     }
 }
 
+async function apiCreateProductMenuExternalDraft(id, payload = {}) {
+    try {
+        if (!guardCrmBusinessWrite('зберегти ручний draft фото меню')) {
+            return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'зберегти ручний draft фото меню') };
+        }
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/external-draft`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return { success: false, error: body.error || 'API error', code: body.code };
+        }
+        return body;
+    } catch (err) {
+        console.error('API createProductMenuExternalDraft error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
 async function apiGetProductMenuImageStatus(id, options = {}) {
     try {
         const params = new URLSearchParams();

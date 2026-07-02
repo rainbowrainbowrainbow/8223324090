@@ -300,9 +300,69 @@
 }
 
 .kitchen-menu-image-controls button:disabled,
-.kitchen-menu-image-controls select:disabled {
+.kitchen-menu-image-controls select:disabled,
+.kitchen-menu-image-manual input:disabled,
+.kitchen-menu-image-manual button:disabled {
     cursor: wait;
     opacity: 0.72;
+}
+
+.kitchen-menu-image-manual {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+}
+
+.kitchen-menu-image-manual label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.kitchen-menu-image-manual label span {
+    color: var(--gray-500, #64748b);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.kitchen-menu-image-manual input {
+    width: 100%;
+    min-height: 34px;
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--text-primary, #0f172a);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.kitchen-menu-image-manual input[type="file"] {
+    padding: 6px;
+}
+
+.kitchen-menu-image-manual button {
+    min-height: 34px;
+    white-space: nowrap;
+}
+
+.kitchen-menu-image-manual-status {
+    grid-column: 1 / -1;
+    min-height: 16px;
+    margin: -2px 0 0;
+    color: var(--gray-500, #64748b);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.kitchen-menu-image-manual-status[data-type="saving"] {
+    color: #2563eb;
+}
+
+.kitchen-menu-image-manual-status[data-type="error"] {
+    color: #dc2626;
 }
 
 .kitchen-menu-image-meta {
@@ -348,6 +408,7 @@ body.dark-mode .kitchen-menu-image-studio {
 }
 
 body.dark-mode .kitchen-menu-image-controls select,
+body.dark-mode .kitchen-menu-image-manual input,
 body.dark-mode .kitchen-menu-image-prompt textarea,
 body.dark-mode .kitchen-menu-ai-action {
     background: rgba(15, 23, 42, 0.72);
@@ -379,6 +440,14 @@ body.dark-mode .kitchen-menu-image-prompt-preview {
 
     .kitchen-menu-image-previews {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .kitchen-menu-image-manual {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .kitchen-menu-image-manual button {
+        width: 100%;
     }
 
     .kitchen-menu-ai-actions {

@@ -386,6 +386,9 @@ const MENU_IMAGE_STYLE_OPTIONS = [
     { value: 'clean-dark', label: 'Dark CRM' }
 ];
 
+const MENU_IMAGE_MANUAL_MAX_FILE_BYTES = 12 * 1024 * 1024;
+const MENU_IMAGE_MANUAL_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+
 function normalizeAllergenKey(value) {
     return String(value || '').trim().toLowerCase();
 }
@@ -1166,6 +1169,20 @@ function renderKitchenMenuImageStudio(product = {}, canManage = false) {
                     </button>
                 </div>
             </div>
+            <div class="kitchen-menu-image-manual">
+                <label>
+                    <span>Файл</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" data-menu-image-file>
+                </label>
+                <label>
+                    <span>URL фото</span>
+                    <input type="url" inputmode="url" placeholder="https://..." data-menu-image-url>
+                </label>
+                <button type="button" class="btn-page-secondary" data-menu-image-action="external-draft" onclick="createKitchenMenuExternalDraft('${productId}', this)">
+                    Зберегти як draft
+                </button>
+                <p class="kitchen-menu-image-manual-status" data-menu-image-manual-status aria-live="polite"></p>
+            </div>
             ${hasDraft ? `
                 <p class="kitchen-menu-image-meta">
                     ${escapeHtml(draft.error ? `Помилка: ${draft.error}` : (draft.generatedAt ? `Згенеровано: ${draft.generatedAt}` : 'Чернетка підготовлена'))}
@@ -1203,7 +1220,7 @@ async function openKitchenMenuAiFromCard(productId, initialStep = 'nameDescripti
 
 function setKitchenMenuImageStudioBusy(panel, busy) {
     if (!panel) return;
-    panel.querySelectorAll('button, select').forEach(control => {
+    panel.querySelectorAll('button, select, input, textarea').forEach(control => {
         if (busy) {
             control.dataset.menuImageWasDisabled = control.disabled ? '1' : '0';
             control.disabled = true;
@@ -1212,6 +1229,114 @@ function setKitchenMenuImageStudioBusy(panel, busy) {
             delete control.dataset.menuImageWasDisabled;
         }
     });
+}
+
+function setKitchenMenuImageManualStatus(panel, message = '', type = '') {
+    const status = panel?.querySelector?.('[data-menu-image-manual-status]');
+    if (!status) return;
+    status.textContent = message || '';
+    status.dataset.type = type || '';
+}
+
+function readMenuImageFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Не вдалося прочитати файл зображення'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function createKitchenMenuExternalDraft(productId, trigger = null) {
+    if (!guardProductWrite('зберегти ручний draft фото меню')) return;
+    const product = allProducts.find(item => String(item.id || '') === String(productId || ''));
+    if (!product || getKitchenType(product) !== 'menu') {
+        showNotification('Image studio доступний тільки для меню-позицій', 'error');
+        return;
+    }
+
+    const panel = trigger?.closest?.('.kitchen-menu-image-studio');
+    const fileInput = panel?.querySelector?.('[data-menu-image-file]');
+    const urlInput = panel?.querySelector?.('[data-menu-image-url]');
+    const file = fileInput?.files?.[0] || null;
+    const imageUrl = String(urlInput?.value || '').trim();
+    const size = panel?.querySelector?.('[data-menu-image-size]')?.value || '1536x1024';
+    const style = panel?.querySelector?.('[data-menu-image-style]')?.value || 'catalog';
+    const originalText = trigger?.textContent || '';
+
+    if (file && imageUrl) {
+        const message = 'Оберіть або файл, або URL, не обидва одразу';
+        setKitchenMenuImageManualStatus(panel, message, 'error');
+        showNotification(message, 'error');
+        return;
+    }
+    if (!file && !imageUrl) {
+        const message = 'Додайте файл або вставте URL фото';
+        setKitchenMenuImageManualStatus(panel, message, 'error');
+        showNotification(message, 'error');
+        return;
+    }
+    if (file) {
+        if (!MENU_IMAGE_MANUAL_ALLOWED_TYPES.has(String(file.type || '').toLowerCase())) {
+            const message = 'Підтримуються PNG, JPG або WebP';
+            setKitchenMenuImageManualStatus(panel, message, 'error');
+            showNotification(message, 'error');
+            return;
+        }
+        if (file.size > MENU_IMAGE_MANUAL_MAX_FILE_BYTES) {
+            const message = 'Файл завеликий. Максимум 12 MB';
+            setKitchenMenuImageManualStatus(panel, message, 'error');
+            showNotification(message, 'error');
+            return;
+        }
+    }
+    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
+        const message = 'URL має починатися з http:// або https://';
+        setKitchenMenuImageManualStatus(panel, message, 'error');
+        showNotification(message, 'error');
+        return;
+    }
+
+    if (trigger) {
+        setKitchenMenuImageStudioBusy(panel, true);
+        trigger.textContent = 'Зберігаємо draft...';
+    }
+    setKitchenMenuImageManualStatus(panel, 'Зберігаємо draft...', 'saving');
+
+    try {
+        if (typeof apiCreateProductMenuExternalDraft !== 'function') {
+            throw new Error('Menu image external draft API is not available');
+        }
+        const payload = {
+            businessContext: getProductApiBusinessContext(),
+            prompt: buildKitchenMenuImagePrompt(product, { size, style }),
+            provider: 'manual',
+            model: file ? 'browser-file-upload' : 'pasted-image-url',
+            size,
+            style,
+            source: 'manual'
+        };
+        if (file) {
+            payload.imageBase64 = await readMenuImageFileAsDataUrl(file);
+        } else {
+            payload.imageUrl = imageUrl;
+        }
+
+        const result = await apiCreateProductMenuExternalDraft(productId, payload);
+        if (!result?.success) throw new Error(result?.error || 'Не вдалося зберегти manual draft фото меню');
+        if (result.product) updateProductInState(result.product);
+        showNotification('Manual draft фото меню збережено. Перевірте й застосуйте його вручну', 'success');
+        renderProducts();
+    } catch (err) {
+        const message = err.message || 'Не вдалося зберегти manual draft фото меню';
+        setKitchenMenuImageManualStatus(panel, message, 'error');
+        showNotification(message, 'error');
+    } finally {
+        if (trigger?.isConnected) {
+            setKitchenMenuImageStudioBusy(panel, false);
+            trigger.textContent = originalText;
+        }
+    }
 }
 
 async function generateKitchenMenuImage(productId, trigger = null) {

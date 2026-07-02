@@ -960,6 +960,83 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
 });
 
+test('booking menu catalog keeps active product images ahead of manifest and generic fallback', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    ctx.window.KITCHEN_MENU_IMAGES = Object.freeze({
+        basePath: '/images/kitchen-menu/',
+        byId: Object.freeze({
+            explicit_icon_url: 'manifest-icon-url.webp',
+            explicit_icon_snake: 'manifest-icon-snake.webp',
+            manifest_only: 'manifest-only.webp',
+            uploads_active: 'manifest-uploads.webp'
+        }),
+        byCode: Object.freeze({
+            MENU_UPLOADED: 'manifest-by-code.webp'
+        }),
+        byName: Object.freeze({
+            'manifest by name': 'manifest-by-name.webp'
+        })
+    });
+
+    assert.equal(ctx.bookingMenuProductImageUrl({
+        id: 'explicit_icon_url',
+        code: 'MENU-ICON-URL',
+        name: 'Explicit iconUrl',
+        iconUrl: '/uploads/catalog-images/items/icon-url-applied.png'
+    }), '/uploads/catalog-images/items/icon-url-applied.png');
+
+    assert.equal(ctx.bookingMenuProductImageUrl({
+        id: 'explicit_icon_snake',
+        code: 'MENU-ICON-SNAKE',
+        name: 'Explicit icon_url',
+        icon_url: '/uploads/catalog-images/items/icon-snake-applied.png'
+    }), '/uploads/catalog-images/items/icon-snake-applied.png');
+
+    assert.equal(ctx.bookingMenuProductImageUrl({
+        id: 'uploads_active',
+        code: 'MENU_UPLOADED',
+        name: 'Uploaded active image',
+        iconUrl: '/uploads/catalog-images/items/uploaded-active.png'
+    }), '/uploads/catalog-images/items/uploaded-active.png');
+
+    assert.equal(ctx.bookingMenuProductImageUrl({
+        id: 'manifest_only',
+        code: 'MENU-MANIFEST',
+        name: 'Manifest only'
+    }), '/images/kitchen-menu/manifest-only.webp');
+
+    assert.equal(ctx.bookingMenuProductImageUrl({
+        id: 'manifest_name_only',
+        code: 'MENU-NAME',
+        name: 'Manifest By Name'
+    }), '/images/kitchen-menu/manifest-by-name.webp');
+
+    assert.equal(ctx.bookingMenuProductImageUrl({
+        id: 'no_image',
+        code: 'MENU-NO-IMAGE',
+        name: 'No image'
+    }), '');
+
+    const fallbackHtml = ctx.bookingMenuCatalogVisualHtml({
+        id: 'no_image',
+        code: 'MENU-NO-IMAGE',
+        name: 'No image'
+    }, 'No image');
+    assert.match(fallbackHtml, /\/images\/kitchen-menu\/fallback-burger-wide\.jpg/);
+    assert.match(fallbackHtml, /uses-fallback-image/);
+    assert.match(fallbackHtml, /data-menu-catalog-fallback="1"/);
+
+    const uploadedHtml = ctx.bookingMenuCatalogVisualHtml({
+        id: 'uploads_active',
+        code: 'MENU_UPLOADED',
+        name: 'Uploaded active image',
+        iconUrl: '/uploads/catalog-images/items/uploaded-active.png'
+    }, 'Uploaded active image');
+    assert.match(uploadedHtml, /\/uploads\/catalog-images\/items\/uploaded-active\.png/);
+    assert.doesNotMatch(uploadedHtml, /manifest-uploads\.webp|manifest-by-code\.webp/);
+    assert.match(uploadedHtml, /data-menu-catalog-fallback="0"/);
+});
+
 test('booking menu catalog falls back from legacy invalid filter keys to all', () => {
     const ctx = createBookingMenuCatalogHarness();
     const doc = ctx.document;

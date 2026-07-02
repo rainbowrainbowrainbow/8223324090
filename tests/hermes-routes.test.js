@@ -1,7 +1,10 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const fsp = require('node:fs/promises');
 const jwt = require('jsonwebtoken');
+const os = require('node:os');
+const path = require('node:path');
 const { createHermesRouter } = require('../routes/hermes');
 const { createHermesAuthMiddleware } = require('../middleware/hermesAuth');
 
@@ -939,7 +942,8 @@ async function withHermesCreateServer(fakePool, testFn, options = {}) {
         authMiddleware: hermesTestAuth,
         pool: fakePool,
         skipNotifications: options.skipNotifications !== false,
-        env: options.env || {}
+        env: options.env || {},
+        menuImageUploadOptions: options.menuImageUploadOptions || undefined
     }));
     const { server, baseUrl } = await listen(app);
     try {
@@ -1521,6 +1525,69 @@ describe('Hermes menu photo routes', () => {
         });
     });
 
+    it('returns generation context through the Hermes menu photo context wrapper', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-context', productRow('dish-context', {
+                code: 'MENU-CONTEXT',
+                name: 'Context dish',
+                icon_url: '/uploads/catalog-images/items/context-current.png',
+                ai_card_draft: {
+                    imageStudio: {
+                        status: 'ready',
+                        imageUrl: '/uploads/catalog-images/items/context-draft.png',
+                        size: '1536x1024',
+                        style: 'catalog'
+                    }
+                }
+            })]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/menu-photos/dish-context/context?businessContext=event_genix');
+
+            assert.equal(res.status, 200, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.product.id, 'dish-context');
+            assert.equal(res.data.product.currentImageUrl, '/uploads/catalog-images/items/context-current.png');
+            assert.equal(res.data.context.product.id, 'dish-context');
+            assert.equal(res.data.context.product.code, 'MENU-CONTEXT');
+            assert.equal(res.data.context.product.currentImageUrl, '/uploads/catalog-images/items/context-current.png');
+            assert.equal(res.data.context.product.draftImageUrl, '/uploads/catalog-images/items/context-draft.png');
+            assert.equal(res.data.context.product.techCard, 'Internal kitchen notes');
+            assert.equal(res.data.context.imageRules.targetUsage, 'booking_menu_catalog');
+            assert.ok(res.data.context.imageRules.allowedSizes.includes('1536x1024'));
+            assert.equal(res.data.meta.businessScope.activeContext, 'event_genix');
+        });
+    });
+
+    it('requires Hermes auth on the menu photo context wrapper', async () => {
+        await withHermesCabinetServer(async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'GET', '/api/hermes/menu-photos/dish-auth/context?businessContext=event_genix');
+
+            assert.equal(res.status, 401, res.text);
+            assert.equal(res.data.code, 'HERMES_AUTH_REQUIRED');
+        });
+    });
+
+    it('requires Hermes auth on the external menu photo draft wrapper', async () => {
+        await withHermesCabinetServer(async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/menu-photos/dish-auth/external-draft?businessContext=event_genix',
+                {
+                    imageBase64: Buffer.from('external-png').toString('base64'),
+                    prompt: 'Hermes prompt',
+                    source: 'hermes'
+                },
+                mutationHeaders('menu-photo-external-auth')
+            );
+
+            assert.equal(res.status, 401, res.text);
+            assert.equal(res.data.code, 'HERMES_AUTH_REQUIRED');
+        });
+    });
+
     it('creates a failed draft safely when OpenAI image generation is unavailable', async () => {
         const previousKey = process.env.OPENAI_API_KEY;
         delete process.env.OPENAI_API_KEY;
@@ -1553,6 +1620,158 @@ describe('Hermes menu photo routes', () => {
                 process.env.OPENAI_API_KEY = previousKey;
             }
         }
+    });
+
+    it('creates an external ready draft through an idempotent Hermes mutation without applying it', async () => {
+        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-external-'));
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-ext', productRow('dish-ext', {
+                code: 'MENU-EXT',
+                name: 'External draft dish',
+                icon_url: '/uploads/catalog-images/items/current-external.png'
+            })]]
+        });
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                const body = {
+                    businessContext: 'event_genix',
+                    imageBase64: Buffer.from('external-png').toString('base64'),
+                    prompt: 'Hermes final external prompt',
+                    provider: 'hermes',
+                    model: 'hermes-image-model',
+                    size: '1536x1024',
+                    style: 'catalog',
+                    source: 'hermes'
+                };
+                const first = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-ext/external-draft', body, mutationHeaders('menu-photo-external'));
+                const retry = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-ext/external-draft', body, mutationHeaders('menu-photo-external'));
+
+                assert.equal(first.status, 200, first.text);
+                assert.equal(retry.status, 200, retry.text);
+                assert.deepEqual(retry.data, first.data);
+                assert.equal(first.data.success, true);
+                assert.equal(first.data.product.currentImageUrl, '/uploads/catalog-images/items/current-external.png');
+                assert.equal(first.data.product.draft.status, 'ready');
+                assert.equal(first.data.product.draft.provider, 'hermes');
+                assert.equal(first.data.product.draft.model, 'hermes-image-model');
+                assert.match(first.data.product.draft.imageUrl, /^\/uploads\/catalog-images\/items\/menu-menu-ext-\d+\.png$/);
+                assert.equal(first.data.meta.idempotencyKey, 'menu-photo-external');
+                assert.equal(first.data.meta.status, 'ready');
+                assert.equal(fakePool.products.get('dish-ext').icon_url, '/uploads/catalog-images/items/current-external.png');
+                assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.status, 'ready');
+                assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.prompt, 'Hermes final external prompt');
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 1);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+                assert.equal((await fsp.readdir(tempDir)).length, 1);
+            }, {
+                menuImageUploadOptions: { localDir: tempDir }
+            });
+        } finally {
+            await fsp.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('requires confirmation and idempotency headers on the Hermes external menu photo draft wrapper', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-ext-guard', productRow('dish-ext-guard')]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const body = {
+                imageBase64: Buffer.from('external-png').toString('base64'),
+                prompt: 'Hermes prompt',
+                source: 'hermes'
+            };
+            const missingConfirmation = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-ext-guard/external-draft', body, {
+                'Idempotency-Key': 'menu-photo-external-missing-confirmation'
+            });
+            const missingIdempotency = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-ext-guard/external-draft', body, {
+                'X-Hermes-User-Confirmed': 'true'
+            });
+
+            assert.equal(missingConfirmation.status, 400, missingConfirmation.text);
+            assert.equal(missingConfirmation.data.code, 'HERMES_CONFIRMATION_REQUIRED');
+            assert.equal(missingIdempotency.status, 400, missingIdempotency.text);
+            assert.equal(missingIdempotency.data.code, 'IDEMPOTENCY_KEY_REQUIRED');
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+        });
+    });
+
+    it('rejects invalid Hermes external menu photo payloads without draft writes or base64 echo', async () => {
+        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-invalid-'));
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-ext-invalid', productRow('dish-ext-invalid', {
+                icon_url: '/uploads/catalog-images/items/current-invalid.png'
+            })]]
+        });
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                const secretBase64 = Buffer.from('secret-image-payload').toString('base64');
+                const conflict = await request(
+                    baseUrl,
+                    'POST',
+                    '/api/hermes/menu-photos/dish-ext-invalid/external-draft',
+                    {
+                        imageUrl: 'https://example.test/image.png',
+                        imageBase64: secretBase64,
+                        prompt: 'Hermes prompt',
+                        source: 'hermes'
+                    },
+                    mutationHeaders('menu-photo-external-invalid-conflict')
+                );
+                const invalidUrl = await request(
+                    baseUrl,
+                    'POST',
+                    '/api/hermes/menu-photos/dish-ext-invalid/external-draft',
+                    {
+                        imageUrl: 'ftp://example.test/image.png',
+                        prompt: 'Hermes prompt',
+                        source: 'hermes'
+                    },
+                    mutationHeaders('menu-photo-external-invalid-url')
+                );
+
+                assert.equal(conflict.status, 400, conflict.text);
+                assert.equal(conflict.data.code, 'menu_image_source_conflict');
+                assert.equal(conflict.text.includes(secretBase64), false);
+                assert.equal(invalidUrl.status, 400, invalidUrl.text);
+                assert.equal(invalidUrl.data.code, 'menu_image_source_invalid');
+                assert.equal(fakePool.products.get('dish-ext-invalid').icon_url, '/uploads/catalog-images/items/current-invalid.png');
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+                assert.deepEqual(await fsp.readdir(tempDir), []);
+            }, {
+                menuImageUploadOptions: { localDir: tempDir }
+            });
+        } finally {
+            await fsp.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('rejects Hermes external menu photo drafts in read-only all-business scope', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-ext-read-only', productRow('dish-ext-read-only')]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(
+                baseUrl,
+                'POST',
+                '/api/hermes/menu-photos/dish-ext-read-only/external-draft?businessScope=all',
+                {
+                    imageBase64: Buffer.from('external-png').toString('base64'),
+                    prompt: 'Hermes prompt',
+                    source: 'hermes'
+                },
+                mutationHeaders('menu-photo-external-read-only')
+            );
+
+            assert.equal(res.status, 403, res.text);
+            assert.equal(res.data.code, 'business_scope_read_only');
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+        });
     });
 
     it('applies a ready draft through an idempotent Hermes mutation', async () => {

@@ -2025,7 +2025,6 @@ function renderKanban() {
             const phoneTel = phone.replace(/[^+\d]/g, '');
 
             return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}">
-                ${window.EventCards.renderEventCardImage(l, { modifier: 'compact' })}
                 <div class="kanban-card-top">
                     <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
                     <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>

@@ -182,7 +182,6 @@ test('event card resolver is wired into event UI surfaces', () => {
     assert.match(readProjectFile('js', 'programs-page.js'), /window\.EventCards\.renderEventCardImage\(p\)/);
     assert.match(readProjectFile('js', 'afisha-page.js'), /window\.EventCards\.renderEventCardImage\(item,\s*\{\s*modifier:\s*'compact'\s*\}\)/);
     assert.match(readProjectFile('js', 'afisha-page.js'), /window\.EventCards\.renderEventCardImage\(item,\s*\{\s*modifier:\s*'workspace'\s*\}\)/);
-    assert.match(readProjectFile('js', 'leads-page.js'), /window\.EventCards\.renderEventCardImage\(l,\s*\{\s*modifier:\s*'compact'\s*\}\)/);
     assert.match(readProjectFile('js', 'leads-page.js'), /window\.EventCards\.renderEventCardImage\(lead,\s*\{\s*modifier:\s*'workspace'\s*\}\)/);
     assert.match(readProjectFile('js', 'booking.js'), /window\.EventCards\.renderEventCardImage\(bookingEventCardRecord,\s*\{\s*modifier:\s*'booking'\s*\}\)/);
 

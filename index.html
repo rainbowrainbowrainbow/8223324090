@@ -1751,6 +1751,15 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.77.92 — Timeline Standalone Activity Detail Hotfix</h4>
+                    <ul>
+                        <li><b>Standalone-активності у <code>Свята</code> знову мають відкриватися з timeline block</b> — fallback приймає видимий block за id/date/context/view і timeline match keys, навіть коли detail lookup не повернув запис.</li>
+                        <li><b>Звичайна активність без <code>linkedTo</code> більше не вважається банкетним root</b> — full banquet detail renderer запускається тільки для реальної групи, кухні/меню/сервісу або явних booking links.</li>
+                        <li><b>Wrong-view захист збережено</b> — блок із projection для іншого <code>timelineView</code> не відкривається у поточному режимі.</li>
+                        <li><b>Додано regression guards</b> — тести покривають metadata-based visible block fallback і standalone activity без банкетних ознак.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.77.91 — Timeline Detail Package Hotfix</h4>
                     <ul>
                         <li><b>Анімація на <code>04.07.2026</code> більше не має падати при відкритті</b> — detail modal не валиться, якщо у старому <code>extraData.bookingPackage</code> поля <code>menuPositions</code> або <code>serviceEvents</code> збережені не масивами.</li>

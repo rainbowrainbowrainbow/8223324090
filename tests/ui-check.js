@@ -3171,7 +3171,18 @@ check('Lead deal stage refreshes kanban even when customer card prompt is dismis
     && updateLeadStageBlock.includes("if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });")
     && !/if\s*\(openedCustomerCard\)\s*return\s+true/.test(updateLeadStageBlock)
     && /return true;\s*\}\s*\}\s*catch/.test(updateLeadStageBlock));
-check('Lead customer stages auto-create or link a SQL customer card', leadsRouteCode.includes('const CUSTOMER_CARD_PIPELINE_STAGES = new Set') && leadsRouteCode.includes("'deposit_received'") && leadsRouteCode.includes("const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage)") && leadsRouteCode.includes('await ensureDealCustomerForLead(queryable, updatedLead, businessContext') && leadsRouteCode.includes('INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)') && leadsRouteCode.includes('buildLeadCustomerNotes(lead)') && leadsRouteCode.includes('appendUniqueLeadCustomerNote'));
+check('Lead customer stages auto-create or link a SQL customer card',
+    leadsRouteCode.includes('const CUSTOMER_CARD_PIPELINE_STAGES = new Set')
+    && leadsRouteCode.includes("'deposit_received'")
+    && leadsRouteCode.includes("const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage)")
+    && leadsRouteCode.includes("dealCustomerLink = await runPostCommitLeadStep('customer sync'")
+    && leadsRouteCode.includes('ensureDealCustomerForLead(client, updatedLead, businessContext')
+    && leadsRouteCode.includes('INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)')
+    && leadsRouteCode.includes('buildLeadCustomerNotes(lead)')
+    && leadsRouteCode.includes('appendUniqueLeadCustomerNote')
+    && leadsRouteCode.includes('withLeadPatchGuardedTransaction')
+    && leadsRouteCode.includes("SET LOCAL idle_in_transaction_session_timeout = '5000ms'")
+    && leadsRouteCode.indexOf("if (updateClient) await updateClient.query('COMMIT');") < leadsRouteCode.indexOf("dealCustomerLink = await runPostCommitLeadStep('customer sync'"));
 check('Lead/customer journey uses durable many-to-one link history', htmlContains('db/migrations/262_leads_customer_links_and_value.sql', 'CREATE TABLE IF NOT EXISTS lead_customer_links') && leadsRouteCode.includes('function linkLeadCustomer') && leadsRouteCode.includes('INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at)') && leadsRouteCode.includes('FROM lead_customer_links lcl') && leadsRouteCode.includes("linkType: 'deal_customer'") && leadsRouteCode.includes("linkType: 'operator_link'") && htmlContains('routes/customers.js', 'customer.leadLinks'));
 check('Lead stage changes are written to lead_interactions atomically', leadsRouteCode.includes('function logStageChange(queryable') && leadsRouteCode.includes("INSERT INTO lead_interactions (lead_id, user_id, type, summary, details, created_at)") && leadsRouteCode.includes("'status_change'") && leadsRouteCode.includes("source: 'leads.patch'") && !leadsRouteCode.includes('created_by, created_at') && !leadsRouteCode.includes("logStageChange(updatedLead.id"));
 check('Lead list pagination loads beyond the old 200-card kanban cap', leadsCode.includes('function fetchAllLeadPages') && leadsCode.includes("params.set('limit', String(pageSize))") && leadsCode.includes("params.set('offset', String(offset))") && leadsRouteCode.includes('const LEADS_MAX_LIMIT = 500') && leadsRouteCode.includes('pagination:') && !leadsCode.includes("params.set('limit', '200')") && !leadsRouteCode.includes('Math.min(parseInt(lim) || 50, 200)'));

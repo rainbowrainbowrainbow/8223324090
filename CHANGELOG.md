@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.108 - Recovery відкриття таймлайну
+
+### Timeline detail recovery / Renderer exception fallback / Cache refresh / Regression QA / (Клешня, 03.07.2026) [codex]
+- **Код `TL-BK-DETAIL-OK-OPEN-FAILED` тепер не зупиняється на toast** - якщо detail API повернув booking, але стандартний renderer не відкрив картку, таймлайн відкриває recovery-модалку з базовими деталями запису.
+- **Frontend exception більше не маскується під generic miss** - `openTimelineBookingDetailsFromBlock` записує `TL-BK-OPEN-EXCEPTION` / `TL-BK-FALLBACK-EXCEPTION`, але все одно робить detail probe для recovery-відкриття.
+- **Recovery path не логить payload бронювання в console diagnostics** - booking використовується тільки для modal render, а warning лишається без клієнтів, телефонів, Instagram, auth headers, tokens або secrets.
+- **Додано regression guard на live-сценарій зі скріну** - тест симулює падіння `showBookingDetails`, успішний `/bookings/detail/:id` і перевіряє, що modal відкривається без failure toast.
+- **Cache tags оновлено до `0.77.108`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані, щоб продакшн підтягнув новий `js/timeline.js`.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - реліз обмежений frontend recovery, тестами, release markers і changelog.
+
 ## v0.77.107 - Fallback діагностика таймлайну
 
 ### Timeline fallback probe / Modal-open guard / Error-code precision / Regression QA / (Клешня, 03.07.2026) [codex]

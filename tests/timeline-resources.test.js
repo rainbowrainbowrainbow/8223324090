@@ -2956,6 +2956,7 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(openDetailsFunction, /showBookingDetails\(ownId, \{[\s\S]*silentMissing: true[\s\S]*source: 'timeline_block_click_fallback'[\s\S]*fallbackBooking: renderBooking[\s\S]*onMissing: collectDetailMiss\('linked_child'\)[\s\S]*\}\)/);
     assert.match(openDetailsFunction, /Booking block could not be opened in current timeline view/);
     assert.match(openDetailsFunction, /timelineBookingDetailModalIsOpen\(\)/);
+    assert.match(openDetailsFunction, /timelineOpenRecoveredBookingDetails\(probe\.booking, \{ code: 'TL-BK-DETAIL-RECOVERY-OPENED' \}\)/);
     assert.match(openDetailsFunction, /timelineProbeBookingOpenDiagnostic\(probeId, linkedId \? 'linked_child_probe' : 'direct_probe'\)/);
     assert.match(openDetailsFunction, /const publicCode = lastDiagnostic\?\.code \|\| 'TL-BK-OPEN-MISS'/);
     assert.match(openDetailsFunction, /Код: \$\{publicCode\}/);
@@ -3076,6 +3077,56 @@ test('timeline block click open helper calls booking details with expected ids a
     assert.match(notifications[0][0], /TL-BK-FORBIDDEN/);
     assert.equal(warnings.at(-1)?.[1]?.code, 'TL-BK-FORBIDDEN');
     assert.equal(warnings.at(-1)?.[1]?.detailMisses?.[0]?.lookupSource, 'timeline-detail-probe-miss');
+
+    calls = [];
+    warnings.length = 0;
+    notifications.length = 0;
+    const modalClasses = new Set(['hidden']);
+    const elements = {
+        bookingDetails: { innerHTML: '' },
+        bookingModal: {
+            hidden: true,
+            attrs: {},
+            classList: {
+                contains: value => modalClasses.has(value),
+                remove: value => modalClasses.delete(value),
+                add: value => modalClasses.add(value)
+            },
+            setAttribute(name, value) {
+                this.attrs[name] = value;
+            },
+            getAttribute(name) {
+                return this.attrs[name] || null;
+            }
+        }
+    };
+    context.document = {
+        getElementById: id => elements[id] || null
+    };
+    context.addMinutesToTime = (time, minutes) => `${time}+${minutes}`;
+    context.showBookingDetails = async (id, options) => {
+        calls.push({ id, options });
+        throw new Error(`render failed for ${id}`);
+    };
+    context.apiGetBookingById = async id => ({
+        success: true,
+        booking: {
+            id,
+            date: '2099-07-03',
+            time: '16:00',
+            duration: 60,
+            room: 'Диван 2',
+            programName: 'Анімація 60хв',
+            status: 'confirmed'
+        }
+    });
+    assert.equal(await openFromBlock({ id: 'BK-RECOVERY-CHILD', linkedTo: 'BK-RECOVERY-PARENT' }), true);
+    assert.equal(modalClasses.has('hidden'), false, 'detail recovery opens the modal');
+    assert.equal(elements.bookingModal.hidden, false, 'detail recovery clears the hidden DOM flag');
+    assert.match(elements.bookingDetails.innerHTML, /Анімація 60хв/);
+    assert.match(elements.bookingDetails.innerHTML, /TL-BK-DETAIL-RECOVERY-OPENED/);
+    assert.equal(notifications.length, 0, 'detail recovery opens without a failure toast');
+    assert.deepEqual(calls.map(call => call.id), ['BK-RECOVERY-PARENT', 'BK-RECOVERY-CHILD']);
 });
 
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {

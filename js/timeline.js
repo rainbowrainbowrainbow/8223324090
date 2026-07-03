@@ -1312,7 +1312,8 @@ function bindTimelineAddLineCtaPositioning() {
 
 function timelineBookingBlockDensity(width) {
     const safeWidth = Number(width);
-    if (!Number.isFinite(safeWidth) || safeWidth < 90) return 'tiny';
+    if (!Number.isFinite(safeWidth) || safeWidth < 44) return 'micro';
+    if (safeWidth < 90) return 'tiny';
     if (safeWidth < 140) return 'short';
     if (safeWidth < 220) return 'medium';
     return 'wide';
@@ -1342,17 +1343,29 @@ function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, book
     const labelLower = label.toLocaleLowerCase('uk-UA');
     const haystack = `${category} ${code} ${label} ${name}`.toLocaleLowerCase('uk-UA');
 
-    if (category === 'pinata' || haystack.includes('пін')) return 'Піньята';
+    if (category === 'pinata' || haystack.includes('пін')) return 'ПІН';
     if (category === 'animation' || codeLower.startsWith('ан') || labelLower.startsWith('ан') || haystack.includes('анімац')) return 'АН';
     if (haystack.includes('бульб')) return 'Бульб.';
     if (category === 'masterclass' || haystack.includes('майстер')) return 'МК';
-    if (category === 'photo' || haystack.includes('фото')) return 'Фото';
-    if (category === 'quest' || haystack.includes('квест')) return 'Квест';
+    if (category === 'quest' || haystack.includes('квест')) return 'КВ';
+    if (category === 'show' || haystack.includes('шоу')) return 'ШОУ';
+    if (category === 'photo' || haystack.includes('фото')) return 'ФОТО';
 
     return timelineCompactLabelCandidate(code)
         || timelineCompactLabelCandidate(label)
         || timelineCompactLabelCandidate(name)
         || 'Подія';
+}
+
+function timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compactActivityLabel) {
+    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const compact = clean(compactActivityLabel).toLocaleLowerCase('uk-UA');
+    const candidates = [bookingTitleTail, bookingTitle]
+        .map(clean)
+        .filter(Boolean)
+        .filter(value => value.toLocaleLowerCase('uk-UA') !== compact);
+    const candidate = candidates[0] || '';
+    return candidate ? timelineCompactLabelCandidate(candidate, 14) : '';
 }
 
 function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium') {
@@ -1366,11 +1379,12 @@ function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, 
     const code = clean(source.programCode || source.program_code || booking?.programCode || booking?.program_code);
     const label = clean(source.label || booking?.label);
     const maxTinyNameLength = 24;
+    const tightDensity = density === 'micro' || density === 'tiny';
 
-    if (programName && (density !== 'tiny' || programName.length <= maxTinyNameLength)) return programName;
-    if (density !== 'tiny' && programName) return programName;
+    if (programName && (!tightDensity || programName.length <= maxTinyNameLength)) return programName;
+    if (!tightDensity && programName) return programName;
     if (title && title.length <= maxTinyNameLength && title !== compact) return title;
-    if (tail && tail !== groupName && tail !== title && tail !== compact && (density !== 'tiny' || tail.length <= maxTinyNameLength)) return tail;
+    if (tail && tail !== groupName && tail !== title && tail !== compact && (!tightDensity || tail.length <= maxTinyNameLength)) return tail;
     if (programName) return compact || timelineCompactLabelCandidate(programName, 10) || programName;
     return compact || timelineCompactLabelCandidate(code) || timelineCompactLabelCandidate(label) || title || tail;
 }
@@ -4101,7 +4115,7 @@ function createBookingBlock(booking, startHour, anchor) {
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
     block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}${isEducationLessonBlock ? ' education-lesson' : ''}`;
     block.classList.add(`booking-block--${bookingBlockDensity}`);
-    const isCompactActivityBlock = (bookingBlockDensity === 'tiny' || bookingBlockDensity === 'short')
+    const isCompactActivityBlock = (bookingBlockDensity === 'micro' || bookingBlockDensity === 'tiny' || bookingBlockDensity === 'short')
         && !isMaysternyaSlotClosed
         && !isEducationLessonBlock
         && renderBooking.category !== 'banquet'
@@ -4178,6 +4192,9 @@ function createBookingBlock(booking, startHour, anchor) {
         : '';
     const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
     const compactActivityLabel = timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail);
+    const compactActivityTail = bookingBlockDensity === 'short'
+        ? timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compactActivityLabel)
+        : '';
     const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
     const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel]
         .filter(Boolean)
@@ -4201,13 +4218,17 @@ function createBookingBlock(booking, startHour, anchor) {
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}
         ${noteText}
     `;
+    const microBookingHtml = `
+        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(compactActivityLabel.length))}">${escapeHtml(compactActivityLabel)}</div>
+    `;
     const compactBookingHtml = `
-        <div class="user-letter">${badge}</div>
+        ${bookingBlockDensity === 'short' ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-compact-booking-main">
             <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
             <span class="timeline-compact-booking-label">${escapeHtml(compactActivityLabel)}</span>
+            ${compactActivityTail ? `<span class="timeline-compact-booking-tail">${escapeHtml(compactActivityTail)}</span>` : ''}
         </div>
-        ${bookingRoomMeta || bookingKidsMeta ? `<div class="subtitle timeline-compact-booking-meta">${bookingRoomMeta}${bookingKidsMeta}</div>` : ''}
+        ${bookingBlockDensity === 'short' && (bookingRoomMeta || bookingKidsMeta) ? `<div class="subtitle timeline-compact-booking-meta">${bookingRoomMeta}${bookingKidsMeta}</div>` : ''}
         ${costumeText}
         ${noteText}
     `;
@@ -4219,7 +4240,9 @@ function createBookingBlock(booking, startHour, anchor) {
         ${graduationItemsHtml}
         ${noteText}
     `;
-    block.innerHTML = isRoomTimelineActivityCard ? roomActivityHtml : (isCompactActivityBlock ? compactBookingHtml : defaultBookingHtml);
+    block.innerHTML = isRoomTimelineActivityCard
+        ? roomActivityHtml
+        : (isCompactActivityBlock ? (bookingBlockDensity === 'micro' ? microBookingHtml : compactBookingHtml) : defaultBookingHtml);
 
     // v5.19: Linked bookings click → navigate to parent booking details
     // v30.3: Store booking ID on block for bulk operations
@@ -4622,12 +4645,12 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
 
     // v8.6: Distribute/undistribute buttons
     const distBtnHtml = isViewer() ? '' : (hasAssigned
-        ? `<button class="afisha-dist-btn afisha-undist-btn" title="Скинути розподіл">↩</button>`
-        : `<button class="afisha-dist-btn" title="Розподілити по ведучих">🎪</button>`);
+        ? `<button class="afisha-dist-btn afisha-undist-btn" title="Скинути розподіл" aria-label="Скинути розподіл афіші">↩</button>`
+        : `<button class="afisha-dist-btn" title="Розподілити по ведучих" aria-label="Розподілити афішу по ведучих">↔</button>`);
 
     lineEl.innerHTML = `
         <div class="line-header afisha-line-header" style="border-left-color: #8B5CF6">
-            <span class="line-name">🎪 Афіша</span>
+            <span class="line-name">Афіша</span>
             <span class="line-sub"><span class="afisha-line-count">${afishaEventLabel}</span>${distBtnHtml}</span>
         </div>
         <div class="line-grid afisha-line-grid" data-line-id="afisha">
@@ -4700,10 +4723,11 @@ function createAfishaBlock(event, startHour, anchor) {
 
     const typeClass = event.type || 'event';
     const isBirthday = event.type === 'birthday';
+    const displayWidth = Math.max(width, isBirthday ? 72 : 40);
 
     block.className = `booking-block afisha-block afisha-type-${typeClass}`;
     block.style.left = `${left}px`;
-    block.style.width = `${Math.max(width, isBirthday ? 100 : 40)}px`;
+    block.style.width = `${displayWidth}px`;
     block.dataset.afishaId = event.id;
 
     // Store drag data
@@ -4714,24 +4738,15 @@ function createAfishaBlock(event, startHour, anchor) {
     block.dataset.templateId = event.template_id || '';
 
     if (isBirthday) {
-        // Inline styles to guarantee birthday pill look regardless of CSS cache
-        Object.assign(block.style, {
-            background: 'linear-gradient(135deg, #F59E0B 0%, #F97316 50%, #EF4444 100%)',
-            border: '2px solid rgba(255,255,255,0.5)',
-            height: '36px',
-            marginTop: '-18px',
-            borderRadius: '18px',
-            padding: '2px 14px 2px 8px',
-            gap: '4px',
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(249,115,22,0.4)',
-            zIndex: '15'
-        });
-        block.innerHTML = `
-            <span style="font-size:18px;line-height:1;flex-shrink:0">🎂</span>
-            <div class="title" style="color:#fff;font-size:12px;font-weight:800;line-height:36px;text-shadow:0 1px 3px rgba(0,0,0,0.25)">${escapeHtml(event.title)}</div>
-            <div class="subtitle" style="color:rgba(255,255,255,0.95);font-size:10px;font-weight:700;line-height:24px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:8px">${event.time}</div>
-        `;
+        const birthdayMode = displayWidth < 52 ? 'micro' : (displayWidth < 84 ? 'tiny' : 'short');
+        block.classList.add(`afisha-birthday--${birthdayMode}`);
+        block.setAttribute('aria-label', ['Вітання іменинників', event.title, event.time].filter(Boolean).join(' '));
+        block.setAttribute('title', ['Вітання іменинників', event.title, event.time].filter(Boolean).join(' '));
+        block.innerHTML = birthdayMode === 'micro'
+            ? `<span class="afisha-birthday-badge">ІМ</span>`
+            : (birthdayMode === 'tiny'
+                ? `<span class="afisha-birthday-time">${escapeHtml(event.time)}</span><span class="afisha-birthday-badge">ІМ</span>`
+                : `<span class="afisha-birthday-badge">ІМ</span><span class="afisha-birthday-text">Вітання</span>`);
     } else {
         block.innerHTML = `
             <div class="title">${escapeHtml(event.title)}</div>
@@ -4774,8 +4789,8 @@ function createAfishaBlock(event, startHour, anchor) {
 }
 
 function showAfishaTooltip(e, event) {
-    const typeLabels = { event: 'Подія', regular: 'Регулярна', birthday: 'Іменинник' };
-    const typeIcons = { event: '🎭', regular: '🔄', birthday: '🎂' };
+    const typeLabels = { event: 'Подія', regular: 'Регулярна', birthday: 'Вітання іменинників' };
+    const typeIcons = { event: '🎭', regular: '🔄', birthday: 'ІМ' };
     const duration = event.duration || 60;
     const endTime = minutesToTime(timeToMinutes(event.time) + duration);
 

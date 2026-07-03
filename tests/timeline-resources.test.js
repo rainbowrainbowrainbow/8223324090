@@ -2414,10 +2414,11 @@ test('timeline booking blocks expose width-based density display modes', () => {
     const timeline = read('js/timeline.js');
     const css = read('css/timeline.css');
 
-    assert.match(timeline, /function timelineBookingBlockDensity\(width\) \{[\s\S]*if \(!Number\.isFinite\(safeWidth\) \|\| safeWidth < 90\) return 'tiny';[\s\S]*if \(safeWidth < 140\) return 'short';[\s\S]*if \(safeWidth < 220\) return 'medium';[\s\S]*return 'wide';/);
+    assert.match(timeline, /function timelineBookingBlockDensity\(width\) \{[\s\S]*if \(!Number\.isFinite\(safeWidth\) \|\| safeWidth < 44\) return 'micro';[\s\S]*if \(safeWidth < 90\) return 'tiny';[\s\S]*if \(safeWidth < 140\) return 'short';[\s\S]*if \(safeWidth < 220\) return 'medium';[\s\S]*return 'wide';/);
     assert.match(timeline, /const width = Math\.max\(18, timelineDurationWidth\(effectiveDuration, anchor\)\);[\s\S]*const bookingBlockDensity = timelineBookingBlockDensity\(width\);/);
     assert.match(timeline, /block\.classList\.add\(`booking-block--\$\{bookingBlockDensity\}`\);/);
-    assert.match(css, /\.booking-block--tiny,\s*\.booking-block--short,\s*\.booking-block--medium,\s*\.booking-block--wide\s*\{[\s\S]*min-width:\s*0/);
+    assert.match(css, /\.booking-block--micro,\s*\.booking-block--tiny,\s*\.booking-block--short,\s*\.booking-block--medium,\s*\.booking-block--wide\s*\{[\s\S]*min-width:\s*0/);
+    assert.match(css, /\.booking-block--micro\s*\{\s*--timeline-booking-density:\s*micro;\s*\}/);
     assert.match(css, /\.booking-block--tiny\s*\{\s*--timeline-booking-density:\s*tiny;\s*\}/);
     assert.match(css, /\.booking-block--short\s*\{\s*--timeline-booking-density:\s*short;\s*\}/);
     assert.match(css, /\.booking-block--medium\s*\{\s*--timeline-booking-density:\s*medium;\s*\}/);
@@ -2429,31 +2430,41 @@ test('short timeline activity blocks use compact labels while preserving full ti
     const css = read('css/timeline.css');
 
     assert.match(timeline, /function timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail\) \{/);
-    assert.match(timeline, /category === 'pinata'[\s\S]*return 'Піньята'/);
+    assert.match(timeline, /category === 'pinata'[\s\S]*return 'ПІН'/);
     assert.match(timeline, /category === 'animation'[\s\S]*return 'АН'/);
     assert.match(timeline, /haystack\.includes\('бульб'\)[\s\S]*return 'Бульб\.'/);
     assert.match(timeline, /category === 'masterclass'[\s\S]*return 'МК'/);
-    assert.match(timeline, /category === 'photo'[\s\S]*return 'Фото'/);
-    assert.match(timeline, /category === 'quest'[\s\S]*return 'Квест'/);
-    assert.match(timeline, /const isCompactActivityBlock = \(bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
+    assert.match(timeline, /category === 'quest'[\s\S]*return 'КВ'/);
+    assert.match(timeline, /category === 'show'[\s\S]*return 'ШОУ'/);
+    assert.match(timeline, /category === 'photo'[\s\S]*return 'ФОТО'/);
+    assert.match(timeline, /function timelineCompactActivityTailLabel\(bookingTitleTail, bookingTitle, compactActivityLabel\) \{/);
+    assert.match(timeline, /const isCompactActivityBlock = \(bookingBlockDensity === 'micro' \|\| bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
     assert.match(timeline, /const compactActivityLabel = timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail\);/);
+    assert.match(timeline, /const compactActivityTail = bookingBlockDensity === 'short'[\s\S]*timelineCompactActivityTailLabel\(bookingTitleTail, bookingTitle, compactActivityLabel\)/);
     assert.match(timeline, /function timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium'\) \{/);
     assert.match(timeline, /const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity\);/);
     assert.match(timeline, /block\.setAttribute\('title', fullBookingLabel\);/);
+    assert.match(timeline, /<div class="timeline-micro-booking-code" data-code-length="\$\{escapeHtml\(String\(compactActivityLabel\.length\)\)\}">\$\{escapeHtml\(compactActivityLabel\)\}<\/div>/);
     assert.match(timeline, /<span class="timeline-compact-booking-label">\$\{escapeHtml\(compactActivityLabel\)\}<\/span>/);
-    assert.match(timeline, /block\.innerHTML = isRoomTimelineActivityCard \? roomActivityHtml : \(isCompactActivityBlock \? compactBookingHtml : defaultBookingHtml\);/);
+    assert.match(timeline, /block\.innerHTML = isRoomTimelineActivityCard[\s\S]*bookingBlockDensity === 'micro' \? microBookingHtml : compactBookingHtml/);
     assert.match(timeline, /isCompactActivityBlock \? roomActivityDisplayLabel : \(bookingTitle \|\| renderBooking\.programCode \|\| renderBooking\.category/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-main\s*\{[\s\S]*display:\s*flex/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-label\s*\{[\s\S]*text-overflow:\s*ellipsis/);
 });
 
-test('short and tiny timeline activity blocks have dedicated compact CSS layout', () => {
+test('micro, short and tiny timeline activity blocks have dedicated compact CSS layout', () => {
     const css = read('css/timeline.css');
 
-    assert.match(css, /\.booking-block\.booking-block--short,\s*\.booking-block\.booking-block--tiny\s*\{[\s\S]*justify-content:\s*center;[\s\S]*gap:\s*2px;[\s\S]*padding:\s*5px 8px;/);
-    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-main,\s*\.booking-block\.booking-block--tiny \.timeline-compact-booking-main\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*max-width:\s*calc\(100% - 18px\)/);
+    assert.match(css, /\.booking-block\.booking-block--micro,\s*\.booking-block\.booking-block--short,\s*\.booking-block\.booking-block--tiny\s*\{[\s\S]*justify-content:\s*center;[\s\S]*gap:\s*2px;[\s\S]*padding:\s*5px 8px;/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\s*\{[\s\S]*flex:\s*0 0 100%;[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*box-sizing:\s*border-box;[\s\S]*font-size:\s*9px;[\s\S]*text-align:\s*center;[\s\S]*text-overflow:\s*clip/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="4"\]\s*\{[\s\S]*font-size:\s*7px/);
+    assert.match(css, /body\.timeline-dashboard-page \.booking-block\.booking-block--micro\s*\{[\s\S]*padding:\s*0 2px !important;[\s\S]*border-left-width:\s*2px/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-compact-booking-main,[\s\S]*?\.booking-block\.booking-block--micro \.booking-banquet-link-handle\s*\{[\s\S]*display:\s*none/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-main\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*max-width:\s*calc\(100% - 18px\)/);
+    assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-main\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*max-width:\s*100%/);
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-main \.booking-block-time,\s*\.booking-block\.booking-block--tiny \.timeline-compact-booking-main \.booking-block-time\s*\{[\s\S]*font-size:\s*11px;[\s\S]*font-weight:\s*950/);
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label,\s*\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\s*\{[\s\S]*font-size:\s*12px;[\s\S]*letter-spacing:\s*0/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-tail\s*\{[\s\S]*text-overflow:\s*ellipsis/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-meta,[\s\S]*?\.booking-block\.booking-block--tiny \.duration-badge\s*\{[\s\S]*display:\s*none/);
     assert.match(css, /\.booking-block\.booking-block--short \.user-letter,\s*\.booking-block\.booking-block--tiny \.user-letter\s*\{[\s\S]*position:\s*absolute;[\s\S]*width:\s*17px/);
     assert.match(css, /\.booking-block\.booking-block--short \.booking-block-room\s*\{[\s\S]*max-width:\s*72px;[\s\S]*margin-left:\s*0/);

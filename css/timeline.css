@@ -636,6 +636,7 @@ body.timeline-dashboard-page .afisha-undist-btn {
     border-left: 3px solid rgba(0,0,0,0.12);
 }
 
+.booking-block--micro,
 .booking-block--tiny,
 .booking-block--short,
 .booking-block--medium,
@@ -643,6 +644,7 @@ body.timeline-dashboard-page .afisha-undist-btn {
     min-width: 0;
 }
 
+.booking-block--micro { --timeline-booking-density: micro; }
 .booking-block--tiny { --timeline-booking-density: tiny; }
 .booking-block--short { --timeline-booking-density: short; }
 .booking-block--medium { --timeline-booking-density: medium; }
@@ -704,6 +706,83 @@ body.timeline-dashboard-page .afisha-undist-btn {
 .booking-block.education,
 .booking-block.education-lesson { background: linear-gradient(135deg, #0F766E 0%, #2563EB 100%); }
 .booking-block.graduation { background: linear-gradient(135deg, #7C3AED 0%, #0F766E 100%); }
+
+.booking-block.afisha-block.afisha-type-birthday {
+    top: 50%;
+    bottom: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    min-height: 34px;
+    padding: 3px 7px;
+    gap: 5px;
+    border: 1px solid rgba(254, 243, 199, 0.7);
+    border-left: 3px solid #F59E0B;
+    border-radius: 8px;
+    background: #B45309;
+    box-shadow: 0 8px 18px rgba(180, 83, 9, 0.28);
+    color: #FFFBEB;
+    z-index: 15;
+    transform: translateY(-50%);
+}
+
+.booking-block.afisha-block.afisha-type-birthday:hover,
+.booking-block.afisha-block.afisha-type-birthday:focus-visible {
+    transform: translateY(calc(-50% - 1px));
+    box-shadow: 0 10px 22px rgba(180, 83, 9, 0.34);
+}
+
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-badge,
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-time,
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-text {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-badge {
+    flex: 0 0 auto;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(255, 251, 235, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(255, 251, 235, 0.2);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0;
+}
+
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-time {
+    flex: 0 0 auto;
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 900;
+    text-shadow: 0 1px 2px rgba(69, 26, 3, 0.28);
+}
+
+.booking-block.afisha-block.afisha-type-birthday .afisha-birthday-text {
+    flex: 1 1 auto;
+    color: #FFFBEB;
+    font-size: 11px;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 2px rgba(69, 26, 3, 0.24);
+}
+
+.booking-block.afisha-block.afisha-type-birthday.afisha-birthday--micro {
+    padding-inline: 4px;
+}
+
+.booking-block.afisha-block.afisha-type-birthday.afisha-birthday--micro .afisha-birthday-badge {
+    height: 18px;
+    padding: 0 4px;
+    font-size: 10px;
+}
 
 body.timeline-view-rooms {
     --timeline-room-card-badge-size: 18px;
@@ -892,6 +971,7 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
     display: none;
 }
 
+.booking-block.booking-block--micro,
 .booking-block.booking-block--short,
 .booking-block.booking-block--tiny {
     justify-content: center;
@@ -899,14 +979,71 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
     padding: 5px 8px;
 }
 
-.booking-block.booking-block--short .timeline-compact-booking-main,
-.booking-block.booking-block--tiny .timeline-compact-booking-main {
+.booking-block.booking-block--micro {
+    align-items: center;
+    padding: 0 2px;
+    gap: 0;
+    border-left-width: 2px;
+}
+
+.booking-block.booking-block--micro .timeline-micro-booking-code {
+    display: block;
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    color: #FFFFFF;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+    text-align: center;
+    text-overflow: clip;
+    text-shadow: 0 1px 2px rgba(2, 6, 23, 0.34);
+    white-space: nowrap;
+}
+
+.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="3"] {
+    font-size: 8px;
+}
+
+.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="4"] {
+    font-size: 7px;
+    font-weight: 900;
+}
+
+body.timeline-dashboard-page .booking-block.booking-block--micro {
+    padding: 0 2px !important;
+    border-left-width: 2px;
+}
+
+.booking-block.booking-block--micro .timeline-compact-booking-main,
+.booking-block.booking-block--micro .timeline-compact-booking-meta,
+.booking-block.booking-block--micro .costume-text,
+.booking-block.booking-block--micro .note-text,
+.booking-block.booking-block--micro .duration-badge,
+.booking-block.booking-block--micro .user-letter,
+.booking-block.booking-block--micro .booking-banquet-link-handle {
+    display: none;
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-main {
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
     gap: 1px;
     min-width: 0;
     max-width: calc(100% - 18px);
+}
+
+.booking-block.booking-block--tiny .timeline-compact-booking-main {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .booking-block.booking-block--short .timeline-compact-booking-main .booking-block-time,
@@ -929,6 +1066,19 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
     text-shadow: 0 1px 2px rgba(2, 6, 23, 0.28);
 }
 
+.booking-block.booking-block--short .timeline-compact-booking-tail {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 10px;
+    font-weight: 850;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .booking-block.booking-block--short .timeline-compact-booking-meta {
     display: flex;
     align-items: center;
@@ -948,7 +1098,7 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
 }
 
 .booking-block.booking-block--tiny .timeline-compact-booking-main {
-    max-width: calc(100% - 14px);
+    max-width: 100%;
 }
 
 .booking-block.booking-block--tiny .timeline-compact-booking-label {

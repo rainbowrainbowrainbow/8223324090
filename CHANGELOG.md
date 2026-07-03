@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.117 - Pinata operational numbers
+
+### Pinata operational numbers / Booking details / Cache refresh / (Клешня, 04.07.2026) [codex]
+- **Операційні номери піньят `501-536` знову зберігаються як реальні номери** - picker більше не перетворює `501` на fallback `P-501`.
+- **Timeline показує номер піньяти у компактних блоках** - `ПІН №501` або `№501` відображається там, де номер є в бронюванні, а `15` з `Пін(15)` не використовується як номер.
+- **Деталі, редагування, дублювання і повторення бронювання читають snake/camel поля** - `pinata_number` і `pinataNumber` обробляються однаково, тому номер не губиться після відкриття картки.
+- **Оформлення знову розпізнає піньяту з каталогу `Пін(15)`** - pinata UI відкривається навіть якщо продукт прийшов без `category: pinata`, але має відповідний code/name/label.
+- **Regression guards додано для `501`, `№501`, `P-001` і `Пін(15)`** - тести фіксують, що duration не стає номером піньяти.
+- **API, DB, migrations, auth/roles і deploy config не змінювались** - release обмежений frontend UI, tests і version/cache refs.
+
+---
+
 ## v0.77.116 - Timeline scrollbar cache refresh
 
 ### Timeline rooms scrollbar cache-bust / (Клешня, 04.07.2026) [codex]

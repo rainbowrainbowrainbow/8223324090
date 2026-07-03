@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.116",
+  "version": "0.77.117",
   "eventGenix": {
-    "releaseLabel": "Timeline scrollbar cache refresh"
+    "releaseLabel": "Pinata operational numbers"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

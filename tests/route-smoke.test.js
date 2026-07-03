@@ -863,7 +863,7 @@ function createFakePool() {
             if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(text)) {
                 return { rows: [], rowCount: 0, command: text.split(/\s+/)[0].toUpperCase() };
             }
-            if (/^SET LOCAL (lock_timeout|statement_timeout) = /i.test(text)) {
+            if (/^SET LOCAL (lock_timeout|statement_timeout|idle_in_transaction_session_timeout) = /i.test(text)) {
                 return { rows: [], rowCount: 0, command: 'SET' };
             }
             if (/SELECT pg_advisory_xact_lock/i.test(text)) {

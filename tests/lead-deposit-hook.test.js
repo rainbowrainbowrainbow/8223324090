@@ -54,6 +54,7 @@ function createPoolFixture({
     initialCustomerChildren = [],
     customerChildrenStorageMissing = false,
     customerChildrenCustomerFkMissing = false,
+    customerSyncLockTimeout = false,
     leadOverrides = {}
 } = {}) {
     const queries = [];
@@ -72,7 +73,7 @@ function createPoolFixture({
             queries.push({ text: String(text), params });
             const sql = String(text);
             if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(sql.trim())
-                || /^SET LOCAL (lock_timeout|statement_timeout) = /i.test(sql.trim())) {
+                || /^SET LOCAL (lock_timeout|statement_timeout|idle_in_transaction_session_timeout) = /i.test(sql.trim())) {
                 return { rows: [], rowCount: 0 };
             }
             if (/SELECT id, pipeline_stage, status\s+FROM leads/i.test(sql) && /FOR UPDATE/i.test(sql)) {
@@ -99,6 +100,11 @@ function createPoolFixture({
                 return { rows: [next], rowCount: 1 };
             }
             if (/INSERT INTO lead_interactions/i.test(sql)) return { rows: [], rowCount: 1 };
+            if (customerSyncLockTimeout && /FROM customers|INSERT INTO customers|UPDATE customers/i.test(sql)) {
+                const err = new Error('canceling statement due to lock timeout');
+                err.code = '55P03';
+                throw err;
+            }
             if (/FROM customers\s+WHERE lead_id = \$1\s+AND COALESCE\(business_context, 'event_genix'\) = \$2\s+ORDER BY updated_at DESC NULLS LAST, id DESC\s+LIMIT 1/i.test(sql)) {
                 return { rows: state.customer && Number(state.customer.lead_id) === Number(params[0]) ? [state.customer] : [] };
             }
@@ -485,6 +491,7 @@ test('customer card stage still commits when customer_children storage is unavai
 
         assert.ok(queries.some(query => /^SET LOCAL lock_timeout = '2500ms'$/i.test(query.text)));
         assert.ok(queries.some(query => /^SET LOCAL statement_timeout = '10000ms'$/i.test(query.text)));
+        assert.ok(queries.some(query => /^SET LOCAL idle_in_transaction_session_timeout = '5000ms'$/i.test(query.text)));
         assert.ok(queries.some(query => /^SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^ROLLBACK TO SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^RELEASE SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
@@ -514,6 +521,7 @@ test('customer card stage still commits when customer_children customer FK is st
 
         assert.ok(queries.some(query => /^SET LOCAL lock_timeout = '2500ms'$/i.test(query.text)));
         assert.ok(queries.some(query => /^SET LOCAL statement_timeout = '10000ms'$/i.test(query.text)));
+        assert.ok(queries.some(query => /^SET LOCAL idle_in_transaction_session_timeout = '5000ms'$/i.test(query.text)));
         assert.ok(queries.some(query => /^SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^ROLLBACK TO SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^RELEASE SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
@@ -521,6 +529,29 @@ test('customer card stage still commits when customer_children customer FK is st
         assert.ok(!queries.some(query => /^ROLLBACK$/i.test(query.text)));
         assert.equal(state.lead.pipeline_stage, 'deal');
         assert.deepEqual(state.customerChildren, []);
+    });
+});
+
+test('customer card stage still commits when post-commit customer sync hits a lock timeout', async () => {
+    await withLeadApp({
+        oldStage: 'info_sent',
+        customerSyncLockTimeout: true,
+        leadOverrides: {
+            pipeline_stage: 'info_sent',
+            status: 'contact'
+        }
+    }, async ({ request, state, queries }) => {
+        const res = await request({ pipeline_stage: 'deal' });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.pipeline_stage, 'deal');
+        assert.equal(res.data.customer, undefined);
+
+        const firstCommitIndex = queries.findIndex(query => /^COMMIT$/i.test(query.text));
+        const postCommitRollbackIndex = queries.findIndex((query, index) => index > firstCommitIndex && /^ROLLBACK$/i.test(query.text));
+        assert.ok(firstCommitIndex >= 0);
+        assert.ok(postCommitRollbackIndex > firstCommitIndex);
+        assert.equal(state.lead.pipeline_stage, 'deal');
     });
 });
 

@@ -320,6 +320,23 @@ async function persistLeadKanbanOrder(queryable, { businessContext, stage, order
 async function applyLeadPatchTransactionGuards(queryable) {
     await queryable.query(`SET LOCAL lock_timeout = '2500ms'`);
     await queryable.query(`SET LOCAL statement_timeout = '10000ms'`);
+    await queryable.query(`SET LOCAL idle_in_transaction_session_timeout = '5000ms'`);
+}
+
+async function withLeadPatchGuardedTransaction(callback) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await applyLeadPatchTransactionGuards(client);
+        const result = await callback(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
 }
 
 async function ensureAssignableUser(userId) {
@@ -2274,31 +2291,58 @@ router.patch('/:id', async (req, res) => {
                     });
                 }
             }
-            if (shouldEnsureCustomerCard) {
-                dealCustomerLink = await ensureDealCustomerForLead(queryable, updatedLead, businessContext, {
-                    userId: req.user?.id,
-                    source: 'leads.patch',
-                    linkType: 'deal_customer'
+            if (updateClient) await updateClient.query('COMMIT');
+        } catch (err) {
+            if (updateClient) await updateClient.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            if (updateClient) updateClient.release();
+        }
+
+        // Keep the stage update committed even if optional customer/order sync hits locks.
+        const runPostCommitLeadStep = async (label, callback, fallback = null) => {
+            try {
+                return await withLeadPatchGuardedTransaction(callback);
+            } catch (err) {
+                log.warn(`Lead patch ${label} skipped after lead update commit`, {
+                    leadId,
+                    businessContext,
+                    error: err.message,
+                    code: err.code,
+                    constraint: err.constraint
                 });
-            } else if (shouldSyncLinkedCustomerChildren) {
-                const linkedCustomer = await findDurablyLinkedCustomerForLead(queryable, updatedLead, businessContext);
-                if (linkedCustomer) {
-                    const childSync = await syncLeadCelebrantsToCustomerChildren(queryable, updatedLead, linkedCustomer, businessContext);
-                    dealCustomerLink = {
-                        mode: 'synced_existing_children',
-                        customer: childSync.customer || linkedCustomer,
-                        link: null,
-                        children: childSync.children
-                    };
-                }
+                return fallback;
             }
-            if (kanbanOrderIds.length) {
-                await persistLeadKanbanOrder(queryable, {
+        };
+
+        if (shouldEnsureCustomerCard) {
+            dealCustomerLink = await runPostCommitLeadStep('customer sync', client => ensureDealCustomerForLead(client, updatedLead, businessContext, {
+                userId: req.user?.id,
+                source: 'leads.patch',
+                linkType: 'deal_customer'
+            }));
+        } else if (shouldSyncLinkedCustomerChildren) {
+            dealCustomerLink = await runPostCommitLeadStep('linked customer children sync', async client => {
+                const linkedCustomer = await findDurablyLinkedCustomerForLead(client, updatedLead, businessContext);
+                if (!linkedCustomer) return null;
+                const childSync = await syncLeadCelebrantsToCustomerChildren(client, updatedLead, linkedCustomer, businessContext);
+                return {
+                    mode: 'synced_existing_children',
+                    customer: childSync.customer || linkedCustomer,
+                    link: null,
+                    children: childSync.children
+                };
+            });
+        }
+
+        if (kanbanOrderIds.length) {
+            await runPostCommitLeadStep('kanban order sync', async client => {
+                await persistLeadKanbanOrder(client, {
                     businessContext,
                     stage: updatedLead.pipeline_stage || effectivePipelineStage || 'new',
                     orderedLeadIds: kanbanOrderIds
                 });
-                const refreshedLead = await queryable.query(
+                const refreshedLead = await client.query(
                     `SELECT * FROM leads
                       WHERE id = $1
                         AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
@@ -2306,13 +2350,8 @@ router.patch('/:id', async (req, res) => {
                     [leadId, businessContext]
                 );
                 updatedLead = refreshedLead.rows[0] || updatedLead;
-            }
-            if (updateClient) await updateClient.query('COMMIT');
-        } catch (err) {
-            if (updateClient) await updateClient.query('ROLLBACK').catch(() => {});
-            throw err;
-        } finally {
-            if (updateClient) updateClient.release();
+                return null;
+            });
         }
 
         // v33.8.0 Integration 8: Lead → Customer source link

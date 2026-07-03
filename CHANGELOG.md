@@ -4,6 +4,21 @@
 
 ---
 
+## v0.77.113 - Стабільність Kanban лідів
+
+### Kanban write stability / Optimistic locking / Live smoke / (Клешня, 03.07.2026) [codex]
+- **Kanban move більше не ховає DB lock під generic 500** - lock timeout, deadlock і statement timeout повертають стабільний `lead_write_locked`, `retryable: true`, request id і зрозумілу причину rollback.
+- **Drag одного ліда став single-flight** - frontend блокує подвійний PATCH для тієї самої картки, ставить pending/`aria-busy` і показує користувачу причину, якщо картка повернулась назад.
+- **Старий повільний reload більше не перетирає новіший стан дошки** - `loadLeads()` отримав sequence guard і не рендерить stale response після успішнішої дії.
+- **Kanban drag перейшов на вузький `/api/leads/:id/stage`** - critical transaction мінімальна: lock lead, update `pipeline_stage`/mapped `status`, audit `lead_interactions`, commit; customer/order/hooks винесені після commit або best-effort.
+- **Порядок карток більше не валить stage move** - якщо `kanban_order` не зберігся через lock, API повертає warning `kanban_order_not_saved`, а stage лишається успішно збереженим.
+- **Додано optimistic locking для stage move** - frontend передає `updated_at`, backend відхиляє stale move через `409 lead_version_conflict` з current lead snapshot, а UI оновлює дошку.
+- **Додано live smoke для Kanban move** - `npm run smoke:lead-kanban` логіниться, рухає тестовий lead на сусідній stage, перевіряє `/api/leads?order=kanban`, повертає lead назад і без env завершується як skipped/blocked.
+- **DB migration `275_leads_updated_at_trigger.sql` додає trigger для `leads.updated_at`** - schema change additive/idempotent, з `OPERATOR_APPROVAL: required`; auth/roles/env/secrets/Railway config не змінювались.
+- **Cache tags оновлено до `0.77.113`** - HTML, CSS, JS, Service Worker cache names і asset `?v=` посилання синхронізовані для Kanban reliability release.
+
+---
+
 ## v0.77.112 - Власні картки linked-активностей
 
 ### Timeline linked activity cards / Protected open priority / Cache refresh / (Клешня, 03.07.2026) [codex]

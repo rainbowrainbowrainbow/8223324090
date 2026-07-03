@@ -1583,7 +1583,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && !!doc.querySelector('#staffPulseNavItems.staff-pulse-nav-items[data-pulse-switcher="staff"]')
-        && html.includes('js/hr-pulse-switcher.js?v=0.77.112')
+        && html.includes('js/hr-pulse-switcher.js?v=0.77.113')
         && staffCode.includes('function renderStaffPulseSwitcher')
         && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
@@ -3164,25 +3164,96 @@ check('Lead workspace opens the real customer card instead of the legacy lead-lo
 check('Lead manual conversion deep-link auto-opens booking with ensured customer context', leadsCode.includes('function ensureLeadCustomerForBooking') && leadsCode.includes("params.set('customerId', customer.id)") && leadsCode.includes("params.set('convert', 'booking')") && leadsCode.includes("params.set('eventDate', eventDate)") && timelineCode.includes('function maybeAutoOpenLeadConversionBooking') && timelineCode.includes("customerId: (params.get('customerId')") && timelineCode.includes('openTimelineCreateBookingFromToolbar()') && timelineCode.includes("params.get('convert') === 'booking'"));
 check('Lead deal drag opens customer card flow instead of booking prompt', leadsCode.includes('function offerDealCustomerCardFlow') && leadsCode.includes('function ensureDealCustomerCardForLead') && leadsCode.includes('data.customerLinkMode') && leadsCode.includes("leadCrmContextHref('/customers', { open: ensured.customer.id }") && leadsCode.includes("okText: 'Відкрити картку'") && !leadsCode.includes('function offerDealBookingFlow') && !leadsCode.includes('Створити бронювання на таймлайні зараз'));
 const updateLeadStageBlock = sourceBlock(leadsCode, 'async function updateLeadStage', '// ==========================================\n// LEAD TYPE MENU');
+const loadLeadsBlock = sourceBlock(leadsCode, 'async function loadLeads', 'async function loadLeadQueueStats');
+const loadLeadQueueStatsBlock = sourceBlock(leadsCode, 'async function loadLeadQueueStats', 'function leadQueueMeta');
+const legacyLeadPatchRouteBlock = sourceBlock(leadsRouteCode, "router.patch('/:id', async", "// POST /api/leads/:id/collaboration-task");
 check('Lead deal stage refreshes kanban even when customer card prompt is dismissed',
     updateLeadStageBlock.includes("const openedCustomerCard = stage === 'deal'")
     && updateLeadStageBlock.includes('if (!openedCustomerCard) {')
     && updateLeadStageBlock.includes('await loadLeads();')
-    && updateLeadStageBlock.includes("if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });")
+    && updateLeadStageBlock.includes("if (workspaceLeadId === normalizedLeadId) openLeadWorkspace(normalizedLeadId, { pushState: false });")
     && !/if\s*\(openedCustomerCard\)\s*return\s+true/.test(updateLeadStageBlock)
-    && /return true;\s*\}\s*\}\s*catch/.test(updateLeadStageBlock));
+    && updateLeadStageBlock.includes('notifyLeadStageMoveFailure(data);')
+    && updateLeadStageBlock.includes('finally')
+    && updateLeadStageBlock.includes('setLeadStageMovePending(normalizedLeadId, false);'));
+check('Lead kanban stage moves expose pending state and retry-safe rollback',
+    leadsCode.includes('const pendingLeadStageMoves = new Set()')
+    && leadsCode.includes('function setLeadStageMovePending')
+    && leadsCode.includes("el.classList.toggle('is-stage-pending', pending)")
+    && leadsCode.includes("el.setAttribute('aria-busy', 'true')")
+    && leadsCode.includes('function readLeadStageMovePayload')
+    && leadsCode.includes('function leadStageMoveFailureMessage')
+    && leadsCode.includes('function notifyLeadStageMoveWarnings')
+    && leadsCode.includes("payload.code === 'lead_write_locked'")
+    && leadsCode.includes('Спробуйте ще раз через кілька секунд')
+    && updateLeadStageBlock.includes('if (isLeadStageMovePending(normalizedLeadId))')
+    && updateLeadStageBlock.includes('setLeadStageMovePending(normalizedLeadId, true);')
+    && updateLeadStageBlock.includes('notifyLeadStageMoveWarnings(data);')
+    && updateLeadStageBlock.includes('notifyLeadStageMoveFailure(data);')
+    && updateLeadStageBlock.includes('setLeadStageMovePending(normalizedLeadId, false);')
+    && leadsCode.includes('if (!saved) renderKanban();'));
+check('Lead kanban order warnings do not roll back successful stage moves',
+    leadsRouteCode.includes("code: 'kanban_order_not_saved'")
+    && leadsRouteCode.includes('retryable: true')
+    && leadsRouteCode.includes('if (warnings.length) response.warnings = warnings;')
+    && leadsCode.includes("hasLeadStageMoveWarning(payload, 'kanban_order_not_saved')")
+    && leadsCode.includes('Етап збережено, порядок оновиться після перезавантаження.')
+    && updateLeadStageBlock.includes('if (res.ok && data.success) {')
+    && updateLeadStageBlock.indexOf('notifyLeadStageMoveWarnings(data);') < updateLeadStageBlock.indexOf('return true;'));
+check('Lead kanban drag uses the dedicated stage endpoint',
+    updateLeadStageBlock.includes("apiFetch(`/api/leads/${normalizedLeadId}/stage`")
+    && !updateLeadStageBlock.includes("apiFetch(`/api/leads/${normalizedLeadId}`,"));
+check('Lead kanban load ignores stale responses before rendering',
+    leadsCode.includes('let leadLoadSeq = 0')
+    && loadLeadsBlock.includes('const loadSeq = ++leadLoadSeq;')
+    && loadLeadsBlock.includes('const [stats, leads] = await Promise.all([')
+    && loadLeadsBlock.includes('loadLeadQueueStats()')
+    && loadLeadsBlock.includes('fetchAllLeadPages(params)')
+    && loadLeadsBlock.includes('if (loadSeq !== leadLoadSeq) return;')
+    && loadLeadsBlock.indexOf('if (loadSeq !== leadLoadSeq) return;') < loadLeadsBlock.indexOf('leadStatsData = stats;')
+    && loadLeadsBlock.indexOf('if (loadSeq !== leadLoadSeq) return;') < loadLeadsBlock.indexOf('leadsData = leads;')
+    && loadLeadsBlock.indexOf('if (loadSeq !== leadLoadSeq) return;') < loadLeadsBlock.indexOf('renderKanban();')
+    && !loadLeadQueueStatsBlock.includes('leadStatsData ='));
 check('Lead customer stages auto-create or link a SQL customer card',
     leadsRouteCode.includes('const CUSTOMER_CARD_PIPELINE_STAGES = new Set')
     && leadsRouteCode.includes("'deposit_received'")
-    && leadsRouteCode.includes("const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage)")
-    && leadsRouteCode.includes("dealCustomerLink = await runPostCommitLeadStep('customer sync'")
-    && leadsRouteCode.includes('ensureDealCustomerForLead(client, updatedLead, businessContext')
+    && legacyLeadPatchRouteBlock.includes("const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage)")
+    && legacyLeadPatchRouteBlock.includes("dealCustomerLink = await runPostCommitLeadStep('customer sync'")
+    && legacyLeadPatchRouteBlock.includes('ensureDealCustomerForLead(client, updatedLead, businessContext')
     && leadsRouteCode.includes('INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)')
     && leadsRouteCode.includes('buildLeadCustomerNotes(lead)')
     && leadsRouteCode.includes('appendUniqueLeadCustomerNote')
     && leadsRouteCode.includes('withLeadPatchGuardedTransaction')
     && leadsRouteCode.includes("SET LOCAL idle_in_transaction_session_timeout = '5000ms'")
-    && leadsRouteCode.indexOf("if (updateClient) await updateClient.query('COMMIT');") < leadsRouteCode.indexOf("dealCustomerLink = await runPostCommitLeadStep('customer sync'"));
+    && legacyLeadPatchRouteBlock.indexOf("if (updateClient) await updateClient.query('COMMIT');") < legacyLeadPatchRouteBlock.indexOf("dealCustomerLink = await runPostCommitLeadStep('customer sync'"));
+check('Lead PATCH exposes retryable write-lock taxonomy for Kanban',
+    leadsRouteCode.includes('function mapLeadPatchError')
+    && leadsRouteCode.includes("new Set(['55P03', '40P01', '57014'])")
+    && leadsRouteCode.includes("code: 'lead_write_locked'")
+    && leadsRouteCode.includes('retryable: true')
+    && leadsRouteCode.includes("status: 409")
+    && leadsRouteCode.includes("requestIdFromHttp")
+    && leadsRouteCode.includes("PATCH /leads/:id retryable write conflict")
+    && leadsRouteCode.includes("mappedError.payload.requestId"));
+check('Lead dedicated stage endpoint keeps the critical transaction narrow',
+    leadsRouteCode.includes("router.patch('/:id/stage'")
+    && leadsRouteCode.includes('updated_at = NOW()')
+    && leadsRouteCode.includes("source: 'leads.stage_patch'")
+    && leadsRouteCode.includes("PATCH /leads/:id/stage retryable write conflict")
+    && leadsRouteCode.indexOf("router.patch('/:id/stage'") < leadsRouteCode.indexOf("router.patch('/:id', async"));
+check('Lead kanban stage moves use optimistic locking',
+    htmlContains('db/migrations/275_leads_updated_at_trigger.sql', 'CREATE TRIGGER trg_leads_updated_at')
+    && leadsRouteCode.includes("code: 'lead_version_conflict'")
+    && leadsRouteCode.includes("code: 'lead_version_required'")
+    && leadsRouteCode.includes('leadPatchVersionFromBody')
+    && leadsRouteCode.includes('leadVersionMatches(previousLead.updated_at, clientUpdatedAt)')
+    && leadsRouteCode.includes('currentLead: leadConflictSnapshot(err.currentLead)')
+    && leadsCode.includes('data-updated-at="${escapeHtml(updatedAt)}"')
+    && leadsCode.includes('function leadUpdatedAtForStageMove')
+    && leadsCode.includes("payload.code === 'lead_version_conflict'")
+    && leadsCode.includes('Лід уже змінили в іншому місці. Оновлюю дошку.')
+    && leadsCode.includes('updated_at: draggingCard?.dataset.updatedAt || leadUpdatedAtForStageMove(leadId)')
+    && leadsCode.includes('await loadLeads();'));
 check('Lead/customer journey uses durable many-to-one link history', htmlContains('db/migrations/262_leads_customer_links_and_value.sql', 'CREATE TABLE IF NOT EXISTS lead_customer_links') && leadsRouteCode.includes('function linkLeadCustomer') && leadsRouteCode.includes('INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at)') && leadsRouteCode.includes('FROM lead_customer_links lcl') && leadsRouteCode.includes("linkType: 'deal_customer'") && leadsRouteCode.includes("linkType: 'operator_link'") && htmlContains('routes/customers.js', 'customer.leadLinks'));
 check('Lead stage changes are written to lead_interactions atomically', leadsRouteCode.includes('function logStageChange(queryable') && leadsRouteCode.includes("INSERT INTO lead_interactions (lead_id, user_id, type, summary, details, created_at)") && leadsRouteCode.includes("'status_change'") && leadsRouteCode.includes("source: 'leads.patch'") && !leadsRouteCode.includes('created_by, created_at') && !leadsRouteCode.includes("logStageChange(updatedLead.id"));
 check('Lead list pagination loads beyond the old 200-card kanban cap', leadsCode.includes('function fetchAllLeadPages') && leadsCode.includes("params.set('limit', String(pageSize))") && leadsCode.includes("params.set('offset', String(offset))") && leadsRouteCode.includes('const LEADS_MAX_LIMIT = 500') && leadsRouteCode.includes('pagination:') && !leadsCode.includes("params.set('limit', '200')") && !leadsRouteCode.includes('Math.min(parseInt(lim) || 50, 200)'));
@@ -4641,7 +4712,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.112')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.113')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")

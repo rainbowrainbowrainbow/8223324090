@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.112",
+  "version": "0.77.113",
   "eventGenix": {
-    "releaseLabel": "Власні картки linked-активностей"
+    "releaseLabel": "Стабільність Kanban лідів"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -58,6 +58,7 @@
     "version:smoke": "node scripts/live-version-smoke.js",
     "release:gate": "node scripts/release-gate.js",
     "smoke:live": "node scripts/live-smoke.js",
+    "smoke:lead-kanban": "node scripts/live-lead-kanban-smoke.js",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
     "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\""

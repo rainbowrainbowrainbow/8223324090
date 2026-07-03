@@ -191,6 +191,7 @@ let currentPipelineStage = '';
 let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let leadStatsData = null;
+let leadLoadSeq = 0;
 let pipelineData = {};
 let usersData = [];
 let modalInitialState = '';
@@ -212,6 +213,7 @@ let leadCustomerLinkState = {
     searchTimer: null
 };
 let kanbanDragState = null;
+const pendingLeadStageMoves = new Set();
 let kanbanLeadTypeMenuEventsBound = false;
 let kanbanLeadTypeTriggerOpenedAt = 0;
 let kanbanLeadTypeTriggerOpenedLeadId = 0;
@@ -402,6 +404,41 @@ function guardLeadWrite(actionLabel = 'змінювати ліди') {
         : !isLeadBusinessReadOnly();
 }
 
+function leadStageMoveId(value) {
+    const id = Number(value);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function isLeadStageMovePending(leadId) {
+    const id = leadStageMoveId(leadId);
+    return id ? pendingLeadStageMoves.has(id) : false;
+}
+
+function syncLeadStageMovePendingUi(leadId = null) {
+    const idFilter = leadStageMoveId(leadId);
+    document.querySelectorAll('[data-lead-id], .kanban-card[data-id]').forEach(el => {
+        const id = leadStageMoveId(el.dataset.leadId || el.dataset.id);
+        if (!id || (idFilter && id !== idFilter)) return;
+        const pending = pendingLeadStageMoves.has(id);
+        el.classList.toggle('is-stage-pending', pending);
+        if (pending) {
+            el.setAttribute('aria-busy', 'true');
+            el.dataset.stagePending = 'true';
+        } else {
+            el.removeAttribute('aria-busy');
+            delete el.dataset.stagePending;
+        }
+    });
+}
+
+function setLeadStageMovePending(leadId, pending) {
+    const id = leadStageMoveId(leadId);
+    if (!id) return;
+    if (pending) pendingLeadStageMoves.add(id);
+    else pendingLeadStageMoves.delete(id);
+    syncLeadStageMovePendingUi(id);
+}
+
 function syncLeadReadOnlyUi() {
     const readOnly = isLeadBusinessReadOnly();
     if (document.body) document.body.dataset.crmBusinessReadOnly = readOnly ? 'true' : 'false';
@@ -560,6 +597,7 @@ async function loadUsers() {
 }
 
 async function loadLeads() {
+    const loadSeq = ++leadLoadSeq;
     const tbody = document.getElementById('leadsTableBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
     syncLeadPresentationUi();
@@ -573,10 +611,12 @@ async function loadLeads() {
         if (currentView === 'kanban') params.set('order', 'kanban');
         const search = document.getElementById('leadsSearch')?.value?.trim();
         if (search) params.set('search', search);
-        const [_, leads] = await Promise.all([
+        const [stats, leads] = await Promise.all([
             loadLeadQueueStats(),
             fetchAllLeadPages(params)
         ]);
+        if (loadSeq !== leadLoadSeq) return;
+        leadStatsData = stats;
         leadsData = leads;
 
         renderStats();
@@ -589,6 +629,7 @@ async function loadLeads() {
         }
         syncWorkspaceHighlight();
     } catch (err) {
+        if (loadSeq !== leadLoadSeq) return;
         console.error('Load leads error', err);
         const tbody = document.getElementById('leadsTableBody');
         if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Помилка завантаження</td></tr>';
@@ -601,12 +642,10 @@ async function loadLeadQueueStats() {
         if (!res) return null;
         if (!res.ok) throw new Error(`Lead stats failed: ${res.status}`);
         const data = await res.json();
-        leadStatsData = data || null;
-        return leadStatsData;
+        return data || null;
     } catch (err) {
         if (err?.message === 'Unauthorized') throw err;
         console.warn('Failed to load lead queue stats', err);
-        leadStatsData = null;
         return null;
     }
 }
@@ -2024,7 +2063,9 @@ function renderKanban() {
             const phoneLabel = phone || '—';
             const phoneTel = phone.replace(/[^+\d]/g, '');
 
-            return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}">
+            const updatedAt = l.updated_at || l.updatedAt || '';
+
+            return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}" data-updated-at="${escapeHtml(updatedAt)}">
                 <div class="kanban-card-top">
                     <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
                     <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>
@@ -2063,6 +2104,7 @@ function renderKanban() {
     bindKanbanLeadTypeTriggerControls(kanbanWrap);
     setupKanbanDragDrop();
     syncLeadReadOnlyUi();
+    syncLeadStageMovePendingUi();
 }
 
 function setupKanbanDragDrop() {
@@ -2088,10 +2130,16 @@ function setupKanbanDragDrop() {
                 e.preventDefault();
                 return;
             }
+            const leadId = leadStageMoveId(card.dataset.id);
+            if (isLeadStageMovePending(leadId)) {
+                e.preventDefault();
+                if (typeof showNotification === 'function') showNotification('Лід уже оновлюється. Дочекайтесь завершення.', 'info');
+                return;
+            }
             e.dataTransfer.setData('text/plain', card.dataset.id);
             e.dataTransfer.effectAllowed = 'move';
             kanbanDragState = {
-                leadId: Number(card.dataset.id),
+                leadId,
                 originStage: card.closest('.kanban-cards')?.dataset.stage || '',
                 dropped: false
             };
@@ -2144,11 +2192,14 @@ function setupKanbanDragDrop() {
             // If moving to 'lost', ask for reason
             if (newStage === 'lost') {
                 loadLeads();
-                showLostReasonModal(parseInt(leadId), newStage);
+                showLostReasonModal(parseInt(leadId), newStage, {
+                    updated_at: draggingCard?.dataset.updatedAt || leadUpdatedAtForStageMove(leadId)
+                });
                 return;
             }
 
             const saved = await updateLeadStage(parseInt(leadId), newStage, {
+                updated_at: draggingCard?.dataset.updatedAt || leadUpdatedAtForStageMove(leadId),
                 kanban_order: orderedLeadIds
             });
             if (!saved) renderKanban();
@@ -2180,6 +2231,18 @@ function getKanbanOrderedLeadIds(col) {
         .filter(id => Number.isInteger(id) && id > 0);
 }
 
+function leadUpdatedAtForStageMove(leadId) {
+    const normalizedLeadId = leadStageMoveId(leadId);
+    if (!normalizedLeadId) return '';
+    if (Number(currentWorkspaceData?.lead?.id) === normalizedLeadId) {
+        return currentWorkspaceData.lead.updatedAt || currentWorkspaceData.lead.updated_at || '';
+    }
+    const lead = leadsData.find(item => Number(item.id) === normalizedLeadId);
+    if (lead?.updated_at || lead?.updatedAt) return lead.updated_at || lead.updatedAt;
+    const card = document.querySelector(`.kanban-card[data-id="${normalizedLeadId}"]`);
+    return card?.dataset?.updatedAt || '';
+}
+
 function moveDraggingCardIntoKanbanColumn(col, draggingCard, clientY) {
     const afterElement = getKanbanDragAfterElement(col, clientY);
     if (afterElement) {
@@ -2202,16 +2265,71 @@ function getKanbanDragAfterElement(col, y) {
         }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
 }
 
+async function readLeadStageMovePayload(res) {
+    const parsed = await res.json().catch(() => ({}));
+    const payload = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    const requestId = payload.requestId || payload.request_id || res.headers?.get?.('x-request-id') || '';
+    return requestId && !payload.requestId ? { ...payload, requestId } : payload;
+}
+
+function leadStageMoveFailureMessage(payload = {}) {
+    if (payload.code === 'lead_version_conflict') {
+        return 'Лід уже змінили в іншому місці. Оновлюю дошку.';
+    }
+    if (payload.retryable === true || payload.code === 'lead_write_locked') {
+        return 'Лід зараз оновлюється. Спробуйте ще раз через кілька секунд.';
+    }
+    const message = payload.error || payload.message || 'Не вдалося змінити етап ліда';
+    const requestId = payload.requestId || payload.request_id || '';
+    return `${message}${requestId ? ` · код: ${requestId}` : ''}`;
+}
+
+function notifyLeadStageMoveFailure(payload = {}) {
+    if (typeof showNotification !== 'function') return;
+    const type = payload.code === 'lead_version_conflict' || payload.retryable === true || payload.code === 'lead_write_locked' ? 'warning' : 'error';
+    showNotification(leadStageMoveFailureMessage(payload), type);
+}
+
+function isLeadVersionConflictPayload(payload = {}) {
+    return payload.code === 'lead_version_conflict';
+}
+
+function hasLeadStageMoveWarning(payload = {}, code) {
+    return Array.isArray(payload.warnings)
+        && payload.warnings.some(warning => warning?.code === code);
+}
+
+function notifyLeadStageMoveWarnings(payload = {}) {
+    if (typeof showNotification !== 'function') return;
+    if (hasLeadStageMoveWarning(payload, 'kanban_order_not_saved')) {
+        showNotification('Етап збережено, порядок оновиться після перезавантаження.', 'info');
+    }
+}
+
 async function updateLeadStage(leadId, stage, extraFields = {}) {
+    const normalizedLeadId = leadStageMoveId(leadId);
+    if (!normalizedLeadId) return false;
     if (!guardLeadWrite('переміщати ліди між етапами')) return false;
+    if (isLeadStageMovePending(normalizedLeadId)) {
+        if (typeof showNotification === 'function') showNotification('Лід уже оновлюється. Дочекайтесь завершення.', 'info');
+        return false;
+    }
+    setLeadStageMovePending(normalizedLeadId, true);
     try {
         const body = { pipeline_stage: stage, ...extraFields };
-        const res = await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) });
-        if (!res) return false;
-        const data = await res.json();
-        if (data.success) {
+        if (!body.updated_at && !body.updatedAt && !body.lead_updated_at && !body.leadUpdatedAt && !body.version) {
+            body.updated_at = leadUpdatedAtForStageMove(normalizedLeadId);
+        }
+        const res = await apiFetch(`/api/leads/${normalizedLeadId}/stage`, { method: 'PATCH', body: JSON.stringify(body) });
+        if (!res) {
+            notifyLeadStageMoveFailure();
+            return false;
+        }
+        const data = await readLeadStageMovePayload(res);
+        if (res.ok && data.success) {
             if (typeof showNotification === 'function') showNotification(`Етап змінено на: ${stage}`, 'success');
-            if (data.customer?.id && currentWorkspaceData?.lead?.id === leadId) {
+            notifyLeadStageMoveWarnings(data);
+            if (data.customer?.id && currentWorkspaceData?.lead?.id === normalizedLeadId) {
                 currentWorkspaceData = {
                     ...currentWorkspaceData,
                     lead: data.lead || currentWorkspaceData.lead,
@@ -2224,16 +2342,26 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
                 if (typeof showNotification === 'function') showNotification('💰 Завдаток! Задачі створені автоматично', 'success');
             }
             const openedCustomerCard = stage === 'deal'
-                ? await offerDealCustomerCardFlow(leadId, data.lead, data.customer, data.customerLinkMode)
+                ? await offerDealCustomerCardFlow(normalizedLeadId, data.lead, data.customer, data.customerLinkMode)
                 : false;
             if (!openedCustomerCard) {
                 await loadLeads();
-                if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
+                if (workspaceLeadId === normalizedLeadId) openLeadWorkspace(normalizedLeadId, { pushState: false });
             }
             return true;
         }
+        notifyLeadStageMoveFailure(data);
+        if (isLeadVersionConflictPayload(data)) {
+            await loadLeads();
+            if (workspaceLeadId === normalizedLeadId) openLeadWorkspace(normalizedLeadId, { pushState: false });
+        }
     } catch (e) {
         console.error('Update stage error', e);
+        if (e?.message !== 'Unauthorized') {
+            notifyLeadStageMoveFailure({ error: e?.message || 'Не вдалося змінити етап ліда' });
+        }
+    } finally {
+        setLeadStageMovePending(normalizedLeadId, false);
     }
     return false;
 }
@@ -2316,6 +2444,7 @@ function openLostReasonSurface({
     leadId,
     stage = '',
     leadType = '',
+    updatedAt = '',
     reasonMode = 'stage',
     title = 'Причина втрати',
     options = LOSS_REASONS,
@@ -2328,6 +2457,8 @@ function openLostReasonSurface({
     overlay.dataset.leadType = leadType;
     overlay.dataset.reasonMode = reasonMode;
     overlay.dataset.detailsMode = detailsMode;
+    if (updatedAt) overlay.dataset.leadUpdatedAt = updatedAt;
+    else delete overlay.dataset.leadUpdatedAt;
 
     const titleEl = document.getElementById('lostReasonTitle');
     if (titleEl) titleEl.textContent = title;
@@ -2976,12 +3107,13 @@ async function saveCustomerCard() {
 // ==========================================
 // LOST REASON MODAL
 // ==========================================
-function showLostReasonModal(leadId, stage) {
+function showLostReasonModal(leadId, stage, options = {}) {
     if (!guardLeadWrite('закривати ліди')) return;
     resetLeadTypeReasonRequest(null);
     openLostReasonSurface({
         leadId,
         stage,
+        updatedAt: options.updated_at || options.updatedAt || leadUpdatedAtForStageMove(leadId),
         reasonMode: 'stage',
         title: 'Причина втрати',
         options: LOSS_REASONS,
@@ -3012,6 +3144,7 @@ async function saveLostReason() {
     }
 
     await updateLeadStage(leadId, 'lost', {
+        updated_at: overlay.dataset.leadUpdatedAt || leadUpdatedAtForStageMove(leadId),
         lost_reason: lostReason,
         lead_type: 'low_quality'
     });
@@ -4187,11 +4320,12 @@ async function submitLeadCustomerCreateNew() {
 
 async function moveLeadWorkspaceStage(leadId, stage) {
     if (!leadId || !stage) return;
+    const updatedAt = leadUpdatedAtForStageMove(leadId);
     if (stage === 'lost') {
-        showLostReasonModal(leadId, stage);
+        showLostReasonModal(leadId, stage, { updated_at: updatedAt });
         return;
     }
-    await updateLeadStage(leadId, stage);
+    await updateLeadStage(leadId, stage, { updated_at: updatedAt });
 }
 
 function escapeHtml(str) {

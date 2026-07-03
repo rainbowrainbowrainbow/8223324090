@@ -55,6 +55,7 @@ function createPoolFixture({
     customerChildrenStorageMissing = false,
     customerChildrenCustomerFkMissing = false,
     customerSyncLockTimeout = false,
+    leadPatchLockTimeout = false,
     leadOverrides = {}
 } = {}) {
     const queries = [];
@@ -77,6 +78,11 @@ function createPoolFixture({
                 return { rows: [], rowCount: 0 };
             }
             if (/SELECT id, pipeline_stage, status\s+FROM leads/i.test(sql) && /FOR UPDATE/i.test(sql)) {
+                if (leadPatchLockTimeout) {
+                    const err = new Error('canceling statement due to lock timeout');
+                    err.code = '55P03';
+                    throw err;
+                }
                 return {
                     rows: [{
                         id: state.lead.id,
@@ -345,7 +351,10 @@ async function withLeadApp(options, run) {
     const request = async body => {
         const res = await fetch(`${baseUrl}/api/leads/501?businessContext=event_genix`, {
             method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
+            headers: {
+                'content-type': 'application/json',
+                'x-request-id': 'lead-deposit-hook-test'
+            },
             body: JSON.stringify(body)
         });
         const text = await res.text();
@@ -529,6 +538,33 @@ test('customer card stage still commits when customer_children customer FK is st
         assert.ok(!queries.some(query => /^ROLLBACK$/i.test(query.text)));
         assert.equal(state.lead.pipeline_stage, 'deal');
         assert.deepEqual(state.customerChildren, []);
+    });
+});
+
+test('lead stage lock timeout returns retryable conflict without committing stage', async () => {
+    await withLeadApp({
+        oldStage: 'info_sent',
+        leadPatchLockTimeout: true,
+        leadOverrides: {
+            pipeline_stage: 'info_sent',
+            status: 'contact'
+        }
+    }, async ({ request, state, queries }) => {
+        const res = await request({ pipeline_stage: 'deal' });
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'lead_write_locked');
+        assert.equal(res.data.reason, 'lock_timeout');
+        assert.equal(res.data.retryable, true);
+        assert.equal(res.data.requestId, 'lead-deposit-hook-test');
+        assert.match(res.data.error, /оновлюється/i);
+
+        assert.ok(queries.some(query => /^BEGIN$/i.test(query.text)));
+        assert.ok(queries.some(query => /SELECT id, pipeline_stage, status\s+FROM leads/i.test(query.text) && /FOR UPDATE/i.test(query.text)));
+        assert.ok(queries.some(query => /^ROLLBACK$/i.test(query.text)));
+        assert.ok(!queries.some(query => /UPDATE leads SET/i.test(query.text)));
+        assert.ok(!queries.some(query => /^COMMIT$/i.test(query.text)));
+        assert.equal(state.lead.pipeline_stage, 'info_sent');
     });
 });
 

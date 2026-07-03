@@ -2223,6 +2223,11 @@ function createFakePool() {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
             if (/SELECT \* FROM leads WHERE id = \$1 AND COALESCE\(business_context, 'event_genix'\) = \$2 FOR UPDATE/i.test(text)) {
+                if (Number(params[0]) === 507) {
+                    const err = new Error('canceling statement due to lock timeout');
+                    err.code = '55P03';
+                    throw err;
+                }
                 return {
                     rows: [{
                         id: params[0],
@@ -2250,8 +2255,21 @@ function createFakePool() {
                     }]
                 };
             }
-            if (/SELECT id, pipeline_stage, status FROM leads WHERE id = \$1(?: AND COALESCE\(business_context, 'event_genix'\) = \$2)? FOR UPDATE/i.test(text)) {
-                return { rows: [{ id: params[0], pipeline_stage: 'new', status: 'new' }] };
+            if (/SELECT id, pipeline_stage, status(?:, updated_at)?\s+FROM leads\s+WHERE id = \$1(?:\s+AND COALESCE\(business_context, 'event_genix'\) = \$2)?\s+FOR UPDATE/i.test(text)) {
+                if (Number(params[0]) === 504) {
+                    const err = new Error('canceling statement due to lock timeout');
+                    err.code = '55P03';
+                    throw err;
+                }
+                return { rows: [{ id: params[0], pipeline_stage: 'new', status: 'new', updated_at: '2099-05-02T10:00:00.000Z' }] };
+            }
+            if (/WITH ordered\(id, position\) AS/i.test(text) && /SET kanban_position = ordered\.position/i.test(text)) {
+                if ((params || []).some(value => Number(value) === 506)) {
+                    const err = new Error('canceling statement due to lock timeout');
+                    err.code = '55P03';
+                    throw err;
+                }
+                return { rows: [], rowCount: 1 };
             }
             if (/UPDATE leads SET .* WHERE id = \$\d+(?: AND COALESCE\(business_context, 'event_genix'\) = \$\d+)? RETURNING \*/i.test(text)) {
                 const paramFor = column => {
@@ -2315,6 +2333,11 @@ function createFakePool() {
                 return { rows: [] };
             }
             if (/INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(text)) {
+                if (Number(params[7]) === 505) {
+                    const err = new Error('route smoke customer sync failure');
+                    err.code = '55P03';
+                    throw err;
+                }
                 return {
                     rows: [{
                         id: 8701,
@@ -4455,6 +4478,30 @@ describe('route-level API safety smoke', () => {
         });
     });
 
+    it('returns retryable conflict metadata when the customer card lead row is locked', async () => {
+        queries.length = 0;
+        const res = await request(
+            'POST',
+            '/api/leads/507/card',
+            { event_type: 'birthday', budget_approx: 1200 },
+            withAuth({ 'x-request-id': 'route-smoke-card-lock' }, 'manager')
+        );
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'lead_write_locked');
+        assert.equal(res.data.reason, 'lock_timeout');
+        assert.equal(res.data.retryable, true);
+        assert.equal(res.data.requestId, 'route-smoke-card-lock');
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /^SET LOCAL lock_timeout = '2500ms'$/i.test(q.text)));
+        assert.ok(queries.some(q => /^SET LOCAL statement_timeout = '10000ms'$/i.test(q.text)));
+        assert.ok(queries.some(q => /^SET LOCAL idle_in_transaction_session_timeout = '5000ms'$/i.test(q.text)));
+        assert.ok(queries.some(q => /SELECT \* FROM leads/i.test(q.text) && /FOR UPDATE/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /UPDATE leads/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+    });
+
     it('rolls back a lead stage change when the interaction audit cannot be written', async () => {
         queries.length = 0;
         const res = await request('PATCH', '/api/leads/501', { pipeline_stage: 'lost' }, withAuth({}, 'manager'));
@@ -4462,6 +4509,139 @@ describe('route-level API safety smoke', () => {
         assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)));
         assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+    });
+
+    it('commits the dedicated stage move before post-commit customer sync failures', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/505/stage', {
+            pipeline_stage: 'deal',
+            updated_at: '2099-05-02T10:00:00.000Z'
+        }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.pipeline_stage, 'deal');
+        assert.equal(res.data.customer, undefined);
+
+        const updateIndex = queries.findIndex(q => /UPDATE leads SET pipeline_stage = \$1, status = \$2, updated_at = NOW\(\)/i.test(q.text));
+        const auditIndex = queries.findIndex(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text));
+        const firstCommitIndex = queries.findIndex(q => /^COMMIT$/i.test(q.text));
+        const customerInsertIndex = queries.findIndex(q => /INSERT INTO customers \(business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities\)/i.test(q.text));
+        const postCommitRollbackIndex = queries.findIndex((q, index) => index > firstCommitIndex && /^ROLLBACK$/i.test(q.text));
+
+        assert.ok(updateIndex >= 0, 'stage move should update leads');
+        assert.ok(auditIndex > updateIndex, 'audit log should be inside the critical transaction');
+        assert.ok(firstCommitIndex > auditIndex, 'critical transaction should commit after audit');
+        assert.ok(customerInsertIndex > firstCommitIndex, 'customer sync must run only after stage commit');
+        assert.ok(postCommitRollbackIndex > customerInsertIndex, 'post-commit customer sync may roll back independently');
+        assert.deepEqual(JSON.parse(queries[auditIndex].params[3]), {
+            oldStage: 'new',
+            newStage: 'deal',
+            oldStatus: 'new',
+            newStatus: 'proposal',
+            source: 'leads.stage_patch'
+        });
+    });
+
+    it('keeps dedicated stage success when kanban order sync is locked', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/506/stage', {
+            pipeline_stage: 'deal',
+            updated_at: '2099-05-02T10:00:00.000Z',
+            kanban_order: [506, 501]
+        }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.pipeline_stage, 'deal');
+        assert.deepEqual(res.data.warnings, [{
+            code: 'kanban_order_not_saved',
+            retryable: true
+        }]);
+
+        const stageCommitIndex = queries.findIndex(q => /^COMMIT$/i.test(q.text));
+        const orderSyncIndex = queries.findIndex(q => /SET kanban_position = ordered\.position/i.test(q.text));
+        const orderRollbackIndex = queries.findIndex((q, index) => index > orderSyncIndex && /^ROLLBACK$/i.test(q.text));
+        assert.ok(stageCommitIndex >= 0, 'stage move should commit');
+        assert.ok(orderSyncIndex > stageCommitIndex, 'kanban order sync must run after stage commit');
+        assert.ok(orderRollbackIndex > orderSyncIndex, 'failed order sync rolls back independently');
+        assert.ok(!res.data.error, 'order warning must not turn the stage move into an error');
+    });
+
+    it('rolls back the dedicated stage move when the interaction audit cannot be written', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/501/stage', {
+            pipeline_stage: 'lost',
+            updated_at: '2099-05-02T10:00:00.000Z'
+        }, withAuth({}, 'manager'));
+        assert.equal(res.status, 500, JSON.stringify(res.data));
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE leads SET pipeline_stage = \$1, status = \$2, updated_at = NOW\(\)/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO lead_interactions \(lead_id, user_id, type, summary, details, created_at\)/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+    });
+
+    it('rejects stale dedicated stage moves with the current lead snapshot', async () => {
+        queries.length = 0;
+        const res = await request(
+            'PATCH',
+            '/api/leads/508/stage',
+            {
+                pipeline_stage: 'deal',
+                updated_at: '2099-05-02T09:59:59.000Z'
+            },
+            withAuth({ 'x-request-id': 'route-smoke-lead-stale' }, 'manager')
+        );
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'lead_version_conflict');
+        assert.equal(res.data.retryable, false);
+        assert.equal(res.data.error, 'Лід уже змінили в іншому місці. Оновлюю дошку.');
+        assert.deepEqual(res.data.currentLead, {
+            id: 508,
+            pipeline_stage: 'new',
+            status: 'new',
+            updated_at: '2099-05-02T10:00:00.000Z'
+        });
+        assert.equal(res.data.requestId, 'route-smoke-lead-stale');
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /SELECT id, pipeline_stage, status, updated_at FROM leads/i.test(q.text) && /FOR UPDATE/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /UPDATE leads SET/i.test(q.text)));
+        assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
+    });
+
+    it('requires a lead updated_at version for dedicated stage moves', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/509/stage', { pipeline_stage: 'deal' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.code, 'lead_version_required');
+        assert.ok(!queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(!queries.some(q => /UPDATE leads/i.test(q.text)));
+    });
+
+    it('returns retryable conflict metadata when lead stage row is locked', async () => {
+        queries.length = 0;
+        const res = await request(
+            'PATCH',
+            '/api/leads/504',
+            { pipeline_stage: 'deal' },
+            withAuth({ 'x-request-id': 'route-smoke-lead-lock' }, 'manager')
+        );
+        assert.equal(res.status, 409, JSON.stringify(res.data));
+        assert.deepEqual(res.data, {
+            success: false,
+            code: 'lead_write_locked',
+            reason: 'lock_timeout',
+            retryable: true,
+            error: 'Лід зараз оновлюється. Спробуйте ще раз через кілька секунд.',
+            requestId: 'route-smoke-lead-lock'
+        });
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /SELECT id, pipeline_stage, status FROM leads/i.test(q.text) && /FOR UPDATE/i.test(q.text)));
+        assert.ok(queries.some(q => /^ROLLBACK$/i.test(q.text)));
+        assert.ok(!queries.some(q => /UPDATE leads SET/i.test(q.text)));
         assert.ok(!queries.some(q => /^COMMIT$/i.test(q.text)));
     });
 

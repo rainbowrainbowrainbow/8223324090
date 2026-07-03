@@ -339,6 +339,107 @@ async function withLeadPatchGuardedTransaction(callback) {
     }
 }
 
+async function runPostCommitLeadStep(label, callback, fallback = null, context = {}) {
+    try {
+        return await withLeadPatchGuardedTransaction(callback);
+    } catch (err) {
+        log.warn(`Lead patch ${label} skipped after lead update commit`, {
+            leadId: context.leadId || null,
+            businessContext: context.businessContext || null,
+            error: err.message,
+            code: err.code,
+            constraint: err.constraint
+        });
+        return fallback;
+    }
+}
+
+function kanbanOrderNotSavedWarning() {
+    return {
+        code: 'kanban_order_not_saved',
+        retryable: true
+    };
+}
+
+const LEAD_PATCH_RETRYABLE_DB_CODES = new Set(['55P03', '40P01', '57014']);
+
+function requestIdFromHttp(req, res) {
+    const requestId = res?.getHeader?.('X-Request-ID') || req?.headers?.['x-request-id'];
+    return requestId ? String(requestId) : null;
+}
+
+function mapLeadPatchError(err, req, res) {
+    const dbCode = String(err?.code || '');
+    if (!LEAD_PATCH_RETRYABLE_DB_CODES.has(dbCode)) return null;
+
+    const reason = dbCode === '40P01'
+        ? 'deadlock_detected'
+        : (dbCode === '57014' ? 'statement_timeout' : 'lock_timeout');
+    const requestId = requestIdFromHttp(req, res);
+    return {
+        status: 409,
+        payload: {
+            success: false,
+            code: 'lead_write_locked',
+            reason,
+            retryable: true,
+            error: 'Лід зараз оновлюється. Спробуйте ще раз через кілька секунд.',
+            ...(requestId ? { requestId } : {})
+        }
+    };
+}
+
+function leadPatchVersionFromBody(body = {}) {
+    return cleanText(
+        body.updated_at
+        || body.updatedAt
+        || body.lead_updated_at
+        || body.leadUpdatedAt
+        || body.version
+    );
+}
+
+function timestampMillis(value) {
+    if (!value) return null;
+    const time = value instanceof Date ? value.getTime() : Date.parse(value);
+    return Number.isFinite(time) ? time : null;
+}
+
+function leadVersionMatches(serverValue, clientValue) {
+    const serverMs = timestampMillis(serverValue);
+    const clientMs = timestampMillis(clientValue);
+    return serverMs !== null && clientMs !== null && serverMs === clientMs;
+}
+
+function leadConflictSnapshot(lead = {}) {
+    return {
+        id: lead.id,
+        pipeline_stage: lead.pipeline_stage || 'new',
+        status: lead.status || STAGE_TO_STATUS[lead.pipeline_stage || 'new'] || 'new',
+        updated_at: lead.updated_at || null
+    };
+}
+
+function makeLeadVersionConflictError(currentLead) {
+    const err = new Error('Lead version conflict');
+    err.statusCode = 409;
+    err.code = 'lead_version_conflict';
+    err.currentLead = currentLead;
+    return err;
+}
+
+function leadVersionConflictPayload(err, req, res) {
+    const requestId = requestIdFromHttp(req, res);
+    return {
+        success: false,
+        code: 'lead_version_conflict',
+        retryable: false,
+        error: 'Лід уже змінили в іншому місці. Оновлюю дошку.',
+        currentLead: leadConflictSnapshot(err.currentLead),
+        ...(requestId ? { requestId } : {})
+    };
+}
+
 async function ensureAssignableUser(userId) {
     if (userId === null) return true;
     const result = await pool.query(
@@ -2151,12 +2252,239 @@ router.post('/', async (req, res) => {
     }
 });
 
+// PATCH /api/leads/:id/stage - narrow Kanban stage move path
+router.patch('/:id/stage', async (req, res) => {
+    let businessContext = null;
+    let leadId = null;
+    try {
+        businessContext = ensureBusinessContext(req, res);
+        if (!businessContext) return;
+        leadId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
+        }
+        const stageStatus = normalizeLeadPatchStageStatus({
+            pipelineStage: req.body?.pipeline_stage,
+            status: undefined
+        });
+        if (!stageStatus.stageProvided || stageStatus.error) {
+            return res.status(400).json({ success: false, error: stageStatus.error || 'Некоректний pipeline_stage' });
+        }
+        const clientUpdatedAt = leadPatchVersionFromBody(req.body);
+        if (!clientUpdatedAt || timestampMillis(clientUpdatedAt) === null) {
+            return res.status(400).json({
+                success: false,
+                code: 'lead_version_required',
+                error: 'Не вдалося перевірити актуальність ліда. Оновіть дошку й спробуйте ще раз.'
+            });
+        }
+
+        const kanbanOrderIds = normalizeKanbanOrder(req.body?.kanban_order, leadId);
+        let updatedLead;
+        let previousLead;
+        let stageTransition = null;
+
+        await withLeadPatchGuardedTransaction(async client => {
+            const previousResult = await client.query(
+                `SELECT id, pipeline_stage, status, updated_at
+                 FROM leads
+                 WHERE id = $1
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                 FOR UPDATE`,
+                [leadId, businessContext]
+            );
+            if (previousResult.rows.length === 0) {
+                const notFound = new Error('Lead not found');
+                notFound.statusCode = 404;
+                throw notFound;
+            }
+            previousLead = previousResult.rows[0];
+            if (!leadVersionMatches(previousLead.updated_at, clientUpdatedAt)) {
+                throw makeLeadVersionConflictError(previousLead);
+            }
+
+            const updates = [
+                'pipeline_stage = $1',
+                'status = $2',
+                'updated_at = NOW()'
+            ];
+            if (stageStatus.status === 'booked') updates.push('booked_at = COALESCE(booked_at, NOW())');
+            if (stageStatus.status === 'contact') updates.push('last_contact_at = COALESCE(last_contact_at, NOW())');
+
+            const result = await client.query(
+                `UPDATE leads SET ${updates.join(', ')}
+                 WHERE id = $3
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
+                 RETURNING *`,
+                [stageStatus.stage, stageStatus.status, leadId, businessContext]
+            );
+            if (result.rows.length === 0) {
+                const notFound = new Error('Lead not found');
+                notFound.statusCode = 404;
+                throw notFound;
+            }
+
+            updatedLead = result.rows[0];
+            const oldStage = previousLead?.pipeline_stage || 'new';
+            const newStage = updatedLead.pipeline_stage || stageStatus.stage || 'new';
+            stageTransition = { oldStage, newStage };
+            if (oldStage !== newStage) {
+                await logStageChange(client, {
+                    leadId: updatedLead.id,
+                    oldStage,
+                    newStage,
+                    oldStatus: previousLead?.status || STAGE_TO_STATUS[oldStage] || 'new',
+                    newStatus: updatedLead.status || STAGE_TO_STATUS[newStage] || 'new',
+                    userId: req.user?.id,
+                    source: 'leads.stage_patch'
+                });
+            }
+        });
+
+        let dealCustomerLink = null;
+        const warnings = [];
+        const newStatus = updatedLead.status;
+        const newStage = updatedLead.pipeline_stage || stageStatus.stage || 'new';
+        const postCommitContext = { leadId, businessContext };
+        if (CUSTOMER_CARD_PIPELINE_STAGES.has(newStage)) {
+            dealCustomerLink = await runPostCommitLeadStep('customer sync', client => ensureDealCustomerForLead(client, updatedLead, businessContext, {
+                userId: req.user?.id,
+                source: 'leads.stage_patch',
+                linkType: 'deal_customer'
+            }), null, postCommitContext);
+        }
+
+        if (kanbanOrderIds.length) {
+            const orderSyncResult = await runPostCommitLeadStep('kanban order sync', async client => {
+                await persistLeadKanbanOrder(client, {
+                    businessContext,
+                    stage: newStage,
+                    orderedLeadIds: kanbanOrderIds
+                });
+                const refreshedLead = await client.query(
+                    `SELECT * FROM leads
+                      WHERE id = $1
+                        AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                      LIMIT 1`,
+                    [leadId, businessContext]
+                );
+                updatedLead = refreshedLead.rows[0] || updatedLead;
+                return null;
+            }, { warning: kanbanOrderNotSavedWarning() }, postCommitContext);
+            if (orderSyncResult?.warning) warnings.push(orderSyncResult.warning);
+        }
+
+        if ((['deal', 'deposit_received', 'waiting', 'completed', 'closed'].includes(newStage) || ['completed', 'booked'].includes(newStatus)) && updatedLead.booking_id) {
+            setImmediate(async () => {
+                try {
+                    const bk = await pool.query(
+                        `SELECT customer_id FROM bookings
+                         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+                        [updatedLead.booking_id, businessContext]
+                    );
+                    const custId = bk.rows[0]?.customer_id;
+                    if (!custId) return;
+                    const customerSource = normalizeCustomerSource(updatedLead.source || 'lead', { unknownAsNull: false });
+                    await linkLeadCustomer(pool, {
+                        businessContext,
+                        leadId: updatedLead.id,
+                        customerId: custId,
+                        linkType: 'booking_customer',
+                        source: 'lead_booking_sync',
+                        userId: req.user?.id,
+                        metadata: { bookingId: updatedLead.booking_id }
+                    });
+                    await pool.query(
+                        `UPDATE customers
+                         SET source = COALESCE(NULLIF(source, ''), $1),
+                             lead_id = COALESCE(lead_id, $2),
+                             notes = CONCAT_WS(E'\n', notes, $3)
+                         WHERE id = $4
+                           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $5
+                           AND (source IS NULL OR source = '')`,
+                        [customerSource, updatedLead.id,
+                         `Конвертований з ліду #${updatedLead.id} (${getCustomerSourceLabel(customerSource)})`,
+                         custId, businessContext]
+                    );
+                    const customerResult = await pool.query(
+                        `SELECT *
+                         FROM customers
+                         WHERE id = $1
+                           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                         LIMIT 1`,
+                        [custId, businessContext]
+                    );
+                    if (customerResult.rows[0]) {
+                        await syncLeadCelebrantsToCustomerChildren(pool, updatedLead, customerResult.rows[0], businessContext);
+                    }
+                    log.info(`[Lead→Customer] Lead ${updatedLead.id} → customer ${custId}, source: ${updatedLead.source}`);
+                } catch (e) { log.warn('[LeadConvert] Error:', e.message); }
+            });
+        }
+
+        if (newStage === 'deposit_received') {
+            onDepositReceived(updatedLead, req.user, {
+                businessContext,
+                oldStage: stageTransition?.oldStage || null,
+                newStage,
+                enteredDepositStage: stageTransition?.oldStage !== 'deposit_received'
+                    && stageTransition?.newStage === 'deposit_received'
+            }).catch(e =>
+                log.error('onDepositReceived error (non-blocking)', e)
+            );
+        }
+        if (shouldAddLeadToMailing(updatedLead, newStage)) {
+            addToMailingIfNeeded(updatedLead).catch(e =>
+                log.error('addToMailing error (non-blocking)', e)
+            );
+        }
+
+        const response = { success: true, lead: updatedLead };
+        if (dealCustomerLink?.customer) {
+            response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
+            response.customerLinkMode = dealCustomerLink.mode;
+        }
+        if (warnings.length) response.warnings = warnings;
+        res.json(response);
+    } catch (err) {
+        if (err?.statusCode === 404) {
+            return res.status(404).json({ success: false, error: 'Lead not found' });
+        }
+        if (err?.code === 'lead_version_conflict') {
+            log.warn('PATCH /leads/:id/stage optimistic conflict', {
+                leadId,
+                businessContext,
+                requestId: requestIdFromHttp(req, res),
+                currentStage: err.currentLead?.pipeline_stage || null,
+                currentUpdatedAt: err.currentLead?.updated_at || null
+            });
+            return res.status(409).json(leadVersionConflictPayload(err, req, res));
+        }
+        const mappedError = mapLeadPatchError(err, req, res);
+        if (mappedError) {
+            log.warn('PATCH /leads/:id/stage retryable write conflict', {
+                leadId,
+                businessContext,
+                error: err.message,
+                code: err.code,
+                constraint: err.constraint,
+                requestId: mappedError.payload.requestId || null
+            });
+            return res.status(mappedError.status).json(mappedError.payload);
+        }
+        log.error('PATCH /leads/:id/stage error', err);
+        res.status(500).json({ success: false, error: 'Помилка оновлення етапу' });
+    }
+});
+
 // PATCH /api/leads/:id — update lead
 router.patch('/:id', async (req, res) => {
+    let businessContext = null;
+    let leadId = null;
     try {
-        const businessContext = ensureBusinessContext(req, res);
+        businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const leadId = parseInt(req.params.id, 10);
+        leadId = parseInt(req.params.id, 10);
         const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, celebrants, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
         const kanbanOrderIds = normalizeKanbanOrder(req.body?.kanban_order, leadId);
         const collaborationTaskHandled = [
@@ -2299,28 +2627,15 @@ router.patch('/:id', async (req, res) => {
             if (updateClient) updateClient.release();
         }
 
-        // Keep the stage update committed even if optional customer/order sync hits locks.
-        const runPostCommitLeadStep = async (label, callback, fallback = null) => {
-            try {
-                return await withLeadPatchGuardedTransaction(callback);
-            } catch (err) {
-                log.warn(`Lead patch ${label} skipped after lead update commit`, {
-                    leadId,
-                    businessContext,
-                    error: err.message,
-                    code: err.code,
-                    constraint: err.constraint
-                });
-                return fallback;
-            }
-        };
+        const postCommitContext = { leadId, businessContext };
+        const warnings = [];
 
         if (shouldEnsureCustomerCard) {
             dealCustomerLink = await runPostCommitLeadStep('customer sync', client => ensureDealCustomerForLead(client, updatedLead, businessContext, {
                 userId: req.user?.id,
                 source: 'leads.patch',
                 linkType: 'deal_customer'
-            }));
+            }), null, postCommitContext);
         } else if (shouldSyncLinkedCustomerChildren) {
             dealCustomerLink = await runPostCommitLeadStep('linked customer children sync', async client => {
                 const linkedCustomer = await findDurablyLinkedCustomerForLead(client, updatedLead, businessContext);
@@ -2332,11 +2647,11 @@ router.patch('/:id', async (req, res) => {
                     link: null,
                     children: childSync.children
                 };
-            });
+            }, null, postCommitContext);
         }
 
         if (kanbanOrderIds.length) {
-            await runPostCommitLeadStep('kanban order sync', async client => {
+            const orderSyncResult = await runPostCommitLeadStep('kanban order sync', async client => {
                 await persistLeadKanbanOrder(client, {
                     businessContext,
                     stage: updatedLead.pipeline_stage || effectivePipelineStage || 'new',
@@ -2351,7 +2666,8 @@ router.patch('/:id', async (req, res) => {
                 );
                 updatedLead = refreshedLead.rows[0] || updatedLead;
                 return null;
-            });
+            }, { warning: kanbanOrderNotSavedWarning() }, postCommitContext);
+            if (orderSyncResult?.warning) warnings.push(orderSyncResult.warning);
         }
 
         // v33.8.0 Integration 8: Lead → Customer source link
@@ -2433,8 +2749,21 @@ router.patch('/:id', async (req, res) => {
             response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
             response.customerLinkMode = dealCustomerLink.mode;
         }
+        if (warnings.length) response.warnings = warnings;
         res.json(response);
     } catch (err) {
+        const mappedError = mapLeadPatchError(err, req, res);
+        if (mappedError) {
+            log.warn('PATCH /leads/:id retryable write conflict', {
+                leadId,
+                businessContext,
+                error: err.message,
+                code: err.code,
+                constraint: err.constraint,
+                requestId: mappedError.payload.requestId || null
+            });
+            return res.status(mappedError.status).json(mappedError.payload);
+        }
         log.error('PATCH /leads/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення' });
     }
@@ -3371,10 +3700,12 @@ router.get('/:id/card', async (req, res) => {
 // POST /api/leads/:id/card — create/update customer card
 router.post('/:id/card', async (req, res) => {
     let client;
+    let businessContext = null;
+    let leadId = null;
     try {
-        const businessContext = ensureBusinessContext(req, res);
+        businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
-        const leadId = parseInt(req.params.id, 10);
+        leadId = parseInt(req.params.id, 10);
         if (!Number.isInteger(leadId) || leadId <= 0) {
             return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
         }
@@ -3386,6 +3717,7 @@ router.post('/:id/card', async (req, res) => {
 
         client = await pool.connect();
         await client.query('BEGIN');
+        await applyLeadPatchTransactionGuards(client);
 
         const leadResult = await client.query(
             `SELECT *
@@ -3472,6 +3804,18 @@ router.post('/:id/card', async (req, res) => {
         });
     } catch (err) {
         if (client) await client.query('ROLLBACK').catch(() => {});
+        const mappedError = mapLeadPatchError(err, req, res);
+        if (mappedError) {
+            log.warn('POST /leads/:id/card retryable write conflict', {
+                leadId,
+                businessContext,
+                error: err.message,
+                code: err.code,
+                constraint: err.constraint,
+                requestId: mappedError.payload.requestId || null
+            });
+            return res.status(mappedError.status).json(mappedError.payload);
+        }
         log.error('POST /leads/:id/card error', err);
         res.status(500).json({ success: false, error: 'Помилка збереження картки' });
     } finally {
@@ -3818,7 +4162,7 @@ async function onCollaborationLead(lead, user) {
 }
 
 // Log pipeline stage change to lead_interactions
-async function logStageChange(queryable, { leadId, oldStage, newStage, oldStatus, newStatus, userId }) {
+async function logStageChange(queryable, { leadId, oldStage, newStage, oldStatus, newStatus, userId, source = 'leads.patch' }) {
     await queryable.query(`
         INSERT INTO lead_interactions (lead_id, user_id, type, summary, details, created_at)
         VALUES ($1, $2, 'status_change', $3, $4::jsonb, NOW())
@@ -3831,7 +4175,7 @@ async function logStageChange(queryable, { leadId, oldStage, newStage, oldStatus
             newStage: newStage || 'new',
             oldStatus: oldStatus || null,
             newStatus: newStatus || null,
-            source: 'leads.patch'
+            source
         })
     ]);
 }

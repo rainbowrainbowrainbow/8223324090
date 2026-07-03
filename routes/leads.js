@@ -1313,6 +1313,23 @@ async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, custom
         }
     };
 
+    const isOptionalChildSyncError = err => isCustomerChildrenStorageMissing(err)
+        || (String(err?.code || '') === '23503'
+            && String(err?.constraint || '') === 'customer_children_customer_id_fkey');
+    const optionalChildSyncReason = err => isCustomerChildrenStorageMissing(err)
+        ? 'customer_children_storage_missing'
+        : 'customer_children_customer_fk_missing';
+    const skippedChildSync = err => {
+        const reason = optionalChildSyncReason(err);
+        log.warn('Lead customer child sync skipped because customer_children sync is unavailable', {
+            leadId,
+            customerId,
+            reason,
+            error: err.message
+        });
+        return { customer, children: [], skipped: true, reason };
+    };
+
     const runSync = async () => {
         const savedChildren = await replaceCustomerChildren(
             customerId,
@@ -1348,13 +1365,8 @@ async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, custom
         try {
             return await runSync();
         } catch (err) {
-            if (!isCustomerChildrenStorageMissing(err)) throw err;
-            log.warn('Lead customer child sync skipped because customer_children storage is unavailable', {
-                leadId,
-                customerId,
-                error: err.message
-            });
-            return { customer, children: [], skipped: true, reason: 'customer_children_storage_missing' };
+            if (!isOptionalChildSyncError(err)) throw err;
+            return skippedChildSync(err);
         }
     }
 
@@ -1367,13 +1379,8 @@ async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, custom
     } catch (err) {
         await queryable.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => {});
         await queryable.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => {});
-        if (!isCustomerChildrenStorageMissing(err)) throw err;
-        log.warn('Lead customer child sync skipped because customer_children storage is unavailable', {
-            leadId,
-            customerId,
-            error: err.message
-        });
-        return { customer, children: [], skipped: true, reason: 'customer_children_storage_missing' };
+        if (!isOptionalChildSyncError(err)) throw err;
+        return skippedChildSync(err);
     }
 }
 

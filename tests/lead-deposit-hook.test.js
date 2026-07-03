@@ -53,6 +53,7 @@ function createPoolFixture({
     foreignCustomerCandidate = null,
     initialCustomerChildren = [],
     customerChildrenStorageMissing = false,
+    customerChildrenCustomerFkMissing = false,
     leadOverrides = {}
 } = {}) {
     const queries = [];
@@ -157,6 +158,12 @@ function createPoolFixture({
                 if (customerChildrenStorageMissing) {
                     const err = new Error('relation "customer_children" does not exist');
                     err.code = '42P01';
+                    throw err;
+                }
+                if (customerChildrenCustomerFkMissing) {
+                    const err = new Error('insert or update on table "customer_children" violates foreign key constraint "customer_children_customer_id_fkey"');
+                    err.code = '23503';
+                    err.constraint = 'customer_children_customer_id_fkey';
                     throw err;
                 }
                 state.customerChildren.push({
@@ -462,6 +469,33 @@ test('customer card stage still commits when customer_children storage is unavai
     await withLeadApp({
         oldStage: 'info_sent',
         customerChildrenStorageMissing: true,
+        leadOverrides: {
+            pipeline_stage: 'info_sent',
+            status: 'contact',
+            celebrants: [{ name: 'Lead Child', birthday: '2019-01-02' }]
+        }
+    }, async ({ request, state, queries }) => {
+        const res = await request({ pipeline_stage: 'deal' });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.pipeline_stage, 'deal');
+        assert.equal(res.data.customer.id, 8701);
+        assert.equal(res.data.customerLinkMode, 'created_new');
+
+        assert.ok(queries.some(query => /^SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
+        assert.ok(queries.some(query => /^ROLLBACK TO SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
+        assert.ok(queries.some(query => /^RELEASE SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
+        assert.ok(queries.some(query => /^COMMIT$/i.test(query.text)));
+        assert.ok(!queries.some(query => /^ROLLBACK$/i.test(query.text)));
+        assert.equal(state.lead.pipeline_stage, 'deal');
+        assert.deepEqual(state.customerChildren, []);
+    });
+});
+
+test('customer card stage still commits when customer_children customer FK is stale', async () => {
+    await withLeadApp({
+        oldStage: 'info_sent',
+        customerChildrenCustomerFkMissing: true,
         leadOverrides: {
             pipeline_stage: 'info_sent',
             status: 'contact',

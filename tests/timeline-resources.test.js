@@ -3122,6 +3122,180 @@ test('timeline block click open helper calls booking details with expected ids a
     );
 });
 
+test('timeline block click opens the canonical booking.js details modal', async () => {
+    const timeline = read('js/timeline.js');
+    const booking = read('js/booking.js');
+    const helperStart = timeline.indexOf('function timelineBookingDetailModalIsOpen');
+    const openStart = timeline.indexOf('async function openTimelineBookingDetailsFromBlock');
+    const openEnd = timeline.indexOf('document.addEventListener', openStart);
+    const resolverStart = booking.indexOf('function bookingDetailsFallbackMatchesCurrentSlice');
+    const resolverEnd = booking.indexOf('function selectedBanquetCandidateRole', resolverStart);
+    assert.ok(helperStart >= 0 && helperStart < openStart, 'timeline open helper dependencies exist');
+    assert.ok(openStart >= 0 && openEnd > openStart, 'timeline open helper source exists');
+    assert.ok(resolverStart >= 0 && resolverEnd > resolverStart, 'canonical booking details source exists');
+
+    const dom = new JSDOM(`
+        <!doctype html>
+        <html>
+            <body>
+                <div id="bookingModal" class="modal hidden" aria-hidden="true">
+                    <div id="bookingDetails"></div>
+                </div>
+            </body>
+        </html>
+    `, { url: 'https://crm.example.test/' });
+    const warnings = [];
+    const notifications = [];
+    const detailBooking = {
+        id: 'BK-CANONICAL-DETAIL',
+        date: '2099-07-03',
+        time: '16:00',
+        duration: 60,
+        room: 'Диван 2',
+        lineId: 'animator-1',
+        programId: 'animation-60',
+        programName: 'Анімація 60хв',
+        programCode: 'AH',
+        label: 'AH(60)',
+        status: 'confirmed',
+        hosts: 1,
+        updatedAt: '2099-07-02T13:42:45.000Z'
+    };
+    const context = {
+        console: {
+            warn: (...args) => warnings.push(args)
+        },
+        window: dom.window,
+        document: dom.window.document,
+        navigator: dom.window.navigator,
+        Date,
+        URLSearchParams,
+        setTimeout,
+        clearTimeout,
+        AppState: { selectedDate: '2099-07-03' },
+        timelineCurrentViewKey: () => 'rooms',
+        currentCreatedBookingTimelineView: () => 'rooms',
+        isRoomFirstTimelineView: () => true,
+        isParkTimelineBookingMode: () => true,
+        ROOM_FIRST_BANQUET_SERVICE_LINE_ID: 'banquet-service',
+        createdBookingProjectionMatchesCurrentSlice: () => false,
+        createdBookingTimelineProjection: () => ({}),
+        createdBookingProjectionTimelineView: () => '',
+        showNotification: (...args) => notifications.push(args),
+        formatDate: value => String(value || '').slice(0, 10),
+        normalizeBookingDateKey: value => String(value || '').slice(0, 10),
+        getBookingsForDate: async () => [],
+        apiGetBookingById: async id => id === detailBooking.id
+            ? { success: true, booking: detailBooking }
+            : { success: false, status: 404, error: 'Booking not found' },
+        getLinesForDate: async () => [{ id: 'animator-1', name: 'Аніматор 1', color: '#2563eb' }],
+        getAnimatorLinesForBookingDate: async () => [{ id: 'animator-1', name: 'Аніматор 1', color: '#2563eb' }],
+        addMinutesToTime: (time, minutes) => {
+            const [hours, rawMinutes] = String(time || '00:00').split(':').map(Number);
+            const total = (Number.isFinite(hours) ? hours : 0) * 60
+                + (Number.isFinite(rawMinutes) ? rawMinutes : 0)
+                + Number(minutes || 0);
+            const nextHours = String(Math.floor(total / 60) % 24).padStart(2, '0');
+            const nextMinutes = String(total % 60).padStart(2, '0');
+            return `${nextHours}:${nextMinutes}`;
+        },
+        isMaysternyaClosedSlotBooking: () => false,
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;'),
+        getProductsSync: () => [{
+            id: 'animation-60',
+            name: 'Анімація 60хв',
+            description: '',
+            category: 'animation'
+        }],
+        getBookingEventCardRecord: bookingRecord => ({ title: bookingRecord.programName, imageUrl: '/images/event-card.png' }),
+        educationLessonDetailsFromBooking: () => null,
+        canAddAnimationFromRoomBooking: () => false,
+        bookingDetailIsActivityWithRoomContext: () => true,
+        resolveBookingDetailAnimatorDisplay: async () => 'Аніматор 1',
+        buildBookingDetailsInviteModelFallback: () => ({
+            payload: {
+                inviteUrl: '#invite',
+                fullInviteUrl: 'https://crm.example.test/invite',
+                shortText: 'short invite',
+                messengerText: 'messenger invite',
+                instagramText: 'instagram invite',
+                dateLabel: '2099-07-03',
+                timeRangeLabel: '16:00 - 17:00',
+                programLabel: 'Анімація 60хв',
+                roomLabel: 'Диван 2',
+                shareTitle: 'Event Genix'
+            },
+            previewChips: ['2099-07-03', '16:00 - 17:00', 'Анімація 60хв', 'Диван 2']
+        }),
+        renderFullBanquetDetail: () => '',
+        bookingSummaryPreviewUrl: () => '/booking-summary.html?id=BK-CANONICAL-DETAIL',
+        isViewer: () => false,
+        canDeleteTimelineBooking: () => false,
+        canEditTimelineBooking: () => false,
+        shouldEditBookingInAnimatorView: () => false,
+        bookingDetailModalTitle: bookingRecord => `${bookingRecord.programCode}: ${bookingRecord.programName}`,
+        bookingKitchenChildrenCountFromBooking: () => 0,
+        renderEducationLessonDetail: () => '',
+        renderBookingWorkspaceDetail: () => '<div class="booking-detail-row"><span class="label">Сценарій:</span><span class="value">Додатковий ведучий</span></div>',
+        renderBookingPackageDetail: () => '',
+        getBookingPackageFromBooking: () => null,
+        renderBookingCommentDetailRow: () => '',
+        renderPinataDetailRows: () => '',
+        bookingDetailHeaderPackageBooking: bookingRecord => bookingRecord,
+        bookingDetailHeaderScheduleSummary: () => '',
+        bookingDetailHeaderIsBanquetScheduleMode: () => false,
+        bookingDetailIsBanquetArrivalMode: () => false,
+        loadBanquetDepositStatusForDetails: () => {}
+    };
+    context.window.EventCards = {
+        renderEventCardImage: record => `<img class="event-card-image event-card-image--booking" src="${context.escapeHtml(record.imageUrl)}" alt="${context.escapeHtml(record.title)}">`
+    };
+    context.window.BookingBanquetDetail = {
+        renderFullBanquetDetail: () => ''
+    };
+    context.window.InviteConfig = {};
+    context.window.TimelineBusinessContext = {
+        state: () => ({ activeBusinessContext: 'event_genix' }),
+        current: () => ({ apiValue: 'event_genix' })
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${booking.slice(resolverStart, resolverEnd)}
+        ${timeline.slice(helperStart, openEnd)}
+        this.__openTimelineBookingDetailsFromBlock = openTimelineBookingDetailsFromBlock;
+    `, context, { filename: 'timeline-booking-details-canonical.vm.js' });
+
+    const opened = await context.__openTimelineBookingDetailsFromBlock({ id: detailBooking.id });
+    const modal = dom.window.document.getElementById('bookingModal');
+    const detailsHtml = dom.window.document.getElementById('bookingDetails').innerHTML;
+
+    assert.equal(opened, true, JSON.stringify({
+        warnings,
+        notifications,
+        detailsHtml
+    }, null, 2));
+    assert.equal(modal.classList.contains('hidden'), false, 'canonical modal is visible');
+    assert.equal(notifications.length, 0, 'canonical open does not show a failure toast');
+    assert.match(detailsHtml, /booking-detail-header booking-detail-header--compact/);
+    assert.match(detailsHtml, /event-card-image--booking/);
+    assert.match(detailsHtml, /Дата:/);
+    assert.match(detailsHtml, /Час активності:/);
+    assert.match(detailsHtml, /Аніматори:/);
+    assert.match(detailsHtml, /Сценарій:/);
+    assert.match(detailsHtml, /Статус:/);
+    assert.match(detailsHtml, /Оновлено:/);
+    assert.match(detailsHtml, /Редагувати/);
+    assert.match(detailsHtml, /Банкетний лист/);
+    assert.match(detailsHtml, /Ще/);
+    assert.doesNotMatch(detailsHtml, /Recovery після detail API|TL-BK-DETAIL-RECOVERY-OPENED|Режим відкриття/);
+    assert.deepEqual(warnings, []);
+});
+
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {
     const timeline = read('js/timeline.js');
     const booking = read('js/booking.js');

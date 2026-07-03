@@ -411,7 +411,7 @@ async function auditEmployeeProfiles(state, columns, tables) {
     const profileName = profileColumns.has('full_name') ? 'ep.full_name' : 'NULL AS full_name';
     const hasUserId = profileColumns.has('user_id');
     const userIdSelect = hasUserId ? 'ep.user_id' : 'NULL AS user_id';
-    const riskSql = staffRiskSql(staffColumns, 's', '$2');
+    const riskSql = staffRiskSql(staffColumns, 's', '$1');
 
     const rows = await pool.query(
         `SELECT ep.id AS employee_profile_id,
@@ -423,14 +423,14 @@ async function auditEmployeeProfiles(state, columns, tables) {
                 ${staffBits.poolStatus},
                 ${staffBits.terminationDate},
                 ${staffBits.freelance},
-                $2::date AS date
+                $1::date AS date
            FROM employee_profiles ep
            JOIN staff s ON s.id = ep.staff_id
           WHERE ep.staff_id IS NOT NULL
             AND ${profileActive}
             AND ${riskSql}
           ORDER BY s.name, ep.id`,
-        [FROM, TO]
+        [TO]
     );
 
     state.scanned.employee_profiles = rows.rowCount;
@@ -447,7 +447,7 @@ async function auditUsers(state, columns, tables) {
     const staffColumns = columns.staff;
     const staffBits = staffSelects(staffColumns, 's');
     const userActive = userColumns.has('is_active') ? 'COALESCE(u.is_active, true) = true' : 'true';
-    const riskSql = staffRiskSql(staffColumns, 's', '$2');
+    const riskSql = staffRiskSql(staffColumns, 's', '$1');
 
     const rows = await pool.query(
         `SELECT u.id AS user_id,
@@ -458,14 +458,14 @@ async function auditUsers(state, columns, tables) {
                 ${staffBits.poolStatus},
                 ${staffBits.terminationDate},
                 ${staffBits.freelance},
-                $2::date AS date
+                $1::date AS date
            FROM users u
            JOIN employee_profiles ep ON ep.user_id = u.id
            JOIN staff s ON s.id = ep.staff_id
           WHERE ${userActive}
             AND ${riskSql}
           ORDER BY s.name, u.id`,
-        [FROM, TO]
+        [TO]
     );
 
     state.scanned.users = rows.rowCount;

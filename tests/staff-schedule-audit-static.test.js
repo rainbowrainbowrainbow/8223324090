@@ -33,6 +33,9 @@ test('staff schedule audit stays read-only and reports schedule risk buckets', (
     assert.match(script, /auditGeneratedLines/);
     assert.match(script, /buckets:\s*\{/);
     assert.match(script, /SELECT ss\.id AS schedule_id/);
+    assert.match(script, /const riskSql = staffRiskSql\(staffColumns, 's', '\$1'\);/);
+    assert.match(script, /\$1::date AS date/);
+    assert.doesNotMatch(script, /staffRiskSql\(staffColumns, 's', '\$2'\)/);
     assert.doesNotMatch(script, /\b(UPDATE|DELETE|INSERT|TRUNCATE|DROP|ALTER)\b/i);
 });
 

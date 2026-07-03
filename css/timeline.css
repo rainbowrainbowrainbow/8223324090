@@ -1013,6 +1013,12 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
     font-weight: 900;
 }
 
+.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="5"],
+.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="6"] {
+    font-size: 6px;
+    font-weight: 900;
+}
+
 body.timeline-dashboard-page .booking-block.booking-block--micro {
     padding: 0 2px !important;
     border-left-width: 2px;

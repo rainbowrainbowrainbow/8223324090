@@ -2429,8 +2429,9 @@ test('short timeline activity blocks use compact labels while preserving full ti
     const timeline = read('js/timeline.js');
     const css = read('css/timeline.css');
 
-    assert.match(timeline, /function timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail\) \{/);
-    assert.match(timeline, /category === 'pinata'[\s\S]*return 'ПІН'/);
+    assert.match(timeline, /function timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, density = 'medium'\) \{/);
+    assert.match(timeline, /function timelinePinataNumberValue\(booking, renderBooking,[\s\S]*function timelinePinataNumberDisplay\(value\)/);
+    assert.match(timeline, /timelineIsPinataActivity\(source, booking, haystack\)[\s\S]*return 'ПІН'/);
     assert.match(timeline, /category === 'animation'[\s\S]*return 'АН'/);
     assert.match(timeline, /haystack\.includes\('бульб'\)[\s\S]*return 'Бульб\.'/);
     assert.match(timeline, /category === 'masterclass'[\s\S]*return 'МК'/);
@@ -2439,17 +2440,126 @@ test('short timeline activity blocks use compact labels while preserving full ti
     assert.match(timeline, /category === 'photo'[\s\S]*return 'ФОТО'/);
     assert.match(timeline, /function timelineCompactActivityTailLabel\(bookingTitleTail, bookingTitle, compactActivityLabel\) \{/);
     assert.match(timeline, /const isCompactActivityBlock = \(bookingBlockDensity === 'micro' \|\| bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
-    assert.match(timeline, /const compactActivityLabel = timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail\);/);
+    assert.match(timeline, /const compactActivityLabel = timelineCompactActivityLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, bookingBlockDensity\);/);
+    assert.match(timeline, /const microActivityLabel = timelineMicroActivityLabel\(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail\);/);
     assert.match(timeline, /const compactActivityTail = bookingBlockDensity === 'short'[\s\S]*timelineCompactActivityTailLabel\(bookingTitleTail, bookingTitle, compactActivityLabel\)/);
     assert.match(timeline, /function timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium'\) \{/);
     assert.match(timeline, /const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity\);/);
     assert.match(timeline, /block\.setAttribute\('title', fullBookingLabel\);/);
-    assert.match(timeline, /<div class="timeline-micro-booking-code" data-code-length="\$\{escapeHtml\(String\(compactActivityLabel\.length\)\)\}">\$\{escapeHtml\(compactActivityLabel\)\}<\/div>/);
+    assert.match(timeline, /<div class="timeline-micro-booking-code" data-code-length="\$\{escapeHtml\(String\(microActivityLabel\.length\)\)\}">\$\{escapeHtml\(microActivityLabel\)\}<\/div>/);
     assert.match(timeline, /<span class="timeline-compact-booking-label">\$\{escapeHtml\(compactActivityLabel\)\}<\/span>/);
     assert.match(timeline, /block\.innerHTML = isRoomTimelineActivityCard[\s\S]*bookingBlockDensity === 'micro' \? microBookingHtml : compactBookingHtml/);
     assert.match(timeline, /isCompactActivityBlock \? roomActivityDisplayLabel : \(bookingTitle \|\| renderBooking\.programCode \|\| renderBooking\.category/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-main\s*\{[\s\S]*display:\s*flex/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-label\s*\{[\s\S]*text-overflow:\s*ellipsis/);
+});
+
+test('pinata compact labels preserve operational numbers without using duration as a fallback', () => {
+    const timeline = read('js/timeline.js');
+    const start = timeline.indexOf('function timelineCompactLabelCandidate');
+    const end = timeline.indexOf('function getTimelineLineGrid');
+    assert.ok(start >= 0 && end > start, 'timeline compact helper slice exists');
+    const context = { console };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${timeline.slice(start, end)}
+        this.__pinataTimeline = {
+            timelineCompactActivityLabel,
+            timelineMicroActivityLabel,
+            timelineRoomActivityDisplayLabel
+        };
+    `, context);
+    const hooks = context.__pinataTimeline;
+
+    assert.equal(
+        hooks.timelineCompactActivityLabel({ category: 'pinata', pinataNumber: '501' }, null, 'Пін(15)', 'Піньята', 'tiny'),
+        'ПІН №501'
+    );
+    assert.equal(
+        hooks.timelineMicroActivityLabel({ category: 'pinata', pinataNumber: '501' }, null, 'ПІН №501', 'Пін(15)', 'Піньята'),
+        '№501'
+    );
+    assert.equal(
+        hooks.timelineCompactActivityLabel({ category: 'pinata', pinataNumber: 'P-001' }, null, 'Пін(15)', 'Піньята', 'tiny'),
+        'ПІН P-001'
+    );
+    assert.equal(
+        hooks.timelineCompactActivityLabel({ category: 'pinata', label: 'Піньята №501' }, null, 'Пін(15)', '', 'short'),
+        'ПІН №501'
+    );
+    assert.equal(
+        hooks.timelineCompactActivityLabel({ category: 'pinata', label: 'Пін(15)' }, null, 'Пін(15)', 'Піньята', 'tiny'),
+        'ПІН'
+    );
+    assert.equal(
+        hooks.timelineRoomActivityDisplayLabel({ category: 'pinata', pinata_number: '501' }, null, 'Пін(15)', 'Піньята', 'ПІН №501', 'medium'),
+        'Піньята №501'
+    );
+});
+
+test('booking pinata details and picker eligibility preserve operational pinata numbers', () => {
+    const booking = read('js/booking.js');
+    const helperStart = booking.indexOf('function isPinataProgram');
+    const helperEnd = booking.indexOf('const BookingPackageState', helperStart);
+    const detailStart = booking.indexOf('function inferBookingPinataMode');
+    const detailEnd = booking.indexOf('async function openBookingPanel', detailStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart, 'booking pinata helper slice exists');
+    assert.ok(detailStart >= 0 && detailEnd > detailStart, 'booking pinata detail slice exists');
+
+    const context = {
+        console,
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;'),
+        formatPrice: value => `${value} грн`
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${booking.slice(helperStart, helperEnd)}
+        ${booking.slice(detailStart, detailEnd)}
+        this.__pinataBooking = {
+            isPinataProgram,
+            bookingPinataNumberValue,
+            buildPinataDesignChoices,
+            renderPinataDetailRows
+        };
+    `, context);
+    const hooks = context.__pinataBooking;
+
+    assert.equal(hooks.isPinataProgram({ id: 'activity-501', code: 'Пін(15)', name: 'Піньята' }), true);
+    assert.equal(hooks.bookingPinataNumberValue({ category: 'pinata', pinata_number: '501', label: 'Пін(15)' }), '501');
+    assert.deepEqual(
+        hooks.buildPinataDesignChoices({ designs: [{ id: 'design-501', pinata_number: '501', name: 'Кругла піньята' }] }).map(choice => ({
+            value: choice.value,
+            number: choice.number,
+            title: choice.title
+        })),
+        [{ value: '501', number: '501', title: 'Кругла піньята' }]
+    );
+
+    const details = hooks.renderPinataDetailRows({
+        category: 'pinata',
+        pinata_mode: 'park',
+        pinata_number: '501',
+        pinata_filler: 'M'
+    });
+    assert.match(details, /Номер піньяти:/);
+    assert.match(details, /№501/);
+
+    const fallbackDetails = hooks.renderPinataDetailRows({
+        category: 'pinata',
+        label: 'Піньята №501'
+    });
+    assert.match(fallbackDetails, /№501/);
+
+    const durationOnly = hooks.renderPinataDetailRows({
+        category: 'pinata',
+        label: 'Пін\(15\)'
+    });
+    assert.doesNotMatch(durationOnly, /№15/);
 });
 
 test('micro, short and tiny timeline activity blocks have dedicated compact CSS layout', () => {

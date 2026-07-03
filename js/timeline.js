@@ -1333,7 +1333,57 @@ function timelineCompactLabelCandidate(value, maxLength = 10) {
     return `${firstWord.slice(0, Math.max(1, maxLength - 1))}.`;
 }
 
-function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail) {
+function timelineNormalizePinataNumber(value) {
+    const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    return raw
+        .replace(/^(?:№|#)\s*/u, '')
+        .replace(/^P\s+(\d+)$/i, 'P-$1')
+        .trim();
+}
+
+function timelineExtractPinataNumberFromText(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    const explicit = text.match(/(?:№|#)\s*((?:P[-\s]?)?\d{1,4})/iu);
+    if (explicit) return timelineNormalizePinataNumber(explicit[1]);
+    const catalog = text.match(/\b(P[-\s]?\d{1,4})\b/iu);
+    if (catalog) return timelineNormalizePinataNumber(catalog[1]);
+    return '';
+}
+
+function timelinePinataNumberValue(booking, renderBooking, ...textCandidates) {
+    const source = renderBooking || booking || {};
+    const direct = [
+        source.pinataNumber,
+        source.pinata_number,
+        booking?.pinataNumber,
+        booking?.pinata_number,
+        source.extraData?.pinataNumber,
+        source.extraData?.pinata_number,
+        source.extra_data?.pinataNumber,
+        source.extra_data?.pinata_number,
+        booking?.extraData?.pinataNumber,
+        booking?.extraData?.pinata_number,
+        booking?.extra_data?.pinataNumber,
+        booking?.extra_data?.pinata_number
+    ].map(timelineNormalizePinataNumber).find(Boolean);
+    if (direct) return direct;
+    return textCandidates.map(timelineExtractPinataNumberFromText).find(Boolean) || '';
+}
+
+function timelinePinataNumberDisplay(value) {
+    const normalized = timelineNormalizePinataNumber(value);
+    if (!normalized) return '';
+    return /^\d+$/.test(normalized) ? `№${normalized}` : normalized;
+}
+
+function timelineIsPinataActivity(source, booking, haystack = '') {
+    const category = String(source?.category || booking?.category || '').trim().toLowerCase();
+    return category === 'pinata' || String(haystack || '').toLocaleLowerCase('uk-UA').includes('пін');
+}
+
+function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail, density = 'medium') {
     const source = renderBooking || booking || {};
     const category = String(source.category || booking?.category || '').trim().toLowerCase();
     const code = String(source.programCode || source.program_code || booking?.programCode || booking?.program_code || '').trim();
@@ -1343,7 +1393,11 @@ function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, book
     const labelLower = label.toLocaleLowerCase('uk-UA');
     const haystack = `${category} ${code} ${label} ${name}`.toLocaleLowerCase('uk-UA');
 
-    if (category === 'pinata' || haystack.includes('пін')) return 'ПІН';
+    if (timelineIsPinataActivity(source, booking, haystack)) {
+        const pinataNumber = timelinePinataNumberValue(booking, source, bookingTitle, bookingTitleTail, label, name, code);
+        if (pinataNumber) return `ПІН ${timelinePinataNumberDisplay(pinataNumber)}`;
+        return 'ПІН';
+    }
     if (category === 'animation' || codeLower.startsWith('ан') || labelLower.startsWith('ан') || haystack.includes('анімац')) return 'АН';
     if (haystack.includes('бульб')) return 'Бульб.';
     if (category === 'masterclass' || haystack.includes('майстер')) return 'МК';
@@ -1355,6 +1409,18 @@ function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, book
         || timelineCompactLabelCandidate(label)
         || timelineCompactLabelCandidate(name)
         || 'Подія';
+}
+
+function timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle = '', bookingTitleTail = '') {
+    const source = renderBooking || booking || {};
+    const category = String(source.category || booking?.category || '').trim().toLowerCase();
+    const code = String(source.programCode || source.program_code || booking?.programCode || booking?.program_code || '').trim();
+    const label = String(source.label || bookingTitle || booking?.label || '').trim();
+    const name = String(source.programName || source.program_name || bookingTitleTail || booking?.programName || booking?.program_name || '').trim();
+    const haystack = `${category} ${code} ${label} ${name}`.toLocaleLowerCase('uk-UA');
+    if (!timelineIsPinataActivity(source, booking, haystack)) return compactActivityLabel;
+    const pinataNumber = timelinePinataNumberValue(booking, source, bookingTitle, bookingTitleTail, label, name, code);
+    return pinataNumber ? timelinePinataNumberDisplay(pinataNumber) : compactActivityLabel;
 }
 
 function timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compactActivityLabel) {
@@ -1371,6 +1437,7 @@ function timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compac
 function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium') {
     const source = renderBooking || booking || {};
     const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const category = clean(source.category || booking?.category).toLowerCase();
     const programName = clean(source.programName || source.program_name || booking?.programName || booking?.program_name);
     const groupName = clean(source.groupName || source.group_name || booking?.groupName || booking?.group_name);
     const title = clean(bookingTitle || source.label || source.programCode || source.program_code || booking?.label || booking?.programCode || booking?.program_code);
@@ -1378,8 +1445,15 @@ function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, 
     const compact = clean(compactActivityLabel);
     const code = clean(source.programCode || source.program_code || booking?.programCode || booking?.program_code);
     const label = clean(source.label || booking?.label);
+    const haystack = `${category} ${code} ${label} ${programName} ${title} ${tail}`.toLocaleLowerCase('uk-UA');
     const maxTinyNameLength = 24;
     const tightDensity = density === 'micro' || density === 'tiny';
+    const pinataNumber = timelinePinataNumberValue(booking, source, title, tail, programName, label, code);
+
+    if (pinataNumber && timelineIsPinataActivity(source, booking, haystack)) {
+        const displayNumber = timelinePinataNumberDisplay(pinataNumber);
+        return tightDensity ? `ПІН ${displayNumber}` : `Піньята ${displayNumber}`;
+    }
 
     if (programName && (!tightDensity || programName.length <= maxTinyNameLength)) return programName;
     if (!tightDensity && programName) return programName;
@@ -4191,12 +4265,16 @@ function createBookingBlock(booking, startHour, anchor) {
         ? `<span class="booking-block-room" title="${escapeHtml(bookingRoomName)}">${escapeHtml(bookingRoomName)}</span>`
         : '';
     const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
-    const compactActivityLabel = timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail);
+    const compactActivityLabel = timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail, bookingBlockDensity);
+    const microActivityLabel = timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail);
     const compactActivityTail = bookingBlockDensity === 'short'
         ? timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compactActivityLabel)
         : '';
     const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
+    const pinataNumberLabel = timelinePinataNumberValue(booking, renderBooking, bookingTitle, bookingTitleTail, bookingTitle, bookingTitleText);
+    const pinataFullLabel = pinataNumberLabel ? `Піньята ${timelinePinataNumberDisplay(pinataNumberLabel)}` : '';
     const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel]
+        .concat(pinataFullLabel ? [pinataFullLabel] : [])
         .filter(Boolean)
         .join(' ')
         .trim();
@@ -4219,7 +4297,7 @@ function createBookingBlock(booking, startHour, anchor) {
         ${noteText}
     `;
     const microBookingHtml = `
-        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(compactActivityLabel.length))}">${escapeHtml(compactActivityLabel)}</div>
+        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(microActivityLabel.length))}">${escapeHtml(microActivityLabel)}</div>
     `;
     const compactBookingHtml = `
         ${bookingBlockDensity === 'short' ? `<div class="user-letter">${badge}</div>` : ''}

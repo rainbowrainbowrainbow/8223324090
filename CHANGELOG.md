@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.112 - Власні картки linked-активностей
+
+### Timeline linked activity cards / Protected open priority / Cache refresh / (Клешня, 03.07.2026) [codex]
+- **Додаткова linked-активність відкриває власну картку** - клік по `+Вед(60)` тепер спершу відкриває `BK-2026-0529`, а не parent `BK-2026-0528`.
+- **Parent лишився fallback, а не основним target** - якщо власна linked-картка не відкрилась, таймлайн може тихо спробувати parent і все одно показати один зрозумілий diagnostic toast.
+- **Діагностика прив'язана до ID кліку** - `TL-BK-*` warning тепер пріоритезує booking ID видимого блока, щоб parent miss не маскував child miss.
+- **Protected surface manifest оновлено з approval reason** - `timeline-open-diagnostics` отримав новий hash і фіксує linked child direct-open contract.
+- **Regression guards оновлено** - `tests/timeline-resources.test.js` перевіряє порядок `child -> parent fallback` і безпечні diagnostics без payload/secrets.
+- **Cache tags оновлено до `0.77.112`** - HTML, CSS, JS, Service Worker cache names і asset `?v=` посилання синхронізовані для нового `js/timeline.js`.
+- **БД, migrations, auth/roles, env, secrets і Railway config не змінювались** - реліз обмежений frontend click behavior, тестами, protected manifest, release markers і changelog.
+
+---
+
 ## v0.77.111 - Захист графіка за статусом працівників
 
 ### Staff schedule / HR status guards / Lifecycle cleanup / Audit cleanup / (Клешня, 03.07.2026) [codex]

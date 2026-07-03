@@ -2946,14 +2946,14 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(timeline, /setTimelineBanquetPreviewRole\(target\.block, targetRole\)/);
     assert.match(openDetailsFunction, /const ownId = String\(renderBooking\?\.id \|\| ''\)\.trim\(\)/);
     assert.match(openDetailsFunction, /const linkedId = String\(renderBooking\?\.linkedTo \|\| renderBooking\?\.linked_to \|\| ''\)\.trim\(\)/);
-    assert.match(openDetailsFunction, /const targetId = linkedId \|\| ownId/);
+    assert.match(openDetailsFunction, /const targetId = ownId \|\| linkedId/);
     assert.match(openDetailsFunction, /const timelineView = typeof timelineCurrentViewKey === 'function' \? timelineCurrentViewKey\(\) : null/);
     assert.match(openDetailsFunction, /const ownDetailsOptions = \{[\s\S]*source: 'timeline_block_click'[\s\S]*fallbackBooking: renderBooking[\s\S]*\}/);
     assert.match(openDetailsFunction, /const detailMisses = \[\]/);
     assert.match(openDetailsFunction, /const collectDetailMiss = phase => diagnostic =>/);
-    assert.match(openDetailsFunction, /showBookingDetails\(targetId, linkedId[\s\S]*\? \{ silentMissing: true, source: 'timeline_block_click', onMissing: collectDetailMiss\('linked_parent'\) \}[\s\S]*: \{ silentMissing: true, \.\.\.ownDetailsOptions, onMissing: collectDetailMiss\('direct'\) \}/);
+    assert.match(openDetailsFunction, /showBookingDetails\(targetId, \{[\s\S]*silentMissing: true[\s\S]*\.\.\.ownDetailsOptions[\s\S]*onMissing: collectDetailMiss\(linkedId \? 'linked_child' : 'direct'\)[\s\S]*\}\)/);
     assert.match(openDetailsFunction, /if \(linkedId && ownId && ownId !== linkedId\)/);
-    assert.match(openDetailsFunction, /showBookingDetails\(ownId, \{[\s\S]*silentMissing: true[\s\S]*source: 'timeline_block_click_fallback'[\s\S]*fallbackBooking: renderBooking[\s\S]*onMissing: collectDetailMiss\('linked_child'\)[\s\S]*\}\)/);
+    assert.match(openDetailsFunction, /showBookingDetails\(linkedId, \{[\s\S]*silentMissing: true[\s\S]*source: 'timeline_block_click_parent_fallback'[\s\S]*onMissing: collectDetailMiss\('linked_parent'\)[\s\S]*\}\)/);
     assert.match(openDetailsFunction, /Booking block could not be opened in current timeline view/);
     assert.match(openDetailsFunction, /timelineBookingDetailModalIsOpen\(\)/);
     assert.match(openDetailsFunction, /timelineProbeBookingOpenDiagnostic\(probeId, linkedId \? 'linked_child_probe' : 'direct_probe'\)/);
@@ -3017,10 +3017,9 @@ test('timeline block click open helper calls booking details with expected ids a
     };
     assert.equal(await openFromBlock({ id: 'BK-LINKED-CHILD', linkedTo: 'BK-PARENT' }), true);
     assert.deepEqual(plain(calls), [
-        { id: 'BK-PARENT', options: { silentMissing: true, source: 'timeline_block_click' } },
-        { id: 'BK-LINKED-CHILD', options: { silentMissing: true, source: 'timeline_block_click_fallback', fallbackBooking: { id: 'BK-LINKED-CHILD', linkedTo: 'BK-PARENT' } } }
+        { id: 'BK-LINKED-CHILD', options: { silentMissing: true, source: 'timeline_block_click', fallbackBooking: { id: 'BK-LINKED-CHILD', linkedTo: 'BK-PARENT' } } }
     ]);
-    assert.equal(notifications.length, 0, 'valid linked fallback does not show a missing-booking toast');
+    assert.equal(notifications.length, 0, 'valid linked child does not show a missing-booking toast');
 
     calls = [];
     warnings.length = 0;
@@ -3043,15 +3042,15 @@ test('timeline block click open helper calls booking details with expected ids a
     };
     assert.equal(await openFromBlock({ id: 'BK-MISSING', linked_to: 'BK-MISSING-PARENT' }), false);
     assert.deepEqual(plain(calls), [
-        { id: 'BK-MISSING-PARENT', options: { silentMissing: true, source: 'timeline_block_click' } },
-        { id: 'BK-MISSING', options: { silentMissing: true, source: 'timeline_block_click_fallback', fallbackBooking: { id: 'BK-MISSING', linked_to: 'BK-MISSING-PARENT' } } }
+        { id: 'BK-MISSING', options: { silentMissing: true, source: 'timeline_block_click', fallbackBooking: { id: 'BK-MISSING', linked_to: 'BK-MISSING-PARENT' } } },
+        { id: 'BK-MISSING-PARENT', options: { silentMissing: true, source: 'timeline_block_click_parent_fallback' } }
     ]);
     assert.equal(notifications.length, 1, 'full miss shows a single manager-facing toast');
     assert.match(notifications[0][0], /TL-BK-NOT-FOUND/);
     assert.equal(warnings.at(-1)?.[0], '[timeline] Booking block could not be opened in current timeline view');
     assert.equal(warnings.at(-1)?.[1]?.code, 'TL-BK-NOT-FOUND');
     assert.equal(warnings.at(-1)?.[1]?.timelineView, 'rooms');
-    assert.equal(warnings.at(-1)?.[1]?.targetId, 'BK-MISSING-PARENT');
+    assert.equal(warnings.at(-1)?.[1]?.targetId, 'BK-MISSING');
     assert.equal(
         Object.keys(warnings.at(-1)?.[1] || {}).some(key => /customer|phone|instagram|child|authorization|bearer|token|password|secret/i.test(key)),
         false,
@@ -3072,8 +3071,8 @@ test('timeline block click open helper calls booking details with expected ids a
     });
     assert.equal(await openFromBlock({ id: 'BK-LEGACY-CHILD', linkedTo: 'BK-LEGACY-PARENT' }), false);
     assert.deepEqual(plain(calls), [
-        { id: 'BK-LEGACY-PARENT', options: { silentMissing: true, source: 'timeline_block_click' } },
-        { id: 'BK-LEGACY-CHILD', options: { silentMissing: true, source: 'timeline_block_click_fallback', fallbackBooking: { id: 'BK-LEGACY-CHILD', linkedTo: 'BK-LEGACY-PARENT' } } }
+        { id: 'BK-LEGACY-CHILD', options: { silentMissing: true, source: 'timeline_block_click', fallbackBooking: { id: 'BK-LEGACY-CHILD', linkedTo: 'BK-LEGACY-PARENT' } } },
+        { id: 'BK-LEGACY-PARENT', options: { silentMissing: true, source: 'timeline_block_click_parent_fallback' } }
     ]);
     assert.equal(notifications.length, 1, 'legacy no-diagnostic miss still shows a single manager-facing toast');
     assert.match(notifications[0][0], /TL-BK-FORBIDDEN/);
@@ -3104,7 +3103,7 @@ test('timeline block click open helper calls booking details with expected ids a
     assert.equal(await openFromBlock({ id: 'BK-RECOVERY-CHILD', linkedTo: 'BK-RECOVERY-PARENT' }), false);
     assert.equal(notifications.length, 1, 'detail API hit without canonical modal shows a single manager-facing toast');
     assert.match(notifications[0][0], /TL-BK-DETAIL-OK-OPEN-FAILED/);
-    assert.deepEqual(calls.map(call => call.id), ['BK-RECOVERY-PARENT', 'BK-RECOVERY-CHILD']);
+    assert.deepEqual(calls.map(call => call.id), ['BK-RECOVERY-CHILD', 'BK-RECOVERY-PARENT']);
     assert.equal(warnings.at(-1)?.[0], '[timeline] Booking block could not be opened in current timeline view');
     assert.equal(warnings.at(-1)?.[1]?.code, 'TL-BK-DETAIL-OK-OPEN-FAILED');
     assert.equal(

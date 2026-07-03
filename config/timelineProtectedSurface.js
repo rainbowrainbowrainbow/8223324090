@@ -57,18 +57,19 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/timeline.js',
         start: 'function timelineBookingDetailModalIsOpen()',
         end: 'function normalizeTimelineLinesForContext(lines = [])',
-        sha256: '0b4cd2b6ff39cd4aba69c62800065fbe087800a931af2f5babd227d34dcdf7db',
+        sha256: '4f2aec2ccbf0b2874a14d52465be354e72542b11cd8c5b2c1cdaab62e3844d03',
         approval: {
             approvedBy: 'Serhii',
             approvedOn: '2026-07-03',
-            reason: 'Timeline may call canonical details and diagnose misses, not render alternate detail UI.'
+            reason: 'Timeline linked activity blocks must open their own booking first, with parent as fallback only.'
         },
         requiredNeedles: [
             'function timelineBookingDetailModalIsOpen()',
             'async function timelineProbeBookingOpenDiagnostic(bookingId',
             'async function openTimelineBookingDetailsFromBlock(renderBooking = {})',
             'await showBookingDetails(targetId',
-            'await showBookingDetails(ownId',
+            'await showBookingDetails(linkedId',
+            "source: 'timeline_block_click_parent_fallback'",
             'TL-BK-DETAIL-OK-OPEN-FAILED',
             'timelineBookingDetailModalIsOpen()'
         ]

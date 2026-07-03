@@ -252,11 +252,11 @@ checkPage('index.html', (doc, html) => {
         && htmlContains('css/timeline.css', '.line-header.has-timeline-banquet-room-preview'));
     check('Timeline block click falls back when linked parent is hidden in current view',
         timelineCode.includes('function openTimelineBookingDetailsFromBlock')
+        && timelineCode.includes('const targetId = ownId || linkedId')
         && timelineCode.includes('fallbackBooking: renderBooking')
-        && timelineCode.includes("{ silentMissing: true, ...ownDetailsOptions, onMissing: collectDetailMiss('direct') }")
+        && timelineCode.includes("onMissing: collectDetailMiss(linkedId ? 'linked_child' : 'direct')")
         && timelineCode.includes("onMissing: collectDetailMiss('linked_parent')")
-        && timelineCode.includes("onMissing: collectDetailMiss('linked_child')")
-        && timelineCode.includes("source: 'timeline_block_click_fallback'")
+        && timelineCode.includes("source: 'timeline_block_click_parent_fallback'")
         && bookingCode.includes('async function showBookingDetails(bookingId, options = {})')
         && bookingCode.includes('options.silentMissing !== true')
         && bookingCode.includes('bookingDetailsOpenFailureCode')
@@ -1583,7 +1583,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && !!doc.querySelector('#staffPulseNavItems.staff-pulse-nav-items[data-pulse-switcher="staff"]')
-        && html.includes('js/hr-pulse-switcher.js?v=0.77.111')
+        && html.includes('js/hr-pulse-switcher.js?v=0.77.112')
         && staffCode.includes('function renderStaffPulseSwitcher')
         && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
@@ -2507,7 +2507,8 @@ check('Room timeline banquet activity blocks open booking modal instead of compa
     && /function timelineBanquetBlockCanOpenInspector[\s\S]*TIMELINE_BANQUET_BOOKING_MODAL_BLOCK_ROLES\.has\(role\)\) return false/.test(timelineCode)
     && /function showTimelineBanquetPreviewFromBlock[\s\S]*if \(!timelineBanquetBlockCanOpenInspector\(block\)\) return false;[\s\S]*showTimelineBanquetInspector\(event, block\._timelineBanquetSummary, block\)/.test(timelineCode)
     && /if \(showTimelineBanquetPreviewFromBlock\(e, block\)\) return;\s*void openTimelineBookingDetailsFromBlock\(renderBooking\)/.test(timelineCode)
-    && timelineCode.includes("source: 'timeline_block_click_fallback'")
+    && timelineCode.includes('const targetId = ownId || linkedId')
+    && timelineCode.includes("source: 'timeline_block_click_parent_fallback'")
     && timelineCode.includes('fallbackBooking: renderBooking'));
 check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
     timelineBanquetInspectorHelpersCode.includes('function timelineBanquetServingInfo')
@@ -3162,6 +3163,14 @@ check('Lead workspace links customer/task/omni context', leadsCode.includes("lea
 check('Lead workspace opens the real customer card instead of the legacy lead-local card modal', leadsCode.includes('function openLeadCustomerCard') && leadsCode.includes('onclick="openLeadCustomerCard(${lead.id})"') && leadsCode.includes('window.openLeadCustomerCard = openLeadCustomerCard') && !leadsCode.includes('onclick="showCustomerCardModal(${lead.id})"') && !leadsCode.includes('showCustomerCardModal(leadId);'));
 check('Lead manual conversion deep-link auto-opens booking with ensured customer context', leadsCode.includes('function ensureLeadCustomerForBooking') && leadsCode.includes("params.set('customerId', customer.id)") && leadsCode.includes("params.set('convert', 'booking')") && leadsCode.includes("params.set('eventDate', eventDate)") && timelineCode.includes('function maybeAutoOpenLeadConversionBooking') && timelineCode.includes("customerId: (params.get('customerId')") && timelineCode.includes('openTimelineCreateBookingFromToolbar()') && timelineCode.includes("params.get('convert') === 'booking'"));
 check('Lead deal drag opens customer card flow instead of booking prompt', leadsCode.includes('function offerDealCustomerCardFlow') && leadsCode.includes('function ensureDealCustomerCardForLead') && leadsCode.includes('data.customerLinkMode') && leadsCode.includes("leadCrmContextHref('/customers', { open: ensured.customer.id }") && leadsCode.includes("okText: 'Відкрити картку'") && !leadsCode.includes('function offerDealBookingFlow') && !leadsCode.includes('Створити бронювання на таймлайні зараз'));
+const updateLeadStageBlock = sourceBlock(leadsCode, 'async function updateLeadStage', '// ==========================================\n// LEAD TYPE MENU');
+check('Lead deal stage refreshes kanban even when customer card prompt is dismissed',
+    updateLeadStageBlock.includes("const openedCustomerCard = stage === 'deal'")
+    && updateLeadStageBlock.includes('if (!openedCustomerCard) {')
+    && updateLeadStageBlock.includes('await loadLeads();')
+    && updateLeadStageBlock.includes("if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });")
+    && !/if\s*\(openedCustomerCard\)\s*return\s+true/.test(updateLeadStageBlock)
+    && /return true;\s*\}\s*\}\s*catch/.test(updateLeadStageBlock));
 check('Lead customer stages auto-create or link a SQL customer card', leadsRouteCode.includes('const CUSTOMER_CARD_PIPELINE_STAGES = new Set') && leadsRouteCode.includes("'deposit_received'") && leadsRouteCode.includes("const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage)") && leadsRouteCode.includes('await ensureDealCustomerForLead(queryable, updatedLead, businessContext') && leadsRouteCode.includes('INSERT INTO customers (business_context, name, phone, instagram, child_name, source, notes, lead_id, social_identities)') && leadsRouteCode.includes('buildLeadCustomerNotes(lead)') && leadsRouteCode.includes('appendUniqueLeadCustomerNote'));
 check('Lead/customer journey uses durable many-to-one link history', htmlContains('db/migrations/262_leads_customer_links_and_value.sql', 'CREATE TABLE IF NOT EXISTS lead_customer_links') && leadsRouteCode.includes('function linkLeadCustomer') && leadsRouteCode.includes('INSERT INTO lead_customer_links (business_context, lead_id, customer_id, link_type, source, metadata, created_by, updated_at)') && leadsRouteCode.includes('FROM lead_customer_links lcl') && leadsRouteCode.includes("linkType: 'deal_customer'") && leadsRouteCode.includes("linkType: 'operator_link'") && htmlContains('routes/customers.js', 'customer.leadLinks'));
 check('Lead stage changes are written to lead_interactions atomically', leadsRouteCode.includes('function logStageChange(queryable') && leadsRouteCode.includes("INSERT INTO lead_interactions (lead_id, user_id, type, summary, details, created_at)") && leadsRouteCode.includes("'status_change'") && leadsRouteCode.includes("source: 'leads.patch'") && !leadsRouteCode.includes('created_by, created_at') && !leadsRouteCode.includes("logStageChange(updatedLead.id"));
@@ -4621,7 +4630,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.111')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.112')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")

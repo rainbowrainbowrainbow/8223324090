@@ -2223,12 +2223,13 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
             if (stage === 'deposit_received') {
                 if (typeof showNotification === 'function') showNotification('💰 Завдаток! Задачі створені автоматично', 'success');
             }
-            if (stage === 'deal') {
-                const openedCustomerCard = await offerDealCustomerCardFlow(leadId, data.lead, data.customer, data.customerLinkMode);
-                if (openedCustomerCard) return true;
+            const openedCustomerCard = stage === 'deal'
+                ? await offerDealCustomerCardFlow(leadId, data.lead, data.customer, data.customerLinkMode)
+                : false;
+            if (!openedCustomerCard) {
+                await loadLeads();
+                if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
             }
-            await loadLeads();
-            if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
             return true;
         }
     } catch (e) {

@@ -3223,7 +3223,7 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     if (typeof showBookingDetails !== 'function') return false;
     const ownId = String(renderBooking?.id || '').trim();
     const linkedId = String(renderBooking?.linkedTo || renderBooking?.linked_to || '').trim();
-    const targetId = linkedId || ownId;
+    const targetId = ownId || linkedId;
     const timelineView = typeof timelineCurrentViewKey === 'function' ? timelineCurrentViewKey() : null;
     if (!targetId) {
         console.warn('[timeline] Booking block has no openable identity', {
@@ -3248,12 +3248,14 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
 
     let opened = false;
     try {
-        opened = await showBookingDetails(targetId, linkedId
-            ? { silentMissing: true, source: 'timeline_block_click', onMissing: collectDetailMiss('linked_parent') }
-            : { silentMissing: true, ...ownDetailsOptions, onMissing: collectDetailMiss('direct') });
+        opened = await showBookingDetails(targetId, {
+            silentMissing: true,
+            ...ownDetailsOptions,
+            onMissing: collectDetailMiss(linkedId ? 'linked_child' : 'direct')
+        });
     } catch (err) {
         detailMisses.push({
-            phase: linkedId ? 'linked_parent_exception' : 'direct_exception',
+            phase: linkedId ? 'linked_child_exception' : 'direct_exception',
             code: 'TL-BK-OPEN-EXCEPTION',
             bookingId: targetId,
             source: 'timeline_block_click',
@@ -3276,25 +3278,24 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
 
     if (linkedId && ownId && ownId !== linkedId) {
         try {
-            opened = await showBookingDetails(ownId, {
+            opened = await showBookingDetails(linkedId, {
                 silentMissing: true,
-                source: 'timeline_block_click_fallback',
-                fallbackBooking: renderBooking,
-                onMissing: collectDetailMiss('linked_child')
+                source: 'timeline_block_click_parent_fallback',
+                onMissing: collectDetailMiss('linked_parent')
             });
         } catch (err) {
             detailMisses.push({
-                phase: 'linked_child_exception',
+                phase: 'linked_parent_exception',
                 code: 'TL-BK-FALLBACK-EXCEPTION',
-                bookingId: ownId,
-                source: 'timeline_block_click_fallback',
+                bookingId: linkedId,
+                source: 'timeline_block_click_parent_fallback',
                 lookupSource: 'showBookingDetails-exception',
                 status: null,
                 apiCode: null,
                 offline: false,
                 error: err?.message || String(err || '')
             });
-            console.warn('[timeline] Failed to open linked booking fallback details', {
+            console.warn('[timeline] Failed to open linked booking parent fallback details', {
                 code: 'TL-BK-FALLBACK-EXCEPTION',
                 ownId,
                 linkedId,
@@ -3312,7 +3313,9 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
         if (probe) detailMisses.push(probe);
     }
 
-    const lastDiagnostic = detailMisses.slice().reverse().find(item => item?.code) || null;
+    const lastDiagnostic = detailMisses.slice().reverse().find(item => item?.code && String(item.bookingId || '') === String(targetId))
+        || detailMisses.slice().reverse().find(item => item?.code)
+        || null;
     const publicCode = lastDiagnostic?.code || 'TL-BK-OPEN-MISS';
     const reasonByCode = {
         'TL-BK-BAD-ID': 'Картка таймлайну має некоректний ID бронювання.',

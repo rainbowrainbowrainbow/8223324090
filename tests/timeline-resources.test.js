@@ -2955,6 +2955,8 @@ test('room timeline banquet activity blocks keep full booking modal click owners
     assert.match(openDetailsFunction, /if \(linkedId && ownId && ownId !== linkedId\)/);
     assert.match(openDetailsFunction, /showBookingDetails\(ownId, \{[\s\S]*silentMissing: true[\s\S]*source: 'timeline_block_click_fallback'[\s\S]*fallbackBooking: renderBooking[\s\S]*onMissing: collectDetailMiss\('linked_child'\)[\s\S]*\}\)/);
     assert.match(openDetailsFunction, /Booking block could not be opened in current timeline view/);
+    assert.match(openDetailsFunction, /timelineBookingDetailModalIsOpen\(\)/);
+    assert.match(openDetailsFunction, /timelineProbeBookingOpenDiagnostic\(probeId, linkedId \? 'linked_child_probe' : 'direct_probe'\)/);
     assert.match(openDetailsFunction, /const publicCode = lastDiagnostic\?\.code \|\| 'TL-BK-OPEN-MISS'/);
     assert.match(openDetailsFunction, /Код: \$\{publicCode\}/);
     assert.match(openDetailsFunction, /source: 'timeline_block_click'/);
@@ -2970,8 +2972,10 @@ test('room timeline banquet activity blocks keep full booking modal click owners
 
 test('timeline block click open helper calls booking details with expected ids and fallback behavior', async () => {
     const timeline = read('js/timeline.js');
+    const helperStart = timeline.indexOf('function timelineBookingDetailModalIsOpen');
     const openStart = timeline.indexOf('async function openTimelineBookingDetailsFromBlock');
     const openEnd = timeline.indexOf('document.addEventListener', openStart);
+    assert.ok(helperStart >= 0 && helperStart < openStart, 'timeline block open helper dependencies exist');
     assert.ok(openStart >= 0 && openEnd > openStart, 'timeline block open helper source exists');
 
     const warnings = [];
@@ -2986,7 +2990,7 @@ test('timeline block click open helper calls booking details with expected ids a
     };
     vm.createContext(context);
     vm.runInContext(`
-        ${timeline.slice(openStart, openEnd)}
+        ${timeline.slice(helperStart, openEnd)}
         this.__openTimelineBookingDetailsFromBlock = openTimelineBookingDetailsFromBlock;
     `, context, { filename: 'js/timeline.js' });
 
@@ -3050,6 +3054,28 @@ test('timeline block click open helper calls booking details with expected ids a
         false,
         'timeline miss diagnostics should not include customer, auth, or secret keys'
     );
+
+    calls = [];
+    warnings.length = 0;
+    notifications.length = 0;
+    context.showBookingDetails = async (id, options) => {
+        calls.push({ id, options });
+        return false;
+    };
+    context.apiGetBookingById = async id => ({
+        success: false,
+        status: id === 'BK-LEGACY-CHILD' ? 403 : 404,
+        error: id === 'BK-LEGACY-CHILD' ? 'Forbidden' : 'Booking not found'
+    });
+    assert.equal(await openFromBlock({ id: 'BK-LEGACY-CHILD', linkedTo: 'BK-LEGACY-PARENT' }), false);
+    assert.deepEqual(plain(calls), [
+        { id: 'BK-LEGACY-PARENT', options: { silentMissing: true, source: 'timeline_block_click' } },
+        { id: 'BK-LEGACY-CHILD', options: { silentMissing: true, source: 'timeline_block_click_fallback', fallbackBooking: { id: 'BK-LEGACY-CHILD', linkedTo: 'BK-LEGACY-PARENT' } } }
+    ]);
+    assert.equal(notifications.length, 1, 'legacy no-diagnostic miss still shows a single manager-facing toast');
+    assert.match(notifications[0][0], /TL-BK-FORBIDDEN/);
+    assert.equal(warnings.at(-1)?.[1]?.code, 'TL-BK-FORBIDDEN');
+    assert.equal(warnings.at(-1)?.[1]?.detailMisses?.[0]?.lookupSource, 'timeline-detail-probe-miss');
 });
 
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {

@@ -3153,6 +3153,71 @@ function showTimelineBanquetPreviewFromBlock(event, block) {
     return true;
 }
 
+function timelineBookingDetailModalIsOpen() {
+    if (typeof document === 'undefined') return false;
+    const modal = document.getElementById('bookingModal');
+    if (!modal) return false;
+    return modal.hidden !== true
+        && !modal.classList.contains('hidden')
+        && modal.getAttribute('aria-hidden') !== 'true';
+}
+
+function timelineBookingOpenFailureCodeFromDetailResponse(response = {}) {
+    const status = Number(response?.status || 0);
+    if (response?.success && response?.booking) return 'TL-BK-DETAIL-OK-OPEN-FAILED';
+    if (response?.offline) return 'TL-BK-OFFLINE';
+    if (status === 400) return 'TL-BK-BAD-ID';
+    if (status === 401) return 'TL-BK-AUTH';
+    if (status === 403) return 'TL-BK-FORBIDDEN';
+    if (status === 404) return 'TL-BK-NOT-FOUND';
+    if (status >= 500) return 'TL-BK-SERVER';
+    return 'TL-BK-OPEN-MISS';
+}
+
+async function timelineProbeBookingOpenDiagnostic(bookingId, phase = 'detail_probe') {
+    const cleanId = String(bookingId || '').trim();
+    if (!cleanId) return null;
+    if (typeof apiGetBookingById !== 'function') {
+        return {
+            phase,
+            code: 'TL-BK-API-MISSING',
+            bookingId: cleanId,
+            source: 'timeline_block_click_probe',
+            lookupSource: 'timeline-detail-probe',
+            status: null,
+            apiCode: null,
+            offline: false,
+            error: 'apiGetBookingById unavailable'
+        };
+    }
+    try {
+        const response = await apiGetBookingById(cleanId, { fresh: true });
+        return {
+            phase,
+            code: timelineBookingOpenFailureCodeFromDetailResponse(response),
+            bookingId: cleanId,
+            source: 'timeline_block_click_probe',
+            lookupSource: response?.success && response?.booking ? 'timeline-detail-probe-hit' : 'timeline-detail-probe-miss',
+            status: response?.status || null,
+            apiCode: response?.code || null,
+            offline: response?.offline === true,
+            error: response?.error || null
+        };
+    } catch (err) {
+        return {
+            phase,
+            code: 'TL-BK-OFFLINE',
+            bookingId: cleanId,
+            source: 'timeline_block_click_probe',
+            lookupSource: 'timeline-detail-probe-error',
+            status: null,
+            apiCode: null,
+            offline: true,
+            error: err?.message || String(err || '')
+        };
+    }
+}
+
 async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     if (typeof showBookingDetails !== 'function') return false;
     const ownId = String(renderBooking?.id || '').trim();
@@ -3195,7 +3260,7 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
             error: err?.message || String(err || '')
         });
     }
-    if (opened) return true;
+    if (opened || timelineBookingDetailModalIsOpen()) return true;
 
     if (linkedId && ownId && ownId !== linkedId) {
         try {
@@ -3214,7 +3279,13 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
                 error: err?.message || String(err || '')
             });
         }
-        if (opened) return true;
+        if (opened || timelineBookingDetailModalIsOpen()) return true;
+    }
+
+    if (!detailMisses.some(item => item?.code)) {
+        const probeId = linkedId && ownId && ownId !== linkedId ? ownId : targetId;
+        const probe = await timelineProbeBookingOpenDiagnostic(probeId, linkedId ? 'linked_child_probe' : 'direct_probe');
+        if (probe) detailMisses.push(probe);
     }
 
     const lastDiagnostic = detailMisses.slice().reverse().find(item => item?.code) || null;
@@ -3225,6 +3296,7 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
         'TL-BK-FORBIDDEN': 'Немає доступу до цього бронювання.',
         'TL-BK-NOT-FOUND': 'Бронювання не знайдено або вже не активне в цьому бізнес-контексті.',
         'TL-BK-SERVER': 'Сервер не зміг повернути деталі бронювання.',
+        'TL-BK-DETAIL-OK-OPEN-FAILED': 'Сервер повернув бронювання, але поточний frontend не відкрив картку.',
         'TL-BK-OFFLINE': 'Немає стабільного звʼязку із сервером.',
         'TL-BK-API-MISSING': 'Клієнт не має доступного detail API для бронювання.',
         'TL-BK-CACHE-MISS': 'Поточний кеш таймлайну не містить це бронювання.',

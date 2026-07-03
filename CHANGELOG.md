@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.107 - Fallback діагностика таймлайну
+
+### Timeline fallback probe / Modal-open guard / Error-code precision / Regression QA / (Клешня, 03.07.2026) [codex]
+- **`TL-BK-OPEN-MISS` більше не лишається фінальною відповіддю без перевірки API** - якщо `showBookingDetails` не повернув diagnostic callback, таймлайн робить прямий `apiGetBookingById(..., { fresh: true })` probe і показує конкретніший код.
+- **Старий або змішано закешований frontend не створює хибний miss** - після виклику `showBookingDetails` таймлайн перевіряє, чи фактично відкрився `bookingModal`, навіть якщо legacy-функція не повернула `true`.
+- **Додано код `TL-BK-DETAIL-OK-OPEN-FAILED`** - він означає, що сервер повернув бронювання, але поточний frontend не зміг відкрити картку, тобто причина вже не схожа на "запис відсутній".
+- **HTTP-причини з detail probe мапляться у зрозумілі `TL-BK-*` коди** - `404` стає `TL-BK-NOT-FOUND`, `401/403` стають `TL-BK-FORBIDDEN`, offline/network - `TL-BK-OFFLINE`, server errors - `TL-BK-SERVER`.
+- **Додано regression guards** - `tests/timeline-resources.test.js` перевіряє legacy no-diagnostic path, modal-open guard і direct detail probe для fallback diagnostics.
+- **Cache tags оновлено до `0.77.107`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані, щоб продакшн підтягнув новий `js/timeline.js`.
+- **БД, migrations, auth/roles, env, secrets і production config не змінювались** - реліз обмежений frontend diagnostics, тестами, release markers і changelog.
+
 ## v0.77.106 - Коди помилок таймлайну
 
 ### Timeline diagnostics / Booking open failure codes / Cache refresh / Regression QA / (Клешня, 02.07.2026) [codex]

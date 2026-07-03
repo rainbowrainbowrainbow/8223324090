@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.115 - Timeline compact blocks
+
+### Timeline compact blocks / Afisha birthday markers / Cache refresh / (Клешня, 03.07.2026) [codex]
+- **Короткі booking-блоки стали читабельними** - timeline тепер перемикає `micro`/`tiny`/`short`/`medium`/`wide` за фактичною pixel-шириною і не показує випадкові уламки довгих назв.
+- **Піньята має короткий код `ПІН`** - компактні 15-хвилинні та вузькі картки можуть показувати час і код без штучного `min-width` та без перекриття сусідніх подій.
+- **Повна інформація лишилась у `title`, `aria-label` і tooltip** - compact renderer не змінює click/drag/drop поведінку booking-блоків.
+- **Timeline-афіша без circus emoji** - рядок Афіші має нейтральний заголовок і кнопку розподілу без декоративного циркового смайлика.
+- **Вітання іменинників позначені `ІМ`** - birthday-блоки отримали теплий compact marker і tooltip з назвою, ім'ям та часом.
+- **Regression guards оновлено** - UI/static checks фіксують density-класи, `ПІН`, `ІМ` і відсутність старого circus marker у timeline Afisha.
+- **Cache tags оновлено до `0.77.115`** - HTML, CSS, JS, Service Worker cache names і asset `?v=` посилання синхронізовані для timeline release.
+- **API, DB, migrations, auth/roles і deploy config не змінювались** - release обмежений timeline UI, CSS, тестами та version/cache refs.
+
+---
+
 ## v0.77.114 - Фото меню Hermes
 
 ### Hermes menu-photo / Margherita fallback removal / Card ratio / (Клешня, 03.07.2026) [codex]

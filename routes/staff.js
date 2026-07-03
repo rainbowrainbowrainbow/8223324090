@@ -48,6 +48,16 @@ const {
     resolveStaffProfessionAssignment
 } = require('../services/professions');
 const {
+    activeStaffWhere,
+    scheduleableStaffErrorPayload,
+    scheduleableStaffWhere,
+    validateStaffScheduleableForDate
+} = require('../services/staffOperationalFilters');
+const {
+    cleanupFutureStaffOperationalSchedule,
+    syncLinkedStaffAccountDeactivation
+} = require('../services/staffLifecycle');
+const {
     linkUserToStaffProfile,
     unlinkStaffAccount,
     generateOneTimePassword,
@@ -144,54 +154,61 @@ function ensureActorCanManageAccount(actor, account) {
     }
 }
 
+function canDisableLinkedStaffAccount(actor, account) {
+    return Number(account?.id) !== Number(actor?.id) && canActorManageAccount(actor, account);
+}
+
+function linkedStaffAccountBlockReason(actor, account = {}) {
+    if (Number(account.id) === Number(actor?.id)) return 'current_user';
+    if (!actor || !ACCOUNT_MANAGER_PRIMARY_ROLES.has(actor.role)) return 'requires_manage_accounts';
+    if (!canActorManageAccount(actor, account)) return 'protected_role';
+    return null;
+}
+
+function linkedStaffAccountMeta(row = {}, currentUserId = null) {
+    const userId = Number(row.id);
+    return {
+        id: userId,
+        username: row.username || '',
+        name: row.name || '',
+        role: row.role || '',
+        profile_id: row.profile_id ? Number(row.profile_id) : null,
+        is_current_user: Number.isFinite(Number(currentUserId)) && userId === Number(currentUserId)
+    };
+}
+
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', day_off: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
 const SCHEDULE_STATUS_VALUES = new Set(['working', 'remote', 'dayoff', 'vacation', 'sick']);
 
-function activeOperationalStaffWhere(alias = 's') {
-    return `${alias}.is_active = true
-        AND COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'`;
+function activeOperationalStaffWhere(alias = 's', options = {}) {
+    return activeStaffWhere(alias, {
+        poolMode: 'not_blacklisted',
+        includeFreelance: options.includeFreelance !== false,
+        dateExpression: options.dateExpression
+    });
 }
 
-function activeOperationalStaffForDateWhere(alias = 's', shiftAlias = 'hs', recordAlias = 'tr') {
-    return `${activeOperationalStaffWhere(alias)}
-        AND (
-            COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'
-            OR ${shiftAlias}.id IS NOT NULL
-            OR ${recordAlias}.id IS NOT NULL
-        )`;
+function activeScheduleStaffWhere(alias = 's', dateExpression = 'CURRENT_DATE', options = {}) {
+    return scheduleableStaffWhere(alias, {
+        dateExpression,
+        includeFreelance: options.includeFreelance === true
+    });
 }
 
-async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate = getKyivDateStr()) {
-    const id = Number(staffId);
-    const safeFrom = normalizeScheduleDate(fromDate) || getKyivDateStr();
-    if (!Number.isFinite(id) || id <= 0) return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom };
-    const shifts = await db.query(
-        `DELETE FROM hr_shifts hs
-         WHERE hs.staff_id = $1
-           AND hs.shift_date >= $2::date
-           AND NOT EXISTS (
-                SELECT 1 FROM hr_time_records tr
-                WHERE tr.staff_id = hs.staff_id
-                  AND tr.record_date = hs.shift_date
-           )`,
-        [id, safeFrom]
-    );
-    const schedule = await db.query(
-        `DELETE FROM staff_schedule ss
-         WHERE ss.staff_id = $1
-           AND LEFT(ss.date::text, 10) >= $2
-           AND NOT EXISTS (
-                SELECT 1 FROM hr_time_records tr
-                WHERE tr.staff_id = ss.staff_id
-                  AND tr.record_date::text = LEFT(ss.date::text, 10)
-           )`,
-        [id, safeFrom]
-    );
-    return {
-        hr_shifts: shifts.rowCount || 0,
-        staff_schedule: schedule.rowCount || 0,
-        from_date: safeFrom
-    };
+function activeOperationalStaffForDateWhere(alias = 's') {
+    return activeScheduleStaffWhere(alias, 'CURRENT_DATE');
+}
+
+async function rejectUnscheduleableStaff(res, client, validation, extra = {}) {
+    await client.query('ROLLBACK').catch(() => {});
+    return res.status(validation.status || 400).json(scheduleableStaffErrorPayload(validation, extra));
+}
+
+async function validateScheduleWriteStaff(client, staffId, date, options = {}) {
+    return validateStaffScheduleableForDate(client, staffId, date, {
+        ...options,
+        forUpdate: options.forUpdate !== false
+    });
 }
 
 function normalizeScheduleStatus(status, fallback = 'working') {
@@ -470,6 +487,8 @@ async function removeScheduleMirror(client, staffId, date) {
 async function upsertScheduleMirror(client, shift, note = null) {
     const date = normalizeScheduleDate(shift?.shift_date);
     if (!shift?.staff_id || !date) return null;
+    const validation = await validateStaffScheduleableForDate(client, shift.staff_id, date, { forUpdate: false });
+    if (!validation.ok) return null;
     const result = await client.query(
         `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -498,6 +517,16 @@ async function syncHrShiftFromScheduleEntry(client, entry, actor = null) {
     const date = normalizeScheduleDate(entry?.date);
     const status = normalizeScheduleStatus(entry?.status, 'working') || 'working';
     if (!staffId || !date) return null;
+    const validation = await validateScheduleWriteStaff(client, staffId, date, { forUpdate: false });
+    if (!validation.ok) {
+        return {
+            ok: false,
+            status: validation.status || 400,
+            error: validation.error,
+            code: validation.code,
+            validation
+        };
+    }
     if (!scheduleStatusNeedsProfession(status)) {
         await client.query(
             'DELETE FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2',
@@ -553,7 +582,7 @@ async function backfillStaffScheduleFromHrShifts(from, to, db = pool) {
           AND LEFT(ss.date::text, 10) = hs.shift_date::text
          WHERE hs.shift_date >= $1
            AND hs.shift_date <= $2
-           AND COALESCE(s.is_active, true) = true
+           AND ${activeScheduleStaffWhere('s', 'hs.shift_date')}
            AND ss.id IS NULL`,
         [from, to]
     );
@@ -657,7 +686,7 @@ router.get('/schedule', async (req, res) => {
              LEFT JOIN hr_shifts hs ON hs.staff_id = ss.staff_id AND hs.shift_date::text = LEFT(ss.date::text, 10)
              LEFT JOIN staff original_staff ON original_staff.id = hs.original_staff_id
              WHERE ss.date >= $1 AND ss.date <= $2
-               AND ${activeOperationalStaffWhere('s')}
+               AND ${activeScheduleStaffWhere('s', 'ss.date')}
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
         );
@@ -683,11 +712,18 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
         if (scheduleStatusNeedsProfession(scheduleStatus) && (!shiftStart || !shiftEnd)) {
             return res.status(400).json({ success: false, error: 'Для робочої зміни потрібен час початку та завершення' });
         }
+        await client.query('BEGIN');
+        const scheduleValidation = await validateScheduleWriteStaff(client, staffId, date);
+        if (!scheduleValidation.ok) {
+            return rejectUnscheduleableStaff(res, client, scheduleValidation, {
+                entry: { staffId, date }
+            });
+        }
         const profession = await resolveScheduleProfession(staffId, scheduleStatus, req.body, client);
         if (!profession.ok) {
+            await client.query('ROLLBACK');
             return res.status(profession.status || 400).json({ success: false, error: profession.error });
         }
-        await client.query('BEGIN');
         const previous = await loadScheduleEntryForUpdate(client, staffId, date);
         const result = await client.query(
             `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
@@ -708,7 +744,12 @@ router.put('/schedule', requireAction('manage_staff'), async (req, res) => {
         }, req.user?.username || null);
         if (hrSync?.ok === false) {
             await client.query('ROLLBACK');
-            return res.status(hrSync.status || 400).json({ success: false, error: hrSync.error });
+            if (hrSync.validation) {
+                return res.status(hrSync.status || 400).json(scheduleableStaffErrorPayload(hrSync.validation, {
+                    entry: { staffId, date }
+                }));
+            }
+            return res.status(hrSync.status || 400).json({ success: false, code: hrSync.code, error: hrSync.error });
         }
         const enriched = await loadEnrichedScheduleEntry(client, result.rows[0].id);
         await recordScheduleAudit(client, 'staff_schedule_update', staffId, date, previous, enriched || result.rows[0], req, {
@@ -799,13 +840,13 @@ router.post('/schedule/:id/replace', requireAction('manage_staff'), async (req, 
             return res.status(409).json({ success: false, error: 'Підміна на того самого працівника не потрібна' });
         }
 
-        const replacement = await client.query(
-            `SELECT id, name, role_type
-             FROM staff
-             WHERE id = $1
-               AND ${activeOperationalStaffWhere('staff')}`,
-            [replacementStaffId]
-        );
+        const replacementValidation = await validateScheduleWriteStaff(client, replacementStaffId, date);
+        if (!replacementValidation.ok) {
+            return rejectUnscheduleableStaff(res, client, replacementValidation, {
+                entry: { staffId: replacementStaffId, date, scheduleId }
+            });
+        }
+        const replacement = { rows: [replacementValidation.staff] };
         if (!replacement.rows.length) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Працівник для заміни неактивний або не існує' });
@@ -962,13 +1003,13 @@ router.post('/schedule/:id/replacement-clear', requireAction('manage_staff'), as
         const date = normalizeScheduleDate(schedule.date);
         const originalStaffId = Number(schedule.original_staff_id);
 
-        const original = await client.query(
-            `SELECT id, name, role_type
-             FROM staff
-             WHERE id = $1
-               AND ${activeOperationalStaffWhere('staff')}`,
-            [originalStaffId]
-        );
+        const originalValidation = await validateScheduleWriteStaff(client, originalStaffId, date);
+        if (!originalValidation.ok) {
+            return rejectUnscheduleableStaff(res, client, originalValidation, {
+                entry: { staffId: originalStaffId, date, scheduleId }
+            });
+        }
+        const original = { rows: [originalValidation.staff] };
         if (!original.rows.length) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Оригінальний працівник неактивний або не існує' });
@@ -1062,6 +1103,12 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
                         entry: { staffId: e.staffId, date: e.date }
                     });
                 }
+                const scheduleValidation = await validateScheduleWriteStaff(client, e.staffId, e.date);
+                if (!scheduleValidation.ok) {
+                    return rejectUnscheduleableStaff(res, client, scheduleValidation, {
+                        entry: { staffId: e.staffId, date: e.date }
+                    });
+                }
                 const profession = await resolveScheduleProfession(e.staffId, entryStatus, e, client);
                 if (!profession.ok) {
                     await client.query('ROLLBACK');
@@ -1091,8 +1138,14 @@ router.post('/schedule/bulk', requireAction('manage_staff'), async (req, res) =>
                 }, req.user?.username || null);
                 if (hrSync?.ok === false) {
                     await client.query('ROLLBACK');
+                    if (hrSync.validation) {
+                        return res.status(hrSync.status || 400).json(scheduleableStaffErrorPayload(hrSync.validation, {
+                            entry: { staffId: e.staffId, date: e.date }
+                        }));
+                    }
                     return res.status(hrSync.status || 400).json({
                         success: false,
+                        code: hrSync.code,
                         error: hrSync.error,
                         entry: { staffId: e.staffId, date: e.date }
                     });
@@ -1169,7 +1222,7 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
         // Fetch source week schedule
         let sql = `SELECT ss.* FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
                     WHERE ss.date >= $1 AND ss.date <= $2
-                      AND ${activeOperationalStaffWhere('s')}`;
+                      AND ${activeScheduleStaffWhere('s', 'ss.date')}`;
         const params = [fromDates[0], fromDates[6]];
         if (staffIds.length) {
             params.push(staffIds);
@@ -1228,6 +1281,12 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                         entry: { staffId: row.staff_id, date: sourceDate }
                     });
                 }
+                const scheduleValidation = await validateScheduleWriteStaff(client, row.staff_id, targetDate);
+                if (!scheduleValidation.ok) {
+                    return rejectUnscheduleableStaff(res, client, scheduleValidation, {
+                        entry: { staffId: row.staff_id, date: targetDate, sourceDate }
+                    });
+                }
                 const profession = await resolveScheduleProfession(row.staff_id, rowStatus, { profession_key: row.profession_key }, client);
                 if (!profession.ok) {
                     await client.query('ROLLBACK');
@@ -1257,8 +1316,14 @@ router.post('/schedule/copy-week', requireAction('manage_staff'), async (req, re
                 }, req.user?.username || null);
                 if (hrSync?.ok === false) {
                     await client.query('ROLLBACK');
+                    if (hrSync.validation) {
+                        return res.status(hrSync.status || 400).json(scheduleableStaffErrorPayload(hrSync.validation, {
+                            entry: { staffId: row.staff_id, date: targetDate, sourceDate }
+                        }));
+                    }
                     return res.status(hrSync.status || 400).json({
                         success: false,
+                        code: hrSync.code,
                         error: hrSync.error,
                         entry: { staffId: row.staff_id, date: targetDate }
                     });
@@ -1319,7 +1384,7 @@ router.get('/schedule/hours', async (req, res) => {
              FROM staff_schedule ss
              JOIN staff s ON s.id = ss.staff_id
              WHERE ss.date >= $1 AND ss.date <= $2
-               AND ${activeOperationalStaffWhere('s')}
+               AND ${activeScheduleStaffWhere('s', 'ss.date')}
              ORDER BY s.department, s.name`,
             [from, to]
         );
@@ -1375,7 +1440,7 @@ router.get('/schedule/check/:date', async (req, res) => {
              JOIN staff s ON s.id = ss.staff_id
              WHERE ss.date = $1
                AND s.department = 'animators'
-               AND ${activeOperationalStaffWhere('s')}`,
+               AND ${activeScheduleStaffWhere('s', 'ss.date')}`,
             [date]
         );
         const available = [];
@@ -1519,13 +1584,11 @@ router.get('/', async (req, res) => {
         }
         if (active !== undefined) {
             const activeRequested = active === 'true';
-            params.push(activeRequested);
-            conditions.push(`is_active = $${params.length}`);
             if (activeRequested) {
-                conditions.push("COALESCE(hr_pool_status, 'core') <> 'blacklisted'");
-                if (!shouldIncludeFreelance) {
-                    conditions.push('COALESCE(is_freelance, false) = false');
-                }
+                conditions.push(activeScheduleStaffWhere('staff', 'CURRENT_DATE', { includeFreelance: shouldIncludeFreelance }));
+            } else {
+                params.push(false);
+                conditions.push(`is_active = $${params.length}`);
             }
         }
 
@@ -1567,6 +1630,7 @@ router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_man
 // PUT /api/staff/:id — update employee
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
 router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { name, department, position, phone, hireDate, color, isActive, telegramUsername, role_type, roleType, address, secondary_professions, secondaryProfessions } = req.body;
         // Only update telegram_username if explicitly passed (even empty string clears it)
@@ -1576,11 +1640,12 @@ router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_m
             || Object.prototype.hasOwnProperty.call(req.body || {}, 'secondaryProfessions');
         let effectivePrimaryRole = primaryRole;
         if (hasSecondaryProfessions && !effectivePrimaryRole) {
-            const currentStaff = await pool.query('SELECT role_type FROM staff WHERE id = $1', [req.params.id]);
+            const currentStaff = await client.query('SELECT role_type FROM staff WHERE id = $1', [req.params.id]);
             effectivePrimaryRole = currentStaff.rows[0]?.role_type || null;
         }
         const secondaryRoles = normalizeSecondaryProfessions(secondary_professions ?? secondaryProfessions, effectivePrimaryRole);
-        const result = await pool.query(
+        await client.query('BEGIN');
+        const result = await client.query(
             `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
              position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
              is_active=COALESCE($7,is_active),
@@ -1592,11 +1657,33 @@ router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_m
             [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id,
              telegramUsername !== undefined, tgUser, primaryRole, address || null, hasSecondaryProfessions, JSON.stringify(secondaryRoles)]
         );
-        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
-        res.json({ success: true, data: result.rows[0] });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Не знайдено' });
+        }
+        let scheduleCleanup = null;
+        let accountDeactivation = null;
+        if (isActive === false) {
+            scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, getKyivDateStr());
+            accountDeactivation = await syncLinkedStaffAccountDeactivation(client, req.params.id, {
+                actor: req.user,
+                req,
+                reason: 'staff_deactivation',
+                source: 'staff_update',
+                canDisableAccount: account => canDisableLinkedStaffAccount(req.user, account),
+                blockReason: account => linkedStaffAccountBlockReason(req.user, account),
+                accountMeta: account => linkedStaffAccountMeta(account, req.user?.id),
+                logger: log
+            });
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, data: result.rows[0], schedule_cleanup: scheduleCleanup, account_deactivation: accountDeactivation });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -1621,8 +1708,24 @@ router.delete('/:id', requireRole('creator', 'director'), async (req, res) => {
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
         const scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, getKyivDateStr());
+        const accountDeactivation = await syncLinkedStaffAccountDeactivation(client, req.params.id, {
+            actor: req.user,
+            req,
+            reason: 'staff_archive',
+            source: 'staff_delete_legacy',
+            canDisableAccount: account => canDisableLinkedStaffAccount(req.user, account),
+            blockReason: account => linkedStaffAccountBlockReason(req.user, account),
+            accountMeta: account => linkedStaffAccountMeta(account, req.user?.id),
+            logger: log
+        });
         await client.query('COMMIT');
-        res.json({ success: true, archived: true, data: result.rows[0], schedule_cleanup: scheduleCleanup });
+        res.json({
+            success: true,
+            archived: true,
+            data: result.rows[0],
+            schedule_cleanup: scheduleCleanup,
+            account_deactivation: accountDeactivation
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('DELETE /staff error', err);

@@ -20,6 +20,138 @@ test('staff schedule audit stays read-only and reports schedule risk buckets', (
     assert.match(script, /legacy_day_off_status/);
     assert.match(script, /schedule_hr_time_mismatch/);
     assert.match(script, /staff_pool_\$\{String\(row\.hr_pool_status\)\.toLowerCase\(\)\}_in_schedule/);
+    assert.match(script, /blacklisted_staff_in_schedule/);
+    assert.match(script, /reserve_staff_in_schedule/);
+    assert.match(script, /terminated_staff_in_schedule/);
+    assert.match(script, /freelance_without_explicit_mode/);
+    assert.match(script, /active_profile_for_inactive_staff/);
+    assert.match(script, /active_user_for_offboarded_staff/);
+    assert.match(script, /generated_timeline_lines_for_invalid_staff/);
+    assert.match(script, /auditHrShifts/);
+    assert.match(script, /auditEmployeeProfiles/);
+    assert.match(script, /auditUsers/);
+    assert.match(script, /auditGeneratedLines/);
+    assert.match(script, /buckets:\s*\{/);
     assert.match(script, /SELECT ss\.id AS schedule_id/);
     assert.doesNotMatch(script, /\b(UPDATE|DELETE|INSERT|TRUNCATE|DROP|ALTER)\b/i);
+});
+
+test('staff schedule cleanup is dry-run guarded and preserves protected rows', () => {
+    const script = read('scripts', 'cleanup-staff-schedule.js');
+
+    assert.match(script, /CONFIRM_TOKEN = 'I_CONFIRM_FUTURE_STAFF_SCHEDULE_CLEANUP'/);
+    assert.match(script, /const APPLY = flags\.has\('--apply'\)/);
+    assert.match(script, /if \(APPLY && CONFIRM !== CONFIRM_TOKEN\)/);
+    assert.match(script, /mode: APPLY \? 'apply' : 'dry-run'/);
+    assert.match(script, /apply: APPLY/);
+    assert.match(script, /const EFFECTIVE_FROM = maxIsoDate\(FROM, isoDate\(new Date\(\)\)\)/);
+    assert.match(script, /BEGIN/);
+    assert.match(script, /COMMIT/);
+    assert.match(script, /ROLLBACK/);
+    assert.match(script, /DELETE FROM staff_schedule ss/);
+    assert.match(script, /DELETE FROM hr_shifts hs/);
+    assert.match(script, /DELETE FROM lines_by_date l/);
+    assert.match(script, /NOT EXISTS \(\s*SELECT 1\s+FROM hr_time_records tr/);
+    assert.match(script, /hr_time_records table is required for safe cleanup/);
+    assert.match(script, /canTraceGeneratedLines/);
+    assert.match(script, /bookings\/from_sheet trace columns/);
+    assert.doesNotMatch(script, /\b(TRUNCATE|DROP|ALTER)\b/i);
+});
+
+test('active schedule read paths use the shared scheduleable staff filter', () => {
+    const filters = read('services', 'staffOperationalFilters.js');
+    const staffRoute = read('routes', 'staff.js');
+    const hrRoute = read('routes', 'hr.js');
+    const bookingService = read('services', 'booking.js');
+    const bookingsRoute = read('routes', 'bookings.js');
+    const linesRoute = read('routes', 'lines.js');
+
+    assert.match(filters, /function scheduleableStaffWhere/);
+    assert.match(filters, /poolMode: 'core'/);
+    assert.match(filters, /COALESCE\(\$\{safeAlias\}\.hr_pool_status, 'core'\) = 'core'/);
+    assert.match(filters, /COALESCE\(\$\{safeAlias\}\.is_freelance, false\) = false/);
+    assert.match(filters, /termination_date/);
+
+    assert.match(staffRoute, /function activeScheduleStaffWhere/);
+    assert.match(staffRoute, /scheduleableStaffWhere\(alias/);
+    assert.match(staffRoute, /activeScheduleStaffWhere\('s', 'ss\.date'\)/);
+    assert.match(staffRoute, /activeScheduleStaffWhere\('staff', 'CURRENT_DATE'/);
+
+    assert.match(hrRoute, /scheduleableStaffWhere\('staff', \{\s*includeFreelance: include_freelance === 'true'/);
+    assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: 'hs\.shift_date' \}\)/);
+    assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: "LEFT\(ss\.date::text, 10\)" \}\)/);
+    assert.match(hrRoute, /scheduleableStaffWhere\('staff', \{ dateExpression: '\$1' \}\)/);
+    assert.doesNotMatch(hrRoute, /COALESCE\(hr_pool_status, 'core'\) <> 'reserve'[\s\S]{0,120}OR EXISTS \(SELECT 1 FROM hr_shifts/);
+
+    assert.match(bookingService, /scheduleableStaffWhere\('s', \{ dateExpression: 'ss\.date' \}\)/);
+    assert.doesNotMatch(bookingService, /FROM staff_schedule ss[\s\S]{0,240}AND s\.is_active = true/);
+    assert.match(bookingsRoute, /scheduleableStaffWhere\('s', \{ dateExpression: '\$3' \}\)/);
+    assert.match(bookingsRoute, /scheduleableStaffWhere\('staff', \{ dateExpression: '\$2' \}\)/);
+    assert.match(linesRoute, /scheduleableStaffWhere\('s', \{ dateExpression: 'l\.date' \}\)/);
+});
+
+test('schedule write paths reject non-scheduleable staff before writes and mirrors', () => {
+    const filters = read('services', 'staffOperationalFilters.js');
+    const staffRoute = read('routes', 'staff.js');
+    const hrRoute = read('routes', 'hr.js');
+
+    assert.match(filters, /async function validateStaffScheduleableForDate/);
+    assert.match(filters, /function scheduleableStaffErrorPayload/);
+    assert.match(filters, /STAFF_INACTIVE/);
+    assert.match(filters, /STAFF_BLACKLISTED/);
+    assert.match(filters, /STAFF_NOT_CORE_POOL/);
+    assert.match(filters, /STAFF_FREELANCE_NOT_ALLOWED/);
+    assert.match(filters, /STAFF_TERMINATED/);
+
+    assert.match(staffRoute, /async function validateScheduleWriteStaff/);
+    assert.match(staffRoute, /async function rejectUnscheduleableStaff/);
+    assert.match(staffRoute, /validateScheduleWriteStaff\(client, staffId, date\)/);
+    assert.match(staffRoute, /validateScheduleWriteStaff\(client, e\.staffId, e\.date\)/);
+    assert.match(staffRoute, /validateScheduleWriteStaff\(client, row\.staff_id, targetDate\)/);
+    assert.match(staffRoute, /validateScheduleWriteStaff\(client, replacementStaffId, date\)/);
+    assert.match(staffRoute, /validateScheduleWriteStaff\(client, originalStaffId, date\)/);
+    assert.match(staffRoute, /validateStaffScheduleableForDate\(client, shift\.staff_id, date, \{ forUpdate: false \}\)/);
+    assert.match(staffRoute, /activeScheduleStaffWhere\('s', 'hs\.shift_date'\)/);
+    assert.doesNotMatch(staffRoute, /backfillStaffScheduleFromHrShifts[\s\S]{0,800}COALESCE\(s\.is_active, true\) = true/);
+
+    assert.match(hrRoute, /async function validateShiftWriteStaff/);
+    assert.match(hrRoute, /validateShiftWriteStaff\(client, staff_id, shift_date\)/);
+    assert.match(hrRoute, /validateShiftWriteStaff\(client, currentShift\.staff_id, currentShift\.shift_date\)/);
+    assert.match(hrRoute, /validateShiftWriteStaff\(client, replacementStaffId, oldShift\.shift_date\)/);
+    assert.match(hrRoute, /validateShiftWriteStaff\(client, sid, d\)/);
+    assert.match(hrRoute, /validateShiftWriteStaff\(client, row\.staff_id, targetDate\)/);
+    assert.match(hrRoute, /validateStaffScheduleableForDate\(db, shift\.staff_id, date, \{ forUpdate: false \}\)/);
+    assert.match(hrRoute, /scheduleableStaffWhere\('s', \{ dateExpression: 'hs\.shift_date' \}\)/);
+});
+
+test('staff lifecycle cleanup is centralized and preserves historical evidence', () => {
+    const lifecycle = read('services', 'staffLifecycle.js');
+    const staffRoute = read('routes', 'staff.js');
+    const hrRoute = read('routes', 'hr.js');
+
+    assert.match(lifecycle, /async function cleanupFutureStaffOperationalSchedule/);
+    assert.match(lifecycle, /DELETE FROM hr_shifts hs/);
+    assert.match(lifecycle, /hs\.shift_date >= \$2::date/);
+    assert.match(lifecycle, /DELETE FROM staff_schedule ss/);
+    assert.match(lifecycle, /LEFT\(ss\.date::text, 10\) >= \$2/);
+    assert.match(lifecycle, /NOT EXISTS \(\s*SELECT 1 FROM hr_time_records tr/);
+    assert.match(lifecycle, /syncLinkedStaffAccountDeactivation/);
+    assert.match(lifecycle, /UPDATE employee_profiles\s+SET is_active = false/);
+    assert.match(lifecycle, /UPDATE users\s+SET is_active = false,\s+session_revoked_at = NOW\(\)/);
+    assert.match(lifecycle, /UPDATE refresh_tokens\s+SET revoked_at = NOW\(\)/);
+
+    assert.doesNotMatch(staffRoute, /async function cleanupFutureStaffOperationalSchedule/);
+    assert.doesNotMatch(hrRoute, /async function cleanupFutureStaffOperationalSchedule/);
+
+    assert.match(staffRoute, /cleanupFutureStaffOperationalSchedule\(client, req\.params\.id, getKyivDateStr\(\)\)/);
+    assert.match(staffRoute, /syncLinkedStaffAccountDeactivation\(client, req\.params\.id/);
+    assert.match(staffRoute, /reason: 'staff_deactivation'/);
+    assert.match(staffRoute, /reason: 'staff_archive'/);
+
+    assert.match(hrRoute, /cleanupFutureStaffOperationalSchedule\(client, req\.params\.id, todayKyiv\(\)\)/);
+    assert.match(hrRoute, /reason: 'hr_staff_deactivation'/);
+    assert.match(hrRoute, /reason: 'hr_offboarding'/);
+    assert.match(hrRoute, /\['blacklisted', 'reserve'\]\.includes\(status\)/);
+    assert.match(hrRoute, /\['blacklisted', 'reserve'\]\.includes\(requestedPoolStatus\)/);
+    assert.match(hrRoute, /account_deactivation: accountDeactivation/);
 });

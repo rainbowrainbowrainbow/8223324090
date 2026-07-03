@@ -68,6 +68,8 @@ const HR_ONBOARDING_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrOnb
 const HR_STAFF_DOCUMENTS_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffDocuments.js'), 'utf8');
 const HR_STAFF_RESOURCES_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'hrStaffResources.js'), 'utf8');
 const STAFF_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'staff.js'), 'utf8');
+const STAFF_OPERATIONAL_FILTERS = fs.readFileSync(path.join(ROOT, 'services', 'staffOperationalFilters.js'), 'utf8');
+const STAFF_LIFECYCLE_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'staffLifecycle.js'), 'utf8');
 const PAYROLL_SERVICE = fs.readFileSync(path.join(ROOT, 'services', 'payroll.js'), 'utf8');
 const PAGES_CSS = readCssWithImports('css/pages.css');
 const PAYROLL_EVENTS_MIGRATION = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '250_payroll_period_events.sql'), 'utf8');
@@ -1125,9 +1127,7 @@ test('HR offboarding readiness owns account/resource/document closure guardrails
         'JOIN users u ON u.id = ep.user_id',
         'staff_documents sd',
         'staff_certifications sc',
-        'session_revoked_at = NOW()',
-        'UPDATE refresh_tokens',
-        "eventType: 'account_deactivated'",
+        'syncLinkedStaffAccountDeactivation',
         'accountHasCreatorRole',
         "canUseAction(actor, 'manage_accounts')",
         'accountOffboardingBlockReason',
@@ -1140,6 +1140,14 @@ test('HR offboarding readiness owns account/resource/document closure guardrails
         'Не можна вимкнути власний CRM-акаунт через offboarding'
     ]) {
         assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
+    }
+    for (const token of [
+        'session_revoked_at = NOW()',
+        'UPDATE refresh_tokens',
+        "eventType: 'account_deactivated'",
+        'UPDATE employee_profiles'
+    ]) {
+        assert.ok(STAFF_LIFECYCLE_SERVICE.includes(token), `missing lifecycle service token ${token}`);
     }
     for (const token of [
         'id="editOffboardingReadiness"',
@@ -1211,13 +1219,16 @@ test('HR staff permanent delete is duplicate-only and typed-confirm guarded', ()
     }
 });
 
-test('HR operational staff scope removes blacklist and unscheduled reserve from live routes', () => {
+test('HR operational staff scope uses shared scheduleable filters for live routes', () => {
     for (const token of [
+        "require('../services/staffOperationalFilters')",
+        "require('../services/staffLifecycle')",
         'function activeNonBlacklistedStaffWhere',
         'function operationalStaffForDateWhere',
-        'async function cleanupFutureStaffOperationalSchedule',
-        "COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'",
-        "COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'",
+        'return scheduleableStaffWhere(alias, { dateExpression });',
+        "scheduleableStaffWhere('staff', {",
+        "scheduleableStaffWhere('s', { dateExpression: 'hs.shift_date' })",
+        "scheduleableStaffWhere('staff', { dateExpression: '$1' })",
         "router.get('/today'",
         "router.get('/availability'",
         "router.put('/staff/:id/pool-status'",
@@ -1227,17 +1238,36 @@ test('HR operational staff scope removes blacklist and unscheduled reserve from 
         assert.ok(HR_ROUTE.includes(token), `missing HR route token ${token}`);
     }
     for (const token of [
+        "require('../services/staffOperationalFilters')",
+        "require('../services/staffLifecycle')",
         'function activeOperationalStaffWhere',
         'function activeOperationalStaffForDateWhere',
-        'async function cleanupFutureStaffOperationalSchedule',
+        'function activeScheduleStaffWhere',
         "router.get('/face-descriptors'",
         "LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1",
         "WHERE ${activeOperationalStaffForDateWhere('s', 'hs', 'tr')}",
         "router.delete('/:id'",
         'schedule_cleanup: scheduleCleanup',
-        "COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'"
+        "activeScheduleStaffWhere('s', 'ss.date')"
     ]) {
         assert.ok(STAFF_ROUTE.includes(token), `missing staff route token ${token}`);
+    }
+    for (const token of [
+        "COALESCE(${safeAlias}.hr_pool_status, 'core') = 'core'",
+        "COALESCE(${safeAlias}.is_freelance, false) = false",
+        'termination_date'
+    ]) {
+        assert.ok(STAFF_OPERATIONAL_FILTERS.includes(token), `missing staff filter token ${token}`);
+    }
+    for (const token of [
+        'async function cleanupFutureStaffOperationalSchedule',
+        'DELETE FROM hr_shifts hs',
+        'DELETE FROM staff_schedule ss',
+        'NOT EXISTS',
+        'hr_time_records',
+        'syncLinkedStaffAccountDeactivation'
+    ]) {
+        assert.ok(STAFF_LIFECYCLE_SERVICE.includes(token), `missing lifecycle service token ${token}`);
     }
 });
 

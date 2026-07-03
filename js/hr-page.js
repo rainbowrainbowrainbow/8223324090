@@ -647,7 +647,61 @@ function teamSearchHaystack(staff = {}) {
 }
 
 function staffPoolStatus(staff = {}) {
-    return staff.hr_pool_status || 'core';
+    return String(staff.hr_pool_status || staff.hrPoolStatus || 'core').trim().toLowerCase() || 'core';
+}
+
+function staffUiBoolean(value, fallback = false) {
+    if (value === true || value === 1 || value === '1') return true;
+    if (value === false || value === 0 || value === '0') return false;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (['true', 'yes', 'y'].includes(text)) return true;
+    if (['false', 'no', 'n'].includes(text)) return false;
+    return fallback;
+}
+
+function staffUiDate(value) {
+    if (!value) return '';
+    if (value instanceof Date) return formatDate(value);
+    const match = String(value).match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : '';
+}
+
+function isHrScheduleableStaffForDate(staff = {}, date = '') {
+    if (!staff) return false;
+    if (!staffUiBoolean(staff.is_active ?? staff.isActive, true)) return false;
+    if (staffPoolStatus(staff) !== 'core') return false;
+    if (staffUiBoolean(staff.is_freelance ?? staff.isFreelance, false)) return false;
+    const targetDate = staffUiDate(date) || todayStr();
+    const terminationDate = staffUiDate(staff.termination_date || staff.terminationDate);
+    if (terminationDate && targetDate && terminationDate <= targetDate) return false;
+    return true;
+}
+
+function hrScheduleableStaffForUi(staffList = [], date = '') {
+    return (Array.isArray(staffList) ? staffList : [])
+        .filter(staff => isHrScheduleableStaffForDate(staff, date));
+}
+
+function hrScheduleableStaffErrorMessage(result = {}, fallback = 'Помилка') {
+    const code = String(result?.code || '').trim();
+    if (code === 'STAFF_INACTIVE') return 'Працівник неактивний і не може бути доданий в активний графік.';
+    if (code === 'STAFF_BLACKLISTED') return 'Працівник у чорному списку і не може бути доданий в активний графік.';
+    if (code === 'STAFF_NOT_CORE_POOL') return 'Працівник не в основній команді і не може бути доданий в активний графік.';
+    if (code === 'STAFF_FREELANCE_NOT_ALLOWED') return 'Фріланс-працівник не може бути доданий без explicit режиму.';
+    if (code === 'STAFF_TERMINATED') return 'Працівник звільнений на дату цієї зміни.';
+    if (code === 'STAFF_NOT_SCHEDULEABLE') return 'Працівник не доступний для активного графіка на цю дату.';
+    return result?.error || fallback;
+}
+
+async function refreshHrOperationalViews() {
+    const jobs = [];
+    if (scheduleWeekStart instanceof Date && !Number.isNaN(scheduleWeekStart.getTime())) {
+        jobs.push(loadSchedule().catch(err => console.warn('refresh schedule after staff lifecycle failed', err)));
+    }
+    if (todayData) {
+        jobs.push(loadToday().catch(err => console.warn('refresh today after staff lifecycle failed', err)));
+    }
+    await Promise.all(jobs);
 }
 
 function isInternStaff(staff = {}) {
@@ -991,7 +1045,7 @@ async function hrFetch(path, options = {}, legacyBody = undefined) {
         return null;
     }
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
+    if (!resp.ok) return { ...data, success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
     return data;
 }
 
@@ -1011,7 +1065,7 @@ async function crmApiFetch(path, options = {}) {
         return null;
     }
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
+    if (!resp.ok) return { ...data, success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
     return data;
 }
 
@@ -1851,6 +1905,11 @@ function renderToday(data) {
 }
 
 async function handleClock(staffId, action, name, workedMin) {
+    const todayItem = todayData?.data?.find(item => Number(item.staff_id) === Number(staffId));
+    if (action !== 'out' && todayItem && !isHrScheduleableStaffForDate(todayItem, todayStr())) {
+        showNotification(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
+        return;
+    }
     if (action === 'out') {
         const message = `Завершити зміну для ${name}?\nУ зарплату буде зараховано планову зміну, якщо вона є; без графіка - фактичний час.`;
         if (!await confirmModal(message, { type: 'warning', okText: 'Завершити' })) return;
@@ -1864,7 +1923,7 @@ async function handleClock(staffId, action, name, workedMin) {
     });
     if (!data) return;
     if (!data.success) {
-        showNotification(data.error || 'Помилка', 'error');
+        showNotification(hrScheduleableStaffErrorMessage(data, 'Помилка'), 'error');
         return;
     }
     const totalMinutes = Number(data.data?.total_worked_minutes);
@@ -2007,7 +2066,7 @@ async function loadSchedule() {
         hrFetch('/staff?active=true'),
         hrFetch('/shift-templates')
     ]);
-    if (staffData && staffData.success) scheduleStaff = staffData.data;
+    if (staffData && staffData.success) scheduleStaff = hrScheduleableStaffForUi(staffData.data || []);
     if (tplData && tplData.success) {
         shiftTemplates = tplData.data;
         renderTemplateSelect();
@@ -2024,7 +2083,11 @@ async function loadSchedule() {
     const to = formatDate(dates[dates.length - 1]);
 
     const shiftsData = await hrFetch(`/shifts?from=${from}&to=${to}`);
-    if (shiftsData && shiftsData.success) scheduleShifts = shiftsData.data;
+    if (shiftsData && shiftsData.success) {
+        const scheduleableIds = new Set(scheduleStaff.map(staff => Number(staff.id)).filter(Number.isFinite));
+        scheduleShifts = (Array.isArray(shiftsData.data) ? shiftsData.data : [])
+            .filter(shift => scheduleableIds.has(Number(shift.staff_id)));
+    }
 
     renderSchedule(dates);
     await loadLeaves();
@@ -2071,7 +2134,8 @@ function renderSchedule(dates) {
 
     // Body
     const body = document.getElementById('schedBody');
-    body.innerHTML = scheduleStaff.map(staff => {
+    const visibleStaff = hrScheduleableStaffForUi(scheduleStaff);
+    body.innerHTML = visibleStaff.map(staff => {
         let row = `<tr><td>${escapeHtml(staff.name)}</td>`;
         for (const d of dates) {
             const ds = formatDate(d);
@@ -2103,9 +2167,13 @@ function openShiftModal(staffId, date) {
         shiftMap[`${s.staff_id}_${d}`] = s;
     }
     const existing = shiftMap[`${staffId}_${date}`];
-    editingShift = { staffId, date, existing };
 
     const staff = scheduleStaff.find(s => s.id === staffId);
+    if (!staff || !isHrScheduleableStaffForDate(staff, date)) {
+        showNotification(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
+        return;
+    }
+    editingShift = { staffId, date, existing };
     const professionSelect = document.getElementById('shiftProfession');
     if (professionSelect) {
         const selectedProfession = existing?.profession_key || staff?.role_type || '';
@@ -2158,6 +2226,10 @@ async function saveShift() {
         profession_key: document.getElementById('shiftProfession')?.value || null
     };
     const staff = scheduleStaff.find(item => Number(item.id) === Number(editingShift.staffId));
+    if (!staff || !isHrScheduleableStaffForDate(staff, editingShift.date)) {
+        showNotification(hrScheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
+        return;
+    }
     const selectedProfession = normalizeProfessionKey(body.profession_key || staff?.role_type);
     if (selectedProfession && !staffHasProfession(staff || {}, selectedProfession)) {
         showNotification('Цієї професії немає в картці співробітника. Спочатку додайте її в HR → Команда.', 'error');
@@ -2189,7 +2261,7 @@ async function saveShift() {
             await closeHrEditableModal('shiftModal', true);
             await loadSchedule();
         } else {
-            showNotification(data?.error || 'Помилка', 'error');
+            showNotification(hrScheduleableStaffErrorMessage(data, 'Помилка'), 'error');
         }
     } finally {
         if (btn) btn.disabled = false;
@@ -2214,7 +2286,7 @@ async function replaceShift() {
     const currentStaff = scheduleStaff.find(s => s.id === editingShift.staffId);
     const requiredProfession = normalizeProfessionKey(editingShift.existing.profession_key || currentStaff?.role_type);
     const candidates = scheduleStaff
-        .filter(s => s.id !== editingShift.staffId && s.is_active !== false)
+        .filter(s => s.id !== editingShift.staffId && isHrScheduleableStaffForDate(s, editingShift.existing.shift_date || editingShift.date))
         .filter(s => staffHasProfession(s, requiredProfession))
         .map(s => ({ value: String(s.id), label: `${s.name}${s.role_type ? ' · ' + (ROLE_LABELS[s.role_type] || s.role_type) : ''}` }));
     if (!candidates.length) {
@@ -2238,7 +2310,7 @@ async function replaceShift() {
         await closeHrEditableModal('shiftModal', true);
         await loadSchedule();
     } else {
-        showNotification(data?.error || 'Помилка підміни', 'error');
+        showNotification(hrScheduleableStaffErrorMessage(data, 'Помилка підміни'), 'error');
     }
 }
 
@@ -2260,7 +2332,7 @@ async function copyWeek() {
         scheduleWeekStart = nextWeek;
         await loadSchedule();
     } else {
-        showNotification(data?.error || 'Помилка', 'error');
+        showNotification(hrScheduleableStaffErrorMessage(data, 'Помилка'), 'error');
     }
 }
 
@@ -3310,6 +3382,7 @@ async function setStaffProfileActive(staffId, isActive) {
     if (isActive && data.account_reactivation_blocked) {
         showNotification('Співробітника активовано, але linked CRM-акаунт потребує доступу manage_accounts.', 'warning');
     }
+    if (!isActive) await refreshHrOperationalViews();
     return true;
 }
 
@@ -3386,6 +3459,7 @@ async function deleteStaffProfile(staffId) {
     }
     showNotification(`Працівника ${staff.name} видалено`, 'success');
     await loadTeam();
+    await refreshHrOperationalViews();
 }
 
 window.deleteStaffProfile = deleteStaffProfile;
@@ -3488,6 +3562,7 @@ async function openStaffMoveMenu(staffId, button) {
     activePeopleBucket = normalizeVisiblePeopleBucket(targetBucket);
     showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === targetBucket)?.label || targetBucket}"`, 'success');
     await loadTeam();
+    await refreshHrOperationalViews();
 }
 
 window.openStaffMoveMenu = openStaffMoveMenu;
@@ -3530,6 +3605,7 @@ async function moveStaffToBucket(staffId, targetBucket, options = {}) {
     activePeopleBucket = normalizedTarget;
     showNotification(`Переміщено в "${HR_TEAM_MOVE_TARGETS.find(item => item.id === normalizedTarget)?.label || normalizedTarget}"`, 'success');
     await loadTeam();
+    await refreshHrOperationalViews();
     return true;
 }
 
@@ -5416,6 +5492,7 @@ async function completeStaffOffboarding() {
     showNotification(`Співпрацю завершено.${resourceNote}${accountNote}${skippedAccountActionNote}`, data.open_resource_count ? 'warning' : 'success');
     await closeHrEditableModal('staffEditModal', true);
     await loadTeam();
+    await refreshHrOperationalViews();
 }
 
 async function openStaffEdit(staffId, options = {}) {
@@ -5534,6 +5611,7 @@ async function saveStaffEdit() {
         showNotification('Профіль оновлено', 'success');
         await closeHrEditableModal('staffEditModal', true);
         await loadTeam();
+        await refreshHrOperationalViews();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
     }
@@ -6818,6 +6896,7 @@ async function setPoolStatus(staffId, status) {
     if (data?.success) {
         showNotification('HR-статус оновлено', 'success');
         await loadTeam().catch(() => {});
+        await refreshHrOperationalViews();
     } else {
         showNotification(data?.error || 'Не вдалося оновити статус', 'error');
     }

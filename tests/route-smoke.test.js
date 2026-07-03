@@ -1732,7 +1732,7 @@ function createFakePool() {
                 hrState.staff.set(id, updated);
                 return { rows: [updated], rowCount: 1 };
             }
-            if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1 AND COALESCE\(ep\.is_active, true\) = true AND COALESCE\(u\.is_active, true\) = true FOR UPDATE OF ep, u/i.test(text)) {
+            if (/FROM employee_profiles ep\s+JOIN users u ON u\.id = ep\.user_id\s+WHERE ep\.staff_id = \$1\s+AND ep\.user_id IS NOT NULL\s+AND COALESCE\(u\.is_active, true\) = true\s+FOR UPDATE OF ep, u/i.test(text)) {
                 const rows = (hrState.accountsByStaff.get(Number(params[0])) || [])
                     .filter(row => row.is_active !== false && row.profile_active !== false)
                     .map(row => ({
@@ -1744,6 +1744,17 @@ function createFakePool() {
                         profile_id: row.profile_id,
                         full_name: row.full_name
                     }));
+                return { rows, rowCount: rows.length };
+            }
+            if (/UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND COALESCE\(is_active, true\) = true RETURNING id, user_id/i.test(text)) {
+                const accounts = hrState.accountsByStaff.get(Number(params[0])) || [];
+                const rows = [];
+                for (const account of accounts) {
+                    if (account.profile_active !== false) {
+                        account.profile_active = false;
+                        rows.push({ id: account.profile_id, user_id: account.id });
+                    }
+                }
                 return { rows, rowCount: rows.length };
             }
             if (/FROM employee_profiles ep JOIN users u ON u\.id = ep\.user_id WHERE ep\.staff_id = \$1 AND ep\.user_id IS NOT NULL FOR UPDATE OF ep, u/i.test(text)) {
@@ -4142,7 +4153,7 @@ describe('route-level API safety smoke', () => {
         assert.deepEqual(res.data.disabled_account_usernames, ['offboard.employee']);
         assert.deepEqual(res.data.schedule_cleanup, { hr_shifts: 2, staff_schedule: 3, from_date: '2099-06-06' });
         assert.ok(queries.some(q => /UPDATE users SET is_active = false, session_revoked_at = NOW\(\)/i.test(q.text)));
-        assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND user_id = ANY\(\$2::int\[\]\)/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND COALESCE\(is_active, true\) = true RETURNING id, user_id/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE refresh_tokens SET revoked_at = NOW\(\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO account_security_events/i.test(q.text) && q.params[4] === 'account_deactivated' && q.params[5] === 'hr_offboarding'));
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text) && q.params[0] === 'staff_offboarding_complete'));

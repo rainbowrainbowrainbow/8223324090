@@ -4,6 +4,20 @@
 
 ---
 
+## v0.77.111 - Захист графіка за статусом працівників
+
+### Staff schedule / HR status guards / Lifecycle cleanup / Audit cleanup / (Клешня, 03.07.2026) [codex]
+- **Root cause закрито на backend-рівні** - активні read-path графіка більше не покладаються на frontend-фільтр і застосовують єдине правило scheduleable staff: active core pool, без blacklist/reserve/offboarding/termination/freelance без explicit режиму.
+- **Write-path більше не може заново записати неактуального працівника** - schedule, HR shifts, bulk, copy-week, replacement і mirror/backfill flow отримали server-side validation з явними кодами помилок для inactive, blacklisted, non-core, freelance і terminated staff.
+- **Lifecycle cleanup став централізованим** - deactivation, blacklist, reserve та offboarding прибирають майбутню операційну присутність зі `staff_schedule` і `hr_shifts`, але не чіпають минулу історію та рядки з `hr_time_records`.
+- **HR/Staff UI отримав захисний fallback** - списки графіка, replacement modal, team actions і attendance refresh не залишають stale inactive/blacklisted/reserve rows після зміни статусу.
+- **Додано read-only audit і контрольований cleanup** - JSON audit покриває `staff_schedule`, `hr_shifts`, `employee_profiles`, `users` і generated timeline lines, а apply cleanup dry-run за замовчуванням і вимагає `I_CONFIRM_FUTURE_STAFF_SCHEDULE_CLEANUP`.
+- **Regression/static guardrails розширено** - тести фіксують shared scheduleable filters, write guards, lifecycle cleanup, UI fallback і безпечність audit/cleanup scripts.
+- **Cache tags оновлено до `0.77.111`** - HTML, CSS, JS, Service Worker cache names і asset `?v=` посилання синхронізовані для релізу графіка.
+- **БД schema, migrations, auth/roles, env, secrets і deploy config не змінювались** - реліз обмежений backend/frontend guardrails, cleanup tooling, тестами, release markers і changelog.
+
+---
+
 ## v0.77.110 - Захист відкриття основної активності
 
 ### Booking details / Primary activity safe render / Timeline regression QA / (Клешня, 03.07.2026) [codex]

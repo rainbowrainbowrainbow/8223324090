@@ -435,6 +435,53 @@ function staffHasProfession(staff = {}, key = '') {
         || staffSecondaryProfessions(staff).includes(normalized);
 }
 
+function staffUiBoolean(value, fallback = false) {
+    if (value === true || value === 1 || value === '1') return true;
+    if (value === false || value === 0 || value === '0') return false;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (['true', 'yes', 'y'].includes(text)) return true;
+    if (['false', 'no', 'n'].includes(text)) return false;
+    return fallback;
+}
+
+function staffUiDate(value) {
+    if (!value) return '';
+    if (value instanceof Date) return formatDateStr(value);
+    const match = String(value).match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : '';
+}
+
+function staffPoolStatusForSchedule(staff = {}) {
+    return String(staff.hr_pool_status || staff.hrPoolStatus || 'core').trim().toLowerCase() || 'core';
+}
+
+function isScheduleableStaffForUi(staff = {}, date = '') {
+    if (!staff) return false;
+    if (!staffUiBoolean(staff.is_active ?? staff.isActive, true)) return false;
+    if (staffPoolStatusForSchedule(staff) !== 'core') return false;
+    if (staffUiBoolean(staff.is_freelance ?? staff.isFreelance, false)) return false;
+    const targetDate = staffUiDate(date) || todayStr();
+    const terminationDate = staffUiDate(staff.termination_date || staff.terminationDate);
+    if (terminationDate && targetDate && terminationDate <= targetDate) return false;
+    return true;
+}
+
+function scheduleableStaffForUi(staffList = [], date = '') {
+    return (Array.isArray(staffList) ? staffList : [])
+        .filter(staff => isScheduleableStaffForUi(staff, date));
+}
+
+function scheduleableStaffErrorMessage(result = {}, fallback = 'Помилка збереження') {
+    const code = String(result?.code || '').trim();
+    if (code === 'STAFF_INACTIVE') return 'Працівник неактивний і не може бути доданий в активний графік.';
+    if (code === 'STAFF_BLACKLISTED') return 'Працівник у чорному списку і не може бути доданий в активний графік.';
+    if (code === 'STAFF_NOT_CORE_POOL') return 'Працівник не в основній команді і не може бути доданий в активний графік.';
+    if (code === 'STAFF_FREELANCE_NOT_ALLOWED') return 'Фріланс-працівник не може бути доданий без explicit режиму.';
+    if (code === 'STAFF_TERMINATED') return 'Працівник звільнений на дату цієї зміни.';
+    if (code === 'STAFF_NOT_SCHEDULEABLE') return 'Працівник не доступний для активного графіка на цю дату.';
+    return result?.error || fallback;
+}
+
 function isReplacementEntry(entry = {}) {
     return Boolean(entry?.original_staff_id);
 }
@@ -506,7 +553,7 @@ function scheduleHasBlockingConflict(staffId, date, exceptScheduleId = null) {
 function scheduleReplacementCandidates(entry = {}, currentStaff = {}) {
     const professionKey = normalizeProfessionKey(entry.profession_key || currentStaff.role_type);
     return StaffState.staff
-        .filter(staff => staff.is_active !== false)
+        .filter(staff => isScheduleableStaffForUi(staff, entry.date))
         .filter(staff => Number(staff.id) !== Number(entry.staff_id))
         .filter(staff => staffHasProfession(staff, professionKey))
         .filter(staff => !scheduleHasBlockingConflict(staff.id, entry.date, entry.id))
@@ -1615,8 +1662,9 @@ function scheduleDisplayDepartmentLabel(departmentKey) {
 }
 
 function scheduleVisibleStaff(staffList = StaffState.staff) {
-    if (StaffState.activeDept === 'all') return staffList;
-    return staffList.filter(staff => scheduleDisplayDepartmentKey(staff) === StaffState.activeDept);
+    const scheduleable = scheduleableStaffForUi(staffList || []);
+    if (StaffState.activeDept === 'all') return scheduleable;
+    return scheduleable.filter(staff => scheduleDisplayDepartmentKey(staff) === StaffState.activeDept);
 }
 
 function scheduleDepartmentOptions() {
@@ -1786,7 +1834,7 @@ async function fetchStaff() {
         });
         const data = await res.json();
         if (data.success) {
-            StaffState.staff = data.data;
+            StaffState.staff = scheduleableStaffForUi(data.data || []);
             StaffState.departments = data.departments;
         }
         return data;
@@ -2169,6 +2217,11 @@ async function handleAttendanceAction(button) {
     const action = button?.dataset?.attendanceAction;
     const staffId = Number(button?.dataset?.staff);
     if (!action || !Number.isFinite(staffId)) return;
+    const staff = StaffState.staff.find(item => Number(item.id) === staffId);
+    if (action === 'clock-in' && staff && !isScheduleableStaffForUi(staff, todayStr())) {
+        showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }, 'Працівник недоступний для check-in'), 'error');
+        return;
+    }
     button.disabled = true;
     const result = await postAttendanceAction(action, staffId);
     if (result.success) {
@@ -2178,7 +2231,7 @@ async function handleAttendanceAction(button) {
         showNotification('Attendance оновлено');
     } else {
         button.disabled = false;
-        showNotification(result.error || 'Не вдалося оновити attendance', 'error');
+        showNotification(scheduleableStaffErrorMessage(result, 'Не вдалося оновити attendance'), 'error');
     }
 }
 
@@ -2582,6 +2635,10 @@ function getStaffFillState() {
 function openEditModal(staffId, date) {
     const emp = StaffState.staff.find(s => s.id === staffId);
     if (!emp) return;
+    if (StaffState.canManage && !isScheduleableStaffForUi(emp, date)) {
+        showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
+        return;
+    }
 
     const entry = StaffState.schedule[`${staffId}_${date}`];
     StaffState.editingCell = { staffId, date, entry };
@@ -2786,6 +2843,11 @@ function setScheduleModalReadOnly(readOnly) {
 async function handleSave() {
     const { staffId, date } = StaffState.editingCell;
     const previousEntry = StaffState.editingCell?.entry || StaffState.schedule[`${staffId}_${date}`] || null;
+    const emp = StaffState.staff.find(staff => Number(staff.id) === Number(staffId));
+    if (emp && !isScheduleableStaffForUi(emp, date)) {
+        showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
+        return;
+    }
     const status = document.getElementById('schStatus')?.value;
     const showTime = status === 'working' || status === 'remote';
     const shiftStart = showTime ? document.getElementById('schStart')?.value : null;
@@ -2800,7 +2862,7 @@ async function handleSave() {
         closeEditModal(true);
         showNotification('Зміну збережено');
     } else {
-        showNotification(result.error || 'Помилка збереження', 'error');
+        showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
     }
 }
 
@@ -2848,7 +2910,7 @@ async function handleReplaceSchedule() {
         closeEditModal(true);
         showNotification('Підміну виставлено');
     } else {
-        showNotification(apiResult.error || 'Помилка підміни', 'error');
+        showNotification(scheduleableStaffErrorMessage(apiResult, 'Помилка підміни'), 'error');
     }
 }
 
@@ -2984,20 +3046,22 @@ async function handleFillWeekSave() {
     } else {
         targetStaff = StaffState.staff.filter(s => s.id === parseInt(staffValue));
     }
+    targetStaff = scheduleableStaffForUi(targetStaff);
 
     // Build entries for the current week's selected days
     const dates = getWeekDates(StaffState.weekStart);
     const entries = [];
     for (const emp of targetStaff) {
         for (const d of dates) {
-            if (checkedDays.includes(d.getDay())) {
-                entries.push({
-                    staffId: emp.id,
-                    date: formatDateStr(d),
-                    shiftStart, shiftEnd, status, note,
-                    professionKey: showTime ? normalizeProfessionKey(emp.role_type) : null
-                });
-            }
+            const date = formatDateStr(d);
+            if (!checkedDays.includes(d.getDay())) continue;
+            if (!isScheduleableStaffForUi(emp, date)) continue;
+            entries.push({
+                staffId: emp.id,
+                date,
+                shiftStart, shiftEnd, status, note,
+                professionKey: showTime ? normalizeProfessionKey(emp.role_type) : null
+            });
         }
     }
 
@@ -3012,7 +3076,7 @@ async function handleFillWeekSave() {
         showNotification(`Заповнено ${result.count} записів`);
         await goToWeek(StaffState.weekStart);
     } else {
-        showNotification(result.error || 'Помилка збереження', 'error');
+        showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
     }
 }
 
@@ -3033,7 +3097,7 @@ async function handleCopyWeek() {
 
     const preview = await copyWeekSchedule(fromMonday, toMonday, { dryRun: true });
     if (!preview.success) {
-        showNotification(preview.error || 'Не вдалося підготувати preview копіювання тижня', 'error');
+        showNotification(scheduleableStaffErrorMessage(preview, 'Не вдалося підготувати preview копіювання тижня'), 'error');
         return;
     }
 
@@ -3055,7 +3119,7 @@ async function handleCopyWeek() {
         // Jump to the target week to see the result
         await goToWeek(nextMon);
     } else {
-        showNotification(result.error || 'Помилка копіювання', 'error');
+        showNotification(scheduleableStaffErrorMessage(result, 'Помилка копіювання'), 'error');
     }
 }
 

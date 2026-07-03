@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 const staffRoute = fs.readFileSync('routes/staff.js', 'utf8');
+const staffOperationalFilters = fs.readFileSync('services/staffOperationalFilters.js', 'utf8');
 const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 const staffHtml = fs.readFileSync('staff.html', 'utf8');
 const staffCss = fs.readFileSync('css/pages-hr-staff.css', 'utf8');
@@ -58,7 +59,9 @@ describe('staff schedule safety guards', () => {
         assert.match(staffListRoute, /AS professions/);
         assert.match(staffListRoute, /staff\.photo_url/);
         assert.match(staffListRoute, /include_freelance/);
-        assert.match(staffListRoute, /COALESCE\(is_freelance, false\) = false/);
+        assert.match(staffListRoute, /activeScheduleStaffWhere\('staff', 'CURRENT_DATE', \{ includeFreelance: shouldIncludeFreelance \}\)/);
+        assert.match(staffOperationalFilters, /COALESCE\(\$\{safeAlias\}\.is_freelance, false\) = false/);
+        assert.match(staffOperationalFilters, /COALESCE\(\$\{safeAlias\}\.hr_pool_status, 'core'\) = 'core'/);
         assert.match(staffListRoute, /'hr_staff_card_light' AS card_source/);
         assert.doesNotMatch(staffListRoute, /\bstaff\.(phone|emergency_contact|emergency_phone|birth_date|address|hourly_rate|rate_unit|notes|telegram_id|telegram_username|termination_reason|termination_recorded_by)\b/);
         assert.match(staffPage, /function renderStaffCardAvatar/);

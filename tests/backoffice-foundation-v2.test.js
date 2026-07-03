@@ -206,7 +206,8 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /ss\.status IN \('working', 'remote'\)/);
         assert.match(bookingService, /s\.department = 'animators'/);
         assert.match(bookingService, /s\.role_type = 'animator'/);
-        assert.match(bookingService, /COALESCE\(s\.is_freelance, false\) = true/);
+        assert.match(bookingService, /scheduleableStaffWhere\('s', \{ dateExpression: 'ss\.date' \}\)/);
+        assert.doesNotMatch(bookingService, /COALESCE\(s\.is_freelance, false\) = true/);
         assert.doesNotMatch(bookingService, /s\.department = 'animators'\s+OR\s+s\.role_type = 'animator'/);
         assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(business_context, date, line_id\)/);
         assert.match(bookingService, /function cleanupLegacyDefaultAnimatorLines/);

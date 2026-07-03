@@ -49,6 +49,7 @@ const {
     DEFAULT_BUSINESS_CONTEXT,
     normalizeBusinessContext
 } = require('../services/businessContext');
+const { scheduleableStaffWhere } = require('../services/staffOperationalFilters');
 const { normalizeCustomerSource } = require('../services/customerSource');
 const {
     listCustomerChildren,
@@ -499,7 +500,7 @@ async function ensureParkAnimatorLine(client, { businessContext, date, lineId, n
     const staff = await client.query(
         `SELECT id, name, display_name, color
            FROM staff s
-          WHERE s.is_active = true
+          WHERE ${scheduleableStaffWhere('s', { dateExpression: '$3' })}
             AND ${staffAnimatorWhere('s')}
             AND (
                 ($1 <> '' AND s.id::text = $1)
@@ -508,7 +509,7 @@ async function ensureParkAnimatorLine(client, { businessContext, date, lineId, n
             )
           ORDER BY CASE WHEN s.id::text = $1 THEN 0 ELSE 1 END, s.name
           LIMIT 1`,
-        [requestedLineId, requestedName]
+        [requestedLineId, requestedName, safeDate]
     );
     const row = staff.rows[0];
     if (!row) return null;
@@ -3068,8 +3069,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 try {
                     const animName = String(b.secondAnimator).split(',')[0].trim();
                     const staffRow = await pool.query(
-                        `SELECT id, name FROM staff WHERE (display_name ILIKE $1 OR name ILIKE $1) AND is_active = true LIMIT 1`,
-                        [animName]
+                        `SELECT id, name FROM staff
+                         WHERE (display_name ILIKE $1 OR name ILIKE $1)
+                           AND ${scheduleableStaffWhere('staff', { dateExpression: '$2' })}
+                         LIMIT 1`,
+                        [animName, b.date]
                     );
                     if (!staffRow.rowCount) return;
                     const shift = await pool.query(

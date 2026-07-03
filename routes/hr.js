@@ -41,6 +41,16 @@ const {
     resolveStaffProfessionAssignment
 } = require('../services/professions');
 const {
+    activeStaffWhere,
+    scheduleableStaffErrorPayload,
+    scheduleableStaffWhere,
+    validateStaffScheduleableForDate
+} = require('../services/staffOperationalFilters');
+const {
+    cleanupFutureStaffOperationalSchedule,
+    syncLinkedStaffAccountDeactivation
+} = require('../services/staffLifecycle');
+const {
     listVacancyPlatformTemplates,
     formatVacancyForPlatform
 } = require('../services/hrVacancyPlatformFormatter');
@@ -387,12 +397,14 @@ function accountMaxRoleLevel(account = {}) {
 function actorCanDisableOffboardingAccount(actor, account = {}) {
     if (!actor || !canUseAction(actor, 'manage_accounts')) return false;
     if (Number(account.id) === Number(actor.id)) return false;
+    if (accountHasCreatorRole(account)) return false;
     if (actor.role === 'creator') return true;
     return accountMaxRoleLevel(account) < accountRoleLevel('director');
 }
 
 function accountOffboardingBlockReason(actor, account = {}) {
     if (Number(account.id) === Number(actor?.id)) return 'current_user';
+    if (accountHasCreatorRole(account)) return 'protected_role';
     if (!canUseAction(actor, 'manage_accounts')) return 'requires_manage_accounts';
     if (!actorCanDisableOffboardingAccount(actor, account)) return 'protected_role';
     return null;
@@ -1239,55 +1251,30 @@ function todayKyiv() {
 }
 
 function activeNonBlacklistedStaffWhere(alias = 's') {
-    return `COALESCE(${alias}.is_active, true) = true
-        AND COALESCE(${alias}.hr_pool_status, 'core') <> 'blacklisted'`;
+    return activeStaffWhere(alias, {
+        poolMode: 'not_blacklisted',
+        includeFreelance: true
+    });
 }
 
 function operationalStaffWhere(alias = 's') {
-    return `${activeNonBlacklistedStaffWhere(alias)}
-        AND COALESCE(${alias}.is_freelance, false) = false`;
+    return scheduleableStaffWhere(alias);
 }
 
-function operationalStaffForDateWhere(alias = 's', shiftAlias = 'hs', recordAlias = 'tr') {
-    return `${operationalStaffWhere(alias)}
-        AND (
-            COALESCE(${alias}.hr_pool_status, 'core') <> 'reserve'
-            OR ${shiftAlias}.id IS NOT NULL
-            OR ${recordAlias}.id IS NOT NULL
-        )`;
+function operationalStaffForDateWhere(alias = 's', dateExpression = 'CURRENT_DATE') {
+    return scheduleableStaffWhere(alias, { dateExpression });
 }
 
-async function cleanupFutureStaffOperationalSchedule(db, staffId, fromDate = todayKyiv()) {
-    const id = Number(staffId);
-    const safeFrom = cleanStaffDate(fromDate) || todayKyiv();
-    if (!Number.isFinite(id) || id <= 0) return { hr_shifts: 0, staff_schedule: 0, from_date: safeFrom };
-    const shifts = await db.query(
-        `DELETE FROM hr_shifts hs
-         WHERE hs.staff_id = $1
-           AND hs.shift_date >= $2::date
-           AND NOT EXISTS (
-                SELECT 1 FROM hr_time_records tr
-                WHERE tr.staff_id = hs.staff_id
-                  AND tr.record_date = hs.shift_date
-           )`,
-        [id, safeFrom]
-    );
-    const schedule = await db.query(
-        `DELETE FROM staff_schedule ss
-         WHERE ss.staff_id = $1
-           AND LEFT(ss.date::text, 10) >= $2
-           AND NOT EXISTS (
-                SELECT 1 FROM hr_time_records tr
-                WHERE tr.staff_id = ss.staff_id
-                  AND tr.record_date::text = LEFT(ss.date::text, 10)
-           )`,
-        [id, safeFrom]
-    );
-    return {
-        hr_shifts: shifts.rowCount || 0,
-        staff_schedule: schedule.rowCount || 0,
-        from_date: safeFrom
-    };
+async function rejectUnscheduleableStaff(res, client, validation, extra = {}) {
+    await client.query('ROLLBACK').catch(() => {});
+    return res.status(validation.status || 400).json(scheduleableStaffErrorPayload(validation, extra));
+}
+
+async function validateShiftWriteStaff(client, staffId, date, options = {}) {
+    return validateStaffScheduleableForDate(client, staffId, date, {
+        ...options,
+        forUpdate: options.forUpdate !== false
+    });
 }
 
 // Helper: get current Kyiv time as Date object
@@ -1830,11 +1817,11 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    (($1 || '-01')::date + INTERVAL '1 month - 1 day')::date AS date_to
         ),
         active_staff AS (
-            SELECT id, name, department, role_type, color, photo_url,
-                   COALESCE(avg_rating, 0)::numeric AS avg_rating,
-                   COALESCE(total_ratings, 0)::int AS total_ratings
-            FROM staff
-            WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)
+            SELECT s.id, s.name, s.department, s.role_type, s.color, s.photo_url,
+                   COALESCE(s.avg_rating, 0)::numeric AS avg_rating,
+                   COALESCE(s.total_ratings, 0)::int AS total_ratings
+            FROM staff s
+            WHERE ${scheduleableStaffWhere('s')}
         ),
         shift_stats AS (
             SELECT hs.staff_id, COUNT(*)::int AS days_scheduled
@@ -2041,6 +2028,8 @@ function buildStaffProfileChanges(before = {}, after = {}, fields = []) {
 async function mirrorHrShiftToStaffSchedule(shift, db = pool) {
     const date = toDateOnly(shift?.shift_date);
     if (!shift?.staff_id || !date) return;
+    const validation = await validateStaffScheduleableForDate(db, shift.staff_id, date, { forUpdate: false });
+    if (!validation.ok) return;
     await db.query(
         `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note, profession_key)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -2102,7 +2091,7 @@ async function backfillHrShiftsFromStaffSchedule(dateFrom, dateTo, db = pool) {
            AND LEFT(ss.date::text, 10) ~ '^\\d{4}-\\d{2}-\\d{2}$'
            AND LEFT(ss.shift_start::text, 5) ~ '^\\d{2}:\\d{2}$'
            AND LEFT(ss.shift_end::text, 5) ~ '^\\d{2}:\\d{2}$'
-           AND COALESCE(s.is_active, true) = true
+           AND ${scheduleableStaffWhere('s', { dateExpression: "LEFT(ss.date::text, 10)" })}
            AND hs.id IS NULL
          ON CONFLICT (staff_id, shift_date) DO NOTHING`,
         [dateFrom, dateTo]
@@ -2245,15 +2234,22 @@ router.get('/staff', async (req, res) => {
         const params = [];
         const conds = [];
         if (active !== undefined) {
-            params.push(active === 'true');
-            conds.push(`is_active = $${params.length}`);
+            const activeRequested = active === 'true';
+            if (activeRequested) {
+                conds.push(scheduleableStaffWhere('staff', {
+                    includeFreelance: include_freelance === 'true'
+                }));
+            } else {
+                params.push(false);
+                conds.push(`is_active = $${params.length}`);
+            }
         }
         if (role_type) {
             params.push(role_type);
             conds.push(`(role_type = $${params.length} OR COALESCE(secondary_professions, '[]'::jsonb) ? $${params.length})`);
         }
         // v39.8: hide freelance placeholder slots by default
-        if (include_freelance !== 'true') {
+        if (active !== 'true' && include_freelance !== 'true') {
             conds.push(`(is_freelance = false OR is_freelance IS NULL)`);
         }
         if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
@@ -2843,93 +2839,38 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
         );
         const scheduleCleanupFromDate = effectiveDate < todayKyiv() ? todayKyiv() : effectiveDate;
         const scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, scheduleCleanupFromDate);
-        let disabledAccounts = 0;
-        let disabledAccountRows = [];
-        if (accountAction === 'disable') {
-            const targetAccounts = await client.query(
-                `SELECT u.id, u.username, u.name, u.role, u.extra_roles, ep.id AS profile_id
-                 FROM employee_profiles ep
-                 JOIN users u ON u.id = ep.user_id
-                 WHERE ep.staff_id = $1
-                   AND COALESCE(ep.is_active, true) = true
-                   AND COALESCE(u.is_active, true) = true
-                 FOR UPDATE OF ep, u`,
-                [req.params.id]
-            );
-            const blocker = targetAccounts.rows.find(row => Number(row.id) === Number(req.user?.id) || accountHasCreatorRole(row));
-            if (blocker) {
-                await client.query('ROLLBACK');
-                return res.status(409).json({
-                    success: false,
-                    error: Number(blocker.id) === Number(req.user?.id)
-                        ? 'Не можна вимкнути власний CRM-акаунт через offboarding'
-                        : 'Creator-акаунт не можна вимкнути через HR offboarding',
-                    blocker: staffOffboardingAccountMeta(blocker, req.user?.id)
-                });
-            }
-            const userIds = targetAccounts.rows.map(row => Number(row.id)).filter(Number.isFinite);
-            if (userIds.length) {
-                const disabledUsers = await client.query(
-                    `UPDATE users
-                     SET is_active = false,
-                         session_revoked_at = NOW()
-                     WHERE id = ANY($1::int[])
-                     RETURNING id, username, name, role`,
-                    [userIds]
-                );
-                disabledAccountRows = disabledUsers.rows;
-                disabledAccounts = disabledUsers.rowCount || 0;
-                const disabledUserIds = disabledUsers.rows.map(row => Number(row.id)).filter(Number.isFinite);
-                if (disabledUserIds.length) {
-                    await client.query(
-                        `UPDATE employee_profiles
-                         SET is_active = false
-                         WHERE staff_id = $1 AND user_id = ANY($2::int[])`,
-                        [req.params.id, disabledUserIds]
-                    );
-                    await client.query(
-                        `UPDATE refresh_tokens
-                         SET revoked_at = NOW()
-                         WHERE user_id = ANY($1::int[]) AND revoked_at IS NULL`,
-                        [disabledUserIds]
-                    ).catch(err => log.warn(`HR offboarding token revoke skipped: ${err.message}`));
-                    for (const target of disabledUsers.rows) {
-                        await recordAccountSecurityEvent({
-                            actor: req.user,
-                            target,
-                            eventType: 'account_deactivated',
-                            reason: 'hr_offboarding',
-                            details: {
-                                staffId: Number(req.params.id),
-                                offboardingEventId: event.rows[0].id,
-                                sessionsRevoked: true
-                            },
-                            req,
-                            client
-                        });
-                    }
-                }
-            }
-        }
+        const accountDeactivation = await syncLinkedStaffAccountDeactivation(client, req.params.id, {
+            actor: req.user,
+            req,
+            reason: 'hr_offboarding',
+            source: 'hr_staff_offboarding',
+            canDisableAccount: account => accountAction === 'disable' && actorCanDisableOffboardingAccount(req.user, account),
+            blockReason: account => accountAction === 'disable' ? accountOffboardingBlockReason(req.user, account) : null,
+            accountMeta: account => staffOffboardingAccountMeta(account, req.user?.id),
+            eventDetails: { offboardingEventId: event.rows[0].id },
+            logger: log
+        });
         await client.query('COMMIT');
         await auditLog('staff_offboarding_complete', parseInt(req.params.id), req.user?.username, {
             event_id: event.rows[0].id,
             effective_date: effectiveDate,
             target_pool_status: targetPoolStatus,
             account_action: accountAction,
-            disabled_accounts: disabledAccounts,
-            disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean),
+            disabled_accounts: accountDeactivation.disabled_accounts,
+            disabled_account_usernames: accountDeactivation.disabled_account_usernames,
             open_resource_count: openResourceCount,
-            schedule_cleanup: scheduleCleanup
+            schedule_cleanup: scheduleCleanup,
+            account_deactivation: accountDeactivation
         }, req.ip);
         res.json({
             success: true,
             data: event.rows[0],
             staff: staffUpdate.rows[0],
             open_resource_count: openResourceCount,
-            disabled_accounts: disabledAccounts,
-            disabled_account_usernames: disabledAccountRows.map(row => row.username).filter(Boolean),
-            schedule_cleanup: scheduleCleanup
+            disabled_accounts: accountDeactivation.disabled_accounts,
+            disabled_account_usernames: accountDeactivation.disabled_account_usernames,
+            schedule_cleanup: scheduleCleanup,
+            account_deactivation: accountDeactivation
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -2973,6 +2914,10 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             hr_pool_status: hasBodyField('hr_pool_status'),
             blacklist_reason: hasBodyField('blacklist_reason')
         };
+        const requestedPoolStatus = fieldPresence.hr_pool_status ? cleanStaffText(hr_pool_status, 32) : null;
+        if (fieldPresence.hr_pool_status && !['core', 'reserve', 'blacklisted'].includes(requestedPoolStatus)) {
+            return res.status(400).json({ success: false, error: 'Невалідний статус пулу' });
+        }
         const beforeStaffResult = await pool.query(
             `SELECT id, name, phone, emergency_contact, emergency_phone, role_type,
                     COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions,
@@ -3064,12 +3009,12 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
             queueStaffUpdate('company_structure_node_id', normalizeCompanyStructureNodeRef(company_structure_node_id ?? req.body.companyStructureNodeId));
         }
         if (fieldPresence.hr_pool_status) {
-            queueStaffUpdate('hr_pool_status', textOrNull(hr_pool_status));
-            setClauses.push(hr_pool_status === 'blacklisted'
+            queueStaffUpdate('hr_pool_status', requestedPoolStatus);
+            setClauses.push(requestedPoolStatus === 'blacklisted'
                 ? 'blacklisted_at = COALESCE(blacklisted_at, NOW())'
                 : 'blacklisted_at = NULL');
         }
-        if (fieldPresence.hr_pool_status && hr_pool_status !== 'blacklisted') {
+        if (fieldPresence.hr_pool_status && requestedPoolStatus !== 'blacklisted') {
             setClauses.push('blacklist_reason = NULL');
         } else if (fieldPresence.blacklist_reason) {
             queueStaffUpdate('blacklist_reason', textOrNull(blacklist_reason));
@@ -3101,7 +3046,7 @@ router.put('/staff/:id', requireHrManage, async (req, res) => {
                 afterRateRows = await replaceStaffProfessionRates(client, req.params.id, normalizedProfessionRates);
                 result.rows[0].profession_rates = afterRateRows;
             }
-            if (fieldPresence.hr_pool_status && textOrNull(hr_pool_status) === 'blacklisted') {
+            if (fieldPresence.hr_pool_status && ['blacklisted', 'reserve'].includes(requestedPoolStatus)) {
                 scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, todayKyiv());
             }
             if (fieldPresence.role_type || hasSecondaryProfessions || hasProfessionRates) {
@@ -3244,6 +3189,22 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
                 [req.params.id]
             );
 
+        let scheduleCleanup = null;
+        let accountDeactivation = null;
+        if (!isActive) {
+            scheduleCleanup = await cleanupFutureStaffOperationalSchedule(client, req.params.id, todayKyiv());
+            accountDeactivation = await syncLinkedStaffAccountDeactivation(client, req.params.id, {
+                actor: req.user,
+                req,
+                reason: 'hr_staff_deactivation',
+                source: 'hr_staff_status',
+                canDisableAccount: account => actorCanDisableOffboardingAccount(req.user, account),
+                blockReason: account => accountOffboardingBlockReason(req.user, account),
+                accountMeta: account => staffOffboardingAccountMeta(account, req.user?.id),
+                logger: log
+            });
+        }
+
         let reactivatedAccounts = [];
         let accountReactivationBlockers = [];
         if (isActive) {
@@ -3311,7 +3272,9 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
             reactivated_accounts: reactivatedAccounts.length,
             reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean),
             account_reactivation_blocked: accountReactivationBlockers.length > 0,
-            account_reactivation_blockers: accountReactivationBlockers
+            account_reactivation_blockers: accountReactivationBlockers,
+            schedule_cleanup: scheduleCleanup,
+            account_deactivation: accountDeactivation
         }, req.ip);
         res.json({
             success: true,
@@ -3319,7 +3282,9 @@ router.put('/staff/:id/status', requireHrManage, async (req, res) => {
             reactivated_accounts: reactivatedAccounts.length,
             reactivated_account_usernames: reactivatedAccounts.map(row => row.username).filter(Boolean),
             account_reactivation_blocked: accountReactivationBlockers.length > 0,
-            account_reactivation_blockers: accountReactivationBlockers
+            account_reactivation_blockers: accountReactivationBlockers,
+            schedule_cleanup: scheduleCleanup,
+            account_deactivation: accountDeactivation
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -3372,7 +3337,7 @@ router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
-        const scheduleCleanup = status === 'blacklisted'
+        const scheduleCleanup = ['blacklisted', 'reserve'].includes(status)
             ? await cleanupFutureStaffOperationalSchedule(client, req.params.id, todayKyiv())
             : null;
         await client.query('COMMIT');
@@ -3549,7 +3514,8 @@ router.get('/shifts', async (req, res) => {
                     COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions
                     FROM hr_shifts hs
                     JOIN staff s ON s.id = hs.staff_id
-                    WHERE hs.shift_date >= $1 AND hs.shift_date <= $2`;
+                    WHERE hs.shift_date >= $1 AND hs.shift_date <= $2
+                      AND ${scheduleableStaffWhere('s', { dateExpression: 'hs.shift_date' })}`;
         const params = [dateFrom, dateTo];
 
         if (staff_id) {
@@ -3575,6 +3541,12 @@ router.post('/shifts', requireHrManage, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, shift_date, planned_start, planned_end' });
         }
         await client.query('BEGIN');
+        const shiftValidation = await validateShiftWriteStaff(client, staff_id, shift_date);
+        if (!shiftValidation.ok) {
+            return rejectUnscheduleableStaff(res, client, shiftValidation, {
+                entry: { staff_id, shift_date }
+            });
+        }
         const profession = await resolveHrShiftProfession(staff_id, req.body, client);
         if (!profession.ok) {
             await client.query('ROLLBACK');
@@ -3614,11 +3586,18 @@ router.put('/shifts/:id', requireHrManage, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Не знайдено' });
         }
+        const currentShift = current.rows[0];
+        const shiftValidation = await validateShiftWriteStaff(client, currentShift.staff_id, currentShift.shift_date);
+        if (!shiftValidation.ok) {
+            return rejectUnscheduleableStaff(res, client, shiftValidation, {
+                entry: { staff_id: currentShift.staff_id, shift_date: toDateOnly(currentShift.shift_date), shift_id: req.params.id }
+            });
+        }
         const hasProfessionField = Object.prototype.hasOwnProperty.call(req.body || {}, 'profession_key')
             || Object.prototype.hasOwnProperty.call(req.body || {}, 'professionKey');
         let professionKey = null;
         if (hasProfessionField || !current.rows[0].profession_key) {
-            const profession = await resolveHrShiftProfession(current.rows[0].staff_id, hasProfessionField ? req.body : {}, client);
+            const profession = await resolveHrShiftProfession(currentShift.staff_id, hasProfessionField ? req.body : {}, client);
             if (!profession.ok) {
                 await client.query('ROLLBACK');
                 return res.status(profession.status || 400).json({ success: false, error: profession.error });
@@ -3697,14 +3676,13 @@ router.post('/shifts/:id/replace', requireHrManage, async (req, res) => {
             return res.status(409).json({ success: false, error: 'Підміна на того самого співробітника не потрібна' });
         }
 
-        const replacement = await client.query(
-            `SELECT id, name
-             FROM staff
-             WHERE id = $1
-               AND COALESCE(is_active, true) = true
-               AND COALESCE(hr_pool_status, 'core') <> 'blacklisted'`,
-            [replacementStaffId]
-        );
+        const replacementValidation = await validateShiftWriteStaff(client, replacementStaffId, oldShift.shift_date);
+        if (!replacementValidation.ok) {
+            return rejectUnscheduleableStaff(res, client, replacementValidation, {
+                entry: { staff_id: replacementStaffId, shift_date: toDateOnly(oldShift.shift_date), shift_id: req.params.id }
+            });
+        }
+        const replacement = { rows: [replacementValidation.staff] };
         if (!replacement.rows.length) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'Підмінний співробітник неактивний або не існує' });
@@ -3790,12 +3768,18 @@ router.post('/shifts/bulk', requireHrManage, async (req, res) => {
         try {
             await client.query('BEGIN');
             for (const sid of staff_ids) {
-                const profession = await resolveHrShiftProfession(sid, req.body, client);
-                if (!profession.ok) {
-                    await client.query('ROLLBACK');
-                    return res.status(profession.status || 400).json({ success: false, error: profession.error, staff_id: sid });
-                }
                 for (const d of dates) {
+                    const shiftValidation = await validateShiftWriteStaff(client, sid, d);
+                    if (!shiftValidation.ok) {
+                        return rejectUnscheduleableStaff(res, client, shiftValidation, {
+                            entry: { staff_id: sid, shift_date: d }
+                        });
+                    }
+                    const profession = await resolveHrShiftProfession(sid, req.body, client);
+                    if (!profession.ok) {
+                        await client.query('ROLLBACK');
+                        return res.status(profession.status || 400).json({ success: false, error: profession.error, staff_id: sid, shift_date: d });
+                    }
                     const result = await client.query(
                         `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by, profession_key)
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -3848,7 +3832,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
             `SELECT hs.* FROM hr_shifts hs
              JOIN staff s ON s.id = hs.staff_id
              WHERE hs.shift_date >= $1 AND hs.shift_date <= $2
-               AND ${activeNonBlacklistedStaffWhere('s')}`,
+               AND ${scheduleableStaffWhere('s', { dateExpression: 'hs.shift_date' })}`,
             [srcDates[0], srcDates[6]]
         );
 
@@ -3860,6 +3844,13 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
                 const sourceDate = row.shift_date instanceof Date ? row.shift_date.toISOString().split('T')[0] : row.shift_date;
                 const dayIndex = srcDates.indexOf(sourceDate);
                 if (dayIndex === -1) continue;
+                const targetDate = tgtDates[dayIndex];
+                const shiftValidation = await validateShiftWriteStaff(client, row.staff_id, targetDate);
+                if (!shiftValidation.ok) {
+                    return rejectUnscheduleableStaff(res, client, shiftValidation, {
+                        entry: { staff_id: row.staff_id, shift_date: targetDate, sourceDate }
+                    });
+                }
                 const profession = await resolveHrShiftProfession(row.staff_id, { profession_key: row.profession_key }, client);
                 if (!profession.ok) {
                     await client.query('ROLLBACK');
@@ -3877,7 +3868,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
                         break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type,
                         profession_key = EXCLUDED.profession_key, updated_at = NOW()
                      RETURNING *`,
-                    [row.staff_id, tgtDates[dayIndex], row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username, profession.professionKey]
+                    [row.staff_id, targetDate, row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username, profession.professionKey]
                 );
                 await mirrorHrShiftToStaffSchedule(copied.rows[0], client);
                 count++;
@@ -3913,14 +3904,7 @@ router.get('/today', async (req, res) => {
                         AND EXTRACT(DAY FROM birth_date::date) = EXTRACT(DAY FROM $1::date)
                     ) AS is_birthday_today
              FROM staff
-             WHERE COALESCE(is_active, true) = true
-               AND COALESCE(is_freelance, false) = false
-               AND COALESCE(hr_pool_status, 'core') <> 'blacklisted'
-               AND (
-                    COALESCE(hr_pool_status, 'core') <> 'reserve'
-                    OR EXISTS (SELECT 1 FROM hr_shifts hs WHERE hs.staff_id = staff.id AND hs.shift_date = $1)
-                    OR EXISTS (SELECT 1 FROM hr_time_records tr WHERE tr.staff_id = staff.id AND tr.record_date = $1)
-               )
+             WHERE ${scheduleableStaffWhere('staff', { dateExpression: '$1' })}
              ORDER BY department, name`,
             [today]
         );
@@ -4246,7 +4230,7 @@ router.get('/report/monthly', async (req, res) => {
         const staffList = await pool.query(
             `SELECT id, name, role_type, hourly_rate, COALESCE(rate_unit, 'hour') AS rate_unit
              FROM staff
-             WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)
+             WHERE ${scheduleableStaffWhere('staff')}
              ORDER BY name`
         );
         const professionRateMap = await loadStaffProfessionRateMap(staffList.rows.map(st => st.id));
@@ -5220,7 +5204,7 @@ router.get('/availability', async (req, res) => {
             FROM staff s
             LEFT JOIN hr_shifts hs ON hs.staff_id = s.id AND hs.shift_date = $1
             LEFT JOIN hr_time_records tr ON tr.staff_id = s.id AND tr.record_date = $1
-            WHERE ${operationalStaffForDateWhere('s', 'hs', 'tr')}
+            WHERE ${operationalStaffForDateWhere('s', '$1')}
             ORDER BY
                 CASE COALESCE(s.availability_status, 'offline')
                     WHEN 'busy' THEN 1 WHEN 'online' THEN 2 WHEN 'break' THEN 3 ELSE 4
@@ -5306,8 +5290,7 @@ router.get('/shifts-summary', async (req, res) => {
             `SELECT id, name, display_name FROM staff
              WHERE display_name IS NOT NULL
                AND display_name != ''
-               AND is_active = true
-               AND COALESCE(hr_pool_status, 'core') <> 'blacklisted'`
+               AND ${scheduleableStaffWhere('staff')}`
         );
         if (!staffList.rowCount) return res.json({ success: true, summary: [], period: { from: dateFrom, to: dateTo } });
         const summary = [];

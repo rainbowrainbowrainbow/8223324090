@@ -4,6 +4,7 @@
 const { pool } = require('../db');
 const { normalizePinataFields, buildPinataServices } = require('./pinataMode');
 const { normalizeTimelineContext, DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
+const { scheduleableStaffWhere } = require('./staffOperationalFilters');
 
 // --- Validators ---
 
@@ -506,13 +507,13 @@ async function getScheduledAnimatorLines(date, db = pool) {
          FROM staff_schedule ss
          JOIN staff s ON s.id = ss.staff_id
          WHERE ss.date = $1
-           AND s.is_active = true
+           AND ${scheduleableStaffWhere('s', { dateExpression: 'ss.date' })}
            AND ss.status IN ('working', 'remote')
            AND (
                 s.role_type = 'animator'
                 OR LOWER(COALESCE(s.position, '')) LIKE '%animator%'
+                OR s.department = 'animators'
                 OR LOWER(COALESCE(s.position, '')) LIKE '%аніматор%'
-                OR (s.department = 'animators' AND COALESCE(s.is_freelance, false) = true)
            )
          ORDER BY COALESCE(ss.shift_start, '99:99'), s.name`,
         [date]

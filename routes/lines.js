@@ -26,6 +26,7 @@ const {
     timelineResourceLinesForMode,
     syncTimelineResourcesFromLines
 } = require('../services/timelineResources');
+const { scheduleableStaffWhere } = require('../services/staffOperationalFilters');
 
 const log = createLogger('Lines');
 
@@ -216,6 +217,7 @@ router.get('/:date', async (req, res) => {
                AND COALESCE(ss.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}')
                AND ss.status IN ('working', 'remote')
              WHERE l.date = $1 AND COALESCE(l.business_context, '${DEFAULT_TIMELINE_CONTEXT}') = $2
+               AND (s.id IS NULL OR ${scheduleableStaffWhere('s', { dateExpression: 'l.date' })})
              ORDER BY
                 CASE WHEN ss.staff_id IS NULL THEN 1 ELSE 0 END,
                 ss.shift_start NULLS LAST,

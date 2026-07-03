@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.116 - Timeline scrollbar cache refresh
+
+### Timeline rooms scrollbar cache-bust / (Клешня, 04.07.2026) [codex]
+- **Банкетний timeline отримав примусовий cache refresh** - asset `?v=` посилання переведено на `0.77.116`, щоб браузер не тримав старий `timeline.css` після фікса scrollbar flicker.
+- **Service Worker cache names оновлено** - `event-genix-v0.77.116` і `event-genix-api-v0.77.116` замінюють попередній cache bucket, тому старі App Shell assets мають бути витіснені.
+- **Фікс для `Банкети` + відкриті `Фільтри` доставляється як окремий release** - зміна підхоплює вже запушений CSS guard для стабільної висоти rooms timeline і постійних scroll rails.
+- **API, DB, migrations, auth/roles і deploy config не змінювались** - release обмежений version/cache refs і примусовим оновленням статичних assets.
+
+---
+
 ## v0.77.115 - Timeline compact blocks
 
 ### Timeline compact blocks / Afisha birthday markers / Cache refresh / (Клешня, 03.07.2026) [codex]

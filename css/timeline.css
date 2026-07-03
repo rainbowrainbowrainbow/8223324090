@@ -3846,6 +3846,12 @@ body.dragging-active {
     max-height: var(--timeline-shell-max-height);
 }
 
+body.timeline-dashboard-page.timeline-view-panel-open .timeline-container {
+    --timeline-shell-max-height: clamp(360px, calc(100vh - 336px), 62vh);
+    --timeline-shell-max-height: clamp(360px, calc(var(--eg-viewport-height, 100vh) - 336px), 62vh);
+    max-height: var(--timeline-shell-max-height);
+}
+
 .timeline-container.compact .timeline-scroll {
     padding: var(--timeline-scroll-pad, 8px);
 }
@@ -4060,6 +4066,11 @@ body.timeline-view-rooms .timeline-container.compact .booking-block.is-room-time
 
     .timeline-container.compact {
         --timeline-shell-max-height: clamp(400px, calc(var(--eg-viewport-height, 100dvh) - 190px), 76dvh);
+        max-height: var(--timeline-shell-max-height);
+    }
+
+    body.timeline-dashboard-page.timeline-view-panel-open .timeline-container {
+        --timeline-shell-max-height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 336px), 62dvh);
         max-height: var(--timeline-shell-max-height);
     }
 }

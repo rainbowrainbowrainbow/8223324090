@@ -182,7 +182,11 @@ function setTimelineViewPanelOpen(open, options = {}) {
     toggle.title = nextOpen ? 'Закрити фільтри таймлайну' : 'Відкрити фільтри таймлайну';
     toggle.setAttribute('aria-label', toggle.title);
     panel.closest('.schedule-command-center')?.classList.toggle('is-view-panel-open', nextOpen);
+    document.body?.classList?.toggle('timeline-view-panel-open', nextOpen);
     syncTimelineViewPanelBadge();
+    if (typeof scheduleTimelineViewHeightSync === 'function') {
+        scheduleTimelineViewHeightSync(nextOpen ? 'view-panel-open' : 'view-panel-close');
+    }
 
     if (nextOpen && options.focusPanel) {
         const firstControl = panel.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');

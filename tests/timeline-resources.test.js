@@ -3425,6 +3425,7 @@ test('timeline browser smoke runner covers two-way banquet bridge regressions', 
 
 test('room-to-animator timeline view switch reconciles vertical shell height', () => {
     const timeline = read('js/timeline.js');
+    const app = read('js/app.js');
     const ui = read('js/ui.js');
     const css = read('css/timeline.css');
     const responsive = read('css/responsive.css');
@@ -3440,7 +3441,12 @@ test('room-to-animator timeline view switch reconciles vertical shell height', (
     assert.match(ui, /--timeline-content-height/);
     assert.match(timeline, /resetTimelineVerticalScroll\('view-switch-before-render'\)/);
     assert.match(timeline, /scheduleTimelineViewHeightSync\('render-complete'\)/);
+    assert.match(app, /document\.body\?\.classList\?\.toggle\('timeline-view-panel-open', nextOpen\)/);
+    assert.match(app, /scheduleTimelineViewHeightSync\(nextOpen \? 'view-panel-open' : 'view-panel-close'\)/);
     assert.match(css, /body\.timeline-view-animators \.timeline-container\[data-timeline-height-ready="true"\]/);
+    assert.match(css, /body\.timeline-dashboard-page\.timeline-view-panel-open \.timeline-container/);
+    assert.match(css, /--timeline-shell-max-height: clamp\(360px, calc\(var\(--eg-viewport-height, 100vh\) - 336px\), 62vh\)/);
+    assert.match(css, /--timeline-shell-max-height: clamp\(360px, calc\(var\(--eg-viewport-height, 100dvh\) - 336px\), 62dvh\)/);
     assert.match(css, /max-height: min\(var\(--timeline-content-height\), var\(--timeline-shell-max-height\)\)/);
     assert.match(responsive, /body\.timeline-dashboard-page\.timeline-view-animators \.timeline-container\[data-timeline-height-ready="true"\]/);
     assert.match(responsive, /v0\.73\.80: iPhone 11\/Safari needs a definite container height/);

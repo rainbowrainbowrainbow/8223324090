@@ -2551,7 +2551,11 @@ function initTimelineResponsiveResize() {
     if (window.__timelineResponsiveResizeBound) return;
     window.__timelineResponsiveResizeBound = true;
     let resizeTimer = null;
+    let lastViewportSignature = '';
     const handleResize = () => {
+        const viewportSignature = `${_timelineViewportWidth()}x${_timelineViewportHeight()}`;
+        if (viewportSignature === lastViewportSignature) return;
+        lastViewportSignature = viewportSignature;
         syncTimelineViewportMetrics();
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {

@@ -71,7 +71,8 @@ function createPoolFixture({
         async query(text, params = []) {
             queries.push({ text: String(text), params });
             const sql = String(text);
-            if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(sql.trim())) {
+            if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(sql.trim())
+                || /^SET LOCAL (lock_timeout|statement_timeout) = /i.test(sql.trim())) {
                 return { rows: [], rowCount: 0 };
             }
             if (/SELECT id, pipeline_stage, status\s+FROM leads/i.test(sql) && /FOR UPDATE/i.test(sql)) {
@@ -482,6 +483,8 @@ test('customer card stage still commits when customer_children storage is unavai
         assert.equal(res.data.customer.id, 8701);
         assert.equal(res.data.customerLinkMode, 'created_new');
 
+        assert.ok(queries.some(query => /^SET LOCAL lock_timeout = '2500ms'$/i.test(query.text)));
+        assert.ok(queries.some(query => /^SET LOCAL statement_timeout = '10000ms'$/i.test(query.text)));
         assert.ok(queries.some(query => /^SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^ROLLBACK TO SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^RELEASE SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
@@ -509,6 +512,8 @@ test('customer card stage still commits when customer_children customer FK is st
         assert.equal(res.data.customer.id, 8701);
         assert.equal(res.data.customerLinkMode, 'created_new');
 
+        assert.ok(queries.some(query => /^SET LOCAL lock_timeout = '2500ms'$/i.test(query.text)));
+        assert.ok(queries.some(query => /^SET LOCAL statement_timeout = '10000ms'$/i.test(query.text)));
         assert.ok(queries.some(query => /^SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^ROLLBACK TO SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
         assert.ok(queries.some(query => /^RELEASE SAVEPOINT lead_customer_child_sync$/i.test(query.text)));

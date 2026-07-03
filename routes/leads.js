@@ -317,6 +317,11 @@ async function persistLeadKanbanOrder(queryable, { businessContext, stage, order
     );
 }
 
+async function applyLeadPatchTransactionGuards(queryable) {
+    await queryable.query(`SET LOCAL lock_timeout = '2500ms'`);
+    await queryable.query(`SET LOCAL statement_timeout = '10000ms'`);
+}
+
 async function ensureAssignableUser(userId) {
     if (userId === null) return true;
     const result = await pool.query(
@@ -2221,7 +2226,10 @@ router.patch('/:id', async (req, res) => {
         const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureCustomerCard;
         const updateClient = shouldEnsureCustomerCard || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
         try {
-            if (updateClient) await updateClient.query('BEGIN');
+            if (updateClient) {
+                await updateClient.query('BEGIN');
+                await applyLeadPatchTransactionGuards(updateClient);
+            }
             const queryable = updateClient || pool;
             if (stageStatus.stageProvided) {
                 const previousResult = await queryable.query(

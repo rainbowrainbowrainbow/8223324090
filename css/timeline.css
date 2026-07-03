@@ -3852,6 +3852,17 @@ body.timeline-dashboard-page.timeline-view-panel-open .timeline-container {
     max-height: var(--timeline-shell-max-height);
 }
 
+body.timeline-dashboard-page.timeline-view-rooms.timeline-view-panel-open .timeline-container {
+    height: var(--timeline-shell-max-height);
+    max-height: var(--timeline-shell-max-height);
+}
+
+body.timeline-dashboard-page.timeline-view-rooms.timeline-view-panel-open .timeline-scroll {
+    overflow-x: scroll;
+    overflow-y: scroll;
+    scrollbar-gutter: stable both-edges;
+}
+
 .timeline-container.compact .timeline-scroll {
     padding: var(--timeline-scroll-pad, 8px);
 }
@@ -4071,6 +4082,11 @@ body.timeline-view-rooms .timeline-container.compact .booking-block.is-room-time
 
     body.timeline-dashboard-page.timeline-view-panel-open .timeline-container {
         --timeline-shell-max-height: clamp(360px, calc(var(--eg-viewport-height, 100dvh) - 336px), 62dvh);
+        max-height: var(--timeline-shell-max-height);
+    }
+
+    body.timeline-dashboard-page.timeline-view-rooms.timeline-view-panel-open .timeline-container {
+        height: var(--timeline-shell-max-height);
         max-height: var(--timeline-shell-max-height);
     }
 }

@@ -3447,6 +3447,8 @@ test('room-to-animator timeline view switch reconciles vertical shell height', (
     assert.match(css, /body\.timeline-dashboard-page\.timeline-view-panel-open \.timeline-container/);
     assert.match(css, /--timeline-shell-max-height: clamp\(360px, calc\(var\(--eg-viewport-height, 100vh\) - 336px\), 62vh\)/);
     assert.match(css, /--timeline-shell-max-height: clamp\(360px, calc\(var\(--eg-viewport-height, 100dvh\) - 336px\), 62dvh\)/);
+    assert.match(css, /body\.timeline-dashboard-page\.timeline-view-rooms\.timeline-view-panel-open \.timeline-container\s*\{[\s\S]*height:\s*var\(--timeline-shell-max-height\);[\s\S]*max-height:\s*var\(--timeline-shell-max-height\);/);
+    assert.match(css, /body\.timeline-dashboard-page\.timeline-view-rooms\.timeline-view-panel-open \.timeline-scroll\s*\{[\s\S]*overflow-x:\s*scroll;[\s\S]*overflow-y:\s*scroll;[\s\S]*scrollbar-gutter:\s*stable both-edges;/);
     assert.match(css, /max-height: min\(var\(--timeline-content-height\), var\(--timeline-shell-max-height\)\)/);
     assert.match(responsive, /body\.timeline-dashboard-page\.timeline-view-animators \.timeline-container\[data-timeline-height-ready="true"\]/);
     assert.match(responsive, /v0\.73\.80: iPhone 11\/Safari needs a definite container height/);

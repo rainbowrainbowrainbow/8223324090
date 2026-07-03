@@ -54,7 +54,8 @@ const {
     validateChildBirthday,
     replaceCustomerChildren,
     buildCustomerChildrenProjection,
-    buildLegacyChildSnapshot
+    buildLegacyChildSnapshot,
+    isCustomerChildrenStorageMissing
 } = require('../services/customerChildren');
 
 function getKleshnya() { return require('../services/kleshnya'); }
@@ -1295,49 +1296,85 @@ async function syncLeadCelebrantsToCustomerChildren(queryable, lead = {}, custom
     const legacyChildSnapshot = buildLegacyChildSnapshot(children, {
         childName: leadCustomerChildName(lead)
     });
-    const savedChildren = await replaceCustomerChildren(
-        customerId,
-        children,
-        normalizedBusinessContext,
-        {
-            sourceKind: 'lead_celebrant',
-            source: 'leads.celebrants',
-            copyRule: rawCelebrants.length ? 'explicit_lead_celebrants' : 'legacy_lead_child_fields',
-            sourceLeadId: leadId,
-            sortOrderBase: 10,
-            sourcePayload: {
-                source_table: 'leads',
-                source_lead_id: leadId,
-                source_customer_id: customerId,
-                lead_celebrants: rawCelebrants,
-                children_count: lead.children_count ?? null,
-                child_age: lead.child_age ?? null,
-                original_lead_child_name_snapshot: legacyChildSnapshot.childName
-            }
-        },
-        { client: queryable }
-    );
+    const syncSource = {
+        sourceKind: 'lead_celebrant',
+        source: 'leads.celebrants',
+        copyRule: rawCelebrants.length ? 'explicit_lead_celebrants' : 'legacy_lead_child_fields',
+        sourceLeadId: leadId,
+        sortOrderBase: 10,
+        sourcePayload: {
+            source_table: 'leads',
+            source_lead_id: leadId,
+            source_customer_id: customerId,
+            lead_celebrants: rawCelebrants,
+            children_count: lead.children_count ?? null,
+            child_age: lead.child_age ?? null,
+            original_lead_child_name_snapshot: legacyChildSnapshot.childName
+        }
+    };
 
-    const firstChildName = legacyChildSnapshot.childName;
-    const updated = await queryable.query(
-        `UPDATE customers
-         SET child_name = CASE
-                 WHEN lead_id = $4 THEN $1
-                 WHEN NULLIF(child_name, '') IS NULL THEN $1
-                 ELSE child_name
-             END,
-             updated_at = CASE
-                 WHEN lead_id = $4 OR NULLIF(child_name, '') IS NULL THEN NOW()
-                 ELSE updated_at
-             END
-         WHERE id = $2
-           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
-         RETURNING *`,
-        [firstChildName || null, customerId, normalizedBusinessContext, leadId]
-    );
-    const nextCustomer = updated.rows[0] || customer;
-    nextCustomer.children = buildCustomerChildrenProjection(nextCustomer, savedChildren);
-    return { customer: nextCustomer, children: savedChildren };
+    const runSync = async () => {
+        const savedChildren = await replaceCustomerChildren(
+            customerId,
+            children,
+            normalizedBusinessContext,
+            syncSource,
+            { client: queryable }
+        );
+
+        const firstChildName = legacyChildSnapshot.childName;
+        const updated = await queryable.query(
+            `UPDATE customers
+             SET child_name = CASE
+                     WHEN lead_id = $4 THEN $1
+                     WHEN NULLIF(child_name, '') IS NULL THEN $1
+                     ELSE child_name
+                 END,
+                 updated_at = CASE
+                     WHEN lead_id = $4 OR NULLIF(child_name, '') IS NULL THEN NOW()
+                     ELSE updated_at
+                 END
+             WHERE id = $2
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
+             RETURNING *`,
+            [firstChildName || null, customerId, normalizedBusinessContext, leadId]
+        );
+        const nextCustomer = updated.rows[0] || customer;
+        nextCustomer.children = buildCustomerChildrenProjection(nextCustomer, savedChildren);
+        return { customer: nextCustomer, children: savedChildren };
+    };
+
+    if (queryable === pool) {
+        try {
+            return await runSync();
+        } catch (err) {
+            if (!isCustomerChildrenStorageMissing(err)) throw err;
+            log.warn('Lead customer child sync skipped because customer_children storage is unavailable', {
+                leadId,
+                customerId,
+                error: err.message
+            });
+            return { customer, children: [], skipped: true, reason: 'customer_children_storage_missing' };
+        }
+    }
+
+    const savepoint = 'lead_customer_child_sync';
+    await queryable.query(`SAVEPOINT ${savepoint}`);
+    try {
+        const result = await runSync();
+        await queryable.query(`RELEASE SAVEPOINT ${savepoint}`);
+        return result;
+    } catch (err) {
+        await queryable.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => {});
+        await queryable.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => {});
+        if (!isCustomerChildrenStorageMissing(err)) throw err;
+        log.warn('Lead customer child sync skipped because customer_children storage is unavailable', {
+            leadId,
+            customerId,
+            error: err.message
+        });
+        return { customer, children: [], skipped: true, reason: 'customer_children_storage_missing' };
+    }
 }
 
 function buildLeadCustomerNotes(lead = {}) {

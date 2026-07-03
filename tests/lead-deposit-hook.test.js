@@ -52,6 +52,7 @@ function createPoolFixture({
     depositTaskId = null,
     foreignCustomerCandidate = null,
     initialCustomerChildren = [],
+    customerChildrenStorageMissing = false,
     leadOverrides = {}
 } = {}) {
     const queries = [];
@@ -69,7 +70,9 @@ function createPoolFixture({
         async query(text, params = []) {
             queries.push({ text: String(text), params });
             const sql = String(text);
-            if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(sql.trim())) return { rows: [], rowCount: 0 };
+            if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(sql.trim())) {
+                return { rows: [], rowCount: 0 };
+            }
             if (/SELECT id, pipeline_stage, status\s+FROM leads/i.test(sql) && /FOR UPDATE/i.test(sql)) {
                 return {
                     rows: [{
@@ -137,6 +140,11 @@ function createPoolFixture({
                 };
             }
             if (/DELETE FROM customer_children[\s\S]*AND source_kind = \$3[\s\S]*AND lead_id = \$4/i.test(sql)) {
+                if (customerChildrenStorageMissing) {
+                    const err = new Error('relation "customer_children" does not exist');
+                    err.code = '42P01';
+                    throw err;
+                }
                 state.customerChildren = state.customerChildren.filter(row =>
                     !(Number(row.customer_id) === Number(params[0])
                         && row.business_context === params[1]
@@ -146,6 +154,11 @@ function createPoolFixture({
                 return { rows: [], rowCount: 0 };
             }
             if (/INSERT INTO customer_children/i.test(sql)) {
+                if (customerChildrenStorageMissing) {
+                    const err = new Error('relation "customer_children" does not exist');
+                    err.code = '42P01';
+                    throw err;
+                }
                 state.customerChildren.push({
                     id: 12000 + state.customerChildren.length,
                     business_context: params[0],
@@ -165,6 +178,11 @@ function createPoolFixture({
                 return { rows: [], rowCount: 1 };
             }
             if (/FROM customer_children/i.test(sql)) {
+                if (customerChildrenStorageMissing) {
+                    const err = new Error('relation "customer_children" does not exist');
+                    err.code = '42P01';
+                    throw err;
+                }
                 return {
                     rows: state.customerChildren.filter(row =>
                         Number(row.customer_id) === Number(params[0])
@@ -437,6 +455,33 @@ test('customer card creation syncs lead celebrants without replacing manual chil
         assert.equal(syncedChild.source_kind, 'lead_celebrant');
         assert.equal(syncedChild.lead_id, 501);
         assert.equal(syncedChild.source_payload.source_lead_id, 501);
+    });
+});
+
+test('customer card stage still commits when customer_children storage is unavailable', async () => {
+    await withLeadApp({
+        oldStage: 'info_sent',
+        customerChildrenStorageMissing: true,
+        leadOverrides: {
+            pipeline_stage: 'info_sent',
+            status: 'contact',
+            celebrants: [{ name: 'Lead Child', birthday: '2019-01-02' }]
+        }
+    }, async ({ request, state, queries }) => {
+        const res = await request({ pipeline_stage: 'deal' });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.pipeline_stage, 'deal');
+        assert.equal(res.data.customer.id, 8701);
+        assert.equal(res.data.customerLinkMode, 'created_new');
+
+        assert.ok(queries.some(query => /^SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
+        assert.ok(queries.some(query => /^ROLLBACK TO SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
+        assert.ok(queries.some(query => /^RELEASE SAVEPOINT lead_customer_child_sync$/i.test(query.text)));
+        assert.ok(queries.some(query => /^COMMIT$/i.test(query.text)));
+        assert.ok(!queries.some(query => /^ROLLBACK$/i.test(query.text)));
+        assert.equal(state.lead.pipeline_stage, 'deal');
+        assert.deepEqual(state.customerChildren, []);
     });
 });
 

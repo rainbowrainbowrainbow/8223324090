@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.114 - Фото меню Hermes
+
+### Hermes menu-photo / Margherita fallback removal / Card ratio / (Клешня, 03.07.2026) [codex]
+- **Картки меню підготовлено під Hermes-фото `1536x1024`** - каталог кухні більше не стискає нові фото у надширокий банер і використовує ratio `3:2`.
+- **Стару Маргариту прибрано з manifest fallback** - `MENU-031` / `menu_2026_031_item` більше не мапиться на `images/kitchen-menu/products/menu-031.jpg`.
+- **Активне джерело фото зафіксовано в документації та тестах** - flow лишається `products.icon_url` -> API `iconUrl/icon_url` -> booking/program UI.
+- **Broken/missing image не підсовує legacy static фото** - UI має показувати emoji/missing state, якщо active upload відсутній або битий.
+- **Додано helper для контрольованого apply** - `scripts/prepare-margarita-menu-image-payload.js` валідує правильний JPG `1536x1024` і готує payload для existing `external-draft` flow без прямого DB write.
+- **Regression guards оновлено** - тести фіксують відсутність `menu-031.jpg` у manifest для Маргарити, ratio `3:2` і no-fallback контракт.
+- **Cache tags оновлено до `0.77.114`** - HTML, CSS, JS, Service Worker cache names і asset `?v=` посилання синхронізовані для menu-photo release.
+
+---
+
 ## v0.77.113 - Стабільність Kanban лідів
 
 ### Kanban write stability / Optimistic locking / Live smoke / (Клешня, 03.07.2026) [codex]

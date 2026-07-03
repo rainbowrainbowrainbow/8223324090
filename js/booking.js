@@ -10336,6 +10336,32 @@ async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot 
     }
 }
 
+function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '') {
+    try {
+        return renderFn();
+    } catch (err) {
+        console.warn('[booking] Optional booking detail section failed', {
+            section,
+            bookingId: bookingDetailId(booking) || null,
+            error: err?.message || String(err || '')
+        });
+        return fallback;
+    }
+}
+
+async function bookingDetailSafeResolve(section, booking = {}, resolveFn, fallback = '') {
+    try {
+        return await resolveFn();
+    } catch (err) {
+        console.warn('[booking] Optional booking detail section failed', {
+            section,
+            bookingId: bookingDetailId(booking) || null,
+            error: err?.message || String(err || '')
+        });
+        return fallback;
+    }
+}
+
 async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
     const currentDateBookings = await getBookingsForDate(AppState.selectedDate);
     const bookings = Array.isArray(currentDateBookings) ? currentDateBookings : [];
@@ -10454,7 +10480,7 @@ async function showBookingDetails(bookingId, options = {}) {
     const isActivityDetailBooking = bookingDetailIsActivityWithRoomContext(booking);
     const lineRoleLabel = isEducationBooking ? 'Кабінет' : (isActivityDetailBooking ? 'Аніматори' : 'Аніматор');
     const lineDetailValue = isActivityDetailBooking
-        ? await resolveBookingDetailAnimatorDisplay(booking)
+        ? await bookingDetailSafeResolve('animator-display', booking, () => resolveBookingDetailAnimatorDisplay(booking), 'Не вказано')
         : (line ? line.name : '-');
     const descriptionHtml = program && program.description
         ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
@@ -10462,7 +10488,7 @@ async function showBookingDetails(bookingId, options = {}) {
 
     // B2: Per-event invite URL with booking details
     const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';
-    const inviteModel = window.InviteShare?.buildBookingDetailsInviteModel?.({
+    const inviteModel = bookingDetailSafeRender('invite-model', booking, () => window.InviteShare?.buildBookingDetailsInviteModel?.({
         booking,
         eventCardRecord: bookingEventCardRecord,
         endTimeLabel: inviteEndTimeLabel
@@ -10470,7 +10496,11 @@ async function showBookingDetails(bookingId, options = {}) {
         booking,
         eventCardRecord: bookingEventCardRecord,
         endTimeLabel: inviteEndTimeLabel
-    });
+    }), buildBookingDetailsInviteModelFallback({
+        booking,
+        eventCardRecord: bookingEventCardRecord,
+        endTimeLabel: inviteEndTimeLabel
+    }));
     const invitePayload = inviteModel.payload;
     const invitePreviewChips = Array.isArray(inviteModel.previewChips) && inviteModel.previewChips.length
         ? inviteModel.previewChips
@@ -10524,7 +10554,7 @@ async function showBookingDetails(bookingId, options = {}) {
             console.warn('Banquet detail snapshot unavailable:', err);
         }
     }
-    const summaryPreviewHref = bookingSummaryPreviewUrl(booking, banquetSnapshot);
+    const summaryPreviewHref = bookingDetailSafeRender('summary-preview-url', booking, () => bookingSummaryPreviewUrl(booking, banquetSnapshot), `/booking-summary.html?id=${encodeURIComponent(String(booking.id || ''))}`);
     const secondaryActionHtml = [
         `<button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="booking-detail-secondary-action">Повторити</button>`,
         `<button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="booking-detail-secondary-action">Повторюване</button>`,
@@ -10604,15 +10634,15 @@ async function showBookingDetails(bookingId, options = {}) {
     `;
     const animationExtrasHtml = roomFirstServiceBooking ? '' : `
         ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
-        ${renderPinataDetailRows(booking)}
+        ${bookingDetailSafeRender('pinata-detail-rows', booking, () => renderPinataDetailRows(booking))}
     `;
-    const fullBanquetDetailHtml = renderFullBanquetDetail(booking, bookings, banquetSnapshot);
-    const hasBanquetOverview = Boolean(fullBanquetDetailHtml.trim());
-    const headerPackageBooking = bookingDetailHeaderPackageBooking(booking, banquetSnapshot);
-    const headerScheduleHtml = bookingDetailHeaderScheduleSummary(headerPackageBooking);
-    const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())
-        && bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml);
-    const isBanquetArrivalMode = bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml);
+    const fullBanquetDetailHtml = bookingDetailSafeRender('full-banquet-detail', booking, () => renderFullBanquetDetail(booking, bookings, banquetSnapshot));
+    const hasBanquetOverview = Boolean(String(fullBanquetDetailHtml || '').trim());
+    const headerPackageBooking = bookingDetailSafeRender('banquet-header-package', booking, () => bookingDetailHeaderPackageBooking(booking, banquetSnapshot), booking);
+    const headerScheduleHtml = bookingDetailSafeRender('banquet-header-schedule', booking, () => bookingDetailHeaderScheduleSummary(headerPackageBooking));
+    const useBanquetHeaderSchedule = Boolean(String(headerScheduleHtml || '').trim())
+        && bookingDetailSafeRender('banquet-header-mode', booking, () => bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml), false);
+    const isBanquetArrivalMode = bookingDetailSafeRender('banquet-arrival-mode', booking, () => bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml), false);
     const isActivityDetailMode = isActivityDetailBooking;
     const headerTimeMetaHtml = useBanquetHeaderSchedule
         || isBanquetArrivalMode
@@ -10626,7 +10656,11 @@ async function showBookingDetails(bookingId, options = {}) {
         : '';
     const priorityCustomerBlockHtml = hasBanquetOverview ? customerBlockHtml : '';
     const standardCustomerBlockHtml = hasBanquetOverview ? '' : customerBlockHtml;
-    const packageDetailHtml = hasBanquetOverview ? '' : renderBookingPackageDetail(booking);
+    const packageDetailHtml = hasBanquetOverview ? '' : bookingDetailSafeRender('package-detail', booking, () => renderBookingPackageDetail(booking));
+    const eventCardImageHtml = bookingDetailSafeRender('event-card-image', booking, () => window.EventCards.renderEventCardImage(bookingEventCardRecord, { modifier: 'booking' }));
+    const educationDetailHtml = bookingDetailSafeRender('education-detail', booking, () => renderEducationLessonDetail(booking));
+    const workspaceDetailHtml = bookingDetailSafeRender('workspace-detail', booking, () => renderBookingWorkspaceDetail(booking));
+    const commentDetailHtml = bookingDetailSafeRender('comment-detail', booking, () => renderBookingCommentDetailRow(booking));
 
     document.getElementById('bookingDetails').innerHTML = `
         <div class="booking-detail-header booking-detail-header--compact">
@@ -10643,7 +10677,7 @@ async function showBookingDetails(bookingId, options = {}) {
                 </div>
             </div>
         </div>
-        ${window.EventCards.renderEventCardImage(bookingEventCardRecord, { modifier: 'booking' })}
+        ${eventCardImageHtml}
         ${priorityCustomerBlockHtml}
         <div class="booking-detail-row">
             <span class="label">${escapeHtml(bookingDetailDateLabel)}:</span>
@@ -10656,8 +10690,8 @@ async function showBookingDetails(bookingId, options = {}) {
         ${lineDetailHtml}
         ${hostsDetailHtml}
         ${animationExtrasHtml}
-        ${renderEducationLessonDetail(booking)}
-        ${renderBookingWorkspaceDetail(booking)}
+        ${educationDetailHtml}
+        ${workspaceDetailHtml}
         ${packageDetailHtml}
         ${bookingChildrenCount ? `<div class="booking-detail-row"><span class="label">${isEducationBooking ? 'Учнів' : 'Дітей'}:</span><span class="value">${escapeHtml(String(bookingChildrenCount))}</span></div>` : ''}
         ${booking.banquetAdults ? `<div class="booking-detail-row"><span class="label">Дорослих:</span><span class="value">${escapeHtml(String(booking.banquetAdults))}</span></div>` : ''}
@@ -10665,7 +10699,7 @@ async function showBookingDetails(bookingId, options = {}) {
             <span class="label">Статус:</span>
             <span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>
         </div>
-        ${renderBookingCommentDetailRow(booking)}
+        ${commentDetailHtml}
         ${booking.groupName ? `<div class="booking-detail-row"><span class="label">Група:</span><span class="value">${escapeHtml(booking.groupName)}</span></div>` : ''}
         ${fullBanquetDetailHtml}
         ${standardCustomerBlockHtml}

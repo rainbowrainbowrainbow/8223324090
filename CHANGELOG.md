@@ -4,6 +4,19 @@
 
 ---
 
+## v0.77.110 - Захист відкриття основної активності
+
+### Booking details / Primary activity safe render / Timeline regression QA / (Клешня, 03.07.2026) [codex]
+- **Основна активність у таймлайні більше не блокується optional-рендерами** - `showBookingDetails(...)` відкриває стандартну картку навіть якщо банкетний overview, package, invite, event image або comment renderer кинув exception.
+- **`TL-BK-DETAIL-OK-OPEN-FAILED` для primary activity закрито на рівні canonical renderer** - успішний detail API більше не завершується жовтим toast тільки через падіння допоміжної секції.
+- **Проблемна допоміжна секція логиться без підміни UI** - frontend пише `[booking] Optional booking detail section failed` із section, bookingId і error, але не малює recovery-модалку і не змінює джерело правди для картки.
+- **Додано regression на primary activity зі snapshot** - тест симулює успішний detail API, банкетний snapshot і падіння `renderFullBanquetDetail`, після чого стандартна UA-картка відкривається без failure toast.
+- **Static guard оновлено під safe-render contract** - `test:ui` тепер вимагає захищені виклики для invite model, banquet header, full banquet detail і comment detail.
+- **Cache tags оновлено до `0.77.110`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані, щоб продакшн підтягнув новий `js/booking.js`.
+- **БД, migrations, auth/roles, env, secrets і Railway config не змінювались** - реліз обмежений frontend detail rendering, тестами, release markers і changelog.
+
+---
+
 ## v0.77.109 - Захист канонічної картки таймлайну
 
 ### Timeline canonical details / Recovery rollback / Source-of-truth guard / Regression QA / (Клешня, 03.07.2026) [codex]

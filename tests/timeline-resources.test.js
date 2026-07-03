@@ -3188,6 +3188,40 @@ test('timeline block click opens the canonical booking.js details modal', async 
         apiGetBookingById: async id => id === detailBooking.id
             ? { success: true, booking: detailBooking }
             : { success: false, status: 404, error: 'Booking not found' },
+        apiGetBanquetByBooking: async id => id === detailBooking.id
+            ? {
+                success: true,
+                source: 'group',
+                groupId: 'BQ-CANONICAL-DETAIL',
+                group: {
+                    id: 'BQ-CANONICAL-DETAIL',
+                    groupName: 'Primary activity detail',
+                    date: detailBooking.date,
+                    room: detailBooking.room,
+                    status: 'active'
+                },
+                members: [
+                    { bookingId: detailBooking.id, role: 'primary', isPrimary: true, booking: detailBooking },
+                    {
+                        bookingId: 'BK-CANONICAL-DETAIL-HOST',
+                        role: 'activity',
+                        booking: {
+                            id: 'BK-CANONICAL-DETAIL-HOST',
+                            linkedTo: detailBooking.id,
+                            date: detailBooking.date,
+                            time: detailBooking.time,
+                            duration: detailBooking.duration,
+                            room: detailBooking.room,
+                            programName: 'Additional host',
+                            programCode: '+Host',
+                            label: '+Host(60)',
+                            status: 'confirmed'
+                        }
+                    }
+                ],
+                warnings: []
+            }
+            : { success: false, status: 404 },
         getLinesForDate: async () => [{ id: 'animator-1', name: 'Аніматор 1', color: '#2563eb' }],
         getAnimatorLinesForBookingDate: async () => [{ id: 'animator-1', name: 'Аніматор 1', color: '#2563eb' }],
         addMinutesToTime: (time, minutes) => {
@@ -3256,7 +3290,9 @@ test('timeline block click opens the canonical booking.js details modal', async 
         renderEventCardImage: record => `<img class="event-card-image event-card-image--booking" src="${context.escapeHtml(record.imageUrl)}" alt="${context.escapeHtml(record.title)}">`
     };
     context.window.BookingBanquetDetail = {
-        renderFullBanquetDetail: () => ''
+        renderFullBanquetDetail: () => {
+            throw new Error('primary banquet optional renderer failed');
+        }
     };
     context.window.InviteConfig = {};
     context.window.TimelineBusinessContext = {
@@ -3293,7 +3329,13 @@ test('timeline block click opens the canonical booking.js details modal', async 
     assert.match(detailsHtml, /Банкетний лист/);
     assert.match(detailsHtml, /Ще/);
     assert.doesNotMatch(detailsHtml, /Recovery після detail API|TL-BK-DETAIL-RECOVERY-OPENED|Режим відкриття/);
-    assert.deepEqual(warnings, []);
+    assert.equal(
+        warnings.some(args => args[0] === '[booking] Optional booking detail section failed'
+            && args[1]?.section === 'full-banquet-detail'
+            && args[1]?.bookingId === detailBooking.id),
+        true,
+        'optional banquet renderer failure is logged without blocking the canonical modal'
+    );
 });
 
 test('banquet delete flow invalidates snapshot-backed room preview caches', () => {

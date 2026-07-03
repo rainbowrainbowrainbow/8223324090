@@ -1582,7 +1582,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && !!doc.querySelector('#staffPulseNavItems.staff-pulse-nav-items[data-pulse-switcher="staff"]')
-        && html.includes('js/hr-pulse-switcher.js?v=0.77.109')
+        && html.includes('js/hr-pulse-switcher.js?v=0.77.110')
         && staffCode.includes('function renderStaffPulseSwitcher')
         && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
@@ -3465,7 +3465,7 @@ const mobileBanquetMenuMoneyRule = cssRuleIncludingSelectorText(
     cssAtRuleBlock(timelineConstructorCss, '@media (max-width: 640px)'),
     '.booking-banquet-section--menu .booking-detail-package-money'
 );
-const bookingInviteParamsBlock = sourceBlock(bookingCode, 'const inviteModel = window.InviteShare', 'const invitePayload = inviteModel.payload');
+const bookingInviteParamsBlock = sourceBlock(bookingCode, "const inviteModel = bookingDetailSafeRender('invite-model'", 'const invitePayload = inviteModel.payload');
 const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'let banquetSnapshot');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
 const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
@@ -3725,7 +3725,9 @@ check('Booking detail modal has a wider stable card without hover reflow',
     && bookingDetailRowHasNoCopyAffordance(bookingCode, 'Сценарій')
     && bookingDetailRowHasNoCopyAffordance(bookingDetailStandardBlock, 'Статус')
     && bookingCode.includes('function renderBookingCommentDetailRow')
-    && bookingDetailStandardBlock.includes('${renderBookingCommentDetailRow(booking)}')
+    && bookingCode.includes('function bookingDetailSafeRender(')
+    && bookingDetailStandardBlock.includes("const commentDetailHtml = bookingDetailSafeRender('comment-detail', booking, () => renderBookingCommentDetailRow(booking))")
+    && bookingDetailStandardBlock.includes('${commentDetailHtml}')
     && Boolean(bookingDetailGroupRow)
     && bookingDetailGroupRow.includes('<span class="value">${escapeHtml(booking.groupName)}</span>')
     && !bookingDetailGroupRow.includes('🎪')
@@ -3857,7 +3859,7 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && panelCss.includes('border-left: 1px solid var(--gray-100)')
     && timelineConstructorCss.includes('grid-template-columns: 96px minmax(0, 1fr)')
     && timelineConstructorCss.includes('font-size: 11px')
-    && bookingCode.includes('const inviteModel = window.InviteShare?.buildBookingDetailsInviteModel?.({')
+    && bookingCode.includes("const inviteModel = bookingDetailSafeRender('invite-model', booking, () => window.InviteShare?.buildBookingDetailsInviteModel?.({")
     && bookingCode.includes('}, window.InviteConfig, window.location.origin, window.EventCards) || buildBookingDetailsInviteModelFallback({')
     && bookingCode.includes('const invitePayload = inviteModel.payload;')
     && bookingCode.includes('const invitePreviewChips = Array.isArray(inviteModel.previewChips)')
@@ -3962,11 +3964,11 @@ check('Booking detail modal switches banquet root header from time range to sche
     && bookingCode.includes('function bookingDetailHeaderIsBanquetScheduleMode(')
     && bookingCode.includes('function bookingDetailHeaderScheduleSummary(')
     && bookingCode.includes('function bookingDetailIsBanquetArrivalMode(')
-    && bookingCode.includes('const headerPackageBooking = bookingDetailHeaderPackageBooking(booking, banquetSnapshot)')
-    && bookingCode.includes('const headerScheduleHtml = bookingDetailHeaderScheduleSummary(headerPackageBooking)')
-    && bookingCode.includes('const useBanquetHeaderSchedule = Boolean(headerScheduleHtml.trim())')
-    && bookingCode.includes('&& bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml)')
-    && bookingCode.includes('const isBanquetArrivalMode = bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml)')
+    && bookingCode.includes("const headerPackageBooking = bookingDetailSafeRender('banquet-header-package', booking, () => bookingDetailHeaderPackageBooking(booking, banquetSnapshot), booking)")
+    && bookingCode.includes("const headerScheduleHtml = bookingDetailSafeRender('banquet-header-schedule', booking, () => bookingDetailHeaderScheduleSummary(headerPackageBooking))")
+    && bookingCode.includes("const useBanquetHeaderSchedule = Boolean(String(headerScheduleHtml || '').trim())")
+    && bookingCode.includes("&& bookingDetailSafeRender('banquet-header-mode', booking, () => bookingDetailHeaderIsBanquetScheduleMode(booking, banquetSnapshot, fullBanquetDetailHtml), false)")
+    && bookingCode.includes("const isBanquetArrivalMode = bookingDetailSafeRender('banquet-arrival-mode', booking, () => bookingDetailIsBanquetArrivalMode(booking, banquetSnapshot, fullBanquetDetailHtml), false)")
     && bookingCode.includes('const headerTimeMetaHtml = useBanquetHeaderSchedule')
     && bookingCode.includes('|| isBanquetArrivalMode')
     && bookingCode.includes('bookingDetailTimeRange')
@@ -4045,7 +4047,7 @@ check('Booking detail modal renders full banquet group details with controlled m
     && bookingCode.includes('function attachBookingToBanquetGroupFromDetails')
     && bookingCode.includes('apiAttachBanquetGroupBooking')
     && bookingCode.includes('bookingDetailIsRoot(target)')
-    && bookingCode.includes('const fullBanquetDetailHtml = renderFullBanquetDetail(booking, bookings, banquetSnapshot)')
+    && bookingCode.includes("const fullBanquetDetailHtml = bookingDetailSafeRender('full-banquet-detail', booking, () => renderFullBanquetDetail(booking, bookings, banquetSnapshot))")
     && bookingCode.includes('booking-customer-block--priority')
     && bookingCode.includes('const priorityCustomerBlockHtml = hasBanquetOverview ? customerBlockHtml :')
     && bookingCode.includes('function bookingDetailHasMenuOverview')
@@ -4618,7 +4620,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.109')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.110')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")

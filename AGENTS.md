@@ -63,6 +63,7 @@ stale handoff notes.
 - Service Worker cache/offline policy check: `npm run check:service-worker-policy`
 - Scheduler side-effect ownership check: `npm run check:scheduler-surface`
 - DB startup surface ownership check: `npm run check:db-startup-surface`
+- Timeline/booking protected source check: `npm run check:timeline-protected-surface`
 - JavaScript parser check: `npm run check:syntax`
 - Unit tests that do not need a live server: `npm run test:unit`
 - Route smoke in the fast baseline is intentionally shallow: public/protected/custom-secret/API-key boundaries and cheap route contracts. It does not replace PostgreSQL-backed API/integration tests.
@@ -76,7 +77,7 @@ stale handoff notes.
 - Health check against a running server: `npm run health`
 
 Notes:
-- `npm test` intentionally runs the fast local baseline: runtime check, version sync, access/sidebar drift check, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, migration governance, syntax check, unit tests, and UI smoke.
+- `npm test` intentionally runs the fast local baseline: runtime check, version sync, access/sidebar drift check, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, timeline/booking protected source ownership, migration governance, syntax check, unit tests, and UI smoke.
 - `npm run check:runtime` enforces Node 22.x / npm 10.x. Switch runtimes before interpreting other test results.
 - `npm run test:api` and `npm run test:integration` expect a running PostgreSQL-backed app at `TEST_URL` or `http://localhost:3000`.
 - `npm run check:syntax` is parser-only. It is not a style lint, typecheck, or build.
@@ -170,6 +171,10 @@ Notes:
 - If canonical booking details fail to open, fix the canonical path or add a
   guarded diagnostic. Do not ship a parallel recovery UI unless the user
   explicitly approves that product behavior.
+- `npm run check:timeline-protected-surface` hashes critical source blocks
+  listed in `config/timelineProtectedSurface.js` and documented in
+  `docs/TIMELINE_PROTECTED_SURFACE.md`. If one of those blocks changes, update
+  the manifest only with explicit approval and a new focused regression test.
 
 ## Testing Expectations
 

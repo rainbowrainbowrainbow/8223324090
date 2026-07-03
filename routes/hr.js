@@ -2810,7 +2810,7 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
             `INSERT INTO staff_offboarding_events
                 (staff_id, status, effective_date, reason, target_pool_status, account_action,
                  resource_check_required, open_resource_count, notes, created_by, completed_by)
-             VALUES ($1, 'completed', $2, $3, $4, $5, true, $6, $7, $8, $8)
+             VALUES ($1::int, 'completed', $2::date, $3::text, $4::text, $5::text, true, $6::int, $7::text, $8::text, $8::text)
              RETURNING *`,
             [
                 req.params.id,
@@ -2826,14 +2826,14 @@ router.post('/staff/:id/offboarding', requireHrManage, async (req, res) => {
         const staffUpdate = await client.query(
             `UPDATE staff
              SET is_active = false,
-                 hr_pool_status = $2,
-                 blacklist_reason = CASE WHEN $2 = 'blacklisted' THEN $3 ELSE NULL END,
-                 blacklisted_at = CASE WHEN $2 = 'blacklisted' THEN COALESCE(blacklisted_at, NOW()) ELSE NULL END,
-                 termination_date = $4,
-                 termination_reason = $3,
+                 hr_pool_status = $2::text,
+                 blacklist_reason = CASE WHEN $2::text = 'blacklisted' THEN $3::text ELSE NULL END,
+                 blacklisted_at = CASE WHEN $2::text = 'blacklisted' THEN COALESCE(blacklisted_at, NOW()) ELSE NULL END,
+                 termination_date = $4::date,
+                 termination_reason = $3::text,
                  termination_recorded_at = NOW(),
-                 termination_recorded_by = $5
-            WHERE id = $1
+                 termination_recorded_by = $5::text
+            WHERE id = $1::int
              RETURNING *`,
             [req.params.id, targetPoolStatus, reason, effectiveDate, req.user?.username || null]
         );

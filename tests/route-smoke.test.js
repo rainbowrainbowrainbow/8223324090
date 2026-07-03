@@ -1704,7 +1704,7 @@ function createFakePool() {
                     rowCount: 1
                 };
             }
-            if (/UPDATE staff SET is_active = false,/i.test(text) && /termination_recorded_by = \$5 WHERE id = \$1 RETURNING \*/i.test(text)) {
+            if (/UPDATE staff SET is_active = false,/i.test(text) && /termination_recorded_by = \$5::text\s+WHERE id = \$1::int\s+RETURNING \*/i.test(text)) {
                 const id = Number(params[0]);
                 const staff = hrState.staff.get(id);
                 if (!staff) return { rows: [], rowCount: 0 };
@@ -4144,6 +4144,8 @@ describe('route-level API safety smoke', () => {
             assert.equal(res.data.staff.is_active, false);
             assert.equal(res.data.staff.termination_reason, scenario.reason);
             assert.equal(res.data.disabled_accounts, 0);
+            assert.ok(queries.some(q => /INSERT INTO staff_offboarding_events[\s\S]*VALUES \(\$1::int, 'completed', \$2::date, \$3::text, \$4::text, \$5::text, true, \$6::int, \$7::text, \$8::text, \$8::text\)/i.test(q.text)));
+            assert.ok(queries.some(q => /hr_pool_status = \$2::text[\s\S]*blacklist_reason = CASE WHEN \$2::text = 'blacklisted' THEN \$3::text ELSE NULL END[\s\S]*termination_date = \$4::date/i.test(q.text)));
             assert.equal(queries.some(q => /UPDATE users SET is_active = false/i.test(q.text)), false);
         }
     });

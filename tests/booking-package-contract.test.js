@@ -968,7 +968,6 @@ test('booking menu catalog uses active generated images and ignores legacy stati
             explicit_icon_url: 'manifest-icon-url.webp',
             explicit_icon_snake: 'manifest-icon-snake.webp',
             manifest_only: 'manifest-only.webp',
-            menu_2026_031_item: 'products/menu-031.jpg',
             uploads_active: 'manifest-uploads.webp'
         }),
         byCode: Object.freeze({
@@ -2494,15 +2493,15 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*padding:\s*0 10px calc\(96px \+ env\(safe-area-inset-bottom,\s*0px\)\)/);
     assert.match(panelCss, /\.booking-menu-catalog-list\s*\{[\s\S]*scroll-padding-top:\s*48px;/);
     assert.match(panelCss, /\.booking-menu-catalog-list > \*\s*\{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*3;[\s\S]*transform:\s*translateZ\(0\);/);
-    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*252px;/);
+    assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*328px;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*overflow:\s*hidden;/);
     assert.match(panelCss, /\.booking-menu-catalog-item\s*\{[\s\S]*transform:\s*translate3d\(0,\s*0,\s*0\);/);
     assert.match(panelCss, /\.booking-menu-catalog-item:hover,\s*\.booking-menu-catalog-item:focus-within\s*\{[\s\S]*transform:\s*translate3d\(0,\s*-2px,\s*0\);/);
     assert.match(panelCss, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*\.booking-menu-catalog-item:hover,[\s\S]*transform:\s*translate3d\(0,\s*0,\s*0\);/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb/);
-    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*auto;[\s\S]*aspect-ratio:\s*3\.35 \/ 1;[\s\S]*min-height:\s*0;/);
+    assert.match(panelCss, /\.booking-menu-catalog-thumb\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*auto;[\s\S]*aspect-ratio:\s*3 \/ 2;[\s\S]*min-height:\s*0;/);
     assert.match(panelCss, /\.booking-menu-catalog-stepper\s*\{[\s\S]*grid-template-columns:\s*32px minmax\(44px,\s*1fr\) 32px 32px 32px;[\s\S]*flex:\s*0 0 auto;[\s\S]*width:\s*100%;[\s\S]*min-height:\s*32px;[\s\S]*max-width:\s*none;[\s\S]*margin-top:\s*0;/);
-    assert.match(panelCss, /@media \(max-height:\s*820px\), \(max-width:\s*1440px\)[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(260px,\s*300px\)[\s\S]*min-height:\s*236px;/);
+    assert.match(panelCss, /@media \(max-height:\s*820px\), \(max-width:\s*1440px\)[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(260px,\s*300px\)[\s\S]*min-height:\s*312px;[\s\S]*aspect-ratio:\s*3 \/ 2;/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.uses-fallback-image img/);
     assert.match(panelCss, /\.booking-menu-catalog-thumb\.has-image span/);
@@ -3260,11 +3259,14 @@ test('kitchen menu image manifest uses deploy-stable ASCII paths that exist', ()
     assert.equal(manifest.byId['menu_2026_073_item'], 'products/menu-999.png');
     assert.equal(manifest.byCode['MENU-026'], 'products/menu-026.jpg');
     assert.equal(manifest.byCode['CAKE-06'], 'products/cake-06.jpg');
+    assert.equal(manifest.byId['menu_2026_031_item'], undefined);
+    assert.equal(manifest.byCode['MENU-031'], undefined);
 
     const values = [
         ...Object.values(manifest.byCode || {}),
         ...Object.values(manifest.byId || {})
     ];
+    assert.equal(values.includes('products/menu-031.jpg'), false);
     assert.ok(values.length >= 93);
     values.forEach(value => {
         assert.match(value, /^products\/(?:menu|cake)-\d{2,3}\.(?:jpg|jpeg|png|webp|avif)$/);

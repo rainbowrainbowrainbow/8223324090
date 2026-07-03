@@ -1,23 +1,30 @@
 # Kitchen Menu Image Assets
 
-The booking menu catalog supports real product photos from the product API and
-keeps static manifest images as a fallback bridge.
+The booking menu catalog uses real product photos from the product API. Static
+manifest images remain only as legacy/static compatibility data and are not the
+source of truth for new Hermes or manual menu photos.
 
 ## Source Priority
 
-Booking menu cards resolve images in this order:
+Booking menu cards resolve new menu photos through one active path:
 
-1. Applied product photo from `/api/products`: `products.icon_url`, exposed to
-   frontend code as `iconUrl` or legacy `icon_url`.
-2. Static manifest image from `js/kitchen-menu-images.js`, generated from files
-   in `images/kitchen-menu/`.
-3. Existing safe fallback image/emoji state.
+```text
+products.icon_url -> /api/products iconUrl/icon_url -> UI image
+```
+
+If `iconUrl`/`icon_url` is missing or the referenced image fails to load, the UI
+must show its emoji/missing-image state. It must not silently replace a broken
+Hermes/generated upload with an old static manifest image.
 
 Generated menu photos are not applied automatically. Product admins or Hermes
 first create a draft under `products.ai_card_draft.imageStudio`; only an
 explicit `apply` action copies the approved draft URL into `products.icon_url`.
 The generated image files are stored through `services/imageStorage.js` under
 `/uploads/catalog-images/items`.
+
+Default Hermes/menu-photo size is `1536x1024` (`3:2`). This is the preferred
+format for booking menu cards. Other supported sizes are exceptions selected
+explicitly during generation.
 
 ## Workflow
 
@@ -32,8 +39,9 @@ The generated image files are stored through `services/imageStorage.js` under
 node scripts/sync-kitchen-menu-images.js
 ```
 
-5. Reload the CRM. Products without `products.icon_url` but with matched files
-   will use manifest photos; everything else keeps the safe fallback.
+5. Reload the CRM only for legacy/static surfaces that still read the manifest.
+   New Hermes/manual photos still require an explicit draft/apply flow that
+   writes `products.icon_url`.
 
 ## Filename Rules
 
@@ -47,22 +55,25 @@ The sync script matches these forms:
 Preferred format is `.webp`; `.png`, `.jpg`, `.jpeg`, and `.avif` are also
 accepted.
 
-Current imported batch: 93 images matched to `MENU-*` / `CAKE-*` products.
-Imported files are kept in `images/kitchen-menu/products/` with ASCII
-product-code filenames so browser URLs and deployment artifacts do not depend
-on ZIP filename encoding.
+Current imported batch files are kept in `images/kitchen-menu/products/` with
+ASCII product-code filenames so browser URLs and deployment artifacts do not
+depend on ZIP filename encoding.
 The batch does not include separate images for pizza add-ons, first courses,
 `Склянка молока`, or `Молоко — додаток до кави`; those products keep emoji
 fallbacks until images are added.
+
+Do not use `images/kitchen-menu/products/menu-031.jpg` as the correct
+Margherita photo. `MENU-031` / `menu_2026_031_item` should receive its current
+photo only through `products.icon_url` after the draft/apply workflow.
 
 ## Notes
 
 - Do not use remote hotlinked images in production; download and keep local
   optimized assets.
-- Keep images square or close to square. The UI crops with `object-fit: cover`.
-- Recommended size: 512x512 or 768x768.
-- The static manifest is a fallback bridge. It must not override an applied
-  product photo from `products.icon_url`.
+- For Hermes/menu-photo work, use `1536x1024` unless a human selects another
+  allowed size.
+- The static manifest must not override or replace an applied product photo from
+  `products.icon_url`.
 - AI/Hermes generated drafts use a card-friendly horizontal prompt and may
-  store larger source files in `/uploads/catalog-images/items`; the card UI
-  should crop safely without manually patching individual images.
+  store source files in `/uploads/catalog-images/items`; the card UI is sized
+  for the `3:2` generated-photo format.

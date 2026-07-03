@@ -22,13 +22,28 @@ External drafts are saved to CRM local uploads:
 /uploads/catalog-images/items/<generated-file-name>
 ```
 
-The booking menu catalog and kitchen menu UI use the applied product image before static fallbacks:
+The active source of truth for new Hermes/manual menu photos is:
 
-1. active product image fields such as `iconUrl` / `icon_url`
-2. `js/kitchen-menu-images.js` manifest
-3. generic fallback image
+```text
+products.icon_url -> API iconUrl/icon_url -> booking/program UI image
+```
 
-Creating an external draft does not change the active image. Applying the draft changes `products.icon_url`.
+Creating an external draft does not change the active image. Applying the draft
+changes `products.icon_url`.
+
+The static `js/kitchen-menu-images.js` manifest is legacy/static compatibility
+only. It is not the source of truth for new Hermes photos and must not be used
+to "recover" a failed or missing generated menu image. If `iconUrl`/`icon_url`
+is absent or broken, the booking menu UI must show its emoji/missing-image state
+instead of falling back to an old static product photo.
+
+Default Hermes/menu-photo size is `1536x1024` (`3:2`). The booking menu card is
+designed for that format. `1024x1024` and `1024x1536` remain allowed only when a
+human explicitly selects a different supported size.
+
+Do not use `images/kitchen-menu/products/menu-031.jpg` as the correct
+Margherita photo. That file belongs to the old static batch and is not a valid
+fallback for `MENU-031` / `menu_2026_031_item`.
 
 ## Product API
 
@@ -393,7 +408,10 @@ X-Integration-Id: hermes-event-genix-crm
 }
 ```
 
-Apply success means the active product image is updated and booking menu image priority will use the new `/uploads/catalog-images/items/...` URL before the static manifest.
+Apply success means the active product image is updated and booking/menu UI will
+use the new `/uploads/catalog-images/items/...` URL via `iconUrl`/`icon_url`.
+The old static manifest must not be used as a fallback if the applied URL later
+fails to load; the UI should show the emoji/missing-image state.
 
 Reject success means the active product image remains unchanged and the draft is marked `rejected`.
 
@@ -510,4 +528,5 @@ npx -y -p node@22 -p npm@10 -c "npm test"
 5. Reject the draft and confirm active image did not change.
 6. Submit a file/base64 draft.
 7. Apply the draft.
-8. Open booking menu and confirm the applied `/uploads/catalog-images/items/...` image appears before the static manifest fallback.
+8. Open booking menu and confirm the applied `/uploads/catalog-images/items/...` image appears through `iconUrl`/`icon_url`.
+9. Break or remove the image URL in a test environment and confirm the UI shows the emoji/missing-image state, not a static manifest photo.

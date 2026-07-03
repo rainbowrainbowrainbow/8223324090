@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.108",
+  "version": "0.77.109",
   "eventGenix": {
-    "releaseLabel": "Recovery відкриття таймлайну"
+    "releaseLabel": "Захист канонічної картки таймлайну"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

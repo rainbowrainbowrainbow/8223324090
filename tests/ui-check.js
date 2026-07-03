@@ -261,6 +261,15 @@ checkPage('index.html', (doc, html) => {
         && bookingCode.includes('options.silentMissing !== true')
         && bookingCode.includes('bookingDetailsOpenFailureCode')
         && !timelineCode.includes('showBookingDetails(renderBooking.linkedTo)'));
+    check('Timeline booking detail modal rendering stays owned by booking.js',
+        bookingCode.includes('async function showBookingDetails(bookingId, options = {})')
+        && bookingCode.includes("document.getElementById('bookingDetails').innerHTML")
+        && bookingCode.includes("document.getElementById('bookingModal')?.classList.remove('hidden')")
+        && !timelineCode.includes('timelineOpenRecoveredBookingDetails')
+        && !timelineCode.includes('TL-BK-DETAIL-RECOVERY-OPENED')
+        && !timelineCode.includes("getElementById('bookingDetails')")
+        && !timelineCode.includes('bookingDetails.innerHTML')
+        && !timelineCode.includes('booking-detail-row'));
     check('Booking costume selector hydrates from Warehouse inventory with static fallback',
         appCode.includes('async function initializeCostumes(options = {})')
         && appCode.includes('function bookingCostumeFallbackOptions')
@@ -1573,7 +1582,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && !!doc.querySelector('#staffPulseNavItems.staff-pulse-nav-items[data-pulse-switcher="staff"]')
-        && html.includes('js/hr-pulse-switcher.js?v=0.77.108')
+        && html.includes('js/hr-pulse-switcher.js?v=0.77.109')
         && staffCode.includes('function renderStaffPulseSwitcher')
         && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
@@ -4609,7 +4618,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.108')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.77.109')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")

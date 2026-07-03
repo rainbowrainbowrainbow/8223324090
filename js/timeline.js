@@ -3192,14 +3192,13 @@ async function timelineProbeBookingOpenDiagnostic(bookingId, phase = 'detail_pro
     }
     try {
         const response = await apiGetBookingById(cleanId, { fresh: true });
-        const booking = response?.success && response?.booking ? response.booking : null;
+        const hasBooking = response?.success && response?.booking;
         return {
             phase,
             code: timelineBookingOpenFailureCodeFromDetailResponse(response),
             bookingId: cleanId,
-            booking,
             source: 'timeline_block_click_probe',
-            lookupSource: booking ? 'timeline-detail-probe-hit' : 'timeline-detail-probe-miss',
+            lookupSource: hasBooking ? 'timeline-detail-probe-hit' : 'timeline-detail-probe-miss',
             status: response?.status || null,
             apiCode: response?.code || null,
             offline: response?.offline === true,
@@ -3218,97 +3217,6 @@ async function timelineProbeBookingOpenDiagnostic(bookingId, phase = 'detail_pro
             error: err?.message || String(err || '')
         };
     }
-}
-
-function timelineEscapeHtml(value) {
-    if (typeof escapeHtml === 'function') return escapeHtml(value);
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function timelineBookingRecoveryTitle(booking = {}) {
-    return String(
-        booking.label
-        || booking.programName
-        || booking.program_name
-        || booking.programCode
-        || booking.program_code
-        || booking.title
-        || booking.name
-        || booking.room
-        || 'Бронювання'
-    ).trim();
-}
-
-function timelineBookingRecoveryEndTime(booking = {}) {
-    if (!booking.time) return '';
-    if (typeof addMinutesToTime !== 'function') return '';
-    const duration = Number(booking.duration || booking.durationMinutes || booking.duration_minutes || 0);
-    if (!Number.isFinite(duration) || duration <= 0) return '';
-    return addMinutesToTime(booking.time, duration);
-}
-
-function timelineOpenRecoveredBookingDetails(booking = {}, options = {}) {
-    if (typeof document === 'undefined' || !booking || typeof booking !== 'object') return false;
-    const details = document.getElementById('bookingDetails');
-    const modal = document.getElementById('bookingModal');
-    if (!details || !modal) return false;
-
-    const bookingId = String(booking.id || booking.bookingId || booking.booking_id || '').trim();
-    if (!bookingId) return false;
-    const title = timelineBookingRecoveryTitle(booking);
-    const startTime = String(booking.time || '').trim();
-    const endTime = timelineBookingRecoveryEndTime(booking);
-    const timeRange = endTime ? `${startTime} - ${endTime}` : startTime;
-    const status = String(booking.status || '').trim();
-    const statusLabel = status === 'preliminary' ? 'Попереднє' : (status ? 'Підтверджене' : '-');
-    const rows = [
-        ['Дата', booking.date],
-        ['Час', timeRange],
-        ['Кімната', booking.room || booking.resourceName || booking.resource_name],
-        ['Аніматор', booking.animatorName || booking.animator_name || booking.lineName || booking.line_name],
-        ['Група', booking.groupName || booking.group_name],
-        ['Статус', statusLabel],
-        ['Код бронювання', bookingId]
-    ].filter(([, value]) => String(value ?? '').trim());
-
-    details.innerHTML = `
-        <div class="booking-detail-header booking-detail-header--compact">
-            <div class="booking-detail-heading">
-                <div class="booking-detail-title-group">
-                    <h3 class="booking-detail-title">${timelineEscapeHtml(title)}</h3>
-                    <div class="booking-detail-meta" aria-label="Деталі бронювання">
-                        <span class="booking-detail-meta-item">${timelineEscapeHtml(booking.room || '-')}</span>
-                        <span class="booking-detail-meta-item">${timelineEscapeHtml(booking.date || '-')}</span>
-                        ${timeRange ? `<span class="booking-detail-meta-item">${timelineEscapeHtml(timeRange)}</span>` : ''}
-                        <span class="booking-detail-meta-item">#${timelineEscapeHtml(bookingId)}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="booking-detail-row">
-            <span class="label">Режим відкриття:</span>
-            <span class="value">Recovery після detail API</span>
-        </div>
-        ${rows.map(([label, value]) => `
-            <div class="booking-detail-row">
-                <span class="label">${timelineEscapeHtml(label)}:</span>
-                <span class="value">${timelineEscapeHtml(value)}</span>
-            </div>
-        `).join('')}
-        <div class="booking-detail-row">
-            <span class="label">Діагностика:</span>
-            <span class="value">${timelineEscapeHtml(options.code || 'TL-BK-DETAIL-RECOVERY-OPENED')}</span>
-        </div>
-    `;
-    modal.hidden = false;
-    modal.classList?.remove?.('hidden');
-    modal.setAttribute?.('aria-hidden', 'false');
-    return true;
 }
 
 async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
@@ -3401,13 +3309,7 @@ async function openTimelineBookingDetailsFromBlock(renderBooking = {}) {
     if (!hasNonExceptionDiagnostic) {
         const probeId = linkedId && ownId && ownId !== linkedId ? ownId : targetId;
         const probe = await timelineProbeBookingOpenDiagnostic(probeId, linkedId ? 'linked_child_probe' : 'direct_probe');
-        if (probe?.booking && probe.code === 'TL-BK-DETAIL-OK-OPEN-FAILED') {
-            if (timelineOpenRecoveredBookingDetails(probe.booking, { code: 'TL-BK-DETAIL-RECOVERY-OPENED' })) return true;
-        }
-        if (probe) {
-            const { booking, ...diagnostic } = probe;
-            detailMisses.push(diagnostic);
-        }
+        if (probe) detailMisses.push(probe);
     }
 
     const lastDiagnostic = detailMisses.slice().reverse().find(item => item?.code) || null;

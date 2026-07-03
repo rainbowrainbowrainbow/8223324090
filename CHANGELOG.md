@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.109 - Захист канонічної картки таймлайну
+
+### Timeline canonical details / Recovery rollback / Source-of-truth guard / Regression QA / (Клешня, 03.07.2026) [codex]
+- **Помилковий recovery-інтерфейс прибрано з `js/timeline.js`** - таймлайн більше не малює власну скорочену картку бронювання і не пише напряму в `#bookingDetails`.
+- **Канонічним джерелом UI лишається `showBookingDetails(...)` з `js/booking.js`** - клік по блоку таймлайну або відкриває стандартну UA-картку з фото, діями й повними полями, або показує діагностичний toast.
+- **`TL-BK-DETAIL-OK-OPEN-FAILED` знову означає саме frontend-open failure** - якщо detail API бачить бронювання, але стандартний renderer не відкрив modal, система показує код помилки замість паралельного recovery UI.
+- **Діагностичний probe більше не переносить booking payload у timeline warning** - `detailMisses` зберігає тільки безпечні поля на кшталт id, статусу, lookup source і HTTP-класу.
+- **Додано системний guard у `test:ui`** - перевірка валить build, якщо `timeline.js` знову отримає `timelineOpenRecoveredBookingDetails`, `TL-BK-DETAIL-RECOVERY-OPENED`, `bookingDetails.innerHTML` або `booking-detail-row`.
+- **Task docs зафіксували root cause і подальший аналіз** - окремі задачі описують видалення recovery UI, пошук причини падіння `showBookingDetails`, source-of-truth guard і live UAT на Railway.
+- **Cache tags оновлено до `0.77.109`** - HTML, Service Worker cache names і asset `?v=` посилання синхронізовані, щоб продакшн підтягнув новий `js/timeline.js`.
+- **БД, migrations, auth/roles, env, secrets і Railway config не змінювались** - реліз обмежений frontend boundary, тестами, task docs, release markers і changelog.
+
 ## v0.77.108 - Recovery відкриття таймлайну
 
 ### Timeline detail recovery / Renderer exception fallback / Cache refresh / Regression QA / (Клешня, 03.07.2026) [codex]

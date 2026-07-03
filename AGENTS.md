@@ -148,6 +148,29 @@ Notes:
 - Prefer existing helpers and patterns in `js/ui.js`, `js/api.js`, `js/auth.js`, and `js/components/sidebar.js`.
 - Do not replace shared UI patterns with one-off behavior unless the surrounding code already does that.
 
+## Booking Detail Source-Of-Truth Guard
+
+- Booking detail modal ownership is protected: `#bookingModal` and
+  `#bookingDetails` are rendered by the canonical booking modules, primarily
+  `js/booking.js`, with supporting renderers in `js/booking-banquet-detail.js`
+  and `js/booking-package-renderer.js`.
+- Do not add or keep an alternate booking details renderer in `js/timeline.js`
+  or another non-booking module. Timeline code may call `showBookingDetails(...)`
+  and collect diagnostics, but it must not write its own booking details markup.
+- Booking identity, linked booking, timeline placement, activity display, and
+  detail source fields are protected contracts: `id`, `linkedTo`, `linked_to`,
+  `lineId`, `line_id`, `resourceId`, `resource_id`, `date`, `time`, `duration`,
+  `room`, `status`, `programId`, `program_id`, `programName`, `program_name`,
+  `programCode`, `program_code`, `label`, `/api/bookings/detail/:id`,
+  `apiGetBookingById(...)`, `resolveBookingDetailsRecord(...)`, and
+  `showBookingDetails(...)`.
+- Changing those field priorities, endpoint sources, DB mapping, or modal
+  ownership requires explicit user approval before code edits, even if the
+  change appears to be a fallback or diagnostic fix.
+- If canonical booking details fail to open, fix the canonical path or add a
+  guarded diagnostic. Do not ship a parallel recovery UI unless the user
+  explicitly approves that product behavior.
+
 ## Testing Expectations
 
 - Run the smallest relevant focused tests first.

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.122 - Hermes auto apply default
+
+### Hermes auto apply default / Temporary menu-photo activation / (Клешня, 04.07.2026) [codex]
+- **Hermes menu-photo `external-draft` тимчасово auto-applies by default** - якщо payload не містить `autoApply`, CRM трактує це як `autoApply: true` і одразу оновлює `products.icon_url`.
+- **Review-only режим лишився доступним** - для підготовки draft без активації Hermes має явно передати `autoApply: false`.
+- **Auth/idempotency guard не послаблено** - writes і далі потребують `x-api-key`/Bearer auth, `Idempotency-Key`, `X-Hermes-User-Confirmed: true` і writable single business context.
+- **Hermes workflow docs оновлено** - інструкція тепер описує тимчасовий default, applied response checks і override для ручного review.
+- **Regression guards оновлено** - тести фіксують default auto-apply, explicit draft-only override, retry і конфлікт `autoApply`/`auto_apply`.
+- **DB, migrations, Railway/env/secrets і roles не змінювались** - release обмежений Hermes menu-photo API, docs, tests і version/cache refs.
+
+---
+
 ## v0.77.121 - Hermes menu auto apply
 
 ### Hermes menu auto apply / External draft activation / (Клешня, 04.07.2026) [codex]

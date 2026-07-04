@@ -2201,20 +2201,87 @@ if (typeof window.ensureBookingTooltip !== 'function') {
     };
 }
 
+function tooltipNormalizePinataNumber(value) {
+    const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    const normalized = raw
+        .replace(/^(?:№|#)\s*/u, '')
+        .replace(/^P\s+(\d+)$/i, 'P-$1')
+        .trim();
+    const legacy = normalized.match(/^P-(\d{1,3})$/i);
+    if (legacy) {
+        const id = Number(legacy[1]);
+        if (Number.isInteger(id) && id >= 1 && id <= 36) return String(500 + id);
+    }
+    return normalized;
+}
+
+function tooltipExtractPinataNumberFromText(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    const explicit = text.match(/(?:№|#)\s*((?:P[-\s]?)?\d{1,4})/iu);
+    if (explicit) return tooltipNormalizePinataNumber(explicit[1]);
+    const legacy = text.match(/\b(P[-\s]?\d{1,4})\b/iu);
+    if (legacy) return tooltipNormalizePinataNumber(legacy[1]);
+    return '';
+}
+
+function tooltipPinataNumberValue(booking = {}) {
+    const extra = booking.extraData || booking.extra_data || {};
+    const direct = [
+        booking.pinataNumber,
+        booking.pinata_number,
+        extra.pinataNumber,
+        extra.pinata_number
+    ].map(tooltipNormalizePinataNumber).find(Boolean);
+    if (direct) return direct;
+    return [
+        booking.label,
+        booking.programName,
+        booking.program_name,
+        booking.programCode,
+        booking.program_code
+    ].map(tooltipExtractPinataNumberFromText).find(Boolean) || '';
+}
+
+function tooltipPinataNumberDisplay(value) {
+    const normalized = tooltipNormalizePinataNumber(value);
+    if (!normalized) return '';
+    return /^\d+$/.test(normalized) ? `№${normalized}` : normalized;
+}
+
+function tooltipIsPinataBooking(booking = {}) {
+    const category = String(booking.category || '').trim().toLowerCase();
+    const haystack = [
+        category,
+        booking.label,
+        booking.programName,
+        booking.program_name,
+        booking.programCode,
+        booking.program_code
+    ].filter(Boolean).join(' ').toLocaleLowerCase('uk-UA');
+    return category === 'pinata' || haystack.includes('пін');
+}
+
 function showTooltip(e, booking) {
+    booking = booking || {};
     const tooltip = typeof window.ensureBookingTooltip === 'function'
         ? window.ensureBookingTooltip()
         : document.getElementById('bookingTooltip');
     if (!tooltip) return;
-    if (tooltip._lastBookingId !== booking.id || tooltip._lastStatus !== booking.status) {
+    const pinataNumber = tooltipIsPinataBooking(booking) ? tooltipPinataNumberValue(booking) : '';
+    if (tooltip._lastBookingId !== booking.id || tooltip._lastStatus !== booking.status || tooltip._lastPinataNumber !== pinataNumber) {
         tooltip._lastBookingId = booking.id;
         tooltip._lastStatus = booking.status;
+        tooltip._lastPinataNumber = pinataNumber;
         const endTime = addMinutesToTime(booking.time, booking.duration);
         const statusBadge = `<span class="status-badge status-badge--${booking.status === 'preliminary' ? 'preliminary' : 'confirmed'}">${booking.status === 'preliminary' ? '⏳ Попереднє' : '✅ Підтверджене'}</span>`;
+        const pinataLine = pinataNumber ? `<br>🪅 Номер піньяти: ${escapeHtml(tooltipPinataNumberDisplay(pinataNumber))}` : '';
         tooltip.innerHTML = `
             <strong>${escapeHtml(booking.label)}: ${escapeHtml(booking.programName)}</strong><br>
             🕐 ${escapeHtml(booking.time)} - ${escapeHtml(endTime)}<br>
             🏠 ${escapeHtml(booking.room)} · ${statusBadge}
+            ${pinataLine}
             ${booking.kidsCount ? '<br>👶 ' + escapeHtml(String(booking.kidsCount)) + ' дітей' : ''}
             ${booking.notes ? '<br>📝 ' + escapeHtml(booking.notes) : ''}
         `;
@@ -2243,6 +2310,7 @@ function hideTooltip() {
         tooltip.setAttribute('aria-hidden', 'true');
         tooltip.style.display = '';
         tooltip._lastBookingId = null;
+        tooltip._lastPinataNumber = null;
     }
 }
 

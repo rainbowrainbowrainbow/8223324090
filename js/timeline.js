@@ -1457,8 +1457,7 @@ function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, 
     const pinataNumber = timelinePinataNumberValue(booking, source, title, tail, programName, label, code);
 
     if (pinataNumber && timelineIsPinataActivity(source, booking, haystack)) {
-        const displayNumber = timelinePinataNumberDisplay(pinataNumber);
-        return tightDensity ? `ПІН ${displayNumber}` : `Піньята ${displayNumber}`;
+        return `ПІН ${timelinePinataNumberDisplay(pinataNumber)}`;
     }
 
     if (programName && (!tightDensity || programName.length <= maxTinyNameLength)) return programName;

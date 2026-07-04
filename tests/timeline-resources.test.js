@@ -2493,7 +2493,33 @@ test('pinata compact labels preserve operational numbers without using duration 
     );
     assert.equal(
         hooks.timelineRoomActivityDisplayLabel({ category: 'pinata', pinata_number: '501' }, null, 'Пін(15)', 'Піньята', 'ПІН №501', 'medium'),
-        'Піньята №501'
+        'ПІН №501'
+    );
+});
+
+test('booking tooltip exposes operational pinata number on hover', () => {
+    const ui = read('js/ui.js');
+    const start = ui.indexOf('function tooltipNormalizePinataNumber');
+    const end = ui.indexOf('function showTooltip', start);
+    assert.ok(start >= 0 && end > start, 'tooltip pinata helper slice exists');
+    const context = { console };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${ui.slice(start, end)}
+        this.__pinataTooltip = {
+            tooltipIsPinataBooking,
+            tooltipPinataNumberValue,
+            tooltipPinataNumberDisplay
+        };
+    `, context);
+    const hooks = context.__pinataTooltip;
+
+    assert.equal(hooks.tooltipIsPinataBooking({ category: 'pinata' }), true);
+    assert.equal(hooks.tooltipPinataNumberValue({ category: 'pinata', pinata_number: 'P-005' }), '505');
+    assert.equal(hooks.tooltipPinataNumberDisplay('505'), '№505');
+    assert.equal(
+        hooks.tooltipPinataNumberValue({ category: 'pinata', label: 'Пін+свій: Піньята Фудкорт Піньята №505' }),
+        '505'
     );
 });
 

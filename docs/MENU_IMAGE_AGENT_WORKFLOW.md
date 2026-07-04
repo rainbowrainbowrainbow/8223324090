@@ -187,7 +187,39 @@ Important checks after draft creation:
 
 ## Hermes API
 
-Hermes routes require Hermes authentication. Use either the configured `x-api-key` or the configured bearer fallback. Do not put real keys in docs, prompts, logs, or task notes.
+Hermes routes require Hermes authentication before both read and mutation
+actions. Use either the configured `x-api-key` header or the configured bearer
+fallback. Do not put real keys in docs, prompts, logs, screenshots, or task
+notes.
+
+### Required Environment
+
+CRM server-side environment:
+
+| Name | Required | Purpose |
+| --- | --- | --- |
+| `HERMES_API_KEY` | Yes | Shared secret expected by `/api/hermes/*` auth. Missing value makes Hermes routes return `503 HERMES_AUTH_NOT_CONFIGURED`. |
+| `HERMES_ACTOR_USER_ID` | Yes | Active CRM user id used as the Hermes actor for DB reads/writes and business-scope checks. Missing/invalid value blocks Hermes routes before product lookup. |
+| `HERMES_ALLOWED_BUSINESS_CONTEXTS` | Optional | Narrows the actor business contexts. When set for menu photos, it must include `event_genix`. |
+
+Hermes agent/client runtime environment:
+
+| Name | Required | Purpose |
+| --- | --- | --- |
+| `HERMES_API_KEY` | Preferred | Runtime key that the agent should send as `x-api-key` to CRM. |
+| `EVENT_GENIX_CRM_API_KEY` | Acceptable alias only | May be used only when the runtime explicitly maps it to the outgoing `x-api-key` header. CRM does not read this name directly for `/api/hermes/*` auth. |
+
+The runtime must send one of:
+
+```http
+x-api-key: <configured Hermes key>
+Authorization: Bearer <configured Hermes key>
+```
+
+For `businessContext=event_genix`, the configured Hermes actor must have access
+to `event_genix`. If `HERMES_ALLOWED_BUSINESS_CONTEXTS` is set, that allowlist
+must also include `event_genix`. Mutations require a single writable business
+scope; `all` and multi-context scopes are read-only.
 
 Read routes do not require mutation headers. Mutation routes require:
 
@@ -485,6 +517,20 @@ Stop and do not apply when:
 
 ## Troubleshooting
 
+Auth and environment errors:
+
+| Code | Meaning | Action |
+| --- | --- | --- |
+| `HERMES_AUTH_NOT_CONFIGURED` | CRM server does not have `HERMES_API_KEY`. | Configure `HERMES_API_KEY` in the CRM server environment, restart the server, then retry a read endpoint. |
+| `HERMES_ACTOR_NOT_CONFIGURED` | CRM server does not have a valid `HERMES_ACTOR_USER_ID`. | Configure `HERMES_ACTOR_USER_ID` to an active CRM user id that can access the target business context. |
+| `HERMES_ACTOR_NOT_FOUND` | `HERMES_ACTOR_USER_ID` does not match a user row. | Point `HERMES_ACTOR_USER_ID` to an existing active CRM user. |
+| `HERMES_ACTOR_INACTIVE` | Hermes actor user exists but is inactive. | Use an active CRM user for `HERMES_ACTOR_USER_ID` or reactivate the intended actor through normal CRM user management. |
+| `HERMES_AUTH_REQUIRED` | Client/agent did not send `x-api-key` or bearer credentials. | Add `x-api-key: ***` or `Authorization: Bearer ***`. If the runtime only has `EVENT_GENIX_CRM_API_KEY`, explicitly map it to `x-api-key`. |
+| `HERMES_AUTH_INVALID` | Client/agent sent a key that does not match CRM `HERMES_API_KEY`. | Use the same secret configured on the CRM server; do not log or paste the value into task notes. |
+| `HERMES_BUSINESS_CONTEXT_FORBIDDEN` | Actor context was narrowed by `HERMES_ALLOWED_BUSINESS_CONTEXTS` and no allowed actor context remains. | Include `event_genix` in the allowlist or choose an actor whose business contexts overlap the allowlist. |
+| `business_context_unavailable` | Actor cannot access requested `businessContext`, or the request selected an unavailable scope. | Use `businessContext=event_genix` with an actor that has access to `event_genix`. |
+| `business_scope_read_only` | Hermes attempted a write in `all` or multi-business scope. | Use a single writable business context before creating drafts, applying, or rejecting. |
+
 Common external-draft errors:
 
 | Code | Meaning | Action |
@@ -497,7 +543,6 @@ Common external-draft errors:
 | `menu_image_url_too_long` | URL exceeds 2048 characters. | Use a shorter URL or base64. |
 | `menu_image_payload_unsupported_field` | Payload contains a field outside the contract. | Send only documented fields. |
 | `menu_image_upload_failed` | CRM could not save the image. | Check source availability, MIME, size, and CRM uploads. |
-| `business_scope_read_only` | Hermes attempted write in read-only scope. | Use a single writable business context. |
 | `IDEMPOTENCY_KEY_REQUIRED` | Hermes mutation header missing. | Add `Idempotency-Key`. |
 | `HERMES_CONFIRMATION_REQUIRED` | Hermes confirmation header missing. | Add `X-Hermes-User-Confirmed: true`. |
 

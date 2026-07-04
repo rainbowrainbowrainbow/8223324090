@@ -82,7 +82,10 @@ Stored data:
 
 Display grouping:
 
-- `scheduleDisplayDepartmentKey(staff)` is the schedule grouping authority.
+- `services/staffDisplayGroups.js` is the schedule/display grouping authority.
+- `scheduleDisplayDepartmentKey(staff)` is the frontend adapter and legacy fallback.
+- HR company structure nodes may expose `displayGroup` metadata for operator-visible
+  filter ownership. Missing metadata falls back to the canonical service rules.
 - `role_type in reception, manager, senior_manager` displays under
   `reception`.
 - `department = security` displays under `tech`.
@@ -116,7 +119,8 @@ Subgroups:
 
 Areas that should use display grouping:
 
-- Department chips and visible row filters
+- HR Today chips and visible staff filters
+- Schedule department chips and visible row filters
 - Schedule row grouping
 - Summary counts
 - Load view

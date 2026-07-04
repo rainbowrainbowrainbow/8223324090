@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.10 - HR: спільні фільтри персоналу
+
+### HR / Структура компанії / Сьогодні / Графік / (Клешня, 05.07.2026) [codex]
+- **Операційні фільтри персоналу винесено в єдиний backend-контракт** - `services/staffDisplayGroups.js` задає canonical display groups, порядок, labels і fallback-и без зміни `staff.department`.
+- **Структура компанії отримала редагований ярлик фільтра** - у вузлах можна вибрати `displayGroup`, badge показує операційний фільтр, а старі вузли без metadata працюють через fallback.
+- **`Сьогодні` і `Графік` рахують людей однаково** - `security` входить у `Технічний відділ`, а `reception`, `manager`, `senior_manager` входять у `Рецепшен`.
+- **Standalone `/staff` і HR embedded schedule лишаються на одному контракті** - обидва екрани читають `displayGroups` з API і не створюють окрему authority-логіку.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff grouping contract, frontend filters, tests і version/cache refs.
+
+---
+
 ## v0.78.9 - Мій день: дві робочі колонки
 
 ### Profile / Мій день / Two-column focus / (Клешня, 05.07.2026) [codex]

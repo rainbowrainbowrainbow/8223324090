@@ -153,6 +153,8 @@ test('HR org/profession editor exposes relation and grid position controls', () 
     const form = window.document.getElementById('hrOrgNodeForm');
 
     assert.ok(form.querySelector('.hr-org-node-editor-summary')?.textContent.includes('ID:'));
+    assert.ok(form.querySelector('.hr-org-node-editor-summary')?.textContent.includes('Фільтр:'));
+    assert.equal(form.querySelector('select[name="displayGroup"]')?.value, 'animators');
     assert.equal(form.querySelector('input[name="x"]')?.value, '100');
     assert.equal(form.querySelector('input[name="y"]')?.value, '100');
     assert.ok(form.querySelector('select[name="parentId"]'));

@@ -1,9 +1,13 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const staffDisplayGroups = require('../services/staffDisplayGroups');
 
 const staffRoute = fs.readFileSync('routes/staff.js', 'utf8');
+const hrRoute = fs.readFileSync('routes/hr.js', 'utf8');
+const staffDisplayGroupService = fs.readFileSync('services/staffDisplayGroups.js', 'utf8');
 const staffOperationalFilters = fs.readFileSync('services/staffOperationalFilters.js', 'utf8');
+const hrPage = fs.readFileSync('js/hr-page.js', 'utf8');
 const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 const staffHtml = fs.readFileSync('staff.html', 'utf8');
 const staffScheduleShell = fs.readFileSync('js/staff-schedule-shell.js', 'utf8');
@@ -247,6 +251,7 @@ describe('staff schedule safety guards', () => {
     it('groups reception, managers, and security into schedule display departments without changing stored departments', () => {
         assert.match(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'\]/);
         assert.match(staffPage, /const SCHEDULE_RECEPTION_ROLE_KEYS = new Set\(\['reception', 'manager', 'senior_manager'\]\)/);
+        assert.match(staffPage, /const backendGroup = normalizeScheduleDisplayGroupKey\(staff\.display_group \|\| staff\.displayGroup\)/);
         assert.match(staffPage, /if \(SCHEDULE_RECEPTION_ROLE_KEYS\.has\(roleKey\)\) return 'reception'/);
         assert.match(staffPage, /if \(department === 'security'\) return 'tech'/);
         assert.match(staffPage, /reception:\s*'Рецепшен'/);
@@ -262,6 +267,50 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /value:\s*'wardrobe',\s*label:\s*'Гардероб'/);
         assert.doesNotMatch(staffPage, /const SCHEDULE_DEPARTMENT_ORDER = \[[^\]]*'security'/);
         assert.doesNotMatch(staffPage, /(?:s|emp|staff)\.department === StaffState\.activeDept/);
+    });
+
+    it('centralizes operational staff display groups in the backend contract', () => {
+        assert.deepEqual(staffDisplayGroups.listStaffDisplayGroups().map(group => group.key), [
+            'animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'
+        ]);
+        assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'security', role_type: 'maintenance' }), 'tech');
+        assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'admin', role_type: 'manager' }), 'reception');
+        assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'admin', role_type: 'senior_manager' }), 'reception');
+        assert.equal(staffDisplayGroups.resolveStaffDisplayGroup(
+            { department: 'security', role_type: 'maintenance' },
+            { structureNode: { displayGroup: 'cafe' } }
+        ), 'cafe');
+        assert.equal(staffDisplayGroups.resolveStaffDisplayGroup(
+            { department: 'security', role_type: 'maintenance' },
+            { structureNode: { displayGroup: 'unknown' } }
+        ), 'tech');
+        assert.equal(staffDisplayGroups.staffStructureDisplayGroupKey({ id: 'managers' }), 'reception');
+        assert.equal(staffDisplayGroups.staffStructureDisplayGroupKey({ id: 'technical_staff' }), 'tech');
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup({ department: 'security' }).display_group_label, 'Технічний відділ');
+        assert.doesNotMatch(staffDisplayGroupService, /key:\s*'security'/);
+        assert.match(staffRoute, /require\('\.\.\/services\/staffDisplayGroups'\)/);
+        assert.match(staffRoute, /router\.get\('\/display-groups'/);
+        assert.match(staffRoute, /displayGroups: listStaffDisplayGroups\(\)/);
+        assert.match(hrRoute, /decorateStaffWithDisplayGroup\(s\)/);
+        assert.match(hrRoute, /display_group: displayStaff\.display_group/);
+        assert.match(hrRoute, /displayGroup: displayStaff\.displayGroup/);
+        assert.match(hrRoute, /displayGroups: listStaffDisplayGroups\(\)/);
+    });
+
+    it('uses shared display groups for HR today filters and searchable raw department metadata', () => {
+        assert.match(hrPage, /let todayDisplayGroups = \[\]/);
+        assert.match(hrPage, /function normalizeStaffDisplayGroups\(groups = \[\]\)/);
+        assert.match(hrPage, /function staffDisplayGroupKeyForStaff\(staff = \{\}\)/);
+        assert.match(hrPage, /const backendGroup = normalizeStaffDisplayGroupKey\(staff\.display_group \|\| staff\.displayGroup\)/);
+        assert.match(hrPage, /if \(\['reception', 'manager', 'senior_manager'\]\.includes\(roleKey\)\) return 'reception'/);
+        assert.match(hrPage, /if \(departmentKey === 'security'\) return 'tech'/);
+        assert.match(hrPage, /function todayDepartmentOptions\(items = \[\], groups = todayDisplayGroups\)/);
+        assert.match(hrPage, /const key = staffDisplayGroupKeyForStaff\(item\)/);
+        assert.match(hrPage, /if \(department !== 'all' && staffDisplayGroupKeyForStaff\(item\) !== department\) return false/);
+        assert.match(hrPage, /todayDisplayGroups = normalizeStaffDisplayGroups\(data\.displayGroups \|\| data\.display_groups \|\| \[\]\)/);
+        assert.match(hrPage, /displayGroupLabel/);
+        assert.match(hrPage, /departmentLabel\(item\.department\)/);
+        assert.match(staffPage, /StaffState\.displayGroups = normalizeScheduleDisplayGroups\(data\.displayGroups \|\| data\.display_groups \|\| StaffState\.displayGroups\)/);
     });
 
     it('uses schedule display groups in filters, fill-week, load view, export, and copy-week safety', () => {

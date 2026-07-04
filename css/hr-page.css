@@ -832,6 +832,22 @@ body.dark-mode .hr-foundation-card textarea {
     letter-spacing: .06em;
     overflow-wrap: anywhere;
 }
+.hr-org-node-filter {
+    position: absolute;
+    right: 9px;
+    bottom: 8px;
+    max-width: 78px;
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: rgba(20,184,166,0.12);
+    color: #0f766e;
+    font-size: 9px;
+    font-weight: 950;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .hr-org-node-description {
     display: none;
     -webkit-line-clamp: 2;
@@ -1195,8 +1211,13 @@ body.dark-mode .hr-org-node--blue { background: rgba(14,165,233,0.12); color: #B
 body.dark-mode .hr-org-node--purple { background: rgba(168,85,247,0.12); color: #E9D5FF; }
 body.dark-mode .hr-org-node--violet { background: rgba(124,58,237,0.14); color: #DDD6FE; }
 body.dark-mode .hr-org-node-meta,
+body.dark-mode .hr-org-node-filter,
 body.dark-mode .hr-org-node-description {
     color: #CBD5E1;
+}
+body.dark-mode .hr-org-node-filter {
+    background: rgba(45,212,191,0.16);
+    color: #99f6e4;
 }
 body.dark-mode .hr-org-node-lane {
     background: rgba(15,23,42,0.34);

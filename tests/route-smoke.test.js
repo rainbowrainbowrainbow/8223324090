@@ -4999,6 +4999,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(loaded.data.data.schemaVersion, 1);
         assert.equal(loaded.data.data.nodes[0].id, 'director');
         assert.equal(loaded.data.data.nodes[0].tone, 'gold');
+        assert.equal(loaded.data.data.nodes[0].displayGroup, 'admin');
+        assert.deepEqual(loaded.data.displayGroups.map(group => group.key), ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning']);
 
         const saved = await request('PUT', '/api/hr/company-structure', {
             schemaVersion: 1,
@@ -5006,7 +5008,7 @@ describe('route-level API safety smoke', () => {
             instructions: 'нова інструкція',
             nodes: [
                 { id: 'director', title: 'Директор без корони', description: 'Root', tone: 'gold', lane: 'root', order: 1, x: 180, y: 40 },
-                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', order: 2, x: 340, y: 210 }
+                { id: 'ops', title: 'Операційний вузол', description: 'Ops', tone: 'bad-tone', lane: 'bad-lane', parentId: 'director', displayGroup: 'tech', order: 2, x: 340, y: 210 }
             ]
         }, withAuth());
         assert.equal(saved.status, 200, JSON.stringify(saved.data));
@@ -5017,6 +5019,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(saved.data.data.nodes[1].tone, 'blue');
         assert.equal(saved.data.data.nodes[1].lane, 'leadership');
         assert.equal(saved.data.data.nodes[1].parentId, 'director');
+        assert.equal(saved.data.data.nodes[0].displayGroup, 'admin');
+        assert.equal(saved.data.data.nodes[1].displayGroup, 'tech');
         assert.equal(saved.data.data.nodes[0].x, 180);
         assert.equal(saved.data.data.nodes[0].y, 40);
         assert.equal(saved.data.data.nodes[1].x, 340);

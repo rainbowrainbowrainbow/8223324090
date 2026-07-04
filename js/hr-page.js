@@ -121,6 +121,45 @@ const STAFF_DEPARTMENT_LABELS = {
     security: 'Охорона'
 };
 
+const STAFF_DISPLAY_GROUP_LABELS = {
+    animators: 'Аніматори',
+    trampoline: 'Батутисти',
+    reception: 'Рецепшен',
+    admin: 'Адміністрація',
+    cafe: 'Кафе',
+    tech: 'Технічний відділ',
+    cleaning: 'Прибирання'
+};
+const STAFF_DISPLAY_GROUP_ORDER = ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning'];
+const COMPANY_STRUCTURE_DEFAULT_DISPLAY_GROUPS = {
+    director: 'admin',
+    deputy_director: 'admin',
+    top_manager: 'admin',
+    managers: 'reception',
+    hr: 'admin',
+    accountant: 'admin',
+    art_director: 'admin',
+    admins: 'admin',
+    marketer: 'admin',
+    it_specialist: 'tech',
+    senior_trampoline: 'trampoline',
+    trampoline_instructors: 'trampoline',
+    animators: 'animators',
+    waiters: 'cafe',
+    barista: 'cafe',
+    reception: 'reception',
+    chef: 'cafe',
+    cooks: 'cafe',
+    dishwash: 'cafe',
+    pastry_chef: 'cafe',
+    pastry_team: 'cafe',
+    pastry_wash: 'cafe',
+    technical_staff: 'tech',
+    wardrobe: 'tech',
+    cleaning: 'cleaning',
+    facilities: 'tech'
+};
+
 function hrPulseSwitcher() {
     return typeof window !== 'undefined' ? window.HrPulseSwitcher : null;
 }
@@ -314,6 +353,7 @@ function normalizeVisiblePeopleBucket(bucketId, user = getHrCurrentUser()) {
 let canManage = false;
 let todayData = null;
 let todayFilters = { query: '', department: 'all' };
+let todayDisplayGroups = [];
 let scheduleWeekStart = null;
 let scheduleView = 'week'; // week | month
 let scheduleShifts = [];
@@ -429,6 +469,44 @@ function normalizeSearchText(value) {
 function normalizeDepartmentKey(value) {
     const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
     return normalized ? normalized.slice(0, 80) : 'none';
+}
+
+function normalizeStaffDisplayGroupKey(value) {
+    const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return STAFF_DISPLAY_GROUP_ORDER.includes(key) ? key : '';
+}
+
+function normalizeStaffDisplayGroups(groups = []) {
+    if (!Array.isArray(groups)) return [];
+    return groups
+        .map((group, index) => {
+            const source = group && typeof group === 'object' ? group : {};
+            const key = normalizeStaffDisplayGroupKey(source.key || source.value || source.id);
+            if (!key) return null;
+            return {
+                key,
+                label: String(source.label || source.name || STAFF_DISPLAY_GROUP_LABELS[key] || key).trim(),
+                order: Number.isFinite(Number(source.order)) ? Number(source.order) : index
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.order - b.order || STAFF_DISPLAY_GROUP_ORDER.indexOf(a.key) - STAFF_DISPLAY_GROUP_ORDER.indexOf(b.key));
+}
+
+function activeStaffDisplayGroups(groups = todayDisplayGroups) {
+    const normalized = normalizeStaffDisplayGroups(groups);
+    if (normalized.length) return normalized;
+    return STAFF_DISPLAY_GROUP_ORDER.map((key, index) => ({
+        key,
+        label: STAFF_DISPLAY_GROUP_LABELS[key] || key,
+        order: index
+    }));
+}
+
+function staffDisplayGroupLabel(key, groups = todayDisplayGroups) {
+    const normalized = normalizeStaffDisplayGroupKey(key);
+    const apiGroup = activeStaffDisplayGroups(groups).find(group => group.key === normalized);
+    return apiGroup?.label || STAFF_DISPLAY_GROUP_LABELS[normalized] || normalized || '';
 }
 
 function departmentLabel(value) {
@@ -1440,21 +1518,33 @@ function isTodayFilterActive() {
     return !!normalizeSearchText(todayFilters.query) || todayFilters.department !== 'all';
 }
 
-function todayDepartmentOptions(items = []) {
-    const departments = new Map();
+function staffDisplayGroupKeyForStaff(staff = {}) {
+    const backendGroup = normalizeStaffDisplayGroupKey(staff.display_group || staff.displayGroup);
+    if (backendGroup) return backendGroup;
+    const roleKey = normalizeProfessionKey(staff.role_type || staff.roleType);
+    if (['reception', 'manager', 'senior_manager'].includes(roleKey)) return 'reception';
+    const departmentKey = normalizeDepartmentKey(staff.department);
+    if (departmentKey === 'security') return 'tech';
+    return normalizeStaffDisplayGroupKey(departmentKey) || 'admin';
+}
+
+function todayDepartmentOptions(items = [], groups = todayDisplayGroups) {
+    const counts = new Map();
     items.forEach(item => {
-        const key = normalizeDepartmentKey(item.department);
-        if (!departments.has(key)) {
-            departments.set(key, {
-                key,
-                label: departmentLabel(item.department),
-                count: 0
-            });
-        }
-        departments.get(key).count++;
+        const key = staffDisplayGroupKeyForStaff(item);
+        counts.set(key, (counts.get(key) || 0) + 1);
     });
-    return Array.from(departments.values())
-        .sort((a, b) => a.label.localeCompare(b.label, 'uk'));
+    const ordered = activeStaffDisplayGroups(groups).map(group => ({
+        key: group.key,
+        label: group.label || staffDisplayGroupLabel(group.key, groups),
+        count: counts.get(group.key) || 0
+    }));
+    const seen = new Set(ordered.map(group => group.key));
+    for (const [key, count] of counts.entries()) {
+        if (seen.has(key)) continue;
+        ordered.push({ key, label: staffDisplayGroupLabel(key, groups) || key, count });
+    }
+    return ordered;
 }
 
 function summarizeTodayItems(items = []) {
@@ -1501,6 +1591,8 @@ function sortTodayItemsForReview(items = []) {
 
 function todaySearchHaystack(item = {}) {
     const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
+    const displayGroup = staffDisplayGroupKeyForStaff(item);
+    const displayGroupLabel = staffDisplayGroupLabel(displayGroup);
     const status = item.record?.status || (item.shift ? 'absent' : '');
     const statusLabel = STATUS_LABELS[status] || status;
     const shiftText = item.shift
@@ -1511,6 +1603,8 @@ function todaySearchHaystack(item = {}) {
         item.position,
         item.role_type,
         roleLabel,
+        displayGroup,
+        displayGroupLabel,
         item.department,
         departmentLabel(item.department),
         statusLabel,
@@ -1522,7 +1616,7 @@ function filteredTodayItems(items = []) {
     const query = normalizeSearchText(todayFilters.query);
     const department = todayFilters.department;
     const filtered = items.filter(item => {
-        if (department !== 'all' && normalizeDepartmentKey(item.department) !== department) return false;
+        if (department !== 'all' && staffDisplayGroupKeyForStaff(item) !== department) return false;
         if (query && !todaySearchHaystack(item).includes(query)) return false;
         return true;
     });
@@ -1577,11 +1671,15 @@ function renderTodayHoneycombTile(item = {}) {
     const isBirthday = todayIsBirthday(item);
     const canOpenProfile = Boolean(canManage && safeStaffId && typeof openStaffEdit === 'function');
     const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
+    const displayGroup = staffDisplayGroupKeyForStaff(item);
+    const displayGroupLabel = staffDisplayGroupLabel(displayGroup);
+    const departmentTitle = item.department ? departmentLabel(item.department) : '';
     const statusLabel = STATUS_LABELS[item.record?.status] || (status === 'absent' ? 'Відсутній' : status);
     const titleParts = [
         name,
         roleLabel,
-        departmentLabel(item.department),
+        displayGroupLabel,
+        departmentTitle && departmentTitle !== displayGroupLabel ? departmentTitle : '',
         isBirthday ? `День народження: ${name}` : '',
         statusLabel
     ].filter(Boolean);
@@ -1637,7 +1735,7 @@ function bindTodayFilterControls() {
 function renderTodayDepartmentSegments(items = []) {
     const root = document.getElementById('todayDepartmentSegments');
     if (!root) return;
-    const departments = todayDepartmentOptions(items);
+    const departments = todayDepartmentOptions(items, todayDisplayGroups);
     if (todayFilters.department !== 'all' && !departments.some(dep => dep.key === todayFilters.department)) {
         todayFilters.department = 'all';
     }
@@ -1723,6 +1821,7 @@ async function loadToday() {
         updateTodayHeaderMetrics();
         return;
     }
+    todayDisplayGroups = normalizeStaffDisplayGroups(data.displayGroups || data.display_groups || []);
     todayData = data;
     renderToday(data);
 }
@@ -1830,10 +1929,14 @@ function renderToday(data) {
 
         const arrived = isTodayItemArrived(item);
         const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
+        const displayGroup = staffDisplayGroupKeyForStaff(item);
+        const displayGroupLabel = staffDisplayGroupLabel(displayGroup);
+        const departmentMeta = item.department ? departmentLabel(item.department) : '';
         const roleMeta = [
             roleLabel,
             item.position && item.position !== roleLabel ? item.position : '',
-            item.department ? departmentLabel(item.department) : ''
+            displayGroupLabel,
+            departmentMeta && departmentMeta !== displayGroupLabel ? departmentMeta : ''
         ].filter(Boolean).join(' · ');
 
         return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" oncontextmenu="showContext(event, ${item.staff_id})">
@@ -5777,6 +5880,32 @@ function normalizeCompanyStructureNodeId(value, fallback) {
         .slice(0, 64) || fallback;
 }
 
+function normalizeCompanyStructureDisplayGroupKey(value) {
+    return normalizeStaffDisplayGroupKey(value);
+}
+
+function companyStructureNodeDisplayGroup(node = {}) {
+    const explicit = normalizeCompanyStructureDisplayGroupKey(node.displayGroup || node.display_group);
+    if (explicit) return explicit;
+    const id = normalizeCompanyStructureNodeId(node.id, '');
+    return COMPANY_STRUCTURE_DEFAULT_DISPLAY_GROUPS[id] || '';
+}
+
+function companyStructureDisplayGroupLabel(key) {
+    const normalized = normalizeCompanyStructureDisplayGroupKey(key);
+    return staffDisplayGroupLabel(normalized) || normalized || '';
+}
+
+function companyStructureDisplayGroupOptions(selectedValue = '') {
+    const selected = normalizeCompanyStructureDisplayGroupKey(selectedValue);
+    return [
+        `<option value=""${selected ? '' : ' selected'}>Без операційного фільтра</option>`,
+        ...STAFF_DISPLAY_GROUP_ORDER.map(key => (
+            `<option value="${escapeHtml(key)}"${key === selected ? ' selected' : ''}>${escapeHtml(STAFF_DISPLAY_GROUP_LABELS[key] || key)}</option>`
+        ))
+    ].join('');
+}
+
 function clampCompanyOrgCoord(value, max) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
@@ -5837,7 +5966,8 @@ function normalizeCompanyStructureNodes(nodes) {
             order,
             x: clampCompanyOrgCoord(raw.x, 5000) ?? fallbackPosition.x,
             y: clampCompanyOrgCoord(raw.y, 5000) ?? fallbackPosition.y,
-            meta: raw.meta ? String(raw.meta).trim().slice(0, 80) : null
+            meta: raw.meta ? String(raw.meta).trim().slice(0, 80) : null,
+            displayGroup: companyStructureNodeDisplayGroup({ ...raw, id }) || null
         };
     });
     const ids = new Set(normalized.map(node => node.id));
@@ -6015,6 +6145,8 @@ function renderCompanyOrgNode(node) {
     const lane = ORG_ALLOWED_LANES.includes(node.lane) ? node.lane : 'leadership';
     const size = companyOrgNodeSize(node);
     const description = String(node.description || '').trim();
+    const displayGroup = companyStructureNodeDisplayGroup(node);
+    const displayGroupLabel = companyStructureDisplayGroupLabel(displayGroup);
     return `
         <span class="hr-org-node-shell${linking}" data-org-node-shell="${escapeHtml(node.id)}" data-org-lane="${escapeHtml(lane)}" style="left:${Number(node.x || 0)}px;top:${Number(node.y || 0)}px;width:${size.width}px;height:${size.height}px;">
             <button type="button" class="hr-org-port hr-org-port--child" data-org-link-child-port="${escapeHtml(node.id)}" aria-label="Точка підпорядкування для ${escapeHtml(node.title)}" title="Ця роль підпорядковується"></button>
@@ -6022,6 +6154,7 @@ function renderCompanyOrgNode(node) {
                 <span class="hr-org-node-lane">${escapeHtml(ORG_LANE_LABELS[lane] || 'Роль')}</span>
                 <span class="hr-org-node-title">${escapeHtml(node.title)}</span>
                 <span class="hr-org-node-meta">${escapeHtml(meta)}</span>
+                ${displayGroupLabel ? `<span class="hr-org-node-filter" title="Операційний фільтр: ${escapeHtml(displayGroupLabel)}">${escapeHtml(displayGroupLabel)}</span>` : ''}
                 ${description ? `<span class="hr-org-node-description">${escapeHtml(description)}</span>` : ''}
             </button>
             <button type="button" class="hr-org-port hr-org-port--parent" data-org-link-parent-port="${escapeHtml(node.id)}" aria-label="Точка керівника для ${escapeHtml(node.title)}" title="Ця роль керує іншою"></button>
@@ -6609,6 +6742,8 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
     closeCompanyOrgNodeEditor();
     const parentNode = node.parentId ? companyStructureNodeById(node.parentId) : null;
     const childCount = companyStructureChildrenOf(node.id).length;
+    const displayGroup = companyStructureNodeDisplayGroup(node);
+    const displayGroupLabel = companyStructureDisplayGroupLabel(displayGroup) || 'немає';
     const parentOptions = [
         '<option value="">Без батьківського вузла</option>',
         ...sortCompanyStructureNodes(companyStructureNodes)
@@ -6640,6 +6775,7 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
                     <span>ID: <b>${escapeHtml(node.id)}</b></span>
                     <span>Керівник: <b>${escapeHtml(parentNode?.title || 'немає')}</b></span>
                     <span>Дочірніх ролей: <b>${childCount}</b></span>
+                    <span>Фільтр: <b>${escapeHtml(displayGroupLabel)}</b></span>
                     <span>Позиція на сітці: <b>${Math.round(Number(node.x || 0))}, ${Math.round(Number(node.y || 0))}</b></span>
                 </div>
                 <div class="hr-org-node-form-row">
@@ -6664,9 +6800,15 @@ function openCompanyOrgNodeEditor(nodeId = selectedCompanyStructureNodeId) {
                 </div>
                 <div class="hr-org-node-form-row">
                     <label>
+                        Операційний фільтр
+                        <select name="displayGroup">${companyStructureDisplayGroupOptions(displayGroup)}</select>
+                    </label>
+                    <label>
                         Група / стек
                         <input type="text" name="stack" maxlength="64" value="${escapeHtml(node.stack || '')}" placeholder="Напр. kitchen">
                     </label>
+                </div>
+                <div class="hr-org-node-form-row">
                     <label>
                         Підпис
                         <input type="text" name="meta" maxlength="80" value="${escapeHtml(node.meta || '')}" placeholder="Напр. сервіс">
@@ -6733,6 +6875,7 @@ async function saveCompanyOrgNodeFromEditor(event) {
         stack: String(formData.get('stack') || '').trim().slice(0, 64) || null,
         order: Number.isFinite(order) ? order : companyStructureNodes[index].order,
         meta: String(formData.get('meta') || '').trim().slice(0, 80) || null,
+        displayGroup: normalizeCompanyStructureDisplayGroupKey(formData.get('displayGroup')) || null,
         x: x ?? companyStructureNodes[index].x,
         y: y ?? companyStructureNodes[index].y
     };

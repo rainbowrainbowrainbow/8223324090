@@ -47,6 +47,12 @@ const {
     validateStaffScheduleableForDate
 } = require('../services/staffOperationalFilters');
 const {
+    decorateStaffRowsWithDisplayGroups,
+    decorateStaffWithDisplayGroup,
+    listStaffDisplayGroups,
+    staffStructureDisplayGroupKey
+} = require('../services/staffDisplayGroups');
+const {
     cleanupFutureStaffOperationalSchedule,
     syncLinkedStaffAccountDeactivation
 } = require('../services/staffLifecycle');
@@ -1176,7 +1182,8 @@ function sanitizeCompanyStructureNodes(nodes) {
             order,
             x,
             y,
-            meta: sanitizeCompanyStructureString(source.meta, 80) || null
+            meta: sanitizeCompanyStructureString(source.meta, 80) || null,
+            displayGroup: staffStructureDisplayGroupKey({ ...source, id }) || null
         };
     });
     const ids = new Set(normalized.map(node => node.id));
@@ -2258,7 +2265,11 @@ router.get('/staff', async (req, res) => {
         await attachStaffProfessionRates(result.rows);
         await attachTrainingReadiness(result.rows);
         await attachOnboardingAssignments(result.rows);
-        res.json({ success: true, data: result.rows });
+        res.json({
+            success: true,
+            data: decorateStaffRowsWithDisplayGroups(result.rows),
+            displayGroups: listStaffDisplayGroups()
+        });
     } catch (err) {
         log.error('GET /hr/staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3361,7 +3372,7 @@ router.get('/company-structure', async (req, res) => {
     try {
         const result = await pool.query("SELECT value FROM settings WHERE key = 'hr_company_structure'");
         const payload = normalizeCompanyStructurePayload(result.rows[0]?.value || {});
-        res.json({ success: true, data: payload });
+        res.json({ success: true, data: payload, displayGroups: listStaffDisplayGroups() });
     } catch (err) {
         log.error('GET /hr/company-structure error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -3420,7 +3431,7 @@ router.put('/company-structure', requireHrManage, async (req, res) => {
         };
         await client.query('COMMIT');
         await auditLog('company_structure_update', null, req.user?.username, { updatedAt: payload.updatedAt, nodes: payload.nodes.length }, req.ip);
-        res.json({ success: true, data: payload, staleRefsCleared });
+        res.json({ success: true, data: payload, displayGroups: listStaffDisplayGroups(), staleRefsCleared });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('PUT /hr/company-structure error', err);
@@ -3923,6 +3934,7 @@ router.get('/today', async (req, res) => {
 
         let present = 0, late = 0, absent = 0, onVacation = 0, sick = 0;
         const data = staff.rows.map(s => {
+            const displayStaff = decorateStaffWithDisplayGroup(s);
             const shift = shiftMap[s.id] || null;
             const record = recordMap[s.id] || null;
 
@@ -3940,6 +3952,10 @@ router.get('/today', async (req, res) => {
                 staff_id: s.id,
                 staff_name: s.name,
                 department: s.department,
+                display_group: displayStaff.display_group,
+                display_group_label: displayStaff.display_group_label,
+                displayGroup: displayStaff.displayGroup,
+                displayGroupLabel: displayStaff.displayGroupLabel,
                 position: s.position,
                 staff_color: s.color,
                 role_type: s.role_type,
@@ -3966,6 +3982,7 @@ router.get('/today', async (req, res) => {
             success: true,
             date: today,
             data,
+            displayGroups: listStaffDisplayGroups(),
             summary: { total_staff: staff.rows.length, present, late, absent, on_vacation: onVacation, sick }
         });
     } catch (err) {

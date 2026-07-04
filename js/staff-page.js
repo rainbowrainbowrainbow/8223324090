@@ -71,6 +71,7 @@ const StaffState = {
     accountabilityManagerFilter: 'all',
     scheduleHistory: {}, // { staffId_date: audit entries }
     departments: {},
+    displayGroups: [],
     activeDept: 'all',
     healthFilter: 'all',
     includeFreelance: false,
@@ -1639,6 +1640,30 @@ const SCHEDULE_RECEPTION_ROLE_KEYS = new Set(['reception', 'manager', 'senior_ma
 const SCHEDULE_COPY_RAW_DEPARTMENT_SAFE = new Set(['animators', 'trampoline', 'cafe', 'cleaning']);
 const SCHEDULE_COPY_EXPLICIT_STAFF_CATEGORIES = new Set(['reception', 'tech', 'admin']);
 
+function normalizeScheduleDisplayGroupKey(value) {
+    const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return SCHEDULE_DEPARTMENT_ORDER.includes(key) ? key : '';
+}
+
+function normalizeScheduleDisplayGroups(groups = []) {
+    if (!Array.isArray(groups)) return [];
+    return groups
+        .map((group, index) => {
+            const source = group && typeof group === 'object' ? group : {};
+            const key = normalizeScheduleDisplayGroupKey(source.key || source.value || source.id);
+            const label = String(source.label || source.name || '').trim();
+            const order = Number.isFinite(Number(source.order)) ? Number(source.order) : index;
+            return key ? { key, label: label || key, order } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.order - b.order || SCHEDULE_DEPARTMENT_ORDER.indexOf(a.key) - SCHEDULE_DEPARTMENT_ORDER.indexOf(b.key));
+}
+
+function scheduleDisplayGroupOrder() {
+    const apiOrder = (StaffState.displayGroups || []).map(group => group.key).filter(Boolean);
+    return apiOrder.length ? apiOrder : SCHEDULE_DEPARTMENT_ORDER;
+}
+
 function getDepartmentOptionsFromStaffState() {
     const source = StaffState.departments && Object.keys(StaffState.departments).length
         ? StaffState.departments
@@ -1647,6 +1672,8 @@ function getDepartmentOptionsFromStaffState() {
 }
 
 function scheduleDisplayDepartmentKey(staff = {}) {
+    const backendGroup = normalizeScheduleDisplayGroupKey(staff.display_group || staff.displayGroup);
+    if (backendGroup) return backendGroup;
     const roleKey = normalizeProfessionKey(staff.role_type);
     if (SCHEDULE_RECEPTION_ROLE_KEYS.has(roleKey)) return 'reception';
     const department = String(staff.department || '').trim();
@@ -1660,11 +1687,16 @@ function scheduleDepartmentLabels() {
         const label = String(value || '').trim();
         if (label && !/^\d+$/.test(label)) apiDepartmentLabels[key] = label;
     }
+    const displayGroupLabels = {};
+    for (const group of (StaffState.displayGroups || [])) {
+        if (group.key && group.label) displayGroupLabels[group.key] = group.label;
+    }
     return {
         ...LEGACY_DEPARTMENT_FALLBACK,
         ...apiDepartmentLabels,
         reception: 'Рецепшен',
-        tech: 'Технічний відділ'
+        tech: 'Технічний відділ',
+        ...displayGroupLabels
     };
 }
 
@@ -1687,7 +1719,9 @@ function scheduleDepartmentOptions() {
     }
     const ordered = [];
     const seen = new Set();
-    for (const key of SCHEDULE_DEPARTMENT_ORDER) {
+    const apiOrder = scheduleDisplayGroupOrder();
+    const fallbackOrder = SCHEDULE_DEPARTMENT_ORDER;
+    for (const key of (apiOrder.length ? apiOrder : fallbackOrder)) {
         if (!labels[key] && !counts.has(key)) continue;
         ordered.push({ value: key, label: labels[key] || key, count: counts.get(key) || 0 });
         seen.add(key);
@@ -1845,6 +1879,7 @@ async function fetchStaff() {
         });
         const data = await res.json();
         if (data.success) {
+            StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || []);
             StaffState.staff = scheduleableStaffForUi(data.data || []);
             StaffState.departments = data.departments;
         }
@@ -1864,6 +1899,7 @@ async function fetchSchedule(from, to) {
         });
         const data = await res.json();
         if (data.success) {
+            StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || StaffState.displayGroups);
             StaffState.schedule = {};
             StaffState.scheduleRawEntries = [];
             for (const entry of (data.data || [])) {

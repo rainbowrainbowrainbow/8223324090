@@ -54,6 +54,11 @@ const {
     validateStaffScheduleableForDate
 } = require('../services/staffOperationalFilters');
 const {
+    buildStaffDisplayGroupOptions,
+    decorateStaffRowsWithDisplayGroups,
+    listStaffDisplayGroups
+} = require('../services/staffDisplayGroups');
+const {
     cleanupFutureStaffOperationalSchedule,
     syncLinkedStaffAccountDeactivation
 } = require('../services/staffLifecycle');
@@ -659,6 +664,11 @@ router.get('/departments', async (req, res) => {
     res.json({ success: true, data: DEPARTMENTS });
 });
 
+// GET /api/staff/display-groups — canonical operational staff filter groups
+router.get('/display-groups', async (req, res) => {
+    res.json({ success: true, data: listStaffDisplayGroups() });
+});
+
 // ==========================================
 // SCHEDULE ROUTES (must be before /:id to avoid param capture)
 // ==========================================
@@ -690,7 +700,8 @@ router.get('/schedule', async (req, res) => {
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
         );
-        res.json({ success: true, data: result.rows });
+        const rows = decorateStaffRowsWithDisplayGroups(result.rows);
+        res.json({ success: true, data: rows, displayGroups: listStaffDisplayGroups() });
     } catch (err) {
         log.error('GET /staff/schedule error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1598,7 +1609,14 @@ router.get('/', async (req, res) => {
         sql += ' ORDER BY department, name';
 
         const result = await pool.query(sql, params);
-        res.json({ success: true, data: result.rows, departments: DEPARTMENTS });
+        const rows = decorateStaffRowsWithDisplayGroups(result.rows);
+        res.json({
+            success: true,
+            data: rows,
+            departments: DEPARTMENTS,
+            displayGroups: listStaffDisplayGroups(),
+            displayGroupOptions: buildStaffDisplayGroupOptions(rows)
+        });
     } catch (err) {
         log.error('GET /staff error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });

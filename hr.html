@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.78.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.78.5">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.78.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.78.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.78.5">
+    <link rel="stylesheet" href="css/base.css?v=0.78.6">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.6">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.6">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.6">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.6">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.6">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.78.5">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.78.6">
 </head>
 <body data-page-group="hr">
     <script>
@@ -127,13 +127,8 @@
 
             <!-- TAB 2: SCHEDULE -->
             <div id="tab-schedule" class="hr-tab-content">
-                <section class="hr-schedule-embed-shell" aria-label="Графік роботи">
-                    <iframe
-                        id="hrScheduleEmbedFrame"
-                        class="hr-schedule-embed-frame"
-                        title="Графік роботи"
-                        data-src="/staff?embed=1"
-                        loading="lazy"></iframe>
+                <section class="hr-schedule-module-shell" aria-label="Графік роботи">
+                    <div id="hrStaffScheduleShell" data-staff-schedule-shell="hr"></div>
                 </section>
                 <div class="hr-professions-head" style="margin-top:24px;">
                     <div>
@@ -1036,16 +1031,18 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.78.5"></script>
-    <script src="js/config.js?v=0.78.5"></script>
-    <script src="js/notification.js?v=0.78.5"></script>
-    <script src="js/api.js?v=0.78.5"></script>
-    <script src="js/auth.js?v=0.78.5"></script>
-    <script src="js/components/sidebar.js?v=0.78.5"></script>
+    <script src="js/ui.js?v=0.78.6"></script>
+    <script src="js/config.js?v=0.78.6"></script>
+    <script src="js/notification.js?v=0.78.6"></script>
+    <script src="js/api.js?v=0.78.6"></script>
+    <script src="js/auth.js?v=0.78.6"></script>
+    <script src="js/components/sidebar.js?v=0.78.6"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.78.5"></script>
-    <script src="js/hr-pulse-switcher.js?v=0.78.5"></script>
-    <script src="js/hr-page.js?v=0.78.5"></script>
-    <script src="js/alerts.js?v=0.78.5"></script>
+    <script src="js/ws.js?v=0.78.6"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.78.6"></script>
+    <script src="js/staff-schedule-shell.js?v=0.78.6"></script>
+    <script src="js/staff-page.js?v=0.78.6"></script>
+    <script src="js/hr-page.js?v=0.78.6"></script>
+    <script src="js/alerts.js?v=0.78.6"></script>
 </body>
 </html>

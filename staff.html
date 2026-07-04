@@ -12,13 +12,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.78.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.78.5">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.78.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.78.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.78.5">
+    <link rel="stylesheet" href="css/base.css?v=0.78.6">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.6">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.6">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.6">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.6">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.6">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -74,226 +74,8 @@
         </header>
 
         <main id="main-content" class="page-container">
-            <nav class="staff-pulse-nav" aria-label="Навігація пульсу компанії">
-                <div class="staff-pulse-nav-items" id="staffPulseNavItems" data-pulse-switcher="staff"></div>
-            </nav>
-
-            <section class="staff-schedule-command" aria-label="Керування графіком роботи">
-                <div class="staff-schedule-command-content">
-                    <div class="page-header">
-                        <div class="staff-schedule-command-title">
-                            <span class="staff-schedule-command-eyebrow">Операційний центр</span>
-                            <h2>Графік роботи</h2>
-                        </div>
-                        <button type="button" id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
-                    </div>
-                    <div class="staff-schedule-command-metrics" aria-label="Стан графіка" aria-live="polite">
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--period">
-                            <span>Період</span>
-                            <strong id="scheduleHeaderPeriod">-</strong>
-                        </div>
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--dept">
-                            <span>Фільтр</span>
-                            <strong id="scheduleHeaderDepartment">Всі</strong>
-                        </div>
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--staff">
-                            <span>Працівники</span>
-                            <strong id="scheduleHeaderStaffCount">0</strong>
-                        </div>
-                        <div class="staff-schedule-metric-chip staff-schedule-metric-chip--status">
-                            <span>Сьогодні</span>
-                            <strong id="scheduleHeaderStatus">0 активні</strong>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Week navigation + department filter -->
-            <div class="workspace-command-bar staff-schedule-command-bar" aria-label="Керування періодом і діями графіка">
-                <div class="schedule-controls">
-                    <div class="week-nav">
-                        <button type="button" id="prevWeekBtn" title="Попередній період">‹</button>
-                        <span id="weekLabel" class="week-label"></span>
-                        <button type="button" id="nextWeekBtn" title="Наступний період">›</button>
-                        <button type="button" id="todayWeekBtn" title="Вчора, сьогодні і найближчі дні">Сьогодні</button>
-                    </div>
-                    <div id="deptFilter" class="dept-filter"></div>
-                </div>
-                <div class="schedule-toolbar">
-                    <button type="button" id="copyWeekBtn" class="btn-page-toolbar" style="display:none" title="Скопіювати цей тиждень на наступний">Копія тижня</button>
-                    <button type="button" id="fillWeekBtn" class="btn-page-toolbar" style="display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
-                    <button type="button" id="toggleHoursBtn" class="btn-page-toolbar" title="Показати/сховати години">Години</button>
-                    <button type="button" id="toggleLoadViewBtn" class="btn-page-toolbar" title="Навантаження по дням">Навантаження</button>
-                    <button type="button" id="toggleLinkViewBtn" class="btn-page-toolbar" title="Зв'язки з акаунтами CRM">Акаунти</button>
-                    <button type="button" id="bulkCreateBtn" class="btn-page-toolbar" style="display:none" title="Створити акаунти всім без акаунту">Масове створення</button>
-                    <button type="button" id="importExcelBtn" class="btn-page-toolbar" style="display:none" title="Імпорт з Excel">Excel</button>
-                    <button type="button" id="exportExcelBtn" class="btn-page-toolbar" title="Експорт графіку в CSV">Експорт</button>
-                    <button type="button" id="printBtn" class="btn-page-toolbar" title="Друк графіку">Друк</button>
-                    <input type="file" id="excelImportInput" accept=".xlsx,.xls">
-                </div>
-            </div>
-
-            <!-- Summary -->
-            <div id="scheduleSummary" class="schedule-summary"></div>
-            <div id="scheduleHealthPanel" class="schedule-health-panel" aria-live="polite"></div>
-            <div id="scheduleForecastPanel" class="schedule-forecast-panel" aria-live="polite"></div>
-            <div id="managerAccountabilityPanel" class="manager-accountability-panel" aria-live="polite"></div>
-            <div id="scheduleAttendanceSummary" class="schedule-attendance-summary" aria-live="polite"></div>
-
-            <!-- Load view (Excel-like daily workload) -->
-            <div id="loadViewWrapper" class="schedule-wrapper" style="display:none">
-                <table class="schedule-table load-table">
-                    <thead id="loadViewHead"></thead>
-                    <tbody id="loadViewBody"></tbody>
-                </table>
-            </div>
-
-            <!-- Schedule table -->
-            <div id="scheduleWrapper" class="schedule-wrapper">
-                <table class="schedule-table">
-                    <thead id="scheduleHead"></thead>
-                    <tbody id="scheduleBody"></tbody>
-                </table>
-            </div>
+            <div id="staffScheduleShell" data-staff-schedule-shell="standalone"></div>
         </main>
-    </div>
-
-    <!-- Edit schedule modal -->
-    <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Редагувати зміну">
-        <div class="sch-modal">
-            <h3 id="schModalTitle">Редагувати зміну</h3>
-            <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
-            <div class="form-group">
-                <label>Статус</label>
-                <select id="schStatus">
-                    <option value="working">Робочий день</option>
-                    <option value="remote">Віддалено</option>
-                    <option value="dayoff">Вихідний</option>
-                    <option value="vacation">Відпустка</option>
-                    <option value="sick">Лікарняний</option>
-                </select>
-            </div>
-            <div id="schProfessionGroup" class="form-group">
-                <label>Професія у зміні</label>
-                <select id="schProfession"></select>
-                <div class="form-hint">Доступні тільки професії з картки співробітника.</div>
-            </div>
-            <div id="schTimeFields">
-                <div class="form-group">
-                    <label>Початок зміни</label>
-                    <input type="time" id="schStart" value="10:00">
-                </div>
-                <div class="form-group">
-                    <label>Кінець зміни</label>
-                    <input type="time" id="schEnd" value="20:00">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Примітка</label>
-                <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
-            </div>
-            <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
-            <div class="modal-actions sch-replacement-actions">
-                <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
-                <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
-            </div>
-            <div class="sch-history-panel">
-                <div class="sch-history-head">
-                    <strong>Історія клітинки</strong>
-                    <button type="button" id="schHistoryRefreshBtn" class="sch-history-refresh">Оновити</button>
-                </div>
-                <div id="schHistoryList" class="sch-history-list">
-                    <div class="sch-history-empty">Історія завантажиться після відкриття клітинки</div>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" id="schSaveBtn" class="btn-page-primary">Зберегти</button>
-                <button type="button" id="schCancelBtn" class="btn-page-secondary">Скасувати</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Fill week modal -->
-    <div id="fillWeekOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Заповнити тиждень">
-        <div class="sch-modal">
-            <h3>Заповнити тиждень</h3>
-            <div class="form-group">
-                <label>Працівник</label>
-                <select id="fillStaffSelect"></select>
-            </div>
-            <div class="form-group">
-                <label>Дні тижня</label>
-                <div id="fillDaysRow">
-                    <label><input type="checkbox" value="1" checked> Пн</label>
-                    <label><input type="checkbox" value="2" checked> Вт</label>
-                    <label><input type="checkbox" value="3" checked> Ср</label>
-                    <label><input type="checkbox" value="4" checked> Чт</label>
-                    <label><input type="checkbox" value="5" checked> Пт</label>
-                    <label><input type="checkbox" value="6"> Сб</label>
-                    <label><input type="checkbox" value="0"> Нд</label>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Статус</label>
-                <select id="fillStatus">
-                    <option value="working">Робочий день</option>
-                    <option value="remote">Віддалено</option>
-                    <option value="dayoff">Вихідний</option>
-                    <option value="vacation">Відпустка</option>
-                    <option value="sick">Лікарняний</option>
-                </select>
-            </div>
-            <div id="fillTimeFields">
-                <div class="form-group">
-                    <label>Початок зміни</label>
-                    <input type="time" id="fillStart" value="10:00">
-                </div>
-                <div class="form-group">
-                    <label>Кінець зміни</label>
-                    <input type="time" id="fillEnd" value="20:00">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Примітка</label>
-                <input type="text" id="fillNote" aria-label="Необов'язково" placeholder="Необов'язково">
-            </div>
-            <div class="modal-actions">
-                <button type="button" id="fillSaveBtn" class="btn-page-primary">Заповнити</button>
-                <button type="button" id="fillCancelBtn" class="btn-page-secondary">Скасувати</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Link account modal (v39.1) -->
-    <div id="linkModalOverlay" class="sch-modal-overlay">
-        <div class="sch-modal">
-            <h3 id="linkModalTitle">Зв'язати акаунт</h3>
-            <p id="linkModalSubtitle"></p>
-            <div class="form-group">
-                <label>Пошук акаунту</label>
-                <input type="text" id="linkSearchInput" placeholder="Пошук по імені або логіну...">
-            </div>
-            <div id="linkUsersList"></div>
-            <div class="modal-actions">
-                <button type="button" id="linkConfirmBtn" class="btn-page-primary" disabled>Зв'язати</button>
-                <button type="button" id="linkCreateAccountBtn" class="btn-page-secondary">Створити акаунт</button>
-                <button type="button" id="linkCancelBtn" class="btn-page-secondary">Скасувати</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Bulk create results modal (v39.1) -->
-    <div id="bulkResultsOverlay" class="sch-modal-overlay">
-        <div class="sch-modal">
-            <h3 id="bulkResultsTitle">Результати створення</h3>
-            <div id="bulkResultsBody"></div>
-            <div class="modal-actions">
-                <button type="button" id="bulkCopyBtn" class="btn-page-secondary">Копіювати</button>
-                <button type="button" id="bulkCsvBtn" class="btn-page-secondary hidden">CSV</button>
-                <button type="button" id="bulkPdfBtn" class="btn-page-secondary hidden">PDF</button>
-                <button type="button" id="bulkCloseBtn" class="btn-page-primary">Закрити</button>
-            </div>
-        </div>
     </div>
 
     <!-- v10.4: Особистий кабінет -->
@@ -311,14 +93,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.78.5"></script>
-    <script src="js/config.js?v=0.78.5"></script>
-    <script src="js/notification.js?v=0.78.5"></script>
-    <script src="js/api.js?v=0.78.5"></script>
-    <script src="js/auth.js?v=0.78.5"></script>
-    <script src="js/components/sidebar.js?v=0.78.5"></script>
-    <script src="js/hr-pulse-switcher.js?v=0.78.5"></script>
+    <script src="js/ui.js?v=0.78.6"></script>
+    <script src="js/config.js?v=0.78.6"></script>
+    <script src="js/notification.js?v=0.78.6"></script>
+    <script src="js/api.js?v=0.78.6"></script>
+    <script src="js/auth.js?v=0.78.6"></script>
+    <script src="js/components/sidebar.js?v=0.78.6"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.78.6"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.78.5"></script><script src="js/alerts.js?v=0.78.5"></script>
+    <script src="js/staff-schedule-shell.js?v=0.78.6"></script>
+    <script src="js/staff-page.js?v=0.78.6"></script>
+    <script src="js/alerts.js?v=0.78.6"></script>
 </body>
 </html>

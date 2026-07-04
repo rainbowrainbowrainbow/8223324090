@@ -15,27 +15,39 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function isStaffScheduleEmbedMode() {
-    try {
-        const params = new URLSearchParams(window.location.search);
-        return params.get('embed') === '1' || window.self !== window.top;
-    } catch (_) {
-        return false;
-    }
-}
-
-function applyStaffScheduleEmbedMode() {
-    const embedded = isStaffScheduleEmbedMode();
-    document.documentElement.classList.toggle('staff-schedule-embed-mode', embedded);
-    document.body?.classList.toggle('staff-schedule-embed-mode', embedded);
-    return embedded;
-}
-
 function renderStaffPulseSwitcher() {
     const container = document.getElementById('staffPulseNavItems');
     const switcher = typeof window !== 'undefined' ? window.HrPulseSwitcher : null;
     if (!container || !switcher || typeof switcher.renderStaffNav !== 'function') return;
     switcher.renderStaffNav(container, { activeId: 'schedule' });
+}
+
+let staffScheduleInitPromise = null;
+let staffScheduleInitialized = false;
+
+function staffScheduleMode(options = {}) {
+    return options.mode === 'hr' ? 'hr' : 'standalone';
+}
+
+function applyStaffScheduleHostMode(mode) {
+    const hrMode = mode === 'hr';
+    document.documentElement.classList.toggle('staff-schedule-hr-mode', hrMode);
+    document.body?.classList.toggle('staff-schedule-hr-mode', hrMode);
+}
+
+function ensureStaffScheduleShell(options = {}) {
+    const shell = typeof window !== 'undefined' ? window.StaffScheduleShell : null;
+    if (!shell || typeof shell.ensure !== 'function') return null;
+    const mode = staffScheduleMode(options);
+    return shell.ensure({
+        host: options.host,
+        mode,
+        includePulseNav: mode !== 'hr'
+    });
+}
+
+function shouldAutoInitStaffSchedulePage() {
+    return !!document.querySelector('[data-staff-schedule-shell="standalone"]');
 }
 
 // ==========================================
@@ -3876,136 +3888,164 @@ async function openAddStaffModal() {
 // INIT
 // ==========================================
 
-async function initPage() {
-    initDarkMode();
-    const embedded = applyStaffScheduleEmbedMode();
-    if (!embedded) renderStaffPulseSwitcher();
+async function initStaffSchedulePage(options = {}) {
+    if (staffScheduleInitPromise) return staffScheduleInitPromise;
+    staffScheduleInitPromise = (async () => {
+        const mode = staffScheduleMode(options);
+        applyStaffScheduleHostMode(mode);
+        const host = ensureStaffScheduleShell(options);
+        if (!host) throw new Error('Staff schedule shell is not available');
 
-    const user = await apiVerifyToken();
-    if (!user) {
-        window.location.href = '/';
-        return;
-    }
+        if (typeof initDarkMode === 'function') initDarkMode();
+        if (mode !== 'hr') renderStaffPulseSwitcher();
 
-    AppState.currentUser = user;
-    const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
-    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-    else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-
-    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'];
-    const canManage = MANAGE_ROLES.includes(user.role);
-    StaffState.canManage = canManage;
-    const ADMIN_ROLES = ['creator', 'director'];
-    const isAdmin = ADMIN_ROLES.includes(user.role);
-    const addBtn = document.getElementById('addStaffBtn');
-    if (addBtn) addBtn.style.display = canManage ? '' : 'none';
-
-    // Show admin-only buttons
-    const copyBtn = document.getElementById('copyWeekBtn');
-    const fillBtn = document.getElementById('fillWeekBtn');
-    if (copyBtn) copyBtn.style.display = canManage ? '' : 'none';
-    if (fillBtn) fillBtn.style.display = canManage ? '' : 'none';
-
-    // v39.1: Show bulk create and import buttons only for creator/director
-    const bulkBtn = document.getElementById('bulkCreateBtn');
-    const importBtn = document.getElementById('importExcelBtn');
-    if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
-    if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
-
-    if (typeof bindLogoutButton === 'function') bindLogoutButton();
-
-    // Load data
-    await fetchHrProfessions();
-    await fetchStaff();
-    renderDeptFilter();
-
-    // Init the rolling window: yesterday, today, and the upcoming days.
-    StaffState.weekStart = getScheduleFocusStart(new Date());
-    renderWeekLabel();
-
-    const dates = getWeekDates(StaffState.weekStart);
-    const from = formatDateStr(dates[0]);
-    const to = formatDateStr(getScheduleRangeEnd(dates));
-    await fetchSchedule(from, to);
-    await fetchScheduleAttendance(from, to);
-    await fetchStaffingForecastBookings(from, to);
-    renderSchedule();
-
-    // Event listeners
-    document.getElementById('prevWeekBtn')?.addEventListener('click', prevWeek);
-    document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
-    document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
-    document.getElementById('schSaveBtn')?.addEventListener('click', handleSave);
-    document.getElementById('schReplaceBtn')?.addEventListener('click', handleReplaceSchedule);
-    document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
-    document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
-    document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
-    document.getElementById('schHistoryRefreshBtn')?.addEventListener('click', () => {
-        const editing = StaffState.editingCell;
-        if (editing) loadScheduleCellHistory(editing.staffId, editing.date);
-    });
-
-    document.getElementById('schModalOverlay')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeEditModal(false);
-    });
-
-    // Fill week modal
-    document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal);
-    document.getElementById('fillSaveBtn')?.addEventListener('click', handleFillWeekSave);
-    document.getElementById('fillCancelBtn')?.addEventListener('click', () => closeFillWeekModal(false));
-    document.getElementById('fillStatus')?.addEventListener('change', toggleFillTimeFields);
-    document.getElementById('fillWeekOverlay')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeFillWeekModal(false);
-    });
-
-    // Copy week
-    document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek);
-
-    // Hours toggle
-    document.getElementById('toggleHoursBtn')?.addEventListener('click', toggleHours);
-
-    // Load view toggle
-    document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView);
-
-    // v39.1: Account linking
-    document.getElementById('toggleLinkViewBtn')?.addEventListener('click', toggleLinkView);
-    document.getElementById('bulkCreateBtn')?.addEventListener('click', handleBulkCreate);
-    document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport);
-    document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
-    document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
-    document.getElementById('printBtn')?.addEventListener('click', handlePrint);
-
-    // v39.11: Add staff button
-    document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal);
-
-    // Link modal
-    document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);
-    document.getElementById('linkCreateAccountBtn')?.addEventListener('click', createAccountForLinkingStaff);
-    document.getElementById('linkCancelBtn')?.addEventListener('click', closeLinkModal);
-    document.getElementById('linkSearchInput')?.addEventListener('input', (e) => {
-        renderLinkUsersList(e.target.value);
-    });
-    document.getElementById('linkModalOverlay')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeLinkModal();
-    });
-
-    // Bulk results modal
-    document.getElementById('bulkCloseBtn')?.addEventListener('click', closeBulkResults);
-    document.getElementById('bulkCopyBtn')?.addEventListener('click', copyBulkResults);
-    document.getElementById('bulkCsvBtn')?.addEventListener('click', downloadBulkCsv);
-    document.getElementById('bulkPdfBtn')?.addEventListener('click', downloadBulkPdf);
-    document.getElementById('bulkResultsOverlay')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeBulkResults();
-    });
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeEditModal(false);
-            closeFillWeekModal(false);
-            closeLinkModal();
-            closeBulkResults();
+        let user = options.user || (typeof AppState !== 'undefined' ? AppState.currentUser : null);
+        if (!user && typeof apiVerifyToken === 'function') {
+            user = await apiVerifyToken();
         }
+        if (!user) {
+            if (mode !== 'hr') window.location.href = '/';
+            else throw new Error('Staff schedule user is not available');
+            return;
+        }
+
+        if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        if (mode !== 'hr') {
+            const _userEl = document.getElementById('currentUser');
+            if (_userEl) _userEl.textContent = user.name;
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+            if (typeof bindLogoutButton === 'function') bindLogoutButton();
+        }
+
+        const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'];
+        const canManage = MANAGE_ROLES.includes(user.role);
+        StaffState.canManage = canManage;
+        const ADMIN_ROLES = ['creator', 'director'];
+        const isAdmin = ADMIN_ROLES.includes(user.role);
+        const addBtn = document.getElementById('addStaffBtn');
+        if (addBtn) addBtn.style.display = canManage ? '' : 'none';
+
+        // Show admin-only buttons
+        const copyBtn = document.getElementById('copyWeekBtn');
+        const fillBtn = document.getElementById('fillWeekBtn');
+        if (copyBtn) copyBtn.style.display = canManage ? '' : 'none';
+        if (fillBtn) fillBtn.style.display = canManage ? '' : 'none';
+
+        // v39.1: Show bulk create and import buttons only for creator/director
+        const bulkBtn = document.getElementById('bulkCreateBtn');
+        const importBtn = document.getElementById('importExcelBtn');
+        if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
+        if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
+
+        // Load data
+        await fetchHrProfessions();
+        await fetchStaff();
+        renderDeptFilter();
+
+        // Init the rolling window: yesterday, today, and the upcoming days.
+        StaffState.weekStart = getScheduleFocusStart(new Date());
+        renderWeekLabel();
+
+        const dates = getWeekDates(StaffState.weekStart);
+        const from = formatDateStr(dates[0]);
+        const to = formatDateStr(getScheduleRangeEnd(dates));
+        await fetchSchedule(from, to);
+        await fetchScheduleAttendance(from, to);
+        await fetchStaffingForecastBookings(from, to);
+        renderSchedule();
+
+        // Event listeners
+        document.getElementById('prevWeekBtn')?.addEventListener('click', prevWeek);
+        document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
+        document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
+        document.getElementById('schSaveBtn')?.addEventListener('click', handleSave);
+        document.getElementById('schReplaceBtn')?.addEventListener('click', handleReplaceSchedule);
+        document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
+        document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
+        document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
+        document.getElementById('schHistoryRefreshBtn')?.addEventListener('click', () => {
+            const editing = StaffState.editingCell;
+            if (editing) loadScheduleCellHistory(editing.staffId, editing.date);
+        });
+
+        document.getElementById('schModalOverlay')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeEditModal(false);
+        });
+
+        // Fill week modal
+        document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal);
+        document.getElementById('fillSaveBtn')?.addEventListener('click', handleFillWeekSave);
+        document.getElementById('fillCancelBtn')?.addEventListener('click', () => closeFillWeekModal(false));
+        document.getElementById('fillStatus')?.addEventListener('change', toggleFillTimeFields);
+        document.getElementById('fillWeekOverlay')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeFillWeekModal(false);
+        });
+
+        // Copy week
+        document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek);
+
+        // Hours toggle
+        document.getElementById('toggleHoursBtn')?.addEventListener('click', toggleHours);
+
+        // Load view toggle
+        document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView);
+
+        // v39.1: Account linking
+        document.getElementById('toggleLinkViewBtn')?.addEventListener('click', toggleLinkView);
+        document.getElementById('bulkCreateBtn')?.addEventListener('click', handleBulkCreate);
+        document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport);
+        document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
+        document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
+        document.getElementById('printBtn')?.addEventListener('click', handlePrint);
+
+        // v39.11: Add staff button
+        document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal);
+
+        // Link modal
+        document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);
+        document.getElementById('linkCreateAccountBtn')?.addEventListener('click', createAccountForLinkingStaff);
+        document.getElementById('linkCancelBtn')?.addEventListener('click', closeLinkModal);
+        document.getElementById('linkSearchInput')?.addEventListener('input', (e) => {
+            renderLinkUsersList(e.target.value);
+        });
+        document.getElementById('linkModalOverlay')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeLinkModal();
+        });
+
+        // Bulk results modal
+        document.getElementById('bulkCloseBtn')?.addEventListener('click', closeBulkResults);
+        document.getElementById('bulkCopyBtn')?.addEventListener('click', copyBulkResults);
+        document.getElementById('bulkCsvBtn')?.addEventListener('click', downloadBulkCsv);
+        document.getElementById('bulkPdfBtn')?.addEventListener('click', downloadBulkPdf);
+        document.getElementById('bulkResultsOverlay')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeBulkResults();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeEditModal(false);
+                closeFillWeekModal(false);
+                closeLinkModal();
+                closeBulkResults();
+            }
+        });
+
+        staffScheduleInitialized = true;
+    })();
+    staffScheduleInitPromise.catch(() => {
+        staffScheduleInitPromise = null;
+        staffScheduleInitialized = false;
     });
+    return staffScheduleInitPromise;
 }
 
-document.addEventListener('DOMContentLoaded', initPage);
+window.StaffSchedulePage = {
+    init: initStaffSchedulePage,
+    isInitialized: () => staffScheduleInitialized,
+    renderSchedule
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (shouldAutoInitStaffSchedulePage()) initStaffSchedulePage({ mode: 'standalone' });
+});

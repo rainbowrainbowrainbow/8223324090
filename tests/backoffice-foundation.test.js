@@ -17,6 +17,7 @@ describe('backoffice foundation v1 contracts', () => {
     const hrHtml = readRepoFile('hr.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
+    const staffScheduleShell = readRepoFile('js', 'staff-schedule-shell.js');
     const sidebar = readRepoFile('js', 'components', 'sidebar.js');
 
     it('keeps schema changes additive and explicitly governed', () => {
@@ -65,9 +66,9 @@ describe('backoffice foundation v1 contracts', () => {
         assert.match(staffPage, /async function clearScheduleReplacement/);
         assert.match(staffPage, /function scheduleReplacementCandidates/);
         assert.match(staffPage, /sch-replacement-badge/);
-        assert.match(staffHtml, /id="schReplaceBtn"/);
-        assert.match(staffHtml, /id="schClearReplacementBtn"/);
-        assert.match(staffHtml, /id="schReplacementDetails"/);
+        assert.match(staffScheduleShell, /id="schReplaceBtn"/);
+        assert.match(staffScheduleShell, /id="schClearReplacementBtn"/);
+        assert.match(staffScheduleShell, /id="schReplacementDetails"/);
     });
 
     it('adds HR-owned structure, reserve, blacklist, and task KPI without a new task engine', () => {

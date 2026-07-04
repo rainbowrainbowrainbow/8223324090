@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.6 - Графік HR: спільний модуль
+
+### HR / Пульс компанії / Schedule module cleanup / (Клешня, 04.07.2026) [codex]
+- **Iframe борг у вкладці `Графік` закрито** - HR більше не монтує `/staff?embed=1`, а використовує спільний `StaffScheduleShell` і `StaffSchedulePage.init(...)`.
+- **`/staff` і HR schedule мають один frontend shell** - standalone сторінка лишається прямим маршрутом, а HR вкладка підтягує той самий графік без дублювання sidebar/header.
+- **Старий embed mode прибрано з JS і CSS** - `staff-schedule-embed-mode`, `hrScheduleEmbedFrame` і `loadHrScheduleEmbed` видалені з runtime-коду.
+- **Guardrails оновлено під новий контракт** - `test:ui` перевіряє shared shell, відсутність iframe/embed routing і збереження leave controls у HR.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff frontend, CSS, tests і version/cache refs.
+
+---
+
 ## v0.78.5 - Пульс HR: чистий графік
 
 ### HR / Пульс компанії / Graph tab cleanup / (Клешня, 04.07.2026) [codex]

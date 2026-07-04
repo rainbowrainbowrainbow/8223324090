@@ -28,7 +28,8 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
     const hrHtml = `${readRepoFile('hr.html')}\n${readRepoFile('css', 'hr-page.css')}`;
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
-    const staffSurface = `${staffHtml}\n${readRepoFile('css', 'pages-hr-staff.css')}`;
+    const staffScheduleShell = readRepoFile('js', 'staff-schedule-shell.js');
+    const staffSurface = `${staffHtml}\n${staffScheduleShell}\n${readRepoFile('css', 'pages-hr-staff.css')}`;
     const authCode = readRepoFile('js', 'auth.js');
     const sidebarCode = readRepoFile('js', 'components', 'sidebar.js');
     const profileCode = readRepoFile('js', 'profile-page.js');
@@ -227,7 +228,7 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /staffProfessionOptions\(staff \|\| \{\}, selectedProfession\)/);
         assert.match(hrPage, /staffHasProfession\(s, requiredProfession\)/);
 
-        assert.match(staffHtml, /id="schProfession"/);
+        assert.match(staffScheduleShell, /id="schProfession"/);
         assert.match(staffSurface, /sch-profession/);
         assert.match(staffPage, /async function fetchHrProfessions/);
         assert.match(staffPage, /StaffState\.professions/);

@@ -1540,13 +1540,14 @@ checkPage('staff.html', (doc, html) => {
     const staffPagesCss = cssTextWithImports('css/pages.css');
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
     const staffCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
+    const staffScheduleShellCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-schedule-shell.js'), 'utf8');
     const pulseSwitcherCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-pulse-switcher.js'), 'utf8');
     const staffPulseRenderDom = new JSDOM('<div id="staffPulseNavItems"></div>', { runScripts: 'outside-only' });
     staffPulseRenderDom.window.eval(pulseSwitcherCode);
     staffPulseRenderDom.window.HrPulseSwitcher.renderStaffNav(staffPulseRenderDom.window.document.getElementById('staffPulseNavItems'), { activeId: 'schedule' });
     const staffPulseDoc = staffPulseRenderDom.window.document;
-    check('Staff schedule edit modal exists', !!doc.getElementById('schModalOverlay'));
-    check('Staff fill-week modal exists', !!doc.getElementById('fillWeekOverlay'));
+    check('Staff schedule edit modal exists', staffScheduleShellCode.includes('id="schModalOverlay"'));
+    check('Staff fill-week modal exists', staffScheduleShellCode.includes('id="fillWeekOverlay"'));
     check('Staff schedule modal uses shared top modal layer', staffPagesCss.includes('z-index: var(--z-modal, 30000)'));
     check('Base modal layer is above assistant and drawer surfaces', baseCss.includes('--z-modal: 30000') && baseCss.includes('--z-modal-confirm: 30100'));
     check('Confirm overlay uses modal confirm token', modalCss.includes('z-index: var(--z-modal-confirm, 30100)'));
@@ -1556,7 +1557,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff employee cells keep account linking separate', staffCode.includes('[data-link-staff]') && staffCode.includes('e.target.closest'));
     check('Staff employee cells are keyboard accessible links', staffCode.includes('role="link"') && staffCode.includes("e.key !== 'Enter'") && staffCode.includes("e.key !== ' '"));
     check('Staff employee cells have profile affordance styling', staffPagesCss.includes('.emp-cell:hover') && staffPagesCss.includes('.emp-cell:focus-visible'));
-    check('Staff schedule exposes managed replacement controls and state', !!doc.getElementById('schReplaceBtn') && !!doc.getElementById('schClearReplacementBtn') && !!doc.getElementById('schReplacementDetails') && staffCode.includes('async function replaceScheduleEntry') && staffCode.includes('async function clearScheduleReplacement') && staffCode.includes('function scheduleReplacementCandidates') && staffCode.includes('sch-replacement-badge') && staffPagesCss.includes('.sch-cell.is-replacement') && staffPagesCss.includes('.sch-replacement-details[hidden]'));
+    check('Staff schedule exposes managed replacement controls and state', staffScheduleShellCode.includes('id="schReplaceBtn"') && staffScheduleShellCode.includes('id="schClearReplacementBtn"') && staffScheduleShellCode.includes('id="schReplacementDetails"') && staffCode.includes('async function replaceScheduleEntry') && staffCode.includes('async function clearScheduleReplacement') && staffCode.includes('function scheduleReplacementCandidates') && staffCode.includes('sch-replacement-badge') && staffPagesCss.includes('.sch-cell.is-replacement') && staffPagesCss.includes('.sch-replacement-details[hidden]'));
     check('Staff schedule UI uses scheduleable staff guards for rows, replacements, fill, and attendance', staffCode.includes('function isScheduleableStaffForUi') && staffCode.includes('function scheduleableStaffErrorMessage') && staffCode.includes('StaffState.staff = scheduleableStaffForUi(data.data || [])') && staffCode.includes('function scheduleVisibleStaff(staffList = StaffState.staff)') && staffCode.includes('.filter(staff => isScheduleableStaffForUi(staff, entry.date))') && staffCode.includes('targetStaff = scheduleableStaffForUi(targetStaff);') && staffCode.includes("action === 'clock-in' && staff && !isScheduleableStaffForUi(staff, todayStr())") && staffCode.includes("scheduleableStaffErrorMessage(result, 'Помилка збереження')") && staffCode.includes("scheduleableStaffErrorMessage(apiResult, 'Помилка підміни')"));
     const staffPulseTabs = [...staffPulseDoc.querySelectorAll('.staff-pulse-tab')];
     const staffPulseNavRule = cssRuleText(staffPagesCss, '.staff-pulse-nav');
@@ -1565,9 +1566,9 @@ checkPage('staff.html', (doc, html) => {
     const staffPulseTabRule = cssRuleText(staffPagesCss, '.staff-pulse-tab');
     const staffPulseTabIconRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-icon');
     const staffPulseTabLineRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-line');
-    const staffScheduleCommandRule = cssRuleText(staffPagesCss, '.staff-schedule-command');
-    const staffScheduleEmbedContentRule = cssRuleText(staffPagesCss, 'body.staff-schedule-embed-mode #main-content.page-container');
-    const staffScheduleEmbedCommandRule = cssRuleText(staffPagesCss, 'body.staff-schedule-embed-mode .staff-schedule-command');
+    const staffScheduleCommandRule = sourceBlock(staffPagesCss, '.staff-schedule-command {', '.staff-schedule-command::before');
+    const staffScheduleHrShellRule = cssRuleText(staffPagesCss, 'body.staff-schedule-hr-mode #hrStaffScheduleShell');
+    const staffScheduleHrCommandRule = cssRuleText(staffPagesCss, 'body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command');
     const staffScheduleCommandContentRule = cssRuleText(staffPagesCss, '.staff-schedule-command-content');
     const staffScheduleCommandMetricsRule = cssRuleText(staffPagesCss, '.staff-schedule-command-metrics');
     const staffScheduleMetricChipRule = cssRuleText(staffPagesCss, '.staff-schedule-metric-chip');
@@ -1592,14 +1593,25 @@ checkPage('staff.html', (doc, html) => {
     ];
     const staffPulseBoundedContainer = rule => /position:\s*relative;/.test(rule) && /overflow:\s*hidden;/.test(rule) && /contain:\s*layout paint;/.test(rule);
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
-        !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
-        && !!doc.querySelector('#staffPulseNavItems.staff-pulse-nav-items[data-pulse-switcher="staff"]')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.5')
+        !!doc.getElementById('staffScheduleShell')
+        && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
+        && html.includes('js/staff-schedule-shell.js?v=0.78.6')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.6')
+        && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
+        && staffScheduleShellCode.includes('function scheduleModalTemplate')
+        && staffScheduleShellCode.includes('window.StaffScheduleShell')
+        && staffScheduleShellCode.includes('class="staff-pulse-nav"')
+        && staffScheduleShellCode.includes('id="staffPulseNavItems"')
+        && staffScheduleShellCode.includes('data-pulse-switcher="staff"')
         && staffCode.includes('function renderStaffPulseSwitcher')
-        && staffCode.includes('function isStaffScheduleEmbedMode')
-        && staffCode.includes('function applyStaffScheduleEmbedMode')
-        && staffCode.includes("params.get('embed') === '1' || window.self !== window.top")
-        && staffCode.includes('if (!embedded) renderStaffPulseSwitcher();')
+        && staffCode.includes('function initStaffSchedulePage')
+        && staffCode.includes('function ensureStaffScheduleShell')
+        && staffCode.includes('function shouldAutoInitStaffSchedulePage')
+        && staffCode.includes('window.StaffSchedulePage')
+        && staffCode.includes("includePulseNav: mode !== 'hr'")
+        && !staffCode.includes('function isStaffScheduleEmbedMode')
+        && !staffCode.includes('function applyStaffScheduleEmbedMode')
+        && !staffCode.includes("params.get('embed')")
         && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
         && pulseSwitcherCode.includes("id: 'today'")
@@ -1615,12 +1627,12 @@ checkPage('staff.html', (doc, html) => {
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-content .staff-pulse-tab-subtitle').length === 3
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-badge,[data-pulse-badge]').length === 0
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-line[aria-hidden="true"]').length === 3
-        && html.includes('class="staff-schedule-command"')
-        && html.includes('class="staff-schedule-command-metrics"')
-        && html.includes('id="scheduleHeaderPeriod"')
-        && html.includes('id="scheduleHeaderDepartment"')
-        && html.includes('id="scheduleHeaderStaffCount"')
-        && html.includes('id="scheduleHeaderStatus"')
+        && staffScheduleShellCode.includes('class="staff-schedule-command"')
+        && staffScheduleShellCode.includes('class="staff-schedule-command-metrics"')
+        && staffScheduleShellCode.includes('id="scheduleHeaderPeriod"')
+        && staffScheduleShellCode.includes('id="scheduleHeaderDepartment"')
+        && staffScheduleShellCode.includes('id="scheduleHeaderStaffCount"')
+        && staffScheduleShellCode.includes('id="scheduleHeaderStatus"')
         && staffPagesCss.includes('v0.77.102: HR and Staff Pulse switchers share one visual token contract')
         && staffPagesCss.includes('--pulse-switcher-card-width: clamp(172px, 15vw, 210px);')
         && staffPagesCss.includes('--pulse-switcher-card-width: clamp(168px, 14vw, 196px);')
@@ -1642,11 +1654,12 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-schedule-command-metrics')
         && staffPagesCss.includes('.staff-schedule-metric-chip')
         && staffPagesCss.includes('body.dark-mode .staff-pulse-nav')
-        && staffPagesCss.includes('body.staff-schedule-embed-mode .staff-pulse-nav')
-        && staffPagesCss.includes('body.staff-schedule-embed-mode #main-content.page-container')
+        && staffPagesCss.includes('body.staff-schedule-hr-mode #hrStaffScheduleShell')
+        && !staffPagesCss.includes('body.staff-schedule-embed-mode')
         && /margin-bottom:\s*12px;/.test(staffPulseNavRule)
-        && /padding:\s*0;/.test(staffScheduleEmbedContentRule)
-        && /margin:\s*0 0 12px;/.test(staffScheduleEmbedCommandRule)
+        && /width:\s*100%;/.test(staffScheduleHrShellRule)
+        && /min-width:\s*0;/.test(staffScheduleHrShellRule)
+        && /margin:\s*0 0 12px;/.test(staffScheduleHrCommandRule)
         && staffPagesCss.includes('@media (max-width: 480px)')
         && staffPagesCss.includes('@media (prefers-reduced-motion: reduce)'));
     check('Staff HR Pulse command cards do not depend on legacy nav PNG layers',
@@ -4787,19 +4800,23 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.5')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.6')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
     && hrPulseSwitcherCode.includes("id: 'reports'")
     && hrPulseSwitcherCode.includes("href: '/staff'")
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
-    && htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
-    && htmlContains('hr.html', 'data-src="/staff?embed=1"')
-    && hrCode.includes('function loadHrScheduleEmbed')
-    && hrCode.includes("schedule: loadHrScheduleEmbed")
-    && hrCode.includes("if (frame && frame.dataset.loaded !== 'true')")
-    && hrCode.includes("frame.src = frame.dataset.src || HR_SCHEDULE_EMBED_SRC")
+    && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
+    && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.6')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.6')
+    && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
+    && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
+    && hrCode.includes('function loadHrScheduleModule')
+    && hrCode.includes("schedule: loadHrScheduleModule")
+    && hrCode.includes('window.StaffSchedulePage.init')
+    && !hrCode.includes('function loadHrScheduleEmbed')
     && hrPageCss.includes('.hr-nav {')
     && hrPageCss.includes('flex-direction: column')
     && hrPageCss.includes('.hr-nav--structure-only')
@@ -4821,7 +4838,7 @@ const hrPulseNavItemsRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-nav-items
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardIconRule = cssRuleText(hrPageCss, '.hr-pulse-card-icon');
 const hrPulseCardLineRule = cssRuleText(hrPageCss, '.hr-pulse-card-line');
-const hrScheduleEmbedShellRule = cssRuleText(hrPageCss, '.hr-schedule-embed-shell');
+const hrScheduleModuleShellRule = cssRuleText(hrPageCss, '.hr-schedule-module-shell');
 const hrPulseTabletBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 1120px)');
 const hrPulseTabletNavRule = cssRuleText(hrPulseTabletBlock, '.hr-nav--pulse');
 const hrPulseTabletItemsRule = cssRuleText(hrPulseTabletBlock, '.hr-nav--pulse .hr-nav-items');
@@ -4904,7 +4921,7 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && /--hr-pulse-content-gap:\s*12px;/.test(hrPulseNavSurfaceRule)
     && /margin-bottom:\s*var\(--hr-pulse-content-gap\);/.test(hrPulseNavSurfaceRule)
     && hrPageCss.includes('.hr-nav--pulse ~ .hr-tab-content.active')
-    && /margin:\s*0 0 12px;/.test(hrScheduleEmbedShellRule)
+    && /margin:\s*0 0 12px;/.test(hrScheduleModuleShellRule)
     && /content:\s*none;/.test(hrPulseNavEmptyTailRule)
     && /display:\s*none;/.test(hrPulseNavEmptyTailRule)
     && /display:\s*grid;/.test(hrPulseNavItemsRule)
@@ -5192,7 +5209,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule embeds canonical staff schedule and keeps leave request controls', htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleEmbed') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.6') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.6') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

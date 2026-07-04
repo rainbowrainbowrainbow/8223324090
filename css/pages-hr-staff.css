@@ -1839,47 +1839,13 @@ body.dark-mode .hr-role-pill.bad {
     display: none;
 }
 
-body.staff-schedule-embed-mode {
-    background: transparent;
-    overflow-x: hidden;
-}
-
-body.staff-schedule-embed-mode .skip-link,
-body.staff-schedule-embed-mode .sidebar-nav,
-body.staff-schedule-embed-mode .sidebar-overlay,
-body.staff-schedule-embed-mode .header,
-body.staff-schedule-embed-mode .staff-pulse-nav {
-    display: none !important;
-}
-
-body.staff-schedule-embed-mode #mainApp.main-app {
-    display: block;
-    min-height: 0;
-    margin: 0;
-    padding: 0;
-}
-
-body.staff-schedule-embed-mode #main-content.page-container {
+body.staff-schedule-hr-mode #hrStaffScheduleShell {
     width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 0;
+    min-width: 0;
 }
 
-body.staff-schedule-embed-mode .staff-schedule-command {
-    position: relative;
-    overflow: hidden;
-    background:
-        linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.88)),
-        linear-gradient(90deg, rgba(20,184,166,0.10), rgba(245,184,75,0.10));
-    contain: layout paint;
+body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
     margin: 0 0 12px;
-}
-
-body.staff-schedule-embed-mode .staff-pulse-nav {
-    position: relative;
-    overflow: hidden;
-    contain: layout paint;
 }
 
 .staff-pulse-nav-items {

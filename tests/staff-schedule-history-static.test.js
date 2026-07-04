@@ -6,6 +6,7 @@ const staffRoute = fs.readFileSync('routes/staff.js', 'utf8');
 const staffOperationalFilters = fs.readFileSync('services/staffOperationalFilters.js', 'utf8');
 const staffPage = fs.readFileSync('js/staff-page.js', 'utf8');
 const staffHtml = fs.readFileSync('staff.html', 'utf8');
+const staffScheduleShell = fs.readFileSync('js/staff-schedule-shell.js', 'utf8');
 const staffCss = fs.readFileSync('css/pages-hr-staff.css', 'utf8');
 
 function routeBlock(path) {
@@ -120,7 +121,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\} \$\{attendanceClass\}"/);
         assert.match(staffPage, /bindScheduleHealthDetailButtons\(tbody\)/);
         assert.match(staffPage, /event\.stopPropagation\(\)/);
-        assert.match(staffHtml, /id="scheduleHealthPanel"/);
+        assert.match(staffScheduleShell, /id="scheduleHealthPanel"/);
         assert.match(staffCss, /\.schedule-health-panel/);
         assert.match(staffCss, /\.schedule-health-score/);
         assert.match(staffCss, /\.schedule-health-filter/);
@@ -158,7 +159,7 @@ describe('staff schedule safety guards', () => {
         const forecastFetchBlock = staffPage.match(/async function fetchStaffingForecastBookings[\s\S]*?async function postAttendanceAction/)?.[0] || '';
         assert.doesNotMatch(forecastFetchBlock, /method:\s*['"`](POST|PUT|PATCH|DELETE)['"`]/);
         assert.doesNotMatch(forecastFetchBlock, /\/api\/staff\/schedule/);
-        assert.match(staffHtml, /id="scheduleForecastPanel"/);
+        assert.match(staffScheduleShell, /id="scheduleForecastPanel"/);
         assert.match(staffCss, /\.schedule-forecast-panel/);
         assert.match(staffCss, /\.forecast-day-card/);
         assert.match(staffCss, /\.forecast-gap-chip\.is-missing/);
@@ -198,7 +199,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /href="\/hr\.html"/);
         assert.doesNotMatch(staffPage, /\/api\/manager-accountability|\/api\/accountability/);
         assert.doesNotMatch(staffPage, /CREATE TABLE|ALTER TABLE|INSERT INTO manager|UPDATE manager/);
-        assert.match(staffHtml, /id="managerAccountabilityPanel"/);
+        assert.match(staffScheduleShell, /id="managerAccountabilityPanel"/);
         assert.match(staffCss, /\.manager-accountability-panel/);
         assert.match(staffCss, /\.accountability-table/);
         assert.match(staffCss, /\.accountability-metric\.is-unavailable/);
@@ -235,7 +236,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /data-attendance-action/);
         assert.match(staffPage, /event\.stopPropagation\(\)/);
         assert.match(staffPage, /renderScheduleAttendanceSummary\(dates, filtered\)/);
-        assert.match(staffHtml, /id="scheduleAttendanceSummary"/);
+        assert.match(staffScheduleShell, /id="scheduleAttendanceSummary"/);
         assert.match(staffCss, /\.schedule-attendance-summary/);
         assert.match(staffCss, /\.sch-attendance\.is-late/);
         assert.match(staffCss, /\.sch-attendance\.is-absent/);
@@ -333,8 +334,8 @@ describe('staff schedule safety guards', () => {
     });
 
     it('renders explicit cell history UI and fetches it from the staff API', () => {
-        assert.match(staffHtml, /id="schHistoryList"/);
-        assert.match(staffHtml, /Історія клітинки/);
+        assert.match(staffScheduleShell, /id="schHistoryList"/);
+        assert.match(staffScheduleShell, /Історія клітинки/);
         assert.match(staffPage, /function renderScheduleHistoryList/);
         assert.match(staffPage, /fetchScheduleHistory/);
         assert.match(staffPage, /\/api\/staff\/schedule\/history\/\$\{encodeURIComponent\(staffId\)\}/);

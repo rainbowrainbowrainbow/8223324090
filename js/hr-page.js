@@ -646,7 +646,7 @@ function hrScheduleableStaffErrorMessage(result = {}, fallback = 'Помилка
 
 async function refreshHrOperationalViews() {
     const jobs = [];
-    if (!hasHrScheduleEmbed() && scheduleWeekStart instanceof Date && !Number.isNaN(scheduleWeekStart.getTime())) {
+    if (!hasHrStaffScheduleModule() && scheduleWeekStart instanceof Date && !Number.isNaN(scheduleWeekStart.getTime())) {
         jobs.push(loadSchedule().catch(err => console.warn('refresh schedule after staff lifecycle failed', err)));
     }
     if (todayData) {
@@ -1423,7 +1423,7 @@ async function activateHrTab(target, options = {}) {
         history.replaceState(null, '', next);
     }
     const loaders = {
-        today: loadToday, schedule: loadHrScheduleEmbed, team: loadTeam, structure: loadCompanyStructure,
+        today: loadToday, schedule: loadHrScheduleModule, team: loadTeam, structure: loadCompanyStructure,
         professions: loadProfessions, checklists: loadProfessionChecklists,
         reports: loadReports, salary: loadSalary, zrs: loadZrs, kpi: loadKpi, onboarding: loadOnboarding,
         vacancies: loadVacancies, accounts: loadAccountCenter
@@ -1960,27 +1960,30 @@ function openCorrectionModal(staffId) {
 // TAB 2: SCHEDULE
 // ==========================================
 
-const HR_SCHEDULE_EMBED_SRC = '/staff?embed=1';
-
-function hrScheduleEmbedFrame() {
-    return document.getElementById('hrScheduleEmbedFrame');
+function hrStaffScheduleShell() {
+    return document.getElementById('hrStaffScheduleShell');
 }
 
-function hasHrScheduleEmbed() {
-    return !!hrScheduleEmbedFrame();
+function hasHrStaffScheduleModule() {
+    return !!hrStaffScheduleShell();
 }
 
-async function loadHrScheduleEmbed() {
-    const frame = hrScheduleEmbedFrame();
-    if (frame && frame.dataset.loaded !== 'true') {
-        frame.src = frame.dataset.src || HR_SCHEDULE_EMBED_SRC;
-        frame.dataset.loaded = 'true';
+async function loadHrScheduleModule() {
+    const shell = hrStaffScheduleShell();
+    if (!shell) return loadSchedule();
+    if (!window.StaffSchedulePage || typeof window.StaffSchedulePage.init !== 'function') {
+        throw new Error('Staff schedule module is not available');
     }
+    await window.StaffSchedulePage.init({
+        mode: 'hr',
+        host: shell,
+        user: AppState.currentUser
+    });
     await loadLeaves();
 }
 
 function initScheduleControls() {
-    if (hasHrScheduleEmbed()) return;
+    if (hasHrStaffScheduleModule()) return;
     scheduleWeekStart = getMonday(new Date());
 
     document.getElementById('schedPrev')?.addEventListener('click', () => {
@@ -2026,7 +2029,7 @@ function initScheduleControls() {
 }
 
 async function loadSchedule() {
-    if (hasHrScheduleEmbed()) return loadHrScheduleEmbed();
+    if (hasHrStaffScheduleModule()) return loadHrScheduleModule();
     // Load staff and templates
     const [staffData, tplData] = await Promise.all([
         hrFetch('/staff?active=true'),

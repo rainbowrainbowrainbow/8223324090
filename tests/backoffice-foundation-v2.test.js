@@ -51,6 +51,7 @@ describe('backoffice foundation v2 contracts', () => {
     const designsHtml = readRepoFile('designs.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
+    const staffScheduleShell = readRepoFile('js', 'staff-schedule-shell.js');
     const staffCss = readCssWithImports('css/pages.css');
     const linesRoute = readRepoFile('routes', 'lines.js');
     const bookingService = readRepoFile('services', 'booking.js');
@@ -197,7 +198,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffPage, /StaffState\.weekStart = getScheduleFocusStart\(new Date\(\)\)/);
         assert.match(staffPage, /getScheduleRangeEnd\(dates\)/);
         assert.doesNotMatch(staffPage, /dates\[6\]/);
-        assert.match(staffHtml, /Вчора, сьогодні і найближчі дні/);
+        assert.match(staffScheduleShell, /Вчора, сьогодні і найближчі дні/);
     });
 
     it('uses animator shifts as the timeline line source of truth', () => {
@@ -313,7 +314,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(hrPage, /Логін для входу/);
         assert.match(staffPage, /createAccountForLinkingStaff/);
         assert.match(staffPage, /data-linked-user/);
-        assert.match(staffHtml, /linkCreateAccountBtn/);
-        assert.match(staffHtml, /bulkCsvBtn" class="btn-page-secondary hidden/);
+        assert.match(staffScheduleShell, /linkCreateAccountBtn/);
+        assert.match(staffScheduleShell, /bulkCsvBtn" class="btn-page-secondary hidden/);
     });
 });

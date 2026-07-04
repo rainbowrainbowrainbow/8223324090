@@ -418,9 +418,11 @@ test('account/profile/staff surfaces do not block refresh-token bootstrap with l
         ['profile', PROFILE_PAGE_CODE],
         ['staff', STAFF_PAGE_CODE]
     ]) {
-        const initStart = code.indexOf('async function initPage()') >= 0
-            ? code.indexOf('async function initPage()')
-            : code.indexOf('async function initProfilePage()');
+        const initStart = name === 'staff'
+            ? code.indexOf('async function initStaffSchedulePage')
+            : code.indexOf('async function initPage()') >= 0
+                ? code.indexOf('async function initPage()')
+                : code.indexOf('async function initProfilePage()');
         const verifyCall = code.indexOf('apiVerifyToken()', initStart);
         const initAuthBlock = code.slice(initStart, verifyCall);
         assert.ok(initStart >= 0, `${name} init function missing`);

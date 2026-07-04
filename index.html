@@ -1751,6 +1751,15 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.78.8 — Графік HR: ізольований schedule runtime</h4>
+                    <ul>
+                        <li><b><code>staff-page.js</code> ізольовано в IIFE для HR embed сценарію</b> — внутрішні функції <code>renderSchedule</code>, <code>getWeekDates</code> і <code>todayStr</code> більше не можуть бути перезаписані однойменними функціями з <code>hr-page.js</code>.</li>
+                        <li><b>Live crash у вкладці <code>Графік</code> закрито повністю</b> — <code>StaffSchedulePage.init({ mode: 'hr' })</code> викликає власний renderer графіка, а не старий HR schedule renderer.</li>
+                        <li><b>Публічний контракт лишився малим</b> — назовні експортується тільки <code>window.StaffSchedulePage</code>, standalone <code>/staff</code> і HR schedule використовують той самий shell.</li>
+                        <li><b>Guardrails посилено</b> — UI smoke перевіряє scoped staff schedule script і ізоляцію function-name overlaps між HR та staff schedule runtime.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.78.7 — Графік HR: безпечний спільний runtime</h4>
                     <ul>
                         <li><b>Runtime conflict після заміни iframe виправлено</b> — <code>staff-page.js</code> більше не оголошує generic <code>STATUS_LABELS</code>, <code>DAYS_UK</code> і <code>MONTHS_UK</code>, які конфліктували з <code>hr-page.js</code> в одному window.</li>

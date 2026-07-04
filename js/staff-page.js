@@ -10,6 +10,7 @@
  * State is in StaffState object (weekStart, staff[], schedule{}, activeDept).
  */
 
+(function () {
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -4049,3 +4050,4 @@ window.StaffSchedulePage = {
 document.addEventListener('DOMContentLoaded', () => {
     if (shouldAutoInitStaffSchedulePage()) initStaffSchedulePage({ mode: 'standalone' });
 });
+})();

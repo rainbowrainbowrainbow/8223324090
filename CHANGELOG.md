@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.8 - Графік HR: ізольований schedule runtime
+
+### HR / Пульс компанії / Staff schedule scope isolation / (Клешня, 04.07.2026) [codex]
+- **`staff-page.js` ізольовано в IIFE для HR embed сценарію** - внутрішні функції на кшталт `renderSchedule`, `getWeekDates` і `todayStr` більше не можуть бути перезаписані однойменними функціями з `hr-page.js`.
+- **Live crash у вкладці `Графік` закрито повністю** - `StaffSchedulePage.init({ mode: 'hr' })` викликає власний renderer графіка, а не старий HR schedule renderer.
+- **Публічний контракт лишився малим** - назовні експортується тільки `window.StaffSchedulePage`, standalone `/staff` і HR schedule використовують той самий shell.
+- **Guardrails посилено** - `test:ui` перевіряє scoped staff schedule script і ізоляцію function-name overlaps між HR та staff schedule runtime.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений frontend runtime isolation, tests і version/cache refs.
+
+---
+
 ## v0.78.7 - Графік HR: безпечний спільний runtime
 
 ### HR / Пульс компанії / Schedule runtime safety / (Клешня, 04.07.2026) [codex]

@@ -2812,6 +2812,11 @@ const Sidebar = (() => {
         };
     }
 
+    function _hasSidebarCurrencyRates(source) {
+        const normalized = _normalizeSidebarCurrencyRates(source || {});
+        return Object.values(normalized.rates || {}).some(value => Number.isFinite(Number(value)) && Number(value) > 0);
+    }
+
     async function _loadSidebarIdentityMeta(force = false) {
         if (!_isSidebarCurrencySignalEnabled()) {
             _state.identityMetaDetails.currency = null;
@@ -2822,14 +2827,21 @@ const Sidebar = (() => {
         if (!force && _state.identityMetaLoadedAt && now - _state.identityMetaLoadedAt < 10 * 60 * 1000) return;
         _state.identityMetaLoading = true;
         try {
-            const [currencyResult, currencyFallbackResult] = await Promise.allSettled([
-                _fetchSidebarWidget('currency'),
-                _fetchSidebarCurrencyFallback()
-            ]);
-            const dashboardCurrency = currencyResult.status === 'fulfilled' && currencyResult.value && !currencyResult.value.error
-                ? currencyResult.value
-                : null;
-            const fallbackCurrency = currencyFallbackResult.status === 'fulfilled' ? currencyFallbackResult.value : null;
+            let dashboardCurrency = null;
+            let fallbackCurrency = null;
+            try {
+                const result = await _fetchSidebarWidget('currency');
+                dashboardCurrency = result && !result.error ? result : null;
+            } catch {
+                dashboardCurrency = null;
+            }
+            if (!_hasSidebarCurrencyRates(dashboardCurrency)) {
+                try {
+                    fallbackCurrency = await _fetchSidebarCurrencyFallback();
+                } catch {
+                    fallbackCurrency = null;
+                }
+            }
             const currencyDetails = _mergeSidebarCurrencyRates(dashboardCurrency, fallbackCurrency);
             const usdRate = Number(currencyDetails.rates?.USD || currencyDetails.usd || 0);
             _state.identityMetaDetails.currency = currencyDetails;

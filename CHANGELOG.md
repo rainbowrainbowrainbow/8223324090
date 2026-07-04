@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.2 - Production console cleanup
+
+### Production console cleanup / Runtime debt fixes / (Клешня, 04.07.2026) [codex]
+- **CSP оновлено під уже підключений Microsoft Clarity** - production більше не блокує bundled analytics snippet через відсутній allowlist для `clarity.ms` і `c.bing.com`.
+- **Sidebar currency signal перестав бити protected Finance endpoint без потреби** - fallback `/api/finance/currency/rates` викликається тільки якщо dashboard currency widget не повернув валідні курси, тому non-finance ролі не ловлять зайвий `403`.
+- **Inventory API став tolerant до старої й нової gamification schema** - `/api/inventory` підтримує `username/acquired_via/character_items` і `user_id/obtained_from/shop_items` без production `500`.
+- **Achievements auto-check став fail-soft для optional gamification tables** - відсутні або частково мігровані таблиці критеріїв більше не валять `/api/achievements/check`, а пропускаються з warn log.
+- **Regression guards додано для CSP, sidebar fallback, inventory schema compatibility і achievements fail-soft behavior** - зміни закріплені static UI checks.
+- **DB schema, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений code-level compatibility fixes, tests і version/cache refs.
+
+---
+
 ## v0.78.1 - My Day cleanup
 
 ### Мій день / Cleanup header and history layout / (Клешня, 04.07.2026) [codex]

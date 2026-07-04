@@ -9,6 +9,65 @@ const { createLogger } = require('../utils/logger');
 const { buildTaskOwnerMatch } = require('../services/taskPolicy');
 const log = createLogger('Achievements');
 
+async function optionalAchievementQuery(label, sql, params = [], fallbackRow = {}) {
+    try {
+        return await pool.query(sql, params);
+    } catch (err) {
+        log.warn(`Achievement criteria skipped: ${label}`, { code: err.code, message: err.message });
+        return { rows: [fallbackRow], rowCount: 0 };
+    }
+}
+
+async function writeAchievementProgress({ userId, username, achievement, progress, completed, completedAt }) {
+    try {
+        await pool.query(`
+            INSERT INTO user_achievements (user_id, username, achievement_id, achievement_key, progress, completed, completed_at)
+            VALUES ($1, $6, $2, $7, $3, $4, $5)
+            ON CONFLICT (user_id, achievement_id) DO UPDATE SET
+                progress = GREATEST(user_achievements.progress, $3),
+                completed = $4,
+                completed_at = CASE WHEN $4 AND NOT user_achievements.completed THEN NOW() ELSE user_achievements.completed_at END,
+                times_completed = CASE WHEN $4 AND NOT user_achievements.completed THEN user_achievements.times_completed + 1 ELSE user_achievements.times_completed END
+        `, [userId, achievement.id, progress, completed, completedAt, username, achievement.code]);
+        return true;
+    } catch (err) {
+        if (!completed) return false;
+        try {
+            await pool.query(`
+                INSERT INTO user_achievements (username, achievement_key, achievement_id, progress, unlocked_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                ON CONFLICT (username, achievement_key) DO UPDATE SET
+                    progress = GREATEST(user_achievements.progress, $4),
+                    achievement_id = COALESCE(user_achievements.achievement_id, $3)
+            `, [username, achievement.code, achievement.id, progress]);
+            return true;
+        } catch (fallbackErr) {
+            log.warn('Achievement progress write skipped', {
+                code: fallbackErr.code || err.code,
+                message: fallbackErr.message || err.message
+            });
+            return false;
+        }
+    }
+}
+
+async function awardAchievementCoins(userId, achievement) {
+    try {
+        await pool.query(
+            `UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2`,
+            [achievement.reward_coins, userId]
+        );
+        await pool.query(
+            'INSERT INTO coin_transactions (user_id, amount, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+            [userId, achievement.reward_coins, 'achievement', `Ачівка: ${achievement.name}`, achievement.id]
+        );
+        return true;
+    } catch (err) {
+        log.warn('Achievement coin award skipped', { code: err.code, message: err.message });
+        return false;
+    }
+}
+
 // GET /api/achievements — my achievements with progress
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
     try {
@@ -79,23 +138,29 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
         const taskOwnerMatch = buildTaskOwnerMatch(req.user, taskOwnerParams, 't');
 
         // Get all active achievements not yet completed by user
-        const uncompleted = await pool.query(`
-            SELECT a.* FROM achievements a
-            LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.user_id = $1
-            WHERE a.is_active = true AND (ua.completed IS NULL OR ua.completed = false)
-              AND a.type != 'repeatable'
-        `, [userId]);
+        let uncompleted;
+        try {
+            uncompleted = await pool.query(`
+                SELECT a.* FROM achievements a
+                LEFT JOIN user_achievements ua ON ua.achievement_id = a.id AND ua.user_id = $1
+                WHERE a.is_active = true AND (ua.completed IS NULL OR ua.completed = false)
+                  AND a.type != 'repeatable'
+            `, [userId]);
+        } catch (err) {
+            log.warn('Achievement check skipped: catalog schema unavailable', { code: err.code, message: err.message });
+            return res.json({ awarded: [], count: 0 });
+        }
 
         // v38.4.0: Batch all criteria data in parallel to prevent N+1 queries
         const [streakR, quizPlayR, quizPerfR, minigameR, bossR, walletR, roomR, tasksR, giftsR, taskDecompositionR] = await Promise.all([
-            pool.query('SELECT MAX(best_count) as best FROM game_streaks WHERE user_id = $1', [userId]),
-            pool.query("SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true", [userId]),
-            pool.query("SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true AND correct_count = questions_count", [userId]),
-            pool.query('SELECT MAX(score) as best FROM minigame_sessions WHERE user_id = $1', [userId]),
-            pool.query("SELECT COUNT(*)::int as cnt FROM boss_rounds WHERE user_id = $1 AND completed = true", [userId]),
-            pool.query('SELECT total_earned FROM game_wallets WHERE user_id = $1', [userId]),
-            pool.query('SELECT visitor_count, wallpaper_item_id, floor_item_id FROM user_rooms WHERE user_id = $1', [userId]),
-            pool.query(`
+            optionalAchievementQuery('game_streaks', 'SELECT MAX(best_count) as best FROM game_streaks WHERE user_id = $1', [userId], { best: 0 }),
+            optionalAchievementQuery('quiz_sessions_play', "SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true", [userId], { cnt: 0 }),
+            optionalAchievementQuery('quiz_sessions_perfect', "SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true AND correct_count = questions_count", [userId], { cnt: 0 }),
+            optionalAchievementQuery('minigame_sessions', 'SELECT MAX(score) as best FROM minigame_sessions WHERE user_id = $1', [userId], { best: 0 }),
+            optionalAchievementQuery('boss_rounds', "SELECT COUNT(*)::int as cnt FROM boss_rounds WHERE user_id = $1 AND completed = true", [userId], { cnt: 0 }),
+            optionalAchievementQuery('game_wallets', 'SELECT total_earned FROM game_wallets WHERE user_id = $1', [userId], { total_earned: 0 }),
+            optionalAchievementQuery('user_rooms', 'SELECT visitor_count, wallpaper_item_id, floor_item_id FROM user_rooms WHERE user_id = $1', [userId], {}),
+            optionalAchievementQuery('task_completion', `
                 SELECT
                     (
                         COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
@@ -111,9 +176,9 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
                     GROUP BY task_id
                 ) st ON st.task_id = t.id
                 WHERE ${taskOwnerMatch}
-            `, taskOwnerParams),
-            pool.query("SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId]),
-            pool.query(`
+            `, taskOwnerParams, { cnt: 0, parent_cnt: 0, subtask_cnt: 0 }),
+            optionalAchievementQuery('coin_transactions_gifts', "SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId], { cnt: 0 }),
+            optionalAchievementQuery('task_decomposition', `
                 SELECT
                     COUNT(DISTINCT t.id) FILTER (WHERE COALESCE(st.total, 0) > 0)::int AS decomposed_tasks,
                     COUNT(DISTINCT t.id) FILTER (WHERE COALESCE(st.total, 0) > 0 AND t.status = 'done')::int AS decomposed_tasks_completed,
@@ -131,7 +196,13 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
                     GROUP BY task_id
                 ) st ON st.task_id = t.id
                 WHERE ${taskOwnerMatch}
-            `, taskOwnerParams)
+            `, taskOwnerParams, {
+                decomposed_tasks: 0,
+                decomposed_tasks_completed: 0,
+                subtasks_completed: 0,
+                ai_decomposed_tasks_completed: 0,
+                template_decomposed_tasks_completed: 0
+            })
         ]);
         const taskDecomposition = taskDecompositionR.rows[0] || {};
         const criteria = {
@@ -217,26 +288,18 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
 
             // Update progress
             if (progress > 0 || achieved) {
-                await pool.query(`
-                    INSERT INTO user_achievements (user_id, username, achievement_id, achievement_key, progress, completed, completed_at)
-                    VALUES ($1, $6, $2, $7, $3, $4, $5)
-                    ON CONFLICT (user_id, achievement_id) DO UPDATE SET
-                        progress = GREATEST(user_achievements.progress, $3),
-                        completed = $4,
-                        completed_at = CASE WHEN $4 AND NOT user_achievements.completed THEN NOW() ELSE user_achievements.completed_at END,
-                        times_completed = CASE WHEN $4 AND NOT user_achievements.completed THEN user_achievements.times_completed + 1 ELSE user_achievements.times_completed END
-                `, [userId, ach.id, progress, achieved, achieved ? new Date() : null, req.user.username, ach.code]);
+                const progressWritten = await writeAchievementProgress({
+                    userId,
+                    username: req.user.username,
+                    achievement: ach,
+                    progress,
+                    completed: achieved,
+                    completedAt: achieved ? new Date() : null
+                });
 
-                if (achieved) {
+                if (achieved && progressWritten) {
                     // Award coins
-                    await pool.query(
-                        `UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2`,
-                        [ach.reward_coins, userId]
-                    );
-                    await pool.query(
-                        'INSERT INTO coin_transactions (user_id, amount, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
-                        [userId, ach.reward_coins, 'achievement', `Ачивка: ${ach.name}`, ach.id]
-                    );
+                    await awardAchievementCoins(userId, ach);
                     awarded.push({ code: ach.code, name: ach.name, icon: ach.icon, coins: ach.reward_coins });
                 }
             }

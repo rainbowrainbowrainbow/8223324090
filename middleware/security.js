@@ -9,11 +9,11 @@ function securityHeaders(req, res, next) {
     // v19.14: Content-Security-Policy
     res.set('Content-Security-Policy', [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: blob: https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://*.kie.ai https://*.supabase.co",
-        "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com",
+        "img-src 'self' data: blob: https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://*.kie.ai https://*.supabase.co https://*.clarity.ms https://c.bing.com",
+        "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com https://*.clarity.ms https://c.bing.com",
         "frame-src 'self'",
         "frame-ancestors 'self'"
     ].join('; '));

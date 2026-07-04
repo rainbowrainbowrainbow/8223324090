@@ -8,6 +8,26 @@ const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Shop');
 
+const tableColumnCache = new Map();
+
+async function getTableColumns(tableName) {
+    if (tableColumnCache.has(tableName)) return tableColumnCache.get(tableName);
+    const result = await pool.query(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = $1`,
+        [tableName]
+    );
+    const columns = new Set(result.rows.map(row => row.column_name));
+    tableColumnCache.set(tableName, columns);
+    return columns;
+}
+
+function columnSql(columns, alias, column, fallback) {
+    return columns.has(column) ? `${alias}.${column}` : fallback;
+}
+
 // GET /api/shop — catalog
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
     try {
@@ -101,15 +121,41 @@ router.post('/buy', requireRole(...ANY_ROLE), async (req, res) => {
 // GET /api/inventory — my inventory
 router.get('/inventory', requireRole(...ANY_ROLE), async (req, res) => {
     try {
+        const inventoryColumns = await getTableColumns('user_inventory');
+        const shopItemColumns = await getTableColumns('shop_items');
+        const characterItemColumns = await getTableColumns('character_items');
+        if (inventoryColumns.size === 0) return res.json([]);
+        const useShopItems = inventoryColumns.has('user_id') && shopItemColumns.size > 0;
+        if (!useShopItems && characterItemColumns.size === 0) return res.json([]);
+        const itemTable = useShopItems ? 'shop_items' : 'character_items';
+        const itemAlias = useShopItems ? 'si' : 'ci';
+        if (!inventoryColumns.has('user_id') && !inventoryColumns.has('username')) return res.json([]);
+        const ownerColumn = inventoryColumns.has('user_id') ? 'user_id' : 'username';
+        const ownerValue = ownerColumn === 'user_id' ? req.user.id : req.user.username;
+        const itemColumns = useShopItems ? shopItemColumns : characterItemColumns;
+        const categorySql = useShopItems
+            ? columnSql(itemColumns, itemAlias, 'category', "'item'")
+            : columnSql(itemColumns, itemAlias, 'type', "'item'");
+        const equipSlotSql = useShopItems
+            ? columnSql(itemColumns, itemAlias, 'equip_slot', 'NULL')
+            : columnSql(itemColumns, itemAlias, 'type', 'NULL');
         const result = await pool.query(`
-            SELECT ui.id, ui.item_id, ui.acquired_via, ui.acquired_at,
-                   si.code, si.name, si.description, si.category,
-                   si.rarity, si.equip_slot, si.icon
+            SELECT ui.id,
+                   ui.item_id,
+                   ${columnSql(inventoryColumns, 'ui', 'acquired_via', columnSql(inventoryColumns, 'ui', 'obtained_from', 'NULL'))} AS acquired_via,
+                   ${columnSql(inventoryColumns, 'ui', 'acquired_at', 'NULL')} AS acquired_at,
+                   ${columnSql(itemColumns, itemAlias, 'code', 'NULL')} AS code,
+                   ${columnSql(itemColumns, itemAlias, 'name', "'Item'")} AS name,
+                   ${columnSql(itemColumns, itemAlias, 'description', "''")} AS description,
+                   ${categorySql} AS category,
+                   ${columnSql(itemColumns, itemAlias, 'rarity', "'common'")} AS rarity,
+                   ${equipSlotSql} AS equip_slot,
+                   ${columnSql(itemColumns, itemAlias, 'icon', "''")} AS icon
             FROM user_inventory ui
-            JOIN shop_items si ON si.id = ui.item_id
-            WHERE ui.username = $1
-            ORDER BY si.category, si.name
-        `, [req.user.username]);
+            JOIN ${itemTable} ${itemAlias} ON ${itemAlias}.id = ui.item_id
+            WHERE ui.${ownerColumn} = $1
+            ORDER BY category, name
+        `, [ownerValue]);
 
         res.json(result.rows.map(r => ({
             id: r.id, itemId: r.item_id, code: r.code, name: r.name,

@@ -1689,6 +1689,7 @@ describe('Hermes menu photo routes', () => {
                 assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.storage.bucket, 'catalog_image_blobs');
                 assert.equal(fakePool.catalogImageBlobs.size, 1);
                 assert.ok(fakePool.calls.some(call => call.compact?.startsWith('INSERT INTO catalog_image_blobs')));
+                assert.equal(fakePool.calls.filter(call => /FROM products p/i.test(call.compact || '') && /FOR UPDATE/i.test(call.compact || '')).length, 0);
                 assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 1);
                 assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
                 assert.equal((await fsp.readdir(tempDir)).length, 1);
@@ -1739,6 +1740,7 @@ describe('Hermes menu photo routes', () => {
                 assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.status, 'applied');
                 assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.prompt, 'Hermes final auto apply prompt');
                 assert.equal(fakePool.catalogImageBlobs.size, 1);
+                assert.ok(fakePool.calls.some(call => /FROM products p/i.test(call.compact || '') && /FOR UPDATE/i.test(call.compact || '')));
                 assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
                 assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 1);
                 assert.equal((await fsp.readdir(tempDir)).length, 1);

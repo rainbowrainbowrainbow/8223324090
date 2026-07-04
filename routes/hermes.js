@@ -2159,7 +2159,9 @@ function createHermesRouter(options = {}) {
         try {
             return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
                 const businessContext = activeTaskBusinessContext(businessScope);
-                const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext);
+                const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext, {
+                    forUpdate: payload.autoApply === true
+                });
                 if (!product) {
                     throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
                 }

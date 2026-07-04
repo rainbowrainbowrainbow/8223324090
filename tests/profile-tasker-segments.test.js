@@ -113,6 +113,36 @@ test('profile my day ordering lifts urgent priority above lower-priority work', 
     assert.deepEqual(Array.from(ctx.sortCabinetTasksForDisplay(tasks).map(task => task.id)), [3, 4, 1, 2]);
 });
 
+test('profile My Day compact capsule uses existing identity and profession helpers', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = vm.runInContext(`
+        profileData = {
+            user: {
+                id: 7,
+                name: 'Олена Коваль',
+                username: 'olena',
+                role: 'animator'
+            },
+            staffProfile: {
+                primary_profession: 'animator'
+            }
+        };
+        isOwnProfile = true;
+        renderProfileMyDayCapsule(profileData, profileProfessionEntries());
+    `, ctx);
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+
+    assert.match(html, /data-profile-my-day-capsule/);
+    assert.match(html, /Олена Коваль/);
+    assert.match(html, /робочі \+ особисті задачі/);
+    assert.match(html, /profile-my-day-capsule-avatar/);
+    assert.doesNotMatch(html, /profile-working-role-trigger/);
+    assert.match(source, /const isMyDayTab = activeTab === 'myday';/);
+    assert.match(source, /profile-work-header--myday/);
+    assert.match(source, /renderProfileMyDayCapsule\(p, professionEntries\)/);
+    assert.match(source, /renderProfileProfessionHeaderPanel\(professionEntries\)/);
+});
+
 test('profile quick task card uses completed-today and active My Day workload counts', () => {
     const ctx = loadProfileTaskerContext();
     const counts = ctx.cabinetTaskQuickCounts({
@@ -140,6 +170,179 @@ test('profile quick task card uses completed-today and active My Day workload co
     assert.match(html, />12</);
     assert.match(html, />4</);
     assert.match(html, /виконано сьогодні/);
+});
+
+test('profile My Day segmented control counts projection buckets and switches visible content', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const overdue = addDaysToDateKey(today, -1);
+    vm.runInContext(`
+        myCabinetData = {
+            all: [
+                { id: 101, title: 'Today segment task', date: '${today}' },
+                { id: 102, title: 'Overdue segment task', date: '${overdue}' }
+            ],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [{ id: 103, title: 'Waiting segment task', workflowState: 'waiting' }],
+            deferred: [],
+            private: [{ id: 104, title: 'Private segment task', visibility: 'private', taskMode: 'private' }],
+            completedHistory: [
+                { id: 105, title: 'Completed segment task', status: 'done', completedAt: '${today}T10:00:00.000Z' },
+                { id: 106, title: 'Completed second task', status: 'done', completedAt: '${today}T11:00:00.000Z' }
+            ],
+            stats: { taskQuick: { completedTotal: 2, completedToday: 2, activeMyDay: 4 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+        cabinetMyDaySegment = 'today';
+    `, ctx);
+
+    const counts = ctx.cabinetMyDaySegmentCounts();
+    assert.equal(counts.today, 1);
+    assert.equal(counts.overdue, 1);
+    assert.equal(counts.waiting, 1);
+    assert.equal(counts.completed, 2);
+    assert.equal(counts.private, 1);
+
+    let html = ctx.renderMyDayTab();
+    assert.match(html, /cabinet-my-day-segments/);
+    assert.match(html, /data-cabinet-my-day-segment="today"[\s\S]*?aria-selected="true"/);
+    assert.match(html, /data-cabinet-my-day-segment="overdue"[\s\S]*?<b>1<\/b>/);
+    assert.match(html, /data-cabinet-my-day-segment-panel="today"/);
+    assert.match(html, /Today segment task/);
+
+    ctx.setCabinetMyDaySegment('waiting');
+    html = ctx.renderMyDayTab();
+    assert.match(html, /data-cabinet-my-day-segment="waiting"[\s\S]*?aria-selected="true"/);
+    assert.match(html, /data-cabinet-my-day-segment-panel="waiting"/);
+    assert.match(html, /Waiting segment task/);
+    assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
+
+    ctx.setCabinetMyDaySegment('completed');
+    html = ctx.renderMyDayTab();
+    assert.match(html, /data-cabinet-my-day-segment-panel="completed"/);
+    assert.match(html, /cabinet-completed-strip/);
+    assert.match(html, /Completed segment task/);
+});
+
+test('profile My Day overdue segment renders triage rows with existing task actions', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+    const overdue = addDaysToDateKey(today, -2);
+
+    vm.runInContext(`
+        activeTab = 'myday';
+        cabinetMyDaySegment = 'overdue';
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+        myCabinetData = {
+            all: [
+                {
+                    id: 201,
+                    title: 'Overdue triage task',
+                    date: '${overdue}',
+                    priority: 'urgent',
+                    subtask_count: 2,
+                    subtask_done_count: 1,
+                    controlMeta: { canReschedule: true }
+                }
+            ],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: []
+        };
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /data-cabinet-my-day-segment-panel="overdue"/);
+    assert.match(html, /data-cabinet-overdue-triage/);
+    assert.match(html, /Прострочено · 1/);
+    assert.match(html, /cabinet-overdue-triage-row/);
+    assert.match(html, /href="\/tasks\?view=my&open=201"/);
+    assert.match(html, /data-cabinet-task-action="move-to-today"/);
+    assert.match(html, /data-cabinet-task-action="reschedule-overdue"/);
+    assert.match(html, /data-reschedule-option="custom"/);
+    assert.match(html, /data-source-surface="profile_my_cabinet_overdue_triage"/);
+    assert.match(html, /data-cabinet-task-action="done"/);
+    assert.match(html, /data-cabinet-task-action="move-target"/);
+    assert.match(html, /data-cabinet-move-target="no_date"/);
+    assert.match(html, /data-cabinet-move-method="triage"/);
+    assert.doesNotMatch(html, /data-cabinet-active-subtask-slice/);
+});
+
+test('profile My Day keeps sound controls behind a command bar settings menu', () => {
+    const ctx = loadProfileTaskerContext();
+    const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+
+    vm.runInContext(`
+        activeTab = 'myday';
+        cabinetMyDaySegment = 'today';
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+        myCabinetData = {
+            all: [],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: []
+        };
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /data-cabinet-my-day-sound-settings/);
+    assert.match(html, /aria-haspopup="dialog"/);
+    assert.doesNotMatch(html, /<h3>Звук<\/h3>[\s\S]*data-cabinet-task-sound-controls/);
+    assert.match(profileSource, /function renderCabinetMyDaySoundSettingsAction/);
+    assert.match(profileSource, /function openCabinetMyDaySoundSettings/);
+    assert.match(profileSource, /function bindCabinetTaskSoundControls/);
+    assert.match(profileSource, /bindCabinetTaskSoundControls\(root\)/);
+    assert.match(profileSource, /apiPatch\('\/tasks\/preferences'/);
+});
+
+test('profile My Day completed history is compact by default while preserving day groups', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
+
+    vm.runInContext(`
+        activeTab = 'myday';
+        cabinetMyDaySegment = 'completed';
+        myCabinetData = {
+            all: [],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: [
+                { id: 301, title: 'Closed payload task', status: 'done', completedAt: '${today}T10:00:00.000Z' }
+            ],
+            stats: { taskQuick: { completedTotal: 1, completedToday: 1, activeMyDay: 0 } }
+        };
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /cabinet-completed-strip--compact/);
+    assert.match(html, /<details class="cabinet-completed-details">/);
+    assert.match(html, /<summary class="cabinet-completed-strip-summary">/);
+    assert.doesNotMatch(html, /<details class="cabinet-completed-details" open>/);
+    assert.match(html, /1 виконань/);
+    assert.match(html, /Closed payload task/);
+    assert.match(html, /data-cabinet-completed-day-divider/);
+    assert.match(html, /aria-describedby=/);
 });
 
 test('profile quick task card counts overdue carry-over when activeMyDay is absent', () => {
@@ -336,15 +539,21 @@ test('profile My Day focused mode filters primary tasks by selected due preset',
     vm.runInContext(`cabinetCreateDuePreset = 'today';`, ctx);
     let html = ctx.renderMyDayTab();
     assert.match(html, /Today focus task/);
-    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /Overdue focus task/);
     assert.doesNotMatch(html, /Tomorrow focus task/);
     assert.doesNotMatch(html, /No date focus task/);
     assert.doesNotMatch(html, /Deferred tomorrow task/);
 
+    ctx.setCabinetMyDaySegment('overdue');
+    const overdueHtml = ctx.renderMyDayTab();
+    assert.match(overdueHtml, /Overdue focus task/);
+    assert.doesNotMatch(overdueHtml, /Today focus task/);
+    ctx.setCabinetMyDaySegment('today');
+
     vm.runInContext(`cabinetCreateDuePreset = 'tomorrow';`, ctx);
     html = ctx.renderMyDayTab();
     assert.match(html, /Tomorrow focus task/);
-    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /Overdue focus task/);
     assert.doesNotMatch(html, /Today focus task/);
     assert.doesNotMatch(html, /No date focus task/);
     assert.doesNotMatch(html, /Deferred tomorrow task/);
@@ -352,7 +561,7 @@ test('profile My Day focused mode filters primary tasks by selected due preset',
     vm.runInContext(`cabinetCreateDuePreset = 'no_date';`, ctx);
     html = ctx.renderMyDayTab();
     assert.match(html, /No date focus task/);
-    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /Overdue focus task/);
     assert.doesNotMatch(html, /Tomorrow focus task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'day_after_tomorrow';`, ctx);
@@ -1065,42 +1274,114 @@ test('profile task cards expose move-to-today drag for typed planned tasks', () 
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
 });
 
-test('profile my day collapses decomposed cards by default while keeping progress visible', () => {
+test('profile My Day compact cards keep critical badges and progress in a bounded shell', () => {
     const ctx = loadProfileTaskerContext();
     const task = {
         id: 44,
-        title: 'Overdue decomposed task',
+        title: 'Long decomposed task with enough metadata to force compact scanning',
         deadline: '2000-01-01T09:00:00.000Z',
         priority: 'high',
-        subtask_count: 3,
+        ownerUserId: 7,
+        createdByUserId: 9,
+        taskMode: 'work',
+        taskKind: 'action',
+        scheduleStatus: 'proposal',
+        reportRequired: true,
+        subtask_count: 2,
         subtask_done_count: 1,
         subtasks: [
             { id: 1, title: 'First', is_done: true },
-            { id: 2, title: 'Second', is_done: false },
-            { id: 3, title: 'Third', is_done: false }
+            { id: 2, title: 'Second', is_done: false }
         ],
         controlMeta: { canReschedule: true }
     };
 
     vm.runInContext(`activeTab = 'myday';`, ctx);
-    const collapsedHtml = ctx.renderCabinetTaskCard(task);
+    const html = ctx.renderCabinetTaskCard(task, false, { surface: 'myday', activeInlineTaskId: 44 });
+    const visibleBadgeCount = (html.match(/data-cabinet-visible-badge=/g) || []).length;
 
-    assert.match(collapsedHtml, /is-subtasks-collapsed/);
-    assert.match(collapsedHtml, /data-cabinet-task-decomposed="true"/);
-    assert.match(collapsedHtml, /aria-expanded="false"/);
-    assert.match(collapsedHtml, /data-cabinet-subtasks-panel="44" hidden/);
-    assert.match(collapsedHtml, /cabinet-subtask-progress/);
-    assert.match(collapsedHtml, /cabinet-subtask-compact-summary/);
-    assert.match(collapsedHtml, /Залишилось 2/);
-    assert.doesNotMatch(collapsedHtml, /data-cabinet-subtask-done/);
+    assert.match(html, /is-my-day-compact-card/);
+    assert.ok(visibleBadgeCount <= 5, `expected max 5 visible badges, got ${visibleBadgeCount}`);
+    assert.match(html, /data-cabinet-visible-badge="due"/);
+    assert.match(html, /data-cabinet-visible-badge="priority"/);
+    assert.match(html, /data-cabinet-visible-badge="report"/);
+    assert.match(html, /data-task-priority="high"/);
+    assert.match(html, /data-task-due-state="overdue"/);
+    assert.match(html, /cabinet-subtask-progress/);
+    assert.match(html, /data-cabinet-task-action="done"/);
+    assert.match(html, /data-cabinet-task-action="more"/);
+});
 
-    vm.runInContext(`expandedCabinetSubtaskIds.add(44); collapsedCabinetSubtaskIds.delete(44);`, ctx);
-    const expandedHtml = ctx.renderCabinetTaskCard(task);
+test('profile My Day shows one active checklist slice and keeps the full checklist behind the toggle', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const today = taskCreateCtx.TaskCreate.todayStr();
 
-    assert.match(expandedHtml, /is-subtasks-expanded/);
-    assert.match(expandedHtml, /aria-expanded="true"/);
-    assert.doesNotMatch(expandedHtml, /data-cabinet-subtasks-panel="44" hidden/);
-    assert.match(expandedHtml, /data-cabinet-subtask-done/);
+    vm.runInContext(`
+        activeTab = 'myday';
+        cabinetMyDaySegment = 'today';
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+        activeCabinetInlineTaskId = null;
+        expandedCabinetSubtaskIds.clear();
+        collapsedCabinetSubtaskIds.clear();
+        myCabinetData = {
+            all: [
+                {
+                    id: 44,
+                    title: 'First decomposed task',
+                    date: '${today}',
+                    subtask_count: 3,
+                    subtask_done_count: 1,
+                    subtasks: [
+                        { id: 1, title: 'First done', is_done: true },
+                        { id: 2, title: 'Second next', is_done: false },
+                        { id: 3, title: 'Third later', is_done: false }
+                    ]
+                },
+                {
+                    id: 45,
+                    title: 'Second decomposed task',
+                    date: '${today}',
+                    subtask_count: 2,
+                    subtask_done_count: 0,
+                    subtasks: [
+                        { id: 4, title: 'Other next', is_done: false },
+                        { id: 5, title: 'Other later', is_done: false }
+                    ]
+                }
+            ],
+            today: [],
+            next: [],
+            overdue: [],
+            waiting: [],
+            deferred: [],
+            private: [],
+            completedHistory: []
+        };
+    `, ctx);
+
+    let html = ctx.renderMyDayTab();
+    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 1);
+    assert.match(html, /data-cabinet-active-subtask-slice="44"/);
+    assert.doesNotMatch(html, /data-cabinet-active-subtask-slice="45"/);
+    assert.match(html, /Second next/);
+    assert.match(html, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.match(html, /data-cabinet-subtask-done/);
+    assert.match(html, /data-task-id="45"[\s\S]*cabinet-subtask-compact-summary/);
+
+    vm.runInContext(`setCabinetActiveInlineTask(44, { expanded: true });`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 0);
+    assert.match(html, /is-subtasks-expanded/);
+    assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.ok((html.match(/data-cabinet-inline-subtask/g) || []).length >= 3);
+
+    vm.runInContext(`setCabinetActiveInlineTask(45, { expanded: false });`, ctx);
+    html = ctx.renderMyDayTab();
+    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 1);
+    assert.match(html, /data-cabinet-active-subtask-slice="45"/);
+    assert.match(html, /Other next/);
 });
 
 test('profile task cards respect disabled rescheduling control meta', () => {

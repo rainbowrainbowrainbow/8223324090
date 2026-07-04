@@ -4,6 +4,20 @@
 
 ---
 
+## v0.78.0 - My Day command center
+
+### Мій день / Командний центр продуктивності / (Клешня, 04.07.2026) [codex]
+- **Вкладку `Мій день` перезібрано як компактний командний центр** - існуючий шлях `/profile?tab=myday` збережено без нової вкладки, feature flag або дублювання сторінки.
+- **Додано робочі сегменти дня** - задачі групуються в `Сьогодні`, `Прострочено`, `Чекаю`, `Готово` і `Приватне` з реальними лічильниками та без зміни backend status taxonomy.
+- **Картки задач стали щільнішими і читабельнішими** - видимі metadata обмежено, активний checklist показує один наступний крок і прогрес, а повний список лишився за існуючим toggle.
+- **Прострочені задачі отримали triage-дії** - можна швидко перенести на сьогодні, перепланувати, завершити або прибрати дату через уже наявні delegated actions.
+- **Звукові налаштування прибрано з основного потоку читання** - controls залишились доступними через меню командної панелі з тими самими preference/storage/API semantics.
+- **Історія завершених задач компактна за замовчуванням** - completed payload і day grouping збережені, але secondary content більше не домінує основний workflow.
+- **Regression guards оновлено під фінальний shell** - profile tasker tests і static UI smoke фіксують сегменти, компактні картки, overdue triage, sound menu і completed history disclosure.
+- **DB, migrations, auth/roles, API contracts, task status taxonomy, dependencies, secrets і Railway settings не змінювались** - реліз обмежений існуючим My Day frontend, CSS, tests, docs і version/cache refs.
+
+---
+
 ## v0.77.125 - Durable catalog media
 
 ### Durable catalog media / Catalog and program icon uploads / (Клешня, 04.07.2026) [codex]

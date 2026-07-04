@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.121 - Hermes menu auto apply
+
+### Hermes menu auto apply / External draft activation / (Клешня, 04.07.2026) [codex]
+- **Hermes `external-draft` отримав opt-in `autoApply`** - якщо payload має `autoApply: true`, CRM створює durable draft і в цьому ж idempotent mutation одразу оновлює `products.icon_url`.
+- **Старий draft-only контракт збережено** - без `autoApply` endpoint і далі пише тільки `products.ai_card_draft.imageStudio`, а active image не змінюється.
+- **Окремий `apply` і auto-apply використовують спільну логіку** - статус, `approvedAt`, `appliedAt`, `previousImageUrl` і відповідь Hermes не роз'їжджаються між двома шляхами.
+- **Mutation guard не послаблено** - Hermes writes і далі потребують `x-api-key`/Bearer auth, `Idempotency-Key`, `X-Hermes-User-Confirmed: true` і writable single business context.
+- **Regression guards додано** - тести покривають auto-apply, idempotent retry, конфлікт `autoApply`/`auto_apply` і старий режим без apply.
+- **DB, migrations, Railway/env/secrets і roles не змінювались** - release обмежений Hermes menu-photo API, docs, tests і version/cache refs.
+
+---
+
 ## v0.77.120 - Durable menu photos
 
 ### Durable menu photos / Postgres catalog blobs / Upload 404 / (Клешня, 04.07.2026) [codex]

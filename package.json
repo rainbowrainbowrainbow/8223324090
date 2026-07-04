@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.120",
+  "version": "0.77.121",
   "eventGenix": {
-    "releaseLabel": "Durable menu photos"
+    "releaseLabel": "Hermes menu auto apply"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

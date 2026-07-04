@@ -16,11 +16,17 @@ This workflow is for kitchen products where:
 
 ## Storage And Image Priority
 
-External drafts are saved to CRM local uploads:
+External drafts are saved to the CRM catalog image upload URL surface:
 
 ```text
 /uploads/catalog-images/items/<generated-file-name>
 ```
+
+New writes persist the binary image in Postgres `catalog_image_blobs`. The local
+`uploads/catalog-images` filesystem is only a legacy/dev fallback and is not the
+durable source on Railway. If a catalog image upload URL is missing from both
+Postgres and the legacy local fallback, the server must return 404, not CRM
+HTML.
 
 The active source of truth for new Hermes/manual menu photos is:
 
@@ -162,7 +168,8 @@ Successful response shape:
       "generatedAt": "2026-07-02T09:00:00.000Z",
       "previousImageUrl": "/uploads/catalog-images/items/current.png",
       "storage": {
-        "provider": "local",
+        "provider": "postgres",
+        "bucket": "catalog_image_blobs",
         "publicUrl": "/uploads/catalog-images/items/menu-menu-burger-001-1782994000000.png"
       },
       "error": null

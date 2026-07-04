@@ -74,11 +74,11 @@ const LOCAL_UPLOAD_SURFACE = [
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
-            type: 'local-filesystem-primary',
-            durableSource: 'catalog item URL metadata',
+            type: 'postgres-blob-primary-local-legacy',
+            durableSource: 'catalog_image_blobs',
             reviewBeforeDelete: true
         },
-        reason: 'Generated catalog images are stored under /uploads/catalog-images and saved as catalog item URLs in Postgres-backed catalogs.'
+        reason: 'New generated catalog images write binary content to Postgres catalog_image_blobs while /uploads/catalog-images remains the public URL and legacy local fallback.'
     },
     {
         urlPrefix: '/uploads/designs',

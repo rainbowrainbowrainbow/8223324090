@@ -1536,6 +1536,7 @@ async function handleExternalMenuImageDraftRequest(req, res) {
                 username: req.user?.username,
                 source: cleanNullableString(req.body?.source, 40) || 'products-menu-external'
             },
+            uploadOptions: { query: pool },
             currentDraft
         });
         await persistMenuImageDraft(pool, {
@@ -1609,7 +1610,12 @@ async function handleMenuImageDraftRequest(req, res) {
 
         let imageStudio;
         try {
-            imageStudio = await generateAndStoreMenuPhotoDraft(product, { size, style, prompt });
+            imageStudio = await generateAndStoreMenuPhotoDraft(product, {
+                size,
+                style,
+                prompt,
+                uploadOptions: { query: pool }
+            });
         } catch (err) {
             const publicError = menuImagePublicError(err);
             const failedStudio = normalizeMenuImageStudio({

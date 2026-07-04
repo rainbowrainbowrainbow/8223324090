@@ -1,6 +1,7 @@
 /**
  * services/imageStorage.js — Persist generated catalog images on the CRM upload surface.
- * v0.63.18: Remote storage removed; files are stored under /uploads/catalog-images.
+ * New writes can use Postgres-backed blobs while keeping the public URL under
+ * /uploads/catalog-images for booking/menu compatibility.
  */
 const https = require('https');
 const http = require('http');
@@ -11,6 +12,8 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('ImageStorage');
 const DEFAULT_LOCAL_DIR = path.join(__dirname, '..', 'uploads', 'catalog-images');
 const PUBLIC_PREFIX = '/uploads/catalog-images';
+const CATALOG_IMAGE_STORAGE_PROVIDER = 'postgres';
+const CATALOG_IMAGE_STORAGE_BUCKET = 'catalog_image_blobs';
 const DEFAULT_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const DEFAULT_MAX_REDIRECTS = 4;
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30000;
@@ -32,9 +35,14 @@ function normalizeMimeType(value) {
     return String(value || '').split(';')[0].trim().toLowerCase();
 }
 
+function canonicalImageMimeType(value) {
+    const mime = normalizeMimeType(value);
+    return mime === 'image/jpg' ? 'image/jpeg' : mime;
+}
+
 function normalizeMimeSet(value) {
     if (!value) return ALLOWED_IMAGE_MIME_TYPES;
-    return new Set(Array.from(value).map(normalizeMimeType).filter(Boolean));
+    return new Set(Array.from(value).map(canonicalImageMimeType).filter(Boolean));
 }
 
 function parsePositiveInt(value) {
@@ -42,8 +50,45 @@ function parsePositiveInt(value) {
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
 }
 
+function resolveQuery(options = {}) {
+    const queryLike = options.query || options.pool || options.client || options.db || null;
+    return queryLike && typeof queryLike.query === 'function' ? queryLike : null;
+}
+
+function publicCatalogImageUrl(filename) {
+    return `${PUBLIC_PREFIX}/items/${encodeURIComponent(safeImageFilename(filename))}`;
+}
+
+function normalizeCatalogImageRequestFilename(filename) {
+    let decoded = String(filename || '').split('?')[0].split('#')[0].trim();
+    if (!decoded) return '';
+    try {
+        decoded = decodeURIComponent(decoded);
+    } catch {
+        return '';
+    }
+    decoded = decoded.replace(/\\/g, '/');
+    if (!decoded || decoded.includes('/') || decoded.includes('..')) return '';
+    const safe = safeImageFilename(decoded);
+    return safe === decoded ? safe : '';
+}
+
+function catalogImageStorageDescriptor(options = {}, publicUrl = null) {
+    if (resolveQuery(options)) {
+        return {
+            provider: CATALOG_IMAGE_STORAGE_PROVIDER,
+            bucket: CATALOG_IMAGE_STORAGE_BUCKET,
+            publicUrl
+        };
+    }
+    return {
+        provider: 'local',
+        publicUrl
+    };
+}
+
 /**
- * Download image from URL and store it in the CRM local upload surface.
+ * Download image from URL and store it in the CRM upload surface.
  * Returns public CRM upload URL.
  * @param {string} sourceUrl - Kie.ai temp URL
  * @param {string} filename - e.g. "pinyata-unicorn-1234.png"
@@ -53,7 +98,8 @@ async function uploadFromUrl(sourceUrl, filename, options = {}) {
     try {
         const sourcePreview = imageSourcePreview(sourceUrl);
         log.info(`Downloading image from ${sourcePreview}...`);
-        const imageBuffer = await downloadImage(sourceUrl, options);
+        const downloaded = await downloadImageWithMetadata(sourceUrl, options);
+        const imageBuffer = downloaded.buffer;
         if (!imageBuffer || imageBuffer.length === 0) {
             log.error('Downloaded empty image from', sourcePreview);
             return null;
@@ -61,12 +107,25 @@ async function uploadFromUrl(sourceUrl, filename, options = {}) {
         log.info(`Downloaded ${Math.round(imageBuffer.length / 1024)}KB`);
 
         const safeFilename = safeImageFilename(filename);
-        const localDir = options.localDir || path.join(DEFAULT_LOCAL_DIR, 'items');
-        await fsp.mkdir(localDir, { recursive: true });
-        const fullPath = path.join(localDir, safeFilename);
-        await fsp.writeFile(fullPath, imageBuffer);
+        const query = resolveQuery(options);
+        if (query) {
+            await storeCatalogImageBlob(query, {
+                filename: safeFilename,
+                contentType: downloaded.contentType,
+                data: imageBuffer,
+                sourceUrl,
+                metadata: options.metadata
+            });
+        }
 
-        const publicUrl = `${PUBLIC_PREFIX}/items/${encodeURIComponent(safeFilename)}`;
+        if (!query || options.localDir) {
+            const localDir = options.localDir || path.join(DEFAULT_LOCAL_DIR, 'items');
+            await fsp.mkdir(localDir, { recursive: true });
+            const fullPath = path.join(localDir, safeFilename);
+            await fsp.writeFile(fullPath, imageBuffer);
+        }
+
+        const publicUrl = publicCatalogImageUrl(safeFilename);
         log.info(`Stored ${safeFilename} (${Math.round(imageBuffer.length / 1024)}KB) → ${publicUrl}`);
         return publicUrl;
     } catch (err) {
@@ -79,6 +138,10 @@ async function uploadFromUrl(sourceUrl, filename, options = {}) {
  * Download image buffer from URL
  */
 function downloadImage(url, options = {}) {
+    return downloadImageWithMetadata(url, options).then(result => result.buffer);
+}
+
+function downloadImageWithMetadata(url, options = {}) {
     const maxBytes = parsePositiveInt(options.maxBytes || options.maxImageBytes) || DEFAULT_MAX_IMAGE_BYTES;
     const allowedMimeTypes = normalizeMimeSet(options.allowedMimeTypes);
     const maxRedirects = Number.isInteger(options.maxRedirects) ? options.maxRedirects : DEFAULT_MAX_REDIRECTS;
@@ -98,7 +161,7 @@ function downloadImageInternal(url, options) {
             try {
                 const match = url.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
                 if (!match) return reject(new Error('Invalid data URL image'));
-                const mime = normalizeMimeType(match[1]);
+                const mime = canonicalImageMimeType(match[1]);
                 if (!options.allowedMimeTypes.has(mime)) {
                     return reject(new Error('Unsupported image MIME type'));
                 }
@@ -107,7 +170,10 @@ function downloadImageInternal(url, options) {
                 if (estimatedBytes > options.maxBytes) {
                     return reject(new Error('Image exceeds maximum size'));
                 }
-                return resolve(Buffer.from(base64, 'base64'));
+                return resolve({
+                    buffer: Buffer.from(base64, 'base64'),
+                    contentType: mime
+                });
             } catch (err) {
                 return reject(err);
             }
@@ -156,7 +222,7 @@ function downloadImageInternal(url, options) {
                 return reject(new Error(`HTTP ${res.statusCode}`));
             }
 
-            const mime = normalizeMimeType(res.headers['content-type']);
+            const mime = canonicalImageMimeType(res.headers['content-type']);
             if (!mime || !options.allowedMimeTypes.has(mime)) {
                 res.resume();
                 return reject(new Error('Unsupported image MIME type'));
@@ -188,7 +254,10 @@ function downloadImageInternal(url, options) {
             res.on('end', () => {
                 if (settled) return;
                 settled = true;
-                resolve(Buffer.concat(chunks));
+                resolve({
+                    buffer: Buffer.concat(chunks),
+                    contentType: mime
+                });
             });
             res.on('error', fail);
         });
@@ -209,6 +278,82 @@ function safeImageFilename(filename) {
     return `${base}${ext}`;
 }
 
+async function storeCatalogImageBlob(query, { filename, contentType, data, sourceUrl = null, metadata = {} } = {}) {
+    if (!query || typeof query.query !== 'function') {
+        throw new Error('Postgres query client is required for catalog image blob storage');
+    }
+    const safeFilename = safeImageFilename(filename);
+    if (!Buffer.isBuffer(data) || data.length === 0) {
+        throw new Error('Non-empty catalog image buffer is required');
+    }
+    const mime = canonicalImageMimeType(contentType);
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
+        throw new Error('Unsupported image MIME type');
+    }
+    const safeMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+    await query.query(
+        `INSERT INTO catalog_image_blobs
+            (filename, content_type, data, size_bytes, source_url, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         ON CONFLICT (filename)
+         DO UPDATE SET content_type = EXCLUDED.content_type,
+                       data = EXCLUDED.data,
+                       size_bytes = EXCLUDED.size_bytes,
+                       source_url = EXCLUDED.source_url,
+                       metadata = EXCLUDED.metadata,
+                       updated_at = NOW()`,
+        [safeFilename, mime, data, data.length, sourceUrl || null, JSON.stringify(safeMetadata)]
+    );
+    return {
+        provider: CATALOG_IMAGE_STORAGE_PROVIDER,
+        bucket: CATALOG_IMAGE_STORAGE_BUCKET,
+        filename: safeFilename,
+        publicUrl: publicCatalogImageUrl(safeFilename),
+        contentType: mime,
+        sizeBytes: data.length
+    };
+}
+
+async function readCatalogImageBlobByFilename(query, filename) {
+    if (!query || typeof query.query !== 'function') {
+        throw new Error('Postgres query client is required for catalog image blob reads');
+    }
+    const safeFilename = normalizeCatalogImageRequestFilename(filename);
+    if (!safeFilename) return null;
+    const result = await query.query(
+        `SELECT filename, content_type, data, size_bytes, source_url, metadata, created_at, updated_at
+         FROM catalog_image_blobs
+         WHERE filename = $1
+         LIMIT 1`,
+        [safeFilename]
+    );
+    return result.rows[0] || null;
+}
+
+function buildCatalogImageBlobFallbackHandler(query, logger = null) {
+    return async (req, res, next) => {
+        try {
+            const safeFilename = normalizeCatalogImageRequestFilename(req.params?.filename);
+            if (!safeFilename) {
+                return res.status(404).json({ error: 'image_not_found' });
+            }
+            const row = await readCatalogImageBlobByFilename(query, safeFilename);
+            if (!row?.data) return next();
+            const data = Buffer.isBuffer(row.data) ? row.data : Buffer.from(row.data);
+            res.setHeader('Content-Type', row.content_type || 'application/octet-stream');
+            res.setHeader('Content-Length', String(Number(row.size_bytes || data.length || 0)));
+            res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            return res.send(data);
+        } catch (err) {
+            if (logger && typeof logger.warn === 'function') {
+                logger.warn(`Catalog image Postgres upload fallback skipped: ${err.message}`);
+            }
+            return next();
+        }
+    };
+}
+
 /**
  * Generate filename from item data
  */
@@ -222,9 +367,17 @@ function makeFilename(catalogId, itemName, ext = 'png') {
 }
 
 module.exports = {
+    CATALOG_IMAGE_STORAGE_BUCKET,
+    CATALOG_IMAGE_STORAGE_PROVIDER,
     uploadFromUrl,
     makeFilename,
     safeImageFilename,
+    publicCatalogImageUrl,
+    normalizeCatalogImageRequestFilename,
+    catalogImageStorageDescriptor,
+    buildCatalogImageBlobFallbackHandler,
+    readCatalogImageBlobByFilename,
+    storeCatalogImageBlob,
     ALLOWED_IMAGE_MIME_TYPES,
     DEFAULT_MAX_IMAGE_BYTES
 };

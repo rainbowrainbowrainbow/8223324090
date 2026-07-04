@@ -1983,7 +1983,15 @@ function createHermesRouter(options = {}) {
                 await persistHermesMenuPhotoDraft(mutationPool, productId, businessContext, req.user?.username || 'hermes', generatingDraft);
 
                 try {
-                    const generatedStudio = await generateAndStoreMenuPhotoDraft(product, { size, style, prompt });
+                    const generatedStudio = await generateAndStoreMenuPhotoDraft(product, {
+                        size,
+                        style,
+                        prompt,
+                        uploadOptions: {
+                            ...menuImageUploadOptions,
+                            query: mutationPool
+                        }
+                    });
                     const readyStudio = normalizeHermesMenuImageStudio({
                         ...generatingStudio,
                         ...generatedStudio,
@@ -2091,7 +2099,10 @@ function createHermesRouter(options = {}) {
                             username: req.user?.username || 'hermes',
                             source: cleanNullableString(payload.source, 40) || 'hermes'
                         },
-                        uploadOptions: menuImageUploadOptions,
+                        uploadOptions: {
+                            ...menuImageUploadOptions,
+                            query: mutationPool
+                        },
                         currentDraft: currentHermesMenuPhotoDraft(product)
                     });
                 } catch (err) {

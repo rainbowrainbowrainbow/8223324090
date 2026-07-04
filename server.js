@@ -27,6 +27,7 @@ const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT
 const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
 const { readDesignBlobByFilename } = require('./services/designStorage');
 const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAvatarStorage');
+const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorage');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
@@ -114,6 +115,14 @@ app.use(cacheControl);
 // v19.10: API versioning — /api/v1/* → /api/*
 app.use(apiVersionRewrite);
 app.use(staticDocGuard);
+const catalogImageBlobHandler = buildCatalogImageBlobFallbackHandler(pool, log);
+app.get('/uploads/catalog-images/items/:filename', catalogImageBlobHandler);
+app.head('/uploads/catalog-images/items/:filename', catalogImageBlobHandler);
+app.use('/uploads/catalog-images/items', express.static(path.join(__dirname, 'uploads', 'catalog-images', 'items')));
+app.use('/uploads/catalog-images/items', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    return res.status(404).json({ error: 'image_not_found' });
+});
 app.get('/uploads/designs/:filename', async (req, res, next) => {
     try {
         const row = await readDesignBlobByFilename(pool, req.params.filename);

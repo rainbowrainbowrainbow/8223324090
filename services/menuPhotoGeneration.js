@@ -2,7 +2,7 @@
  * services/menuPhotoGeneration.js - menu/product photo prompt, OpenAI image generation,
  * and local CRM upload persistence.
  */
-const { uploadFromUrl, makeFilename } = require('./imageStorage');
+const { catalogImageStorageDescriptor, uploadFromUrl, makeFilename } = require('./imageStorage');
 
 const MENU_IMAGE_DEFAULT_OPENAI_MODEL = 'gpt-image-1-mini';
 const MENU_IMAGE_STUDIO_SIZES = new Set(['1536x1024', '1024x1024', '1024x1536']);
@@ -177,10 +177,11 @@ async function generateAndStoreMenuPhotoDraft(product = {}, options = {}) {
     const size = normalizeMenuImageSize(options.size);
     const style = normalizeMenuImageStyle(options.style);
     const prompt = cleanNullableString(options.prompt, 5000) || buildMenuImagePrompt(product, { size, style });
+    const uploadOptions = options.uploadOptions || {};
 
     try {
         const generation = await generateMenuImageWithOpenAI({ prompt, size, style });
-        const savedUrl = await uploadFromUrl(generation.sourceUrl, buildMenuImageFilename(product));
+        const savedUrl = await uploadFromUrl(generation.sourceUrl, buildMenuImageFilename(product), uploadOptions);
         if (!savedUrl) {
             const err = new Error('Generated image could not be saved to CRM uploads');
             err.code = 'menu_image_upload_failed';
@@ -200,8 +201,7 @@ async function generateAndStoreMenuPhotoDraft(product = {}, options = {}) {
             style: generation.style,
             generatedAt: new Date().toISOString(),
             storage: {
-                provider: 'local',
-                publicUrl: savedUrl
+                ...catalogImageStorageDescriptor(uploadOptions, savedUrl)
             },
             error: null
         };

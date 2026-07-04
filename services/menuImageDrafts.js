@@ -3,7 +3,7 @@
  * This module never applies images to products.icon_url.
  */
 const net = require('net');
-const { uploadFromUrl, makeFilename } = require('./imageStorage');
+const { catalogImageStorageDescriptor, uploadFromUrl, makeFilename } = require('./imageStorage');
 const {
     MENU_IMAGE_STUDIO_SIZES,
     MENU_IMAGE_STUDIO_STYLES,
@@ -429,8 +429,7 @@ async function createExternalMenuImageDraft({ product = {}, payload = {}, actor 
         generatedAt,
         previousImageUrl: getProductCurrentImageUrl(product),
         storage: {
-            provider: 'local',
-            publicUrl: savedUrl
+            ...catalogImageStorageDescriptor(securedUploadOptions, savedUrl)
         },
         error: null
     });

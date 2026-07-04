@@ -391,6 +391,7 @@ function createHermesCreateFakePool(options = {}) {
     const products = new Map(
         (options.products || []).map(([id, product]) => [String(id), { ...product }])
     );
+    const catalogImageBlobs = new Map();
     const hiddenIds = new Set(options.hiddenIds || []);
     const hiddenProductIds = new Set((options.hiddenProductIds || []).map(String));
     const subtaskStates = new Map(
@@ -635,6 +636,19 @@ function createHermesCreateFakePool(options = {}) {
                 .slice(0, limit)
                 .map(clone);
             return { rows, rowCount: rows.length };
+        }
+
+        if (compact.startsWith('INSERT INTO catalog_image_blobs')) {
+            const [filename, contentType, data, sizeBytes, sourceUrl, metadata] = params;
+            catalogImageBlobs.set(filename, {
+                filename,
+                content_type: contentType,
+                data,
+                size_bytes: sizeBytes,
+                source_url: sourceUrl,
+                metadata: JSON.parse(metadata || '{}')
+            });
+            return { rows: [], rowCount: 1 };
         }
 
         if (compact.startsWith('UPDATE products SET ai_card_draft =')) {
@@ -923,6 +937,7 @@ function createHermesCreateFakePool(options = {}) {
         subtasks,
         tasks,
         products,
+        catalogImageBlobs,
         async query(text, params = []) {
             return query(text, params);
         },
@@ -1668,6 +1683,10 @@ describe('Hermes menu photo routes', () => {
                 assert.equal(fakePool.products.get('dish-ext').icon_url, '/uploads/catalog-images/items/current-external.png');
                 assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.status, 'ready');
                 assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.prompt, 'Hermes final external prompt');
+                assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.storage.provider, 'postgres');
+                assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.storage.bucket, 'catalog_image_blobs');
+                assert.equal(fakePool.catalogImageBlobs.size, 1);
+                assert.ok(fakePool.calls.some(call => call.compact?.startsWith('INSERT INTO catalog_image_blobs')));
                 assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 1);
                 assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
                 assert.equal((await fsp.readdir(tempDir)).length, 1);

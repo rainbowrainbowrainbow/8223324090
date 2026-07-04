@@ -203,7 +203,8 @@ const HERMES_STATUS_ALLOWED_FIELDS = new Set([
 const HERMES_MENU_PHOTO_DRAFT_ALLOWED_FIELDS = new Set([
     'settings',
     'size',
-    'style'
+    'style',
+    'prompt'
 ]);
 
 const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_ALLOWED_FIELDS = new Set([
@@ -240,7 +241,7 @@ const HERMES_MENU_PHOTO_STATUSES = new Set([
     'rejected',
     'applied'
 ]);
-const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT = true;
+const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT = false;
 
 const MAX_HERMES_SUBTASKS = 50;
 const MAX_HERMES_LABELS = 20;
@@ -1334,7 +1335,8 @@ function normalizeHermesMenuPhotoDraftPayload(body = {}) {
     const settings = safeJsonObject(body.settings || {});
     return {
         size: body.size || settings.size || null,
-        style: body.style || settings.style || null
+        style: body.style || settings.style || null,
+        prompt: cleanNullableString(body.prompt || settings.prompt, 5000)
     };
 }
 
@@ -1354,11 +1356,13 @@ function normalizeHermesMenuPhotoExternalDraftPayload(body = {}) {
     if (hasCamel && hasSnake && camelAutoApply !== snakeAutoApply) {
         throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'autoApply and auto_apply must match');
     }
+    const requestedAutoApply = hasCamel
+        ? camelAutoApply
+        : (hasSnake ? snakeAutoApply : HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT);
     return {
         ...body,
-        autoApply: hasCamel
-            ? camelAutoApply
-            : (hasSnake ? snakeAutoApply : HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT)
+        requestedAutoApply,
+        autoApply: false
     };
 }
 
@@ -2036,7 +2040,7 @@ function createHermesRouter(options = {}) {
                 const currentStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
                 const size = normalizeMenuImageSize(payload.size || currentStudio.size);
                 const style = normalizeMenuImageStyle(payload.style || currentStudio.style);
-                const prompt = buildMenuImagePrompt(product, { size, style });
+                const prompt = payload.prompt || buildMenuImagePrompt(product, { size, style });
                 const preparedAt = new Date().toISOString();
                 const generatingStudio = normalizeHermesMenuImageStudio({
                     ...currentStudio,
@@ -2160,7 +2164,7 @@ function createHermesRouter(options = {}) {
             return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
                 const businessContext = activeTaskBusinessContext(businessScope);
                 const product = await selectHermesMenuPhotoProduct(mutationPool, productId, businessContext, {
-                    forUpdate: payload.autoApply === true
+                    forUpdate: false
                 });
                 if (!product) {
                     throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
@@ -2168,7 +2172,12 @@ function createHermesRouter(options = {}) {
 
                 let result;
                 try {
-                    const { autoApply: _autoApplyCamel, auto_apply: _autoApplySnake, ...draftPayload } = payload;
+                    const {
+                        autoApply: _autoApplyCamel,
+                        auto_apply: _autoApplySnake,
+                        requestedAutoApply: _requestedAutoApply,
+                        ...draftPayload
+                    } = payload;
                     result = await createExternalMenuImageDraft({
                         product,
                         payload: draftPayload,
@@ -2190,28 +2199,6 @@ function createHermesRouter(options = {}) {
                     throw err;
                 }
 
-                if (payload.autoApply === true) {
-                    const applied = await applyHermesMenuPhotoDraft(mutationPool, {
-                        product: {
-                            ...product,
-                            ai_card_draft: result.draft
-                        },
-                        productId,
-                        businessContext,
-                        username: req.user?.username || 'hermes'
-                    });
-
-                    return {
-                        status: 200,
-                        body: hermesMenuPhotoBody(req, businessScope, applied.product, {
-                            status: 'applied',
-                            provider: result.imageStudio.provider,
-                            model: result.imageStudio.model,
-                            autoApplied: true
-                        })
-                    };
-                }
-
                 await persistMenuImageDraft(mutationPool, {
                     productId,
                     businessContext,
@@ -2229,13 +2216,14 @@ function createHermesRouter(options = {}) {
                         status: 'ready',
                         provider: result.imageStudio.provider,
                         model: result.imageStudio.model,
-                        autoApplied: false
+                        autoApplied: false,
+                        autoApplyRequested: payload.requestedAutoApply === true
                     })
                 };
             }, {
                 pool: query,
                 requestPath: '/api/hermes/menu-photos/:productId/external-draft',
-                transactional: payload.autoApply === true
+                transactional: false
             });
         } catch (err) {
             const publicError = menuPhotoExternalDraftPublicError(err);

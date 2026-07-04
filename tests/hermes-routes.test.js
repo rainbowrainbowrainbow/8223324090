@@ -1701,8 +1701,8 @@ describe('Hermes menu photo routes', () => {
         }
     });
 
-    it('auto-applies a Hermes external menu photo draft by default in the same idempotent mutation', async () => {
-        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-auto-apply-'));
+    it('creates a Hermes external menu photo draft without applying it when autoApply is omitted or requested', async () => {
+        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-no-auto-apply-'));
         const fakePool = createHermesCreateFakePool({
             products: [['dish-auto-apply', productRow('dish-auto-apply', {
                 code: 'MENU-AUTO',
@@ -1715,8 +1715,9 @@ describe('Hermes menu photo routes', () => {
             await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
                 const body = {
                     businessContext: 'event_genix',
+                    autoApply: true,
                     imageBase64: Buffer.from('external-auto-png').toString('base64'),
-                    prompt: 'Hermes final auto apply prompt',
+                    prompt: 'Hermes final no auto apply prompt',
                     provider: 'hermes',
                     model: 'hermes-image-model',
                     size: '1536x1024',
@@ -1730,19 +1731,20 @@ describe('Hermes menu photo routes', () => {
                 assert.equal(retry.status, 200, retry.text);
                 assert.deepEqual(retry.data, first.data);
                 assert.equal(first.data.success, true);
-                assert.equal(first.data.product.draft.status, 'applied');
-                assert.equal(first.data.meta.status, 'applied');
-                assert.equal(first.data.meta.autoApplied, true);
-                assert.match(first.data.product.currentImageUrl, /^\/uploads\/catalog-images\/items\/menu-menu-auto-\d+\.png$/);
-                assert.equal(first.data.product.currentImageUrl, first.data.product.draft.imageUrl);
+                assert.equal(first.data.product.currentImageUrl, '/uploads/catalog-images/items/current-auto.png');
+                assert.equal(first.data.product.draft.status, 'ready');
+                assert.equal(first.data.meta.status, 'ready');
+                assert.equal(first.data.meta.autoApplied, false);
+                assert.equal(first.data.meta.autoApplyRequested, true);
+                assert.match(first.data.product.draft.imageUrl, /^\/uploads\/catalog-images\/items\/menu-menu-auto-\d+\.png$/);
                 assert.equal(first.data.product.draft.previousImageUrl, '/uploads/catalog-images/items/current-auto.png');
-                assert.equal(fakePool.products.get('dish-auto-apply').icon_url, first.data.product.currentImageUrl);
-                assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.status, 'applied');
-                assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.prompt, 'Hermes final auto apply prompt');
+                assert.equal(fakePool.products.get('dish-auto-apply').icon_url, '/uploads/catalog-images/items/current-auto.png');
+                assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.status, 'ready');
+                assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.prompt, 'Hermes final no auto apply prompt');
                 assert.equal(fakePool.catalogImageBlobs.size, 1);
-                assert.ok(fakePool.calls.some(call => /FROM products p/i.test(call.compact || '') && /FOR UPDATE/i.test(call.compact || '')));
-                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
-                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 1);
+                assert.equal(fakePool.calls.filter(call => /FROM products p/i.test(call.compact || '') && /FOR UPDATE/i.test(call.compact || '')).length, 0);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 1);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
                 assert.equal((await fsp.readdir(tempDir)).length, 1);
             }, {
                 menuImageUploadOptions: { localDir: tempDir }

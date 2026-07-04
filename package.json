@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.123",
+  "version": "0.77.124",
   "eventGenix": {
-    "releaseLabel": "Pinata number helper"
+    "releaseLabel": "Hermes auto apply lock"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

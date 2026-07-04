@@ -4,6 +4,16 @@
 
 ---
 
+## v0.77.124 - Hermes auto apply lock
+
+### Hermes auto apply lock / Concurrent menu-photo safety / (Клешня, 04.07.2026) [codex]
+- **Auto-apply для Hermes menu-photo тепер бере row lock на продукт** - `external-draft` з default `autoApply: true` читає `products` через `FOR UPDATE`, щоб паралельні зміни фото не давали stale `previousImageUrl` або конфліктний active URL.
+- **Review-only режим не блокується зайво** - явний `autoApply: false` і далі створює draft без активації та без `FOR UPDATE`.
+- **Regression guard додано в Hermes route tests** - тести перевіряють наявність `FOR UPDATE` для default auto-apply і його відсутність для review-only draft.
+- **API schema, DB schema, migrations, auth/roles, env і deploy config не змінювались** - реліз обмежений Hermes route behavior, tests і version/cache refs.
+
+---
+
 ## v0.77.123 - Pinata number helper
 
 ### Pinata number helper / Shared frontend normalization / Cache refresh / (Клешня, 04.07.2026) [codex]

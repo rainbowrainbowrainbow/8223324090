@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.123 - Pinata number helper
+
+### Pinata number helper / Shared frontend normalization / Cache refresh / (Клешня, 04.07.2026) [codex]
+- **Нормалізацію номерів піньят винесено в один frontend helper** - `booking.js`, `timeline.js` і `ui.js` тепер використовують спільний `PinataNumbers`.
+- **Legacy `P-001..P-036` мапиться в `501..536` з одного місця** - логіка більше не дублюється між карткою бронювання, timeline і hover tooltip.
+- **Tooltip, timeline і picker зберігають однаковий формат `№505` / `ПІН №505`** - regression guards фіксують display, extraction і catalog-id mapping.
+- **Fallback compatibility збережено** - старі wrapper-функції лишилися тонкими адаптерами, але бізнес-правило живе в helper.
+- **API schema, DB, migrations, auth/roles і deploy config не змінювались** - release обмежений frontend UI, tests і version/cache refs.
+
+---
+
 ## v0.77.122 - Hermes auto apply default
 
 ### Hermes auto apply default / Temporary menu-photo activation / (Клешня, 04.07.2026) [codex]

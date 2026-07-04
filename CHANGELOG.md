@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.4 - Графік HR: широкі кнопки
+
+### HR / Графік роботи / Staff pulse width fix / (Клешня, 04.07.2026) [codex]
+- **Вкладка `Графік` отримала такий самий широкий перемикач, як `Сьогодні` і `Звіти`** - `/staff` більше не використовує compact fixed-width cards.
+- **Порожню праву плашку прибрано** - декоративний `staff-pulse-nav::after` вимкнено, тому три кнопки займають доступну ширину без старого filler-блоку.
+- **Desktop-розкладку зафіксовано як три рівні колонки** - `staff-pulse-nav-items` тепер використовує `grid-template-columns: repeat(3, minmax(0, 1fr))`.
+- **Mobile/tablet поведінку збережено** - на вузьких екранах перемикач лишається horizontal scroll із фіксованою шириною карток.
+- **Додано static guardrail** - `test:ui` тепер перевіряє, що `/staff` не повернеться до compact flex layout і декоративного filler справа.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений CSS layout, UI smoke guard і version/cache refs.
+
+---
+
 ## v0.78.3 - Пульс HR: стриманий перемикач
 
 ### HR / Пульс компанії / Navigation polish / (Клешня, 04.07.2026) [codex]

@@ -99,7 +99,7 @@ const DEPT_ICONS = {
     security: '🛡️'
 };
 
-const STATUS_LABELS = {
+const STAFF_SCHEDULE_STATUS_LABELS = {
     working: 'Робочий',
     dayoff: 'Вихідний',
     day_off: 'Вихідний',
@@ -302,7 +302,7 @@ function normalizeScheduleStatus(value) {
     const status = String(value || '').trim().toLowerCase();
     if (!status) return 'unset';
     if (status === 'day_off') return 'dayoff';
-    return STATUS_LABELS[status] ? status : status;
+    return STAFF_SCHEDULE_STATUS_LABELS[status] ? status : status;
 }
 
 function parseProfessionArray(value) {
@@ -1753,8 +1753,8 @@ function scheduleCopyWeekPayload(fromMonday, toMonday, options = {}) {
     return { body, mode };
 }
 
-const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-const MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+const STAFF_SCHEDULE_DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const STAFF_SCHEDULE_MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
 const STAFF_SCHEDULE_WINDOW_DAYS = 9;
 const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1;
 
@@ -2276,7 +2276,7 @@ function renderWeekLabel() {
     const dates = getWeekDates(StaffState.weekStart);
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
-    const label = `${from.getDate()} ${MONTHS_UK[from.getMonth()]} — ${to.getDate()} ${MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
+    const label = `${from.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[from.getMonth()]} — ${to.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
     document.getElementById('weekLabel').textContent = label;
     updateScheduleHeaderMetrics();
 }
@@ -2436,7 +2436,7 @@ function renderEmpRow(emp, dates, today, health = null) {
         } else if (status === 'unset') {
             cellContent = `<span class="sch-label sch-unset"><span class="sch-icon">${icon}</span></span>`;
         } else {
-            cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> ${STATUS_LABELS[status] || status}</span>`;
+            cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> ${STAFF_SCHEDULE_STATUS_LABELS[status] || status}</span>`;
         }
 
         if (entry?.note) {
@@ -2475,7 +2475,7 @@ function renderSchedule() {
         const isToday = ds === today;
         headHtml += `<th class="${isToday ? 'today' : ''}">
             <span class="th-date">${d.getDate()}</span>
-            <span class="th-day">${DAYS_UK[d.getDay()]}</span>
+            <span class="th-day">${STAFF_SCHEDULE_DAYS_UK[d.getDay()]}</span>
         </th>`;
     }
     headHtml += '</tr>';
@@ -2749,7 +2749,7 @@ function scheduleAuditActionLabel(action) {
 
 function scheduleAuditValueLabel(field, value) {
     if (value === null || value === undefined || value === '') return 'порожньо';
-    if (field === 'status') return STATUS_LABELS[normalizeScheduleStatus(value)] || value;
+    if (field === 'status') return STAFF_SCHEDULE_STATUS_LABELS[normalizeScheduleStatus(value)] || value;
     if (field === 'professionKey') return professionLabel(value);
     return String(value);
 }
@@ -3189,7 +3189,7 @@ function renderLoadView() {
         const isToday = ds === today;
         headHtml += `<th class="${isToday ? 'today' : ''}">
             <span class="th-date">${d.getDate()}</span>
-            <span class="th-day">${DAYS_UK[d.getDay()]}</span>
+            <span class="th-day">${STAFF_SCHEDULE_DAYS_UK[d.getDay()]}</span>
         </th>`;
     }
     headHtml += '<th>Разом</th></tr>';
@@ -3757,7 +3757,7 @@ function handleExcelExport() {
     let csv = '\ufeff';
     csv += 'Відділ,Підгрупа,Ім\'я,Посада';
     for (const d of dates) {
-        csv += `,${d.getDate()} ${MONTHS_UK[d.getMonth()]} (${DAYS_UK[d.getDay()]})`;
+        csv += `,${d.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[d.getMonth()]} (${STAFF_SCHEDULE_DAYS_UK[d.getDay()]})`;
     }
     csv += '\n';
 
@@ -3776,7 +3776,7 @@ function handleExcelExport() {
                 const time = (entry?.shift_start && entry?.shift_end)
                     ? `${entry.shift_start.slice(0,5)}-${entry.shift_end.slice(0,5)}`
                     : '';
-                const label = STATUS_LABELS[status] || status;
+                const label = STAFF_SCHEDULE_STATUS_LABELS[status] || status;
                 row += `,"${time || label}"`;
             }
             csv += row + '\n';

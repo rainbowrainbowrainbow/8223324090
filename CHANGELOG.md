@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.7 - Графік HR: безпечний спільний runtime
+
+### HR / Пульс компанії / Schedule runtime safety / (Клешня, 04.07.2026) [codex]
+- **Live runtime conflict після заміни iframe виправлено** - `staff-page.js` більше не оголошує generic `STATUS_LABELS`, `DAYS_UK` і `MONTHS_UK`, які конфліктували з `hr-page.js` в одному window.
+- **HR `Пульс компанії` знову ініціалізує навігацію і вкладки** - `StaffSchedulePage` може працювати всередині HR shell без падіння frontend scripts.
+- **Standalone `/staff` лишається на тому самому schedule UI** - змінено тільки імена внутрішніх frontend constants, без зміни API, даних або бізнес-логіки графіка.
+- **Cache/version refs піднято до `0.78.7`** - live browser має отримати виправлений `staff-page.js`, а не stale `0.78.6` asset.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff frontend runtime safety і version/cache refs.
+
+---
+
 ## v0.78.6 - Графік HR: спільний модуль
 
 ### HR / Пульс компанії / Schedule module cleanup / (Клешня, 04.07.2026) [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.6",
+  "version": "0.78.7",
   "eventGenix": {
-    "releaseLabel": "Графік HR: спільний модуль"
+    "releaseLabel": "Графік HR: безпечний спільний runtime"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

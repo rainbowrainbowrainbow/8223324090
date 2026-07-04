@@ -1,9 +1,9 @@
 # Menu Image Agent Workflow
 
-Date: 2026-07-02
+Date: 2026-07-04
 Scope: Hermes/manual workflow for kitchen menu item images.
-Default policy: create a reviewable draft only. Hermes may auto-apply only when
-the `external-draft` payload explicitly sets `autoApply: true`.
+Temporary default policy for Hermes: `external-draft` auto-applies submitted
+images unless the payload explicitly sets `autoApply: false`.
 
 ## Purpose
 
@@ -332,7 +332,7 @@ Payload:
 ```json
 {
   "businessContext": "event_genix",
-  "autoApply": false,
+  "autoApply": true,
   "imageUrl": "https://cdn.example.test/menu-images/menu-burger-001.png",
   "prompt": "Clean commercial menu catalog photo of a kids burger...",
   "provider": "hermes",
@@ -343,10 +343,9 @@ Payload:
 }
 ```
 
-Set `autoApply: true` only when the caller intentionally wants this same
-idempotent mutation to activate the submitted image immediately. Without
-`autoApply`, the endpoint keeps the old draft-only behavior and does not change
-`products.icon_url`.
+While the temporary auto-apply policy is active, omitting `autoApply` is treated
+as `autoApply: true`. Set `autoApply: false` only when the caller intentionally
+wants a reviewable draft without changing `products.icon_url`.
 
 Successful response shape:
 
@@ -398,15 +397,18 @@ Successful response shape:
 }
 ```
 
-When `autoApply: true`, the successful response uses `meta.status: "applied"`,
-`meta.autoApplied: true`, `product.draft.status: "applied"`, and
-`product.currentImageUrl` equals `product.draft.imageUrl`.
+When `autoApply` is true or omitted, the successful response uses
+`meta.status: "applied"`, `meta.autoApplied: true`,
+`product.draft.status: "applied"`, and `product.currentImageUrl` equals
+`product.draft.imageUrl`.
 
 ## Apply And Reject
 
 Apply and reject are explicit review actions. They remain available as separate
 actions. Hermes can also combine external draft creation and apply in one
-idempotent call by sending `autoApply: true` to the external-draft endpoint.
+idempotent call through the external-draft endpoint. During the temporary
+auto-apply policy, this combined path is the default unless `autoApply: false`
+is sent.
 
 ### Product API
 
@@ -477,12 +479,12 @@ Reject success means the active product image remains unchanged and the draft is
 5. Include `styleRules`, `backgroundRules`, and `negativePrompt` in the generation instruction.
 6. Generate the image outside CRM.
 7. Submit the final image through `POST /api/hermes/menu-photos/:productId/external-draft`.
-8. If `autoApply` was omitted or false, verify response `product.draft.status === "ready"` and `product.currentImageUrl` did not change.
-9. If `autoApply: true`, verify response `product.draft.status === "applied"` and `product.currentImageUrl === product.draft.imageUrl`.
+8. By default, verify response `product.draft.status === "applied"` and `product.currentImageUrl === product.draft.imageUrl`.
+9. If `autoApply: false` was sent, verify response `product.draft.status === "ready"` and `product.currentImageUrl` did not change.
 10. Stop and report either the ready draft URL or the applied active URL.
 
-Default stop after a ready draft. Use `autoApply: true` only for workflows where
-the operator has approved automatic activation for the submitted image.
+Default stop after an applied active URL. Use `autoApply: false` only for
+workflows where the operator explicitly needs review before activation.
 
 ## Manual Operator Workflow
 
@@ -533,7 +535,7 @@ Stop and do not apply when:
 - draft status is not `ready`;
 - the returned draft image URL is empty;
 - `product.currentImageUrl` changed during separate draft creation;
-- neither a separate operator apply instruction nor an explicit `autoApply: true` request exists;
+- an explicit `autoApply: false` request was used and no separate apply instruction exists;
 - Hermes is in `businessScope=all` or any read-only scope;
 - an idempotency retry would require changing the request body.
 

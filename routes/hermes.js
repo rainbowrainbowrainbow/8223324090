@@ -240,6 +240,7 @@ const HERMES_MENU_PHOTO_STATUSES = new Set([
     'rejected',
     'applied'
 ]);
+const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT = true;
 
 const MAX_HERMES_SUBTASKS = 50;
 const MAX_HERMES_LABELS = 20;
@@ -1346,16 +1347,18 @@ function normalizeHermesMenuPhotoExternalDraftPayload(body = {}) {
     const hasSnake = Object.prototype.hasOwnProperty.call(body, 'auto_apply');
     const camelAutoApply = hasCamel
         ? parseHermesOptionalBoolean(body.autoApply, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'autoApply')
-        : false;
+        : HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT;
     const snakeAutoApply = hasSnake
         ? parseHermesOptionalBoolean(body.auto_apply, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'auto_apply')
-        : false;
+        : HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT;
     if (hasCamel && hasSnake && camelAutoApply !== snakeAutoApply) {
         throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'autoApply and auto_apply must match');
     }
     return {
         ...body,
-        autoApply: hasCamel ? camelAutoApply : snakeAutoApply
+        autoApply: hasCamel
+            ? camelAutoApply
+            : (hasSnake ? snakeAutoApply : HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT)
     };
 }
 

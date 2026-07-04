@@ -1644,7 +1644,7 @@ describe('Hermes menu photo routes', () => {
         }
     });
 
-    it('creates an external ready draft through an idempotent Hermes mutation without applying it', async () => {
+    it('creates an external ready draft without applying it when autoApply is explicitly disabled', async () => {
         const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-external-'));
         const fakePool = createHermesCreateFakePool({
             products: [['dish-ext', productRow('dish-ext', {
@@ -1658,6 +1658,7 @@ describe('Hermes menu photo routes', () => {
             await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
                 const body = {
                     businessContext: 'event_genix',
+                    autoApply: false,
                     imageBase64: Buffer.from('external-png').toString('base64'),
                     prompt: 'Hermes final external prompt',
                     provider: 'hermes',
@@ -1680,6 +1681,7 @@ describe('Hermes menu photo routes', () => {
                 assert.match(first.data.product.draft.imageUrl, /^\/uploads\/catalog-images\/items\/menu-menu-ext-\d+\.png$/);
                 assert.equal(first.data.meta.idempotencyKey, 'menu-photo-external');
                 assert.equal(first.data.meta.status, 'ready');
+                assert.equal(first.data.meta.autoApplied, false);
                 assert.equal(fakePool.products.get('dish-ext').icon_url, '/uploads/catalog-images/items/current-external.png');
                 assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.status, 'ready');
                 assert.equal(fakePool.products.get('dish-ext').ai_card_draft.imageStudio.prompt, 'Hermes final external prompt');
@@ -1698,7 +1700,7 @@ describe('Hermes menu photo routes', () => {
         }
     });
 
-    it('can auto-apply a Hermes external menu photo draft in the same idempotent mutation', async () => {
+    it('auto-applies a Hermes external menu photo draft by default in the same idempotent mutation', async () => {
         const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-auto-apply-'));
         const fakePool = createHermesCreateFakePool({
             products: [['dish-auto-apply', productRow('dish-auto-apply', {
@@ -1712,7 +1714,6 @@ describe('Hermes menu photo routes', () => {
             await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
                 const body = {
                     businessContext: 'event_genix',
-                    autoApply: true,
                     imageBase64: Buffer.from('external-auto-png').toString('base64'),
                     prompt: 'Hermes final auto apply prompt',
                     provider: 'hermes',

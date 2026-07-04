@@ -209,6 +209,8 @@ const HERMES_MENU_PHOTO_DRAFT_ALLOWED_FIELDS = new Set([
 const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_ALLOWED_FIELDS = new Set([
     'businessContext',
     'business_context',
+    'autoApply',
+    'auto_apply',
     'imageUrl',
     'image_url',
     'imageBase64',
@@ -766,6 +768,15 @@ function parseHermesBoolean(value) {
     if (['true', '1', 'yes', 'on'].includes(text)) return true;
     if (['false', '0', 'no', 'off'].includes(text)) return false;
     throw hermesHttpError(400, 'HERMES_INVALID_SUBTASK_PAYLOAD', 'is_done must be a boolean');
+}
+
+function parseHermesOptionalBoolean(value, code, fieldName) {
+    if (value === undefined || value === null || value === '') return false;
+    if (value === true || value === false) return value;
+    const text = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(text)) return true;
+    if (['false', '0', 'no', 'off'].includes(text)) return false;
+    throw hermesHttpError(400, code, `${fieldName} must be a boolean`);
 }
 
 function normalizeHermesSubtaskTogglePayload(body = {}) {
@@ -1331,7 +1342,21 @@ function normalizeHermesMenuPhotoExternalDraftPayload(body = {}) {
         throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'Request body must be a JSON object');
     }
     assertAllowedHermesFields(body, HERMES_MENU_PHOTO_EXTERNAL_DRAFT_ALLOWED_FIELDS, 'HERMES_UNSUPPORTED_MENU_PHOTO_FIELD');
-    return body;
+    const hasCamel = Object.prototype.hasOwnProperty.call(body, 'autoApply');
+    const hasSnake = Object.prototype.hasOwnProperty.call(body, 'auto_apply');
+    const camelAutoApply = hasCamel
+        ? parseHermesOptionalBoolean(body.autoApply, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'autoApply')
+        : false;
+    const snakeAutoApply = hasSnake
+        ? parseHermesOptionalBoolean(body.auto_apply, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'auto_apply')
+        : false;
+    if (hasCamel && hasSnake && camelAutoApply !== snakeAutoApply) {
+        throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD', 'autoApply and auto_apply must match');
+    }
+    return {
+        ...body,
+        autoApply: hasCamel ? camelAutoApply : snakeAutoApply
+    };
 }
 
 function normalizeHermesMenuPhotoRejectPayload(body = {}) {
@@ -1355,6 +1380,52 @@ function hermesMenuPhotoBody(req, businessScope, product, meta = {}) {
             idempotencyKey: req.hermesMutation?.idempotencyKey || null,
             ...meta
         }
+    };
+}
+
+async function applyHermesMenuPhotoDraft(query, { product, productId, businessContext, username, now = new Date() } = {}) {
+    const currentDraft = currentHermesMenuPhotoDraft(product);
+    const imageStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
+    if (!imageStudio.imageUrl) {
+        throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_MISSING', 'No ready menu image draft to apply');
+    }
+    if (!['ready', 'approved', 'applied'].includes(imageStudio.status)) {
+        throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_NOT_READY', 'Menu image draft is not ready to apply');
+    }
+
+    const nowIso = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+    const actor = cleanNullableString(username, 100) || 'hermes';
+    const alreadyApplied = product.icon_url === imageStudio.imageUrl && imageStudio.status === 'applied';
+    const appliedStudio = normalizeHermesMenuImageStudio({
+        ...imageStudio,
+        status: 'applied',
+        approvedAt: imageStudio.approvedAt || nowIso,
+        approvedBy: imageStudio.approvedBy || actor,
+        appliedAt: alreadyApplied ? (imageStudio.appliedAt || nowIso) : nowIso,
+        appliedBy: actor,
+        previousImageUrl: alreadyApplied ? (imageStudio.previousImageUrl || product.icon_url || null) : (product.icon_url || null),
+        error: null
+    });
+    const draft = buildHermesMenuPhotoDraft(product, appliedStudio, { currentDraft });
+    await query.query(
+        `UPDATE products
+         SET icon_url = $1,
+             ai_card_draft = $2::jsonb,
+             updated_at = NOW(),
+             updated_by = $3
+         WHERE id = $4
+           AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $5`,
+        [appliedStudio.imageUrl, JSON.stringify(draft), actor, productId, businessContext]
+    );
+
+    return {
+        product: {
+            ...product,
+            icon_url: appliedStudio.imageUrl,
+            ai_card_draft: draft
+        },
+        draft,
+        imageStudio: appliedStudio
     };
 }
 
@@ -2092,9 +2163,10 @@ function createHermesRouter(options = {}) {
 
                 let result;
                 try {
+                    const { autoApply: _autoApplyCamel, auto_apply: _autoApplySnake, ...draftPayload } = payload;
                     result = await createExternalMenuImageDraft({
                         product,
-                        payload,
+                        payload: draftPayload,
                         actor: {
                             username: req.user?.username || 'hermes',
                             source: cleanNullableString(payload.source, 40) || 'hermes'
@@ -2112,6 +2184,29 @@ function createHermesRouter(options = {}) {
                     }
                     throw err;
                 }
+
+                if (payload.autoApply === true) {
+                    const applied = await applyHermesMenuPhotoDraft(mutationPool, {
+                        product: {
+                            ...product,
+                            ai_card_draft: result.draft
+                        },
+                        productId,
+                        businessContext,
+                        username: req.user?.username || 'hermes'
+                    });
+
+                    return {
+                        status: 200,
+                        body: hermesMenuPhotoBody(req, businessScope, applied.product, {
+                            status: 'applied',
+                            provider: result.imageStudio.provider,
+                            model: result.imageStudio.model,
+                            autoApplied: true
+                        })
+                    };
+                }
+
                 await persistMenuImageDraft(mutationPool, {
                     productId,
                     businessContext,
@@ -2128,12 +2223,14 @@ function createHermesRouter(options = {}) {
                     }, {
                         status: 'ready',
                         provider: result.imageStudio.provider,
-                        model: result.imageStudio.model
+                        model: result.imageStudio.model,
+                        autoApplied: false
                     })
                 };
             }, {
                 pool: query,
-                requestPath: '/api/hermes/menu-photos/:productId/external-draft'
+                requestPath: '/api/hermes/menu-photos/:productId/external-draft',
+                transactional: payload.autoApply === true
             });
         } catch (err) {
             const publicError = menuPhotoExternalDraftPublicError(err);
@@ -2174,46 +2271,16 @@ function createHermesRouter(options = {}) {
                     throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
                 }
 
-                const currentDraft = currentHermesMenuPhotoDraft(product);
-                const imageStudio = normalizeHermesMenuImageStudio(currentDraft.imageStudio || currentDraft.image_studio || {});
-                if (!imageStudio.imageUrl) {
-                    throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_MISSING', 'No ready menu image draft to apply');
-                }
-                if (!['ready', 'approved', 'applied'].includes(imageStudio.status)) {
-                    throw hermesHttpError(409, 'HERMES_MENU_PHOTO_DRAFT_NOT_READY', 'Menu image draft is not ready to apply');
-                }
-
-                const now = new Date().toISOString();
-                const alreadyApplied = product.icon_url === imageStudio.imageUrl && imageStudio.status === 'applied';
-                const appliedStudio = normalizeHermesMenuImageStudio({
-                    ...imageStudio,
-                    status: 'applied',
-                    approvedAt: imageStudio.approvedAt || now,
-                    approvedBy: imageStudio.approvedBy || req.user?.username || 'hermes',
-                    appliedAt: alreadyApplied ? (imageStudio.appliedAt || now) : now,
-                    appliedBy: req.user?.username || 'hermes',
-                    previousImageUrl: alreadyApplied ? (imageStudio.previousImageUrl || product.icon_url || null) : (product.icon_url || null),
-                    error: null
+                const applied = await applyHermesMenuPhotoDraft(mutationPool, {
+                    product,
+                    productId,
+                    businessContext,
+                    username: req.user?.username || 'hermes'
                 });
-                const draft = buildHermesMenuPhotoDraft(product, appliedStudio, { currentDraft });
-                await mutationPool.query(
-                    `UPDATE products
-                     SET icon_url = $1,
-                         ai_card_draft = $2::jsonb,
-                         updated_at = NOW(),
-                         updated_by = $3
-                     WHERE id = $4
-                       AND COALESCE(business_context, '${DEFAULT_TASK_BUSINESS_CONTEXT}') = $5`,
-                    [appliedStudio.imageUrl, JSON.stringify(draft), req.user?.username || 'hermes', productId, businessContext]
-                );
 
                 return {
                     status: 200,
-                    body: hermesMenuPhotoBody(req, businessScope, {
-                        ...product,
-                        icon_url: appliedStudio.imageUrl,
-                        ai_card_draft: draft
-                    }, {
+                    body: hermesMenuPhotoBody(req, businessScope, applied.product, {
                         status: 'applied'
                     })
                 };

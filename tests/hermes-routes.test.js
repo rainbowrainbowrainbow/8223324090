@@ -1698,6 +1698,78 @@ describe('Hermes menu photo routes', () => {
         }
     });
 
+    it('can auto-apply a Hermes external menu photo draft in the same idempotent mutation', async () => {
+        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-auto-apply-'));
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-auto-apply', productRow('dish-auto-apply', {
+                code: 'MENU-AUTO',
+                name: 'Auto applied dish',
+                icon_url: '/uploads/catalog-images/items/current-auto.png'
+            })]]
+        });
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                const body = {
+                    businessContext: 'event_genix',
+                    autoApply: true,
+                    imageBase64: Buffer.from('external-auto-png').toString('base64'),
+                    prompt: 'Hermes final auto apply prompt',
+                    provider: 'hermes',
+                    model: 'hermes-image-model',
+                    size: '1536x1024',
+                    style: 'catalog',
+                    source: 'hermes'
+                };
+                const first = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-auto-apply/external-draft', body, mutationHeaders('menu-photo-external-auto-apply'));
+                const retry = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-auto-apply/external-draft', body, mutationHeaders('menu-photo-external-auto-apply'));
+
+                assert.equal(first.status, 200, first.text);
+                assert.equal(retry.status, 200, retry.text);
+                assert.deepEqual(retry.data, first.data);
+                assert.equal(first.data.success, true);
+                assert.equal(first.data.product.draft.status, 'applied');
+                assert.equal(first.data.meta.status, 'applied');
+                assert.equal(first.data.meta.autoApplied, true);
+                assert.match(first.data.product.currentImageUrl, /^\/uploads\/catalog-images\/items\/menu-menu-auto-\d+\.png$/);
+                assert.equal(first.data.product.currentImageUrl, first.data.product.draft.imageUrl);
+                assert.equal(first.data.product.draft.previousImageUrl, '/uploads/catalog-images/items/current-auto.png');
+                assert.equal(fakePool.products.get('dish-auto-apply').icon_url, first.data.product.currentImageUrl);
+                assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.status, 'applied');
+                assert.equal(fakePool.products.get('dish-auto-apply').ai_card_draft.imageStudio.prompt, 'Hermes final auto apply prompt');
+                assert.equal(fakePool.catalogImageBlobs.size, 1);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 1);
+                assert.equal((await fsp.readdir(tempDir)).length, 1);
+            }, {
+                menuImageUploadOptions: { localDir: tempDir }
+            });
+        } finally {
+            await fsp.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    it('rejects conflicting Hermes autoApply aliases without writing a draft', async () => {
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-auto-apply-conflict', productRow('dish-auto-apply-conflict')]]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/menu-photos/dish-auto-apply-conflict/external-draft', {
+                autoApply: true,
+                auto_apply: false,
+                imageBase64: Buffer.from('external-png').toString('base64'),
+                prompt: 'Hermes prompt',
+                source: 'hermes'
+            }, mutationHeaders('menu-photo-auto-apply-conflict'));
+
+            assert.equal(res.status, 400, res.text);
+            assert.equal(res.data.code, 'HERMES_INVALID_MENU_PHOTO_PAYLOAD');
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+        });
+    });
+
     it('requires confirmation and idempotency headers on the Hermes external menu photo draft wrapper', async () => {
         const fakePool = createHermesCreateFakePool({
             products: [['dish-ext-guard', productRow('dish-ext-guard')]]

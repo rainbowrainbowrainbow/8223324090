@@ -265,6 +265,7 @@ test('catalog image jobs encode Kie task ids consistently', () => {
     assert.match(catalogsRoute, /function getKieJobRecord\(taskId\)/);
     assert.match(catalogsRoute, /encodeURIComponent\(normalizedTaskId\)/);
     assert.match(catalogsRoute, /router\.get\('\/generate-image\/:taskId', requireRole/);
+    assert.equal((catalogsRoute.match(/uploadFromUrl\(kieUrl, filename, \{ query: pool \}\)/g) || []).length, 2);
     assert.doesNotMatch(catalogsRoute, /recordInfo\?taskId=\$\{taskId\}/);
     assert.doesNotMatch(catalogsRoute, /recordInfo\?taskId=\$\{normalizedTaskId\}/);
     assert.match(scheduler, /recordInfo\?taskId=\$\{encodeURIComponent\(taskData\.data\.taskId\)\}/);

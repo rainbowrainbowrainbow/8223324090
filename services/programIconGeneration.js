@@ -466,10 +466,10 @@ async function pollProgramIconJob(taskId) {
     };
 }
 
-async function persistProgramIconImage(product = {}, imageUrl) {
+async function persistProgramIconImage(product = {}, imageUrl, options = {}) {
     if (!imageUrl) return null;
     const filename = makeFilename('program-icons', product.name || product.label || product.id || 'program', 'png');
-    return await uploadFromUrl(imageUrl, filename);
+    return await uploadFromUrl(imageUrl, filename, options);
 }
 
 module.exports = {

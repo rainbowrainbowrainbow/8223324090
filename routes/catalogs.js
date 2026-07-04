@@ -372,7 +372,7 @@ router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_dir
         const catalogId = item.rows[0]?.catalog_id || 'misc';
         const filename = makeFilename(catalogId, itemName);
         log.info(`apply-image: downloading ${kieUrl.substring(0, 50)}... → ${filename}`);
-        const permanentUrl = await uploadFromUrl(kieUrl, filename);
+        const permanentUrl = await uploadFromUrl(kieUrl, filename, { query: pool });
         const finalUrl = permanentUrl || kieUrl;
         log.info(`apply-image: saved as ${permanentUrl ? 'CRM upload' : 'KIE.AI fallback'}: ${finalUrl.substring(0, 60)}`);
 
@@ -432,7 +432,7 @@ router.post('/:catalogId/apply-cover', requireRole('admin', 'creator', 'director
         if (!kieUrl) return res.json({ success: false, done: false, state: r?.data?.state });
 
         const filename = makeFilename(catalogId, 'cover');
-        const permanentUrl = await uploadFromUrl(kieUrl, filename);
+        const permanentUrl = await uploadFromUrl(kieUrl, filename, { query: pool });
         const finalUrl = permanentUrl || kieUrl;
 
         await pool.query('UPDATE catalog_definitions SET cover_image_url = $1 WHERE id = $2', [finalUrl, catalogId]);

@@ -48,6 +48,8 @@ test('program icon service keeps prompt fallback, Kie media default, OpenRouter 
     assert.match(service, /KIE_API_KEY not configured/);
     assert.match(service, /\/api\/v1\/jobs\/createTask/);
     assert.match(service, /\/api\/v1\/jobs\/recordInfo\?taskId=/);
+    assert.match(service, /async function persistProgramIconImage\(product = \{\}, imageUrl, options = \{\}\)/);
+    assert.match(service, /uploadFromUrl\(imageUrl, filename, options\)/);
     assert.match(storage, /data:image\\\//);
     assert.doesNotMatch(service, /batch-generate|bulk-generate|auto-backfill/i);
 
@@ -98,6 +100,7 @@ test('products API exposes guarded single-program icon endpoints and persisted r
     assert.match(route, /icon_generation_status = 'pending'/);
     assert.match(route, /deduped: true/);
     assert.match(route, /persistProgramIconImage/);
+    assert.equal((route.match(/persistProgramIconImage\(product, [^)]+, \{ query: pool \}\)/g) || []).length, 2);
     assert.match(route, /status:\s*'succeeded'/);
     assert.match(route, /providerOptions/);
     assert.match(route, /imageModelOptions/);

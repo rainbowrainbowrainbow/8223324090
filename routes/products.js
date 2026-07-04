@@ -1958,7 +1958,7 @@ router.post('/:id/program-icon/generate', productProgramIconRateLimit, requireRo
         const settings = await loadProgramIconSettings();
         const generation = await startProgramIconGeneration(product, settings);
         if (generation.done && generation.imageUrl) {
-            const savedUrl = await persistProgramIconImage(product, generation.imageUrl);
+            const savedUrl = await persistProgramIconImage(product, generation.imageUrl, { query: pool });
             if (!savedUrl) {
                 await updateProgramIconFailed(id, businessContext, req.user.username, 'Generated image could not be saved to CRM uploads').catch(() => {});
                 const fresh = await getProductWithPriceRule(pool, id, businessContext);
@@ -2113,7 +2113,7 @@ router.get('/:id/program-icon/status', requireRole(...PRODUCT_MUTATION_ROLES), a
             });
         }
 
-        const savedUrl = await persistProgramIconImage(product, job.imageUrl);
+        const savedUrl = await persistProgramIconImage(product, job.imageUrl, { query: pool });
         if (!savedUrl) {
             await updateProgramIconFailed(id, businessContext, req.user.username, 'Generated image could not be saved to CRM uploads');
             const fresh = await getProductWithPriceRule(pool, id, businessContext);

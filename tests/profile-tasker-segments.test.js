@@ -134,7 +134,7 @@ test('profile My Day compact capsule uses existing identity and profession helpe
 
     assert.match(html, /data-profile-my-day-capsule/);
     assert.match(html, /Олена Коваль/);
-    assert.match(html, /робочі \+ особисті задачі/);
+    assert.doesNotMatch(html, /profile-my-day-capsule-subtitle/);
     assert.match(html, /profile-my-day-capsule-avatar/);
     assert.doesNotMatch(html, /profile-working-role-trigger/);
     assert.match(source, /const isMyDayTab = activeTab === 'myday';/);
@@ -172,7 +172,7 @@ test('profile quick task card uses completed-today and active My Day workload co
     assert.match(html, /виконано сьогодні/);
 });
 
-test('profile My Day segmented control counts projection buckets and switches visible content', () => {
+test('profile My Day renders fixed today and overdue columns while hiding duplicated controls', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -209,22 +209,34 @@ test('profile My Day segmented control counts projection buckets and switches vi
     assert.equal(counts.private, 1);
 
     let html = ctx.renderMyDayTab();
-    assert.match(html, /cabinet-my-day-segments/);
-    assert.match(html, /data-cabinet-my-day-segment="today"[\s\S]*?aria-selected="true"/);
-    assert.match(html, /data-cabinet-my-day-segment="overdue"[\s\S]*?<b>1<\/b>/);
-    assert.match(html, /data-cabinet-my-day-segment-panel="today"/);
+    assert.doesNotMatch(html, /cabinet-day-command-bar/);
+    assert.doesNotMatch(html, /cabinet-my-day-segments/);
+    assert.doesNotMatch(html, /data-cabinet-my-day-segment="/);
+    assert.doesNotMatch(html, /data-cabinet-my-day-sound-settings/);
+    assert.doesNotMatch(html, /cabinet-support-panel/);
+    assert.doesNotMatch(html, /cabinet-quick-cluster/);
+    assert.match(html, /cabinet-task-composer/);
+    assert.match(html, /data-cabinet-my-day-layout="today-overdue"/);
+    assert.match(html, /cabinet-day-column--today/);
+    assert.match(html, /cabinet-day-column--overdue/);
+    assert.match(html, /data-active-today="1"/);
+    assert.match(html, /data-active-overdue="1"/);
     assert.match(html, /Today segment task/);
+    assert.match(html, /Overdue segment task/);
+    assert.doesNotMatch(html, /Waiting segment task/);
 
     ctx.setCabinetMyDaySegment('waiting');
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-my-day-segment="waiting"[\s\S]*?aria-selected="true"/);
-    assert.match(html, /data-cabinet-my-day-segment-panel="waiting"/);
-    assert.match(html, /Waiting segment task/);
+    assert.doesNotMatch(html, /cabinet-my-day-segments/);
+    assert.match(html, /data-cabinet-my-day-layout="today-overdue"/);
+    assert.match(html, /Today segment task/);
+    assert.match(html, /Overdue segment task/);
+    assert.doesNotMatch(html, /Waiting segment task/);
     assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
 
     ctx.setCabinetMyDaySegment('completed');
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-my-day-segment-panel="completed"/);
+    assert.match(html, /data-cabinet-my-day-layout="today-overdue"/);
     assert.match(html, /cabinet-completed-strip/);
     assert.match(html, /Completed segment task/);
 });
@@ -263,7 +275,7 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     `, ctx);
 
     const html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-my-day-segment-panel="overdue"/);
+    assert.match(html, /data-cabinet-my-day-layout="today-overdue"/);
     assert.match(html, /data-cabinet-overdue-triage/);
     assert.match(html, /Прострочено · 1/);
     assert.match(html, /cabinet-overdue-triage-row/);
@@ -279,7 +291,7 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.doesNotMatch(html, /data-cabinet-active-subtask-slice/);
 });
 
-test('profile My Day keeps sound controls behind a command bar settings menu', () => {
+test('profile My Day hides sound shortcut after command bar cleanup while preserving settings helpers', () => {
     const ctx = loadProfileTaskerContext();
     const profileSource = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 
@@ -301,8 +313,9 @@ test('profile My Day keeps sound controls behind a command bar settings menu', (
     `, ctx);
 
     const html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-my-day-sound-settings/);
-    assert.match(html, /aria-haspopup="dialog"/);
+    assert.doesNotMatch(html, /data-cabinet-my-day-sound-settings/);
+    assert.doesNotMatch(html, /cabinet-day-command-bar/);
+    assert.doesNotMatch(html, /cabinet-day-action--settings/);
     assert.doesNotMatch(html, /<h3>Звук<\/h3>[\s\S]*data-cabinet-task-sound-controls/);
     assert.match(profileSource, /function renderCabinetMyDaySoundSettingsAction/);
     assert.match(profileSource, /function openCabinetMyDaySoundSettings/);
@@ -500,7 +513,7 @@ test('profile My Day state keeps list mode separate from due preset', () => {
     assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
 });
 
-test('profile My Day focused mode filters primary tasks by selected due preset', () => {
+test('profile My Day fixed workspace ignores composer due preset for visible task columns', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -536,50 +549,49 @@ test('profile My Day focused mode filters primary tasks by selected due preset',
         cabinetCreateDuePreset = 'tomorrow';
     `, ctx);
 
-    vm.runInContext(`cabinetCreateDuePreset = 'today';`, ctx);
     let html = ctx.renderMyDayTab();
+    assert.match(html, /data-cabinet-due-preset="tomorrow" aria-pressed="true"/);
+    assert.match(html, /data-cabinet-my-day-layout="today-overdue"/);
     assert.match(html, /Today focus task/);
-    assert.doesNotMatch(html, /Overdue focus task/);
+    assert.match(html, /Overdue focus task/);
     assert.doesNotMatch(html, /Tomorrow focus task/);
     assert.doesNotMatch(html, /No date focus task/);
     assert.doesNotMatch(html, /Deferred tomorrow task/);
 
     ctx.setCabinetMyDaySegment('overdue');
     const overdueHtml = ctx.renderMyDayTab();
+    assert.match(overdueHtml, /data-cabinet-my-day-layout="today-overdue"/);
+    assert.match(overdueHtml, /Today focus task/);
     assert.match(overdueHtml, /Overdue focus task/);
-    assert.doesNotMatch(overdueHtml, /Today focus task/);
     ctx.setCabinetMyDaySegment('today');
-
-    vm.runInContext(`cabinetCreateDuePreset = 'tomorrow';`, ctx);
-    html = ctx.renderMyDayTab();
-    assert.match(html, /Tomorrow focus task/);
-    assert.doesNotMatch(html, /Overdue focus task/);
-    assert.doesNotMatch(html, /Today focus task/);
-    assert.doesNotMatch(html, /No date focus task/);
-    assert.doesNotMatch(html, /Deferred tomorrow task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'no_date';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /No date focus task/);
-    assert.doesNotMatch(html, /Overdue focus task/);
+    assert.match(html, /data-cabinet-due-preset="no_date" aria-pressed="true"/);
+    assert.match(html, /Today focus task/);
+    assert.match(html, /Overdue focus task/);
+    assert.doesNotMatch(html, /No date focus task/);
     assert.doesNotMatch(html, /Tomorrow focus task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'day_after_tomorrow';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /After tomorrow focus task/);
+    assert.match(html, /data-cabinet-due-preset="day_after_tomorrow" aria-pressed="true"/);
+    assert.doesNotMatch(html, /After tomorrow focus task/);
     assert.doesNotMatch(html, /Tomorrow focus task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'plus_3_days';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /Plus three focus task/);
+    assert.match(html, /data-cabinet-due-preset="plus_3_days" aria-pressed="true"/);
+    assert.doesNotMatch(html, /Plus three focus task/);
     assert.doesNotMatch(html, /After tomorrow focus task/);
 
     vm.runInContext(`cabinetCreateDuePreset = 'month_end';`, ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /Month end focus task/);
+    assert.match(html, /data-cabinet-due-preset="month_end" aria-pressed="true"/);
+    assert.doesNotMatch(html, /Month end focus task/);
 });
 
-test('profile My Day focused mode uses the selected custom date safely', () => {
+test('profile My Day custom date stays a composer/projection setting without switching fixed columns', () => {
     const ctx = loadProfileTaskerContext();
     const customDate = '2026-07-18';
     ctx.document = {
@@ -611,8 +623,12 @@ test('profile My Day focused mode uses the selected custom date safely', () => {
         cabinetCreateDuePreset = 'custom';
     `, ctx);
 
+    const state = ctx.getCabinetMyDayState();
+    const focusedTasks = ctx.cabinetFocusedMyDayTasks(state);
     const html = ctx.renderMyDayTab();
-    assert.match(html, /Custom date focus task/);
+    assert.equal(focusedTasks[0]?.title, 'Custom date focus task');
+    assert.match(html, /data-cabinet-due-preset="custom" aria-pressed="true"/);
+    assert.doesNotMatch(html, /Custom date focus task/);
     assert.doesNotMatch(html, /Other date focus task/);
 });
 
@@ -652,7 +668,7 @@ test('profile My Day focused mode ignores invalid custom dates without throwing'
     assert.doesNotMatch(html, /Invalid custom date task/);
 });
 
-test('profile My Day focused mode can read the additive planning projection', () => {
+test('profile My Day focus helpers can read additive planning without changing fixed columns', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -682,12 +698,16 @@ test('profile My Day focused mode can read the additive planning projection', ()
         cabinetCreateDuePreset = 'month_end';
     `, ctx);
 
+    const state = ctx.getCabinetMyDayState();
+    const focusedTasks = ctx.cabinetFocusedMyDayTasks(state);
     const html = ctx.renderMyDayTab();
 
-    assert.match(html, /Planning month end task/);
+    assert.equal(focusedTasks[0]?.title, 'Planning month end task');
+    assert.match(html, /data-cabinet-due-preset="month_end" aria-pressed="true"/);
+    assert.doesNotMatch(html, /Planning month end task/);
 });
 
-test('profile My Day all mode groups active tasks without changing the selected due preset', () => {
+test('profile My Day hides all-mode groups in the fixed workspace without changing selected due preset', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -730,25 +750,22 @@ test('profile My Day all mode groups active tasks without changing the selected 
     assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'tomorrow');
     assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
     assert.match(html, /data-cabinet-due-preset="tomorrow" aria-pressed="true"/);
-    assert.match(html, /data-cabinet-list-mode="all" aria-pressed="true"/);
-    assert.match(html, /data-cabinet-all-group="overdue"[\s\S]*?data-cabinet-all-group-toggle="overdue"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /data-cabinet-all-group="today"[\s\S]*?data-cabinet-all-group-toggle="today"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /data-cabinet-all-group="tomorrow"[\s\S]*?data-cabinet-all-group-toggle="tomorrow"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /data-cabinet-all-group="later"[\s\S]*?data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="true"[\s\S]*?<span>2<\/span>/);
-    assert.match(html, /data-cabinet-all-group="no_date"[\s\S]*?data-cabinet-all-group-toggle="no_date"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
+    assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
+    assert.doesNotMatch(html, /data-cabinet-list-mode="all"/);
+    assert.doesNotMatch(html, /data-cabinet-all-group=/);
+    assert.match(html, /data-cabinet-my-day-layout="today-overdue"/);
     assert.match(html, /All overdue task/);
     assert.match(html, /All today task/);
-    assert.match(html, /All tomorrow task/);
-    assert.match(html, /All later early task/);
-    assert.match(html, /All later late task/);
-    assert.match(html, /All no date task/);
+    assert.doesNotMatch(html, /All tomorrow task/);
+    assert.doesNotMatch(html, /All later early task/);
+    assert.doesNotMatch(html, /All later late task/);
+    assert.doesNotMatch(html, /All no date task/);
     assert.doesNotMatch(html, /All today duplicate task/);
     assert.doesNotMatch(html, /All done task/);
     assert.doesNotMatch(html, /All deferred task/);
-    assert.ok(html.indexOf('All later early task') < html.indexOf('All later late task'));
 });
 
-test('profile My Day all mode collapses groups with visible counts and accessible toggles', () => {
+test('profile My Day all-mode group helpers remain available without rendering the fixed workspace toggle', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -775,18 +792,21 @@ test('profile My Day all mode collapses groups with visible counts and accessibl
     `, ctx);
 
     let html = ctx.renderMyDayTab();
+    const groupsHtml = ctx.renderCabinetAllMyDayGroups();
 
     assert.equal(ctx.isCabinetAllGroupCollapsed('later'), true);
     assert.equal(ctx.isCabinetAllGroupCollapsed('no_date'), true);
-    assert.match(html, /data-cabinet-all-group="today"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
-    assert.match(html, /cabinet-task-section[\s\S]*?is-collapsed[\s\S]*?data-cabinet-all-group="later"[\s\S]*?data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="false"[\s\S]*?hidden><\/div>/);
-    assert.match(html, /data-cabinet-all-group="no_date"[\s\S]*?data-cabinet-all-group-toggle="no_date"[\s\S]*?aria-expanded="false"[\s\S]*?<span>1<\/span>/);
+    assert.doesNotMatch(html, /data-cabinet-all-group=/);
+    assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
+    assert.match(groupsHtml, /data-cabinet-all-group="today"[\s\S]*?aria-expanded="true"[\s\S]*?<span>1<\/span>/);
+    assert.match(groupsHtml, /cabinet-task-section[\s\S]*?is-collapsed[\s\S]*?data-cabinet-all-group="later"[\s\S]*?data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="false"[\s\S]*?hidden><\/div>/);
+    assert.match(groupsHtml, /data-cabinet-all-group="no_date"[\s\S]*?data-cabinet-all-group-toggle="no_date"[\s\S]*?aria-expanded="false"[\s\S]*?<span>1<\/span>/);
     assert.match(html, /Visible today all task/);
     assert.doesNotMatch(html, /Hidden later all task/);
     assert.doesNotMatch(html, /Hidden no date all task/);
 
     ctx.setCabinetAllGroupCollapsed('later', false);
-    html = ctx.renderMyDayTab();
+    html = ctx.renderCabinetAllMyDayGroups();
 
     assert.match(html, /data-cabinet-all-group-toggle="later"[\s\S]*?aria-expanded="true"/);
     assert.match(html, /Hidden later all task/);
@@ -794,7 +814,7 @@ test('profile My Day all mode collapses groups with visible counts and accessibl
     assert.equal(ctx.isCabinetAllGroupCollapsed('later'), true);
 });
 
-test('profile My Day all mode merges planning and legacy all projection without duplicates', () => {
+test('profile My Day all-mode merge helper stays available without driving the fixed workspace', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -834,12 +854,16 @@ test('profile My Day all mode merges planning and legacy all projection without 
     ctx.setCabinetAllGroupCollapsed('later', false);
     ctx.setCabinetAllGroupCollapsed('no_date', false);
 
+    const helperHtml = ctx.renderCabinetAllMyDayGroups();
     const html = ctx.renderMyDayTab();
 
-    assert.match(html, /Planning tomorrow task/);
-    assert.match(html, /Planning no date task/);
-    assert.match(html, /Legacy later task/);
-    assert.doesNotMatch(html, /Legacy duplicate title/);
+    assert.match(helperHtml, /Planning tomorrow task/);
+    assert.match(helperHtml, /Planning no date task/);
+    assert.match(helperHtml, /Legacy later task/);
+    assert.doesNotMatch(helperHtml, /Legacy duplicate title/);
+    assert.doesNotMatch(html, /Planning tomorrow task/);
+    assert.doesNotMatch(html, /Planning no date task/);
+    assert.doesNotMatch(html, /Legacy later task/);
 });
 
 test('profile My Day custom date projection requests focusDate without sending invalid dates', async () => {
@@ -1088,15 +1112,19 @@ test('profile routes mytasks compatibility into the single My Day projection', (
     const myTasksHtml = ctx.renderMyTasksTab();
     const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 
-    assert.match(myDayHtml, /cabinet-quick-cluster/);
+    assert.doesNotMatch(myDayHtml, /cabinet-quick-cluster/);
+    assert.doesNotMatch(myDayHtml, /cabinet-day-command-bar/);
     assert.match(myDayHtml, /cabinet-task-composer/);
-    assert.match(myDayHtml, /cabinet-list-mode-toggle/);
-    assert.match(myDayHtml, /data-cabinet-list-mode="focused"/);
-    assert.match(myDayHtml, /data-cabinet-list-mode="all"/);
+    assert.doesNotMatch(myDayHtml, /cabinet-list-mode-toggle/);
+    assert.doesNotMatch(myDayHtml, /data-cabinet-list-mode="focused"/);
+    assert.doesNotMatch(myDayHtml, /data-cabinet-list-mode="all"/);
+    assert.match(myDayHtml, /data-cabinet-my-day-layout="today-overdue"/);
     assert.doesNotMatch(myDayHtml, /data-cabinet-due-preset="all"/);
     assert.match(myDayHtml, /data-cabinet-task-drop-target="today"/);
-    assert.match(myTasksHtml, /cabinet-quick-cluster/);
+    assert.doesNotMatch(myTasksHtml, /cabinet-quick-cluster/);
+    assert.doesNotMatch(myTasksHtml, /cabinet-day-command-bar/);
     assert.match(myTasksHtml, /cabinet-task-composer/);
+    assert.match(myTasksHtml, /data-cabinet-my-day-layout="today-overdue"/);
     assert.match(source, /function normalizeProfileTaskTab/);
     assert.match(source, /return tab === 'mytasks' \? 'myday' : tab;/);
     assert.match(source, /function syncProfileTabToUrl/);

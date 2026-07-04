@@ -680,10 +680,18 @@ body.dark-mode .task-priority-select--low {
     align-items: start;
 }
 
+.cabinet-day-workspace--two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .cabinet-day-primary,
 .cabinet-day-secondary {
     display: grid;
     gap: 12px;
+    min-width: 0;
+}
+
+.cabinet-day-column {
     min-width: 0;
 }
 
@@ -1044,6 +1052,14 @@ html[data-theme="dark"] .cabinet-day-action--settings {
 @media (max-width: 980px) {
     .cabinet-day-workspace {
         grid-template-columns: 1fr;
+    }
+
+    .cabinet-day-workspace--two-column {
+        grid-template-columns: 1fr;
+    }
+
+    .cabinet-day-workspace--two-column .cabinet-day-column--overdue {
+        order: -1;
     }
 
     .cabinet-day-command-bar {

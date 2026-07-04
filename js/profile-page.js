@@ -5810,39 +5810,33 @@ function renderCabinetMyDaySecondary(activeSegment = getCabinetMyDaySegment(), c
                     </div>
                 </section>
             ` : ''}
-            <section class="cabinet-task-section cabinet-support-panel is-secondary-section">
-                <div class="cabinet-section-head"><h3>Сигнали</h3><span>CRM</span></div>
-                ${renderCabinetPulseCluster()}
-            </section>
         </aside>`;
 }
 
 function renderMyDayCommandCenterTab() {
     const myDayState = getCabinetMyDayState();
-    const activeSegment = getCabinetMyDaySegment();
-    const segmentCounts = cabinetMyDaySegmentCounts();
-    const isAllMode = myDayState.listMode === 'all';
-    const focusedTasks = cabinetFocusedMyDayTasks(myDayState);
-    const focusedMeta = cabinetFocusedMyDayMeta(myDayState);
-    const allGroups = isAllMode ? cabinetAllMyDayGroups() : [];
-    const allTaskCount = isAllMode ? cabinetAllMyDayTaskCount(allGroups) : 0;
-    const allOverdue = isAllMode ? (allGroups.find(group => group.id === 'overdue')?.tasks || []) : [];
-    const overdue = isAllMode ? allOverdue : cabinetMyDayOverdueTasks();
+    const todayState = {
+        ...myDayState,
+        selectedDuePreset: 'today',
+        selectedDueDate: cabinetDateKeyOffset(0),
+        listMode: 'focused'
+    };
+    const focusedTasks = cabinetFocusedMyDayTasks(todayState);
+    const focusedMeta = cabinetFocusedMyDayMeta(todayState);
+    const overdue = cabinetMyDayOverdueTasks();
     const deferred = cabinetList('deferred');
     const waiting = cabinetList('waiting');
     const privateTasks = cabinetList('private');
     const privatePreview = privateTasks.slice(0, 4);
-    const activeFocus = segmentCounts[activeSegment] ?? (isAllMode ? allTaskCount : focusedTasks.length);
-    const focusedDropOptions = myDayState.selectedDuePreset === 'today'
-        ? {
-            dropTarget: 'today',
-            dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
-            dropLabel: 'Сьогодні: перетягніть сюди задачу, щоб перенести її на сьогодні'
-        }
-        : {};
+    const activeFocus = focusedTasks.length;
+    const focusedDropOptions = {
+        dropTarget: 'today',
+        dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
+        dropLabel: 'Сьогодні: перетягніть сюди задачу, щоб перенести її на сьогодні'
+    };
     const primaryContext = {
-        isAllMode,
-        allGroups,
+        isAllMode: false,
+        allGroups: [],
         focusedMeta,
         focusedTasks,
         focusedDropOptions,
@@ -5854,24 +5848,16 @@ function renderMyDayCommandCenterTab() {
     };
     return `
         <div class="cabinet-shell cabinet-command-center">
-            <div class="cabinet-day-command-bar" aria-label="Командний центр дня">
-                ${renderCabinetMyDaySegments()}
-                <div class="cabinet-day-actions">
-                    <button type="button" class="cabinet-day-action" data-cabinet-composer-toggle aria-expanded="${cabinetTaskComposerExpanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposer">+ Задача</button>
-                    <a class="cabinet-day-action" href="/tasks?view=today">Усі сьогодні</a>
-                    <a class="cabinet-day-action" href="/tasks?view=waiting">Очікування</a>
-                    ${renderCabinetMyDaySoundSettingsAction()}
-                </div>
-            </div>
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             ${renderCabinetCompletedHistoryStrip()}
-            ${activeSegment === 'today' ? renderCabinetMyDayListModeToggle() : ''}
             ${renderCabinetLoadNotice()}
-            <div class="cabinet-day-workspace" id="cabinetMyDaySegmentPanel" role="tabpanel" data-active-today="${activeFocus}" data-cabinet-my-day-segment-panel="${escapeHtml(activeSegment)}">
-                <div class="cabinet-day-primary ${isAllMode ? 'is-all-mode' : ''}">
-                    ${renderCabinetMyDaySegmentPrimary(activeSegment, primaryContext)}
+            <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: сьогодні і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="today-overdue">
+                <div class="cabinet-day-primary cabinet-day-column cabinet-day-column--today">
+                    ${renderCabinetMyDayTodayPrimary(primaryContext)}
                 </div>
-                ${renderCabinetMyDaySecondary(activeSegment, primaryContext)}
+                <div class="cabinet-day-secondary cabinet-day-column cabinet-day-column--overdue">
+                    ${renderCabinetOverdueTriageList(overdue)}
+                </div>
             </div>
         </div>`;
 }

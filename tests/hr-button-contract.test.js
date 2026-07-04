@@ -412,9 +412,7 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         "tab.matches(':disabled, [aria-disabled=\"true\"], [aria-busy=\"true\"]')",
         ".hr-nav--pulse .hr-tab[aria-current]",
         "removeAttribute('aria-current')",
-        "setAttribute('aria-current', 'page')",
-        'applyPulseCardBadges',
-        'setPulseCardBadge'
+        "setAttribute('aria-current', 'page')"
     ]) {
         assert.ok(HR_JS.includes(token), `missing HR Pulse command-card token ${token}`);
     }
@@ -431,20 +429,18 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         "tone: 'schedule'",
         "tone: 'reports'",
         "href: '/staff'",
-        "hrHref: '/staff'",
         'function renderTab',
         'function renderStaffNav',
         'span class="${prefix}-icon"',
         'span class="${prefix}-content"',
         'span class="${prefix}-title"',
         'span class="${prefix}-subtitle"',
-        'span class="${prefix}-badge',
-        'data-pulse-badge=',
         'span class="${prefix}-line"',
         'data-pulse-tone='
     ]) {
         assert.ok(HR_PULSE_SWITCHER_JS.includes(token), `missing shared HR Pulse switcher token ${token}`);
     }
+    assert.equal(HR_PULSE_SWITCHER_JS.includes("hrHref: '/staff'"), false, 'HR schedule pulse card must stay an internal HR tab');
 
     for (const token of [
         '.hr-nav--pulse .hr-tab.hr-pulse-card',
@@ -452,7 +448,6 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         '.hr-pulse-card-icon',
         '.hr-pulse-card-title',
         '.hr-pulse-card-subtitle',
-        '.hr-pulse-card-badge',
         '.hr-pulse-card-line',
         '.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible',
         '.hr-nav--pulse .hr-tab.hr-pulse-card:disabled',
@@ -461,6 +456,16 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         '@media (prefers-reduced-motion: reduce)'
     ]) {
         assert.ok(HR_HTML.includes(token), `missing HR Pulse command-card CSS token ${token}`);
+    }
+    for (const token of [
+        'applyPulseCardBadges',
+        'setPulseCardBadge',
+        'data-pulse-badge=',
+        'span class="${prefix}-badge',
+        '.hr-pulse-card-badge',
+        '.staff-pulse-tab-badge'
+    ]) {
+        assert.equal(HR_JS.includes(token) || HR_PULSE_SWITCHER_JS.includes(token) || HR_HTML.includes(token), false, `legacy Pulse badge token must stay removed: ${token}`);
     }
 
     for (const token of [

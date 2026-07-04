@@ -57,6 +57,7 @@
     flex-direction: row;
 }
 .hr-nav--pulse {
+    --hr-pulse-content-gap: 12px;
     position: relative;
     top: auto;
     z-index: 2;
@@ -65,7 +66,7 @@
     gap: var(--pulse-switcher-shell-gap);
     width: 100%;
     max-width: 100%;
-    margin-bottom: 12px;
+    margin-bottom: var(--hr-pulse-content-gap);
     padding: var(--pulse-switcher-shell-padding);
     border: 1px solid var(--pulse-switcher-shell-border);
     border-radius: var(--pulse-switcher-shell-radius);
@@ -78,9 +79,11 @@
     content: none;
     display: none;
 }
-.hr-nav--pulse + #tab-today.active {
+.hr-nav--pulse + #tab-today.active,
+.hr-nav--pulse ~ .hr-tab-content.active {
     position: relative;
     z-index: 1;
+    margin-top: 0;
 }
 .hr-nav--structure-only .hr-nav-group {
     padding: 4px;
@@ -251,26 +254,6 @@
     font-weight: 800;
     line-height: 1.2;
 }
-.hr-pulse-card-badge {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    min-height: 22px;
-    padding: 0 7px;
-    border-radius: 999px;
-    background: var(--pulse-switcher-badge-bg);
-    color: var(--pulse-switcher-badge-color);
-    font-size: 11px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
-}
-.hr-pulse-card-badge.hidden {
-    display: none;
-}
 .hr-pulse-card-line {
     position: absolute;
     left: 12px;
@@ -332,10 +315,6 @@
     transform: scaleX(1);
     box-shadow: var(--pulse-switcher-active-line-shadow);
 }
-.hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge {
-    background: var(--pulse-switcher-active-icon-bg);
-    color: var(--pulse-switcher-active-badge-color);
-}
 .hr-nav--pulse .hr-tab.hr-pulse-card:disabled,
 .hr-nav--pulse .hr-tab.hr-pulse-card[aria-disabled="true"] {
     cursor: not-allowed;
@@ -367,6 +346,25 @@
 .hr-nav--pulse .hr-tab.hr-pulse-card[aria-busy="true"] .hr-pulse-card-icon {
     opacity: 0.72;
 }
+
+.hr-schedule-embed-shell {
+    width: 100%;
+    margin: 0 0 12px;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(15,23,42,0.50);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.hr-schedule-embed-frame {
+    display: block;
+    width: 100%;
+    min-height: max(760px, calc(100vh - 180px));
+    border: 0;
+    background: transparent;
+}
+
 .hr-tab {
     flex: 0 1 150px;
     min-width: 116px;
@@ -476,11 +474,6 @@ body.dark-mode .hr-pulse-card-subtitle,
 [data-theme="dark"] .hr-pulse-card-subtitle {
     color: #94A3B8;
 }
-body.dark-mode .hr-pulse-card-badge,
-[data-theme="dark"] .hr-pulse-card-badge {
-    background: var(--pulse-switcher-badge-bg);
-    color: var(--pulse-switcher-badge-color);
-}
 body.dark-mode .hr-pulse-card-line,
 [data-theme="dark"] .hr-pulse-card-line {
     opacity: 0.30;
@@ -508,11 +501,9 @@ body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active,
     box-shadow: var(--pulse-switcher-active-shadow);
 }
 body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
-[data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
-body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge,
-[data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-badge {
+[data-theme="dark"] .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon {
     background: var(--pulse-switcher-active-icon-bg);
-    color: var(--pulse-switcher-active-badge-color);
+    color: var(--pulse-switcher-active-icon-color);
 }
 body.dark-mode .hr-today-date {
     border-color: rgba(34,211,238,0.14);
@@ -4812,8 +4803,9 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         padding: 6px;
     }
     .hr-nav--pulse {
+        --hr-pulse-content-gap: 12px;
         --pulse-switcher-card-width: 168px;
-        --pulse-switcher-card-grid: 30px minmax(0, 1fr) auto;
+        --pulse-switcher-card-grid: 30px minmax(0, 1fr);
         --pulse-switcher-card-gap: 8px;
         --pulse-switcher-card-min-height: 60px;
         --pulse-switcher-card-padding: 10px 10px 12px;
@@ -4827,7 +4819,7 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         align-items: stretch;
         width: 100%;
         padding: 5px;
-        margin-bottom: 16px;
+        margin-bottom: var(--hr-pulse-content-gap);
         border-radius: 12px;
     }
     .hr-nav-group {
@@ -4886,12 +4878,6 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         line-height: 1.12;
         white-space: normal;
         overflow-wrap: anywhere;
-    }
-    .hr-pulse-card-badge {
-        min-width: 20px;
-        min-height: 20px;
-        padding: 0 6px;
-        font-size: 10px;
     }
     .hr-pulse-card-line {
         left: 10px;
@@ -5172,7 +5158,6 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 
     .hr-pulse-card-content {
         min-width: 0;
-        padding-right: 26px;
     }
 
     .hr-pulse-card-title,
@@ -5182,19 +5167,6 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 
     .hr-pulse-card-subtitle {
         line-height: 1.1;
-    }
-
-    .hr-pulse-card-badge {
-        position: absolute;
-        top: 6px;
-        right: 6px;
-        min-width: 18px;
-        min-height: 18px;
-        max-width: 44px;
-        padding: 0 5px;
-        font-size: 9px;
-        overflow: hidden;
-        text-overflow: ellipsis;
     }
 
     .hr-pulse-card-line {

@@ -18,8 +18,7 @@
             icon: 'clock',
             tone: 'schedule',
             tab: 'schedule',
-            href: '/staff',
-            hrHref: '/staff'
+            href: '/staff'
         }),
         Object.freeze({
             id: 'reports',
@@ -62,7 +61,6 @@
         const classes = [options.className || '', active ? 'active' : ''].filter(Boolean).join(' ');
         const attrs = [];
         const extraAttrs = typeof options.attrs === 'function' ? options.attrs(item) : {};
-        const badge = item.badge ? String(item.badge) : '';
 
         if (tag === 'button') attrs.push('type="button"');
         if (tag === 'a') attrs.push(`href="${escapeHtml(item.href || '#')}"`);
@@ -81,7 +79,6 @@
                 <span class="${prefix}-title">${escapeHtml(item.label)}</span>
                 <span class="${prefix}-subtitle">${escapeHtml(item.subtitle || '')}</span>
             </span>
-            <span class="${prefix}-badge${badge ? '' : ' hidden'}" data-pulse-badge="${escapeHtml(item.id)}">${escapeHtml(badge)}</span>
             <span class="${prefix}-line" aria-hidden="true"></span>
         </${tag}>`;
     }

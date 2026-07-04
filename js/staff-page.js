@@ -15,22 +15,20 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function setStaffPulseCardBadge(navId, value, options = {}) {
-    if (typeof document === 'undefined') return;
-    const id = String(navId || '').trim();
-    if (!id) return;
-    const badge = Array.from(document.querySelectorAll('.staff-pulse-tab-badge[data-pulse-badge]'))
-        .find(item => item.dataset.pulseBadge === id);
-    if (!badge) return;
-    const text = value === null || value === undefined ? '' : String(value).trim();
-    const shouldHide = options.hidden === true || text === '' || (options.hideZero === true && Number(value) === 0);
-    badge.textContent = shouldHide ? '' : text;
-    badge.classList.toggle('hidden', shouldHide);
-    badge.hidden = shouldHide;
-    if (!shouldHide && options.title) badge.title = String(options.title);
-    else badge.removeAttribute('title');
-    if (!shouldHide && options.ariaLabel) badge.setAttribute('aria-label', String(options.ariaLabel));
-    else badge.removeAttribute('aria-label');
+function isStaffScheduleEmbedMode() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('embed') === '1' || window.self !== window.top;
+    } catch (_) {
+        return false;
+    }
+}
+
+function applyStaffScheduleEmbedMode() {
+    const embedded = isStaffScheduleEmbedMode();
+    document.documentElement.classList.toggle('staff-schedule-embed-mode', embedded);
+    document.body?.classList.toggle('staff-schedule-embed-mode', embedded);
+    return embedded;
 }
 
 function renderStaffPulseSwitcher() {
@@ -2331,22 +2329,6 @@ function summarizeScheduleToday(staffList = null) {
     return summary;
 }
 
-function updateSchedulePulseCardBadge(summary, dates = []) {
-    const visibleDates = dates.map(formatDateStr);
-    const todayVisible = visibleDates.includes(summary?.date);
-    const loadedRange = StaffState.scheduleLoadedRange;
-    const todayLoaded = Boolean(loadedRange && summary?.date >= loadedRange.from && summary.date <= loadedRange.to);
-    if (!summary || !todayVisible || !todayLoaded || summary.total <= 0) {
-        setStaffPulseCardBadge('schedule', null, { hidden: true });
-        return;
-    }
-    const active = summary.working + summary.remote;
-    setStaffPulseCardBadge('schedule', active, {
-        title: `На роботі сьогодні: ${active} з ${summary.total}`,
-        ariaLabel: `На графіку сьогодні активні ${active} з ${summary.total}`
-    });
-}
-
 function renderSummary(staffList = null) {
     const container = document.getElementById('scheduleSummary');
     const today = todayStr();
@@ -2557,7 +2539,6 @@ function renderSchedule() {
         tbody.classList.add('show-hours');
     }
     renderSummary(filtered);
-    updateSchedulePulseCardBadge(summarizeScheduleToday(StaffState.staff), dates);
     renderScheduleAttendanceSummary(dates, filtered);
 
     // Cell click handlers
@@ -3897,7 +3878,8 @@ async function openAddStaffModal() {
 
 async function initPage() {
     initDarkMode();
-    renderStaffPulseSwitcher();
+    const embedded = applyStaffScheduleEmbedMode();
+    if (!embedded) renderStaffPulseSwitcher();
 
     const user = await apiVerifyToken();
     if (!user) {

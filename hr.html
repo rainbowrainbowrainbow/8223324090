@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.78.4">
-    <link rel="stylesheet" href="css/layout.css?v=0.78.4">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.4">
-    <link rel="stylesheet" href="css/pages.css?v=0.78.4">
-    <link rel="stylesheet" href="css/modals.css?v=0.78.4">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.4">
-    <link rel="stylesheet" href="css/responsive.css?v=0.78.4">
+    <link rel="stylesheet" href="css/base.css?v=0.78.5">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.5">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.5">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.5">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.5">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.5">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.5">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/hr-page.css?v=0.78.4">
+    <link rel="stylesheet" href="css/hr-page.css?v=0.78.5">
 </head>
 <body data-page-group="hr">
     <script>
@@ -127,29 +127,14 @@
 
             <!-- TAB 2: SCHEDULE -->
             <div id="tab-schedule" class="hr-tab-content">
-                <div class="hr-view-toggle">
-                    <button type="button" class="hr-view-btn active" data-view="week">Тиждень</button>
-                    <button type="button" class="hr-view-btn" data-view="month">Місяць</button>
-                </div>
-                <div class="hr-schedule-controls">
-                    <button type="button" id="schedPrev" class="btn-nav">◀</button>
-                    <span id="schedLabel" class="hr-week-label"></span>
-                    <button type="button" id="schedNext" class="btn-nav">▶</button>
-                    <div class="hr-schedule-actions">
-                        <button type="button" id="schedToday">Сьогодні</button>
-                        <button type="button" id="schedCopy">Копіювати тиждень</button>
-                    </div>
-                </div>
-                <div id="scheduleTemplate" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-                    <label style="font-size:var(--font-xs);font-weight:700;color:var(--gray-600);">Шаблон:</label>
-                    <select id="templateSelect" class="hr-team-select" style="min-width:140px;"></select>
-                </div>
-                <div class="hr-schedule-wrap">
-                    <table class="hr-schedule-table">
-                        <thead id="schedHead"></thead>
-                        <tbody id="schedBody"></tbody>
-                    </table>
-                </div>
+                <section class="hr-schedule-embed-shell" aria-label="Графік роботи">
+                    <iframe
+                        id="hrScheduleEmbedFrame"
+                        class="hr-schedule-embed-frame"
+                        title="Графік роботи"
+                        data-src="/staff?embed=1"
+                        loading="lazy"></iframe>
+                </section>
                 <div class="hr-professions-head" style="margin-top:24px;">
                     <div>
                         <h3>Заявки на відпустки та вихідні</h3>
@@ -1051,16 +1036,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.78.4"></script>
-    <script src="js/config.js?v=0.78.4"></script>
-    <script src="js/notification.js?v=0.78.4"></script>
-    <script src="js/api.js?v=0.78.4"></script>
-    <script src="js/auth.js?v=0.78.4"></script>
-    <script src="js/components/sidebar.js?v=0.78.4"></script>
+    <script src="js/ui.js?v=0.78.5"></script>
+    <script src="js/config.js?v=0.78.5"></script>
+    <script src="js/notification.js?v=0.78.5"></script>
+    <script src="js/api.js?v=0.78.5"></script>
+    <script src="js/auth.js?v=0.78.5"></script>
+    <script src="js/components/sidebar.js?v=0.78.5"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.78.4"></script>
-    <script src="js/hr-pulse-switcher.js?v=0.78.4"></script>
-    <script src="js/hr-page.js?v=0.78.4"></script>
-    <script src="js/alerts.js?v=0.78.4"></script>
+    <script src="js/ws.js?v=0.78.5"></script>
+    <script src="js/hr-pulse-switcher.js?v=0.78.5"></script>
+    <script src="js/hr-page.js?v=0.78.5"></script>
+    <script src="js/alerts.js?v=0.78.5"></script>
 </body>
 </html>

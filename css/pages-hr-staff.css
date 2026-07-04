@@ -1745,7 +1745,7 @@ body.dark-mode .hr-role-pill.bad {
     --pulse-switcher-shell-radius: 14px;
     --pulse-switcher-shell-padding: 7px;
     --pulse-switcher-shell-gap: 8px;
-    --pulse-switcher-card-grid: 32px minmax(0, 1fr) auto;
+    --pulse-switcher-card-grid: 32px minmax(0, 1fr);
     --pulse-switcher-card-gap: 10px;
     --pulse-switcher-card-width: clamp(172px, 15vw, 210px);
     --pulse-switcher-card-max: 210px;
@@ -1767,8 +1767,6 @@ body.dark-mode .hr-role-pill.bad {
     --pulse-switcher-subtitle-size: 11px;
     --pulse-switcher-title-color: #F8FAFC;
     --pulse-switcher-subtitle-color: #8F9AB3;
-    --pulse-switcher-badge-bg: rgba(148,163,184,0.11);
-    --pulse-switcher-badge-color: #CBD5E1;
     --pulse-switcher-line-bg: rgba(var(--pulse-switcher-active-rgb),0.78);
     --pulse-switcher-hover-border: rgba(148,163,184,0.30);
     --pulse-switcher-hover-bg: rgba(30,41,59,0.72);
@@ -1779,7 +1777,6 @@ body.dark-mode .hr-role-pill.bad {
     --pulse-switcher-active-shadow: inset 0 0 0 1px rgba(var(--pulse-switcher-active-rgb),0.10);
     --pulse-switcher-active-icon-bg: rgba(var(--pulse-switcher-active-rgb),0.12);
     --pulse-switcher-active-icon-color: #A7F3D0;
-    --pulse-switcher-active-badge-color: #FFFFFF;
     --pulse-switcher-active-line-shadow: none;
 }
 
@@ -1789,7 +1786,7 @@ body.dark-mode .hr-role-pill.bad {
     --pulse-switcher-shell-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     --pulse-switcher-shell-radius: 12px;
     --pulse-switcher-shell-padding: 6px;
-    --pulse-switcher-card-grid: 30px minmax(0, 1fr) auto;
+    --pulse-switcher-card-grid: 30px minmax(0, 1fr);
     --pulse-switcher-card-gap: 9px;
     --pulse-switcher-card-width: clamp(168px, 14vw, 196px);
     --pulse-switcher-card-max: 196px;
@@ -1826,7 +1823,7 @@ body.dark-mode .hr-role-pill.bad {
     gap: var(--pulse-switcher-shell-gap);
     width: 100%;
     max-width: 100%;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     padding: var(--pulse-switcher-shell-padding);
     border: 1px solid var(--pulse-switcher-shell-border);
     border-radius: var(--pulse-switcher-shell-radius);
@@ -1840,6 +1837,49 @@ body.dark-mode .hr-role-pill.bad {
 .staff-pulse-nav::after {
     content: none;
     display: none;
+}
+
+body.staff-schedule-embed-mode {
+    background: transparent;
+    overflow-x: hidden;
+}
+
+body.staff-schedule-embed-mode .skip-link,
+body.staff-schedule-embed-mode .sidebar-nav,
+body.staff-schedule-embed-mode .sidebar-overlay,
+body.staff-schedule-embed-mode .header,
+body.staff-schedule-embed-mode .staff-pulse-nav {
+    display: none !important;
+}
+
+body.staff-schedule-embed-mode #mainApp.main-app {
+    display: block;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+body.staff-schedule-embed-mode #main-content.page-container {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
+body.staff-schedule-embed-mode .staff-schedule-command {
+    position: relative;
+    overflow: hidden;
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.88)),
+        linear-gradient(90deg, rgba(20,184,166,0.10), rgba(245,184,75,0.10));
+    contain: layout paint;
+    margin: 0 0 12px;
+}
+
+body.staff-schedule-embed-mode .staff-pulse-nav {
+    position: relative;
+    overflow: hidden;
+    contain: layout paint;
 }
 
 .staff-pulse-nav-items {
@@ -1965,28 +2005,6 @@ body.dark-mode .hr-role-pill.bad {
     line-height: 1.2;
 }
 
-.staff-pulse-tab-badge {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    min-height: 22px;
-    padding: 0 7px;
-    border-radius: 999px;
-    background: var(--pulse-switcher-badge-bg);
-    color: var(--pulse-switcher-badge-color);
-    font-size: 11px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
-}
-
-.staff-pulse-tab-badge.hidden {
-    display: none;
-}
-
 .staff-pulse-tab-line {
     position: absolute;
     left: 12px;
@@ -2058,12 +2076,6 @@ body.dark-mode .hr-role-pill.bad {
     opacity: 1;
     transform: scaleX(1);
     box-shadow: var(--pulse-switcher-active-line-shadow);
-}
-
-.staff-pulse-tab.active .staff-pulse-tab-badge,
-.staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge {
-    background: var(--pulse-switcher-active-icon-bg);
-    color: var(--pulse-switcher-active-badge-color);
 }
 
 .staff-schedule-command {
@@ -2844,12 +2856,6 @@ body.dark-mode .staff-pulse-tab-subtitle,
     color: #94A3B8;
 }
 
-body.dark-mode .staff-pulse-tab-badge,
-[data-theme="dark"] .staff-pulse-tab-badge {
-    background: var(--pulse-switcher-badge-bg);
-    color: var(--pulse-switcher-badge-color);
-}
-
 body.dark-mode .staff-pulse-tab:hover,
 body.dark-mode .staff-pulse-tab:focus-visible,
 [data-theme="dark"] .staff-pulse-tab:hover,
@@ -2876,14 +2882,6 @@ body.dark-mode .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-icon,
 [data-theme="dark"] .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-icon {
     background: var(--pulse-switcher-active-icon-bg);
     color: var(--pulse-switcher-active-icon-color);
-}
-
-body.dark-mode .staff-pulse-tab.active .staff-pulse-tab-badge,
-body.dark-mode .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge,
-[data-theme="dark"] .staff-pulse-tab.active .staff-pulse-tab-badge,
-[data-theme="dark"] .staff-pulse-tab[aria-current="page"] .staff-pulse-tab-badge {
-    background: var(--pulse-switcher-active-icon-bg);
-    color: var(--pulse-switcher-active-badge-color);
 }
 
 body.dark-mode .staff-schedule-command,
@@ -3582,7 +3580,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-nav {
         --pulse-switcher-card-width: 168px;
-        --pulse-switcher-card-grid: 32px minmax(0, 1fr) auto;
+        --pulse-switcher-card-grid: 32px minmax(0, 1fr);
         --pulse-switcher-card-gap: 8px;
         --pulse-switcher-card-min-height: 64px;
         --pulse-switcher-card-padding: 10px 10px 12px;
@@ -3631,13 +3629,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-tab-subtitle {
         line-height: 1.1;
-    }
-
-    .staff-pulse-tab-badge {
-        min-width: 20px;
-        height: 20px;
-        padding: 0 6px;
-        font-size: 10px;
     }
 
     .staff-pulse-tab-line {
@@ -3861,7 +3852,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-tab-content {
         min-width: 0;
-        padding-right: 26px;
     }
 
     .staff-pulse-tab-title,
@@ -3871,15 +3861,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-tab-subtitle {
         white-space: normal;
-    }
-
-    .staff-pulse-tab-badge {
-        position: absolute;
-        top: 5px;
-        right: 5px;
-        max-width: 44px;
-        overflow: hidden;
-        text-overflow: ellipsis;
     }
 
     .staff-pulse-tab-line {

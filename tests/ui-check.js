@@ -1566,6 +1566,8 @@ checkPage('staff.html', (doc, html) => {
     const staffPulseTabIconRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-icon');
     const staffPulseTabLineRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-line');
     const staffScheduleCommandRule = cssRuleText(staffPagesCss, '.staff-schedule-command');
+    const staffScheduleEmbedContentRule = cssRuleText(staffPagesCss, 'body.staff-schedule-embed-mode #main-content.page-container');
+    const staffScheduleEmbedCommandRule = cssRuleText(staffPagesCss, 'body.staff-schedule-embed-mode .staff-schedule-command');
     const staffScheduleCommandContentRule = cssRuleText(staffPagesCss, '.staff-schedule-command-content');
     const staffScheduleCommandMetricsRule = cssRuleText(staffPagesCss, '.staff-schedule-command-metrics');
     const staffScheduleMetricChipRule = cssRuleText(staffPagesCss, '.staff-schedule-metric-chip');
@@ -1576,7 +1578,6 @@ checkPage('staff.html', (doc, html) => {
     const staffPulseTabletItemsRule = cssRuleText(staffPulseTabletBlock, '.staff-pulse-nav-items');
     const staffPulseMobileBlock = cssAtRuleBlock(staffPagesCss, '@media (max-width: 480px)');
     const staffPulseMobileContentRule = cssRuleText(staffPulseMobileBlock, '.staff-pulse-tab-content');
-    const staffPulseMobileBadgeRule = cssRuleText(staffPulseMobileBlock, '.staff-pulse-tab-badge');
     const staffReducedMotionBlock = cssAtRuleBlock(staffPagesCss, '@media (prefers-reduced-motion: reduce)');
     const legacyStaffPulseNavTokens = [
         'today-nav-light.png',
@@ -1593,8 +1594,12 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.querySelector('.staff-pulse-nav[aria-label="Навігація пульсу компанії"]')
         && !!doc.querySelector('#staffPulseNavItems.staff-pulse-nav-items[data-pulse-switcher="staff"]')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.4')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.5')
         && staffCode.includes('function renderStaffPulseSwitcher')
+        && staffCode.includes('function isStaffScheduleEmbedMode')
+        && staffCode.includes('function applyStaffScheduleEmbedMode')
+        && staffCode.includes("params.get('embed') === '1' || window.self !== window.top")
+        && staffCode.includes('if (!embedded) renderStaffPulseSwitcher();')
         && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
         && pulseSwitcherCode.includes("id: 'today'")
@@ -1608,7 +1613,7 @@ checkPage('staff.html', (doc, html) => {
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-icon[aria-hidden="true"] svg').length === 3
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-content .staff-pulse-tab-title').length === 3
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-content .staff-pulse-tab-subtitle').length === 3
-        && staffPulseDoc.querySelectorAll('.staff-pulse-tab-badge.hidden[data-pulse-badge]').length === 3
+        && staffPulseDoc.querySelectorAll('.staff-pulse-tab-badge,[data-pulse-badge]').length === 0
         && staffPulseDoc.querySelectorAll('.staff-pulse-tab-line[aria-hidden="true"]').length === 3
         && html.includes('class="staff-schedule-command"')
         && html.includes('class="staff-schedule-command-metrics"')
@@ -1627,13 +1632,21 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('.staff-pulse-tab-icon')
         && staffPagesCss.includes('.staff-pulse-tab-title')
         && staffPagesCss.includes('.staff-pulse-tab-subtitle')
-        && staffPagesCss.includes('.staff-pulse-tab-badge')
+        && !staffPagesCss.includes('.staff-pulse-tab-badge')
+        && !pulseSwitcherCode.includes('data-pulse-badge=')
+        && !staffCode.includes('setStaffPulseCardBadge')
+        && !staffCode.includes('updateSchedulePulseCardBadge')
         && staffPagesCss.includes('.staff-pulse-tab-line')
         && staffPagesCss.includes('.staff-pulse-tab:focus-visible')
         && staffPagesCss.includes('.staff-schedule-command')
         && staffPagesCss.includes('.staff-schedule-command-metrics')
         && staffPagesCss.includes('.staff-schedule-metric-chip')
         && staffPagesCss.includes('body.dark-mode .staff-pulse-nav')
+        && staffPagesCss.includes('body.staff-schedule-embed-mode .staff-pulse-nav')
+        && staffPagesCss.includes('body.staff-schedule-embed-mode #main-content.page-container')
+        && /margin-bottom:\s*12px;/.test(staffPulseNavRule)
+        && /padding:\s*0;/.test(staffScheduleEmbedContentRule)
+        && /margin:\s*0 0 12px;/.test(staffScheduleEmbedCommandRule)
         && staffPagesCss.includes('@media (max-width: 480px)')
         && staffPagesCss.includes('@media (prefers-reduced-motion: reduce)'));
     check('Staff HR Pulse command cards do not depend on legacy nav PNG layers',
@@ -1654,16 +1667,14 @@ checkPage('staff.html', (doc, html) => {
         && /@media \(max-width:\s*1120px\)/.test(staffPagesCss)
         && /overflow-x:\s*auto;/.test(staffPagesCss)
         && /scrollbar-width:\s*none;/.test(staffPagesCss));
-    check('Staff HR Pulse responsive polish protects tablet scroll, mobile badges, chips, and reduced motion',
+    check('Staff HR Pulse responsive polish protects tablet scroll, mobile text, chips, and reduced motion',
         /width:\s*100%;/.test(staffPulseTabletNavRule)
         && /display:\s*flex;/.test(staffPulseTabletItemsRule)
         && /flex-wrap:\s*nowrap;/.test(staffPulseTabletItemsRule)
         && /overflow-x:\s*auto;/.test(staffPulseTabletItemsRule)
         && /scrollbar-width:\s*none;/.test(staffPulseTabletItemsRule)
-        && /padding-right:\s*26px;/.test(staffPulseMobileContentRule)
-        && /max-width:\s*44px;/.test(staffPulseMobileBadgeRule)
-        && /overflow:\s*hidden;/.test(staffPulseMobileBadgeRule)
-        && /text-overflow:\s*ellipsis;/.test(staffPulseMobileBadgeRule)
+        && /min-width:\s*0;/.test(staffPulseMobileContentRule)
+        && !/padding-right:\s*26px;/.test(staffPulseMobileContentRule)
         && /overflow:\s*hidden;/.test(staffScheduleMetricChipLabelRule)
         && /text-overflow:\s*ellipsis;/.test(staffScheduleMetricChipLabelRule)
         && /white-space:\s*nowrap;/.test(staffScheduleMetricChipLabelRule)
@@ -4776,12 +4787,19 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.4')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.5')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
     && hrPulseSwitcherCode.includes("id: 'reports'")
-    && hrPulseSwitcherCode.includes("hrHref: '/staff'")
+    && hrPulseSwitcherCode.includes("href: '/staff'")
+    && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
+    && htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
+    && htmlContains('hr.html', 'data-src="/staff?embed=1"')
+    && hrCode.includes('function loadHrScheduleEmbed')
+    && hrCode.includes("schedule: loadHrScheduleEmbed")
+    && hrCode.includes("if (frame && frame.dataset.loaded !== 'true')")
+    && hrCode.includes("frame.src = frame.dataset.src || HR_SCHEDULE_EMBED_SRC")
     && hrPageCss.includes('.hr-nav {')
     && hrPageCss.includes('flex-direction: column')
     && hrPageCss.includes('.hr-nav--structure-only')
@@ -4803,6 +4821,7 @@ const hrPulseNavItemsRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-nav-items
 const hrPulseCardRule = cssRuleText(hrPageCss, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseCardIconRule = cssRuleText(hrPageCss, '.hr-pulse-card-icon');
 const hrPulseCardLineRule = cssRuleText(hrPageCss, '.hr-pulse-card-line');
+const hrScheduleEmbedShellRule = cssRuleText(hrPageCss, '.hr-schedule-embed-shell');
 const hrPulseTabletBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 1120px)');
 const hrPulseTabletNavRule = cssRuleText(hrPulseTabletBlock, '.hr-nav--pulse');
 const hrPulseTabletItemsRule = cssRuleText(hrPulseTabletBlock, '.hr-nav--pulse .hr-nav-items');
@@ -4811,7 +4830,6 @@ const hrPulseMobileItemsRule = cssRuleText(hrPulseMobileBlock, '.hr-nav--pulse .
 const hrPulseMobileCardRule = cssRuleText(hrPulseMobileBlock, '.hr-nav--pulse .hr-tab.hr-pulse-card');
 const hrPulseSmallMobileBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 480px)');
 const hrPulseSmallMobileContentRule = cssRuleText(hrPulseSmallMobileBlock, '.hr-pulse-card-content');
-const hrPulseSmallMobileBadgeRule = cssRuleText(hrPulseSmallMobileBlock, '.hr-pulse-card-badge');
 const hrReducedMotionBlock = cssAtRuleBlock(hrPageCss, '@media (prefers-reduced-motion: reduce)');
 const legacyHrPulseNavTokens = [
     'today-nav-light.png',
@@ -4858,15 +4876,18 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && hrPulseSwitcherCode.includes('span class="${prefix}-icon"')
     && hrPulseSwitcherCode.includes('span class="${prefix}-title"')
     && hrPulseSwitcherCode.includes('span class="${prefix}-subtitle"')
-    && hrPulseSwitcherCode.includes('span class="${prefix}-badge')
     && hrPulseSwitcherCode.includes('span class="${prefix}-line"')
-    && hrCode.includes('hr-pulse-card-badge')
+    && !hrPulseSwitcherCode.includes('span class="${prefix}-badge')
+    && !hrPulseSwitcherCode.includes('data-pulse-badge=')
+    && !hrCode.includes('hr-pulse-card-badge')
+    && !hrCode.includes('setPulseCardBadge')
+    && !hrCode.includes('applyPulseCardBadges')
     && hrPulseSwitcherCode.includes('aria-hidden="true"')
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card')
     && hrPageCss.includes('.hr-pulse-card-icon')
     && hrPageCss.includes('.hr-pulse-card-title')
     && hrPageCss.includes('.hr-pulse-card-subtitle')
-    && hrPageCss.includes('.hr-pulse-card-badge')
+    && !hrPageCss.includes('.hr-pulse-card-badge')
     && hrPageCss.includes('.hr-pulse-card-line')
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible')
     && hrPageCss.includes('.hr-nav--pulse .hr-tab.hr-pulse-card:disabled')
@@ -4880,6 +4901,10 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && /contain:\s*layout paint;/.test(hrPulseNavSurfaceRule)
     && /align-items:\s*stretch;/.test(hrPulseNavSurfaceRule)
     && /width:\s*100%;/.test(hrPulseNavSurfaceRule)
+    && /--hr-pulse-content-gap:\s*12px;/.test(hrPulseNavSurfaceRule)
+    && /margin-bottom:\s*var\(--hr-pulse-content-gap\);/.test(hrPulseNavSurfaceRule)
+    && hrPageCss.includes('.hr-nav--pulse ~ .hr-tab-content.active')
+    && /margin:\s*0 0 12px;/.test(hrScheduleEmbedShellRule)
     && /content:\s*none;/.test(hrPulseNavEmptyTailRule)
     && /display:\s*none;/.test(hrPulseNavEmptyTailRule)
     && /display:\s*grid;/.test(hrPulseNavItemsRule)
@@ -4913,7 +4938,7 @@ check('HR Pulse premium switcher keeps icon cards, routing, and accessible decor
     && hrPageCss.includes('scrollbar-width: none;')
     && hrPageCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
     && hrPageCss.includes('@media (prefers-reduced-motion: reduce)'));
-check('HR Pulse responsive polish protects tablet scroll, mobile badges, headers, and reduced motion',
+check('HR Pulse responsive polish protects tablet scroll, mobile text, headers, and reduced motion',
     /width:\s*100%;/.test(hrPulseTabletNavRule)
     && /overflow-x:\s*auto;/.test(hrPulseTabletItemsRule)
     && /scrollbar-width:\s*none;/.test(hrPulseTabletItemsRule)
@@ -4921,13 +4946,13 @@ check('HR Pulse responsive polish protects tablet scroll, mobile badges, headers
     && /flex-wrap:\s*nowrap;/.test(hrPulseMobileItemsRule)
     && /overflow-x:\s*auto;/.test(hrPulseMobileItemsRule)
     && /scrollbar-width:\s*none;/.test(hrPulseMobileItemsRule)
+    && /--hr-pulse-content-gap:\s*12px;/.test(hrPulseMobileBlock)
+    && /margin-bottom:\s*var\(--hr-pulse-content-gap\);/.test(hrPulseMobileBlock)
     && /flex:\s*0 0 var\(--pulse-switcher-card-width\);/.test(hrPulseMobileCardRule)
     && /width:\s*var\(--pulse-switcher-card-width\);/.test(hrPulseMobileCardRule)
     && /max-width:\s*var\(--pulse-switcher-card-max\);/.test(hrPulseMobileCardRule)
-    && /padding-right:\s*26px;/.test(hrPulseSmallMobileContentRule)
-    && /max-width:\s*44px;/.test(hrPulseSmallMobileBadgeRule)
-    && /overflow:\s*hidden;/.test(hrPulseSmallMobileBadgeRule)
-    && /text-overflow:\s*ellipsis;/.test(hrPulseSmallMobileBadgeRule)
+    && /min-width:\s*0;/.test(hrPulseSmallMobileContentRule)
+    && !/padding-right:\s*26px;/.test(hrPulseSmallMobileContentRule)
     && /max-width:\s*100%;/.test(hrReportsHeroHeadingRule)
     && /overflow-wrap:\s*anywhere;/.test(hrReportsHeroHeadingRule)
     && /animation:\s*none\s*!important;/.test(hrReducedMotionBlock)
@@ -5167,7 +5192,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule owns leave request controls after standalone leaves removal', htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();'));
+check('HR schedule embeds canonical staff schedule and keeps leave request controls', htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleEmbed') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

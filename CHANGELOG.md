@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.5 - Пульс HR: чистий графік
+
+### HR / Пульс компанії / Graph tab cleanup / (Клешня, 04.07.2026) [codex]
+- **Активні кнопки Пульсу більше не показують службові бейджі** - `Сьогодні`, `Графік` і `Звіти` лишають тільки іконку, назву, підпис і тонку активну лінію без `1`, `2` або `CSV`.
+- **`Графік` відкривається всередині HR shell** - клік по вкладці більше не веде повним переходом на `/staff`, а standalone `/staff` лишається прямою сторінкою графіка.
+- **Верхній ритм між вкладками вирівняно** - `Сьогодні`, embedded `Графік` і `Звіти` мають однаковий spacing після pulse-навігації.
+- **CSV export не видалявся** - службовий напис прибрано з navigation button, але звітна функціональність залишається у реальному reports workflow.
+- **Regression guards оновлено** - static UI checks і HR button contract фіксують відсутність `data-pulse-badge`, embedded routing для HR schedule і однаковий responsive spacing.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff frontend, CSS, tests і version/cache refs.
+
+---
+
 ## v0.78.4 - Графік HR: широкі кнопки
 
 ### HR / Графік роботи / Staff pulse width fix / (Клешня, 04.07.2026) [codex]

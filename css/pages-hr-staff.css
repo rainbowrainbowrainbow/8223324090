@@ -1822,8 +1822,10 @@ body.dark-mode .hr-role-pill.bad {
     top: auto;
     z-index: 2;
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: stretch;
+    gap: var(--pulse-switcher-shell-gap);
+    width: 100%;
+    max-width: 100%;
     margin-bottom: 10px;
     padding: var(--pulse-switcher-shell-padding);
     border: 1px solid var(--pulse-switcher-shell-border);
@@ -1836,25 +1838,16 @@ body.dark-mode .hr-role-pill.bad {
 }
 
 .staff-pulse-nav::after {
-    content: "";
-    flex: 1 1 260px;
-    min-width: 180px;
-    max-width: 520px;
-    height: 44px;
-    margin-left: auto;
-    border: 1px solid rgba(148,163,184,0.10);
-    border-radius: 12px;
-    background: rgba(148,163,184,0.05);
-    box-shadow: none;
-    pointer-events: none;
+    content: none;
+    display: none;
 }
 
 .staff-pulse-nav-items {
-    display: flex;
-    flex: 0 1 auto;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    flex: 1 1 100%;
     gap: 8px;
-    width: auto;
+    width: 100%;
     max-width: 100%;
     min-width: 0;
     overscroll-behavior-inline: contain;
@@ -1867,10 +1860,10 @@ body.dark-mode .hr-role-pill.bad {
     align-items: center;
     gap: var(--pulse-switcher-card-gap);
     box-sizing: border-box;
-    flex: 0 0 var(--pulse-switcher-card-width);
-    width: var(--pulse-switcher-card-width);
+    flex: 1 1 auto;
+    width: 100%;
     min-width: 0;
-    max-width: var(--pulse-switcher-card-max);
+    max-width: none;
     min-height: var(--pulse-switcher-card-min-height);
     padding: var(--pulse-switcher-card-padding);
     border: 1px solid var(--pulse-switcher-card-border);
@@ -1896,7 +1889,7 @@ body.dark-mode .hr-role-pill.bad {
 .staff-pulse-tab.ui-tab-card {
     grid-template-columns: var(--pulse-switcher-card-grid);
     min-height: var(--pulse-switcher-card-min-height);
-    max-width: var(--pulse-switcher-card-max);
+    max-width: none;
     border-radius: var(--pulse-switcher-card-radius);
 }
 
@@ -3535,6 +3528,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     .staff-pulse-nav-items {
+        display: flex;
+        flex: 0 1 auto;
+        flex-wrap: nowrap;
         width: 100%;
         max-width: 100%;
         overflow-x: auto;
@@ -3545,6 +3541,12 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-pulse-nav-items::-webkit-scrollbar {
         display: none;
+    }
+
+    .staff-pulse-tab {
+        flex: 0 0 var(--pulse-switcher-card-width);
+        width: var(--pulse-switcher-card-width);
+        max-width: var(--pulse-switcher-card-max);
     }
 }
 
@@ -3596,6 +3598,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     .staff-pulse-nav-items {
+        display: flex;
+        flex: 0 1 auto;
+        flex-wrap: nowrap;
         gap: 6px;
         width: 100%;
         max-width: 100%;
@@ -3610,7 +3615,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     .staff-pulse-tab {
-        flex-basis: var(--pulse-switcher-card-width);
+        flex: 0 0 var(--pulse-switcher-card-width);
+        width: var(--pulse-switcher-card-width);
+        max-width: var(--pulse-switcher-card-max);
     }
 
     .staff-pulse-tab-content {
@@ -3847,7 +3854,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     .staff-pulse-tab {
-        flex-basis: var(--pulse-switcher-card-width);
+        flex: 0 0 var(--pulse-switcher-card-width);
+        width: var(--pulse-switcher-card-width);
+        max-width: var(--pulse-switcher-card-max);
     }
 
     .staff-pulse-tab-content {

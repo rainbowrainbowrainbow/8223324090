@@ -1560,6 +1560,7 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule UI uses scheduleable staff guards for rows, replacements, fill, and attendance', staffCode.includes('function isScheduleableStaffForUi') && staffCode.includes('function scheduleableStaffErrorMessage') && staffCode.includes('StaffState.staff = scheduleableStaffForUi(data.data || [])') && staffCode.includes('function scheduleVisibleStaff(staffList = StaffState.staff)') && staffCode.includes('.filter(staff => isScheduleableStaffForUi(staff, entry.date))') && staffCode.includes('targetStaff = scheduleableStaffForUi(targetStaff);') && staffCode.includes("action === 'clock-in' && staff && !isScheduleableStaffForUi(staff, todayStr())") && staffCode.includes("scheduleableStaffErrorMessage(result, 'Помилка збереження')") && staffCode.includes("scheduleableStaffErrorMessage(apiResult, 'Помилка підміни')"));
     const staffPulseTabs = [...staffPulseDoc.querySelectorAll('.staff-pulse-tab')];
     const staffPulseNavRule = cssRuleText(staffPagesCss, '.staff-pulse-nav');
+    const staffPulseNavAfterRule = cssRuleText(staffPagesCss, '.staff-pulse-nav::after');
     const staffPulseNavItemsRule = cssRuleText(staffPagesCss, '.staff-pulse-nav-items');
     const staffPulseTabRule = cssRuleText(staffPagesCss, '.staff-pulse-tab');
     const staffPulseTabIconRule = cssRuleText(staffPagesCss, '.staff-pulse-tab-icon');
@@ -1622,7 +1623,7 @@ checkPage('staff.html', (doc, html) => {
         && staffPagesCss.includes('--pulse-switcher-focus-shadow')
         && staffPagesCss.includes('v0.73.52: /staff keeps HR Pulse navigation and schedule panels in one visual rhythm')
         && staffPagesCss.includes('.staff-pulse-nav-items')
-        && !staffPulseNavItemsRule.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
+        && staffPulseNavItemsRule.includes('grid-template-columns: repeat(3, minmax(0, 1fr));')
         && staffPagesCss.includes('.staff-pulse-tab-icon')
         && staffPagesCss.includes('.staff-pulse-tab-title')
         && staffPagesCss.includes('.staff-pulse-tab-subtitle')
@@ -1641,18 +1642,22 @@ checkPage('staff.html', (doc, html) => {
         staffPulseBoundedContainer(staffPulseNavRule)
         && staffPulseBoundedContainer(staffPulseTabRule)
         && staffPulseBoundedContainer(staffScheduleCommandRule));
-    check('Staff HR Pulse command shell uses compact flex cards without full-width stretch',
-        /display:\s*flex;/.test(staffPulseNavItemsRule)
-        && /flex-wrap:\s*nowrap;/.test(staffPulseNavItemsRule)
-        && /width:\s*auto;/.test(staffPulseNavItemsRule)
+    check('Staff HR Pulse command shell uses full-width desktop grid without decorative filler',
+        /display:\s*grid;/.test(staffPulseNavItemsRule)
+        && /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/.test(staffPulseNavItemsRule)
+        && /width:\s*100%;/.test(staffPulseNavItemsRule)
         && /overscroll-behavior-inline:\s*contain;/.test(staffPulseNavItemsRule)
-        && /flex:\s*0 0 var\(--pulse-switcher-card-width\);/.test(staffPulseTabRule)
-        && /max-width:\s*var\(--pulse-switcher-card-max\);/.test(staffPulseTabRule)
+        && /content:\s*none;/.test(staffPulseNavAfterRule)
+        && /display:\s*none;/.test(staffPulseNavAfterRule)
+        && /width:\s*100%;/.test(staffPulseTabRule)
+        && /max-width:\s*none;/.test(staffPulseTabRule)
         && /@media \(max-width:\s*1120px\)/.test(staffPagesCss)
         && /overflow-x:\s*auto;/.test(staffPagesCss)
         && /scrollbar-width:\s*none;/.test(staffPagesCss));
     check('Staff HR Pulse responsive polish protects tablet scroll, mobile badges, chips, and reduced motion',
         /width:\s*100%;/.test(staffPulseTabletNavRule)
+        && /display:\s*flex;/.test(staffPulseTabletItemsRule)
+        && /flex-wrap:\s*nowrap;/.test(staffPulseTabletItemsRule)
         && /overflow-x:\s*auto;/.test(staffPulseTabletItemsRule)
         && /scrollbar-width:\s*none;/.test(staffPulseTabletItemsRule)
         && /padding-right:\s*26px;/.test(staffPulseMobileContentRule)

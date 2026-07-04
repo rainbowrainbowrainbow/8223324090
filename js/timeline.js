@@ -1333,55 +1333,26 @@ function timelineCompactLabelCandidate(value, maxLength = 10) {
     return `${firstWord.slice(0, Math.max(1, maxLength - 1))}.`;
 }
 
+function timelinePinataNumbersHelper() {
+    return (typeof window !== 'undefined' && window.PinataNumbers)
+        || (typeof globalThis !== 'undefined' && globalThis.PinataNumbers)
+        || null;
+}
+
 function timelineNormalizePinataNumber(value) {
-    const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
-    if (!raw) return '';
-    const normalized = raw
-        .replace(/^(?:№|#)\s*/u, '')
-        .replace(/^P\s+(\d+)$/i, 'P-$1')
-        .trim();
-    const legacy = normalized.match(/^P-(\d{1,3})$/i);
-    if (legacy) {
-        const id = Number(legacy[1]);
-        if (Number.isInteger(id) && id >= 1 && id <= 36) return String(500 + id);
-    }
-    return normalized;
+    return timelinePinataNumbersHelper()?.normalize?.(value) || String(value ?? '').replace(/^(?:№|#)\s*/u, '').trim();
 }
 
 function timelineExtractPinataNumberFromText(value) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!text) return '';
-    const explicit = text.match(/(?:№|#)\s*((?:P[-\s]?)?\d{1,4})/iu);
-    if (explicit) return timelineNormalizePinataNumber(explicit[1]);
-    const catalog = text.match(/\b(P[-\s]?\d{1,4})\b/iu);
-    if (catalog) return timelineNormalizePinataNumber(catalog[1]);
-    return '';
+    return timelinePinataNumbersHelper()?.extractFromText?.(value) || '';
 }
 
 function timelinePinataNumberValue(booking, renderBooking, ...textCandidates) {
-    const source = renderBooking || booking || {};
-    const direct = [
-        source.pinataNumber,
-        source.pinata_number,
-        booking?.pinataNumber,
-        booking?.pinata_number,
-        source.extraData?.pinataNumber,
-        source.extraData?.pinata_number,
-        source.extra_data?.pinataNumber,
-        source.extra_data?.pinata_number,
-        booking?.extraData?.pinataNumber,
-        booking?.extraData?.pinata_number,
-        booking?.extra_data?.pinataNumber,
-        booking?.extra_data?.pinata_number
-    ].map(timelineNormalizePinataNumber).find(Boolean);
-    if (direct) return direct;
-    return textCandidates.map(timelineExtractPinataNumberFromText).find(Boolean) || '';
+    return timelinePinataNumbersHelper()?.valueFromBooking?.(booking || {}, { renderBooking, textCandidates }) || '';
 }
 
 function timelinePinataNumberDisplay(value) {
-    const normalized = timelineNormalizePinataNumber(value);
-    if (!normalized) return '';
-    return /^\d+$/.test(normalized) ? `№${normalized}` : normalized;
+    return timelinePinataNumbersHelper()?.display?.(value) || timelineNormalizePinataNumber(value);
 }
 
 function timelineIsPinataActivity(source, booking, haystack = '') {

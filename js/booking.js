@@ -51,7 +51,14 @@ function isPinataProgram(program) {
 
 const CLIENT_PINATA_FILLER_VALUE = 'client_filler';
 const CLIENT_PINATA_FILLER_LABEL = 'Свій наповнювач клієнта';
-const PINATA_OPERATIONAL_NUMBER_BASE = 500;
+
+function bookingPinataNumbersHelper() {
+    return (typeof window !== 'undefined' && window.PinataNumbers)
+        || (typeof globalThis !== 'undefined' && globalThis.PinataNumbers)
+        || null;
+}
+
+const PINATA_OPERATIONAL_NUMBER_BASE = bookingPinataNumbersHelper()?.OPERATIONAL_BASE || 500;
 
 const PINATA_PICKER_FALLBACK_DESIGNS = Array.from({ length: 36 }, (_, index) => {
     const number = String(PINATA_OPERATIONAL_NUMBER_BASE + index + 1);
@@ -79,34 +86,15 @@ function pinataFillerNumberLabel(value) {
 }
 
 function normalizeBookingPinataNumber(value) {
-    const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
-    if (!raw) return '';
-    const normalized = raw
-        .replace(/^(?:№|#)\s*/u, '')
-        .replace(/^P\s+(\d+)$/i, 'P-$1')
-        .trim();
-    const legacy = normalized.match(/^P-(\d{1,3})$/i);
-    if (legacy) {
-        const id = Number(legacy[1]);
-        if (Number.isInteger(id) && id >= 1 && id <= 36) return String(PINATA_OPERATIONAL_NUMBER_BASE + id);
-    }
-    return normalized;
+    return bookingPinataNumbersHelper()?.normalize?.(value) || String(value ?? '').replace(/^(?:№|#)\s*/u, '').trim();
 }
 
 function extractBookingPinataNumberFromText(value) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!text) return '';
-    const explicit = text.match(/(?:№|#)\s*((?:P[-\s]?)?\d{1,4})/iu);
-    if (explicit) return normalizeBookingPinataNumber(explicit[1]);
-    const catalog = text.match(/\b(P[-\s]?\d{1,4})\b/iu);
-    if (catalog) return normalizeBookingPinataNumber(catalog[1]);
-    return '';
+    return bookingPinataNumbersHelper()?.extractFromText?.(value) || '';
 }
 
 function bookingPinataNumberDisplay(value) {
-    const normalized = normalizeBookingPinataNumber(value);
-    if (!normalized) return '';
-    return /^\d+$/.test(normalized) ? `№${normalized}` : normalized;
+    return bookingPinataNumbersHelper()?.display?.(value) || normalizeBookingPinataNumber(value);
 }
 
 function bookingPinataField(booking = {}, camelKey, snakeKey) {
@@ -116,23 +104,7 @@ function bookingPinataField(booking = {}, camelKey, snakeKey) {
 }
 
 function bookingPinataNumberValue(booking = {}) {
-    const direct = [
-        bookingPinataField(booking, 'pinataNumber', 'pinata_number'),
-        booking?.extraData?.pinataNumber,
-        booking?.extraData?.pinata_number,
-        booking?.extra_data?.pinataNumber,
-        booking?.extra_data?.pinata_number
-    ].map(normalizeBookingPinataNumber).find(Boolean);
-    if (direct) return direct;
-    return [
-        booking?.label,
-        booking?.programName,
-        booking?.program_name,
-        booking?.programCode,
-        booking?.program_code,
-        booking?.name,
-        booking?.title
-    ].map(extractBookingPinataNumberFromText).find(Boolean) || '';
+    return bookingPinataNumbersHelper()?.valueFromBooking?.(booking) || '';
 }
 
 function syncPinataClientFillerChoice() {
@@ -176,10 +148,7 @@ function pinataNormalizeChoiceValue(value) {
 }
 
 function pinataOperationalNumberFromDesignId(id) {
-    const raw = pinataNormalizeChoiceValue(id);
-    if (!raw) return '';
-    if (/^\d+$/.test(raw)) return String(PINATA_OPERATIONAL_NUMBER_BASE + Number(raw));
-    return normalizeBookingPinataNumber(raw);
+    return bookingPinataNumbersHelper()?.fromCatalogId?.(id) || normalizeBookingPinataNumber(id);
 }
 
 function pinataNumberFromId(prefix, id) {

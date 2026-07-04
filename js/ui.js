@@ -2201,66 +2201,157 @@ if (typeof window.ensureBookingTooltip !== 'function') {
     };
 }
 
+const PINATA_NUMBERS_ROOT = typeof window !== 'undefined'
+    ? window
+    : (typeof globalThis !== 'undefined' ? globalThis : null);
+
+if (PINATA_NUMBERS_ROOT && !PINATA_NUMBERS_ROOT.PinataNumbers) {
+    PINATA_NUMBERS_ROOT.PinataNumbers = (() => {
+        const OPERATIONAL_BASE = 500;
+        const LEGACY_MIN_ID = 1;
+        const LEGACY_MAX_ID = 36;
+
+        function normalize(value) {
+            const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+            if (!raw) return '';
+            const normalized = raw
+                .replace(/^(?:№|#)\s*/u, '')
+                .replace(/^P\s+(\d+)$/i, 'P-$1')
+                .trim();
+            const legacy = normalized.match(/^P-(\d{1,3})$/i);
+            if (legacy) {
+                const id = Number(legacy[1]);
+                if (Number.isInteger(id) && id >= LEGACY_MIN_ID && id <= LEGACY_MAX_ID) {
+                    return String(OPERATIONAL_BASE + id);
+                }
+            }
+            return normalized;
+        }
+
+        function extractFromText(value) {
+            const text = String(value || '').replace(/\s+/g, ' ').trim();
+            if (!text) return '';
+            const explicit = text.match(/(?:№|#)\s*((?:P[-\s]?)?\d{1,4})/iu);
+            if (explicit) return normalize(explicit[1]);
+            const legacy = text.match(/\b(P[-\s]?\d{1,4})\b/iu);
+            if (legacy) return normalize(legacy[1]);
+            return '';
+        }
+
+        function display(value) {
+            const normalized = normalize(value);
+            if (!normalized) return '';
+            return /^\d+$/.test(normalized) ? `№${normalized}` : normalized;
+        }
+
+        function extraObject(source = {}) {
+            const extra = source.extraData || source.extra_data || {};
+            if (extra && typeof extra === 'object') return extra;
+            if (typeof extra === 'string') {
+                try {
+                    return JSON.parse(extra) || {};
+                } catch {
+                    return {};
+                }
+            }
+            return {};
+        }
+
+        function valueFromBooking(booking = {}, options = {}) {
+            const source = options.renderBooking || booking || {};
+            const bookingExtra = extraObject(booking);
+            const sourceExtra = source === booking ? bookingExtra : extraObject(source);
+            const direct = [
+                source.pinataNumber,
+                source.pinata_number,
+                booking.pinataNumber,
+                booking.pinata_number,
+                sourceExtra.pinataNumber,
+                sourceExtra.pinata_number,
+                bookingExtra.pinataNumber,
+                bookingExtra.pinata_number
+            ].map(normalize).find(Boolean);
+            if (direct) return direct;
+
+            const textCandidates = Array.isArray(options.textCandidates) ? options.textCandidates : [];
+            return textCandidates.concat([
+                source.label,
+                source.programName,
+                source.program_name,
+                source.programCode,
+                source.program_code,
+                source.name,
+                source.title,
+                booking.label,
+                booking.programName,
+                booking.program_name,
+                booking.programCode,
+                booking.program_code,
+                booking.name,
+                booking.title
+            ]).map(extractFromText).find(Boolean) || '';
+        }
+
+        function fromCatalogId(id) {
+            const raw = String(id || '').trim();
+            if (!raw) return '';
+            if (/^\d+$/.test(raw)) return String(OPERATIONAL_BASE + Number(raw));
+            return normalize(raw);
+        }
+
+        function isPinataBooking(booking = {}) {
+            const category = String(booking.category || '').trim().toLowerCase();
+            const haystack = [
+                category,
+                booking.label,
+                booking.programName,
+                booking.program_name,
+                booking.programCode,
+                booking.program_code
+            ].filter(Boolean).join(' ').toLocaleLowerCase('uk-UA');
+            return category === 'pinata' || haystack.includes('пін');
+        }
+
+        return Object.freeze({
+            OPERATIONAL_BASE,
+            normalize,
+            display,
+            extractFromText,
+            valueFromBooking,
+            fromCatalogId,
+            isPinataBooking
+        });
+    })();
+}
+
+function getSharedPinataNumbers() {
+    return (typeof window !== 'undefined' && window.PinataNumbers)
+        || (typeof globalThis !== 'undefined' && globalThis.PinataNumbers)
+        || null;
+}
+
 function tooltipNormalizePinataNumber(value) {
+    const helper = getSharedPinataNumbers();
+    if (helper?.normalize) return helper.normalize(value);
     const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) return '';
-    const normalized = raw
-        .replace(/^(?:№|#)\s*/u, '')
-        .replace(/^P\s+(\d+)$/i, 'P-$1')
-        .trim();
-    const legacy = normalized.match(/^P-(\d{1,3})$/i);
-    if (legacy) {
-        const id = Number(legacy[1]);
-        if (Number.isInteger(id) && id >= 1 && id <= 36) return String(500 + id);
-    }
-    return normalized;
+    return raw.replace(/^(?:№|#)\s*/u, '').trim();
 }
 
 function tooltipExtractPinataNumberFromText(value) {
-    const text = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!text) return '';
-    const explicit = text.match(/(?:№|#)\s*((?:P[-\s]?)?\d{1,4})/iu);
-    if (explicit) return tooltipNormalizePinataNumber(explicit[1]);
-    const legacy = text.match(/\b(P[-\s]?\d{1,4})\b/iu);
-    if (legacy) return tooltipNormalizePinataNumber(legacy[1]);
-    return '';
+    return getSharedPinataNumbers()?.extractFromText?.(value) || '';
 }
 
 function tooltipPinataNumberValue(booking = {}) {
-    const extra = booking.extraData || booking.extra_data || {};
-    const direct = [
-        booking.pinataNumber,
-        booking.pinata_number,
-        extra.pinataNumber,
-        extra.pinata_number
-    ].map(tooltipNormalizePinataNumber).find(Boolean);
-    if (direct) return direct;
-    return [
-        booking.label,
-        booking.programName,
-        booking.program_name,
-        booking.programCode,
-        booking.program_code
-    ].map(tooltipExtractPinataNumberFromText).find(Boolean) || '';
+    return getSharedPinataNumbers()?.valueFromBooking?.(booking) || '';
 }
 
 function tooltipPinataNumberDisplay(value) {
-    const normalized = tooltipNormalizePinataNumber(value);
-    if (!normalized) return '';
-    return /^\d+$/.test(normalized) ? `№${normalized}` : normalized;
+    return getSharedPinataNumbers()?.display?.(value) || tooltipNormalizePinataNumber(value);
 }
 
 function tooltipIsPinataBooking(booking = {}) {
-    const category = String(booking.category || '').trim().toLowerCase();
-    const haystack = [
-        category,
-        booking.label,
-        booking.programName,
-        booking.program_name,
-        booking.programCode,
-        booking.program_code
-    ].filter(Boolean).join(' ').toLocaleLowerCase('uk-UA');
-    return category === 'pinata' || haystack.includes('пін');
+    return getSharedPinataNumbers()?.isPinataBooking?.(booking) || false;
 }
 
 function showTooltip(e, booking) {

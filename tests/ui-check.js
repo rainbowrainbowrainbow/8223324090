@@ -4660,12 +4660,20 @@ check('Resource-backed timeline can close cabinets and show capacity-aware free 
 check('Education timeline captures lesson metadata, real series, and teacher conflicts', htmlContains('index.html', 'educationLessonSection') && htmlContains('index.html', 'educationLessonTeacher') && htmlContains('index.html', 'educationLessonRepeatEvery') && bookingCode.includes('getEducationLessonDetails') && bookingCode.includes('apiCreateEducationLessonSeries') && bookingCode.includes('extraData.educationLesson') && bookingFormJs.includes('educationLessonRepeatEvery') && timelineCode.includes('educationLessonExtra') && timelineCode.includes('lessonSeriesBadge') && htmlContains('routes/bookings.js', 'validateEducationLessonTeacherConflict') && htmlContains('routes/bookings.js', 'education-series') && htmlContains('routes/bookings.js', 'buildEducationLessonSeriesCandidates') && htmlContains('routes/bookings.js', 'seriesRootBookingId') && panelCss.includes('.education-lesson-section'));
 check('Booking UI separates park and client pinata modes', bookingCode.includes('syncPinataModeFields') && bookingCode.includes('clientPinataServicePrice') && bookingCode.includes('renderPinataDetailRows'));
 check('Booking pinata and filler use one visual picker template', bookingCode.includes('function renderPinataChoiceCard') && bookingCode.includes('function renderPinataVisualPickers') && bookingCode.includes('buildPinataDesignChoices') && bookingCode.includes('buildPinataFillerChoices') && panelCss.includes('.pinata-choice-card') && panelCss.includes('.pinata-choice-thumb'));
-check('Booking pinata picker preserves operational 501-style numbers', bookingCode.includes('const PINATA_OPERATIONAL_NUMBER_BASE = 500') && bookingCode.includes('function bookingPinataNumberValue') && bookingCode.includes('function bookingPinataNumberDisplay') && bookingCode.includes('function pinataOperationalNumberFromDesignId') && bookingCode.includes('const operationalNumber = pinataNormalizeChoiceValue(design.pinata_number || design.number || design.code)') && bookingCode.includes('pinataOperationalNumberFromDesignId(design.id || (index + 1))') && bookingCode.includes("typeof getAuthHeaders === 'function'") && bookingCode.includes('pinata_number'));
+check('Booking pinata picker preserves operational 501-style numbers', bookingCode.includes('function bookingPinataNumbersHelper') && bookingCode.includes('bookingPinataNumbersHelper()?.OPERATIONAL_BASE || 500') && bookingCode.includes('function bookingPinataNumberValue') && bookingCode.includes('function bookingPinataNumberDisplay') && bookingCode.includes('function pinataOperationalNumberFromDesignId') && bookingCode.includes('const operationalNumber = pinataNormalizeChoiceValue(design.pinata_number || design.number || design.code)') && bookingCode.includes('pinataOperationalNumberFromDesignId(design.id || (index + 1))') && bookingCode.includes("typeof getAuthHeaders === 'function'") && bookingCode.includes('pinata_number'));
 check('Timeline pinata hover and room labels expose operational numbers consistently',
-    uiCode.includes('function tooltipPinataNumberValue')
+    uiCode.includes('const PINATA_NUMBERS_ROOT')
+    && uiCode.includes('PINATA_NUMBERS_ROOT.PinataNumbers')
+    && uiCode.includes('const OPERATIONAL_BASE = 500')
+    && uiCode.includes('function valueFromBooking(booking = {}, options = {})')
+    && uiCode.includes('function fromCatalogId(id)')
+    && uiCode.includes('function tooltipPinataNumberValue')
     && uiCode.includes('tooltip._lastPinataNumber')
     && uiCode.includes('🪅 Номер піньяти:')
-    && uiCode.includes('return String(500 + id)')
+    && bookingCode.includes('function bookingPinataNumbersHelper')
+    && timelineCode.includes('function timelinePinataNumbersHelper')
+    && !bookingCode.includes('normalized.match(/^P-(\\d{1,3})$/i)')
+    && !timelineCode.includes('normalized.match(/^P-(\\d{1,3})$/i)')
     && timelineCode.includes('return `ПІН ${timelinePinataNumberDisplay(pinataNumber)}`')
     && !timelineCode.includes('return tightDensity ? `ПІН ${displayNumber}` : `Піньята ${displayNumber}`'));
 check('Booking creation refreshes timeline truth and pinata detail boxes stay dark themed', bookingCode.includes('refreshCreatedBookingTimelineSnapshot') && bookingCode.includes('getSelectedProgramIdFromUi') && timelineResourceIdentityCode.includes('function timelineBookingsForLine') && timelineCode.includes('timelineBookingsForLine(bookings, line)') && apiCode.includes('options.fresh') && darkModeCss.includes('body.dark-mode .pinata-mode-section') && darkModeCss.includes('body.dark-mode .pinata-service-section label'));

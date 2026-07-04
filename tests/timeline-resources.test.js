@@ -46,6 +46,18 @@ function read(rel) {
     return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+function pinataNumbersHarness() {
+    const ui = read('js/ui.js');
+    const start = ui.indexOf('const PINATA_NUMBERS_ROOT');
+    const end = ui.indexOf('function getSharedPinataNumbers', start);
+    assert.ok(start >= 0 && end > start, 'shared PinataNumbers helper slice exists');
+    const context = { console };
+    vm.createContext(context);
+    vm.runInContext(ui.slice(start, end), context);
+    assert.ok(context.PinataNumbers, 'PinataNumbers is registered on globalThis');
+    return context.PinataNumbers;
+}
+
 function plain(value) {
     return JSON.parse(JSON.stringify(value));
 }
@@ -2454,12 +2466,26 @@ test('short timeline activity blocks use compact labels while preserving full ti
     assert.match(css, /\.booking-block \.timeline-compact-booking-label\s*\{[\s\S]*text-overflow:\s*ellipsis/);
 });
 
+test('shared PinataNumbers helper owns operational number normalization', () => {
+    const helper = pinataNumbersHarness();
+
+    assert.equal(helper.OPERATIONAL_BASE, 500);
+    assert.equal(helper.normalize('P-001'), '501');
+    assert.equal(helper.normalize('P 036'), '536');
+    assert.equal(helper.normalize('№505'), '505');
+    assert.equal(helper.display('505'), '№505');
+    assert.equal(helper.extractFromText('Піньята Фудкорт №505'), '505');
+    assert.equal(helper.fromCatalogId(36), '536');
+    assert.equal(helper.valueFromBooking({ category: 'pinata', pinata_number: 'P-005' }), '505');
+    assert.equal(helper.isPinataBooking({ category: 'pinata' }), true);
+});
+
 test('pinata compact labels preserve operational numbers without using duration as a fallback', () => {
     const timeline = read('js/timeline.js');
     const start = timeline.indexOf('function timelineCompactLabelCandidate');
     const end = timeline.indexOf('function getTimelineLineGrid');
     assert.ok(start >= 0 && end > start, 'timeline compact helper slice exists');
-    const context = { console };
+    const context = { console, PinataNumbers: pinataNumbersHarness() };
     vm.createContext(context);
     vm.runInContext(`
         ${timeline.slice(start, end)}
@@ -2499,7 +2525,7 @@ test('pinata compact labels preserve operational numbers without using duration 
 
 test('booking tooltip exposes operational pinata number on hover', () => {
     const ui = read('js/ui.js');
-    const start = ui.indexOf('function tooltipNormalizePinataNumber');
+    const start = ui.indexOf('const PINATA_NUMBERS_ROOT');
     const end = ui.indexOf('function showTooltip', start);
     assert.ok(start >= 0 && end > start, 'tooltip pinata helper slice exists');
     const context = { console };
@@ -2533,6 +2559,7 @@ test('booking pinata details and picker eligibility preserve operational pinata 
     assert.ok(detailStart >= 0 && detailEnd > detailStart, 'booking pinata detail slice exists');
 
     const context = {
+        PinataNumbers: pinataNumbersHarness(),
         console,
         escapeHtml: value => String(value ?? '')
             .replace(/&/g, '&amp;')

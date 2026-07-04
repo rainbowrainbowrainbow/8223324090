@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.2",
+  "version": "0.78.3",
   "eventGenix": {
-    "releaseLabel": "Production console cleanup"
+    "releaseLabel": "Пульс HR: стриманий перемикач"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

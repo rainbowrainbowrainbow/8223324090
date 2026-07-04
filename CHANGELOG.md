@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.3 - Пульс HR: стриманий перемикач
+
+### HR / Пульс компанії / Navigation polish / (Клешня, 04.07.2026) [codex]
+- **Кнопки `Сьогодні`, `Графік` і `Звіти` стали стриманішими** - прибрано фіолетовий градієнт, glow і масивну активну заливку; активний стан тепер читається через тонкий accent-border і лінію.
+- **Підписи уточнено під реальні сценарії** - `Хто на зміні`, `Заплановані зміни`, `Аналітика по людям` стартують з великої літери і відповідають змісту вкладок.
+- **Desktop-розкладку розтягнуто на всю ширину секції** - перемикач використовує три рівні колонки `repeat(3, minmax(0, 1fr))`, а кожна кнопка займає ширину своєї колонки.
+- **Mobile лишився у знайомому horizontal scroll** - картки не ламають висоту і не накладають текст, а довгі підписи залишаються в межах кнопки.
+- **UX і доступність закріплено guardrails** - активна HR Pulse кнопка отримує `aria-current="page"`, focus-visible має видимий outline, а disabled/loading стани мають захист у CSS і click handler.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR Pulse frontend, shared pulse tokens, reports copy, tests і version/cache refs.
+
+---
+
 ## v0.78.2 - Production console cleanup
 
 ### Production console cleanup / Runtime debt fixes / (Клешня, 04.07.2026) [codex]

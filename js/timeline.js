@@ -1336,10 +1336,16 @@ function timelineCompactLabelCandidate(value, maxLength = 10) {
 function timelineNormalizePinataNumber(value) {
     const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) return '';
-    return raw
+    const normalized = raw
         .replace(/^(?:№|#)\s*/u, '')
         .replace(/^P\s+(\d+)$/i, 'P-$1')
         .trim();
+    const legacy = normalized.match(/^P-(\d{1,3})$/i);
+    if (legacy) {
+        const id = Number(legacy[1]);
+        if (Number.isInteger(id) && id >= 1 && id <= 36) return String(500 + id);
+    }
+    return normalized;
 }
 
 function timelineExtractPinataNumberFromText(value) {

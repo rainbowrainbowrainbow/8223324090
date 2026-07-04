@@ -2481,7 +2481,7 @@ test('pinata compact labels preserve operational numbers without using duration 
     );
     assert.equal(
         hooks.timelineCompactActivityLabel({ category: 'pinata', pinataNumber: 'P-001' }, null, 'Пін(15)', 'Піньята', 'tiny'),
-        'ПІН P-001'
+        'ПІН №501'
     );
     assert.equal(
         hooks.timelineCompactActivityLabel({ category: 'pinata', label: 'Піньята №501' }, null, 'Пін(15)', '', 'short'),
@@ -2531,6 +2531,8 @@ test('booking pinata details and picker eligibility preserve operational pinata 
 
     assert.equal(hooks.isPinataProgram({ id: 'activity-501', code: 'Пін(15)', name: 'Піньята' }), true);
     assert.equal(hooks.bookingPinataNumberValue({ category: 'pinata', pinata_number: '501', label: 'Пін(15)' }), '501');
+    assert.equal(hooks.bookingPinataNumberValue({ category: 'pinata', pinata_number: 'P-001', label: 'Пін(15)' }), '501');
+    assert.equal(hooks.bookingPinataNumberValue({ category: 'pinata', pinata_number: 'P-036', label: 'Пін(15)' }), '536');
     assert.deepEqual(
         hooks.buildPinataDesignChoices({ designs: [{ id: 'design-501', pinata_number: '501', name: 'Кругла піньята' }] }).map(choice => ({
             value: choice.value,
@@ -2539,6 +2541,18 @@ test('booking pinata details and picker eligibility preserve operational pinata 
         })),
         [{ value: '501', number: '501', title: 'Кругла піньята' }]
     );
+    assert.deepEqual(
+        hooks.buildPinataDesignChoices({ designs: [{ id: 1, name: 'Кругла піньята' }, { id: 36, name: 'Фінальна піньята' }] }).map(choice => ({
+            value: choice.value,
+            number: choice.number,
+            title: choice.title
+        })),
+        [
+            { value: '501', number: '501', title: 'Кругла піньята' },
+            { value: '536', number: '536', title: 'Фінальна піньята' }
+        ]
+    );
+    assert.equal(hooks.buildPinataDesignChoices({ designs: [] }).length, 36);
 
     const details = hooks.renderPinataDetailRows({
         category: 'pinata',
@@ -2548,6 +2562,16 @@ test('booking pinata details and picker eligibility preserve operational pinata 
     });
     assert.match(details, /Номер піньяти:/);
     assert.match(details, /№501/);
+    assert.doesNotMatch(details, /P-001/);
+
+    const legacyDetails = hooks.renderPinataDetailRows({
+        category: 'pinata',
+        pinata_mode: 'park',
+        pinata_number: 'P-001',
+        pinata_filler: 'M'
+    });
+    assert.match(legacyDetails, /№501/);
+    assert.doesNotMatch(legacyDetails, /P-001/);
 
     const fallbackDetails = hooks.renderPinataDetailRows({
         category: 'pinata',

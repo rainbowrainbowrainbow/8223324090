@@ -51,12 +51,12 @@ function isPinataProgram(program) {
 
 const CLIENT_PINATA_FILLER_VALUE = 'client_filler';
 const CLIENT_PINATA_FILLER_LABEL = 'Свій наповнювач клієнта';
+const PINATA_OPERATIONAL_NUMBER_BASE = 500;
 
-const PINATA_PICKER_FALLBACK_DESIGNS = [
-    { id: 'P-001', name: 'Кругла піньята', emoji: '🪅', meta: 'Базова форма' },
-    { id: 'P-002', name: 'Фігурна піньята', emoji: '⭐', meta: 'PRO форма' },
-    { id: 'P-003', name: 'Святкова піньята', emoji: '🎉', meta: 'Каталог' }
-];
+const PINATA_PICKER_FALLBACK_DESIGNS = Array.from({ length: 36 }, (_, index) => {
+    const number = String(PINATA_OPERATIONAL_NUMBER_BASE + index + 1);
+    return { id: number, number, name: `Піньята №${number}`, emoji: '🪅', meta: 'Каталог піньят' };
+});
 
 const PinataPickerState = {
     status: null,
@@ -81,10 +81,16 @@ function pinataFillerNumberLabel(value) {
 function normalizeBookingPinataNumber(value) {
     const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
     if (!raw) return '';
-    return raw
+    const normalized = raw
         .replace(/^(?:№|#)\s*/u, '')
         .replace(/^P\s+(\d+)$/i, 'P-$1')
         .trim();
+    const legacy = normalized.match(/^P-(\d{1,3})$/i);
+    if (legacy) {
+        const id = Number(legacy[1]);
+        if (Number.isInteger(id) && id >= 1 && id <= 36) return String(PINATA_OPERATIONAL_NUMBER_BASE + id);
+    }
+    return normalized;
 }
 
 function extractBookingPinataNumberFromText(value) {
@@ -169,12 +175,15 @@ function pinataNormalizeChoiceValue(value) {
     return String(value || '').trim();
 }
 
-function pinataNumberFromId(prefix, id) {
+function pinataOperationalNumberFromDesignId(id) {
     const raw = pinataNormalizeChoiceValue(id);
     if (!raw) return '';
-    if (/^[A-ZА-ЯІЇЄҐ]+[-\d]/i.test(raw)) return raw;
-    if (/^\d+$/.test(raw)) return `${prefix}-${raw.padStart(3, '0')}`;
-    return raw;
+    if (/^\d+$/.test(raw)) return String(PINATA_OPERATIONAL_NUMBER_BASE + Number(raw));
+    return normalizeBookingPinataNumber(raw);
+}
+
+function pinataNumberFromId(prefix, id) {
+    return pinataOperationalNumberFromDesignId(id);
 }
 
 function pinataEmojiForText(text, fallback = '🪅') {
@@ -213,9 +222,10 @@ async function loadPinataPickerStatus() {
     if (PinataPickerState.promise) return PinataPickerState.promise;
     PinataPickerState.promise = (async () => {
         try {
-            const token = localStorage.getItem('pzp_token');
             const res = await fetch('/api/warehouse/pinata-status', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: typeof getAuthHeaders === 'function'
+                    ? getAuthHeaders(false)
+                    : { 'Authorization': `Bearer ${localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token') || ''}` }
             });
             const data = await res.json();
             PinataPickerState.status = data?.success ? data : { success: false };
@@ -234,7 +244,9 @@ function buildPinataDesignChoices(status = PinataPickerState.status) {
     const source = designs.length ? designs : PINATA_PICKER_FALLBACK_DESIGNS;
     return source.map((design, index) => {
         const operationalNumber = pinataNormalizeChoiceValue(design.pinata_number || design.number || design.code);
-        const number = operationalNumber || pinataNumberFromId('P', design.id || (index + 1));
+        const number = operationalNumber
+            ? normalizeBookingPinataNumber(operationalNumber)
+            : pinataOperationalNumberFromDesignId(design.id || (index + 1));
         const title = design.name || design.title || `Піньята ${number}`;
         return {
             kind: 'design',

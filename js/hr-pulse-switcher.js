@@ -5,7 +5,7 @@
         Object.freeze({
             id: 'today',
             label: 'Сьогодні',
-            subtitle: 'Огляд дня',
+            subtitle: 'Хто на зміні',
             icon: 'calendar',
             tone: 'people',
             tab: 'today',
@@ -14,7 +14,7 @@
         Object.freeze({
             id: 'schedule',
             label: 'Графік',
-            subtitle: 'Розклад змін',
+            subtitle: 'Заплановані зміни',
             icon: 'clock',
             tone: 'schedule',
             tab: 'schedule',
@@ -24,7 +24,7 @@
         Object.freeze({
             id: 'reports',
             label: 'Звіти',
-            subtitle: 'Аналітика',
+            subtitle: 'Аналітика по людям',
             icon: 'report',
             tone: 'reports',
             tab: 'reports',

@@ -409,6 +409,10 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         "'data-nav-id': pulseItem.id",
         "'data-tab': pulseItem.tab || pulseItem.id",
         "'data-href': pulseItem.href || ''",
+        "tab.matches(':disabled, [aria-disabled=\"true\"], [aria-busy=\"true\"]')",
+        ".hr-nav--pulse .hr-tab[aria-current]",
+        "removeAttribute('aria-current')",
+        "setAttribute('aria-current', 'page')",
         'applyPulseCardBadges',
         'setPulseCardBadge'
     ]) {
@@ -451,6 +455,9 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
         '.hr-pulse-card-badge',
         '.hr-pulse-card-line',
         '.hr-nav--pulse .hr-tab.hr-pulse-card:focus-visible',
+        '.hr-nav--pulse .hr-tab.hr-pulse-card:disabled',
+        '.hr-nav--pulse .hr-tab.hr-pulse-card[aria-disabled="true"]',
+        '.hr-nav--pulse .hr-tab.hr-pulse-card[aria-busy="true"]',
         '@media (prefers-reduced-motion: reduce)'
     ]) {
         assert.ok(HR_HTML.includes(token), `missing HR Pulse command-card CSS token ${token}`);
@@ -458,18 +465,19 @@ test('HR Pulse command cards replace legacy nav PNG switcher without weakening r
 
     for (const token of [
         'flex-wrap: nowrap;',
-        'width: auto;',
-        'width: fit-content;',
+        'width: 100%;',
+        'grid-template-columns: repeat(3, minmax(0, 1fr));',
         'content: none;',
+        'max-width: none;',
         'flex: 0 0 var(--pulse-switcher-card-width);',
         'max-width: var(--pulse-switcher-card-max);',
         '@media (max-width: 1120px)',
         'overflow-x: auto;',
         'scrollbar-width: none;'
     ]) {
-        assert.ok(HR_HTML.includes(token), `missing HR Pulse compact shell token ${token}`);
+        assert.ok(HR_HTML.includes(token), `missing HR Pulse full-width shell token ${token}`);
     }
-    assert.equal(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), false, 'HR Pulse must not return to full-width 3-column grid');
+    assert.ok(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), 'HR Pulse should use full-width 3-column desktop grid');
 
     for (const legacyToken of [
         'today-nav-light.png',
@@ -1281,7 +1289,7 @@ test('HR dark and mobile CSS covers nav counts, people accordion, KPI, and tap t
     assert.ok(HR_HTML.includes('.hr-nav--pulse .hr-nav-items'));
     assert.ok(HR_HTML.includes('flex-wrap: nowrap;'));
     assert.ok(HR_HTML.includes('overflow-x: auto;'));
-    assert.equal(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'), false);
+    assert.ok(HR_HTML.includes('grid-template-columns: repeat(3, minmax(0, 1fr));'));
     assert.ok(HR_HTML.includes('body.dark-mode .hr-nav--pulse .hr-tab.active'));
 
     const bodyRule = HR_HTML.match(/\.hr-people-bucket-body\s*\{([\s\S]*?)\}/)?.[1] || '';

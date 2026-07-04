@@ -20,6 +20,23 @@ Railway change, CI change, or product-code edit was performed in this task.
 - Do not run local DB/API/integration checks for this task; the owner chose live
   validation after release instead of local DB setup.
 
+## Current Release Branch Status
+
+Updated after the approved release-branch push on 2026-07-04:
+
+- Active My Day release/PR branch: `codex/my-day-command-center-release`.
+- Remote branch: `origin/codex/my-day-command-center-release`.
+- Release commit: `4560c6bb3 release: my day command center 0.78.0`.
+- Current release metadata: `v0.78.0 - My Day command center`.
+- This branch contains the My Day refactor, My Day traceability docs, and the
+  canonical `0.78.0` version/cache/changelog/release-note sync.
+- Production deploy target is not changed by this note. Repo instructions still
+  name `codex/timeline-leads-hardening` as the Railway production target until
+  the owner explicitly confirms merge/deploy behavior.
+- Next expected step: open a PR from `codex/my-day-command-center-release` into
+  the confirmed deploy branch, review CI/diff, then separately approve
+  merge/deploy/live QA.
+
 ## Preflight State
 
 - Branch: `codex/timeline-leads-hardening`.

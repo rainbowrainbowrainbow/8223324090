@@ -1,8 +1,8 @@
 # Event Genix CRM - Codex Working Rules
 
 These rules are for Codex and other coding agents working in this repository.
-They are intentionally operational and should be followed before local habits or
-stale handoff notes.
+They are operational, project-specific, and should be followed before local habits or stale handoff notes.
+Keep this file practical: prefer short rules that prevent repeated mistakes.
 
 ## Project Shape
 
@@ -27,7 +27,7 @@ stale handoff notes.
 - Runtime pins live in `package.json` `engines`, `.nvmrc`, and `.node-version`.
 - Railway/Nixpacks should use Node 22 from the package engines or `.nvmrc`; a Railway build falling back to Node 18 is a configuration bug.
 - Do not run verification, install, or deploy work on Node 18 or Node 24 and report it as representative.
-- Run `npm run check:runtime` before trusting local results if there is any doubt.
+- Use `npm run check:runtime` before trusting local results if there is any doubt.
 - If the host shell is on the wrong runtime, use `npx -y -p node@22 -p npm@10 -c "<command>"`, for example `npx -y -p node@22 -p npm@10 -c "npm test"`.
 
 ## Before Editing
@@ -45,6 +45,8 @@ stale handoff notes.
 - Write user-facing progress summaries, release notes, changelog entries, and deploy summaries in Ukrainian unless the user explicitly asks for another language.
 
 ## Commands That Exist
+
+These commands are available. They are not all mandatory for every task; use the delivery and testing rules below to decide what is needed.
 
 - Install dependencies: `npm install`
 - Start server: `npm start`
@@ -89,18 +91,41 @@ Notes:
 - CI runs on push and pull request with Node 22 from `.node-version` and npm `10.9.8`.
 - CI installs with `npm ci` and runs `npm test`.
 - The CI gate covers runtime alignment, version sync, access/sidebar drift, auth-boundary ownership, static surface ownership, CSS surface ownership, API route surface ownership, upload/storage surface ownership, Service Worker cache/offline policy ownership, scheduler side-effect ownership, DB startup surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, and static UI smoke.
-- CI does not run PostgreSQL-backed API or integration tests. Use `npm run test:api` or `npm run test:integration` against a configured live app/database when touching DB-backed route behavior.
+- CI does not run PostgreSQL-backed API or integration tests.
 - CI does not provide a style lint, TypeScript typecheck, production deploy proof, browser automation, or manual UX/accessibility review.
+
+## Standard Delivery Workflow
+
+Preferred workflow for normal product work:
+
+`implement -> commit -> push -> CI -> deploy -> live-site QA`
+
+- When the user asks to deliver, release, deploy, ship, finish end-to-end, commit, push, or release product work, proceed through commit, push, CI, deploy, and live-site QA without asking for repeated confirmation.
+- Do not turn normal delivery into a local-test-only workflow by default.
+- Use CI as the normal automated gate after push.
+- Use targeted live-site QA as the normal product verification after deploy.
+- If CI fails, diagnose the failed check before continuing delivery.
+- If live-site QA fails, report the failed scenario, likely cause, and next fix/rollback step.
+- If local verification is skipped, say so clearly in the final summary instead of implying that local tests passed.
+
+## Deploy And Branch Boundaries
+
+- Railway production target branch should be `codex/timeline-leads-hardening`.
+- Historical docs mention a `deployed` production branch, but it is not the active deploy source. Do not push release or rollback commits to `deployed` unless the user explicitly says Railway was reconfigured to that branch.
+- If Railway is temporarily attached to another branch, use that branch explicitly and pass it as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
+- Never upload files through the GitHub UI.
+- If the current user task explicitly asks for deploy, use the active workflow and do not ask for a second deploy confirmation.
+- Stop and ask before changing Railway project settings, environment ownership, deploy owner, production secrets, or production settings.
 
 ## Versioning And Changelog
 
 - `package.json` is the release source of truth: `version` is the canonical number and `eventGenix.releaseLabel` is the canonical visible release label.
 - When the user asks for the current project version, run `npm run version:current` first. If it reports the branch is behind upstream, fast-forward with `git pull --ff-only` or clearly report that the local checkout is stale; do not answer from raw `package.json` alone.
-- Active release train follows `package.json`. At this update the current package version is `0.77.43`, so mini updates increment the `0.77.x` patch only unless the user explicitly requests a new version-policy transition.
+- Do not infer the current active version from this AGENTS.md file. Use `package.json` and `npm run version:current`.
 - Do not return active release markers to old `43.x.x`, `0.44.x`, `0.45.x`, `0.46.x`, `0.47.x`, `0.48.x`, `0.49.x`, or older `0.50.x`-`0.76.x` lines without an explicit version-policy task. Existing historical changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
 - `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
-- For large UI or product work, prefer reviewable release hygiene: commit the product/UI change first, then make a separate version/cache-sync commit (`package.json`, `package-lock.json`, `index.html`, `CHANGELOG.md`, `sw.js`, and generated cache tags) only when preparing the release. Do not mix generated cache-tag churn into the main UI diff unless the user explicitly asks for a single release commit.
-- For user-visible or deployable product changes:
+- For large UI or product work, prefer reviewable release hygiene: commit the product/UI change first, then make a separate version/cache-sync commit only when preparing the release. Do not mix generated cache-tag churn into the main UI diff unless the user explicitly asks for a single release commit.
+- For user-visible or deployable product changes, apply release/versioning rules automatically as part of delivery when relevant:
   - update `package.json` version intentionally;
   - run `node scripts/version-sync.js` to check current state;
   - use `npm run version:sync` only when you intend to update generated version references;
@@ -108,21 +133,20 @@ Notes:
   - after deploy, use `npm run version:smoke -- https://<live-crm-host>` to verify live `/api/version` and login HTML match `package.json`;
   - add/update the `index.html` changelog modal entry;
   - update `CHANGELOG.md` if the change is release-relevant.
-- User-facing release notes must be written in Ukrainian:
-  - write `index.html` "Що нового" modal headings and bullet explanations in Ukrainian;
-  - write new `CHANGELOG.md` release summaries in Ukrainian;
-  - keep technical tokens such as endpoints, file paths, role ids, package names, and API names in their canonical form when needed.
+- User-facing release notes must be written in Ukrainian.
 - Pure documentation-only changes normally do not need a product version bump unless the user explicitly asks for a release marker.
 - If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, or service-worker cache versions disagree, trust `package.json` first and report the mismatch instead of guessing.
 
-## Deploy And Branch Boundaries
+## Test Credentials And Local Secrets
 
-- Railway production target branch should be `codex/timeline-leads-hardening`.
-- Historical docs mention a `deployed` production branch, but it is not the active deploy source. Do not push release or rollback commits to `deployed` unless the user explicitly says Railway was reconfigured to that branch.
-- If Railway is temporarily attached to another branch, use that branch explicitly and pass it as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
-- Codex must not deploy or alter production settings unless the user explicitly asks and confirms the target environment.
-- Never upload files through the GitHub UI.
-- If a task depends on changing the Railway project, environment, or deploy owner, stop and ask instead of inferring from stale docs.
+- If EventGenix CRM test credentials are required for live-site QA, load them locally from:
+  `C:\Users\Plotva\.eventgenix\codex-crm-secrets.ps1`
+- It is acceptable to tell the agent: "підхопи EventGenix CRM secrets з C:\Users\Plotva\.eventgenix\codex-crm-secrets.ps1".
+- Never commit this file.
+- Never copy secrets into repo files, docs, migrations, tests, screenshots, PR descriptions, logs, terminal output, or chat responses.
+- Never print secret values in terminal output, logs, Markdown, PR descriptions, screenshots, or final summaries.
+- If the file is unavailable, mark live-site QA as blocked instead of inventing credentials.
+- Do not add shared/default user passwords to code, migrations, docs, tests, or examples.
 
 ## Database And Migrations
 
@@ -134,7 +158,6 @@ Notes:
 - New migrations numbered `162_*.sql` or higher must include `MIGRATION_KIND`, `SAFETY`, and `ROLLBACK` headers; destructive or date-scoped migrations need the extra headers documented in `DB_MIGRATION_GOVERNANCE.md`.
 - Do not run destructive migrations or data cleanup without explicit user approval.
 - If generated or seeded data is involved, identify the source-of-truth script or migration before editing output.
-- Do not add shared/default user passwords to code, migrations, docs, tests, or examples.
 - First-user bootstrap must be explicit through `BOOTSTRAP_CREATOR_*` env vars. Local-only seed requires `ALLOW_DEV_USER_SEED=true` and `DEV_SEED_ADMIN_PASSWORD`; it must remain blocked in production-like environments.
 - Legacy startup code must not reset existing `users.password_hash` values. Use authenticated user-management or an operator-run script for intentional rotation.
 
@@ -145,45 +168,54 @@ Notes:
   - `js/auth.js` frontend `PAGE_ACCESS`
   - `js/components/sidebar.js` `NAV_ITEMS` and `SIDEBAR_ACCESS`
 - When changing pages, roles, navigation, or access rules, inspect all three areas and keep them consistent.
+- Do not change auth, roles, permissions, or access boundaries without explicit user approval unless the user task explicitly asks for that exact change.
 - Preserve existing loading, error, empty, disabled, focus, keyboard, and ARIA behavior when touching shared UI.
 - Prefer existing helpers and patterns in `js/ui.js`, `js/api.js`, `js/auth.js`, and `js/components/sidebar.js`.
 - Do not replace shared UI patterns with one-off behavior unless the surrounding code already does that.
 
 ## Booking Detail Source-Of-Truth Guard
 
-- Booking detail modal ownership is protected: `#bookingModal` and
-  `#bookingDetails` are rendered by the canonical booking modules, primarily
-  `js/booking.js`, with supporting renderers in `js/booking-banquet-detail.js`
-  and `js/booking-package-renderer.js`.
-- Do not add or keep an alternate booking details renderer in `js/timeline.js`
-  or another non-booking module. Timeline code may call `showBookingDetails(...)`
-  and collect diagnostics, but it must not write its own booking details markup.
-- Booking identity, linked booking, timeline placement, activity display, and
-  detail source fields are protected contracts: `id`, `linkedTo`, `linked_to`,
-  `lineId`, `line_id`, `resourceId`, `resource_id`, `date`, `time`, `duration`,
-  `room`, `status`, `programId`, `program_id`, `programName`, `program_name`,
-  `programCode`, `program_code`, `label`, `/api/bookings/detail/:id`,
-  `apiGetBookingById(...)`, `resolveBookingDetailsRecord(...)`, and
-  `showBookingDetails(...)`.
-- Changing those field priorities, endpoint sources, DB mapping, or modal
-  ownership requires explicit user approval before code edits, even if the
-  change appears to be a fallback or diagnostic fix.
-- If canonical booking details fail to open, fix the canonical path or add a
-  guarded diagnostic. Do not ship a parallel recovery UI unless the user
-  explicitly approves that product behavior.
-- `npm run check:timeline-protected-surface` hashes critical source blocks
-  listed in `config/timelineProtectedSurface.js` and documented in
-  `docs/TIMELINE_PROTECTED_SURFACE.md`. If one of those blocks changes, update
-  the manifest only with explicit approval and a new focused regression test.
+- Booking detail modal ownership is protected: `#bookingModal` and `#bookingDetails` are rendered by the canonical booking modules, primarily `js/booking.js`, with supporting renderers in `js/booking-banquet-detail.js` and `js/booking-package-renderer.js`.
+- Do not add or keep an alternate booking details renderer in `js/timeline.js` or another non-booking module. Timeline code may call `showBookingDetails(...)` and collect diagnostics, but it must not write its own booking details markup.
+- Booking identity, linked booking, timeline placement, activity display, and detail source fields are protected contracts: `id`, `linkedTo`, `linked_to`, `lineId`, `line_id`, `resourceId`, `resource_id`, `date`, `time`, `duration`, `room`, `status`, `programId`, `program_id`, `programName`, `program_name`, `programCode`, `program_code`, `label`, `/api/bookings/detail/:id`, `apiGetBookingById(...)`, `resolveBookingDetailsRecord(...)`, and `showBookingDetails(...)`.
+- Changing those field priorities, endpoint sources, DB mapping, or modal ownership requires explicit user approval before code edits, even if the change appears to be a fallback or diagnostic fix.
+- If canonical booking details fail to open, fix the canonical path or add a guarded diagnostic. Do not ship a parallel recovery UI unless the user explicitly approves that product behavior.
+- `npm run check:timeline-protected-surface` hashes critical source blocks listed in `config/timelineProtectedSurface.js` and documented in `docs/TIMELINE_PROTECTED_SURFACE.md`. If one of those blocks changes, update the manifest only with explicit approval and a new focused regression test.
 
 ## Testing Expectations
 
-- Run the smallest relevant focused tests first.
-- For repo-wide sanity, run `npm test`; it does not require a live app or database.
-- For route/service changes, prefer `node --test tests/<related>.test.js` when a related test exists.
-- For frontend/static changes, run `npm run test:ui` when relevant.
-- For broad API changes, run `npm run test:api` or `npm run test:integration` against a configured local server and DB when feasible.
-- If a test cannot be run because the environment is missing PostgreSQL, env vars, or a running server, report that explicitly.
+- Preferred verification model for normal product work: CI + targeted live-site QA.
+- Do not create separate local-test tasks by default.
+- Do not block normal delivery on local test runs unless the user explicitly asks, CI is failing, or the bug cannot be diagnosed from CI/live-site behavior.
+- GitHub Actions runs `npm test` on push and pull request; treat CI as the normal automated gate.
+- Use targeted QA for the changed product area:
+  - booking changes: verify booking creation/edit/detail/timeline behavior on the live site;
+  - calendar or schedule changes: verify the relevant date/resource views;
+  - client changes: verify client create/edit/search/detail flows;
+  - auth/navigation changes: verify affected roles and visible/blocked pages;
+  - reporting/dashboard changes: verify the changed widgets, filters, and empty/error states.
+- For live-site QA, use the deployed CRM environment and test credentials loaded locally from the EventGenix CRM secrets file.
+- Live-site QA must use only test accounts and safe test records.
+- Do not create, edit, delete, invoice, charge, message, export, or otherwise affect real customer/production business data unless the user explicitly asks for that exact action.
+- If a QA scenario requires production-like data, prefer read-only inspection first and report what needs explicit approval.
+- If PostgreSQL-backed behavior changes and CI is insufficient, use live-site QA first; use `npm run test:api` or `npm run test:integration` only when needed to diagnose or verify a risky backend issue.
+- If local verification is skipped, report it clearly in the final summary.
+
+## Task Planning Style
+
+- When asked to improve, rewrite, or strengthen tasks, act as a task amplifier, not as a generator of a huge plan from scratch.
+- Use existing chat context and current Codex tasks first.
+- Default to 3-6 task cards.
+- Use more than 6 tasks only for genuinely complex work touching database, auth, billing, protected booking/timeline flow, production config, external integrations, or broad cross-module changes.
+- Maximum 8 task cards unless the user explicitly asks for a deeper breakdown.
+- Prefer merging micro-steps into larger practical task cards.
+- Keep task cards copyable in separate Markdown blocks when the user asks for Codex-ready tasks.
+- Each task card should include: Goal, Scope, Steps, Done when, Live-site QA, and Notes/Risks.
+- Replace large "Bonus Audit Task" plans with a compact `Final sanity pass` unless the change is high-risk.
+- Use deep audit only for database, auth, billing, protected booking/timeline flow, production config, or broad cross-module work.
+- Do not ask clarifying questions if a safe assumption can be made. Ask only when proceeding could break database, auth, billing, protected booking/timeline flow, production config, production secrets, or Railway settings.
+- Write task planning output in Ukrainian unless the user asks otherwise.
+- Explain owner-facing risks in plain language suitable for a non-programmer product owner.
 
 ## Documentation Sources
 

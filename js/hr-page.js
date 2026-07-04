@@ -1267,6 +1267,7 @@ function bindHrNavClicks() {
     nav.addEventListener('click', (event) => {
         const tab = event.target.closest('.hr-tab');
         if (!tab || !nav.contains(tab)) return;
+        if (tab.matches(':disabled, [aria-disabled="true"], [aria-busy="true"]')) return;
         if (tab.dataset.href) {
             window.location.href = tab.dataset.href;
             return;
@@ -1340,6 +1341,7 @@ function cssEscapeValue(value) {
 
 function syncHrNavActive(target, bucket = null) {
     document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.hr-nav--pulse .hr-tab[aria-current]').forEach(t => t.removeAttribute('aria-current'));
     const effectiveBucket = target === 'team'
         ? (bucket || activePeopleBucket || firstVisiblePeopleBucketId())
         : bucket;
@@ -1348,6 +1350,7 @@ function syncHrNavActive(target, bucket = null) {
     const tab = document.querySelector(`.hr-tab[data-tab="${tabSelector}"]${bucketSelector}`)
         || document.querySelector(`.hr-tab[data-tab="${tabSelector}"]`);
     tab?.classList.add('active');
+    if (tab?.classList.contains('hr-pulse-card')) tab.setAttribute('aria-current', 'page');
     scrollActiveHrPulseCardIntoView();
 }
 

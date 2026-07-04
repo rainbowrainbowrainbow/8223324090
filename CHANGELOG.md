@@ -4,6 +4,17 @@
 
 ---
 
+## v0.77.119 - Pinata hover numbers
+
+### Pinata hover numbers / Timeline holiday labels / Cache refresh / (Клешня, 04.07.2026) [codex]
+- **Hover tooltip для піньят показує номер піньяти** - у підказці тепер є окремий рядок `Номер піньяти: №505`.
+- **Legacy `P-001..P-036` у tooltip мапиться у бізнес-номери `501..536`** - `P-005` показується як `№505`.
+- **Timeline у режимі `Свята` уніфікує піньяти як `ПІН №...`** - поруч більше не змішуються `ПІН` і повне `Піньята`.
+- **Regression guards покривають hover і holiday label** - тести фіксують номер у tooltip і єдиний compact label.
+- **API schema, DB, migrations, auth/roles і deploy config не змінювались** - release обмежений frontend UI, tests і version/cache refs.
+
+---
+
 ## v0.77.118 - Pinata catalog numbers
 
 ### Pinata catalog numbers / Legacy P-code display / Cache refresh / (Клешня, 04.07.2026) [codex]

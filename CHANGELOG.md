@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.120 - Durable menu photos
+
+### Durable menu photos / Postgres catalog blobs / Upload 404 / (Клешня, 04.07.2026) [codex]
+- **Нові Hermes/Product фото меню стали durable** - binary зображення записується в Postgres `catalog_image_blobs`, а public URL лишається `/uploads/catalog-images/items/...`.
+- **Missing upload більше не повертає CRM HTML** - `/uploads/catalog-images/items/*` спочатку читає Postgres blob, потім legacy local fallback, а відсутній файл завершується `404 image_not_found`.
+- **Локальний `uploads/catalog-images` більше не є primary source для нових записів** - filesystem лишається тільки legacy/dev fallback без повернення до `images/kitchen-menu/products` або `js/kitchen-menu-images.js`.
+- **Draft/apply контракт не змінено** - external draft пише тільки `products.ai_card_draft.imageStudio`, а `products.icon_url` оновлюється лише через явний apply.
+- **Regression guards оновлено** - `tests/image-storage.test.js`, `tests/hermes-routes.test.js`, booking image priority, storage-surface і UI smoke фіксують durable insert, image content-type і 404 замість HTML.
+- **Додано additive migration `276_catalog_image_blobs.sql`** - без data cleanup, auth/roles, env, secrets або Railway config changes.
+
+---
+
 ## v0.77.119 - Pinata hover numbers
 
 ### Pinata hover numbers / Timeline holiday labels / Cache refresh / (Клешня, 04.07.2026) [codex]

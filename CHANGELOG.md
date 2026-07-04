@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.125 - Durable catalog media
+
+### Durable catalog media / Catalog and program icon uploads / (Клешня, 04.07.2026) [codex]
+- **Згенеровані зображення елементів каталогу тепер ідуть у durable storage** - `routes/catalogs.js` передає Postgres query client у `uploadFromUrl`, тому applied Kie images записуються в `catalog_image_blobs`.
+- **Обкладинки каталогів використовують той самий durable шлях** - public URL лишається `/uploads/catalog-images/items/...`, але binary більше не залежить від ephemeral Railway filesystem.
+- **Program icon generation теж пише через Postgres-backed catalog image storage** - immediate і polled completion paths передають `query: pool` у `persistProgramIconImage`.
+- **Hermes `external-draft` повернено до draft-only контракту** - навіть якщо legacy caller передає `autoApply: true`, endpoint не змінює `products.icon_url`; apply лишається окремою дією після людського підтвердження.
+- **Regression guards закривають контракт storage call sites** - `tests/products-ia.test.js` і `tests/product-program-icon-generation.test.js` перевіряють, що ці шляхи не повертаються до local-only uploads.
+- **Schema, env, secrets, auth/roles і Railway settings не змінювались у цьому patch** - реліз повторно використовує `catalog_image_blobs`, доданий у `v0.77.120`.
+
+---
+
 ## v0.77.124 - Hermes auto apply lock
 
 ### Hermes auto apply lock / Concurrent menu-photo safety / (Клешня, 04.07.2026) [codex]

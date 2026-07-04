@@ -4,6 +4,18 @@
 
 ---
 
+## v0.77.118 - Pinata catalog numbers
+
+### Pinata catalog numbers / Legacy P-code display / Cache refresh / (Клешня, 04.07.2026) [codex]
+- **Старі fallback-коди `P-001` більше не показуються в картці бронювання** - legacy `P-001..P-036` мапляться у бізнес-номери `501..536`.
+- **Каталог піньят без явного `pinata_number` використовує operational range** - `pinata_designs.id = 1` стає `501`, `id = 36` стає `536`.
+- **Fallback picker більше не дає `P-001/P-002/P-003`** - якщо warehouse status недоступний, UI показує повний безпечний діапазон `501-536`.
+- **Запит `/api/warehouse/pinata-status` використовує спільні auth headers** - picker більше не падає у fallback через відсутній legacy `pzp_token`.
+- **Regression guards покривають screenshot-сценарій** - `pinata_number: "P-001"` у деталях має рендеритись як `№501`, не як `P-001`.
+- **API schema, DB, migrations, auth/roles і deploy config не змінювались** - release обмежений frontend UI, tests і version/cache refs.
+
+---
+
 ## v0.77.117 - Pinata operational numbers
 
 ### Pinata operational numbers / Booking details / Cache refresh / (Клешня, 04.07.2026) [codex]

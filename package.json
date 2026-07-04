@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.77.117",
+  "version": "0.77.118",
   "eventGenix": {
-    "releaseLabel": "Pinata operational numbers"
+    "releaseLabel": "Pinata catalog numbers"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

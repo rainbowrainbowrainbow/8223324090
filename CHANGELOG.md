@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.1 - My Day cleanup
+
+### Мій день / Cleanup header and history layout / (Клешня, 04.07.2026) [codex]
+- **Вкладку `Мій день` зроблено компактнішою** - прибрано дублюючий професійний блок і зайвий підпис під іменем, а професійний switcher лишився доступним на інших вкладках профілю.
+- **Навігацію профілю очищено** - `Мій день` став першою вкладкою компактного маршруту, а зайву пояснювальну фразу справа прибрано.
+- **Історію виконань перенесено в основний потік** - completed history тепер іде широкою лінією після composer, не дублюється у right aside і не створює повторний блок у сегменті `Готово`.
+- **Responsive polish і regression guards оновлено** - CSS обмежено контекстом My Day command center, а static UI checks фіксують відсутність старих текстів, порядок вкладок і позицію history strip.
+- **DB, migrations, API routes, auth/roles, env, secrets і Railway settings не змінювались** - реліз обмежений Profile/My Day frontend, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.0 - My Day command center
 
 ### Мій день / Командний центр продуктивності / (Клешня, 04.07.2026) [codex]

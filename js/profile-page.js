@@ -743,12 +743,12 @@ function profileWorkHubTabOrder() {
 
 function profileSecondaryTabOrder() {
     return [
+        { id: 'myday', label: 'Мій день', ownOnly: true },
         ...profileWorkHubTabOrder().map(({ id, label, ownOnly }) => ({ id, label, ownOnly })),
         { id: 'achievements', label: 'Досягнення' },
         { id: 'leaderboard', label: 'Рейтинг' },
         { id: 'inventory', label: 'Інвентар', ownOnly: true },
         { id: 'shop', label: 'Магазин', ownOnly: true },
-        { id: 'myday', label: 'Мій день', ownOnly: true },
         { id: 'quests', label: 'Щоденні', ownOnly: true },
         { id: 'season', label: 'Сезон' },
         { id: 'teams', label: 'Команди' },
@@ -1630,7 +1630,6 @@ function renderProfileSecondaryTabs() {
                     <span class="profile-kicker">Розділи профілю</span>
                     <strong>Робота, акаунт і розвиток</strong>
                 </div>
-                <small>Усі вкладки лишаються в одному компактному маршруті</small>
             </div>
             <div class="profile-secondary-tabs" role="tablist" aria-label="Додаткові розділи профілю">
                 ${body}
@@ -1669,7 +1668,6 @@ async function switchProfileSoonTab(tab) {
 
 function renderProfileMyDayCapsule(data = profileData, professionEntries = profileProfessionEntries()) {
     const name = profileDisplayName(data);
-    const primaryProfession = professionEntries[0] || profileProfessionEntry('default', { primary: true });
     const avatarAttrs = isOwnProfile
         ? ' role="button" tabindex="0" title="Змінити аватар" onclick="switchTab(\'settings\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();switchTab(\'settings\');}"'
         : '';
@@ -1679,7 +1677,6 @@ function renderProfileMyDayCapsule(data = profileData, professionEntries = profi
             <div class="profile-my-day-capsule-copy">
                 <span class="profile-kicker">Мій день</span>
                 <strong>${escapeHtml(name)}</strong>
-                <small>${escapeHtml(name)} · ${escapeHtml(primaryProfession.title)} · робочі + особисті задачі</small>
             </div>
         </div>`;
 }
@@ -1755,8 +1752,8 @@ function renderProfile() {
             `}
         </div>
 
-        <section class="profile-work-hub" aria-label="Робочий доступ профілю">
-            ${renderProfileProfessionSwitcher(professionEntries)}
+        <section class="profile-work-hub ${isMyDayTab ? 'profile-work-hub--myday' : ''}" aria-label="Робочий доступ профілю">
+            ${isMyDayTab ? '' : renderProfileProfessionSwitcher(professionEntries)}
             ${renderProfileSecondaryTabs()}
         </section>
 
@@ -5779,9 +5776,7 @@ function renderCabinetMyDaySegmentPrimary(activeSegment = getCabinetMyDaySegment
             }
         });
     }
-    if (segment === 'completed') {
-        return renderCabinetCompletedHistoryStrip();
-    }
+    if (segment === 'completed') return '';
     if (segment === 'private') {
         const tasks = context.privateTasks || cabinetList('private');
         const activeInlineTaskId = cabinetResolveActiveInlineTaskId(tasks);
@@ -5819,7 +5814,6 @@ function renderCabinetMyDaySecondary(activeSegment = getCabinetMyDaySegment(), c
                 <div class="cabinet-section-head"><h3>Сигнали</h3><span>CRM</span></div>
                 ${renderCabinetPulseCluster()}
             </section>
-            ${segment === 'completed' ? '' : renderCabinetCompletedHistoryStrip()}
         </aside>`;
 }
 
@@ -5870,6 +5864,7 @@ function renderMyDayCommandCenterTab() {
                 </div>
             </div>
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
+            ${renderCabinetCompletedHistoryStrip()}
             ${activeSegment === 'today' ? renderCabinetMyDayListModeToggle() : ''}
             ${renderCabinetLoadNotice()}
             <div class="cabinet-day-workspace" id="cabinetMyDaySegmentPanel" role="tabpanel" data-active-today="${activeFocus}" data-cabinet-my-day-segment-panel="${escapeHtml(activeSegment)}">

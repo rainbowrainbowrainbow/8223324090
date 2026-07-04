@@ -375,8 +375,10 @@ body.dark-mode .task-priority-select--low {
 }
 
 .profile-work-header--myday {
+    align-items: center;
     grid-template-columns: 1fr !important;
-    padding-block: 12px !important;
+    min-height: 0;
+    padding-block: 10px !important;
 }
 
 .profile-my-day-capsule {
@@ -394,8 +396,9 @@ body.dark-mode .task-priority-select--low {
 }
 
 .profile-my-day-capsule-copy {
+    align-content: center;
     display: grid;
-    gap: 3px;
+    gap: 2px;
     min-width: 0;
 }
 

@@ -149,6 +149,26 @@
     display: block;
 }
 
+.cabinet-command-center > .cabinet-completed-strip {
+    min-width: 0;
+    width: 100%;
+    margin: 0;
+}
+
+.cabinet-command-center > .cabinet-completed-strip .cabinet-completed-strip-summary {
+    min-width: 0;
+}
+
+.cabinet-command-center > .cabinet-completed-strip .cabinet-completed-strip-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+.cabinet-command-center > .cabinet-completed-strip .cabinet-completed-strip-head small {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .cabinet-completed-details {
     min-width: 0;
 }
@@ -1533,6 +1553,22 @@ body.dark-mode .cabinet-capture .cabinet-task-composer-toggle:focus-visible {
 }
 
 @media (max-width: 640px) {
+    .cabinet-command-center > .cabinet-completed-strip {
+        padding: 10px;
+    }
+
+    .cabinet-command-center > .cabinet-completed-strip .cabinet-completed-strip-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .cabinet-command-center > .cabinet-completed-strip .cabinet-completed-summary-action {
+        justify-self: start;
+    }
+
+    .cabinet-command-center > .cabinet-completed-strip .cabinet-completed-track {
+        gap: 6px;
+    }
+
     .cabinet-due-presets,
     .cabinet-priority-presets {
         display: grid;

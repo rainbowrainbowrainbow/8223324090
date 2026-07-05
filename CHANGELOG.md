@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.23 - Бронювання свят: другий ведучий активності
+
+### Booking / Multi-activity / Second hosts / Live QA / (Клешня, 05.07.2026) [codex]
+- **Per-activity second host payload виправлено** - після rerender рядка "Обрані активності" додаткова активність з `hosts > 1` більше не підміняє `secondAnimatorLineId` іменем ведучого.
+- **Selected option зберігає timeline identity** - поточний option другого ведучого тепер не втрачає `data-line-id` / `data-line-name`, тому payload і `bookingWorkspace` отримують справжній id лінії.
+- **Live QA виявив і підтвердив hotfix** - сценарій "3 активності, друга потребує 2 ведучих" створює linked row саме для другої activity; серверний fallback по імені більше не є єдиною страховкою.
+- **Regression guard додано** - contract test фіксує, що rerender summary не стирає line id другого ведучого.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений booking frontend payload fix, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.22 - Бронювання свят: preflight і schedule helper
 
 ### Booking / Preflight / Schedule helper / Release guards / (Клешня, 05.07.2026) [codex]

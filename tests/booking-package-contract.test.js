@@ -855,6 +855,24 @@ test('booking multi-activity second host payload belongs to its activity row', (
     assert.equal(multiHostActivity.extraData.bookingWorkspace.secondAnimatorLineId, 'line-second');
 });
 
+test('booking selected activity second host keeps line id after summary rerender', () => {
+    const bookingJs = readBookingSurface();
+    const draftBlock = bookingJs.slice(
+        bookingJs.indexOf('function selectedActivitySecondAnimatorDraft'),
+        bookingJs.indexOf('function selectedActivitySecondAnimatorValidationIssues')
+    );
+    const subflowBlock = bookingJs.slice(
+        bookingJs.indexOf('function renderSelectedActivitySecondAnimatorSubflow'),
+        bookingJs.indexOf('function setSelectedActivitySecondAnimator')
+    );
+
+    assert.match(draftBlock, /const candidateLineId = candidate\?\.id && candidate\.id !== selectedName \? candidate\.id : null;/);
+    assert.match(draftBlock, /secondAnimatorLineId:\s*state\.secondAnimatorLineId \|\| candidateLineId \|\| null/);
+    assert.match(draftBlock, /secondAnimatorLineName:\s*state\.secondAnimatorLineName \|\| candidate\?\.name \|\| selectedName \|\| null/);
+    assert.match(subflowBlock, /data-line-id="\$\{escapeHtml\(draft\.secondAnimatorLineId\)\}"/);
+    assert.match(subflowBlock, /data-line-name="\$\{escapeHtml\(draft\.secondAnimatorLineName\)\}"/);
+});
+
 test('booking selected activity schedule conflict blocks submit preflight', async () => {
     const context = createMultiActivityScheduleHarness({
         getBookingsForDate: async () => [{

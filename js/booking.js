@@ -7175,10 +7175,11 @@ function selectedActivitySecondAnimatorDraft(program = {}) {
         ? selectedAnimatorLineCandidate('secondAnimatorSelect', selectedName)
         : null;
     const candidate = primaryCandidate || rowCandidate;
+    const candidateLineId = candidate?.id && candidate.id !== selectedName ? candidate.id : null;
     return {
         secondAnimator: selectedName || null,
-        secondAnimatorLineId: candidate?.id || state.secondAnimatorLineId || null,
-        secondAnimatorLineName: candidate?.name || state.secondAnimatorLineName || selectedName || null
+        secondAnimatorLineId: state.secondAnimatorLineId || candidateLineId || null,
+        secondAnimatorLineName: state.secondAnimatorLineName || candidate?.name || selectedName || null
     };
 }
 
@@ -7591,7 +7592,7 @@ function renderSelectedActivitySecondAnimatorSubflow(row = {}) {
     const issueText = issues.map(issue => issue.message).join(' · ');
     const selectId = selectedActivitySecondAnimatorSelectId(programId);
     const currentOption = draft.secondAnimator
-        ? `<option value="${escapeHtml(draft.secondAnimator)}" selected>${escapeHtml(draft.secondAnimatorLineName || draft.secondAnimator)}</option>`
+        ? `<option value="${escapeHtml(draft.secondAnimator)}"${draft.secondAnimatorLineId ? ` data-line-id="${escapeHtml(draft.secondAnimatorLineId)}"` : ''}${draft.secondAnimatorLineName ? ` data-line-name="${escapeHtml(draft.secondAnimatorLineName)}"` : ''} selected>${escapeHtml(draft.secondAnimatorLineName || draft.secondAnimator)}</option>`
         : '';
 
     return `

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.26 - Мій день: чеклісти і прострочені
+
+### Profile / My Day / Checklist UI / Responsive layout / (Клешня, 06.07.2026) [codex]
+- **Checklist-прогрес у `Мій день` уніфіковано** - decomposed task card тепер має один checklist summary з count, progress-line, toggle розгортання і quick checkbox для наступного підпункту.
+- **Дубльований header/progress прибрано** - expanded checklist більше не показує другий `Чекліст/Пункти 0/3`, а non-My-Day cards зберігають старий layout contract.
+- **Прострочені задачі стали responsive** - права колонка переходить у читабельний layout на менших viewport, actions переносяться без стискання title у вузьку вертикальну колонку.
+- **Regression coverage оновлено** - `tests/profile-tasker-segments.test.js` і `tests/ui-check.js` фіксують single checklist summary/progress, quick subtask flow і responsive overdue rules.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений Profile/My Day frontend, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.25 - QA: browser smoke клієнтів
 
 ### Customers / Browser QA / Dependencies / (Клешня, 05.07.2026) [codex]

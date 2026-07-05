@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.25",
+  "version": "0.78.26",
   "eventGenix": {
-    "releaseLabel": "QA: browser smoke клієнтів"
+    "releaseLabel": "Мій день: чеклісти і прострочені"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

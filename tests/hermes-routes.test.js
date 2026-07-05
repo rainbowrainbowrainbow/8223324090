@@ -602,7 +602,7 @@ function createHermesCreateFakePool(options = {}) {
             return { rows: [clone(job)], rowCount: 1 };
         }
 
-        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, error_message =')) {
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3::varchar, error_message =')) {
             const job = hermesJobs.get(Number(params[0]));
             if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
                 return { rows: [], rowCount: 0 };
@@ -1862,6 +1862,11 @@ describe('Hermes jobs foundation routes', () => {
             assert.equal(statusRetry.status, 200, statusRetry.text);
             assert.deepEqual(statusRetry.data, statusFirst.data);
             assert.equal(statusFirst.data.job.status, 'in_progress');
+            const statusUpdate = fakePool.calls.find(call => call.compact?.startsWith('UPDATE hermes_jobs SET status = $3::varchar, error_message ='));
+            assert.ok(statusUpdate, 'status update must use explicit parameter casts');
+            assert.match(statusUpdate.compact, /status = \$3::varchar/);
+            assert.match(statusUpdate.compact, /CASE WHEN \$3::text = 'failed'/);
+            assert.match(statusUpdate.compact, /CASE WHEN \$3::text IN \('failed','cancelled'\)/);
 
             const resultBody = {
                 status: 'ready_for_review',

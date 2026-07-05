@@ -955,9 +955,9 @@ async function updateHermesJobStatus(queryable, jobId, body = {}, context = {}) 
     const actorName = actorSnapshot(actor, 'hermes');
     const result = await queryable.query(
         `UPDATE hermes_jobs
-         SET status = $3,
-             error_message = CASE WHEN $3 = 'failed' THEN COALESCE($6, error_message) ELSE error_message END,
-             completed_at = CASE WHEN $3 IN ('failed','cancelled') THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+         SET status = $3::varchar,
+             error_message = CASE WHEN $3::text = 'failed' THEN COALESCE($6, error_message) ELSE error_message END,
+             completed_at = CASE WHEN $3::text IN ('failed','cancelled') THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
              updated_by_user_id = $4,
              updated_by_snapshot = $5,
              updated_at = NOW()

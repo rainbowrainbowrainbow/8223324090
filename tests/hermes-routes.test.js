@@ -570,7 +570,7 @@ function createHermesCreateFakePool(options = {}) {
             return { rows: [clone(job)], rowCount: 1 };
         }
 
-        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, result_payload =')) {
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3::varchar, result_payload =')) {
             const job = hermesJobs.get(Number(params[0]));
             if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
                 return { rows: [], rowCount: 0 };
@@ -1895,6 +1895,11 @@ describe('Hermes jobs foundation routes', () => {
             assert.equal(resultFirst.data.job.status, 'ready_for_review');
             assert.equal(resultFirst.data.job.assets.length, 1);
             assert.equal(resultFirst.data.job.assets[0].externalAssetId, 'poster-final-1');
+            const resultUpdate = fakePool.calls.find(call => call.compact?.startsWith('UPDATE hermes_jobs SET status = $3::varchar, result_payload ='));
+            assert.ok(resultUpdate, 'result update must use explicit parameter casts');
+            assert.match(resultUpdate.compact, /status = \$3::varchar/);
+            assert.match(resultUpdate.compact, /CASE WHEN \$3::text = 'failed'/);
+            assert.match(resultUpdate.compact, /CASE WHEN \$3::text IN \('ready_for_review','failed'\)/);
             assert.equal(fakePool.hermesJobAssets.length, 1);
             assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId)).length, 3);
             assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);

@@ -1085,10 +1085,10 @@ async function recordHermesJobResult(queryable, jobId, body = {}, context = {}) 
     const actorName = actorSnapshot(actor, 'hermes');
     const result = await queryable.query(
         `UPDATE hermes_jobs
-         SET status = $3,
+         SET status = $3::varchar,
              result_payload = $4::jsonb,
-             error_message = CASE WHEN $3 = 'failed' THEN COALESCE($7, error_message) ELSE error_message END,
-             completed_at = CASE WHEN $3 IN ('ready_for_review','failed') THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+             error_message = CASE WHEN $3::text = 'failed' THEN COALESCE($7, error_message) ELSE error_message END,
+             completed_at = CASE WHEN $3::text IN ('ready_for_review','failed') THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
              updated_by_user_id = $5,
              updated_by_snapshot = $6,
              updated_at = NOW()

@@ -9,7 +9,7 @@ function securityHeaders(req, res, next) {
     // v19.14: Content-Security-Policy
     res.set('Content-Security-Policy', [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.clarity.ms https://scripts.clarity.ms",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob: https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://*.kie.ai https://*.supabase.co https://*.clarity.ms https://c.bing.com",

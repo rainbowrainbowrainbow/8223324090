@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.13",
+  "version": "0.78.14",
   "eventGenix": {
-    "releaseLabel": "HR: синхронні фільтри структури"
+    "releaseLabel": "Безпека: захист завантажень"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -74,7 +74,7 @@
     "express": "^4.22.2",
     "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "pdfkit": "^0.18.0",
     "pg": "^8.21.0",
     "qrcode": "^1.5.4",

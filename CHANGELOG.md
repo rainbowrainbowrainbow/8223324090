@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.14 - Безпека: захист завантажень
+
+### Security / Uploads / Dependencies / (Клешня, 05.07.2026) [codex]
+- **`multer` оновлено з `2.1.1` до `2.2.0`** - production dependency більше не потрапляє під відому DoS advisory для upload parsing.
+- **Upload API surface збережено без refactor** - існуючі маршрути з `memoryStorage`, `diskStorage`, `single` і `array` лишились на тому самому контракті.
+- **`npm audit --omit=dev` чистий** - production audit більше не показує high/moderate vulnerabilities.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений dependency patch, lockfile, tests і version/cache refs.
+
+---
+
 ## v0.78.13 - HR: синхронні фільтри структури
 
 ### HR / Staff API / Structure-aware filters / (Клешня, 05.07.2026) [codex]

@@ -1751,6 +1751,15 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.78.10 — HR: спільні фільтри персоналу</h4>
+                    <ul>
+                        <li><b>Операційні фільтри персоналу стали спільним контрактом</b> — <code>Сьогодні</code>, <code>Графік</code> і <code>Структура компанії</code> використовують один набір display groups.</li>
+                        <li><b><code>security</code> входить у <code>Технічний відділ</code></b> — <code>Охорона</code> більше не є окремим top-level фільтром у HR-пульсі.</li>
+                        <li><b><code>reception</code>, <code>manager</code> і <code>senior_manager</code> входять у <code>Рецепшен</code></b> — лічильники в чіпах рахуються за display group, а не raw department.</li>
+                        <li><b>Структура компанії отримала ярлик операційного фільтра</b> — вузли показують badge і мають selector для <code>displayGroup</code>, зі старими даними через fallback.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.78.9 — Мій день: дві робочі колонки</h4>
                     <ul>
                         <li><b><code>Мій день</code> очищено від дублюючої верхньої строки</b> — прибрано сегменти, quick links, видимий shortcut <code>Звук</code> і блок <code>Сигнали</code>.</li>

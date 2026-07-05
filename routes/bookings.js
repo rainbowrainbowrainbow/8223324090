@@ -790,9 +790,10 @@ async function insertSecondAnimatorLinkedBooking(client, { booking, businessCont
         source: 'staff_animator'
     });
     const newLinkedId = await generateBookingNumber(client);
-    await client.query(
+    const insert = await client.query(
         `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+         RETURNING *`,
         [newLinkedId, businessContext, booking.date, booking.time, ensuredLine.lineId, booking.programId, booking.programCode,
          booking.label, booking.programName, booking.category, booking.duration, 0, booking.hosts,
          ensuredLine.name, booking.pinataFiller, booking.pinataMode, booking.pinataNumber,
@@ -801,7 +802,7 @@ async function insertSecondAnimatorLinkedBooking(client, { booking, businessCont
          booking.createdBy, mainBookingId, status, booking.kidsCount || null, booking.groupName || null,
          bookingExtraDataSqlValue(linkedBooking)]
     );
-    return newLinkedId;
+    return insert.rows[0] || { id: newLinkedId };
 }
 
 async function ensureBookingTimelineLine(client, booking, businessContext, { name = null } = {}) {
@@ -3543,6 +3544,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         await client.query('BEGIN');
+        const activitySecondAnimatorLines = new Map();
 
         await applyEffectiveBookingPrice(client, main, { businessContext });
         await applyBookingPackageEntryCharge(client, main, { businessContext });
@@ -3637,9 +3639,36 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 ...ensuredActivityLine,
                 source: 'multi_activity_line'
             });
+            if (bookingRequiresSecondAnimatorLink(activity)) {
+                const ensuredSecondLine = await ensureSecondAnimatorLineForBooking(client, activity, businessContext);
+                if (!ensuredSecondLine) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, error: 'Другого ведучого для активності не знайдено серед активних аніматорів' });
+                }
+                activity.secondAnimator = ensuredSecondLine.name || activity.secondAnimator;
+                activity.secondAnimatorLineId = ensuredSecondLine.lineId;
+                activity.secondAnimatorLineName = ensuredSecondLine.name;
+                const activityExtra = ensureBookingExtraDataObject(activity);
+                activityExtra.bookingWorkspace = {
+                    ...(activityExtra.bookingWorkspace || {}),
+                    secondAnimator: activity.secondAnimator,
+                    secondAnimatorLineId: ensuredSecondLine.lineId,
+                    secondAnimatorLineName: ensuredSecondLine.name
+                };
+                activitySecondAnimatorLines.set(activity, ensuredSecondLine);
+            }
         }
 
-        await lockBookingConflictResources(client, [main, ...linked, ...banquetActivities], businessContext);
+        const lockTargets = [main, ...linked, ...banquetActivities];
+        for (const [activity, ensuredSecondLine] of activitySecondAnimatorLines.entries()) {
+            lockTargets.push({
+                ...activity,
+                lineId: ensuredSecondLine.lineId,
+                lineName: ensuredSecondLine.name,
+                price: 0
+            });
+        }
+        await lockBookingConflictResources(client, lockTargets, businessContext);
 
         const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0, null, businessContext);
         if (conflict.overlap) {
@@ -3817,6 +3846,30 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 activityRows.push(activityInsert.rows[0]);
                 const linkRow = await upsertBanquetLink(client, businessContext, main.id, activity.id, main.groupName || activity.groupName || null, req.user);
                 if (linkRow) banquetLinkRows.push(linkRow);
+            }
+            const ensuredSecondActivityLine = activitySecondAnimatorLines.get(activity);
+            if (ensuredSecondActivityLine) {
+                const secondActivityConflict = await checkServerConflicts(client, activity.date, ensuredSecondActivityLine.lineId, activity.time, activity.duration || 0, null, businessContext);
+                if (secondActivityConflict.overlap) {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({
+                        success: false,
+                        conflictBookingId: secondActivityConflict.conflictWith.id,
+                        error: `Другий ведучий зайнятий для активності: ${secondActivityConflict.conflictWith.label || secondActivityConflict.conflictWith.program_code} о ${secondActivityConflict.conflictWith.time}`
+                    });
+                }
+                const secondActivityRow = await insertSecondAnimatorLinkedBooking(client, {
+                    booking: {
+                        ...activity,
+                        createdBy: activity.createdBy || main.createdBy,
+                        groupName: activity.groupName || main.groupName || null
+                    },
+                    businessContext,
+                    mainBookingId: activity.id,
+                    status: activity.status || main.status,
+                    ensuredLine: ensuredSecondActivityLine
+                });
+                if (secondActivityRow) linkedRows.push(secondActivityRow);
             }
         }
 

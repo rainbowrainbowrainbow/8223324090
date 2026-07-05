@@ -1814,6 +1814,90 @@ test('POST /api/bookings/full keeps second animator linked booking on its own ti
     });
 });
 
+test('POST /api/bookings/full creates second animator linked row for additional activity', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                programId: 'anim-60',
+                programCode: 'AN',
+                label: 'Anim(30)',
+                programName: 'Animation',
+                category: 'animation',
+                duration: 30,
+                price: 1500,
+                hosts: 1,
+                secondAnimator: null
+            },
+            linked: [],
+            banquetActivities: [
+                {
+                    date: '2099-02-13',
+                    time: '13:30',
+                    lineId: 'line-main',
+                    lineName: 'Anna',
+                    room: 'Room A',
+                    programId: 'paper-show',
+                    programCode: 'PAPER',
+                    label: 'Paper(30)',
+                    programName: 'Paper Show',
+                    category: 'show',
+                    duration: 30,
+                    price: 1600,
+                    hosts: 2,
+                    secondAnimator: 'Second Animator',
+                    secondAnimatorLineId: 'line-second',
+                    status: 'confirmed',
+                    createdBy: 'creator-user',
+                    extraData: {
+                        bookingWorkspace: {
+                            secondAnimatorLineId: 'line-second',
+                            secondAnimatorLineName: 'Second Animator'
+                        }
+                    }
+                },
+                {
+                    date: '2099-02-13',
+                    time: '14:00',
+                    lineId: 'line-main',
+                    lineName: 'Anna',
+                    room: 'Room A',
+                    programId: 'quest-60',
+                    programCode: 'Q',
+                    label: 'Quest(30)',
+                    programName: 'Quest',
+                    category: 'quest',
+                    duration: 30,
+                    price: 0,
+                    hosts: 1,
+                    secondAnimator: null,
+                    status: 'confirmed',
+                    createdBy: 'creator-user'
+                }
+            ]
+        }, { timelineView: 'animators' });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.activityBookings.length, 2);
+        assert.equal(res.data.linkedBookings.length, 1);
+
+        const multiHostActivity = res.data.activityBookings.find(item => item.programId === 'paper-show');
+        assert.ok(multiHostActivity, 'multi-host activity must be created as an activity row');
+        const activitySecondAnimator = res.data.linkedBookings.find(item => item.linkedTo === multiHostActivity.id);
+        assert.ok(activitySecondAnimator, 'second animator linked row must point to the multi-host activity');
+        assert.equal(activitySecondAnimator.lineId, 'line-second');
+        assert.equal(activitySecondAnimator.secondAnimator, 'Second Animator');
+        assert.equal(activitySecondAnimator.timelineProjection.lineId, 'line-second');
+        assert.equal(activitySecondAnimator.timelineVisibility.visible, true);
+
+        const linkedRow = state.rows.find(row => row.linked_to === multiHostActivity.id);
+        assert.ok(linkedRow, 'database row is linked to activity id, not to main booking');
+        assert.equal(linkedRow.line_id, 'line-second');
+        assert.equal(linkedRow.price, 0);
+        assert.notEqual(linkedRow.linked_to, res.data.mainBooking.id);
+    });
+});
+
 test('POST /api/bookings/full projects created response for requested room timeline view', async () => {
     await withApp({}, async ({ baseUrl, state }) => {
         const res = await createFullBooking(baseUrl, {}, { timelineView: 'rooms' });

@@ -983,6 +983,14 @@ html[data-theme="dark"] .booking-active-banquet-context.is-mismatch {
     background: rgba(15,23,42,0.04);
 }
 
+.program-media--image-failed {
+    background: rgba(15,23,42,0.03);
+}
+
+.program-media--image-failed .icon-circle {
+    opacity: 0.92;
+}
+
 .program-media img {
     display: block;
     width: 100%;
@@ -1641,6 +1649,83 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     border: 1px solid rgba(236,72,153,0.22);
     border-radius: 10px;
     background: rgba(236,72,153,0.06);
+}
+
+.selected-activity-second-host {
+    grid-column: 2 / -1;
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid rgba(14,165,233,0.24);
+    border-radius: 10px;
+    background: rgba(14,165,233,0.06);
+}
+
+.selected-activity-second-host.has-error,
+.selected-activity-second-host[aria-invalid="true"] {
+    border-color: rgba(239,68,68,0.42);
+    background: rgba(254,242,242,0.78);
+}
+
+.selected-activity-second-host-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.selected-activity-second-host-head strong {
+    color: #0369A1;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.selected-activity-second-host-head span,
+.selected-activity-second-host-field span {
+    color: var(--gray-500);
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.selected-activity-second-host-field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.selected-activity-second-host-field select {
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    padding: 5px 8px;
+    border: 1px solid rgba(148,163,184,0.32);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.9);
+    color: var(--gray-800);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.selected-activity-second-host-field select:focus {
+    border-color: rgba(14,165,233,0.5);
+    outline: 2px solid rgba(14,165,233,0.16);
+}
+
+.selected-activity-second-host-field [aria-invalid="true"] {
+    border-color: var(--danger, #EF4444);
+    box-shadow: 0 0 0 2px rgba(239,68,68,0.16);
+}
+
+.selected-activity-second-host-error {
+    color: #DC2626;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.3;
 }
 
 .selected-activity-pinata.has-error,

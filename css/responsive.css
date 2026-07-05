@@ -1114,6 +1114,10 @@
         grid-column: 1 / -1;
     }
 
+    .selected-activity-second-host {
+        grid-column: 1 / -1;
+    }
+
     .selected-activity-pinata-grid {
         grid-template-columns: 1fr;
     }

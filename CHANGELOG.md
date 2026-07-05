@@ -4,6 +4,19 @@
 
 ---
 
+## v0.78.21 - Бронювання свят: multi-host активності
+
+### Booking / Multi-activity / Second hosts / Image fallback / (Клешня, 05.07.2026) [codex]
+- **Multi-host активності більше не залежать від першої позиції** - активність з `hosts > 1` може бути другою або третьою в мультивиборі й отримує власне поле другого ведучого в рядку "Обрані активності".
+- **Другий ведучий став per-activity state** - frontend зберігає `secondAnimator`, `secondAnimatorLineId` і `secondAnimatorLineName` для конкретної activity та передає ці поля в `banquetActivities`.
+- **Backend створює linked row саме для activity** - `/api/bookings/full` резолвить second animator line для кожної activity, бере її в conflict locks, перевіряє зайнятість і створює linked booking з `linked_to = activity.id`.
+- **Перевірка доступності другого ведучого враховує час рядка** - список ведучих і pre-submit conflict check працюють по часу/тривалості конкретної активності, а не тільки по базовому часу броні.
+- **Картки активностей отримали fallback для битих майбутніх картинок** - якщо image URL не завантажиться, media-slot повертається до поточного emoji/icon без зламаної картки.
+- **Regression coverage посилено** - додані перевірки per-activity second-host payload, API linked row для додаткової activity, static UI guard і image fallback.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений booking frontend/backend flow, CSS, tests і version/cache refs.
+
+---
+
 ## v0.78.20 - Бронювання свят: розклад активностей
 
 ### Booking / Activities / Pinata / QA guards / (Клешня, 05.07.2026) [codex]

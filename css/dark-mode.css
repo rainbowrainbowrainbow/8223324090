@@ -730,6 +730,12 @@ body.dark-mode .program-media--image {
     background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
 }
 
+body.dark-mode .program-media--image-failed,
+html[data-theme="dark"] .program-media--image-failed {
+    background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+    border-color: color-mix(in srgb, var(--text-secondary) 22%, transparent);
+}
+
 body.dark-mode .program-icon.selected {
     background: rgba(16,185,129,0.15);
     border-color: var(--primary);
@@ -817,6 +823,44 @@ body.dark-mode .selected-activity-pinata,
 html[data-theme="dark"] .selected-activity-pinata {
     border-color: color-mix(in srgb, var(--primary) 32%, transparent);
     background: color-mix(in srgb, var(--primary) 10%, var(--surface-elevated));
+}
+
+body.dark-mode .selected-activity-second-host,
+html[data-theme="dark"] .selected-activity-second-host {
+    border-color: color-mix(in srgb, var(--primary) 34%, transparent);
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface-elevated));
+}
+
+body.dark-mode .selected-activity-second-host.has-error,
+body.dark-mode .selected-activity-second-host[aria-invalid="true"],
+html[data-theme="dark"] .selected-activity-second-host.has-error,
+html[data-theme="dark"] .selected-activity-second-host[aria-invalid="true"] {
+    border-color: color-mix(in srgb, var(--danger) 52%, transparent);
+    background: color-mix(in srgb, var(--danger) 14%, var(--surface-elevated));
+}
+
+body.dark-mode .selected-activity-second-host-head strong,
+html[data-theme="dark"] .selected-activity-second-host-head strong {
+    color: var(--primary-light);
+}
+
+body.dark-mode .selected-activity-second-host-head span,
+body.dark-mode .selected-activity-second-host-field span,
+html[data-theme="dark"] .selected-activity-second-host-head span,
+html[data-theme="dark"] .selected-activity-second-host-field span {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .selected-activity-second-host-field select,
+html[data-theme="dark"] .selected-activity-second-host-field select {
+    border-color: var(--border-color);
+    background: color-mix(in srgb, var(--surface-elevated) 82%, var(--bg-primary));
+    color: var(--text-primary);
+}
+
+body.dark-mode .selected-activity-second-host-error,
+html[data-theme="dark"] .selected-activity-second-host-error {
+    color: color-mix(in srgb, var(--danger) 72%, var(--text-primary));
 }
 
 body.dark-mode .selected-activity-pinata.has-error,

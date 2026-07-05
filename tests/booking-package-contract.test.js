@@ -41,6 +41,22 @@ const {
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
+function extractNamedFunction(source, name) {
+    const start = source.indexOf(`function ${name}`);
+    assert.notEqual(start, -1, `${name} should exist`);
+    const bodyStart = source.indexOf('{', start);
+    assert.notEqual(bodyStart, -1, `${name} should have a body`);
+    let depth = 0;
+    for (let index = bodyStart; index < source.length; index += 1) {
+        const char = source[index];
+        if (char === '{') depth += 1;
+        if (char === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(start, index + 1);
+        }
+    }
+    assert.fail(`${name} body should close`);
+}
 const loadJsonFixture = (...parts) => JSON.parse(read(...parts));
 function readPngInfo(...parts) {
     const buffer = fs.readFileSync(path.join(repoRoot, ...parts));
@@ -646,7 +662,8 @@ function createMultiActivityScheduleHarness(options = {}) {
             selectedActivityProgramIds: programs.map(program => String(program.id)),
             selectedActivityScheduleTimes: { ...(options.scheduleTimes || {}) },
             selectedActivityScheduleIssues: {},
-            selectedActivityPinataFields: {}
+            selectedActivityPinataFields: {},
+            selectedActivitySecondAnimatorFields: { ...(options.secondAnimatorFields || {}) }
         },
         getProductsSync: () => programs,
         isParkTimelineBookingMode: () => true,
@@ -762,6 +779,35 @@ test('booking multi-activity manual second time is persisted into banquetActivit
     assert.deepEqual(activities.map(item => item.time), ['12:50', '13:30']);
     assert.equal(base.extraData.multiActivity.schedule[1].manual, true);
     assert.equal(base.extraData.multiActivity.schedule[1].startTime, '12:50');
+});
+
+test('booking multi-activity second host payload belongs to its activity row', () => {
+    const programs = [
+        { id: 'anim-30', code: 'AN', label: 'Anim(30)', name: 'Animation', category: 'animation', duration: 30, price: 1500, hosts: 1 },
+        { id: 'show-40', code: 'WOW', label: 'Wow(40)', name: 'Wow show', category: 'show', duration: 40, price: 2400, hosts: 2 },
+        { id: 'photo-20', code: 'PH', label: 'Photo(20)', name: 'Photo', category: 'photo', duration: 20, price: 900, hosts: 1 }
+    ];
+    const context = createMultiActivityScheduleHarness({
+        programs,
+        secondAnimatorFields: {
+            'show-40': {
+                secondAnimator: 'Second Animator',
+                secondAnimatorLineId: 'line-second',
+                secondAnimatorLineName: 'Second Animator'
+            }
+        }
+    });
+
+    const base = multiActivityBaseBooking();
+    const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
+    const multiHostActivity = activities.find(item => item.programId === 'show-40');
+
+    assert.ok(multiHostActivity, 'second selected activity is present in banquetActivities');
+    assert.equal(multiHostActivity.hosts, 2);
+    assert.equal(multiHostActivity.secondAnimator, 'Second Animator');
+    assert.equal(multiHostActivity.secondAnimatorLineId, 'line-second');
+    assert.equal(multiHostActivity.secondAnimatorLineName, 'Second Animator');
+    assert.equal(multiHostActivity.extraData.bookingWorkspace.secondAnimatorLineId, 'line-second');
 });
 
 test('booking selected activity schedule conflict blocks submit preflight', async () => {
@@ -2343,6 +2389,39 @@ test('banquet summary comments are deduplicated against order row notes', () => 
     assert.doesNotMatch(summaryPage, /Активність —/);
 });
 
+test('booking activity image fallback swaps broken image for emoji media slot', () => {
+    const bookingJs = read('js', 'booking.js');
+    const dom = new JSDOM(`
+        <div id="programsIcons">
+            <span class="program-media program-media--image" data-fallback-icon="🎪">
+                <img src="/broken/activity.png" alt="">
+            </span>
+        </div>
+    `);
+    const sandbox = {
+        document: dom.window.document
+    };
+    const source = [
+        extractNamedFunction(bookingJs, '_escB'),
+        extractNamedFunction(bookingJs, 'programMediaFallbackHtml'),
+        extractNamedFunction(bookingJs, 'fallbackProgramMediaImage'),
+        extractNamedFunction(bookingJs, 'handleProgramMediaImageError'),
+        'this.__handleProgramMediaImageError = handleProgramMediaImageError;'
+    ].join('\n');
+
+    vm.runInNewContext(source, sandbox);
+    const img = dom.window.document.querySelector('.program-media img');
+    sandbox.__handleProgramMediaImageError({ target: img });
+
+    const media = dom.window.document.querySelector('.program-media');
+    assert.equal(media.classList.contains('program-media--image'), false);
+    assert.equal(media.classList.contains('program-media--fallback'), true);
+    assert.equal(media.classList.contains('program-media--image-failed'), true);
+    assert.equal(media.dataset.imageState, 'failed');
+    assert.equal(media.querySelector('img'), null);
+    assert.equal(media.querySelector('.icon')?.textContent, '🎪');
+});
+
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
@@ -2537,6 +2616,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /function setSelectedActivityScheduleTime/);
     assert.match(bookingJs, /function alignSelectedActivityScheduleSequentially/);
     assert.match(bookingJs, /selectedActivityPinataFields/);
+    assert.match(bookingJs, /selectedActivitySecondAnimatorFields/);
+    assert.match(bookingJs, /function selectedActivitySecondAnimatorDraft/);
+    assert.match(bookingJs, /function renderSelectedActivitySecondAnimatorSubflow/);
+    assert.match(bookingJs, /data-activity-second-animator-id/);
+    assert.match(bookingJs, /activitySecondAnimator:/);
     assert.match(bookingJs, /function selectedActivityPinataDraft/);
     assert.match(bookingJs, /function renderSelectedActivityPinataSubflow/);
     assert.match(bookingJs, /data-activity-pinata-field/);
@@ -2555,7 +2639,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /validateSelectedActivityScheduleBeforeSubmit\(formData, excludeId\)/);
     assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities \}\)/);
     assert.match(bookingJs, /multiActivity/);
-    assert.match(bookingJs, /additionalMultiHostActivity/);
+    assert.doesNotMatch(bookingJs, /additionalMultiHostActivity/);
+    assert.match(bookingJs, /secondAnimator:\s*secondAnimatorFields\.secondAnimator/);
+    assert.match(bookingJs, /secondAnimatorLineId:\s*secondAnimatorFields\.secondAnimatorLineId/);
     assert.match(bookingJs, /function canAddAnimationFromRoomBooking/);
     assert.match(bookingJs, /String\(booking\.lineId \|\| ''\) === ROOM_FIRST_BANQUET_SERVICE_LINE_ID/);
     assert.match(bookingJs, /!String\(booking\.linkedTo \|\| ''\)\.trim\(\)/);
@@ -2626,6 +2712,10 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /function insertSecondAnimatorLinkedBooking/);
     assert.match(route, /booking\.duration,\s*0,\s*booking\.hosts/);
     assert.match(route, /bookingExtraDataSqlValue\(linkedBooking\)/);
+    assert.match(route, /activitySecondAnimatorLines/);
+    assert.match(route, /bookingRequiresSecondAnimatorLink\(activity\)/);
+    assert.match(route, /mainBookingId:\s*activity\.id/);
+    assert.match(route, /linkedRows\.push\(secondActivityRow\)/);
     assert.doesNotMatch(route, /b\.createdBy,\s*id,\s*newStatus,\s*b\.kidsCount \|\| null,\s*b\.groupName \|\| null,\s*null\]/);
     assert.match(route, /function runOptionalBookingTransactionStep/);
     assert.match(route, /SAVEPOINT booking_optional_step/);
@@ -2686,16 +2776,23 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(configJs, /function getTimelineProductsPriceDate/);
     assert.match(configJs, /apiGetProducts\(true, \{ businessContext, priceDate \}\)/);
     assert.match(bookingJs, /const programImageUrl = p\.iconUrl \|\| p\.icon_url \|\| p\.imageUrl \|\| p\.image_url/);
+    assert.match(bookingJs, /function programMediaFallbackHtml/);
+    assert.match(bookingJs, /function handleProgramMediaImageError/);
+    assert.match(bookingJs, /container\.addEventListener\('error', handleProgramMediaImageError, true\)/);
+    assert.match(bookingJs, /data-fallback-icon/);
+    assert.match(bookingJs, /program-media--image-failed/);
     assert.match(bookingJs, /program-media program-media--image/);
     assert.match(bookingJs, /program-media program-media--fallback/);
     assert.match(bookingJs, /loading="lazy" decoding="async"/);
     assert.match(panelCss, /\.program-card-badges/);
     assert.match(panelCss, /\.program-media\s*\{[\s\S]*aspect-ratio:\s*1 \/ 1;/);
+    assert.match(panelCss, /\.program-media--image-failed/);
     assert.match(panelCss, /\.program-media img\s*\{[\s\S]*object-fit:\s*cover;/);
     assert.match(panelCss, /\.program-icon\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(76px,\s*1fr\) auto;/);
     assert.match(panelCss, /\.program-price-badge\s*\{[\s\S]*position:\s*static;/);
     assert.match(panelCss, /\.program-duration\s*\{[\s\S]*position:\s*static;/);
     assert.match(darkModeCss, /body\.dark-mode \.program-media/);
+    assert.match(darkModeCss, /body\.dark-mode \.program-media--image-failed/);
     assert.match(responsiveCss, /repeat\(2,\s*minmax\(0,\s*1fr\)\); gap:\s*8px;/);
     assert.match(panelCss, /\.program-price-badge/);
     assert.match(panelCss, /\.program-price-badge[\s\S]*min-width:\s*46px/);

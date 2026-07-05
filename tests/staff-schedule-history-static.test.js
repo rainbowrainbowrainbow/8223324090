@@ -98,6 +98,14 @@ describe('staff schedule safety guards', () => {
     });
 
     it('adds passive schedule health scoring, filters, and issue badges without blocking editing', () => {
+        const renderSchedulePrimaryBlock = staffPage.slice(
+            staffPage.indexOf('function renderSchedule()'),
+            staffPage.indexOf('// Group staff by department')
+        );
+        const summaryIndex = staffScheduleShell.indexOf('id="scheduleSummary"');
+        const tableIndex = staffScheduleShell.indexOf('id="scheduleWrapper"');
+        const healthPanelIndex = staffScheduleShell.indexOf('id="scheduleHealthPanel"');
+
         assert.match(staffPage, /healthFilter:\s*'all'/);
         assert.match(staffPage, /scheduleRawEntries:\s*\[\]/);
         assert.match(staffPage, /const SCHEDULE_HEALTH_FILTERS = \['all', 'critical', 'warning', 'ok'\]/);
@@ -126,13 +134,15 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /StaffState\.scheduleRawEntries\.push\(normalizedEntry\)/);
         assert.match(staffPage, /const health = buildScheduleHealth\(dates, baseFiltered\)/);
         assert.match(staffPage, /const filtered = scheduleHealthFilteredStaff\(baseFiltered, health\)/);
-        assert.match(staffPage, /renderScheduleHealthPanel\(health\)/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /renderScheduleHealthPanel\(health\)/);
         assert.match(staffPage, /renderSummary\(filtered\)/);
         assert.match(staffPage, /renderEmpRow\(emp, dates, today, health\)/);
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\} \$\{attendanceClass\}"/);
         assert.match(staffPage, /bindScheduleHealthDetailButtons\(tbody\)/);
         assert.match(staffPage, /event\.stopPropagation\(\)/);
+        assert.ok(summaryIndex > -1 && tableIndex > summaryIndex && healthPanelIndex > tableIndex);
         assert.match(staffScheduleShell, /id="scheduleHealthPanel"/);
+        assert.match(staffScheduleShell, /id="scheduleHealthPanel"[^>]*hidden/);
         assert.match(staffCss, /\.schedule-health-panel/);
         assert.match(staffCss, /\.schedule-health-score/);
         assert.match(staffCss, /\.schedule-health-filter/);
@@ -142,6 +152,19 @@ describe('staff schedule safety guards', () => {
     });
 
     it('adds passive staffing demand forecast from bookings without auto-scheduling', () => {
+        const renderSchedulePrimaryBlock = staffPage.slice(
+            staffPage.indexOf('function renderSchedule()'),
+            staffPage.indexOf('// Group staff by department')
+        );
+        const weekNavigationBlock = staffPage.slice(
+            staffPage.indexOf('async function goToWeek'),
+            staffPage.indexOf('function prevWeek')
+        );
+        const initPrimaryLoadBlock = staffPage.slice(
+            staffPage.indexOf('async function initStaffSchedulePage'),
+            staffPage.indexOf('// Event listeners')
+        );
+
         assert.match(staffPage, /staffingForecast:\s*null/);
         assert.match(staffPage, /staffingForecastBookings:\s*\{\}/);
         assert.match(staffPage, /staffingForecastAvailable:\s*false/);
@@ -163,14 +186,16 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /recommended\.tech = 1/);
         assert.match(staffPage, /recommended\.cafe = cafeGuests/);
         assert.match(staffPage, /recommended\.cleaning = 1/);
-        assert.match(staffPage, /const forecast = buildStaffingDemandForecast\(dates, baseFiltered\)/);
-        assert.match(staffPage, /StaffState\.staffingForecast = forecast/);
-        assert.match(staffPage, /renderStaffingForecastPanel\(forecast\)/);
-        assert.match(staffPage, /await fetchStaffingForecastBookings\(from, to\)/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /const forecast = buildStaffingDemandForecast\(dates, baseFiltered\)/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /StaffState\.staffingForecast = forecast/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /renderStaffingForecastPanel\(forecast\)/);
+        assert.doesNotMatch(weekNavigationBlock, /await fetchStaffingForecastBookings\(from, to\)/);
+        assert.doesNotMatch(initPrimaryLoadBlock, /await fetchStaffingForecastBookings\(from, to\)/);
         const forecastFetchBlock = staffPage.match(/async function fetchStaffingForecastBookings[\s\S]*?async function postAttendanceAction/)?.[0] || '';
         assert.doesNotMatch(forecastFetchBlock, /method:\s*['"`](POST|PUT|PATCH|DELETE)['"`]/);
         assert.doesNotMatch(forecastFetchBlock, /\/api\/staff\/schedule/);
         assert.match(staffScheduleShell, /id="scheduleForecastPanel"/);
+        assert.match(staffScheduleShell, /id="scheduleForecastPanel"[^>]*hidden/);
         assert.match(staffCss, /\.schedule-forecast-panel/);
         assert.match(staffCss, /\.forecast-day-card/);
         assert.match(staffCss, /\.forecast-gap-chip\.is-missing/);
@@ -179,6 +204,11 @@ describe('staff schedule safety guards', () => {
     });
 
     it('adds read-only manager accountability without fake unavailable metrics or new protected surfaces', () => {
+        const renderSchedulePrimaryBlock = staffPage.slice(
+            staffPage.indexOf('function renderSchedule()'),
+            staffPage.indexOf('// Group staff by department')
+        );
+
         assert.match(staffPage, /managerAccountability:\s*null/);
         assert.match(staffPage, /accountabilityDeptFilter:\s*'all'/);
         assert.match(staffPage, /accountabilityManagerFilter:\s*'all'/);
@@ -200,9 +230,9 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /renderManagerAccountabilityMetric\(row\.lateReports, 'late reports'\)/);
         assert.match(staffPage, /renderManagerAccountabilityMetric\(row\.payrollDiscrepancies, 'payroll'\)/);
         assert.match(staffPage, /renderManagerAccountabilityMetric\(row\.unapprovedShifts, 'unapproved'\)/);
-        assert.match(staffPage, /const accountability = buildManagerAccountability\(dates, baseFiltered, health\)/);
-        assert.match(staffPage, /StaffState\.managerAccountability = accountability/);
-        assert.match(staffPage, /renderManagerAccountabilityPanel\(accountability\)/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /const accountability = buildManagerAccountability\(dates, baseFiltered, health\)/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /StaffState\.managerAccountability = accountability/);
+        assert.doesNotMatch(renderSchedulePrimaryBlock, /renderManagerAccountabilityPanel\(accountability\)/);
         assert.match(staffPage, /data-accountability-filter="department"/);
         assert.match(staffPage, /data-accountability-filter="manager"/);
         assert.match(staffPage, /data-accountability-dept/);
@@ -211,6 +241,7 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(staffPage, /\/api\/manager-accountability|\/api\/accountability/);
         assert.doesNotMatch(staffPage, /CREATE TABLE|ALTER TABLE|INSERT INTO manager|UPDATE manager/);
         assert.match(staffScheduleShell, /id="managerAccountabilityPanel"/);
+        assert.match(staffScheduleShell, /id="managerAccountabilityPanel"[^>]*hidden/);
         assert.match(staffCss, /\.manager-accountability-panel/);
         assert.match(staffCss, /\.accountability-table/);
         assert.match(staffCss, /\.accountability-metric\.is-unavailable/);

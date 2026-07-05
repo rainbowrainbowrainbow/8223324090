@@ -126,9 +126,9 @@ Areas that should use display grouping:
 - Load view
 - Fill-week modal
 - CSV/Excel export labels
-- Schedule health
-- Forecast
-- Manager accountability
+- Schedule health diagnostics and row/cell badges
+- Staffing forecast diagnostics
+- Manager accountability diagnostics
 
 Known limitation:
 
@@ -192,6 +192,10 @@ Implementation rules:
 ## Schedule Health
 
 Schedule health is passive. It warns managers but does not block editing.
+The primary schedule flow should keep the table immediately after the schedule
+controls, department filters, and summary; any large health panel belongs to
+diagnostic-only UI outside the pre-table path. Table-level badges and readiness
+signals may remain in rows/cells.
 
 Severity levels:
 
@@ -441,12 +445,15 @@ Known limitations:
 - No machine learning.
 - No automatic schedule edits.
 - No migration or persistent forecast model.
-- If booking/timeline source data is unavailable, the forecast panel shows an
-  unavailable/empty state and leaves the schedule unchanged.
+- The forecast panel is diagnostic-only and is not fetched or rendered by the
+  default primary schedule path. If diagnostic forecast data is unavailable, the
+  diagnostic UI should show an unavailable/empty state and leave the schedule
+  unchanged.
 
 ## Manager Accountability
 
-Manager accountability is a read-only operational summary.
+Manager accountability is a read-only operational diagnostic summary. It is not
+part of the primary pre-table schedule path.
 
 Manager roles considered:
 

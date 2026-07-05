@@ -72,10 +72,6 @@
             </div>
 
             <div id="scheduleSummary" class="schedule-summary"></div>
-            <div id="scheduleHealthPanel" class="schedule-health-panel" aria-live="polite"></div>
-            <div id="scheduleForecastPanel" class="schedule-forecast-panel" aria-live="polite"></div>
-            <div id="managerAccountabilityPanel" class="manager-accountability-panel" aria-live="polite"></div>
-            <div id="scheduleAttendanceSummary" class="schedule-attendance-summary" aria-live="polite"></div>
 
             <div id="loadViewWrapper" class="schedule-wrapper" style="display:none">
                 <table class="schedule-table load-table">
@@ -89,7 +85,14 @@
                     <thead id="scheduleHead"></thead>
                     <tbody id="scheduleBody"></tbody>
                 </table>
-            </div>`;
+            </div>
+
+            <section class="schedule-secondary-diagnostics" aria-label="Schedule diagnostics">
+                <div id="scheduleAttendanceSummary" class="schedule-attendance-summary" aria-live="polite"></div>
+                <div id="scheduleHealthPanel" class="schedule-health-panel" aria-live="polite" hidden></div>
+                <div id="scheduleForecastPanel" class="schedule-forecast-panel" aria-live="polite" hidden></div>
+                <div id="managerAccountabilityPanel" class="manager-accountability-panel" aria-live="polite" hidden></div>
+            </section>`;
     }
 
     function scheduleModalTemplate() {

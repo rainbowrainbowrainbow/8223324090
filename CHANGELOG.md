@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.15 - Графік HR: чистий потік
+
+### HR / Schedule / UI cleanup / Guardrails / (Клешня, 05.07.2026) [codex]
+- **Графік HR повернуто до primary table flow** - після week controls, toolbar, фільтрів і summary одразу йде таблиця графіка, без великих Health, Demand Forecast і Manager Accountability блоків зверху.
+- **Корисні table-level сигнали збережено** - розрахунок schedule health лишився для row/cell badges, readiness/account indicators, attendance summary і редагування змін не переписувались.
+- **Фільтри відділів вирівняно зі стилем HR Today** - schedule chips тепер мають окремі label/count елементи, активний стан і responsive wrapping у тому самому ритмі, що й Today segments.
+- **Guardrails оновлено під новий контракт** - статичні та UI smoke тести більше не вимагають великі diagnostics у pre-table flow і блокують їх випадкове повернення над таблицею.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR schedule frontend, docs, tests і version/cache refs.
+
+---
+
 ## v0.78.14 - Безпека: захист завантажень
 
 ### Security / Uploads / Dependencies / (Клешня, 05.07.2026) [codex]

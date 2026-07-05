@@ -2294,9 +2294,17 @@ function renderDeptFilter() {
     if (StaffState.activeDept !== 'all' && !options.some(option => option.value === StaffState.activeDept)) {
         StaffState.activeDept = 'all';
     }
-    let html = `<button class="dept-chip ${StaffState.activeDept === 'all' ? 'active' : ''}" data-dept="all">Всі</button>`;
+    const renderChip = ({ value, label, count }) => {
+        const active = StaffState.activeDept === value;
+        return `<button type="button" class="dept-chip ${active ? 'active' : ''}" data-dept="${escapeHtml(value)}" aria-pressed="${active ? 'true' : 'false'}">
+            <span class="dept-chip-label">${escapeHtml(label)}</span>
+            <strong class="dept-chip-count">${Number(count || 0)}</strong>
+        </button>`;
+    };
+    const allCount = options.reduce((sum, option) => sum + Number(option.count || 0), 0);
+    let html = renderChip({ value: 'all', label: 'Всі', count: allCount });
     for (const { value: key, label, count } of options) {
-        html += `<button class="dept-chip ${StaffState.activeDept === key ? 'active' : ''}" data-dept="${key}">${label} (${count})</button>`;
+        html += renderChip({ value: key, label, count });
     }
     container.innerHTML = html;
 
@@ -2304,7 +2312,9 @@ function renderDeptFilter() {
         chip.addEventListener('click', () => {
             StaffState.activeDept = chip.dataset.dept;
             container.querySelectorAll('.dept-chip').forEach(c => c.classList.remove('active'));
+            container.querySelectorAll('.dept-chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
             chip.classList.add('active');
+            chip.setAttribute('aria-pressed', 'true');
             renderSchedule();
         });
     });
@@ -2524,14 +2534,7 @@ function renderSchedule() {
     const tbody = document.getElementById('scheduleBody');
     const baseFiltered = scheduleVisibleStaff();
     const health = buildScheduleHealth(dates, baseFiltered);
-    const forecast = buildStaffingDemandForecast(dates, baseFiltered);
-    const accountability = buildManagerAccountability(dates, baseFiltered, health);
     const filtered = scheduleHealthFilteredStaff(baseFiltered, health);
-    StaffState.staffingForecast = forecast;
-    StaffState.managerAccountability = accountability;
-    renderScheduleHealthPanel(health);
-    renderStaffingForecastPanel(forecast);
-    renderManagerAccountabilityPanel(accountability);
 
     // Group staff by department
     const grouped = groupStaffByScheduleDepartment(filtered);
@@ -2983,7 +2986,6 @@ async function goToWeek(monday) {
     const to = formatDateStr(getScheduleRangeEnd(dates));
     await fetchSchedule(from, to);
     await fetchScheduleAttendance(from, to);
-    await fetchStaffingForecastBookings(from, to);
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
 }
@@ -3991,7 +3993,6 @@ async function initStaffSchedulePage(options = {}) {
         const to = formatDateStr(getScheduleRangeEnd(dates));
         await fetchSchedule(from, to);
         await fetchScheduleAttendance(from, to);
-        await fetchStaffingForecastBookings(from, to);
         renderSchedule();
 
         // Event listeners

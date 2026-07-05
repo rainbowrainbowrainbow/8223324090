@@ -98,53 +98,55 @@
     function scheduleModalTemplate() {
         return `
             <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Редагувати зміну">
-                <div class="sch-modal">
+                <div class="sch-modal sch-modal--schedule">
                     <h3 id="schModalTitle">Редагувати зміну</h3>
-                    <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
-                    <div class="form-group">
-                        <label>Статус</label>
-                        <select id="schStatus">
-                            <option value="working">Робочий день</option>
-                            <option value="remote">Віддалено</option>
-                            <option value="dayoff">Вихідний</option>
-                            <option value="vacation">Відпустка</option>
-                            <option value="sick">Лікарняний</option>
-                        </select>
-                    </div>
-                    <div id="schProfessionGroup" class="form-group">
-                        <label>Професія у зміні</label>
-                        <select id="schProfession"></select>
-                        <div class="form-hint">Доступні тільки професії з картки співробітника.</div>
-                    </div>
-                    <div id="schTimeFields">
+                    <div class="sch-modal-scroll">
+                        <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
                         <div class="form-group">
-                            <label>Початок зміни</label>
-                            <input type="time" id="schStart" value="10:00">
+                            <label>Статус</label>
+                            <select id="schStatus">
+                                <option value="working">Робочий день</option>
+                                <option value="remote">Віддалено</option>
+                                <option value="dayoff">Вихідний</option>
+                                <option value="vacation">Відпустка</option>
+                                <option value="sick">Лікарняний</option>
+                            </select>
+                        </div>
+                        <div id="schProfessionGroup" class="form-group">
+                            <label>Професія у зміні</label>
+                            <select id="schProfession"></select>
+                            <div class="form-hint">Доступні тільки професії з картки співробітника.</div>
+                        </div>
+                        <div id="schTimeFields">
+                            <div class="form-group">
+                                <label>Початок зміни</label>
+                                <input type="time" id="schStart" value="10:00">
+                            </div>
+                            <div class="form-group">
+                                <label>Кінець зміни</label>
+                                <input type="time" id="schEnd" value="20:00">
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label>Кінець зміни</label>
-                            <input type="time" id="schEnd" value="20:00">
+                            <label>Примітка</label>
+                            <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
+                        </div>
+                        <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
+                        <div class="modal-actions sch-replacement-actions">
+                            <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
+                            <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
+                        </div>
+                        <div class="sch-history-panel">
+                            <div class="sch-history-head">
+                                <strong>Історія клітинки</strong>
+                                <button type="button" id="schHistoryRefreshBtn" class="sch-history-refresh">Оновити</button>
+                            </div>
+                            <div id="schHistoryList" class="sch-history-list">
+                                <div class="sch-history-empty">Історія завантажиться після відкриття клітинки</div>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Примітка</label>
-                        <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
-                    </div>
-                    <div id="schReplacementDetails" class="sch-replacement-details" hidden></div>
-                    <div class="modal-actions sch-replacement-actions">
-                        <button type="button" id="schReplaceBtn" class="btn-page-secondary sch-replacement-action" hidden>Виставити заміну</button>
-                        <button type="button" id="schClearReplacementBtn" class="btn-page-secondary sch-replacement-action sch-clear-replacement-btn" hidden>Скасувати заміну</button>
-                    </div>
-                    <div class="sch-history-panel">
-                        <div class="sch-history-head">
-                            <strong>Історія клітинки</strong>
-                            <button type="button" id="schHistoryRefreshBtn" class="sch-history-refresh">Оновити</button>
-                        </div>
-                        <div id="schHistoryList" class="sch-history-list">
-                            <div class="sch-history-empty">Історія завантажиться після відкриття клітинки</div>
-                        </div>
-                    </div>
-                    <div class="modal-actions">
+                    <div class="modal-actions sch-primary-actions">
                         <button type="button" id="schSaveBtn" class="btn-page-primary">Зберегти</button>
                         <button type="button" id="schCancelBtn" class="btn-page-secondary">Скасувати</button>
                     </div>

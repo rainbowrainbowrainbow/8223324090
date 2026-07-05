@@ -526,6 +526,49 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /fetchScheduleHistory/);
         assert.match(staffPage, /\/api\/staff\/schedule\/history\/\$\{encodeURIComponent\(staffId\)\}/);
     });
+    it('keeps the schedule shift modal viewport-safe and dark-theme readable', () => {
+        const modalStart = staffScheduleShell.indexOf('id="schModalOverlay"');
+        const fillStart = staffScheduleShell.indexOf('id="fillWeekOverlay"');
+        const scheduleModal = staffScheduleShell.slice(modalStart, fillStart);
+        const modalCssBlock = staffCss.slice(
+            staffCss.indexOf('/* Edit modal */'),
+            staffCss.indexOf('/* Dark mode overrides */')
+        );
+        const darkModalCssBlock = staffCss.slice(
+            staffCss.indexOf('body.dark-mode #schModalOverlay .sch-modal--schedule select,'),
+            staffCss.indexOf('/* Extracted from staff.html presentation-only inline attrs. */')
+        );
+
+        assert.ok(modalStart > -1 && fillStart > modalStart, 'schedule modal shell is present before fill modal');
+        assert.ok(modalCssBlock.length > 0, 'schedule modal layout CSS block is present');
+        assert.ok(darkModalCssBlock.length > 0, 'schedule modal dark-theme CSS block is present');
+        assert.match(scheduleModal, /class="sch-modal sch-modal--schedule"/);
+        assert.match(scheduleModal, /class="sch-modal-scroll"/);
+        assert.match(scheduleModal, /class="modal-actions sch-primary-actions"/);
+        assert.ok(scheduleModal.indexOf('class="sch-modal-scroll"') < scheduleModal.indexOf('class="modal-actions sch-primary-actions"'));
+
+        assert.match(modalCssBlock, /\.sch-modal-overlay\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*overscroll-behavior:\s*contain;[\s\S]*\}/);
+        assert.match(modalCssBlock, /\.sch-modal\s*\{[\s\S]*max-height:\s*calc\(100dvh - 32px\);[\s\S]*overflow-y:\s*auto;[\s\S]*\}/);
+        assert.match(modalCssBlock, /#schModalOverlay \.sch-modal--schedule\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*overflow:\s*hidden;[\s\S]*\}/);
+        assert.match(modalCssBlock, /#schModalOverlay \.sch-modal-scroll\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*overflow-y:\s*auto;[\s\S]*scrollbar-gutter:\s*stable;[\s\S]*\}/);
+        assert.match(modalCssBlock, /#schModalOverlay \.sch-primary-actions\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*border-top:\s*1px solid rgba\(148, 163, 184, 0\.22\);[\s\S]*background:\s*inherit;[\s\S]*\}/);
+        assert.match(modalCssBlock, /#schModalOverlay \.sch-primary-actions > button\s*\{[\s\S]*min-height:\s*44px;[\s\S]*\}/);
+        assert.match(staffCss, /#schModalOverlay \.sch-history-list\s*\{[\s\S]*max-height:\s*min\(190px, 28dvh\);[\s\S]*\}/);
+
+        assert.match(darkModalCssBlock, /body\.dark-mode #schModalOverlay \.sch-modal--schedule select/);
+        assert.match(darkModalCssBlock, /\[data-theme="dark"\] #schModalOverlay \.sch-modal--schedule input/);
+        assert.match(darkModalCssBlock, /color-scheme:\s*dark;/);
+        assert.match(darkModalCssBlock, /background-color:\s*#0B1220;/);
+        assert.match(darkModalCssBlock, /color:\s*#F8FAFC;/);
+        assert.match(darkModalCssBlock, /select option,\s*[\s\S]*select optgroup/);
+        assert.match(darkModalCssBlock, /select option:checked/);
+        assert.match(darkModalCssBlock, /select:disabled/);
+        assert.match(darkModalCssBlock, /input:disabled/);
+        assert.match(darkModalCssBlock, /input::placeholder/);
+        assert.match(darkModalCssBlock, /input\[type="time"\]::-webkit-calendar-picker-indicator/);
+        assert.doesNotMatch(darkModalCssBlock, /!important/);
+    });
+
     it('marks partial shifts with durable load classes and theme-safe colors', () => {
         assert.match(staffPage, /const STAFF_FULL_SHIFT_MINUTES = 8 \* 60/);
         assert.match(staffPage, /function scheduleShiftLoadMeta/);

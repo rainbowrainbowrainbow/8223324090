@@ -153,3 +153,40 @@ describe('lead migration prerequisites', () => {
         assert.match(supportSql, /ALTER\s+TABLE\s+leads[\s\S]*ALTER\s+COLUMN\s+updated_at\s+SET\s+DEFAULT\s+NOW\(\)/i);
     });
 });
+
+describe('Hermes job status migration repair', () => {
+    it('keeps live Hermes job status constraints aligned with the worker lifecycle', () => {
+        const migration = readMigration('278_hermes_job_status_constraints.sql');
+        const expectedStatuses = [
+            'queued',
+            'claimed',
+            'in_progress',
+            'needs_input',
+            'ready_for_review',
+            'revision_requested',
+            'approved',
+            'rejected',
+            'failed',
+            'cancelled'
+        ];
+
+        for (const constraintName of [
+            'hermes_jobs_status_check',
+            'hermes_job_events_status_from_check',
+            'hermes_job_events_status_to_check'
+        ]) {
+            assert.match(migration, new RegExp(`DROP\\s+CONSTRAINT\\s+IF\\s+EXISTS\\s+${constraintName}`, 'i'));
+            assert.match(migration, new RegExp(`ADD\\s+CONSTRAINT\\s+${constraintName}`, 'i'));
+            assert.match(migration, new RegExp(`VALIDATE\\s+CONSTRAINT\\s+${constraintName}`, 'i'));
+        }
+
+        for (const status of expectedStatuses) {
+            const occurrences = migration.match(new RegExp(`'${status}'`, 'g')) || [];
+            assert.equal(
+                occurrences.length,
+                3,
+                `${status} must be present in jobs, event status_from, and event status_to constraints`
+            );
+        }
+    });
+});

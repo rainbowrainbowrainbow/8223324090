@@ -350,6 +350,13 @@ function resetBookingDrawerStateForOpen(mode = inferBookingDrawerModeForOpen()) 
     setBookingDrawerMode(mode);
     BookingDrawerState.selectedProgramCategory = 'all';
     BookingDrawerState.selectedActivityProgramIds = [];
+    BookingDrawerState.selectedActivityPreflight = {
+        status: 'idle',
+        message: '',
+        lastError: '',
+        failedAt: null,
+        overrideUsed: false
+    };
     BookingDrawerState.validationAttempted = false;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;

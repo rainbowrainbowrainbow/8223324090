@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.21",
+  "version": "0.78.22",
   "eventGenix": {
-    "releaseLabel": "Бронювання свят: multi-host активності"
+    "releaseLabel": "Бронювання свят: preflight і schedule helper"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

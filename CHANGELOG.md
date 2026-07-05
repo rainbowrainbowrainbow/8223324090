@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.22 - Бронювання свят: preflight і schedule helper
+
+### Booking / Preflight / Schedule helper / Release guards / (Клешня, 05.07.2026) [codex]
+- **Frontend preflight failure став явним станом** - якщо CRM не змогла перевірити зайняті слоти до submit, менеджер бачить warning у підсумку, retry CTA і окремий текст кнопки для усвідомленого повторного збереження.
+- **Повторний submit не ховає backend validation** - після збою клієнтської перевірки другий натиск дозволяє серверу виконати фінальну перевірку конфліктів, замість тихого fail-open без пояснення.
+- **Pure-розклад активностей винесено з `booking.js`** - normalize time, build rows, schedule extra і overlap живуть у `js/booking-activity-schedule.js`, який працює і в браузері, і напряму в Node tests.
+- **Schedule regression tests більше не залежать від позиції функцій у `booking.js`** - базовий sequential/manual schedule перевіряється direct import helper-а, а VM-harness лишається тільки для payload/preflight інтеграції.
+- **Static guards оновлено під новий helper** - `index.html`, service worker precache і `test:ui` контролюють завантаження `booking-activity-schedule.js` перед `booking.js`.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений booking frontend flow, helper module, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.21 - Бронювання свят: multi-host активності
 
 ### Booking / Multi-activity / Second hosts / Image fallback / (Клешня, 05.07.2026) [codex]

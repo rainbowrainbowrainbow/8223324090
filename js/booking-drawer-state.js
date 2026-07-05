@@ -5,6 +5,13 @@ var BookingDrawerState = window.BookingDrawerState || {
     selectedProgramCategory: 'all',
     selectedActivityProgramIds: [],
     selectedActivityPinataFields: {},
+    selectedActivityPreflight: {
+        status: 'idle',
+        message: '',
+        lastError: '',
+        failedAt: null,
+        overrideUsed: false
+    },
     validationAttempted: false,
     roomBookingAnimationBridge: null,
     legacyNotesFallback: false,

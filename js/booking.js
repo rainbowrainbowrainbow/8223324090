@@ -4679,11 +4679,15 @@ function getBookingPackageTotals(program) {
 
 const BOOKING_SUBMIT_INCOMPLETE_TEXT = 'Показати що заповнити';
 const BOOKING_SUBMIT_SAVING_TEXT = 'Збереження...';
+const BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT = 'Зберегти з серверною перевіркою';
 
 function rememberBookingSubmitReadyText(submitBtn) {
     if (!submitBtn) return 'Додати бронювання';
     const currentText = String(submitBtn.textContent || '').trim();
-    if (currentText && currentText !== BOOKING_SUBMIT_INCOMPLETE_TEXT && currentText !== BOOKING_SUBMIT_SAVING_TEXT) {
+    if (currentText
+        && currentText !== BOOKING_SUBMIT_INCOMPLETE_TEXT
+        && currentText !== BOOKING_SUBMIT_SAVING_TEXT
+        && currentText !== BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT) {
         submitBtn.dataset.readyText = currentText;
     }
     return submitBtn.dataset.readyText || currentText || 'Додати бронювання';
@@ -4696,15 +4700,23 @@ function updateBookingSubmitState() {
     const validation = getSmartBookingValidationState();
     const readyText = rememberBookingSubmitReadyText(submitBtn);
     const isSaving = Boolean(submitBtn.disabled && String(submitBtn.textContent || '').trim() === BOOKING_SUBMIT_SAVING_TEXT);
+    const preflightUnavailable = selectedActivityPreflightUnavailable();
     if (!isSaving) {
         submitBtn.disabled = false;
         submitBtn.setAttribute('aria-disabled', validation.canSubmit ? 'false' : 'true');
         submitBtn.classList.toggle('btn-submit--needs-input', !validation.canSubmit);
-        submitBtn.textContent = validation.canSubmit ? readyText : BOOKING_SUBMIT_INCOMPLETE_TEXT;
+        submitBtn.classList.toggle('btn-submit--preflight-warning', validation.canSubmit && preflightUnavailable);
+        submitBtn.textContent = validation.canSubmit
+            ? (preflightUnavailable ? BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT : readyText)
+            : BOOKING_SUBMIT_INCOMPLETE_TEXT;
     }
     if (BookingDrawerState.validationAttempted) applyBookingValidationInvalidFields(validation);
     if (!validation.canSubmit) {
         hint.textContent = `${validation.error || 'Оберіть кімнату та клієнта.'} Натисніть кнопку — покажу весь список.`;
+        return;
+    }
+    if (preflightUnavailable) {
+        hint.textContent = 'Попередню перевірку зайнятих слотів не виконано. Спробуйте ще раз або збережіть повторно — сервер перевірить конфлікти.';
         return;
     }
     if (validation.warnings?.length) {
@@ -4743,12 +4755,15 @@ function renderBookingPackageSummary() {
     const programRowLabel = roomFirst ? 'Кухня / меню' : 'Програма';
     const entryCharge = totals.entryCharge || (entrySubtotal > 0 ? { title: 'Вхід', subtotal: entrySubtotal } : null);
     const shouldShowValidationChecklist = !validation.canSubmit || BookingDrawerState.validationAttempted;
+    const preflightWarning = renderSelectedActivityPreflightWarning();
 
     if (!roomValue && !customerId && !customerName && !document.getElementById('selectedProgram')?.value) {
         container.innerHTML = `
             <div class="booking-summary-empty">${roomFirst ? 'Оберіть кімнату, клієнта і додайте їжу або торт — підсумок оновиться автоматично.' : 'Оберіть кімнату, клієнта і програму — підсумок оновиться автоматично.'}</div>
             ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
+            ${preflightWarning}
         `;
+        bindSelectedActivityPreflightWarningActions(container);
         updateBookingSubmitState();
         return;
     }
@@ -4761,9 +4776,11 @@ function renderBookingPackageSummary() {
         ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Вхід</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
+        ${preflightWarning}
         ${totals.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(totals.warnings[0].message || totals.warnings[0].code)}</div>` : ''}
         ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;
+    bindSelectedActivityPreflightWarningActions(container);
     updateBookingSubmitState();
 }
 
@@ -6926,6 +6943,101 @@ function bookingMultiActivityEnabled() {
         && !AppState.editingBookingId;
 }
 
+function bookingActivityScheduleApi() {
+    const root = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
+    const api = root.BookingActivitySchedule
+        || (typeof BookingActivitySchedule !== 'undefined' ? BookingActivitySchedule : null);
+    if (!api) throw new Error('BookingActivitySchedule helper is not loaded');
+    return api;
+}
+
+const SELECTED_ACTIVITY_PREFLIGHT_UNAVAILABLE_MESSAGE = 'Не вдалося перевірити зайняті слоти до збереження.';
+const SELECTED_ACTIVITY_PREFLIGHT_RETRY_TEXT = 'Спробувати перевірку ще раз';
+
+function selectedActivityPreflightState() {
+    if (!BookingDrawerState.selectedActivityPreflight
+        || typeof BookingDrawerState.selectedActivityPreflight !== 'object') {
+        BookingDrawerState.selectedActivityPreflight = {
+            status: 'idle',
+            message: '',
+            lastError: '',
+            failedAt: null,
+            overrideUsed: false
+        };
+    }
+    return BookingDrawerState.selectedActivityPreflight;
+}
+
+function selectedActivityPreflightUnavailable() {
+    return selectedActivityPreflightState().status === 'failed';
+}
+
+function setSelectedActivityPreflightUnavailable(err) {
+    const state = selectedActivityPreflightState();
+    state.status = 'failed';
+    state.message = SELECTED_ACTIVITY_PREFLIGHT_UNAVAILABLE_MESSAGE;
+    state.lastError = err?.message || String(err || '');
+    state.failedAt = new Date().toISOString();
+    state.overrideUsed = false;
+    return state;
+}
+
+function clearSelectedActivityPreflightState(options = {}) {
+    const state = selectedActivityPreflightState();
+    const changed = state.status !== 'idle'
+        || state.message
+        || state.lastError
+        || state.failedAt
+        || state.overrideUsed;
+    state.status = 'idle';
+    state.message = '';
+    state.lastError = '';
+    state.failedAt = null;
+    state.overrideUsed = false;
+    if (changed && options.render) {
+        renderBookingPackageSummary();
+        updateBookingSubmitState();
+    }
+}
+
+function renderSelectedActivityPreflightWarning() {
+    if (!selectedActivityPreflightUnavailable()) return '';
+    const state = selectedActivityPreflightState();
+    const message = state.message || SELECTED_ACTIVITY_PREFLIGHT_UNAVAILABLE_MESSAGE;
+    return `
+        <div class="booking-summary-note booking-summary-note--warning booking-preflight-warning" data-booking-preflight-warning>
+            <strong>Попередня перевірка слотів недоступна</strong>
+            <span>${escapeHtml(message)} Спробуйте повторити перевірку або натисніть збереження ще раз — тоді конфлікти перевірить сервер.</span>
+            <button type="button" class="booking-preflight-retry" data-booking-preflight-retry>${escapeHtml(SELECTED_ACTIVITY_PREFLIGHT_RETRY_TEXT)}</button>
+        </div>
+    `;
+}
+
+function bindSelectedActivityPreflightWarningActions(root = document) {
+    root.querySelector?.('[data-booking-preflight-retry]')?.addEventListener('click', retrySelectedActivityPreflightValidation);
+}
+
+async function retrySelectedActivityPreflightValidation(event) {
+    const button = event?.currentTarget || null;
+    const originalText = button?.textContent || SELECTED_ACTIVITY_PREFLIGHT_RETRY_TEXT;
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Перевіряю...';
+    }
+    const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : {};
+    const excludeId = AppState.editingBookingId || null;
+    try {
+        const ok = await validateSelectedActivityScheduleBeforeSubmit(formData, excludeId, { forceRetry: true });
+        if (ok) showNotification('Попередню перевірку слотів виконано.', 'success');
+        return ok;
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+}
+
 function getSelectedActivityProgramIds() {
     const ids = Array.isArray(BookingDrawerState.selectedActivityProgramIds)
         ? BookingDrawerState.selectedActivityProgramIds.filter(Boolean).map(String)
@@ -7221,13 +7333,7 @@ function selectedActivityPinataValidationBlockers(formData = {}) {
 }
 
 function normalizeSelectedActivityScheduleTime(value) {
-    const raw = String(value || '').trim();
-    const match = raw.match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) return '';
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return '';
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    return bookingActivityScheduleApi().normalizeSelectedActivityScheduleTime(value);
 }
 
 function selectedActivityScheduleBaseTime() {
@@ -7256,6 +7362,7 @@ function pruneSelectedActivityScheduleState(programIds = []) {
     Object.keys(secondAnimatorFields).forEach(id => {
         if (!keep.has(String(id))) delete secondAnimatorFields[id];
     });
+    clearSelectedActivityPreflightState();
 }
 
 function resetSelectedActivityScheduleState(options = {}) {
@@ -7263,32 +7370,14 @@ function resetSelectedActivityScheduleState(options = {}) {
     BookingDrawerState.selectedActivityScheduleIssues = {};
     BookingDrawerState.selectedActivityPinataFields = {};
     BookingDrawerState.selectedActivitySecondAnimatorFields = {};
+    clearSelectedActivityPreflightState();
     if (options.render) renderSelectedProgramSummary();
 }
 
 function getSelectedActivityScheduleRows(programs = getSelectedActivityPrograms()) {
-    const scheduleTimes = getSelectedActivityScheduleTimes();
-    let nextTime = selectedActivityScheduleBaseTime();
-    return (programs || []).filter(Boolean).map((program, index) => {
-        const programId = String(program.id);
-        const manualTime = normalizeSelectedActivityScheduleTime(scheduleTimes[programId]);
-        const time = manualTime || nextTime || '';
-        const duration = Number(program.duration || 0) || 0;
-        const startMinutes = time ? timeToMinutes(time) : null;
-        const endMinutes = startMinutes !== null ? startMinutes + duration : null;
-        const endTime = endMinutes !== null ? minutesToTime(endMinutes) : '';
-        if (time) nextTime = minutesToTime((startMinutes || 0) + duration);
-        return {
-            index,
-            program,
-            programId,
-            time,
-            duration,
-            endTime,
-            startMinutes,
-            endMinutes,
-            manual: Boolean(manualTime)
-        };
+    return bookingActivityScheduleApi().buildSelectedActivityScheduleRows(programs, {
+        scheduleTimes: getSelectedActivityScheduleTimes(),
+        baseTime: selectedActivityScheduleBaseTime()
     });
 }
 
@@ -7298,14 +7387,7 @@ function selectedActivityScheduleLabel(row = {}) {
 }
 
 function selectedActivityScheduleExtra(rows = []) {
-    return rows.map(row => ({
-        index: row.index + 1,
-        programId: row.programId,
-        startTime: row.time || null,
-        endTime: row.endTime || null,
-        duration: row.duration || 0,
-        manual: Boolean(row.manual)
-    }));
+    return bookingActivityScheduleApi().selectedActivityScheduleExtra(rows);
 }
 
 function setSelectedActivityScheduleIssues(issueMap = {}) {
@@ -7351,6 +7433,7 @@ function setSelectedActivityScheduleTime(programId, value, options = {}) {
         refreshAnimatorSelectsForCurrentSlot().catch(() => {});
     }
     setSelectedActivityScheduleIssues({});
+    clearSelectedActivityPreflightState();
     renderSelectedProgramSummary();
     renderBookingPackageSummary();
     if (window.BookingForm) BookingForm._dirty = true;
@@ -7361,6 +7444,7 @@ function setSelectedActivityScheduleTime(programId, value, options = {}) {
 function alignSelectedActivityScheduleSequentially(options = {}) {
     BookingDrawerState.selectedActivityScheduleTimes = {};
     BookingDrawerState.selectedActivityScheduleIssues = {};
+    clearSelectedActivityPreflightState();
     renderSelectedProgramSummary();
     renderBookingPackageSummary();
     if (window.BookingForm) BookingForm._dirty = true;
@@ -7384,6 +7468,7 @@ function setSelectedActivityPrograms(ids = [], options = {}) {
     });
     BookingDrawerState.selectedActivityProgramIds = unique;
     pruneSelectedActivityScheduleState(unique);
+    clearSelectedActivityPreflightState();
     const hidden = document.getElementById('selectedProgram');
     if (hidden) hidden.value = unique[0] || '';
     updateSelectedProgramCards();
@@ -7544,6 +7629,7 @@ function setSelectedActivitySecondAnimator(programId, value) {
     }
 
     setSelectedActivityScheduleIssues({});
+    clearSelectedActivityPreflightState();
     renderSelectedProgramSummary();
     renderBookingPackageSummary();
     updateBookingSubmitState();
@@ -7614,6 +7700,7 @@ function setSelectedActivityPinataField(programId, field, value) {
     } else if (field === 'clientPinataServiceNote') {
         state.clientPinataServiceNote = nextValue;
     }
+    clearSelectedActivityPreflightState();
     renderSelectedProgramSummary();
     renderBookingPackageSummary();
     updateBookingSubmitState();
@@ -8489,17 +8576,11 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
 let _selectedActivityConflictTimer = null;
 
 function selectedActivityScheduleRange(row = {}) {
-    const start = row.startMinutes;
-    const end = row.endMinutes;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-    return { start, end };
+    return bookingActivityScheduleApi().selectedActivityScheduleRange(row);
 }
 
 function selectedActivityScheduleOverlaps(first = {}, second = {}) {
-    const a = selectedActivityScheduleRange(first);
-    const b = selectedActivityScheduleRange(second);
-    if (!a || !b) return false;
-    return a.start < b.end && a.end > b.start;
+    return bookingActivityScheduleApi().selectedActivityScheduleOverlaps(first, second);
 }
 
 function normalizeScheduleBooking(booking = {}) {
@@ -8549,6 +8630,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         : getSelectedActivityPrograms();
     if (!bookingMultiActivityEnabled() || programs.length <= 1) {
         setSelectedActivityScheduleIssues({});
+        clearSelectedActivityPreflightState();
         return { valid: true, issues: [] };
     }
 
@@ -8558,6 +8640,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
     const room = String(formData.room || document.getElementById('roomSelect')?.value || '').trim();
     const date = normalizeBookingDateKey(AppState.selectedDate);
     const allBookings = await getBookingsForDate(AppState.selectedDate, { force: options.force !== false });
+    clearSelectedActivityPreflightState();
     const existingBookings = existingScheduleBookingsForValidation(allBookings, options.excludeId || null);
 
     rows.forEach(row => {
@@ -8606,10 +8689,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         };
         const lineConflict = existingBookings.find(booking =>
             normalizeBookingIdentity(booking.lineId) === normalizeBookingIdentity(candidate.lineId)
-            && selectedActivityScheduleOverlaps(
-                { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
-                { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
-            )
+            && selectedActivityScheduleOverlaps(candidate, booking)
         );
         if (lineConflict) {
             addSelectedActivityScheduleIssue(issueMap, row.programId, `Ведучий зайнятий: ${scheduleBookingLabel(lineConflict)} о ${lineConflict.time}.`, {
@@ -8625,10 +8705,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
                 }
                 const secondLineConflict = existingBookings.find(booking =>
                     normalizeBookingIdentity(booking.lineId) === normalizeBookingIdentity(secondDraft.secondAnimatorLineId)
-                    && selectedActivityScheduleOverlaps(
-                        { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
-                        { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
-                    )
+                    && selectedActivityScheduleOverlaps(candidate, booking)
                 );
                 if (secondLineConflict) {
                     addSelectedActivityScheduleIssue(issueMap, row.programId, `Другий ведучий зайнятий: ${scheduleBookingLabel(secondLineConflict)} о ${secondLineConflict.time}.`, {
@@ -8641,10 +8718,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         const roomConflict = room && isOperationalBookingRoomValue(room)
             ? existingBookings.find(booking =>
                 normalizeBookingIdentity(booking.room) === normalizeBookingIdentity(room)
-                && selectedActivityScheduleOverlaps(
-                    { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
-                    { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
-                )
+                && selectedActivityScheduleOverlaps(candidate, booking)
             )
             : null;
         if (roomConflict) {
@@ -8656,10 +8730,7 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
         if (selectedActivityDuplicateCheckEnabled(row.programId, row.program)) {
             const duplicate = existingBookings.find(booking =>
                 normalizeBookingIdentity(booking.programId) === normalizeBookingIdentity(row.programId)
-                && selectedActivityScheduleOverlaps(
-                    { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
-                    { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
-                )
+                && selectedActivityScheduleOverlaps(candidate, booking)
             );
             if (duplicate) {
                 addSelectedActivityScheduleIssue(issueMap, row.programId, `Дубль програми: ${scheduleBookingLabel(duplicate)} о ${duplicate.time}.`, {
@@ -8687,16 +8758,33 @@ function scheduleSelectedActivityConflictRefresh(delay = 250) {
     }, delay);
 }
 
-async function validateSelectedActivityScheduleBeforeSubmit(formData = {}, excludeId = null) {
+async function validateSelectedActivityScheduleBeforeSubmit(formData = {}, excludeId = null, options = {}) {
+    if (selectedActivityPreflightUnavailable() && !options.forceRetry) {
+        const state = selectedActivityPreflightState();
+        state.overrideUsed = true;
+        showNotification('Попередня перевірка слотів недоступна. Продовжую збереження — сервер перевірить конфлікти.', 'warning');
+        return true;
+    }
     let result;
     try {
         result = await validateSelectedActivitySchedule(formData, { excludeId, render: true, force: true });
     } catch (err) {
         console.warn('[Booking] Selected activity schedule validation unavailable before submit', err);
-        showNotification('Не вдалося виконати попередню перевірку активностей. Сервер перевірить конфлікти під час збереження.', 'warning');
+        setSelectedActivityPreflightUnavailable(err);
+        renderSelectedProgramSummary();
+        renderBookingPackageSummary();
+        updateBookingSubmitState();
+        showNotification('Не вдалося виконати попередню перевірку активностей. Спробуйте ще раз або натисніть збереження повторно для серверної перевірки.', 'warning');
+        return false;
+    }
+    if (result.valid) {
+        renderBookingPackageSummary();
+        updateBookingSubmitState();
         return true;
     }
-    if (result.valid) return true;
+    clearSelectedActivityPreflightState();
+    renderBookingPackageSummary();
+    updateBookingSubmitState();
     const first = result.issues[0];
     if (first?.conflictBookingId) revealHiddenBooking(first.conflictBookingId);
     showNotification(first?.message || 'Перевірте часи обраних активностей.', 'error');

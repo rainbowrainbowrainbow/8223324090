@@ -38,6 +38,7 @@ const {
 const {
     banquetSummaryModeContract
 } = require('../services/banquetSummary');
+const BookingActivitySchedule = require('../js/booking-activity-schedule');
 
 const repoRoot = path.resolve(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
@@ -628,17 +629,21 @@ function clickElement(window, element) {
     dispatchPointerElement(window, element, 'click');
 }
 
+function multiActivitySchedulePrograms() {
+    return [
+        { id: 'anim-30', code: 'AN', label: 'Anim(30)', name: 'Animation', category: 'animation', duration: 30, price: 1500, hosts: 1 },
+        { id: 'show-40', code: 'WOW', label: 'Wow(40)', name: 'Wow show', category: 'show', duration: 40, price: 2400, hosts: 1 },
+        { id: 'photo-20', code: 'PH', label: 'Photo(20)', name: 'Photo', category: 'photo', duration: 20, price: 900, hosts: 1 }
+    ];
+}
+
 function createMultiActivityScheduleHarness(options = {}) {
     const bookingJs = read('js', 'booking.js');
     const start = bookingJs.indexOf('function bookingMultiActivityEnabled');
     const end = bookingJs.indexOf('function buildMaysternyaClosedSlotBooking', start);
     assert.ok(start >= 0 && end > start, 'multi-activity schedule helper slice exists');
 
-    const programs = options.programs || [
-        { id: 'anim-30', code: 'AN', label: 'Anim(30)', name: 'Animation', category: 'animation', duration: 30, price: 1500, hosts: 1 },
-        { id: 'show-40', code: 'WOW', label: 'Wow(40)', name: 'Wow show', category: 'show', duration: 40, price: 2400, hosts: 1 },
-        { id: 'photo-20', code: 'PH', label: 'Photo(20)', name: 'Photo', category: 'photo', duration: 20, price: 900, hosts: 1 }
-    ];
+    const programs = options.programs || multiActivitySchedulePrograms();
     const fields = new Map(Object.entries({
         bookingTime: { value: options.baseTime || '12:00' },
         selectedProgram: { value: programs[0]?.id || '' },
@@ -651,7 +656,10 @@ function createMultiActivityScheduleHarness(options = {}) {
     const revealed = [];
     const context = {
         console,
-        window: {},
+        window: {
+            BookingActivitySchedule
+        },
+        BookingActivitySchedule,
         document: {
             getElementById: id => fields.get(id) || { value: '' },
             querySelector: () => null,
@@ -663,7 +671,14 @@ function createMultiActivityScheduleHarness(options = {}) {
             selectedActivityScheduleTimes: { ...(options.scheduleTimes || {}) },
             selectedActivityScheduleIssues: {},
             selectedActivityPinataFields: {},
-            selectedActivitySecondAnimatorFields: { ...(options.secondAnimatorFields || {}) }
+            selectedActivitySecondAnimatorFields: { ...(options.secondAnimatorFields || {}) },
+            selectedActivityPreflight: {
+                status: 'idle',
+                message: '',
+                lastError: '',
+                failedAt: null,
+                overrideUsed: false
+            }
         },
         getProductsSync: () => programs,
         isParkTimelineBookingMode: () => true,
@@ -690,11 +705,23 @@ function createMultiActivityScheduleHarness(options = {}) {
         toBookingMoney: value => Math.round(Number(value || 0) * 100) / 100,
         isOperationalBookingRoomValue: value => Boolean(String(value || '').trim()),
         getBookingsForDate: options.getBookingsForDate || (async () => []),
+        getBookingFormData: () => ({
+            hasEvent: true,
+            activityPrograms: programs,
+            lineId: options.lineId || 'line-main',
+            room: options.room || 'Room A'
+        }),
         renderSelectedProgramSummary: () => {},
         renderBookingPackageSummary: () => {},
         refreshBookingActiveBanquetRoleIntent: () => {},
         updateBookingSubmitState: () => {},
         updateSelectedProgramCards: () => {},
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;'),
         refreshAnimatorSelectsForCurrentSlot: async () => {},
         scheduleSelectedActivityConflictRefresh: () => {},
         showNotification: (message, type) => notifications.push({ message, type }),
@@ -751,12 +778,23 @@ function multiActivityBaseBooking() {
     };
 }
 
-test('booking multi-activity schedule defaults sequentially from base time', () => {
-    const context = createMultiActivityScheduleHarness();
-    const rows = context.getSelectedActivityScheduleRows(context.__programs);
+test('booking activity schedule helper defaults sequentially from base time', () => {
+    const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(multiActivitySchedulePrograms(), {
+        baseTime: '12:00'
+    });
 
     assert.deepEqual(rows.map(row => row.time), ['12:00', '12:30', '13:10']);
     assert.deepEqual(rows.map(row => row.endTime), ['12:30', '13:10', '13:30']);
+    assert.deepEqual(
+        BookingActivitySchedule.selectedActivityScheduleExtra(rows).map(item => item.startTime),
+        ['12:00', '12:30', '13:10']
+    );
+    assert.equal(BookingActivitySchedule.selectedActivityScheduleOverlaps(rows[0], rows[1]), false);
+    assert.equal(BookingActivitySchedule.selectedActivityScheduleOverlaps(rows[0], { time: '12:20', duration: 15 }), true);
+});
+
+test('booking multi-activity default schedule is persisted into banquetActivities payload', () => {
+    const context = createMultiActivityScheduleHarness();
 
     const base = multiActivityBaseBooking();
     const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
@@ -766,12 +804,19 @@ test('booking multi-activity schedule defaults sequentially from base time', () 
     assert.deepEqual(base.extraData.multiActivity.schedule.map(item => item.startTime), ['12:00', '12:30', '13:10']);
 });
 
-test('booking multi-activity manual second time is persisted into banquetActivities payload', () => {
-    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:50' } });
-    const rows = context.getSelectedActivityScheduleRows(context.__programs);
+test('booking activity schedule helper applies manual second time', () => {
+    const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(multiActivitySchedulePrograms(), {
+        baseTime: '12:00',
+        scheduleTimes: { 'show-40': '12:50' }
+    });
 
     assert.deepEqual(rows.map(row => row.time), ['12:00', '12:50', '13:30']);
     assert.equal(rows[1].manual, true);
+    assert.equal(BookingActivitySchedule.selectedActivityScheduleExtra(rows)[1].manual, true);
+});
+
+test('booking multi-activity manual second time is persisted into banquetActivities payload', () => {
+    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:50' } });
 
     const base = multiActivityBaseBooking();
     const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
@@ -837,6 +882,44 @@ test('booking selected activity schedule conflict blocks submit preflight', asyn
     assert.deepEqual(context.__revealed, ['BK-CONFLICT']);
     assert.equal(context.__notifications.length, 1);
     assert.equal(context.__notifications[0].type, 'error');
+});
+
+test('booking selected activity preflight failure requires explicit repeat before backend submit', async () => {
+    let shouldFail = true;
+    let calls = 0;
+    const context = createMultiActivityScheduleHarness({
+        getBookingsForDate: async () => {
+            calls += 1;
+            if (shouldFail) throw new Error('network down');
+            return [];
+        }
+    });
+    const formData = {
+        hasEvent: true,
+        activityPrograms: context.__programs,
+        lineId: 'line-main',
+        room: 'Room A'
+    };
+
+    const first = await context.validateSelectedActivityScheduleBeforeSubmit(formData, null);
+
+    assert.equal(first, false, 'first unavailable preflight should block submit');
+    assert.equal(context.BookingDrawerState.selectedActivityPreflight.status, 'failed');
+    assert.match(context.renderSelectedActivityPreflightWarning(), /data-booking-preflight-retry/);
+    assert.equal(context.__notifications.at(-1).type, 'warning');
+
+    const second = await context.validateSelectedActivityScheduleBeforeSubmit(formData, null);
+
+    assert.equal(second, true, 'second submit should allow backend validation to run');
+    assert.equal(calls, 1, 'explicit repeat should not silently retry and hide backend validation');
+    assert.equal(context.BookingDrawerState.selectedActivityPreflight.overrideUsed, true);
+
+    shouldFail = false;
+    const retry = await context.validateSelectedActivityScheduleBeforeSubmit(formData, null, { forceRetry: true });
+
+    assert.equal(retry, true);
+    assert.equal(context.BookingDrawerState.selectedActivityPreflight.status, 'idle');
+    assert.equal(calls, 2);
 });
 
 test('booking package normalizes menu positions with price and subtotal', () => {
@@ -2425,7 +2508,10 @@ test('booking activity image fallback swaps broken image for emoji media slot', 
 test('booking workspace exposes adaptive event toggle, client, lead, kitchen, summary, and backend persistence', () => {
     const html = read('index.html');
     const bookingJs = read('js', 'booking.js');
+    const bookingActivityScheduleJs = read('js', 'booking-activity-schedule.js');
     const bookingFormJs = read('js', 'booking-form.js');
+    const bookingDrawerStateJs = read('js', 'booking-drawer-state.js');
+    const bookingBanquetSelectorJs = read('js', 'booking-banquet-selector.js');
     const configJs = read('js', 'config.js');
     const apiJs = read('js', 'api.js');
     const panelCss = read('css', 'panel.css');
@@ -2613,6 +2699,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /function setSelectedActivityPrograms/);
     assert.match(bookingJs, /function buildMultiActivityBookings/);
     assert.match(bookingJs, /function getSelectedActivityScheduleRows/);
+    assert.match(bookingJs, /bookingActivityScheduleApi\(\)\.buildSelectedActivityScheduleRows/);
+    assert.match(bookingJs, /bookingActivityScheduleApi\(\)\.selectedActivityScheduleOverlaps/);
+    assert.match(bookingActivityScheduleJs, /BookingActivitySchedule/);
+    assert.match(bookingActivityScheduleJs, /module\.exports = api/);
+    assert.match(bookingActivityScheduleJs, /function buildSelectedActivityScheduleRows/);
+    assert.match(html, new RegExp(`js/booking-activity-schedule\\.js\\?v=${packageJson.version.replace(/\./g, '\\.')}`));
     assert.match(bookingJs, /function setSelectedActivityScheduleTime/);
     assert.match(bookingJs, /function alignSelectedActivityScheduleSequentially/);
     assert.match(bookingJs, /selectedActivityPinataFields/);
@@ -2630,6 +2722,12 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /pinataFillerNumber:\s*pinataFields\.pinataFillerNumber/);
     assert.match(bookingJs, /async function validateSelectedActivitySchedule/);
     assert.match(bookingJs, /async function validateSelectedActivityScheduleBeforeSubmit/);
+    assert.match(bookingJs, /selectedActivityPreflightUnavailable/);
+    assert.match(bookingJs, /setSelectedActivityPreflightUnavailable\(err\)/);
+    assert.match(bookingJs, /data-booking-preflight-retry/);
+    assert.match(bookingJs, /BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT/);
+    assert.match(bookingDrawerStateJs, /selectedActivityPreflight:\s*\{/);
+    assert.match(bookingBanquetSelectorJs, /BookingDrawerState\.selectedActivityPreflight = \{/);
     assert.match(bookingJs, /data-activity-time-id/);
     assert.match(bookingJs, /data-align-activity-schedule/);
     assert.match(bookingJs, /selected-activity-conflict/);
@@ -2637,6 +2735,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /time:\s*row\.time/);
     assert.match(bookingJs, /schedule:\s*selectedActivityScheduleExtra\(scheduleRows\)/);
     assert.match(bookingJs, /validateSelectedActivityScheduleBeforeSubmit\(formData, excludeId\)/);
+    assert.match(bookingJs, /validateSelectedActivityScheduleBeforeSubmit\(formData, excludeId, \{ forceRetry: true \}\)/);
     assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities \}\)/);
     assert.match(bookingJs, /multiActivity/);
     assert.doesNotMatch(bookingJs, /additionalMultiHostActivity/);
@@ -2662,7 +2761,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /function selectedActivityScheduleValidationBlockers/);
     assert.match(bookingJs, /issues:\s*state\.issues/);
     assert.match(bookingJs, /BOOKING_SUBMIT_INCOMPLETE_TEXT = 'Показати що заповнити'/);
-    assert.match(bookingJs, /submitBtn\.textContent = validation\.canSubmit \? readyText : BOOKING_SUBMIT_INCOMPLETE_TEXT/);
+    assert.match(bookingJs, /\? \(preflightUnavailable \? BOOKING_SUBMIT_PREFLIGHT_OVERRIDE_TEXT : readyText\)/);
+    assert.match(bookingJs, /btn-submit--preflight-warning/);
     assert.match(bookingJs, /booking-validation-checklist/);
     assert.match(bookingJs, /bookingValidationFieldTarget/);
     assert.match(bookingJs, /activityTime:/);
@@ -2808,6 +2908,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(panelCss, /\.selected-activity-pinata-grid/);
     assert.match(panelCss, /\.selected-activity-pinata-error/);
     assert.match(panelCss, /\.btn-submit\.btn-submit--needs-input\s*\{[\s\S]*#F59E0B/);
+    assert.match(panelCss, /\.btn-submit\.btn-submit--preflight-warning/);
+    assert.match(panelCss, /\.booking-preflight-warning/);
+    assert.match(panelCss, /\.booking-preflight-retry/);
     assert.match(panelCss, /\.booking-validation-checklist/);
     assert.match(panelCss, /#programsIcons\[aria-invalid="true"\]/);
     assert.match(panelCss, /#pinataDesignPicker\[aria-invalid="true"\]/);

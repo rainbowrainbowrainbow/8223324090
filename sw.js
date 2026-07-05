@@ -19,8 +19,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v0.78.21';
-const API_CACHE_NAME = 'event-genix-api-v0.78.21';
+const CACHE_NAME = 'event-genix-v0.78.22';
+const API_CACHE_NAME = 'event-genix-api-v0.78.22';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [
@@ -58,6 +58,7 @@ const APP_SHELL = [
     '/js/auth.js',
     '/js/timeline-banquet-inspector-helpers.js',
     '/js/timeline.js',
+    '/js/booking-activity-schedule.js',
     '/js/booking.js',
     '/js/settings.js',
     '/js/app.js',

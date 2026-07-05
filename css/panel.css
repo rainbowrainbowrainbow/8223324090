@@ -1910,6 +1910,16 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     box-shadow: 0 12px 28px rgba(245,158,11,0.34);
 }
 
+.btn-submit.btn-submit--preflight-warning {
+    background: linear-gradient(135deg, #F59E0B 0%, #B45309 100%);
+    color: #111827;
+    box-shadow: 0 10px 24px rgba(245,158,11,0.3);
+}
+
+.btn-submit.btn-submit--preflight-warning:hover {
+    box-shadow: 0 12px 28px rgba(245,158,11,0.38);
+}
+
 .btn-submit:disabled,
 .btn-submit[disabled] {
     cursor: not-allowed;
@@ -4406,6 +4416,39 @@ body.booking-menu-catalog-active {
 
 .booking-validation-checklist li {
     padding-left: 2px;
+}
+
+.booking-preflight-warning {
+    display: grid;
+    gap: 8px;
+    border-color: rgba(245, 158, 11, 0.48);
+    background: rgba(245, 158, 11, 0.14);
+    color: #FDE68A;
+}
+
+.booking-preflight-warning span {
+    color: inherit;
+}
+
+.booking-preflight-retry {
+    justify-self: start;
+    min-height: 30px;
+    padding: 6px 10px;
+    border: 1px solid rgba(245, 158, 11, 0.42);
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.18);
+    color: #FFFBEB;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.booking-preflight-retry:hover,
+.booking-preflight-retry:focus-visible {
+    border-color: rgba(245, 158, 11, 0.7);
+    background: rgba(245, 158, 11, 0.28);
+    outline: none;
 }
 
 #programsIcons[aria-invalid="true"],

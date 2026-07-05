@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.25 - QA: browser smoke клієнтів
+
+### Customers / Browser QA / Dependencies / (Клешня, 05.07.2026) [codex]
+- **Browser smoke для створення клієнта з дитиною додано** - `npm run test:browser:customer-child-create` відкриває реальну сторінку `customers.html`, створює тестову картку з child row, перевіряє detail/search і видаляє QA-запис.
+- **Live-запуск має явний guard** - не-local URL вимагає `CUSTOMER_CHILD_BROWSER_SMOKE_ALLOW_PRODUCTION=true`, а тест бере credentials тільки з env і не друкує секрети.
+- **Dependency safety patch виконано** - `pg` оновлено до `8.22.0`, transitive `undici` в lockfile оновлено до `7.28.0`, `npm audit --audit-level=high` повертає `0 vulnerabilities`.
+- **Deprecated transitive packages проаудитено без ризикових overrides** - `exceljs@4.4.0` досі тягне старі `archiver`/`unzipper`/`fast-csv` залежності; їх не форсили major-overrides, щоб не зламати XLSX сценарії.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений QA harness, dependency patch, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.24 - Клієнти: створення з дітьми
 
 ### Customers / Customer children / CI runtime / (Клешня, 05.07.2026) [codex]

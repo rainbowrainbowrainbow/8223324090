@@ -22,6 +22,22 @@ const {
 
 const ROOT = path.resolve(__dirname, '..');
 
+test('customer child browser smoke command covers live create-detail-search-cleanup flow', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const smoke = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'customer-child-create-browser-smoke.js'), 'utf8');
+
+    assert.match(pkg.scripts['test:browser:customer-child-create'], /customer-child-create-browser-smoke\.js/);
+    assert.match(smoke, /CUSTOMER_CHILD_BROWSER_SMOKE_ALLOW_PRODUCTION/);
+    assert.match(smoke, /#addCustomerBtn/);
+    assert.match(smoke, /#editAddChildBtn/);
+    assert.match(smoke, /#editChildName0/);
+    assert.match(smoke, /#saveCustomerBtn/);
+    assert.match(smoke, /#customerDetailModal:not\(\.hidden\) #customerDetailContent/);
+    assert.match(smoke, /assertSearchContains/);
+    assert.match(smoke, /assertSearchDeleted/);
+    assert.ok(smoke.includes('no /api/customers 500 responses'));
+});
+
 test('customer_children migration is additive idempotent and preserves source data', () => {
     const sql = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '270_customer_children.sql'), 'utf8');
 

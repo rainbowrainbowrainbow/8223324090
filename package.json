@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.24",
+  "version": "0.78.25",
   "eventGenix": {
-    "releaseLabel": "Клієнти: створення з дітьми"
+    "releaseLabel": "QA: browser smoke клієнтів"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -48,6 +48,7 @@
     "test:ui": "node tests/ui-check.js",
     "test:browser:event-cards": "npx --yes --package @playwright/test playwright test tests/browser/event-cards-visual-smoke.spec.js --reporter=line",
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
+    "test:browser:customer-child-create": "npx --yes --package playwright node tests/browser/customer-child-create-browser-smoke.js",
     "test:browser:hr-pulse": "npx --yes --package playwright node tests/browser/hr-pulse-browser-smoke.js",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
     "test:browser:timeline": "npm exec --package=playwright -c \"node tests/browser/timeline-browser-smoke.js\"",
@@ -76,7 +77,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pdfkit": "^0.18.0",
-    "pg": "^8.21.0",
+    "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "swagger-ui-express": "^5.0.1",
     "web-push": "^3.6.7",

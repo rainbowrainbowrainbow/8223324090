@@ -2999,10 +2999,11 @@ function showManualPasswordResetResult(payload = {}, user = {}) {
 }
 
 function validateAccountManualPassword(values = {}, passwordKey = 'password') {
-    const password = String(values[passwordKey] || '');
+    const key = typeof passwordKey === 'string' && passwordKey ? passwordKey : 'password';
+    const password = String(values[key] || '');
     if (!password) return null;
     if (password.length < 6) {
-        return { key: passwordKey, message: 'Пароль має бути не менше 6 символів' };
+        return { key, message: 'Пароль має бути не менше 6 символів' };
     }
     if (password !== String(values.confirmPassword || '')) {
         return { key: 'confirmPassword', message: 'Паролі не збігаються' };

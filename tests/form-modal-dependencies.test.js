@@ -6,6 +6,7 @@ const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
 const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 
 function createDom() {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -95,6 +96,12 @@ function accessFields() {
     ];
 }
 
+function loadAccountManualPasswordValidator() {
+    const match = hrCode.match(/function validateAccountManualPassword[\s\S]*?\n}/);
+    assert.ok(match, 'validateAccountManualPassword function should exist');
+    return new Function(`${match[0]}; return validateAccountManualPassword;`)();
+}
+
 test('formModal preset applies dependent checkbox and select values together', async () => {
     const { window } = createDom();
     const resultPromise = window.formModal('Access', accessFields(), { type: 'info' });
@@ -179,4 +186,17 @@ test('formModal validate keeps the form open until cross-field errors are fixed'
     assert.equal(result.username, 'operator');
     assert.equal(result.password, 'ManualPass789!');
     assert.equal(result.confirmPassword, 'ManualPass789!');
+});
+
+test('account password validator treats formModal context as context, not password field key', () => {
+    const validate = loadAccountManualPasswordValidator();
+
+    assert.deepEqual(
+        validate({ password: 'ManualPass789!', confirmPassword: 'ManualPass987!' }, { fields: [], overlay: null }),
+        { key: 'confirmPassword', message: 'Паролі не збігаються' }
+    );
+    assert.deepEqual(
+        validate({ newPassword: 'short', confirmPassword: 'short' }, 'newPassword'),
+        { key: 'newPassword', message: 'Пароль має бути не менше 6 символів' }
+    );
 });

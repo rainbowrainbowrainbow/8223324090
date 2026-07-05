@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.17 - Акаунти: inline перевірка повтору пароля
+
+### Accounts / HR / Password validation hotfix / (Клешня, 05.07.2026) [codex]
+- **Inline перевірка повтору пароля тепер реально спрацьовує у створенні акаунта** - `formModal` передає validator-у context другим аргументом, а HR validator більше не плутає цей context із назвою password-поля.
+- **Форма створення CRM акаунта не закривається на mismatch** - при різних `password` і `confirmPassword` модалка лишається відкритою, введені поля збережені, а `POST /api/users` не стартує.
+- **Regression guard посилено** - тест витягує реальний `validateAccountManualPassword` з `js/hr-page.js` і фіксує випадок, де другим аргументом приходить `{ fields, overlay }`.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR frontend validator, tests і version/cache refs.
+
+---
+
 ## v0.78.16 - Акаунти: повтор пароля без втрати форми
 
 ### Accounts / HR / Shared modal validation / (Клешня, 05.07.2026) [codex]

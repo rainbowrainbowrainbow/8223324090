@@ -5025,6 +5025,16 @@ describe('route-level API safety smoke', () => {
         assert.equal(saved.data.data.nodes[0].y, 40);
         assert.equal(saved.data.data.nodes[1].x, 340);
         assert.equal(saved.data.data.nodes[1].y, 210);
+        const invalidGroup = await request('PUT', '/api/hr/company-structure', {
+            schemaVersion: 1,
+            nodes: [
+                { id: 'custom_ops', title: 'Custom ops', displayGroup: 'security', order: 1 }
+            ]
+        }, withAuth());
+        assert.equal(invalidGroup.status, 200, JSON.stringify(invalidGroup.data));
+        assert.equal(invalidGroup.data.success, true);
+        assert.equal(invalidGroup.data.data.nodes[0].displayGroup, null);
+        assert.deepEqual(invalidGroup.data.displayGroups.map(group => group.key), ['animators', 'trampoline', 'reception', 'admin', 'cafe', 'tech', 'cleaning']);
         assert.ok(queries.some(q => /INSERT INTO settings \(key, value\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO hr_audit_log/i.test(q.text)));
     });

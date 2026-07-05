@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.12 - HR: структура керує фільтрами
+
+### HR / Структура компанії / Сьогодні / Графік / (Клешня, 05.07.2026) [codex]
+- **`displayGroup` зі структури компанії став реальним backend source-of-truth** - staff APIs читають `hr_company_structure`, передають structure context у resolver і зберігають fallback без зміни `staff.department`.
+- **`Сьогодні`, `Графік` і standalone `/staff` синхронізовано по одному display groups contract** - frontend бере labels/order з API payload і лишає hardcoded правила тільки як legacy fallback.
+- **Regression guards закріпили structure-driven grouping** - тести перевіряють пріоритет structure node над department fallback, profession structure mapping, `security -> tech` і reception roles.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff display groups, frontend contract, tests і version/cache refs.
+
+---
+
 ## v0.78.11 - CSP і HR Pulse guardrails
 
 ### CSP / HR Pulse / Production console cleanup / (Клешня, 05.07.2026) [codex]

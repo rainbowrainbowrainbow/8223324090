@@ -49,7 +49,9 @@ const {
 const {
     decorateStaffRowsWithDisplayGroups,
     decorateStaffWithDisplayGroup,
+    loadStaffDisplayGroupContext,
     listStaffDisplayGroups,
+    normalizeStaffCompanyStructurePayload,
     staffStructureDisplayGroupKey
 } = require('../services/staffDisplayGroups');
 const {
@@ -1208,22 +1210,7 @@ function sanitizeCompanyStructureNodes(nodes) {
 }
 
 function normalizeCompanyStructurePayload(value) {
-    let source = value && typeof value === 'object' ? value : {};
-    if (typeof value === 'string') {
-        try {
-            source = JSON.parse(value);
-        } catch {
-            source = { instructions: value };
-        }
-    }
-    return {
-        schemaVersion: COMPANY_STRUCTURE_SCHEMA_VERSION,
-        structure: sanitizeCompanyStructureString(source.structure || source.structure_text, 20000),
-        instructions: sanitizeCompanyStructureString(source.instructions || source.instructions_text, 20000),
-        nodes: sanitizeCompanyStructureNodes(source.nodes),
-        updatedBy: source.updatedBy || null,
-        updatedAt: source.updatedAt || null
-    };
+    return normalizeStaffCompanyStructurePayload(value);
 }
 
 function safeDownloadName(name) {
@@ -2265,9 +2252,10 @@ router.get('/staff', async (req, res) => {
         await attachStaffProfessionRates(result.rows);
         await attachTrainingReadiness(result.rows);
         await attachOnboardingAssignments(result.rows);
+        const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         res.json({
             success: true,
-            data: decorateStaffRowsWithDisplayGroups(result.rows),
+            data: decorateStaffRowsWithDisplayGroups(result.rows, { displayGroupContext }),
             displayGroups: listStaffDisplayGroups()
         });
     } catch (err) {
@@ -3908,7 +3896,7 @@ router.get('/today', async (req, res) => {
     try {
         const today = todayKyiv();
         const staff = await pool.query(
-            `SELECT id, name, department, position, color, role_type, photo_url, birth_date,
+            `SELECT id, name, department, position, color, role_type, company_structure_node_id, photo_url, birth_date,
                     (
                         birth_date IS NOT NULL
                         AND EXTRACT(MONTH FROM birth_date::date) = EXTRACT(MONTH FROM $1::date)
@@ -3933,8 +3921,9 @@ router.get('/today', async (req, res) => {
         for (const r of records.rows) recordMap[r.staff_id] = r;
 
         let present = 0, late = 0, absent = 0, onVacation = 0, sick = 0;
+        const displayGroupContext = await loadStaffDisplayGroupContext(pool);
         const data = staff.rows.map(s => {
-            const displayStaff = decorateStaffWithDisplayGroup(s);
+            const displayStaff = decorateStaffWithDisplayGroup(s, { displayGroupContext });
             const shift = shiftMap[s.id] || null;
             const record = recordMap[s.id] || null;
 

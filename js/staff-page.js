@@ -1653,7 +1653,7 @@ function normalizeScheduleDisplayGroups(groups = []) {
             const key = normalizeScheduleDisplayGroupKey(source.key || source.value || source.id);
             const label = String(source.label || source.name || '').trim();
             const order = Number.isFinite(Number(source.order)) ? Number(source.order) : index;
-            return key ? { key, label: label || key, order } : null;
+            return key ? { key, label: label || LEGACY_DEPARTMENT_FALLBACK[key] || key, order } : null;
         })
         .filter(Boolean)
         .sort((a, b) => a.order - b.order || SCHEDULE_DEPARTMENT_ORDER.indexOf(a.key) - SCHEDULE_DEPARTMENT_ORDER.indexOf(b.key));
@@ -1674,6 +1674,10 @@ function getDepartmentOptionsFromStaffState() {
 function scheduleDisplayDepartmentKey(staff = {}) {
     const backendGroup = normalizeScheduleDisplayGroupKey(staff.display_group || staff.displayGroup);
     if (backendGroup) return backendGroup;
+    return legacyScheduleDisplayDepartmentKey(staff);
+}
+
+function legacyScheduleDisplayDepartmentKey(staff = {}) {
     const roleKey = normalizeProfessionKey(staff.role_type);
     if (SCHEDULE_RECEPTION_ROLE_KEYS.has(roleKey)) return 'reception';
     const department = String(staff.department || '').trim();
@@ -1719,9 +1723,7 @@ function scheduleDepartmentOptions() {
     }
     const ordered = [];
     const seen = new Set();
-    const apiOrder = scheduleDisplayGroupOrder();
-    const fallbackOrder = SCHEDULE_DEPARTMENT_ORDER;
-    for (const key of (apiOrder.length ? apiOrder : fallbackOrder)) {
+    for (const key of scheduleDisplayGroupOrder()) {
         if (!labels[key] && !counts.has(key)) continue;
         ordered.push({ value: key, label: labels[key] || key, count: counts.get(key) || 0 });
         seen.add(key);
@@ -1744,7 +1746,7 @@ function groupStaffByScheduleDepartment(staffList = StaffState.staff) {
 }
 
 function scheduleDepartmentRenderOrder(grouped = {}) {
-    const ordered = SCHEDULE_DEPARTMENT_ORDER.filter(key => grouped[key]);
+    const ordered = scheduleDisplayGroupOrder().filter(key => grouped[key]);
     const seen = new Set(ordered);
     for (const key of Object.keys(grouped)) {
         if (!seen.has(key)) ordered.push(key);
@@ -1879,7 +1881,7 @@ async function fetchStaff() {
         });
         const data = await res.json();
         if (data.success) {
-            StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || []);
+            StaffState.displayGroups = normalizeScheduleDisplayGroups(data.displayGroups || data.display_groups || StaffState.displayGroups);
             StaffState.staff = scheduleableStaffForUi(data.data || []);
             StaffState.departments = data.departments;
         }

@@ -56,6 +56,7 @@ const {
 const {
     buildStaffDisplayGroupOptions,
     decorateStaffRowsWithDisplayGroups,
+    loadStaffDisplayGroupContext,
     listStaffDisplayGroups
 } = require('../services/staffDisplayGroups');
 const {
@@ -684,7 +685,8 @@ router.get('/schedule', async (req, res) => {
             `SELECT ss.*, ss.date::text AS date,
                     CASE WHEN ss.status = 'day_off' THEN 'dayoff' ELSE ss.status END AS status,
                     s.name, s.department, s.position, s.color, s.is_active,
-                    s.role_type, COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                    s.role_type, s.company_structure_node_id,
+                    COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
                     hs.id AS hr_shift_id,
                     hs.original_staff_id,
                     original_staff.name AS original_staff_name,
@@ -700,7 +702,8 @@ router.get('/schedule', async (req, res) => {
              ORDER BY s.department, s.name, ss.date`,
             [from, to]
         );
-        const rows = decorateStaffRowsWithDisplayGroups(result.rows);
+        const displayGroupContext = await loadStaffDisplayGroupContext(pool);
+        const rows = decorateStaffRowsWithDisplayGroups(result.rows, { displayGroupContext });
         res.json({ success: true, data: rows, displayGroups: listStaffDisplayGroups() });
     } catch (err) {
         log.error('GET /staff/schedule error', err);
@@ -1609,13 +1612,14 @@ router.get('/', async (req, res) => {
         sql += ' ORDER BY department, name';
 
         const result = await pool.query(sql, params);
-        const rows = decorateStaffRowsWithDisplayGroups(result.rows);
+        const displayGroupContext = await loadStaffDisplayGroupContext(pool);
+        const rows = decorateStaffRowsWithDisplayGroups(result.rows, { displayGroupContext });
         res.json({
             success: true,
             data: rows,
             departments: DEPARTMENTS,
             displayGroups: listStaffDisplayGroups(),
-            displayGroupOptions: buildStaffDisplayGroupOptions(rows)
+            displayGroupOptions: buildStaffDisplayGroupOptions(result.rows, { displayGroupContext })
         });
     } catch (err) {
         log.error('GET /staff error', err);

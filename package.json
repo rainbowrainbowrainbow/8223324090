@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.11",
+  "version": "0.78.12",
   "eventGenix": {
-    "releaseLabel": "CSP і HR Pulse guardrails"
+    "releaseLabel": "HR: структура керує фільтрами"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

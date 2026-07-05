@@ -353,6 +353,7 @@ function normalizeVisiblePeopleBucket(bucketId, user = getHrCurrentUser()) {
 let canManage = false;
 let todayData = null;
 let todayFilters = { query: '', department: 'all' };
+let staffDisplayGroupsContract = [];
 let todayDisplayGroups = [];
 let scheduleWeekStart = null;
 let scheduleView = 'week'; // week | month
@@ -493,9 +494,19 @@ function normalizeStaffDisplayGroups(groups = []) {
         .sort((a, b) => a.order - b.order || STAFF_DISPLAY_GROUP_ORDER.indexOf(a.key) - STAFF_DISPLAY_GROUP_ORDER.indexOf(b.key));
 }
 
-function activeStaffDisplayGroups(groups = todayDisplayGroups) {
+function setStaffDisplayGroupsContract(groups = [], options = {}) {
+    const normalized = normalizeStaffDisplayGroups(groups);
+    if (normalized.length || options.clear) {
+        staffDisplayGroupsContract = normalized;
+        todayDisplayGroups = normalized;
+    }
+    return staffDisplayGroupsContract;
+}
+
+function activeStaffDisplayGroups(groups = staffDisplayGroupsContract) {
     const normalized = normalizeStaffDisplayGroups(groups);
     if (normalized.length) return normalized;
+    if (staffDisplayGroupsContract.length) return staffDisplayGroupsContract;
     return STAFF_DISPLAY_GROUP_ORDER.map((key, index) => ({
         key,
         label: STAFF_DISPLAY_GROUP_LABELS[key] || key,
@@ -503,7 +514,7 @@ function activeStaffDisplayGroups(groups = todayDisplayGroups) {
     }));
 }
 
-function staffDisplayGroupLabel(key, groups = todayDisplayGroups) {
+function staffDisplayGroupLabel(key, groups = staffDisplayGroupsContract) {
     const normalized = normalizeStaffDisplayGroupKey(key);
     const apiGroup = activeStaffDisplayGroups(groups).find(group => group.key === normalized);
     return apiGroup?.label || STAFF_DISPLAY_GROUP_LABELS[normalized] || normalized || '';
@@ -1521,6 +1532,10 @@ function isTodayFilterActive() {
 function staffDisplayGroupKeyForStaff(staff = {}) {
     const backendGroup = normalizeStaffDisplayGroupKey(staff.display_group || staff.displayGroup);
     if (backendGroup) return backendGroup;
+    return legacyStaffDisplayGroupKeyForStaff(staff);
+}
+
+function legacyStaffDisplayGroupKeyForStaff(staff = {}) {
     const roleKey = normalizeProfessionKey(staff.role_type || staff.roleType);
     if (['reception', 'manager', 'senior_manager'].includes(roleKey)) return 'reception';
     const departmentKey = normalizeDepartmentKey(staff.department);
@@ -1528,7 +1543,7 @@ function staffDisplayGroupKeyForStaff(staff = {}) {
     return normalizeStaffDisplayGroupKey(departmentKey) || 'admin';
 }
 
-function todayDepartmentOptions(items = [], groups = todayDisplayGroups) {
+function todayDepartmentOptions(items = [], groups = staffDisplayGroupsContract) {
     const counts = new Map();
     items.forEach(item => {
         const key = staffDisplayGroupKeyForStaff(item);
@@ -1623,104 +1638,6 @@ function filteredTodayItems(items = []) {
     return sortTodayItemsForReview(filtered);
 }
 
-function todayStaffPhotoUrl(item = {}) {
-    const photoUrl = String(item.photo_url || item.photoUrl || '').trim();
-    if (!photoUrl) return '';
-    const lower = photoUrl.toLowerCase();
-    return lower.startsWith('https://') || photoUrl.startsWith('/uploads/') || photoUrl.startsWith('/images/') ? photoUrl : '';
-}
-
-function todayAttendanceStatus(item = {}) {
-    const rec = item.record;
-    if (!rec) return item.shift ? 'absent' : 'special';
-    const status = String(rec.status || '').trim();
-    if (rec.clock_out || status === 'early_leave' || status === 'auto_closed') return 'done';
-    if (status === 'late') return 'late';
-    if (['present', 'clocked_in', 'unscheduled'].includes(status)) return 'present';
-    if (['sick', 'vacation', 'day_off'].includes(status)) return 'special';
-    if (status === 'no_show') return 'absent';
-    return 'absent';
-}
-
-function todayIsBirthday(item = {}) {
-    return item.is_birthday_today === true
-        || item.isBirthdayToday === true
-        || item.is_birthday_today === 'true'
-        || item.isBirthdayToday === 'true';
-}
-
-function todayCompactStaffName(name = '') {
-    const fullName = String(name || '').replace(/\s+/g, ' ').trim();
-    if (!fullName) return '';
-    const parts = fullName.split(' ');
-    if (parts.length < 2) return fullName;
-    const lastName = parts[0];
-    const firstName = parts[1];
-    const initial = Array.from(firstName || '')[0] || '';
-    return initial ? `${lastName} ${initial}.` : lastName;
-}
-
-function renderTodayHoneycombTile(item = {}) {
-    const staffId = Number(item.staff_id || item.id);
-    const safeStaffId = Number.isFinite(staffId) ? staffId : 0;
-    const name = item.staff_name || item.name || 'Співробітник';
-    const displayName = todayCompactStaffName(name);
-    const photoUrl = todayStaffPhotoUrl(item);
-    const status = todayAttendanceStatus(item);
-    const hasPhoto = Boolean(photoUrl);
-    const isBirthday = todayIsBirthday(item);
-    const canOpenProfile = Boolean(canManage && safeStaffId && typeof openStaffEdit === 'function');
-    const roleLabel = ROLE_LABELS[item.role_type] || item.role_type || '';
-    const displayGroup = staffDisplayGroupKeyForStaff(item);
-    const displayGroupLabel = staffDisplayGroupLabel(displayGroup);
-    const departmentTitle = item.department ? departmentLabel(item.department) : '';
-    const statusLabel = STATUS_LABELS[item.record?.status] || (status === 'absent' ? 'Відсутній' : status);
-    const titleParts = [
-        name,
-        roleLabel,
-        displayGroupLabel,
-        departmentTitle && departmentTitle !== displayGroupLabel ? departmentTitle : '',
-        isBirthday ? `День народження: ${name}` : '',
-        statusLabel
-    ].filter(Boolean);
-    const className = [
-        'hr-today-hex-tile',
-        `is-${status}`,
-        hasPhoto ? 'has-photo' : 'is-missing-photo',
-        isBirthday ? 'is-birthday' : ''
-    ].filter(Boolean).join(' ');
-    const titleText = titleParts.join(' · ');
-    const visual = hasPhoto
-        ? `<span class="hr-today-hex-photo"><img src="${escapeHtml(photoUrl)}" alt="" loading="lazy" decoding="async"></span>`
-        : '';
-    const birthday = isBirthday
-        ? `<span class="hr-today-hex-birthday" aria-label="День народження">ДН</span>`
-        : '';
-    const nameLabel = `<span class="hr-today-hex-name">${escapeHtml(displayName || name)}</span>`;
-    if (canOpenProfile) {
-        return `<button type="button" class="${className}" data-staff-id="${safeStaffId}" data-attendance-status="${escapeHtml(status)}" data-birthday="${isBirthday ? 'true' : 'false'}" title="${escapeHtml(titleText)}" aria-label="${escapeHtml(titleText)}" onclick="openStaffEdit(${safeStaffId})">
-            ${visual}
-            ${birthday}
-            ${nameLabel}
-        </button>`;
-    }
-    return `<div class="${className}" data-staff-id="${safeStaffId}" data-attendance-status="${escapeHtml(status)}" data-birthday="${isBirthday ? 'true' : 'false'}" title="${escapeHtml(titleText)}" aria-label="${escapeHtml(titleText)}">
-        ${visual}
-        ${birthday}
-        ${nameLabel}
-    </div>`;
-}
-
-function renderTodayHoneycombBoard(items = []) {
-    const root = document.getElementById('todayHoneycombBoard');
-    if (!root) return;
-    if (!items.length) {
-        root.innerHTML = '<div class="hr-today-honeycomb-empty">Немає співробітників для цього фільтра</div>';
-        return;
-    }
-    root.innerHTML = items.map(renderTodayHoneycombTile).join('');
-}
-
 function bindTodayFilterControls() {
     const search = document.getElementById('todaySearch');
     if (search) {
@@ -1735,7 +1652,7 @@ function bindTodayFilterControls() {
 function renderTodayDepartmentSegments(items = []) {
     const root = document.getElementById('todayDepartmentSegments');
     if (!root) return;
-    const departments = todayDepartmentOptions(items, todayDisplayGroups);
+    const departments = todayDepartmentOptions(items, staffDisplayGroupsContract);
     if (todayFilters.department !== 'all' && !departments.some(dep => dep.key === todayFilters.department)) {
         todayFilters.department = 'all';
     }
@@ -1821,7 +1738,7 @@ async function loadToday() {
         updateTodayHeaderMetrics();
         return;
     }
-    todayDisplayGroups = normalizeStaffDisplayGroups(data.displayGroups || data.display_groups || []);
+    setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
     todayData = data;
     renderToday(data);
 }
@@ -1834,7 +1751,6 @@ function renderToday(data) {
     renderTodayDepartmentSegments(allItems);
     const visibleItems = filteredTodayItems(allItems);
     renderTodayFilterInfo(allItems, visibleItems);
-    renderTodayHoneycombBoard(visibleItems);
 
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
     updateTodayHeaderMetrics(s);
@@ -5898,10 +5814,11 @@ function companyStructureDisplayGroupLabel(key) {
 
 function companyStructureDisplayGroupOptions(selectedValue = '') {
     const selected = normalizeCompanyStructureDisplayGroupKey(selectedValue);
+    const groups = activeStaffDisplayGroups(staffDisplayGroupsContract);
     return [
         `<option value=""${selected ? '' : ' selected'}>Без операційного фільтра</option>`,
-        ...STAFF_DISPLAY_GROUP_ORDER.map(key => (
-            `<option value="${escapeHtml(key)}"${key === selected ? ' selected' : ''}>${escapeHtml(STAFF_DISPLAY_GROUP_LABELS[key] || key)}</option>`
+        ...groups.map(group => (
+            `<option value="${escapeHtml(group.key)}"${group.key === selected ? ' selected' : ''}>${escapeHtml(group.label || STAFF_DISPLAY_GROUP_LABELS[group.key] || group.key)}</option>`
         ))
     ].join('');
 }
@@ -6916,6 +6833,7 @@ async function ensureCompanyStructureNodesLoaded(options = {}) {
         if (!companyStructureNodes.length) companyStructureNodes = compactCompanyOrgNodesForOneScreen(DEFAULT_COMPANY_STRUCTURE_NODES);
         return companyStructureNodes;
     }
+    setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
     const structure = data.data || data.structure || {};
     companyStructureNodes = compactCompanyOrgNodesForOneScreen(structure.nodes);
     companyStructureUpdatedAt = structure.updatedAt || null;
@@ -6931,6 +6849,7 @@ async function loadCompanyStructure() {
         if (statusEl) statusEl.textContent = data?.error || 'Не вдалося завантажити структуру';
         return;
     }
+    setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
     const structure = data.data || data.structure || {};
     const notesText = document.getElementById('companyStructureNotes');
     const instructionsText = document.getElementById('companyInstructionsText');
@@ -6963,6 +6882,7 @@ async function saveCompanyStructure(options = {}) {
         body: JSON.stringify(payload)
     });
     if (data?.success) {
+        setStaffDisplayGroupsContract(data.displayGroups || data.display_groups || staffDisplayGroupsContract);
         const saved = data.data || payload;
         companyStructureNodes = normalizeCompanyStructureNodes(saved.nodes);
         companyStructureUpdatedAt = saved.updatedAt || null;

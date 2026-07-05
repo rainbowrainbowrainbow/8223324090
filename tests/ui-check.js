@@ -1343,7 +1343,7 @@ checkPage('art-director.html', (doc, html) => {
 check('HR structure supports movable nodes and direct port connector lines', hrCode.includes('DEFAULT_COMPANY_STRUCTURE_POSITIONS') && hrCode.includes('startCompanyOrgDrag') && hrCode.includes('renderCompanyOrgLinks') && hrCode.includes('handleCompanyOrgPortClick') && hrHtml.includes('id="hrOrgAutoLayoutBtn"') && !hrHtml.includes('id="hrOrgRelinkSelectedBtn"') && !hrHtml.includes('id="hrOrgLineToolBtn"') && hrCode.includes('data-org-link-parent-port') && hrCode.includes('data-org-link-child-port') && hrCode.includes('hr-org-link-preview') && hrCode.includes('snapCompanyOrgCoord') && hrCode.includes('class="hr-org-link-layer"') && hrCode.includes('inferCompanyOrgAutoLayoutParents') && hrCode.includes('primaryCompanyOrgRoot') && !hrCode.includes('companyOrgFocusedLinkSet'));
 check('HR structure canvas uses visible grid workspace and richer node editor', hrSurface.includes('--hr-org-grid-cell: 120px') && hrSurface.includes('.hr-org-node-editor-summary') && hrCode.includes('name="x"') && hrCode.includes('name="y"') && hrCode.includes('autoArrangeTreeCompanyOrgNodes') && hrCode.includes('resolveCompanyOrgNodeOverlaps'));
 check('HR structure keeps the org chart compact enough for one desktop screen', hrCode.includes('const ORG_CANVAS_MIN_WIDTH = 1180') && hrCode.includes('const ORG_NODE_WIDTH = 142') && hrCode.includes('const ORG_ONE_SCREEN_MAX_HEIGHT = 760') && hrCode.includes('function compactCompanyOrgNodesForOneScreen') && hrCode.includes('companyOrgNeedsOneScreenLayout(normalized)') && hrCode.includes('companyStructureNodes = compactCompanyOrgNodesForOneScreen(structure.nodes)') && hrSurface.includes('grid-template-columns: minmax(0, 1fr);') && hrSurface.includes('height: clamp(560px, calc(100dvh - 285px), 760px)') && hrSurface.includes('.hr-org-node-description') && hrSurface.includes('display: none;') && hrSurface.includes('.hr-org-detail-edit {') && hrSurface.includes('grid-column: 2;'));
-check('HR structure route sanitizes structured node payloads', hrRouteCode.includes('sanitizeCompanyStructureNodes') && hrRouteCode.includes('COMPANY_STRUCTURE_ALLOWED_TONES') && hrRouteCode.includes('schemaVersion: COMPANY_STRUCTURE_SCHEMA_VERSION') && hrRouteCode.includes('source.x') && hrRouteCode.includes('source.y') && hrRouteCode.includes('displayGroup: staffStructureDisplayGroupKey({ ...source, id })'));
+check('HR structure route sanitizes structured node payloads', hrRouteCode.includes('normalizeStaffCompanyStructurePayload') && hrRouteCode.includes('return normalizeStaffCompanyStructurePayload(value);') && htmlContains('services/staffDisplayGroups.js', 'function normalizeStaffCompanyStructurePayload') && htmlContains('services/staffDisplayGroups.js', 'function normalizeStaffCompanyStructureNodes') && htmlContains('services/staffDisplayGroups.js', 'displayGroup: staffStructureDisplayGroupKey({ ...source, id })'));
     check('HR structure no longer leaks legacy animator shift summary below tabs', !hrHtml.includes('shiftsSummarySection') && !hrHtml.includes('loadShiftsSummary') && !hrHtml.includes('shiftsSummaryContainer') && hrCode.includes('function removeLegacyAnimatorShiftSummary') && hrCode.includes('removeLegacyAnimatorShiftSummary();'));
     check('HR resume uploads use authenticated Postgres-linked route storage', hrRouteCode.includes('multer.memoryStorage()') && hrRouteCode.includes('job_application_resume_files') && hrRouteCode.includes("router.post('/applications/:id/resume-files'") && hrRouteCode.includes("router.get('/applications/:id/resume-files/:fileId/download'"));
 });
@@ -1596,8 +1596,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.11')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.11')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.12')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.12')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -4819,7 +4819,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.11')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.12')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -4828,8 +4828,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.11')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.11')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.12')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.12')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5007,14 +5007,9 @@ const hrTodayHeroMetricsRule = cssRuleText(hrPageCss, '.hr-today-hero-metrics');
 const hrTodayMetricChipRule = cssRuleText(hrPageCss, '.hr-today-metric-chip');
 const hrTodayHeroHeadingRule = cssRuleText(hrPageCss, '.hr-today-hero-copy h3');
 const hrTodayMetricLabelRule = cssRuleText(hrPageCss, '.hr-today-metric-label');
-const hrTodayHoneycombBoardRule = cssRuleText(hrPageCss, '.hr-today-honeycomb-board');
-const hrTodayHoneycombMobileBlock = cssAtRuleBlock(hrPageCss, '@media (max-width: 768px)');
-const hrTodayHoneycombMobileBoardRule = cssRuleText(hrTodayHoneycombMobileBlock, '.hr-today-honeycomb-board');
-const hrTodayHexTileRule = cssRuleText(hrPageCss, '.hr-today-hex-tile');
-const hrTodayHexNameRule = cssRuleText(hrPageCss, '.hr-today-hex-name');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
 check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*30px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
-check('HR Pulse Today has CSS header metric chips, search, department segmentation, and compact live staff board',
+check('HR Pulse Today has CSS header metric chips, search, department segmentation, and no mini staff board',
     !htmlContains('hr.html', 'pulse-strip-dark.png')
     && !htmlContains('hr.html', 'pulse-strip-light.png')
     && !htmlContains('hr.html', 'hr-today-hero-img--light')
@@ -5047,33 +5042,35 @@ check('HR Pulse Today has CSS header metric chips, search, department segmentati
     && htmlContains('hr.html', 'id="todayDate"')
     && htmlContains('hr.html', 'id="todaySearch"')
     && htmlContains('hr.html', 'id="todayDepartmentSegments"')
-    && htmlContains('hr.html', 'id="todayHoneycombBoard"')
+    && !htmlContains('hr.html', 'id="todayHoneycombBoard"')
     && htmlContains('hr.html', 'class="hr-today-controls"')
     && hrCode.includes('let todayFilters')
     && hrCode.includes('function renderTodayDepartmentSegments')
     && hrCode.includes('function filteredTodayItems')
     && hrCode.includes('function todaySearchHaystack')
     && hrCode.includes('let todayDisplayGroups = []')
+    && hrCode.includes('let staffDisplayGroupsContract = []')
     && hrCode.includes('function staffDisplayGroupKeyForStaff')
     && hrCode.includes('function normalizeStaffDisplayGroups')
-    && hrCode.includes('todayDepartmentOptions(items = [], groups = todayDisplayGroups)')
+    && hrCode.includes('function setStaffDisplayGroupsContract')
+    && hrCode.includes('todayDepartmentOptions(items = [], groups = staffDisplayGroupsContract)')
     && hrCode.includes('staffDisplayGroupKeyForStaff(item) !== department')
-    && hrCode.includes('todayDisplayGroups = normalizeStaffDisplayGroups(data.displayGroups')
+    && hrCode.includes('setStaffDisplayGroupsContract(data.displayGroups')
     && hrCode.includes('function summarizeTodayItems')
-    && hrCode.includes('function todayStaffPhotoUrl')
-    && hrCode.includes('function todayAttendanceStatus')
-    && hrCode.includes('function todayIsBirthday')
-    && hrCode.includes('function todayCompactStaffName')
-    && hrCode.includes('function renderTodayHoneycombTile')
-    && hrCode.includes('function renderTodayHoneycombBoard')
+    && !hrCode.includes('function todayAttendanceStatus')
+    && !hrCode.includes('function todayStaffPhotoUrl')
+    && !hrCode.includes('function todayIsBirthday')
+    && !hrCode.includes('function todayCompactStaffName')
+    && !hrCode.includes('function renderTodayHoneycombTile')
+    && !hrCode.includes('function renderTodayHoneycombBoard')
     && hrCode.includes('function todayHeaderMetricsFromSummary')
     && hrCode.includes('function updateTodayHeaderMetrics')
     && hrCode.includes("setTodayHeaderMetricText('todayOnShiftMetric'")
     && hrCode.includes("setTodayHeaderMetricText('todayLateMetric'")
     && hrCode.includes("setTodayHeaderMetricText('todayReadinessMetric'")
-    && hrCode.includes('renderTodayHoneycombBoard(visibleItems)')
-    && hrCode.includes('const displayName = todayCompactStaffName(name)')
-    && hrCode.includes('escapeHtml(displayName || name)')
+    && !hrCode.includes('renderTodayHoneycombBoard(visibleItems)')
+    && !hrCode.includes('todayCompactStaffName(name)')
+    && !hrCode.includes('hr-today-hex-name')
     && hrCode.includes("todayFilters.department !== 'all'")
     && hrCode.includes('departmentLabel(item.department)')
     && htmlContains('hr.html', 'body.dark-mode .hr-today-controls')
@@ -5082,34 +5079,19 @@ check('HR Pulse Today has CSS header metric chips, search, department segmentati
     && htmlContains('hr.html', '.hr-today-hero .hr-today-date')
     && htmlContains('hr.html', '#tab-today .hr-summary-card')
     && htmlContains('hr.html', 'grid-template-columns: repeat(2, minmax(0, 1fr));')
-    && hrPageCss.includes('.hr-today-honeycomb-board')
-    && hrPageCss.includes('.hr-today-hex-tile')
-    && hrPageCss.includes('.hr-today-hex-photo')
-    && hrPageCss.includes('.hr-today-hex-birthday')
-    && hrPageCss.includes('.hr-today-hex-name')
-    && /display:\s*flex;/.test(hrTodayHexTileRule)
-    && /border-left:\s*3px solid/.test(hrTodayHexTileRule)
+    && !hrPageCss.includes('.hr-today-honeycomb-board')
+    && !hrPageCss.includes('.hr-today-honeycomb-empty')
+    && !hrPageCss.includes('.hr-today-hex-tile')
+    && !hrPageCss.includes('.hr-today-hex-photo')
+    && !hrPageCss.includes('.hr-today-hex-birthday')
+    && !hrPageCss.includes('.hr-today-hex-name')
     && !hrPageCss.includes('.hr-today-hex-alert')
     && !hrCode.includes('hr-today-hex-alert')
     && !hrCode.includes('aria-hidden="true">!</span>')
     && !hrPageCss.includes('.hr-today-hex-tile:not(.has-photo)::before')
-    && /overflow-x:\s*hidden;/.test(hrTodayHoneycombBoardRule)
-    && /overflow-y:\s*auto;/.test(hrTodayHoneycombBoardRule)
-    && /max-height:\s*[^;]+;/.test(hrTodayHoneycombBoardRule)
-    && /max-height:\s*[^;]+;/.test(hrTodayHoneycombMobileBoardRule)
-    && /text-overflow:\s*ellipsis;/.test(hrTodayHexNameRule)
     && !hrPageCss.includes('clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);')
-    && hrPageCss.includes('.hr-today-hex-tile.is-present')
-    && hrPageCss.includes('.hr-today-hex-tile.is-late')
-    && hrPageCss.includes('.hr-today-hex-tile.is-absent')
-    && hrPageCss.includes('.hr-today-hex-tile.is-done')
-    && hrPageCss.includes('.hr-today-hex-tile.is-special')
-    && hrPageCss.includes('.hr-today-hex-tile.is-missing-photo')
-    && hrPageCss.includes('.hr-today-hex-tile.is-birthday')
-    && hrCode.includes('is-missing-photo')
-    && hrCode.includes('is_birthday_today')
-    && hrCode.includes('data-birthday="${isBirthday ?')
-    && hrRouteCode.includes('SELECT id, name, department, position, color, role_type, photo_url, birth_date')
+    && !hrCode.includes('data-birthday="${isBirthday ?')
+    && hrRouteCode.includes('SELECT id, name, department, position, color, role_type, company_structure_node_id, photo_url, birth_date')
     && hrRouteCode.includes('is_birthday_today')
     && hrRouteCode.includes('birth_date: s.birth_date')
     && hrRouteCode.includes('photo_url: s.photo_url')
@@ -5234,7 +5216,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.11') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.11') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.12') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.12') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

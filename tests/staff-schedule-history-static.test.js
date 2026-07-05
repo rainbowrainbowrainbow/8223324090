@@ -20,6 +20,13 @@ function routeBlock(path) {
     return staffRoute.slice(start, nextRoute === -1 ? staffRoute.length : nextRoute);
 }
 
+function hrRouteBlock(path) {
+    const start = hrRoute.indexOf(`router.get('${path}'`);
+    assert.notEqual(start, -1, `Missing HR GET ${path}`);
+    const nextRoute = hrRoute.indexOf('\nrouter.', start + 1);
+    return hrRoute.slice(start, nextRoute === -1 ? hrRoute.length : nextRoute);
+}
+
 function routePostBlock(path) {
     const start = staffRoute.indexOf(`router.post('${path}'`);
     assert.notEqual(start, -1, `Missing POST ${path}`);
@@ -291,23 +298,90 @@ describe('staff schedule safety guards', () => {
         assert.match(staffRoute, /require\('\.\.\/services\/staffDisplayGroups'\)/);
         assert.match(staffRoute, /router\.get\('\/display-groups'/);
         assert.match(staffRoute, /displayGroups: listStaffDisplayGroups\(\)/);
-        assert.match(hrRoute, /decorateStaffWithDisplayGroup\(s\)/);
+        assert.match(hrRoute, /decorateStaffWithDisplayGroup\(s, \{ displayGroupContext \}\)/);
         assert.match(hrRoute, /display_group: displayStaff\.display_group/);
         assert.match(hrRoute, /displayGroup: displayStaff\.displayGroup/);
         assert.match(hrRoute, /displayGroups: listStaffDisplayGroups\(\)/);
     });
 
+    it('resolves staff display groups from company structure context before fallback', async () => {
+        const context = await staffDisplayGroups.loadStaffDisplayGroupContext({
+            async query(sql) {
+                if (/FROM settings/i.test(sql)) {
+                    return {
+                        rows: [{
+                            value: {
+                                nodes: [
+                                    { id: 'ops_node', title: 'Ops', displayGroup: 'cafe' },
+                                    { id: 'tech_node', title: 'Tech', displayGroup: 'tech' },
+                                    { id: 'blank_node', title: 'No display group' }
+                                ]
+                            }
+                        }]
+                    };
+                }
+                if (/FROM hr_professions/i.test(sql)) {
+                    return { rows: [{ key: 'maintenance', structure_node_id: 'tech_node' }] };
+                }
+                return { rows: [] };
+            }
+        });
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { department: 'security', role_type: 'maintenance', company_structure_node_id: 'ops_node' },
+            { displayGroupContext: context }
+        ).display_group, 'cafe');
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { department: 'admin', role_type: 'manager', company_structure_node_id: 'ops_node' },
+            { displayGroupContext: context }
+        ).display_group, 'cafe');
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { department: 'security', role_type: 'maintenance' },
+            { displayGroupContext: context }
+        ).display_group, 'tech');
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { department: 'security', role_type: 'unknown', company_structure_node_id: 'missing_node' },
+            { displayGroupContext: context }
+        ).display_group, 'tech');
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { department: 'security', role_type: 'unknown', company_structure_node_id: 'blank_node' },
+            { displayGroupContext: context }
+        ).display_group, 'tech');
+        assert.equal(staffDisplayGroups.decorateStaffWithDisplayGroup(
+            { department: 'admin', role_type: 'senior_manager', company_structure_node_id: 'blank_node' },
+            { displayGroupContext: context }
+        ).display_group, 'reception');
+
+        const staffScheduleRoute = routeBlock('/schedule');
+        const staffListRoute = routeBlock('/');
+        const hrStaffRoute = hrRouteBlock('/staff');
+        const hrTodayRoute = hrRouteBlock('/today');
+        assert.match(staffScheduleRoute, /s\.role_type, s\.company_structure_node_id/);
+        assert.match(staffScheduleRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
+        assert.match(staffScheduleRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
+        assert.match(staffListRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
+        assert.match(staffListRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
+        assert.match(staffListRoute, /buildStaffDisplayGroupOptions\(result\.rows, \{ displayGroupContext \}\)/);
+        assert.match(hrStaffRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
+        assert.match(hrStaffRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
+        assert.match(hrTodayRoute, /company_structure_node_id/);
+        assert.match(hrTodayRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
+        assert.match(hrTodayRoute, /decorateStaffWithDisplayGroup\(s, \{ displayGroupContext \}\)/);
+    });
+
     it('uses shared display groups for HR today filters and searchable raw department metadata', () => {
         assert.match(hrPage, /let todayDisplayGroups = \[\]/);
         assert.match(hrPage, /function normalizeStaffDisplayGroups\(groups = \[\]\)/);
+        assert.match(hrPage, /function setStaffDisplayGroupsContract\(groups = \[\], options = \{\}\)/);
         assert.match(hrPage, /function staffDisplayGroupKeyForStaff\(staff = \{\}\)/);
         assert.match(hrPage, /const backendGroup = normalizeStaffDisplayGroupKey\(staff\.display_group \|\| staff\.displayGroup\)/);
+        assert.match(hrPage, /function legacyStaffDisplayGroupKeyForStaff\(staff = \{\}\)/);
         assert.match(hrPage, /if \(\['reception', 'manager', 'senior_manager'\]\.includes\(roleKey\)\) return 'reception'/);
         assert.match(hrPage, /if \(departmentKey === 'security'\) return 'tech'/);
-        assert.match(hrPage, /function todayDepartmentOptions\(items = \[\], groups = todayDisplayGroups\)/);
+        assert.match(hrPage, /function todayDepartmentOptions\(items = \[\], groups = staffDisplayGroupsContract\)/);
         assert.match(hrPage, /const key = staffDisplayGroupKeyForStaff\(item\)/);
         assert.match(hrPage, /if \(department !== 'all' && staffDisplayGroupKeyForStaff\(item\) !== department\) return false/);
-        assert.match(hrPage, /todayDisplayGroups = normalizeStaffDisplayGroups\(data\.displayGroups \|\| data\.display_groups \|\| \[\]\)/);
+        assert.match(hrPage, /setStaffDisplayGroupsContract\(data\.displayGroups \|\| data\.display_groups \|\| staffDisplayGroupsContract\)/);
+        assert.match(hrPage, /function companyStructureDisplayGroupOptions\(selectedValue = ''\) \{[\s\S]*activeStaffDisplayGroups\(staffDisplayGroupsContract\)[\s\S]*groups\.map\(group =>/);
         assert.match(hrPage, /displayGroupLabel/);
         assert.match(hrPage, /departmentLabel\(item\.department\)/);
         assert.match(staffPage, /StaffState\.displayGroups = normalizeScheduleDisplayGroups\(data\.displayGroups \|\| data\.display_groups \|\| StaffState\.displayGroups\)/);
@@ -315,7 +389,9 @@ describe('staff schedule safety guards', () => {
 
     it('uses schedule display groups in filters, fill-week, load view, export, and copy-week safety', () => {
         assert.match(staffPage, /function scheduleVisibleStaff\(staffList = StaffState\.staff\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\) === StaffState\.activeDept[\s\S]*\}/);
-        assert.match(staffPage, /function scheduleDepartmentOptions\(\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\)[\s\S]*SCHEDULE_DEPARTMENT_ORDER/);
+        assert.match(staffPage, /function legacyScheduleDisplayDepartmentKey\(staff = \{\}\)/);
+        assert.match(staffPage, /function scheduleDepartmentOptions\(\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\)[\s\S]*scheduleDisplayGroupOrder\(\)/);
+        assert.match(staffPage, /function scheduleDepartmentRenderOrder\(grouped = \{\}\) \{[\s\S]*scheduleDisplayGroupOrder\(\)\.filter\(key => grouped\[key\]\)/);
         assert.match(staffPage, /if \(StaffState\.activeDept !== 'all' && !options\.some\(option => option\.value === StaffState\.activeDept\)\) \{[\s\S]*StaffState\.activeDept = 'all'/);
         assert.match(staffPage, /function openFillWeekModal\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
         assert.match(staffPage, /if \(staffValue === 'all'\) \{[\s\S]*targetStaff = scheduleVisibleStaff\(\)/);

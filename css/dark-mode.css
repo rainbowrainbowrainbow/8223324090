@@ -720,6 +720,16 @@ body.dark-mode .program-icon .name {
     color: #E2E8F0;
 }
 
+body.dark-mode .program-media {
+    background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+    border-color: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+    box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+body.dark-mode .program-media--image {
+    background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+}
+
 body.dark-mode .program-icon.selected {
     background: rgba(16,185,129,0.15);
     border-color: var(--primary);
@@ -732,6 +742,12 @@ html[data-theme="dark"] .selected-activity-item {
     border-color: var(--border-color);
     background: linear-gradient(135deg, var(--surface-elevated), var(--bg-primary));
     box-shadow: var(--shadow-sm);
+}
+
+body.dark-mode .selected-activity-item.has-conflict,
+html[data-theme="dark"] .selected-activity-item.has-conflict {
+    border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 14%, var(--surface-elevated)), var(--bg-primary));
 }
 
 body.dark-mode .selected-activity-order,
@@ -752,6 +768,35 @@ html[data-theme="dark"] .selected-activity-meta {
     color: var(--text-secondary);
 }
 
+body.dark-mode .selected-activities-align,
+html[data-theme="dark"] .selected-activities-align {
+    border-color: color-mix(in srgb, var(--primary) 32%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary-light);
+}
+
+body.dark-mode .selected-activity-schedule,
+html[data-theme="dark"] .selected-activity-schedule {
+    color: var(--primary-light);
+}
+
+body.dark-mode .selected-activity-time span,
+html[data-theme="dark"] .selected-activity-time span {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .selected-activity-time-input,
+html[data-theme="dark"] .selected-activity-time-input {
+    border-color: var(--border-color);
+    background: color-mix(in srgb, var(--surface-elevated) 82%, var(--bg-primary));
+    color: var(--text-primary);
+}
+
+body.dark-mode .selected-activity-conflict,
+html[data-theme="dark"] .selected-activity-conflict {
+    color: color-mix(in srgb, var(--danger) 72%, var(--text-primary));
+}
+
 body.dark-mode .selected-activity-remove,
 html[data-theme="dark"] .selected-activity-remove {
     border-color: color-mix(in srgb, var(--danger) 38%, transparent);
@@ -766,6 +811,46 @@ html[data-theme="dark"] .selected-activity-remove:focus-visible {
     border-color: var(--danger);
     background: color-mix(in srgb, var(--danger) 26%, transparent);
     color: var(--text-primary);
+}
+
+body.dark-mode .selected-activity-pinata,
+html[data-theme="dark"] .selected-activity-pinata {
+    border-color: color-mix(in srgb, var(--primary) 32%, transparent);
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface-elevated));
+}
+
+body.dark-mode .selected-activity-pinata.has-error,
+body.dark-mode .selected-activity-pinata[aria-invalid="true"],
+html[data-theme="dark"] .selected-activity-pinata.has-error,
+html[data-theme="dark"] .selected-activity-pinata[aria-invalid="true"] {
+    border-color: color-mix(in srgb, var(--danger) 52%, transparent);
+    background: color-mix(in srgb, var(--danger) 14%, var(--surface-elevated));
+}
+
+body.dark-mode .selected-activity-pinata-head strong,
+html[data-theme="dark"] .selected-activity-pinata-head strong {
+    color: var(--primary-light);
+}
+
+body.dark-mode .selected-activity-pinata-head span,
+body.dark-mode .selected-activity-pinata-grid label span,
+html[data-theme="dark"] .selected-activity-pinata-head span,
+html[data-theme="dark"] .selected-activity-pinata-grid label span {
+    color: var(--text-secondary);
+}
+
+body.dark-mode .selected-activity-pinata-grid select,
+body.dark-mode .selected-activity-pinata-grid input,
+html[data-theme="dark"] .selected-activity-pinata-grid select,
+html[data-theme="dark"] .selected-activity-pinata-grid input {
+    border-color: var(--border-color);
+    background: color-mix(in srgb, var(--surface-elevated) 82%, var(--bg-primary));
+    color: var(--text-primary);
+}
+
+body.dark-mode .selected-activity-pinata-error,
+html[data-theme="dark"] .selected-activity-pinata-error {
+    color: color-mix(in srgb, var(--danger) 72%, var(--text-primary));
 }
 
 body.dark-mode .program-icon.quest { background: rgba(139,92,246,0.1); border-color: rgba(139,92,246,0.25); }
@@ -788,6 +873,14 @@ body.dark-mode .program-icon.photo:hover { background: rgba(6,182,212,0.2); bord
 
 body.dark-mode .program-icon.custom { background: rgba(100,116,139,0.15); border-color: rgba(100,116,139,0.3); }
 body.dark-mode .program-icon.custom:hover { background: rgba(100,116,139,0.25); border-color: rgba(100,116,139,0.4); }
+
+body.dark-mode .program-icon.quest .program-media { border-color: color-mix(in srgb, var(--quest) 24%, transparent); background: color-mix(in srgb, var(--quest) 8%, transparent); }
+body.dark-mode .program-icon.animation .program-media { border-color: color-mix(in srgb, var(--animation) 24%, transparent); background: color-mix(in srgb, var(--animation) 8%, transparent); }
+body.dark-mode .program-icon.show .program-media { border-color: color-mix(in srgb, var(--show) 24%, transparent); background: color-mix(in srgb, var(--show) 8%, transparent); }
+body.dark-mode .program-icon.masterclass .program-media { border-color: color-mix(in srgb, var(--masterclass) 24%, transparent); background: color-mix(in srgb, var(--masterclass) 8%, transparent); }
+body.dark-mode .program-icon.pinata .program-media { border-color: color-mix(in srgb, var(--pinata) 24%, transparent); background: color-mix(in srgb, var(--pinata) 8%, transparent); }
+body.dark-mode .program-icon.photo .program-media { border-color: color-mix(in srgb, var(--photo) 24%, transparent); background: color-mix(in srgb, var(--photo) 8%, transparent); }
+body.dark-mode .program-icon.custom .program-media { border-color: color-mix(in srgb, var(--custom) 24%, transparent); background: color-mix(in srgb, var(--custom) 8%, transparent); }
 
 /* Dark mode icon circles */
 body.dark-mode .program-icon .icon-circle { background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04)); box-shadow: 0 2px 6px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1); }

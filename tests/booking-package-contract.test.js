@@ -612,6 +612,187 @@ function clickElement(window, element) {
     dispatchPointerElement(window, element, 'click');
 }
 
+function createMultiActivityScheduleHarness(options = {}) {
+    const bookingJs = read('js', 'booking.js');
+    const start = bookingJs.indexOf('function bookingMultiActivityEnabled');
+    const end = bookingJs.indexOf('function buildMaysternyaClosedSlotBooking', start);
+    assert.ok(start >= 0 && end > start, 'multi-activity schedule helper slice exists');
+
+    const programs = options.programs || [
+        { id: 'anim-30', code: 'AN', label: 'Anim(30)', name: 'Animation', category: 'animation', duration: 30, price: 1500, hosts: 1 },
+        { id: 'show-40', code: 'WOW', label: 'Wow(40)', name: 'Wow show', category: 'show', duration: 40, price: 2400, hosts: 1 },
+        { id: 'photo-20', code: 'PH', label: 'Photo(20)', name: 'Photo', category: 'photo', duration: 20, price: 900, hosts: 1 }
+    ];
+    const fields = new Map(Object.entries({
+        bookingTime: { value: options.baseTime || '12:00' },
+        selectedProgram: { value: programs[0]?.id || '' },
+        bookingLine: { value: options.lineId || 'line-main' },
+        roomSelect: { value: options.room || 'Room A' },
+        customerName: { value: '' },
+        bookingGroupName: { value: '' }
+    }));
+    const notifications = [];
+    const revealed = [];
+    const context = {
+        console,
+        window: {},
+        document: {
+            getElementById: id => fields.get(id) || { value: '' },
+            querySelector: () => null,
+            querySelectorAll: () => []
+        },
+        AppState: { selectedDate: new Date('2099-02-13T00:00:00'), editingBookingId: null },
+        BookingDrawerState: {
+            selectedActivityProgramIds: programs.map(program => String(program.id)),
+            selectedActivityScheduleTimes: { ...(options.scheduleTimes || {}) },
+            selectedActivityScheduleIssues: {},
+            selectedActivityPinataFields: {}
+        },
+        getProductsSync: () => programs,
+        isParkTimelineBookingMode: () => true,
+        isMaysternyaBookingContext: () => false,
+        isEducationTimelineBookingMode: () => false,
+        isPinataProgram: program => String(program?.category || '').toLowerCase() === 'pinata',
+        isClientPinataFillerChoice: value => String(value || '') === 'client_filler',
+        isClientPinataFillerNumber: value => String(value || '') === 'client_filler',
+        getClientPinataDefaultPrice: () => 300,
+        resolveBookingChildrenCountSource: () => ({ value: null }),
+        bookingProgramUsesStandaloneChildrenInput: () => false,
+        bookingChildrenCountFromBooking: booking => booking?.kidsCount || null,
+        buildExtraData: programId => ({ productId: programId }),
+        buildBookingWorkspaceExtraData: () => ({ source: 'test_schedule_harness' }),
+        formatDate: value => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10)),
+        timeToMinutes: value => {
+            const [hours, minutes] = String(value || '00:00').split(':').map(Number);
+            return (hours * 60) + minutes;
+        },
+        minutesToTime: value => {
+            const minutes = ((Number(value) % 1440) + 1440) % 1440;
+            return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        },
+        toBookingMoney: value => Math.round(Number(value || 0) * 100) / 100,
+        isOperationalBookingRoomValue: value => Boolean(String(value || '').trim()),
+        getBookingsForDate: options.getBookingsForDate || (async () => []),
+        renderSelectedProgramSummary: () => {},
+        renderBookingPackageSummary: () => {},
+        refreshBookingActiveBanquetRoleIntent: () => {},
+        updateBookingSubmitState: () => {},
+        updateSelectedProgramCards: () => {},
+        refreshAnimatorSelectsForCurrentSlot: async () => {},
+        scheduleSelectedActivityConflictRefresh: () => {},
+        showNotification: (message, type) => notifications.push({ message, type }),
+        revealHiddenBooking: id => revealed.push(id),
+        CLIENT_PINATA_FILLER_VALUE: 'client_filler'
+    };
+    context.window.BookingForm = { _dirty: false };
+    context.window.TimelineBusinessContext = {
+        presentation: () => ({ mode: 'park' }),
+        current: () => ({ apiValue: 'event_genix' })
+    };
+    vm.createContext(context);
+    vm.runInContext(bookingJs.slice(start, end), context, { filename: 'js/booking.js' });
+    context.renderSelectedProgramSummary = () => {};
+    context.renderBookingPackageSummary = () => {};
+    context.buildBookingWorkspaceExtraData = () => ({ source: 'test_schedule_harness' });
+    context.__programs = programs;
+    context.__notifications = notifications;
+    context.__revealed = revealed;
+    return context;
+}
+
+function multiActivityBaseBooking() {
+    return {
+        date: '2099-02-13',
+        time: '12:00',
+        lineId: 'line-main',
+        lineName: 'Anna',
+        resourceId: 'line-main',
+        resourceType: 'animator',
+        programId: 'anim-30',
+        programCode: 'AN',
+        label: 'Anim(30)',
+        programName: 'Animation',
+        category: 'animation',
+        duration: 30,
+        price: 1500,
+        hosts: 1,
+        secondAnimator: null,
+        costume: null,
+        room: 'Room A',
+        createdBy: 'tester',
+        status: 'confirmed',
+        kidsCount: null,
+        extraData: {
+            timelineIdentity: {
+                resourceId: 'line-main',
+                lineId: 'line-main',
+                resourceType: 'animator',
+                source: 'booking_form'
+            }
+        },
+        paymentMethod: null
+    };
+}
+
+test('booking multi-activity schedule defaults sequentially from base time', () => {
+    const context = createMultiActivityScheduleHarness();
+    const rows = context.getSelectedActivityScheduleRows(context.__programs);
+
+    assert.deepEqual(rows.map(row => row.time), ['12:00', '12:30', '13:10']);
+    assert.deepEqual(rows.map(row => row.endTime), ['12:30', '13:10', '13:30']);
+
+    const base = multiActivityBaseBooking();
+    const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
+
+    assert.equal(base.time, '12:00');
+    assert.deepEqual(activities.map(item => item.time), ['12:30', '13:10']);
+    assert.deepEqual(base.extraData.multiActivity.schedule.map(item => item.startTime), ['12:00', '12:30', '13:10']);
+});
+
+test('booking multi-activity manual second time is persisted into banquetActivities payload', () => {
+    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:50' } });
+    const rows = context.getSelectedActivityScheduleRows(context.__programs);
+
+    assert.deepEqual(rows.map(row => row.time), ['12:00', '12:50', '13:30']);
+    assert.equal(rows[1].manual, true);
+
+    const base = multiActivityBaseBooking();
+    const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
+
+    assert.deepEqual(activities.map(item => item.time), ['12:50', '13:30']);
+    assert.equal(base.extraData.multiActivity.schedule[1].manual, true);
+    assert.equal(base.extraData.multiActivity.schedule[1].startTime, '12:50');
+});
+
+test('booking selected activity schedule conflict blocks submit preflight', async () => {
+    const context = createMultiActivityScheduleHarness({
+        getBookingsForDate: async () => [{
+            id: 'BK-CONFLICT',
+            date: '2099-02-13',
+            time: '12:35',
+            duration: 15,
+            lineId: 'line-main',
+            room: 'Room A',
+            programId: 'busy-other',
+            label: 'Busy slot',
+            status: 'confirmed'
+        }]
+    });
+
+    const result = await context.validateSelectedActivityScheduleBeforeSubmit({
+        hasEvent: true,
+        activityPrograms: context.__programs,
+        lineId: 'line-main',
+        room: 'Room A'
+    }, null);
+
+    assert.equal(result, false);
+    assert.equal(context.BookingDrawerState.selectedActivityScheduleIssues['show-40'].conflictBookingId, 'BK-CONFLICT');
+    assert.deepEqual(context.__revealed, ['BK-CONFLICT']);
+    assert.equal(context.__notifications.length, 1);
+    assert.equal(context.__notifications[0].type, 'error');
+});
+
 test('booking package normalizes menu positions with price and subtotal', () => {
     const positions = normalizeMenuPositions([
         { productId: 'menu_pizza', title: 'Піца', quantity: 3, unitPrice: 250, servingTime: '16:30', servingNote: 'first wave', servingBatchId: 'wave-1' },
@@ -2169,6 +2350,8 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     const configJs = read('js', 'config.js');
     const apiJs = read('js', 'api.js');
     const panelCss = read('css', 'panel.css');
+    const darkModeCss = read('css', 'dark-mode.css');
+    const responsiveCss = read('css', 'responsive.css');
     const route = read('routes', 'bookings.js');
     const customerRoute = read('routes', 'customers.js');
     const customerSearchQuery = read('services', 'customerSearchQuery.js');
@@ -2350,6 +2533,26 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /function bookingMultiActivityEnabled/);
     assert.match(bookingJs, /function setSelectedActivityPrograms/);
     assert.match(bookingJs, /function buildMultiActivityBookings/);
+    assert.match(bookingJs, /function getSelectedActivityScheduleRows/);
+    assert.match(bookingJs, /function setSelectedActivityScheduleTime/);
+    assert.match(bookingJs, /function alignSelectedActivityScheduleSequentially/);
+    assert.match(bookingJs, /selectedActivityPinataFields/);
+    assert.match(bookingJs, /function selectedActivityPinataDraft/);
+    assert.match(bookingJs, /function renderSelectedActivityPinataSubflow/);
+    assert.match(bookingJs, /data-activity-pinata-field/);
+    assert.match(bookingJs, /activityPinata:/);
+    assert.match(bookingJs, /pinataMode:\s*pinataFields\.pinataMode/);
+    assert.match(bookingJs, /pinataNumber:\s*pinataFields\.pinataNumber/);
+    assert.match(bookingJs, /pinataFillerNumber:\s*pinataFields\.pinataFillerNumber/);
+    assert.match(bookingJs, /async function validateSelectedActivitySchedule/);
+    assert.match(bookingJs, /async function validateSelectedActivityScheduleBeforeSubmit/);
+    assert.match(bookingJs, /data-activity-time-id/);
+    assert.match(bookingJs, /data-align-activity-schedule/);
+    assert.match(bookingJs, /selected-activity-conflict/);
+    assert.match(bookingJs, /baseBooking\.time = primaryRow\.time/);
+    assert.match(bookingJs, /time:\s*row\.time/);
+    assert.match(bookingJs, /schedule:\s*selectedActivityScheduleExtra\(scheduleRows\)/);
+    assert.match(bookingJs, /validateSelectedActivityScheduleBeforeSubmit\(formData, excludeId\)/);
     assert.match(bookingJs, /apiCreateBookingFull\(booking, linked, \{ banquetActivities \}\)/);
     assert.match(bookingJs, /multiActivity/);
     assert.match(bookingJs, /additionalMultiHostActivity/);
@@ -2369,6 +2572,18 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid\(customerDraft\);/);
     assert.match(bookingJs, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
     assert.match(bookingJs, /customerDraft\.search && !customerDraft\.name/);
+    assert.match(bookingJs, /function addBookingValidationIssue/);
+    assert.match(bookingJs, /function selectedActivityScheduleValidationBlockers/);
+    assert.match(bookingJs, /issues:\s*state\.issues/);
+    assert.match(bookingJs, /BOOKING_SUBMIT_INCOMPLETE_TEXT = 'Показати що заповнити'/);
+    assert.match(bookingJs, /submitBtn\.textContent = validation\.canSubmit \? readyText : BOOKING_SUBMIT_INCOMPLETE_TEXT/);
+    assert.match(bookingJs, /booking-validation-checklist/);
+    assert.match(bookingJs, /bookingValidationFieldTarget/);
+    assert.match(bookingJs, /activityTime:/);
+    assert.match(bookingJs, /pinata_number/);
+    assert.match(bookingJs, /second_animator/);
+    assert.match(bookingJs, /extra_host/);
+    assert.match(bookingJs, /focusFirstBookingInvalidField\(validation\)/);
     assert.match(bookingJs, /Оберіть існуючого клієнта з пошуку/);
     assert.match(bookingJs, /obj\.customerId = parseInt\(existingId, 10\)/);
     assert.match(bookingJs, /if \(customer\) obj\.customer = customer;/);
@@ -2377,7 +2592,9 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingJs, /role="button" tabindex="0"/);
 
     assert.ok(bookingFormJs.indexOf('if (!room)') < bookingFormJs.indexOf('if (hasEvent && !programId)'));
+    assert.match(bookingFormJs, /issues:\s*validation\.issues \|\| \[\]/);
     assert.match(bookingFormJs, /setSelectedActivityPrograms\(\[\], \{ renderSummary: false, renderPackage: false, markDirty: false \}\)/);
+    assert.match(bookingFormJs, /resetSelectedActivityScheduleState\(\)/);
     assert.match(apiJs, /apiFetchWithAuthRetry/);
     assert.match(apiJs, /async function apiGetBookings\(date, options = \{\}\)/);
     assert.match(apiJs, /options\.banquetActivities/);
@@ -2417,6 +2634,7 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(route, /booking_commit_not_verified/);
     assert.match(route, /function assertDurableCreatedBookings/);
     assert.match(route, /const banquetActivities = Array\.isArray\(req\.body\?\.banquetActivities\)/);
+    assert.match(route, /const activityPinataFields = applyPinataNormalization\(activity\)/);
     assert.match(route, /function hasBanquetGroupPayload/);
     assert.match(route, /function hasExplicitBanquetAddToExistingIntent/);
     assert.match(route, /function rejectExplicitBanquetAddToExistingGenericCreate/);
@@ -2467,12 +2685,39 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(configJs, /productsPriceDate/);
     assert.match(configJs, /function getTimelineProductsPriceDate/);
     assert.match(configJs, /apiGetProducts\(true, \{ businessContext, priceDate \}\)/);
+    assert.match(bookingJs, /const programImageUrl = p\.iconUrl \|\| p\.icon_url \|\| p\.imageUrl \|\| p\.image_url/);
+    assert.match(bookingJs, /program-media program-media--image/);
+    assert.match(bookingJs, /program-media program-media--fallback/);
+    assert.match(bookingJs, /loading="lazy" decoding="async"/);
+    assert.match(panelCss, /\.program-card-badges/);
+    assert.match(panelCss, /\.program-media\s*\{[\s\S]*aspect-ratio:\s*1 \/ 1;/);
+    assert.match(panelCss, /\.program-media img\s*\{[\s\S]*object-fit:\s*cover;/);
+    assert.match(panelCss, /\.program-icon\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(76px,\s*1fr\) auto;/);
+    assert.match(panelCss, /\.program-price-badge\s*\{[\s\S]*position:\s*static;/);
+    assert.match(panelCss, /\.program-duration\s*\{[\s\S]*position:\s*static;/);
+    assert.match(darkModeCss, /body\.dark-mode \.program-media/);
+    assert.match(responsiveCss, /repeat\(2,\s*minmax\(0,\s*1fr\)\); gap:\s*8px;/);
     assert.match(panelCss, /\.program-price-badge/);
     assert.match(panelCss, /\.program-price-badge[\s\S]*min-width:\s*46px/);
     assert.match(panelCss, /\.program-price-badge[\s\S]*color:\s*#ECFDF5/);
     assert.match(panelCss, /body\.dark-mode \.program-price-badge[\s\S]*color:\s*#F8FAFC/);
     assert.match(panelCss, /\.program-next-price-badge/);
     assert.match(panelCss, /\.selected-activity-item/);
+    assert.match(panelCss, /\.selected-activities-align/);
+    assert.match(panelCss, /\.selected-activity-time-input/);
+    assert.match(panelCss, /\.selected-activity-item\.has-conflict/);
+    assert.match(panelCss, /\.selected-activity-conflict/);
+    assert.match(panelCss, /\.selected-activity-pinata/);
+    assert.match(panelCss, /\.selected-activity-pinata-grid/);
+    assert.match(panelCss, /\.selected-activity-pinata-error/);
+    assert.match(panelCss, /\.btn-submit\.btn-submit--needs-input\s*\{[\s\S]*#F59E0B/);
+    assert.match(panelCss, /\.booking-validation-checklist/);
+    assert.match(panelCss, /#programsIcons\[aria-invalid="true"\]/);
+    assert.match(panelCss, /#pinataDesignPicker\[aria-invalid="true"\]/);
+    assert.match(darkModeCss, /body\.dark-mode \.selected-activity-time-input/);
+    assert.match(darkModeCss, /body\.dark-mode \.selected-activity-conflict/);
+    assert.match(darkModeCss, /body\.dark-mode \.selected-activity-pinata/);
+    assert.match(responsiveCss, /\.selected-activity-pinata-grid\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
     assert.match(panelCss, /body\.booking-menu-catalog-active/);
     assert.match(panelCss, /\.booking-menu-catalog-overlay/);
     assert.match(panelCss, /\.booking-menu-catalog-panel\s*\{[\s\S]*position:\s*fixed;/);

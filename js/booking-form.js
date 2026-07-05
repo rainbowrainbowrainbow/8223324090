@@ -74,6 +74,7 @@ window.BookingForm = {
                 valid: validation.valid,
                 error: validation.error,
                 errors: validation.errors || [],
+                issues: validation.issues || [],
                 invalidFields: validation.invalidFields || [],
                 warnings: validation.warnings || []
             };
@@ -185,6 +186,9 @@ window.BookingForm = {
 
         if (typeof setSelectedActivityPrograms === 'function') {
             setSelectedActivityPrograms([], { renderSummary: false, renderPackage: false, markDirty: false });
+        }
+        if (typeof resetSelectedActivityScheduleState === 'function') {
+            resetSelectedActivityScheduleState();
         }
         document.querySelectorAll('.program-icon').forEach(i => {
             i.classList.remove('selected', 'is-primary-activity');

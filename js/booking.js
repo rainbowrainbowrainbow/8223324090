@@ -1590,6 +1590,67 @@ function bookingCustomerPayloadFromDraft(draft = bookingCustomerDraftFromForm())
     return customer;
 }
 
+function addBookingValidationIssue(state, key, message, fields = []) {
+    if (!state || !message) return;
+    const issue = {
+        key: key || `issue_${state.issues.length + 1}`,
+        message,
+        fields: (Array.isArray(fields) ? fields : [fields]).filter(Boolean)
+    };
+    state.issues.push(issue);
+    if (!state.errors.includes(message)) state.errors.push(message);
+    issue.fields.forEach(field => {
+        if (!state.invalidFields.includes(field)) state.invalidFields.push(field);
+    });
+}
+
+function selectedActivityScheduleValidationBlockers(formData = {}) {
+    const programs = Array.isArray(formData.activityPrograms)
+        ? formData.activityPrograms.filter(Boolean)
+        : (typeof getSelectedActivityPrograms === 'function' ? getSelectedActivityPrograms() : []);
+    if (!formData.hasEvent || !programs.length) return [];
+    if (typeof getSelectedActivityScheduleRows !== 'function') return [];
+
+    const rows = getSelectedActivityScheduleRows(programs);
+    const blockers = [];
+    const seen = new Set();
+    const push = (row, message) => {
+        if (!row || !message) return;
+        const key = `${row.programId}:${message}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        blockers.push({
+            key: `activity_time_${row.programId}`,
+            message,
+            fields: [`activityTime:${row.programId}`]
+        });
+    };
+
+    rows.forEach(row => {
+        const label = row.program?.code || row.program?.name || `активність #${row.index + 1}`;
+        if (!row.time) push(row, `Вкажіть старт для ${label}.`);
+        if (row.duration <= 0) push(row, `${label}: некоректна тривалість.`);
+        if (row.endMinutes > 1440) push(row, `${label}: активність виходить за межі дня.`);
+        const issueText = typeof selectedActivityScheduleIssueText === 'function'
+            ? selectedActivityScheduleIssueText(row.programId)
+            : '';
+        if (issueText) push(row, `${label}: ${issueText}`);
+    });
+
+    if (typeof selectedActivityScheduleOverlaps !== 'function') return blockers;
+    for (let i = 0; i < rows.length; i += 1) {
+        for (let j = i + 1; j < rows.length; j += 1) {
+            if (!selectedActivityScheduleOverlaps(rows[i], rows[j])) continue;
+            const firstLabel = rows[i].program?.code || rows[i].program?.name || `#${i + 1}`;
+            const secondLabel = rows[j].program?.code || rows[j].program?.name || `#${j + 1}`;
+            push(rows[i], `${firstLabel}: перетин з ${secondLabel}.`);
+            push(rows[j], `${secondLabel}: перетин з ${firstLabel}.`);
+        }
+    }
+
+    return blockers;
+}
+
 function getSmartBookingValidationState() {
     const formData = getBookingFormData();
     const presentation = window.TimelineBusinessContext?.presentation?.() || { mode: 'park' };
@@ -1605,58 +1666,132 @@ function getSmartBookingValidationState() {
     const hasProgram = Boolean(formData?.programId) || (isEducation && Boolean(lessonTitle));
     const programRequired = getBookingWorkspaceHasEvent();
     const primaryAnimatorRequired = false;
-    const warnings = [];
-    const errors = [];
-    const invalidFields = [];
+    const hasActivityPinataSubflow = typeof useSelectedActivityPinataSubflow === 'function'
+        && useSelectedActivityPinataSubflow();
+    const state = {
+        warnings: [],
+        errors: [],
+        invalidFields: [],
+        issues: []
+    };
 
-    if (!hasDateTime) errors.push('Не вдалося визначити дату або час для бронювання.');
+    if (!hasDateTime) addBookingValidationIssue(state, 'date_time', 'Не вдалося визначити дату або час для бронювання.', ['bookingTime']);
     if (!hasRoom && !roomOptional) {
-        errors.push(presentation.mode === 'education' ? 'Оберіть кабінет.' : 'Оберіть кімнату.');
-        invalidFields.push('roomSelect');
+        addBookingValidationIssue(state, 'room', presentation.mode === 'education' ? 'Оберіть кабінет.' : 'Оберіть кімнату.', ['roomSelect']);
     }
     if (!hasClient) {
         const hasSearchOnly = Boolean(customerDraft.search && !customerDraft.name);
-        errors.push(hasSearchOnly
+        addBookingValidationIssue(state, 'client', hasSearchOnly
             ? 'Вкажіть імʼя нового клієнта або оберіть існуючого клієнта з пошуку.'
-            : 'Оберіть існуючого клієнта з пошуку або введіть імʼя нового клієнта.');
-        invalidFields.push(hasSearchOnly ? 'customerName' : 'customerSearch');
+            : 'Оберіть існуючого клієнта з пошуку або введіть імʼя нового клієнта.', [hasSearchOnly ? 'customerName' : 'customerSearch']);
     }
     if (programRequired && !hasProgram) {
-        errors.push(isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.');
-        invalidFields.push(isEducation ? 'educationLessonTitle' : 'selectedProgram');
+        addBookingValidationIssue(state, 'program', isEducation ? 'Оберіть заняття або вкажіть тему.' : 'Оберіть програму події.', [isEducation ? 'educationLessonTitle' : 'selectedProgram']);
     }
     if (primaryAnimatorRequired) {
-        errors.push('Оберіть аніматора для активної програми.');
-        invalidFields.push('bookingPrimaryAnimatorSelect');
+        addBookingValidationIssue(state, 'primary_animator', 'Оберіть аніматора для активної програми.', ['bookingPrimaryAnimatorSelect']);
     }
+
+    if (programRequired && formData?.program) {
+        if (isPinataProgram(formData.program) && !hasActivityPinataSubflow) {
+            if (!formData.pinataMode || formData.pinataMode === 'none') {
+                addBookingValidationIssue(state, 'pinata_mode', 'Оберіть тип піньяти.', ['pinataMode']);
+            }
+            if (formData.pinataMode === 'park') {
+                if (!formData.pinataNumber) {
+                    addBookingValidationIssue(state, 'pinata_number', 'Оберіть номер піньяти парку.', ['pinataNumber']);
+                }
+                if (formData.program.hasFiller && !formData.pinataFiller) {
+                    addBookingValidationIssue(state, 'pinata_filler', 'Оберіть наповнювач для піньяти.', ['pinataFillerSelect']);
+                }
+                if (formData.program.hasFiller && formData.pinataFiller && !formData.pinataFillerNumber) {
+                    addBookingValidationIssue(state, 'pinata_filler_number', 'Оберіть номер наповнювача для піньяти.', ['pinataFillerNumber', 'pinataFillerSelect']);
+                }
+            }
+        }
+
+        if (Number(formData.program.hosts || 0) > 1 && !formData.secondAnimator) {
+            addBookingValidationIssue(state, 'second_animator', 'Оберіть другого ведучого для цієї програми.', ['secondAnimatorSelect']);
+        }
+    }
+
+    const extraHostToggle = document.getElementById('extraHostToggle');
+    if (extraHostToggle?.checked && !document.getElementById('extraHostAnimatorSelect')?.value) {
+        addBookingValidationIssue(state, 'extra_host', 'Оберіть додаткового ведучого або вимкніть додаткового ведучого.', ['extraHostAnimatorSelect']);
+    }
+
+    selectedActivityScheduleValidationBlockers(formData).forEach(issue => {
+        addBookingValidationIssue(state, issue.key, issue.message, issue.fields);
+    });
+    if (typeof selectedActivityPinataValidationBlockers === 'function') {
+        selectedActivityPinataValidationBlockers(formData).forEach(issue => {
+            addBookingValidationIssue(state, issue.key, issue.message, issue.fields);
+        });
+    }
+
     return {
-        valid: errors.length === 0,
-        canSubmit: errors.length === 0,
-        warnings,
-        errors,
-        invalidFields,
-        error: errors[0] || ''
+        valid: state.errors.length === 0,
+        canSubmit: state.errors.length === 0,
+        warnings: state.warnings,
+        errors: state.errors,
+        issues: state.issues,
+        invalidFields: state.invalidFields,
+        error: state.errors[0] || ''
     };
 }
 
 function formatBookingValidationList(validation) {
-    const errors = Array.isArray(validation?.errors) && validation.errors.length
-        ? validation.errors
-        : (validation?.error ? [validation.error] : []);
+    const errors = Array.isArray(validation?.issues) && validation.issues.length
+        ? validation.issues.map(issue => issue.message).filter(Boolean)
+        : (Array.isArray(validation?.errors) && validation.errors.length
+            ? validation.errors
+            : (validation?.error ? [validation.error] : []));
     return errors.map((error, index) => `${index + 1}. ${error}`).join('\n');
 }
 
 function renderBookingValidationIssues(validation) {
-    const errors = Array.isArray(validation?.errors) ? validation.errors : [];
-    if (!errors.length) return '';
+    const issues = Array.isArray(validation?.issues) && validation.issues.length
+        ? validation.issues
+        : (Array.isArray(validation?.errors) ? validation.errors.map((message, index) => ({ key: `error_${index}`, message })) : []);
+    if (!issues.length) return '';
     return `
-        <div class="booking-summary-note booking-summary-note--error">
+        <div class="booking-summary-note booking-summary-note--error booking-validation-checklist">
             <strong>Ще треба заповнити:</strong>
             <ul>
-                ${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}
+                ${issues.map(issue => `<li data-validation-key="${escapeHtml(String(issue.key || ''))}">${escapeHtml(issue.message || '')}</li>`).join('')}
             </ul>
         </div>
     `;
+}
+
+function bookingValidationFieldTarget(fieldId) {
+    if (!fieldId) return null;
+    if (String(fieldId).startsWith('activityTime:')) {
+        const activityId = String(fieldId).slice('activityTime:'.length);
+        return Array.from(document.querySelectorAll('[data-activity-time-id]'))
+            .find(input => String(input.dataset.activityTimeId || '') === activityId) || null;
+    }
+    if (String(fieldId).startsWith('activityPinata:')) {
+        const [, activityId, fieldName] = String(fieldId).split(':');
+        const input = Array.from(document.querySelectorAll('[data-activity-pinata-id][data-activity-pinata-field]'))
+            .find(item => String(item.dataset.activityPinataId || '') === activityId
+                && String(item.dataset.activityPinataField || '') === fieldName);
+        if (input) return input;
+        return Array.from(document.querySelectorAll('[data-activity-pinata-id]'))
+            .find(item => String(item.dataset.activityPinataId || '') === activityId) || null;
+    }
+    const direct = document.getElementById(fieldId);
+    if (direct && direct.type !== 'hidden') return direct;
+    const containerByField = {
+        selectedProgram: 'programsIcons',
+        pinataNumber: 'pinataDesignPicker',
+        pinataFillerSelect: 'pinataFillerPicker',
+        pinataFillerNumber: 'pinataFillerPicker',
+        secondAnimatorSelect: 'secondAnimatorSection',
+        extraHostAnimatorSelect: 'extraHostAnimatorSection'
+    };
+    const containerId = containerByField[fieldId];
+    return containerId ? document.getElementById(containerId) : direct;
 }
 
 function applyBookingValidationInvalidFields(validation) {
@@ -1667,20 +1802,54 @@ function applyBookingValidationInvalidFields(validation) {
         'customerPhone',
         'customerInstagram',
         'selectedProgram',
+        'bookingTime',
         'educationLessonTitle',
-        'bookingPrimaryAnimatorSelect'
+        'bookingPrimaryAnimatorSelect',
+        'pinataMode',
+        'pinataNumber',
+        'pinataFillerSelect',
+        'pinataFillerNumber',
+        'secondAnimatorSelect',
+        'extraHostAnimatorSelect'
     ];
     const invalid = new Set(validation?.invalidFields || []);
     fieldIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.setAttribute('aria-invalid', invalid.has(id) ? 'true' : 'false');
+        const target = bookingValidationFieldTarget(id);
+        if (target && target !== el) target.setAttribute('aria-invalid', invalid.has(id) ? 'true' : 'false');
     });
+    document.querySelectorAll('[data-activity-time-id]').forEach(input => {
+        const key = `activityTime:${input.dataset.activityTimeId || ''}`;
+        input.setAttribute('aria-invalid', invalid.has(key) ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-activity-pinata-id][data-activity-pinata-field]').forEach(input => {
+        const key = `activityPinata:${input.dataset.activityPinataId || ''}:${input.dataset.activityPinataField || ''}`;
+        input.setAttribute('aria-invalid', invalid.has(key) ? 'true' : 'false');
+    });
+    document.querySelectorAll('[data-activity-pinata-id]:not([data-activity-pinata-field])').forEach(container => {
+        const activityId = container.dataset.activityPinataId || '';
+        const hasInvalid = Array.from(invalid).some(field => String(field).startsWith(`activityPinata:${activityId}:`));
+        container.setAttribute('aria-invalid', hasInvalid ? 'true' : 'false');
+    });
+}
+
+function focusFirstBookingInvalidField(validation) {
+    const fields = Array.isArray(validation?.invalidFields) ? validation.invalidFields : [];
+    const target = fields.map(bookingValidationFieldTarget).find(Boolean);
+    if (!target) return;
+    const focusable = target.matches?.('input, select, textarea, button, [tabindex]:not([tabindex="-1"])')
+        ? target
+        : target.querySelector?.('input:not([type="hidden"]), select, textarea, button, [tabindex]:not([tabindex="-1"])');
+    target.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    focusable?.focus?.({ preventScroll: true });
 }
 
 function showBookingValidationErrors(validation) {
     BookingDrawerState.validationAttempted = true;
     applyBookingValidationInvalidFields(validation);
     renderBookingPackageSummary();
+    focusFirstBookingInvalidField(validation);
     const list = formatBookingValidationList(validation);
     const message = list
         ? `Не можна створити бронювання. Заповніть:\n${list}`
@@ -1783,7 +1952,10 @@ function prepareMaysternyaBookingPanel(options = {}) {
     const title = document.querySelector('#bookingPanel .panel-header h3');
     if (title && !AppState.editingBookingId) title.textContent = 'Онлайн запис';
     const submit = document.getElementById('bookingSubmitBtn');
-    if (submit && !AppState.editingBookingId) submit.textContent = 'Записати прийом';
+    if (submit && !AppState.editingBookingId) {
+        submit.textContent = 'Записати прийом';
+        submit.dataset.readyText = submit.textContent;
+    }
 
     const groupName = document.getElementById('bookingGroupName');
     if (groupName) groupName.placeholder = 'Тема запиту або коротка примітка';
@@ -1860,7 +2032,10 @@ function prepareDisplayModeBookingPanel(options = {}) {
     const title = document.querySelector('#bookingPanel .panel-header h3');
     if (title && !AppState.editingBookingId) title.textContent = presentation.bookingTitle;
     const submit = document.getElementById('bookingSubmitBtn');
-    if (submit && !AppState.editingBookingId) submit.textContent = presentation.submitLabel;
+    if (submit && !AppState.editingBookingId) {
+        submit.textContent = presentation.submitLabel;
+        submit.dataset.readyText = submit.textContent;
+    }
 
     const groupName = document.getElementById('bookingGroupName');
     if (groupName) groupName.placeholder = isEducationTimelineBookingMode() ? 'Група, клас або курс' : 'Коротка тема запису';
@@ -4481,18 +4656,32 @@ function getBookingPackageTotals(program) {
     };
 }
 
+const BOOKING_SUBMIT_INCOMPLETE_TEXT = 'Показати що заповнити';
+const BOOKING_SUBMIT_SAVING_TEXT = 'Збереження...';
+
+function rememberBookingSubmitReadyText(submitBtn) {
+    if (!submitBtn) return 'Додати бронювання';
+    const currentText = String(submitBtn.textContent || '').trim();
+    if (currentText && currentText !== BOOKING_SUBMIT_INCOMPLETE_TEXT && currentText !== BOOKING_SUBMIT_SAVING_TEXT) {
+        submitBtn.dataset.readyText = currentText;
+    }
+    return submitBtn.dataset.readyText || currentText || 'Додати бронювання';
+}
+
 function updateBookingSubmitState() {
     const submitBtn = document.getElementById('bookingSubmitBtn');
     const hint = document.getElementById('bookingSubmitHint');
     if (!submitBtn || !hint) return;
     const validation = getSmartBookingValidationState();
-    const originalText = submitBtn.dataset.originalText || 'Додати бронювання';
-    const isSaving = Boolean(submitBtn.disabled && submitBtn.dataset.originalText && submitBtn.textContent !== originalText);
+    const readyText = rememberBookingSubmitReadyText(submitBtn);
+    const isSaving = Boolean(submitBtn.disabled && String(submitBtn.textContent || '').trim() === BOOKING_SUBMIT_SAVING_TEXT);
     if (!isSaving) {
         submitBtn.disabled = false;
         submitBtn.setAttribute('aria-disabled', validation.canSubmit ? 'false' : 'true');
         submitBtn.classList.toggle('btn-submit--needs-input', !validation.canSubmit);
+        submitBtn.textContent = validation.canSubmit ? readyText : BOOKING_SUBMIT_INCOMPLETE_TEXT;
     }
+    if (BookingDrawerState.validationAttempted) applyBookingValidationInvalidFields(validation);
     if (!validation.canSubmit) {
         hint.textContent = `${validation.error || 'Оберіть кімнату та клієнта.'} Натисніть кнопку — покажу весь список.`;
         return;
@@ -4532,11 +4721,12 @@ function renderBookingPackageSummary() {
         : (roomFirst ? (menuCount ? `${menuCount} позицій меню / тортів` : 'додайте їжу або торт') : (hasEvent ? 'не вибрано' : 'вимкнено'));
     const programRowLabel = roomFirst ? 'Кухня / меню' : 'Програма';
     const entryCharge = totals.entryCharge || (entrySubtotal > 0 ? { title: 'Вхід', subtotal: entrySubtotal } : null);
+    const shouldShowValidationChecklist = !validation.canSubmit || BookingDrawerState.validationAttempted;
 
     if (!roomValue && !customerId && !customerName && !document.getElementById('selectedProgram')?.value) {
         container.innerHTML = `
             <div class="booking-summary-empty">${roomFirst ? 'Оберіть кімнату, клієнта і додайте їжу або торт — підсумок оновиться автоматично.' : 'Оберіть кімнату, клієнта і програму — підсумок оновиться автоматично.'}</div>
-            ${BookingDrawerState.validationAttempted ? renderBookingValidationIssues(validation) : ''}
+            ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         `;
         updateBookingSubmitState();
         return;
@@ -4549,7 +4739,7 @@ function renderBookingPackageSummary() {
         ${kitchenEnabled && (menuSubtotal > 0 || menuCount > 0) ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Меню</span><strong>${escapeHtml(formatPrice(menuSubtotal))}</strong></div>` : ''}
         ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Вхід</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
-        ${BookingDrawerState.validationAttempted ? renderBookingValidationIssues(validation) : ''}
+        ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${totals.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(totals.warnings[0].message || totals.warnings[0].code)}</div>` : ''}
         ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;
@@ -4886,7 +5076,16 @@ function initBookingPackageWorkspace() {
     ['bookingTime', 'bookingLine', 'customDuration'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
-        const refreshHosts = () => refreshAnimatorSelectsForCurrentSlot().catch(() => {});
+        const refreshHosts = () => {
+            refreshAnimatorSelectsForCurrentSlot().catch(() => {});
+            if (id === 'bookingTime') {
+                const firstProgram = getSelectedActivityPrograms()[0];
+                if (firstProgram) delete getSelectedActivityScheduleTimes()[String(firstProgram.id)];
+                setSelectedActivityScheduleIssues({});
+                renderSelectedProgramSummary();
+                scheduleSelectedActivityConflictRefresh();
+            }
+        };
         el.addEventListener('change', refreshHosts);
         el.addEventListener('input', refreshHosts);
     });
@@ -5110,7 +5309,8 @@ function initBookingPackageWorkspace() {
         renderBookingCustomerSearchState('Бронювання буде створено окремо, без прив’язки до активного банкету.');
         if (window.BookingForm) BookingForm._dirty = true;
     });
-    ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
+    ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
+     'secondAnimatorSelect', 'extraHostToggle', 'extraHostAnimatorSelect', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
      'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
      'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
@@ -5481,6 +5681,7 @@ async function openBookingPanel(time, lineId, options = {}) {
         room: line?.name || ''
     });
     resetBookingDrawerStateForOpen(options.drawerMode || inferBookingDrawerModeForOpen());
+    resetSelectedActivityScheduleState();
 
     // C1: Show date in panel
     const dateDisplay = document.getElementById('selectedDateDisplay');
@@ -6622,19 +6823,28 @@ async function closeBookingPanel(force = false) {
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
         if (panelH3) panelH3.textContent = 'Нове бронювання';
-        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
+        if (btnSubmit) {
+            btnSubmit.textContent = 'Додати бронювання';
+            btnSubmit.dataset.readyText = 'Додати бронювання';
+            delete btnSubmit.dataset.originalText;
+        }
     }
     if (!AppState.editingBookingId && !isMaysternyaBookingContext()) {
         const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
         const btnSubmit = document.querySelector('#bookingForm .btn-submit');
         if (panelH3) panelH3.textContent = 'Нове бронювання';
-        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
+        if (btnSubmit) {
+            btnSubmit.textContent = 'Додати бронювання';
+            btnSubmit.dataset.readyText = 'Додати бронювання';
+            delete btnSubmit.dataset.originalText;
+        }
     }
     if (window.BookingForm?.markClean) BookingForm.markClean();
     if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
     BookingDrawerState.roomBookingAnimationBridge = null;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
+    resetSelectedActivityScheduleState();
     resetBookingRoomSelectionContext();
     resetBookingBanquetGroupSelector();
     return true;
@@ -6646,6 +6856,7 @@ function resetBookingEditStateForCreate() {
     BookingDrawerState.roomBookingAnimationBridge = null;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;
+    resetSelectedActivityScheduleState();
     resetBookingRoomSelectionContext();
     resetBookingBanquetGroupSelector();
     const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
@@ -6653,6 +6864,7 @@ function resetBookingEditStateForCreate() {
     if (panelH3) panelH3.textContent = isMaysternyaBookingContext() ? getTimelineBookingPresentation().bookingTitle : 'Нове бронювання';
     if (btnSubmit) {
         btnSubmit.textContent = isMaysternyaBookingContext() ? getTimelineBookingPresentation().submitLabel : 'Додати бронювання';
+        btnSubmit.dataset.readyText = btnSubmit.textContent;
         delete btnSubmit.dataset.originalText;
     }
 }
@@ -6710,11 +6922,21 @@ function getSelectedActivityPrograms() {
         .filter(Boolean);
 }
 
-function bookingActivityPriceValue(program) {
+function bookingActivityBasePriceValue(program) {
     if (!program) return 0;
     const kidsCount = Number(resolveBookingChildrenCountSource({ program }).value || 0);
     if (program.perChild && kidsCount > 0) return toBookingMoney(Number(program.price || 0) * kidsCount);
     return toBookingMoney(program.price || 0);
+}
+
+function bookingActivityPriceValue(program) {
+    if (typeof useSelectedActivityPinataSubflow === 'function'
+        && typeof selectedActivityPinataPriceValue === 'function'
+        && useSelectedActivityPinataSubflow()
+        && isPinataProgram(program)) {
+        return selectedActivityPinataPriceValue(program);
+    }
+    return bookingActivityBasePriceValue(program);
 }
 
 function bookingActivityPriceLabel(program) {
@@ -6748,6 +6970,304 @@ function bookingActivitiesTotalDuration(programs = getSelectedActivityPrograms()
     return programs.reduce((sum, program) => sum + (Number(program?.duration || 0) || 0), 0);
 }
 
+function getSelectedActivityScheduleTimes() {
+    if (!BookingDrawerState.selectedActivityScheduleTimes || typeof BookingDrawerState.selectedActivityScheduleTimes !== 'object') {
+        BookingDrawerState.selectedActivityScheduleTimes = {};
+    }
+    return BookingDrawerState.selectedActivityScheduleTimes;
+}
+
+function getSelectedActivityScheduleIssues() {
+    if (!BookingDrawerState.selectedActivityScheduleIssues || typeof BookingDrawerState.selectedActivityScheduleIssues !== 'object') {
+        BookingDrawerState.selectedActivityScheduleIssues = {};
+    }
+    return BookingDrawerState.selectedActivityScheduleIssues;
+}
+
+function getSelectedActivityPinataFields() {
+    if (!BookingDrawerState.selectedActivityPinataFields || typeof BookingDrawerState.selectedActivityPinataFields !== 'object') {
+        BookingDrawerState.selectedActivityPinataFields = {};
+    }
+    return BookingDrawerState.selectedActivityPinataFields;
+}
+
+function useSelectedActivityPinataSubflow() {
+    return bookingMultiActivityEnabled();
+}
+
+function selectedActivityPinataDefaultMode(program = {}) {
+    if (!isPinataProgram(program)) return 'none';
+    return String(program.id || '') === 'pinata_own' ? 'client' : 'park';
+}
+
+function selectedActivityPinataState(program = {}) {
+    const programId = String(program?.id || '');
+    if (!programId || !isPinataProgram(program)) {
+        return {
+            pinataMode: 'none',
+            pinataNumber: '',
+            pinataFiller: '',
+            pinataFillerNumber: '',
+            clientPinataServicePrice: '',
+            clientPinataServiceNote: ''
+        };
+    }
+    const fields = getSelectedActivityPinataFields();
+    if (!fields[programId]) {
+        const mode = selectedActivityPinataDefaultMode(program);
+        fields[programId] = {
+            pinataMode: mode,
+            pinataNumber: '',
+            pinataFiller: '',
+            pinataFillerNumber: '',
+            clientPinataServicePrice: mode === 'client' ? String(getClientPinataDefaultPrice()) : '',
+            clientPinataServiceNote: ''
+        };
+    }
+    const state = fields[programId];
+    const mode = ['park', 'client'].includes(String(state.pinataMode || '')) ? state.pinataMode : selectedActivityPinataDefaultMode(program);
+    state.pinataMode = mode;
+    if (mode === 'client' && !String(state.clientPinataServicePrice || '').trim()) {
+        state.clientPinataServicePrice = String(getClientPinataDefaultPrice());
+    }
+    if (mode === 'park' && isClientPinataFillerChoice(state.pinataFiller)) {
+        state.pinataFillerNumber = CLIENT_PINATA_FILLER_VALUE;
+    }
+    return state;
+}
+
+function selectedActivityPinataDraft(program = {}) {
+    if (!isPinataProgram(program)) {
+        return {
+            pinataMode: 'none',
+            pinataNumber: null,
+            pinataFillerNumber: null,
+            pinataFiller: null,
+            clientPinataServicePrice: null,
+            clientPinataServiceNote: null
+        };
+    }
+    const state = selectedActivityPinataState(program);
+    const pinataMode = state.pinataMode || selectedActivityPinataDefaultMode(program);
+    const clientOwnedFiller = pinataMode === 'park' && isClientPinataFillerChoice(state.pinataFiller);
+    const pinataFillerNumber = pinataMode === 'park'
+        ? (clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (String(state.pinataFillerNumber || state.pinataFiller || '').trim() || null))
+        : (String(state.pinataFillerNumber || '').trim() || null);
+    return {
+        pinataMode,
+        pinataNumber: pinataMode !== 'none' ? (String(state.pinataNumber || '').trim() || null) : null,
+        pinataFillerNumber: pinataMode !== 'none' ? pinataFillerNumber : null,
+        pinataFiller: pinataMode === 'park' && !clientOwnedFiller ? (String(state.pinataFiller || '').trim() || null) : null,
+        clientPinataServicePrice: pinataMode === 'client' ? (String(state.clientPinataServicePrice || '').trim() || getClientPinataDefaultPrice()) : null,
+        clientPinataServiceNote: pinataMode === 'client' ? (String(state.clientPinataServiceNote || '').trim() || null) : null
+    };
+}
+
+function selectedActivityPinataPriceValue(program) {
+    if (!isPinataProgram(program)) return bookingActivityBasePriceValue(program);
+    const draft = selectedActivityPinataDraft(program);
+    if (draft.pinataMode === 'client') return toBookingMoney(draft.clientPinataServicePrice || getClientPinataDefaultPrice());
+    if (draft.pinataMode === 'none') return 0;
+    return bookingActivityBasePriceValue(program);
+}
+
+function selectedActivityPinataLabel(program, fallbackLabel = '') {
+    if (!isPinataProgram(program)) return fallbackLabel;
+    const draft = selectedActivityPinataDraft(program);
+    if (draft.pinataMode === 'client') return 'Клієнтська піньята';
+    if (draft.pinataMode === 'park' && draft.pinataFiller) return `Пін+${draft.pinataFiller}`;
+    if (draft.pinataMode === 'park' && draft.pinataFillerNumber === CLIENT_PINATA_FILLER_VALUE) return 'Пін+свій';
+    return fallbackLabel || program.label || program.code || program.name || 'Піньята';
+}
+
+function selectedActivityPinataValidationIssues(program = {}) {
+    if (!isPinataProgram(program)) return [];
+    const draft = selectedActivityPinataDraft(program);
+    const label = program.code || program.name || 'Піньята';
+    const issues = [];
+    if (!draft.pinataMode || draft.pinataMode === 'none') {
+        issues.push({
+            key: `activity_pinata_mode_${program.id}`,
+            message: `${label}: оберіть тип піньяти.`,
+            fields: [`activityPinata:${program.id}:pinataMode`]
+        });
+    }
+    if (draft.pinataMode === 'park') {
+        if (!draft.pinataNumber) {
+            issues.push({
+                key: `activity_pinata_number_${program.id}`,
+                message: `${label}: оберіть номер піньяти.`,
+                fields: [`activityPinata:${program.id}:pinataNumber`]
+            });
+        }
+        if (program.hasFiller && !draft.pinataFillerNumber) {
+            issues.push({
+                key: `activity_pinata_filler_${program.id}`,
+                message: `${label}: оберіть наповнювач або свій наповнювач клієнта.`,
+                fields: [`activityPinata:${program.id}:pinataFiller`]
+            });
+        }
+    }
+    if (draft.pinataMode === 'client' && !draft.pinataNumber) {
+        issues.push({
+            key: `activity_client_pinata_number_${program.id}`,
+            message: `${label}: оберіть номер клієнтської піньяти.`,
+            fields: [`activityPinata:${program.id}:pinataNumber`]
+        });
+    }
+    return issues;
+}
+
+function selectedActivityPinataValidationBlockers(formData = {}) {
+    if (!formData.hasEvent || typeof useSelectedActivityPinataSubflow !== 'function' || !useSelectedActivityPinataSubflow()) return [];
+    const programs = Array.isArray(formData.activityPrograms)
+        ? formData.activityPrograms.filter(Boolean)
+        : getSelectedActivityPrograms();
+    return programs.flatMap(program => selectedActivityPinataValidationIssues(program));
+}
+
+function normalizeSelectedActivityScheduleTime(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return '';
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return '';
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function selectedActivityScheduleBaseTime() {
+    return normalizeSelectedActivityScheduleTime(
+        document.getElementById('bookingTime')?.value
+        || AppState.selectedCell?.dataset?.time
+        || ''
+    );
+}
+
+function pruneSelectedActivityScheduleState(programIds = []) {
+    const keep = new Set((programIds || []).map(String));
+    const times = getSelectedActivityScheduleTimes();
+    Object.keys(times).forEach(id => {
+        if (!keep.has(String(id))) delete times[id];
+    });
+    const issues = getSelectedActivityScheduleIssues();
+    Object.keys(issues).forEach(id => {
+        if (!keep.has(String(id))) delete issues[id];
+    });
+    const pinataFields = getSelectedActivityPinataFields();
+    Object.keys(pinataFields).forEach(id => {
+        if (!keep.has(String(id))) delete pinataFields[id];
+    });
+}
+
+function resetSelectedActivityScheduleState(options = {}) {
+    BookingDrawerState.selectedActivityScheduleTimes = {};
+    BookingDrawerState.selectedActivityScheduleIssues = {};
+    BookingDrawerState.selectedActivityPinataFields = {};
+    if (options.render) renderSelectedProgramSummary();
+}
+
+function getSelectedActivityScheduleRows(programs = getSelectedActivityPrograms()) {
+    const scheduleTimes = getSelectedActivityScheduleTimes();
+    let nextTime = selectedActivityScheduleBaseTime();
+    return (programs || []).filter(Boolean).map((program, index) => {
+        const programId = String(program.id);
+        const manualTime = normalizeSelectedActivityScheduleTime(scheduleTimes[programId]);
+        const time = manualTime || nextTime || '';
+        const duration = Number(program.duration || 0) || 0;
+        const startMinutes = time ? timeToMinutes(time) : null;
+        const endMinutes = startMinutes !== null ? startMinutes + duration : null;
+        const endTime = endMinutes !== null ? minutesToTime(endMinutes) : '';
+        if (time) nextTime = minutesToTime((startMinutes || 0) + duration);
+        return {
+            index,
+            program,
+            programId,
+            time,
+            duration,
+            endTime,
+            startMinutes,
+            endMinutes,
+            manual: Boolean(manualTime)
+        };
+    });
+}
+
+function selectedActivityScheduleLabel(row = {}) {
+    if (!row.time) return 'час не задано';
+    return `${row.time}–${row.endTime || row.time}`;
+}
+
+function selectedActivityScheduleExtra(rows = []) {
+    return rows.map(row => ({
+        index: row.index + 1,
+        programId: row.programId,
+        startTime: row.time || null,
+        endTime: row.endTime || null,
+        duration: row.duration || 0,
+        manual: Boolean(row.manual)
+    }));
+}
+
+function setSelectedActivityScheduleIssues(issueMap = {}) {
+    BookingDrawerState.selectedActivityScheduleIssues = issueMap;
+}
+
+function selectedActivityScheduleIssueText(programId) {
+    const issue = getSelectedActivityScheduleIssues()[String(programId)];
+    if (!issue) return '';
+    const messages = Array.isArray(issue.messages) ? issue.messages : [];
+    return messages.filter(Boolean).join(' · ');
+}
+
+function addSelectedActivityScheduleIssue(issueMap, programId, message, options = {}) {
+    const id = String(programId || '');
+    if (!id || !message) return;
+    if (!issueMap[id]) issueMap[id] = { messages: [], conflictBookingId: null };
+    if (!issueMap[id].messages.includes(message)) issueMap[id].messages.push(message);
+    if (options.conflictBookingId && !issueMap[id].conflictBookingId) {
+        issueMap[id].conflictBookingId = options.conflictBookingId;
+    }
+}
+
+function setSelectedActivityScheduleTime(programId, value, options = {}) {
+    const id = String(programId || '');
+    const raw = String(value || '').trim();
+    const time = normalizeSelectedActivityScheduleTime(value);
+    if (!id) return false;
+    const scheduleTimes = getSelectedActivityScheduleTimes();
+    if (!time) {
+        if (raw) return false;
+        delete scheduleTimes[id];
+    } else {
+        scheduleTimes[id] = time;
+    }
+    const rows = getSelectedActivityScheduleRows();
+    const changedRow = rows.find(row => row.programId === id);
+    if (changedRow?.index === 0 && changedRow.time) {
+        const bookingTime = document.getElementById('bookingTime');
+        if (bookingTime) bookingTime.value = changedRow.time;
+        const selectedTime = document.getElementById('selectedTimeDisplay');
+        if (selectedTime) selectedTime.textContent = changedRow.time;
+        refreshAnimatorSelectsForCurrentSlot().catch(() => {});
+    }
+    setSelectedActivityScheduleIssues({});
+    renderSelectedProgramSummary();
+    renderBookingPackageSummary();
+    if (window.BookingForm) BookingForm._dirty = true;
+    if (options.validate !== false) scheduleSelectedActivityConflictRefresh();
+    return true;
+}
+
+function alignSelectedActivityScheduleSequentially(options = {}) {
+    BookingDrawerState.selectedActivityScheduleTimes = {};
+    BookingDrawerState.selectedActivityScheduleIssues = {};
+    renderSelectedProgramSummary();
+    renderBookingPackageSummary();
+    if (window.BookingForm) BookingForm._dirty = true;
+    if (options.validate !== false) scheduleSelectedActivityConflictRefresh(0);
+}
+
 function updateSelectedProgramCards() {
     const selected = new Set(getSelectedActivityProgramIds().map(String));
     document.querySelectorAll('.program-icon').forEach(icon => {
@@ -6764,6 +7284,7 @@ function setSelectedActivityPrograms(ids = [], options = {}) {
         if (!unique.includes(id)) unique.push(id);
     });
     BookingDrawerState.selectedActivityProgramIds = unique;
+    pruneSelectedActivityScheduleState(unique);
     const hidden = document.getElementById('selectedProgram');
     if (hidden) hidden.value = unique[0] || '';
     updateSelectedProgramCards();
@@ -6793,7 +7314,9 @@ function syncPrimaryProgramDependentFields(program) {
         document.getElementById('customProgramSection')?.classList.add('hidden');
     }
 
-    if (isPinataProgram(program)) {
+    if (isPinataProgram(program) && useSelectedActivityPinataSubflow()) {
+        resetPinataModeFields();
+    } else if (isPinataProgram(program)) {
         const modeSelect = document.getElementById('pinataMode');
         const defaultMode = program.id === 'pinata_own' ? 'client' : 'park';
         if (modeSelect) modeSelect.value = defaultMode;
@@ -6803,6 +7326,108 @@ function syncPrimaryProgramDependentFields(program) {
         resetPinataModeFields();
     }
     updateBookingSubmitState();
+}
+
+function selectedActivityPinataOptionsHtml(choices = [], selectedValue = '', placeholder = 'Оберіть') {
+    const selected = pinataNormalizeChoiceValue(selectedValue);
+    return [
+        `<option value="">${escapeHtml(placeholder)}</option>`,
+        ...choices.map(choice => {
+            const value = pinataNormalizeChoiceValue(choice.value);
+            const label = [choice.number || choice.value, choice.title].filter(Boolean).join(' · ');
+            return `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        })
+    ].join('');
+}
+
+function renderSelectedActivityPinataSubflow(row = {}) {
+    const program = row.program;
+    if (!isPinataProgram(program) || !useSelectedActivityPinataSubflow()) return '';
+    const state = selectedActivityPinataState(program);
+    const mode = state.pinataMode || selectedActivityPinataDefaultMode(program);
+    const designChoices = buildPinataDesignChoices();
+    const fillerChoices = buildPinataFillerChoices();
+    const issues = selectedActivityPinataValidationIssues(program);
+    const issueText = issues.map(issue => issue.message).join(' · ');
+    const programId = String(program.id || '');
+
+    if (!PinataPickerState.status && !PinataPickerState.promise) {
+        loadPinataPickerStatus().then(() => renderSelectedProgramSummary()).catch(() => {});
+    }
+
+    return `
+        <div class="selected-activity-pinata${issues.length ? ' has-error' : ''}" data-activity-pinata-id="${escapeHtml(programId)}" aria-invalid="${issues.length ? 'true' : 'false'}">
+            <div class="selected-activity-pinata-head">
+                <strong>Піньята</strong>
+                <span>${escapeHtml(mode === 'client' ? 'клієнтська' : 'парк')}</span>
+            </div>
+            <div class="selected-activity-pinata-grid">
+                <label>
+                    <span>Тип</span>
+                    <select data-activity-pinata-field="pinataMode" data-activity-pinata-id="${escapeHtml(programId)}">
+                        <option value="park"${mode === 'park' ? ' selected' : ''}>Піньята парку</option>
+                        <option value="client"${mode === 'client' ? ' selected' : ''}>Клієнтська піньята</option>
+                    </select>
+                </label>
+                <label>
+                    <span>№ піньяти</span>
+                    <select data-activity-pinata-field="pinataNumber" data-activity-pinata-id="${escapeHtml(programId)}">
+                        ${selectedActivityPinataOptionsHtml(designChoices, state.pinataNumber, 'Оберіть номер')}
+                    </select>
+                </label>
+                ${mode === 'park' ? `
+                    <label>
+                        <span>Наповнювач</span>
+                        <select data-activity-pinata-field="pinataFiller" data-activity-pinata-id="${escapeHtml(programId)}">
+                            ${selectedActivityPinataOptionsHtml(fillerChoices, state.pinataFiller, 'Оберіть наповнювач')}
+                        </select>
+                    </label>
+                ` : `
+                    <label>
+                        <span>Послуга, ₴</span>
+                        <input type="number" min="0" step="50" data-activity-pinata-field="clientPinataServicePrice" data-activity-pinata-id="${escapeHtml(programId)}" value="${escapeHtml(String(state.clientPinataServicePrice || getClientPinataDefaultPrice()))}">
+                    </label>
+                    <label class="selected-activity-pinata-note">
+                        <span>Нотатка</span>
+                        <input type="text" maxlength="500" data-activity-pinata-field="clientPinataServiceNote" data-activity-pinata-id="${escapeHtml(programId)}" value="${escapeHtml(state.clientPinataServiceNote || '')}">
+                    </label>
+                `}
+            </div>
+            ${issueText ? `<span class="selected-activity-pinata-error">${escapeHtml(issueText)}</span>` : ''}
+        </div>
+    `;
+}
+
+function setSelectedActivityPinataField(programId, field, value) {
+    const id = String(programId || '');
+    const program = getSelectedActivityPrograms().find(item => String(item.id) === id) || findBookingProductById(id);
+    if (!id || !program || !isPinataProgram(program)) return;
+    const state = selectedActivityPinataState(program);
+    const nextValue = String(value || '').trim();
+    if (field === 'pinataMode') {
+        state.pinataMode = nextValue === 'client' ? 'client' : 'park';
+        if (state.pinataMode === 'client') {
+            state.pinataFiller = '';
+            state.pinataFillerNumber = '';
+            if (!state.clientPinataServicePrice) state.clientPinataServicePrice = String(getClientPinataDefaultPrice());
+        } else {
+            state.clientPinataServicePrice = '';
+            state.clientPinataServiceNote = '';
+        }
+    } else if (field === 'pinataNumber') {
+        state.pinataNumber = nextValue;
+    } else if (field === 'pinataFiller') {
+        state.pinataFiller = nextValue;
+        state.pinataFillerNumber = isClientPinataFillerChoice(nextValue) ? CLIENT_PINATA_FILLER_VALUE : nextValue;
+    } else if (field === 'clientPinataServicePrice') {
+        state.clientPinataServicePrice = nextValue;
+    } else if (field === 'clientPinataServiceNote') {
+        state.clientPinataServiceNote = nextValue;
+    }
+    renderSelectedProgramSummary();
+    renderBookingPackageSummary();
+    updateBookingSubmitState();
+    if (window.BookingForm) BookingForm._dirty = true;
 }
 
 function renderSelectedProgramSummary(program = null) {
@@ -6837,17 +7462,45 @@ function renderSelectedProgramSummary(program = null) {
     if (kidsEl) kidsEl.textContent = programs.length === 1 ? (primaryProgram.kids || '—') : 'за активностями';
 
     if (list) {
-        list.innerHTML = programs.map((item, index) => `
-            <div class="selected-activity-item" data-selected-activity-id="${escapeHtml(String(item.id))}">
+        const scheduleRows = getSelectedActivityScheduleRows(programs);
+        const alignButton = programs.length > 1
+            ? `<div class="selected-activities-toolbar">
+                <button type="button" class="selected-activities-align" data-align-activity-schedule>Вирівняти послідовно</button>
+            </div>`
+            : '';
+        list.innerHTML = `${alignButton}${scheduleRows.map((row, index) => {
+            const item = row.program;
+            const issueText = selectedActivityScheduleIssueText(item.id);
+            const pinataSubflow = renderSelectedActivityPinataSubflow(row);
+            return `
+            <div class="selected-activity-item${issueText ? ' has-conflict' : ''}" data-selected-activity-id="${escapeHtml(String(item.id))}">
                 <span class="selected-activity-order">${index + 1}</span>
                 <span class="selected-activity-main">
                     <strong>${escapeHtml(item.code || item.label || item.name || 'Активність')}</strong>
                     <small>${escapeHtml(item.name || item.label || '')}</small>
+                    <span class="selected-activity-schedule">${escapeHtml(selectedActivityScheduleLabel(row))}</span>
+                    ${issueText ? `<span class="selected-activity-conflict">${escapeHtml(issueText)}</span>` : ''}
                 </span>
-                <span class="selected-activity-meta">${item.duration ? `${escapeHtml(String(item.duration))} хв · ` : ''}${escapeHtml(bookingActivityPriceLabel(item))}</span>
+                <label class="selected-activity-time">
+                    <span>Старт</span>
+                    <input type="time" class="selected-activity-time-input" data-activity-time-id="${escapeHtml(String(item.id))}" value="${escapeHtml(row.time || '')}" step="300" aria-label="Час старту ${escapeHtml(item.code || item.name || 'активності')}">
+                </label>
+                <span class="selected-activity-meta">
+                    ${item.duration ? `${escapeHtml(String(item.duration))} хв · ` : ''}${escapeHtml(bookingActivityPriceLabel(item))}
+                </span>
                 <button type="button" class="selected-activity-remove" data-remove-activity="${escapeHtml(String(item.id))}" aria-label="Прибрати активність ${escapeHtml(item.code || item.name || '')}">×</button>
+                ${pinataSubflow}
             </div>
-        `).join('');
+        `;
+        }).join('')}`;
+        list.querySelector('[data-align-activity-schedule]')?.addEventListener('click', () => alignSelectedActivityScheduleSequentially());
+        list.querySelectorAll('[data-activity-time-id]').forEach(input => {
+            input.addEventListener('change', () => setSelectedActivityScheduleTime(input.dataset.activityTimeId, input.value));
+        });
+        list.querySelectorAll('[data-activity-pinata-field][data-activity-pinata-id]').forEach(input => {
+            const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+            input.addEventListener(eventName, () => setSelectedActivityPinataField(input.dataset.activityPinataId, input.dataset.activityPinataField, input.value));
+        });
         list.querySelectorAll('[data-remove-activity]').forEach(btn => {
             btn.addEventListener('click', () => removeSelectedActivityProgram(btn.dataset.removeActivity));
         });
@@ -6913,14 +7566,20 @@ async function renderProgramIcons() {
             const nextPriceBadge = nextPriceLabel
                 ? `<span class="program-next-price-badge">${_escB(nextPriceLabel)}</span>`
                 : '';
+            const programImageUrl = p.iconUrl || p.icon_url || p.imageUrl || p.image_url || '';
+            const programFallbackIcon = p.icon || '🎯';
+            const programMedia = programImageUrl
+                ? `<span class="program-media program-media--image"><img src="${_escB(programImageUrl)}" alt="" loading="lazy" decoding="async"></span>`
+                : `<span class="program-media program-media--fallback"><span class="icon-circle"><span class="icon">${_escB(programFallbackIcon)}</span></span></span>`;
             icon.setAttribute('aria-pressed', 'false');
             icon.setAttribute('aria-label', `Обрати програму ${cardName}${p.duration ? `, ${p.duration} хв` : ''}${p.price ? `, ${bookingActivityPriceLabel(p)}` : ''}${nextPriceLabel ? `, ${nextPriceLabel}` : ''}`);
             icon.innerHTML = `
-                ${durationBadge}
-                ${priceBadge}
-                <span class="icon-circle"><span class="icon">${_escB(p.icon)}</span></span>
-                <span class="name">${_escB(cardName)}</span>
-                ${nextPriceBadge}
+                <span class="program-card-badges">${priceBadge}${durationBadge}</span>
+                ${programMedia}
+                <span class="program-card-body">
+                    <span class="name">${_escB(cardName)}</span>
+                    ${nextPriceBadge}
+                </span>
             `;
             icon.addEventListener('click', () => selectProgram(p.id));
             grid.appendChild(icon);
@@ -7406,29 +8065,43 @@ function getBookingFormData() {
         label = `${customName}(${duration})`;
     }
 
-    const pinataMode = program && isPinataProgram(program) ? getPinataModeValue() : 'none';
-    const selectedPinataFiller = document.getElementById('pinataFillerSelect')?.value || '';
-    const clientOwnedFiller = pinataMode === 'park' && isClientPinataFillerChoice(selectedPinataFiller);
+    let pinataMode = 'none';
     let pinataFiller = '';
-    const pinataNumber = pinataMode !== 'none'
-        ? (document.getElementById('pinataNumber')?.value?.trim() || null)
-        : null;
-    const pinataFillerNumber = pinataMode !== 'none'
-        ? (clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (document.getElementById('pinataFillerNumber')?.value?.trim() || null))
-        : null;
+    let pinataNumber = null;
+    let pinataFillerNumber = null;
     let clientPinataServicePrice = null;
     let clientPinataServiceNote = null;
-    if (program && program.hasFiller && pinataMode === 'park') {
-        pinataFiller = selectedPinataFiller;
-        if (clientOwnedFiller) {
-            label = 'Пін+свій';
-        } else if (pinataFiller) {
-            label = `Пін+${pinataFiller}`;
+    if (program && isPinataProgram(program) && useSelectedActivityPinataSubflow()) {
+        const activityPinata = selectedActivityPinataDraft(program);
+        pinataMode = activityPinata.pinataMode;
+        pinataNumber = activityPinata.pinataNumber;
+        pinataFillerNumber = activityPinata.pinataFillerNumber;
+        pinataFiller = activityPinata.pinataFiller || '';
+        clientPinataServicePrice = activityPinata.clientPinataServicePrice;
+        clientPinataServiceNote = activityPinata.clientPinataServiceNote;
+        label = selectedActivityPinataLabel(program, label);
+    } else if (program && isPinataProgram(program)) {
+        pinataMode = getPinataModeValue();
+        const selectedPinataFiller = document.getElementById('pinataFillerSelect')?.value || '';
+        const clientOwnedFiller = pinataMode === 'park' && isClientPinataFillerChoice(selectedPinataFiller);
+        pinataNumber = pinataMode !== 'none'
+            ? (document.getElementById('pinataNumber')?.value?.trim() || null)
+            : null;
+        pinataFillerNumber = pinataMode !== 'none'
+            ? (clientOwnedFiller ? CLIENT_PINATA_FILLER_VALUE : (document.getElementById('pinataFillerNumber')?.value?.trim() || null))
+            : null;
+        if (program.hasFiller && pinataMode === 'park') {
+            pinataFiller = selectedPinataFiller;
+            if (clientOwnedFiller) {
+                label = 'Пін+свій';
+            } else if (pinataFiller) {
+                label = `Пін+${pinataFiller}`;
+            }
+        } else if (pinataMode === 'client') {
+            clientPinataServicePrice = document.getElementById('clientPinataServicePrice')?.value || null;
+            clientPinataServiceNote = document.getElementById('clientPinataServiceNote')?.value?.trim() || null;
+            label = 'Клієнтська піньята';
         }
-    } else if (program && pinataMode === 'client') {
-        clientPinataServicePrice = document.getElementById('clientPinataServicePrice')?.value || null;
-        clientPinataServiceNote = document.getElementById('clientPinataServiceNote')?.value?.trim() || null;
-        label = 'Клієнтська піньята';
     }
 
     const secondAnimatorSectionVisible = !document.getElementById('secondAnimatorSection')?.classList.contains('hidden');
@@ -7583,6 +8256,199 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
         return false;
     }
     return true;
+}
+
+let _selectedActivityConflictTimer = null;
+
+function selectedActivityScheduleRange(row = {}) {
+    const start = row.startMinutes;
+    const end = row.endMinutes;
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    return { start, end };
+}
+
+function selectedActivityScheduleOverlaps(first = {}, second = {}) {
+    const a = selectedActivityScheduleRange(first);
+    const b = selectedActivityScheduleRange(second);
+    if (!a || !b) return false;
+    return a.start < b.end && a.end > b.start;
+}
+
+function normalizeScheduleBooking(booking = {}) {
+    return {
+        id: booking.id || booking.bookingId || booking.booking_id || null,
+        status: booking.status || '',
+        date: String(booking.date || booking.bookingDate || booking.booking_date || '').slice(0, 10),
+        time: normalizeSelectedActivityScheduleTime(booking.time || ''),
+        duration: Number(booking.duration || 0) || 0,
+        lineId: booking.lineId || booking.line_id || null,
+        room: String(booking.room || '').trim(),
+        programId: booking.programId || booking.program_id || null,
+        programCode: booking.programCode || booking.program_code || null,
+        programName: booking.programName || booking.program_name || null,
+        label: booking.label || null,
+        linkedTo: booking.linkedTo || booking.linked_to || null
+    };
+}
+
+function scheduleBookingLabel(booking = {}) {
+    return booking.label || booking.programName || booking.programCode || booking.id || 'бронювання';
+}
+
+function selectedActivityDuplicateCheckEnabled(programId, program = {}) {
+    if (!programId || !program) return false;
+    return !(program.category === 'animation'
+        || program.category === 'custom'
+        || program.isCustom
+        || programId === 'anim_extra'
+        || programId === 'custom');
+}
+
+function existingScheduleBookingsForValidation(bookings = [], excludeId = null) {
+    const excludedIds = collectDuplicateProgramExclusionIds(bookings, excludeId);
+    return (bookings || [])
+        .map(normalizeScheduleBooking)
+        .filter(booking => {
+            if (!booking.id || excludedIds.has(normalizeBookingIdentity(booking.id))) return false;
+            if (String(booking.status || '').toLowerCase() === 'cancelled') return false;
+            return Boolean(booking.time && booking.duration > 0);
+        });
+}
+
+async function validateSelectedActivitySchedule(formData = {}, options = {}) {
+    const programs = Array.isArray(formData.activityPrograms)
+        ? formData.activityPrograms.filter(Boolean)
+        : getSelectedActivityPrograms();
+    if (!bookingMultiActivityEnabled() || programs.length <= 1) {
+        setSelectedActivityScheduleIssues({});
+        return { valid: true, issues: [] };
+    }
+
+    const rows = getSelectedActivityScheduleRows(programs);
+    const issueMap = {};
+    const lineId = formData.lineId || document.getElementById('bookingLine')?.value || '';
+    const room = String(formData.room || document.getElementById('roomSelect')?.value || '').trim();
+    const date = normalizeBookingDateKey(AppState.selectedDate);
+    const allBookings = await getBookingsForDate(AppState.selectedDate, { force: options.force !== false });
+    const existingBookings = existingScheduleBookingsForValidation(allBookings, options.excludeId || null);
+
+    rows.forEach(row => {
+        if (!row.time) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, 'Вкажіть час старту.');
+            return;
+        }
+        if (row.duration <= 0) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, 'Некоректна тривалість.');
+        }
+        if (row.endMinutes > 1440) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, 'Активність виходить за межі дня.');
+        }
+    });
+
+    for (let i = 0; i < rows.length; i += 1) {
+        for (let j = i + 1; j < rows.length; j += 1) {
+            if (!selectedActivityScheduleOverlaps(rows[i], rows[j])) continue;
+            const firstLabel = rows[i].program?.code || rows[i].program?.name || `#${i + 1}`;
+            const secondLabel = rows[j].program?.code || rows[j].program?.name || `#${j + 1}`;
+            addSelectedActivityScheduleIssue(issueMap, rows[i].programId, `Перетин з ${secondLabel}.`);
+            addSelectedActivityScheduleIssue(issueMap, rows[j].programId, `Перетин з ${firstLabel}.`);
+            if (normalizeBookingIdentity(rows[i].programId) === normalizeBookingIdentity(rows[j].programId)
+                && selectedActivityDuplicateCheckEnabled(rows[i].programId, rows[i].program)) {
+                addSelectedActivityScheduleIssue(issueMap, rows[i].programId, 'Дубль програми в обраному наборі.');
+                addSelectedActivityScheduleIssue(issueMap, rows[j].programId, 'Дубль програми в обраному наборі.');
+            }
+        }
+    }
+
+    rows.forEach(row => {
+        if (!row.time || row.duration <= 0) return;
+        const candidate = {
+            id: `draft-${row.programId}`,
+            date,
+            time: row.time,
+            duration: row.duration,
+            lineId,
+            room,
+            programId: row.programId,
+            programCode: row.program?.code || null,
+            programName: row.program?.name || null
+        };
+        const lineConflict = existingBookings.find(booking =>
+            normalizeBookingIdentity(booking.lineId) === normalizeBookingIdentity(candidate.lineId)
+            && selectedActivityScheduleOverlaps(
+                { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
+                { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
+            )
+        );
+        if (lineConflict) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, `Ведучий зайнятий: ${scheduleBookingLabel(lineConflict)} о ${lineConflict.time}.`, {
+                conflictBookingId: lineConflict.id
+            });
+        }
+
+        const roomConflict = room && isOperationalBookingRoomValue(room)
+            ? existingBookings.find(booking =>
+                normalizeBookingIdentity(booking.room) === normalizeBookingIdentity(room)
+                && selectedActivityScheduleOverlaps(
+                    { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
+                    { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
+                )
+            )
+            : null;
+        if (roomConflict) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, `Кімната зайнята: ${scheduleBookingLabel(roomConflict)} о ${roomConflict.time}.`, {
+                conflictBookingId: roomConflict.id
+            });
+        }
+
+        if (selectedActivityDuplicateCheckEnabled(row.programId, row.program)) {
+            const duplicate = existingBookings.find(booking =>
+                normalizeBookingIdentity(booking.programId) === normalizeBookingIdentity(row.programId)
+                && selectedActivityScheduleOverlaps(
+                    { startMinutes: timeToMinutes(candidate.time), endMinutes: timeToMinutes(candidate.time) + candidate.duration },
+                    { startMinutes: timeToMinutes(booking.time), endMinutes: timeToMinutes(booking.time) + booking.duration }
+                )
+            );
+            if (duplicate) {
+                addSelectedActivityScheduleIssue(issueMap, row.programId, `Дубль програми: ${scheduleBookingLabel(duplicate)} о ${duplicate.time}.`, {
+                    conflictBookingId: duplicate.id
+                });
+            }
+        }
+    });
+
+    setSelectedActivityScheduleIssues(issueMap);
+    if (options.render !== false) renderSelectedProgramSummary();
+    const issues = Object.entries(issueMap).flatMap(([programId, value]) =>
+        (value.messages || []).map(message => ({ programId, message, conflictBookingId: value.conflictBookingId || null }))
+    );
+    return { valid: issues.length === 0, issues };
+}
+
+function scheduleSelectedActivityConflictRefresh(delay = 250) {
+    clearTimeout(_selectedActivityConflictTimer);
+    _selectedActivityConflictTimer = setTimeout(() => {
+        const formData = typeof getBookingFormData === 'function' ? getBookingFormData() : {};
+        validateSelectedActivitySchedule(formData, { render: true, force: true }).catch(err => {
+            console.warn('[Booking] Selected activity schedule validation failed', err);
+        });
+    }, delay);
+}
+
+async function validateSelectedActivityScheduleBeforeSubmit(formData = {}, excludeId = null) {
+    let result;
+    try {
+        result = await validateSelectedActivitySchedule(formData, { excludeId, render: true, force: true });
+    } catch (err) {
+        console.warn('[Booking] Selected activity schedule validation unavailable before submit', err);
+        showNotification('Не вдалося виконати попередню перевірку активностей. Сервер перевірить конфлікти під час збереження.', 'warning');
+        return true;
+    }
+    if (result.valid) return true;
+    const first = result.issues[0];
+    if (first?.conflictBookingId) revealHiddenBooking(first.conflictBookingId);
+    showNotification(first?.message || 'Перевірте часи обраних активностей.', 'error');
+    return false;
 }
 
 function getBookingWorkspaceIdentityLabel(formData = {}) {
@@ -7909,6 +8775,7 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
     if (!program) return null;
     const activityIndex = Number(options.index || 0);
     const activityIds = (options.activityPrograms || []).map(item => String(item.id));
+    const pinataFields = selectedActivityPinataDraft(program);
     const price = bookingActivityPriceValue(program);
     const duration = Number(program.duration || 0) || 30;
     const extraData = buildExtraData(String(program.id)) || {};
@@ -7949,7 +8816,7 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
         resourceType: baseBooking.resourceType || null,
         programId: String(program.id),
         programCode: program.code,
-        label: program.label || `${program.code || program.name || 'Активність'}(${duration})`,
+        label: selectedActivityPinataLabel(program, program.label || `${program.code || program.name || 'Активність'}(${duration})`),
         programName: program.name || program.label || program.code,
         category: program.category,
         duration,
@@ -7958,12 +8825,12 @@ function buildMultiActivityBookingFromProgram(baseBooking, program, options = {}
         secondAnimator: null,
         secondAnimatorLineId: null,
         secondAnimatorLineName: null,
-        pinataMode: 'none',
-        pinataNumber: null,
-        pinataFillerNumber: null,
-        pinataFiller: null,
-        clientPinataServicePrice: null,
-        clientPinataServiceNote: null,
+        pinataMode: pinataFields.pinataMode,
+        pinataNumber: pinataFields.pinataNumber,
+        pinataFillerNumber: pinataFields.pinataFillerNumber,
+        pinataFiller: pinataFields.pinataFiller,
+        clientPinataServicePrice: pinataFields.pinataMode === 'client' ? price : null,
+        clientPinataServiceNote: pinataFields.clientPinataServiceNote,
         costume: baseBooking.costume || null,
         room: baseBooking.room,
         notes: null,
@@ -7990,6 +8857,9 @@ function buildMultiActivityBookings(baseBooking, formData = {}) {
         ? formData.activityPrograms.filter(Boolean)
         : getSelectedActivityPrograms();
     if (programs.length <= 1) return [];
+    const scheduleRows = getSelectedActivityScheduleRows(programs);
+    const primaryRow = scheduleRows[0] || null;
+    if (primaryRow?.time) baseBooking.time = primaryRow.time;
     baseBooking.groupName = ensureMultiActivityGroupName(baseBooking);
     if (!baseBooking.extraData) baseBooking.extraData = {};
     if (!baseBooking.extraData.multiActivity) {
@@ -8001,18 +8871,21 @@ function buildMultiActivityBookings(baseBooking, formData = {}) {
             activityIds: programs.map(item => String(item.id)),
             totalDuration: bookingActivitiesTotalDuration(programs),
             totalPrice: bookingActivitiesTotalPrice(programs),
+            schedule: selectedActivityScheduleExtra(scheduleRows),
             source: 'booking_drawer_multi_activity'
         };
     }
-    let nextTime = addMinutesToTime(baseBooking.time, baseBooking.duration || programs[0]?.duration || 0);
-    return programs.slice(1).map((program, offset) => {
+    baseBooking.extraData.multiActivity.schedule = selectedActivityScheduleExtra(scheduleRows);
+    baseBooking.extraData.multiActivity.totalDuration = bookingActivitiesTotalDuration(programs);
+    baseBooking.extraData.multiActivity.totalPrice = bookingActivitiesTotalPrice(programs);
+    return scheduleRows.slice(1).map(row => {
+        const program = row.program;
         const booking = buildMultiActivityBookingFromProgram(baseBooking, program, {
-            index: offset + 1,
-            time: nextTime,
+            index: row.index,
+            time: row.time,
             activityPrograms: programs,
             primaryProgramId: programs[0]?.id
         });
-        nextTime = addMinutesToTime(nextTime, booking?.duration || program.duration || 0);
         return booking;
     }).filter(Boolean);
 }
@@ -8277,7 +9150,7 @@ function unlockSubmitBtn() {
     const btn = document.getElementById('bookingSubmitBtn');
     if (btn) {
         btn.disabled = false;
-        btn.textContent = btn.dataset.originalText || 'Додати бронювання';
+        btn.textContent = btn.dataset.readyText || btn.dataset.originalText || 'Додати бронювання';
         btn.setAttribute('aria-disabled', 'false');
     }
     updateBookingSubmitState();
@@ -8745,8 +9618,9 @@ async function handleBookingSubmit(e) {
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.setAttribute('aria-disabled', 'true');
-        submitBtn.dataset.originalText = submitBtn.dataset.originalText || submitBtn.textContent;
-        submitBtn.textContent = 'Збереження...';
+        submitBtn.dataset.originalText = submitBtn.dataset.readyText || submitBtn.dataset.originalText || submitBtn.textContent;
+        submitBtn.dataset.readyText = submitBtn.dataset.originalText;
+        submitBtn.textContent = BOOKING_SUBMIT_SAVING_TEXT;
     }
 
     const invalidMenuPosition = (formData.menuPositions || []).find(item => !item.title || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0);
@@ -8762,7 +9636,11 @@ async function handleBookingSubmit(e) {
         return;
     }
     syncLegacyBanquetMenuFromPositions();
-    if (formData.hasEvent && formData.program?.hasFiller && formData.pinataMode === 'park' && !formData.pinataFiller) {
+    if (formData.hasEvent
+        && formData.program?.hasFiller
+        && formData.pinataMode === 'park'
+        && !formData.pinataFiller
+        && !isClientPinataFillerNumber(formData.pinataFillerNumber)) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
     // v8.7: Require second animator for multi-host programs
@@ -8801,6 +9679,9 @@ async function handleBookingSubmit(e) {
             formData.programId, formData.program, formData.time, formData.duration, excludeId
         );
         if (!noDuplicate) { unlockSubmitBtn(); return; }
+
+        const activityScheduleValid = await validateSelectedActivityScheduleBeforeSubmit(formData, excludeId);
+        if (!activityScheduleValid) { unlockSubmitBtn(); return; }
     }
 
     try {
@@ -10953,7 +11834,10 @@ async function editBooking(bookingId) {
     const editH3 = document.querySelector('#bookingPanel .panel-header h3');
     const editBtn = document.querySelector('#bookingForm .btn-submit');
     if (editH3) editH3.textContent = 'Редагувати бронювання';
-    if (editBtn) editBtn.textContent = 'Зберегти зміни';
+    if (editBtn) {
+        editBtn.textContent = 'Зберегти зміни';
+        editBtn.dataset.readyText = editBtn.textContent;
+    }
     hydrateBookingWorkspace(booking);
     const editCommentType = bookingCommentTypeForBooking(booking);
     const editComments = bookingWorkspaceCommentsFromBooking(booking);
@@ -11073,7 +11957,11 @@ async function duplicateBooking(bookingId) {
     // Заголовок для дублювання
     const dupH3 = document.querySelector('#bookingPanel .panel-header h3');
     if (dupH3) dupH3.textContent = 'Повторити бронювання';
-    document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
+    const duplicateSubmit = document.querySelector('#bookingForm .btn-submit');
+    if (duplicateSubmit) {
+        duplicateSubmit.textContent = 'Створити копію';
+        duplicateSubmit.dataset.readyText = duplicateSubmit.textContent;
+    }
     hydrateBookingWorkspace(booking);
 
     // Pre-fill форму (ідентично editBooking)

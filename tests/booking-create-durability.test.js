@@ -59,6 +59,12 @@ function mapBookingRow(row = {}) {
         linkedTo: row.linked_to || null,
         hosts: row.hosts,
         secondAnimator: row.second_animator || null,
+        pinataMode: row.pinata_mode || null,
+        pinataNumber: row.pinata_number || null,
+        pinataFillerNumber: row.pinata_filler_number || null,
+        pinataFiller: row.pinata_filler || null,
+        clientPinataServicePrice: row.client_pinata_service_price ?? null,
+        clientPinataServiceNote: row.client_pinata_service_note || null,
         extraData,
         bookingPackage: extraData?.bookingPackage || null,
         banquetGuests: row.banquet_guests || null,
@@ -85,6 +91,12 @@ function bookingRowFromInsert(params) {
         price: params[11],
         hosts: params[12],
         second_animator: params[13],
+        pinata_filler: params[14],
+        pinata_mode: params[15],
+        pinata_number: params[16],
+        pinata_filler_number: params[17],
+        client_pinata_service_price: params[18],
+        client_pinata_service_note: params[19],
         room: params[21],
         notes: params[22],
         created_by: params[23],
@@ -1900,6 +1912,80 @@ test('POST /api/bookings/full maps shared-room activity links relative to the ac
         assert.equal(roomLink.bookingId, activityId);
         assert.equal(roomLink.targetId, 'BK-2099-0999');
         assert.notEqual(roomLink.bookingId, res.data.mainBooking.id);
+    });
+});
+
+test('POST /api/bookings/full persists separate pinata fields for main and activity bookings', async () => {
+    await withApp({}, async ({ baseUrl, state }) => {
+        const res = await createFullBooking(baseUrl, {
+            main: {
+                date: '2099-02-13',
+                time: '13:00',
+                lineId: 'line-main',
+                lineName: 'Anna',
+                room: 'Room A',
+                programId: 'pinata_15',
+                programCode: 'ПІН',
+                label: 'Пін+1M',
+                programName: 'Піньята',
+                category: 'pinata',
+                duration: 15,
+                price: 700,
+                hosts: 1,
+                secondAnimator: null,
+                pinataMode: 'park',
+                pinataNumber: '501',
+                pinataFiller: '1M',
+                pinataFillerNumber: '1M',
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            },
+            linked: [],
+            banquetActivities: [{
+                date: '2099-02-13',
+                time: '13:20',
+                lineId: 'line-second',
+                lineName: 'Second Animator',
+                room: 'Room A',
+                programId: 'pinata_pro_15',
+                programCode: 'ПІНН',
+                label: 'Пін+свій',
+                programName: 'Піньята PRO',
+                category: 'pinata',
+                duration: 15,
+                price: 1000,
+                hosts: 1,
+                secondAnimator: null,
+                pinataMode: 'park',
+                pinataNumber: '512',
+                pinataFiller: null,
+                pinataFillerNumber: 'client_filler',
+                status: 'confirmed',
+                createdBy: 'creator-user'
+            }]
+        });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.activityBookings.length, 1);
+
+        assert.equal(res.data.mainBooking.pinataMode, 'park');
+        assert.equal(res.data.mainBooking.pinataNumber, '501');
+        assert.equal(res.data.mainBooking.pinataFiller, '1M');
+        assert.equal(res.data.mainBooking.pinataFillerNumber, '1M');
+        assert.equal(res.data.activityBookings[0].pinataMode, 'park');
+        assert.equal(res.data.activityBookings[0].pinataNumber, '512');
+        assert.equal(res.data.activityBookings[0].pinataFiller, null);
+        assert.equal(res.data.activityBookings[0].pinataFillerNumber, 'client_filler');
+
+        const mainRow = state.rows.find(row => row.id === res.data.mainBooking.id);
+        const activityRow = state.rows.find(row => row.id === res.data.activityBookings[0].id);
+        assert.equal(mainRow.pinata_number, '501');
+        assert.equal(mainRow.pinata_filler, '1M');
+        assert.equal(mainRow.pinata_filler_number, '1M');
+        assert.equal(activityRow.pinata_number, '512');
+        assert.equal(activityRow.pinata_filler, null);
+        assert.equal(activityRow.pinata_filler_number, 'client_filler');
     });
 });
 

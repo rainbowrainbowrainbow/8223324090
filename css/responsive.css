@@ -404,8 +404,8 @@
         overflow: hidden;
     }
 
-    /* v5.35: Tablet program grid — 5 columns */
-    .category-grid { grid-template-columns: repeat(5, 1fr); }
+    /* v5.35: Tablet program grid — image-ready cards */
+    .category-grid { grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); }
 
     /* v5.35: Tablet modals — not full screen */
     .modal-content { max-width: 90%; }
@@ -1069,23 +1069,57 @@
     }
 
     .program-icon {
-        padding: 8px 4px;
-        min-height: 64px;
+        padding: 8px;
+        min-height: 136px;
         border-radius: 10px;
     }
 
+    .program-card-badges {
+        min-height: 22px;
+        gap: 5px;
+    }
+
+    .program-media {
+        min-height: 68px;
+    }
+
+    .program-icon.selected::after {
+        top: 36px;
+        right: 10px;
+    }
+
     .program-icon .icon-circle {
-        width: 36px;
-        height: 36px;
-        margin-bottom: 3px;
+        width: 50px;
+        height: 50px;
     }
 
     .program-icon .icon {
-        font-size: 18px;
+        font-size: 24px;
     }
 
     .program-icon .name {
-        font-size: 11px;
+        font-size: 12px;
+    }
+
+    .selected-activity-item {
+        grid-template-columns: 24px minmax(0, 1fr) 28px;
+    }
+
+    .selected-activity-time,
+    .selected-activity-meta {
+        grid-column: 2 / 4;
+    }
+
+    .selected-activity-pinata {
+        grid-column: 1 / -1;
+    }
+
+    .selected-activity-pinata-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .selected-activity-pinata-note {
+        grid-column: auto;
     }
 
     .btn-submit {
@@ -1228,7 +1262,7 @@
     }
 
     /* Category grid */
-    .category-grid { grid-template-columns: repeat(3, 1fr); }
+    .category-grid { grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
     .modal-catalog { max-width: 100%; max-height: 95vh; }
 
     /* v7.8.8: Catalog card buttons — WCAG 44px */
@@ -1272,12 +1306,18 @@
 
     .main-content { padding: 8px; }
 
-    .category-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .program-icon { min-height: 68px; padding: 10px 4px; }
-    .program-icon .icon-circle { width: 34px; height: 34px; margin-bottom: 3px; }
-    .program-icon .icon { font-size: 17px; }
-    .program-icon .name { font-size: 11px; }
+    .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .program-icon { min-height: 136px; padding: 8px; }
+    .program-card-badges { min-height: 21px; gap: 4px; }
+    .program-media { min-height: 68px; }
+    .program-icon.selected::after { top: 35px; right: 10px; }
+    .program-icon .icon-circle { width: 48px; height: 48px; }
+    .program-icon .icon { font-size: 23px; }
+    .program-icon .name { font-size: 12px; }
     .program-duration { font-size: 8px; padding: 1px 4px; }
+    .selected-activities-toolbar { justify-content: stretch; }
+    .selected-activities-align { width: 100%; }
+    .selected-activity-time-input { min-height: 36px; font-size: 13px; }
 
     /* v7.8.3: Ultra-compact toolbar */
     .control-panel { gap: 4px; padding: 8px; }
@@ -1339,10 +1379,13 @@
     .kids-count-section { padding: 8px 10px; margin-bottom: 10px; }
     .hosts-warning { padding: 8px 10px; margin-bottom: 10px; }
     .btn-submit { padding: 12px; font-size: 13px; }
-    .program-icon { padding: 6px 3px; min-height: 58px; }
-    .program-icon .icon-circle { width: 30px; height: 30px; margin-bottom: 2px; }
-    .program-icon .icon { font-size: 15px; }
-    .program-icon .name { font-size: 8px; }
+    .program-icon { padding: 7px; min-height: 126px; }
+    .program-card-badges { min-height: 20px; }
+    .program-media { min-height: 58px; }
+    .program-icon.selected::after { top: 32px; right: 9px; }
+    .program-icon .icon-circle { width: 42px; height: 42px; }
+    .program-icon .icon { font-size: 20px; }
+    .program-icon .name { font-size: 11px; }
 
     /* v5.34: Timeline compact */
     .timeline-scroll { padding: var(--timeline-scroll-pad, 8px); }

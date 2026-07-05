@@ -4,6 +4,7 @@ var BookingDrawerState = window.BookingDrawerState || {
     clientMode: 'search',
     selectedProgramCategory: 'all',
     selectedActivityProgramIds: [],
+    selectedActivityPinataFields: {},
     validationAttempted: false,
     roomBookingAnimationBridge: null,
     legacyNotesFallback: false,

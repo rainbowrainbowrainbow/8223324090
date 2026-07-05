@@ -59,7 +59,11 @@ test('booking create payload supports existing and new customer flows', () => {
     assert.match(validationBlock, /const hasNewCustomer = !hasSelectedCustomer && bookingNewCustomerDraftIsValid\(customerDraft\);/);
     assert.match(validationBlock, /const hasClient = hasSelectedCustomer \|\| hasNewCustomer;/);
     assert.match(validationBlock, /const hasSearchOnly = Boolean\(customerDraft\.search && !customerDraft\.name\);/);
-    assert.match(validationBlock, /invalidFields\.push\(hasSearchOnly \? 'customerName' : 'customerSearch'\);/);
+    assert.ok(
+        /invalidFields\.push\(hasSearchOnly \? 'customerName' : 'customerSearch'\);/.test(validationBlock)
+        || /addBookingValidationIssue\(state, 'client',[\s\S]*\[hasSearchOnly \? 'customerName' : 'customerSearch'\]\);/.test(validationBlock),
+        'customer validation marks search-only and empty client fields'
+    );
 
     const payloadStart = bookingJs.indexOf('function buildBookingObject');
     const payloadEnd = bookingJs.indexOf('function shouldCreateEducationLessonSeries', payloadStart);

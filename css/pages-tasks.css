@@ -372,6 +372,7 @@ body.dark-mode .task-priority-select--low {
 .cabinet-command-center {
     display: grid;
     gap: 10px;
+    container-type: inline-size;
 }
 
 .profile-work-header--myday {
@@ -1118,6 +1119,12 @@ html[data-theme="dark"] .cabinet-day-action--settings {
         grid-column: 2;
         grid-row: auto;
         justify-content: flex-start;
+    }
+}
+
+@container (max-width: 1120px) {
+    .cabinet-day-workspace--two-column {
+        grid-template-columns: 1fr;
     }
 }
 

@@ -4986,21 +4986,13 @@ function renderCabinetActiveSubtaskSlice(task = {}, taskIdAttr = '') {
     const remaining = Math.max(0, summary.total - summary.done);
     const nextSubtask = cabinetNextActionableSubtask(task, taskId);
     const nextTitle = nextSubtask?.title || (remaining ? cabinetSubtaskRemainingLabel(remaining) : 'Усі пункти закриті');
-    const stateLabel = remaining ? cabinetSubtaskRemainingLabel(remaining) : 'Готово';
     const nextMarkup = nextSubtask?.id
         ? `<label class="cabinet-subtask-slice-check">
                 <input type="checkbox" data-cabinet-subtask-done data-task-id="${taskIdAttr}" data-subtask-id="${escapeHtml(nextSubtask.id)}">
                 <span>${escapeHtml(nextTitle)}</span>
             </label>`
         : `<div class="cabinet-subtask-slice-empty">${escapeHtml(nextTitle)}</div>`;
-    return `<div class="cabinet-subtask-active-slice" data-cabinet-active-subtask-slice="${taskIdAttr}" aria-label="Активний пункт чекліста">
-        <div class="cabinet-subtask-slice-head">
-            <span>Чекліст ${summary.done}/${summary.total}</span>
-            <b>${escapeHtml(stateLabel)}</b>
-        </div>
-        ${renderCabinetSubtaskProgress(task)}
-        ${nextMarkup}
-    </div>`;
+    return `<div class="cabinet-subtask-active-slice" data-cabinet-active-subtask-slice="${taskIdAttr}" aria-label="Активний пункт чекліста">${nextMarkup}</div>`;
 }
 
 function isCabinetSubtasksExpanded(taskId, task = {}) {
@@ -5053,6 +5045,24 @@ function renderCabinetSubtaskToggle(task = {}, taskIdAttr = '', expanded = null)
     </button>`;
 }
 
+function renderCabinetMyDaySubtaskSummary(task = {}, taskIdAttr = '', expanded = null, options = {}) {
+    const summary = cabinetSubtaskSummary(task);
+    const taskId = Number(taskIdAttr || 0);
+    if (!summary.total || !taskId) return '';
+    const isExpanded = expanded === null ? isCabinetSubtasksExpanded(taskId, task) : Boolean(expanded);
+    const remaining = Math.max(0, summary.total - summary.done);
+    const state = remaining > 0 ? cabinetSubtaskRemainingLabel(remaining) : 'Готово';
+    const shouldShowActiveSlice = Boolean(options.inlineActive && !isExpanded);
+    return `<div class="cabinet-subtask-summary ${isExpanded ? 'is-expanded' : 'is-collapsed'} ${shouldShowActiveSlice ? 'has-active-slice' : ''}" data-cabinet-subtask-summary="${taskIdAttr}">
+        <button type="button" class="cabinet-subtask-toggle" data-cabinet-task-action="subtasks-toggle" data-task-id="${taskIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="cabinetSubtasksPanel${taskIdAttr}" title="${escapeHtml(cabinetSubtaskCompletionTitle(task))}">
+            <span class="cabinet-subtask-toggle-main"><span>Чекліст</span><b>${summary.done}/${summary.total}</b></span>
+            <small>${escapeHtml(state)}</small>
+        </button>
+        ${renderCabinetSubtaskProgress(task)}
+        ${shouldShowActiveSlice ? renderCabinetActiveSubtaskSlice(task, taskIdAttr) : ''}
+    </div>`;
+}
+
 function renderCabinetSubtaskCollapsedSummary(task = {}) {
     const summary = cabinetSubtaskSummary(task);
     if (!summary.total) return '';
@@ -5064,11 +5074,12 @@ function renderCabinetSubtaskCollapsedSummary(task = {}) {
     </div>`;
 }
 
-function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null) {
+function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null, options = {}) {
     const summary = cabinetSubtaskSummary(task);
     const taskId = Number(taskIdAttr || 0);
     if (!summary.total || !taskId) return '';
     const isExpanded = expanded === null ? isCabinetSubtasksExpanded(taskId, task) : Boolean(expanded);
+    const showHead = options.showHead !== false;
     const subtasks = cachedCabinetSubtasks(taskId, task);
     let body = '<div class="cabinet-subtask-inline-empty">Розгорніть, щоб закривати підпункти прямо тут.</div>';
     if (isExpanded && loadingCabinetSubtaskIds.has(taskId)) {
@@ -5088,10 +5099,10 @@ function renderCabinetSubtasksPanel(task = {}, taskIdAttr = '', expanded = null)
             : '<div class="cabinet-subtask-inline-empty">Підпункти не знайдені.</div>';
     }
     return `<div id="cabinetSubtasksPanel${taskIdAttr}" class="cabinet-subtask-inline-panel" data-cabinet-subtasks-panel="${taskIdAttr}" ${isExpanded ? '' : 'hidden'}>
-        <div class="cabinet-subtask-inline-head">
+        ${showHead ? `<div class="cabinet-subtask-inline-head">
             <span>Підпункти можна виконувати у будь-якому порядку</span>
             <b>${summary.done}/${summary.total}</b>
-        </div>
+        </div>` : ''}
         <div class="cabinet-subtask-inline-list">${body}</div>
     </div>`;
 }
@@ -5181,18 +5192,22 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         isDecomposed && subtasksExpanded ? 'is-subtasks-expanded' : '',
         isDecomposed && !subtasksExpanded ? 'is-subtasks-collapsed' : ''
     ].filter(Boolean).join(' ');
+    const myDaySubtaskSummary = isMyDayCard && isDecomposed
+        ? renderCabinetMyDaySubtaskSummary(task, taskIdAttr, subtasksExpanded, { inlineActive })
+        : '';
     return `
         <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
                     ${metadataHtml}
-                    ${renderCabinetSubtaskToggle(task, taskIdAttr, subtasksExpanded)}
-                    ${renderCabinetSubtaskProgress(task)}
+                    ${isMyDayCard ? '' : renderCabinetSubtaskToggle(task, taskIdAttr, subtasksExpanded)}
+                    ${isMyDayCard ? '' : renderCabinetSubtaskProgress(task)}
                 </div>
-                ${inlineActive && !subtasksExpanded ? renderCabinetActiveSubtaskSlice(task, taskIdAttr) : ''}
-                ${isDecomposed && !subtasksExpanded && !inlineActive ? renderCabinetSubtaskCollapsedSummary(task) : ''}
-                ${renderCabinetSubtasksPanel(task, taskIdAttr, subtasksExpanded)}
+                ${myDaySubtaskSummary}
+                ${!isMyDayCard && inlineActive && !subtasksExpanded ? renderCabinetActiveSubtaskSlice(task, taskIdAttr) : ''}
+                ${!isMyDayCard && isDecomposed && !subtasksExpanded && !inlineActive ? renderCabinetSubtaskCollapsedSummary(task) : ''}
+                ${renderCabinetSubtasksPanel(task, taskIdAttr, subtasksExpanded, { showHead: !isMyDayCard })}
             </div>
             <div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>

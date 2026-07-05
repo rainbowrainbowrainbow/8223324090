@@ -244,6 +244,8 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
 test('profile My Day overdue segment renders triage rows with existing task actions', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
+    const cabinetCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-cabinet.css'), 'utf8');
+    const taskCss = fs.readFileSync(path.join(ROOT, 'css', 'pages-tasks.css'), 'utf8');
     const today = taskCreateCtx.TaskCreate.todayStr();
     const overdue = addDaysToDateKey(today, -2);
 
@@ -289,6 +291,12 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.match(html, /data-cabinet-move-target="no_date"/);
     assert.match(html, /data-cabinet-move-method="triage"/);
     assert.doesNotMatch(html, /data-cabinet-active-subtask-slice/);
+    assert.match(cabinetCss, /\.cabinet-overdue-triage\s*\{[\s\S]*container-type:\s*inline-size;/);
+    assert.match(cabinetCss, /@container \(max-width: 640px\)\s*\{[\s\S]*\.cabinet-overdue-triage-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
+    assert.match(cabinetCss, /\.cabinet-overdue-triage-actions\s*\{[\s\S]*flex-wrap:\s*wrap;/);
+    assert.match(cabinetCss, /\.cabinet-overdue-triage-title\s*\{[\s\S]*overflow-wrap:\s*break-word;/);
+    assert.match(taskCss, /\.cabinet-command-center\s*\{[\s\S]*container-type:\s*inline-size;/);
+    assert.match(taskCss, /@container \(max-width: 1120px\)\s*\{[\s\S]*\.cabinet-day-workspace--two-column\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
 });
 
 test('profile My Day hides sound shortcut after command bar cleanup while preserving settings helpers', () => {
@@ -1396,13 +1404,19 @@ test('profile My Day shows one active checklist slice and keeps the full checkli
     assert.match(html, /Second next/);
     assert.match(html, /data-cabinet-subtasks-panel="44" hidden/);
     assert.match(html, /data-cabinet-subtask-done/);
-    assert.match(html, /data-task-id="45"[\s\S]*cabinet-subtask-compact-summary/);
+    assert.equal((html.match(/data-cabinet-subtask-summary=/g) || []).length, 2);
+    assert.equal((html.match(/class="cabinet-subtask-progress"/g) || []).length, 2);
+    assert.match(html, /data-task-id="45"[\s\S]*data-cabinet-subtask-summary="45"/);
+    assert.doesNotMatch(html, /cabinet-subtask-compact-summary/);
+    assert.doesNotMatch(html, /cabinet-subtask-inline-head/);
 
     vm.runInContext(`setCabinetActiveInlineTask(44, { expanded: true });`, ctx);
     html = ctx.renderMyDayTab();
     assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 0);
     assert.match(html, /is-subtasks-expanded/);
     assert.doesNotMatch(html, /data-cabinet-subtasks-panel="44" hidden/);
+    assert.match(html, /data-cabinet-subtask-summary="44"[\s\S]*aria-expanded="true"/);
+    assert.doesNotMatch(html, /cabinet-subtask-inline-head/);
     assert.ok((html.match(/data-cabinet-inline-subtask/g) || []).length >= 3);
 
     vm.runInContext(`setCabinetActiveInlineTask(45, { expanded: false });`, ctx);

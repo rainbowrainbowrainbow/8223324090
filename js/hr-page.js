@@ -2998,6 +2998,18 @@ function showManualPasswordResetResult(payload = {}, user = {}) {
     showNotification(active ? message : 'Пароль оновлено, але акаунт вимкнений', active ? 'success' : 'warning');
 }
 
+function validateAccountManualPassword(values = {}, passwordKey = 'password') {
+    const password = String(values[passwordKey] || '');
+    if (!password) return null;
+    if (password.length < 6) {
+        return { key: passwordKey, message: 'Пароль має бути не менше 6 символів' };
+    }
+    if (password !== String(values.confirmPassword || '')) {
+        return { key: 'confirmPassword', message: 'Паролі не збігаються' };
+    }
+    return null;
+}
+
 async function loadAccountConflicts() {
     try {
         const data = await crmApiFetch('/api/users/link-conflicts');
@@ -3977,7 +3989,8 @@ window.openAccountCreateModal = async function(button, context = {}) {
         icon: '👤',
         type: 'info',
         okText: 'Створити',
-        className: 'account-create-modal'
+        className: 'account-create-modal',
+        validate: validateAccountManualPassword
     });
     if (!result) return;
     const password = String(result.password || '');
@@ -4187,7 +4200,8 @@ async function openAccountPasswordModal(userId, button) {
         icon: '🔐',
         type: 'warning',
         okText: 'Оновити доступ',
-        className: 'account-password-modal'
+        className: 'account-password-modal',
+        validate: values => values.mode === 'manual' ? validateAccountManualPassword(values, 'newPassword') : null
     });
     if (!result) return;
     const issueOneTime = result.mode !== 'manual';

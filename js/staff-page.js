@@ -3368,6 +3368,18 @@ function getCredentialPassword(credential) {
     return credential?.password || credential?.oneTimePassword || '';
 }
 
+function validateStaffAccountManualPassword(values = {}) {
+    const password = String(values.password || '');
+    if (!password) return null;
+    if (password.length < 6) {
+        return { key: 'password', message: 'Пароль має бути не менше 6 символів' };
+    }
+    if (password !== String(values.confirmPassword || '')) {
+        return { key: 'confirmPassword', message: 'Паролі не збігаються' };
+    }
+    return null;
+}
+
 function showOneTimeCredential(credential, title = 'One-time credentials', payload = {}) {
     if (!credential) return;
     const text = `Логін: ${credential.username || ''}\nПароль: ${getCredentialPassword(credential)}`;
@@ -3621,7 +3633,8 @@ async function createAccountForLinkingStaff() {
         icon: '👤',
         type: 'info',
         okText: 'Створити',
-        className: 'staff-account-create-modal'
+        className: 'staff-account-create-modal',
+        validate: validateStaffAccountManualPassword
     });
     if (!result) return;
     const password = String(result.password || '');

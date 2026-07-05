@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.16 - Акаунти: повтор пароля без втрати форми
+
+### Accounts / HR / Shared modal validation / (Клешня, 05.07.2026) [codex]
+- **Створення CRM акаунта більше не закриває форму при помилці пароля** - якщо ручний пароль короткий або повтор не збігається, модалка лишається відкритою і підсвічує проблемне поле.
+- **Shared `formModal` отримав opt-in cross-field validation** - нова перевірка працює тільки для форм, які явно передають `validate`, тому інші модалки не змінюють поведінку.
+- **HR Account Center і staff-link створення акаунта синхронізовано** - обидва флоу використовують однакову перевірку ручного пароля до API-запиту.
+- **Regression guard додано** - jsdom-тест фіксує, що mismatch пароля не завершує Promise і не закриває форму до виправлення.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений frontend UX, shared modal helper, tests і version/cache refs.
+
+---
+
 ## v0.78.15 - Графік HR: чистий потік
 
 ### HR / Schedule / UI cleanup / Guardrails / (Клешня, 05.07.2026) [codex]

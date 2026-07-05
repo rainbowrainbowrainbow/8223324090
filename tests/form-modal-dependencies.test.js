@@ -132,3 +132,51 @@ test('formModal ignores required hidden conditional fields on submit', async () 
     assert.equal(result.role, 'animator');
     assert.deepEqual(Array.from(result.businessContexts), []);
 });
+
+test('formModal validate keeps the form open until cross-field errors are fixed', async () => {
+    const { window } = createDom();
+    const resultPromise = window.formModal('Create account', [
+        { key: 'username', label: 'Username', required: true },
+        { key: 'password', label: 'Password', type: 'password' },
+        { key: 'confirmPassword', label: 'Confirm password', type: 'password' }
+    ], {
+        type: 'info',
+        validate: values => {
+            if (values.password && values.password.length < 6) {
+                return { key: 'password', message: 'Password is too short' };
+            }
+            if (values.password && values.password !== values.confirmPassword) {
+                return { key: 'confirmPassword', message: 'Passwords do not match' };
+            }
+            return null;
+        }
+    });
+    let settled = false;
+    resultPromise.then(() => { settled = true; });
+    const overlay = window.document.querySelector('.form-modal-overlay');
+
+    const setValue = (selector, value) => {
+        const el = overlay.querySelector(selector);
+        el.value = value;
+        el.dispatchEvent(new window.Event('input', { bubbles: true }));
+    };
+
+    setValue('#fm_username', 'operator');
+    setValue('#fm_password', 'ManualPass789!');
+    setValue('#fm_confirmPassword', 'ManualPass987!');
+    overlay.querySelector('.confirm-ok').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.equal(settled, false);
+    assert.ok(window.document.querySelector('.form-modal-overlay'));
+    assert.equal(overlay.querySelector('#fm_confirmPassword').getAttribute('aria-invalid'), 'true');
+    assert.match(overlay.querySelector('.form-modal-validation-error').textContent, /Passwords do not match/);
+
+    setValue('#fm_confirmPassword', 'ManualPass789!');
+    overlay.querySelector('.confirm-ok').click();
+    const result = await resultPromise;
+
+    assert.equal(result.username, 'operator');
+    assert.equal(result.password, 'ManualPass789!');
+    assert.equal(result.confirmPassword, 'ManualPass789!');
+});

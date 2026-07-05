@@ -1733,7 +1733,8 @@ function formModal(title, fields, options = {}) {
             icon: customIcon,
             compact = false,
             className = '',
-            closeOnBackdrop = true
+            closeOnBackdrop = true,
+            validate = null
         } = options;
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️', info: 'ℹ️' };
         const icon = customIcon || icons[type] || '📝';
@@ -1825,6 +1826,7 @@ function formModal(title, fields, options = {}) {
                 <div class="confirm-icon">${icon}</div>
                 <div class="confirm-message" style="font-size:17px;font-weight:700;">${safeTitle}</div>
                 <div class="form-modal-fields" style="text-align:left;margin:8px 0;">${fieldsHtml}</div>
+                <div class="form-modal-validation-error" role="alert" hidden style="margin:8px 0 0;padding:8px 10px;border:1px solid rgba(239,68,68,0.32);border-radius:8px;background:rgba(239,68,68,0.08);color:#b91c1c;font-size:13px;font-weight:700;text-align:left;"></div>
                 <div class="confirm-actions">
                     <button class="confirm-btn confirm-cancel">${cancelText}</button>
                     <button class="confirm-btn confirm-ok ${type}">${okText}</button>
@@ -1851,6 +1853,40 @@ function formModal(title, fields, options = {}) {
                 }
             });
             return vals;
+        };
+        const clearValidationError = () => {
+            const error = overlay.querySelector('.form-modal-validation-error');
+            if (error) {
+                error.textContent = '';
+                error.hidden = true;
+            }
+            overlay.querySelectorAll('.fm-field[aria-invalid="true"]').forEach(el => {
+                el.setAttribute('aria-invalid', 'false');
+                el.style.borderColor = 'rgba(139,92,246,0.3)';
+            });
+        };
+        const showValidationError = (message, key = null) => {
+            const text = String(message || 'Перевірте поля форми').trim();
+            const error = overlay.querySelector('.form-modal-validation-error');
+            if (error) {
+                error.textContent = text;
+                error.hidden = false;
+            }
+            const el = key ? overlay.querySelector(`#fm_${String(key).replace(/"/g, '\\"')}`) : null;
+            if (el) {
+                el.setAttribute('aria-invalid', 'true');
+                el.style.borderColor = '#ef4444';
+                if (typeof el.focus === 'function') el.focus();
+            }
+        };
+        const normalizeValidationResult = (result) => {
+            if (!result) return null;
+            if (typeof result === 'string') return { message: result };
+            if (typeof result === 'object') {
+                const message = result.message || result.error;
+                if (message) return { message, key: result.key || result.field || null };
+            }
+            return null;
         };
 
         let initialValuesJson = null;
@@ -1896,6 +1932,7 @@ function formModal(title, fields, options = {}) {
                 });
         };
         const updateFormState = () => {
+            clearValidationError();
             updateConditionalFields();
             updateDynamicNotes();
         };
@@ -1914,6 +1951,7 @@ function formModal(title, fields, options = {}) {
 
         overlay.querySelector('.confirm-cancel').addEventListener('click', () => requestCancel());
         overlay.querySelector('.confirm-ok').addEventListener('click', () => {
+            clearValidationError();
             const vals = getValues();
             for (const f of fields) {
                 const wrap = overlay.querySelector(`[data-fm-field-wrap="${String(f.key).replace(/"/g, '\\"')}"]`);
@@ -1922,7 +1960,19 @@ function formModal(title, fields, options = {}) {
                 const missing = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
                 if (f.required && missing) {
                     const el = overlay.querySelector(`#fm_${f.key}`);
-                    if (el) { el.style.borderColor = '#ef4444'; el.focus(); }
+                    if (el) {
+                        el.setAttribute('aria-invalid', 'true');
+                        el.style.borderColor = '#ef4444';
+                        if (typeof el.focus === 'function') el.focus();
+                    }
+                    showValidationError(`Заповніть поле "${f.label || f.key}"`, f.key);
+                    return;
+                }
+            }
+            if (typeof validate === 'function') {
+                const validationError = normalizeValidationResult(validate(vals, { fields, overlay }));
+                if (validationError) {
+                    showValidationError(validationError.message, validationError.key);
                     return;
                 }
             }

@@ -1596,19 +1596,34 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleSummaryIndex = staffScheduleShellCode.indexOf('id="scheduleSummary"');
     const staffScheduleTableIndex = staffScheduleShellCode.indexOf('id="scheduleWrapper"');
     const staffScheduleHealthPanelIndex = staffScheduleShellCode.indexOf('id="scheduleHealthPanel"');
+    const staffScheduleRenderBlock = staffCode.slice(staffCode.indexOf('function renderSchedule()'), staffCode.indexOf('// EDIT MODAL'));
+    const staffScheduleEmpRowBlock = staffCode.slice(staffCode.indexOf('function renderEmpRow'), staffCode.indexOf('function scheduleCellFromEvent'));
+    const staffScheduleCellActivationBlock = staffCode.slice(staffCode.indexOf('function scheduleCellFromEvent'), staffCode.indexOf('function renderSchedule()'));
+    const staffScheduleHealthBadgeRenderBlock = staffCode.slice(staffCode.indexOf('function renderScheduleHealthBadges'), staffCode.indexOf('function renderScheduleHealthIssueList'));
     const staffSchedulePrimaryRenderBlock = staffCode.slice(staffCode.indexOf('function renderSchedule()'), staffCode.indexOf('// Group staff by department'));
+    const staffScheduleToggleHoursBlock = staffCode.slice(staffCode.indexOf('async function toggleHours()'), staffCode.indexOf('// LOAD VIEW'));
     const staffScheduleWeekNavBlock = staffCode.slice(staffCode.indexOf('async function goToWeek'), staffCode.indexOf('function prevWeek'));
     const staffScheduleInitLoadBlock = staffCode.slice(staffCode.indexOf('async function initStaffSchedulePage'), staffCode.indexOf('// Event listeners'));
     const staffDeptFilterRenderBlock = staffCode.slice(staffCode.indexOf('function renderDeptFilter()'), staffCode.indexOf('function renderWeekLabel()'));
+    const staffScheduleDiagnosticsHiddenRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .schedule-secondary-diagnostics > [hidden]');
+    const staffScheduleHealthBadgeCssStart = staffPagesCss.indexOf('body[data-page-group="hr"] .schedule-health-badges');
+    const staffScheduleHealthBadgeCssBlock = staffScheduleHealthBadgeCssStart > -1
+        ? staffPagesCss.slice(staffScheduleHealthBadgeCssStart, staffPagesCss.indexOf('body[data-page-group="hr"] .schedule-table tr.has-health-critical', staffScheduleHealthBadgeCssStart))
+        : '';
     const staffScheduleDeptChipRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip');
     const staffScheduleDeptChipActiveRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip.active');
     const staffScheduleDeptChipCountRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip-count');
     const staffScheduleDeptChipDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .dept-chip');
+    const staffScheduleCellFocusRule = cssRuleText(staffPagesCss, '.sch-cell:focus-visible');
+    const staffScheduleMobileCommandStart = staffPagesCss.indexOf('@media (max-width: 768px) {\n    body[data-page-group="hr"] .staff-schedule-command-bar');
+    const staffScheduleMobileCommandBlock = staffScheduleMobileCommandStart > -1
+        ? staffPagesCss.slice(staffScheduleMobileCommandStart, staffPagesCss.indexOf('@media (max-width: 480px)', staffScheduleMobileCommandStart))
+        : '';
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.17')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.17')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.18')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.18')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -1682,8 +1697,15 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleShellCode.includes('id="scheduleHealthPanel" class="schedule-health-panel" aria-live="polite" hidden')
         && staffScheduleShellCode.includes('id="scheduleForecastPanel" class="schedule-forecast-panel" aria-live="polite" hidden')
         && staffScheduleShellCode.includes('id="managerAccountabilityPanel" class="manager-accountability-panel" aria-live="polite" hidden')
+        && /display:\s*none\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
+        && /margin:\s*0\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
+        && /padding:\s*0\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
+        && /box-shadow:\s*none\s*!important;/.test(staffScheduleDiagnosticsHiddenRule)
         && staffSchedulePrimaryRenderBlock.includes('const health = buildScheduleHealth(dates, baseFiltered)')
         && staffSchedulePrimaryRenderBlock.includes('const filtered = scheduleHealthFilteredStaff(baseFiltered, health)')
+        && staffScheduleRenderBlock.includes("tbody.classList.toggle('show-hours', Boolean(StaffState.showHours))")
+        && !staffScheduleRenderBlock.includes("tbody.classList.add('show-hours')")
+        && !staffScheduleToggleHoursBlock.includes("classList.add('show-hours')")
         && !staffSchedulePrimaryRenderBlock.includes('renderScheduleHealthPanel(health)')
         && !staffSchedulePrimaryRenderBlock.includes('renderStaffingForecastPanel(forecast)')
         && !staffSchedulePrimaryRenderBlock.includes('renderManagerAccountabilityPanel(accountability)')
@@ -1691,6 +1713,32 @@ checkPage('staff.html', (doc, html) => {
         && !staffSchedulePrimaryRenderBlock.includes('buildManagerAccountability(dates, baseFiltered, health)')
         && !staffScheduleWeekNavBlock.includes('fetchStaffingForecastBookings(from, to)')
         && !staffScheduleInitLoadBlock.includes('fetchStaffingForecastBookings(from, to)'));
+    check('Staff schedule cells are keyboard accessible controls',
+        staffCode.includes('function scheduleCellAriaLabel')
+        && staffScheduleEmpRowBlock.includes('const cellAriaLabel = scheduleCellAriaLabel')
+        && staffScheduleEmpRowBlock.includes('role="button" tabindex="0" aria-label="${escapeHtml(cellAriaLabel)}"')
+        && staffScheduleCellActivationBlock.includes('function scheduleCellFromEvent')
+        && staffScheduleCellActivationBlock.includes("target.closest('button, a, input, select, textarea, [data-health-detail], [data-attendance-action]')")
+        && staffScheduleCellActivationBlock.includes('function bindScheduleCellActivation')
+        && staffScheduleCellActivationBlock.includes("tbody.addEventListener('keydown'")
+        && staffScheduleCellActivationBlock.includes("event.key !== 'Enter' && event.key !== ' '")
+        && staffScheduleCellActivationBlock.includes('event.preventDefault()')
+        && staffScheduleCellActivationBlock.includes('openScheduleCell(cell)')
+        && /outline:\s*2px solid rgba\(20,184,166,0\.72\);/.test(staffScheduleCellFocusRule)
+        && /outline-offset:\s*-2px;/.test(staffScheduleCellFocusRule));
+    check('Staff schedule health indicators collapse repeated table badges',
+        staffScheduleHealthBadgeRenderBlock.includes('const counts = scheduleHealthCounts(sorted)')
+        && staffScheduleHealthBadgeRenderBlock.includes('const severity = scheduleHealthSeverity(sorted)')
+        && staffScheduleHealthBadgeRenderBlock.includes('const countLabel = count > 9 ?')
+        && staffScheduleHealthBadgeRenderBlock.includes('schedule-health-badge schedule-health-badge-compact is-${severity}')
+        && /data-health-detail="\$\{escapeHtml\(detail\)\}"/.test(staffScheduleHealthBadgeRenderBlock)
+        && /class="schedule-health-badge-count"[\s\S]*\$\{countLabel\}/.test(staffScheduleHealthBadgeRenderBlock)
+        && !staffScheduleHealthBadgeRenderBlock.includes('visible.map(issue')
+        && !staffScheduleHealthBadgeRenderBlock.includes('schedule-health-badge-more')
+        && /body\[data-page-group="hr"\] \.schedule-health-badges[\s\S]*flex-wrap:\s*nowrap;/.test(staffScheduleHealthBadgeCssBlock)
+        && /body\[data-page-group="hr"\] \.schedule-health-badge-compact[\s\S]*min-width:\s*24px;[\s\S]*border-radius:\s*999px;[\s\S]*white-space:\s*nowrap;/.test(staffScheduleHealthBadgeCssBlock)
+        && /body\[data-page-group="hr"\] \.sch-cell \.schedule-health-badge-compact[\s\S]*height:\s*16px;/.test(staffScheduleHealthBadgeCssBlock)
+        && /body\[data-page-group="hr"\] \.schedule-health-badge-count[\s\S]*font-size:\s*10px;[\s\S]*opacity:\s*0\.92;/.test(staffScheduleHealthBadgeCssBlock));
     check('Staff schedule department filters use HR Today-style segment markup and states',
         staffDeptFilterRenderBlock.includes('class="dept-chip-label"')
         && staffDeptFilterRenderBlock.includes('class="dept-chip-count"')
@@ -1705,6 +1753,22 @@ checkPage('staff.html', (doc, html) => {
         && /min-width:\s*22px;/.test(staffScheduleDeptChipCountRule)
         && /border-radius:\s*999px;/.test(staffScheduleDeptChipCountRule)
         && /background:\s*rgba\(255,255,255,0\.035\);/.test(staffScheduleDeptChipDarkRule));
+    check('Staff schedule mobile controls use compact horizontal rails',
+        staffScheduleMobileCommandBlock.includes('body[data-page-group="hr"] .staff-schedule-command-bar')
+        && /display:\s*grid;/.test(staffScheduleMobileCommandBlock)
+        && /"controls"\s*"toolbar";/.test(staffScheduleMobileCommandBlock)
+        && /grid-area:\s*controls;/.test(staffScheduleMobileCommandBlock)
+        && /grid-area:\s*toolbar;/.test(staffScheduleMobileCommandBlock)
+        && /grid-template-columns:\s*36px minmax\(0,\s*1fr\) 36px minmax\(72px,\s*max-content\);/.test(staffScheduleMobileCommandBlock)
+        && /grid-column:\s*auto;/.test(staffScheduleMobileCommandBlock)
+        && /flex-wrap:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
+        && /overflow-x:\s*auto;/.test(staffScheduleMobileCommandBlock)
+        && /overscroll-behavior-inline:\s*contain;/.test(staffScheduleMobileCommandBlock)
+        && /scrollbar-width:\s*none;/.test(staffScheduleMobileCommandBlock)
+        && /white-space:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
+        && /max-width:\s*min\(58vw,\s*168px\);/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.schedule-summary[\s\S]*flex-wrap:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.schedule-summary \.summary-chip[\s\S]*min-height:\s*38px;/.test(staffScheduleMobileCommandBlock));
     check('Staff HR Pulse command cards do not depend on legacy nav PNG layers',
         legacyStaffPulseNavTokens.every(token => !html.includes(token) && !staffPagesCss.includes(token)));
     check('Staff HR Pulse switcher containers keep bounded containment',
@@ -3039,8 +3103,8 @@ check('Sidebar quick access editor keeps only Save and collapses after saving', 
 check('Sidebar widget settings are separated from quick access pages and save deliberately', sidebarCode.includes('sidebar-widget-settings') && sidebarCode.includes('Налаштування віджетів') && sidebarCode.includes('Зміна застосовується після збереження') && sidebarCode.indexOf("_setSidebarCurrencySignalEnabled(currencySignal.checked)") < sidebarCode.indexOf("_saveExtraMenuSelection(checkedHrefs, role)") && sidebarCode.includes("extras.classList.add('has-widget-settings-dirty')") && sidebarAuroraCss.includes('.sidebar-widget-settings-head'));
 check('Sidebar quick access gear opens only the checkbox settings panel', sidebarCode.includes('const editorWasOpen = _isExtraMenuEditorOpen();') && sidebarCode.includes('const extraListHidden = extraEditorOpen || extraCollapsed') && sidebarCode.includes('sidebar-design-extra-list"${extraListHidden ?') && sidebarAuroraCss.includes('.sidebar-design-extra-list[hidden]') && sidebarAuroraCss.includes('.sidebar-design-extras.is-editing .sidebar-design-extra-list'));
 check('Sidebar identity card has compact passive time/date and optional currency signal without weather fetch noise', sidebarCode.includes('sidebarIdentityAux') && sidebarCode.includes('sidebarIdentityTime') && sidebarCode.includes('sidebarIdentityDate') && sidebarCode.includes('data-sidebar-static="true"') && sidebarCode.includes("item.dataset.sidebarStatic === 'true'") && !sidebarCode.includes('sidebarIdentityWeather') && sidebarCode.includes('sidebarIdentityCurrency') && sidebarCode.includes('SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY') && !sidebarCode.includes('/api/dashboard/widgets/weather') && sidebarCode.includes('/api/dashboard/widgets/currency') && !sidebarCode.includes('open-meteo.com') && sidebarCode.includes('Europe/Kyiv') && sidebarAuroraCss.includes('v0.58.0: enterprise sidebar navigation redesign') && sidebarAuroraCss.includes('v0.59.5: passive time/date widgets') && sidebarAuroraCss.includes('.sidebar-identity-aux'));
-check('Sidebar identity card v2 keeps USD first and role badges patterned', sidebarCode.includes('function _sidebarRoleBadgeKey') && sidebarCode.includes('function _fetchSidebarCurrencyFallback') && sidebarCode.includes('/api/finance/currency/rates') && sidebarCode.includes('cardEl.dataset.role = roleKey') && sidebarAuroraCss.includes('v0.57.1: sidebar identity card v2') && sidebarAuroraCss.includes('.sidebar-identity-meta-item[data-sidebar-meta="currency"]') && sidebarAuroraCss.includes('order: 1 !important') && sidebarAuroraCss.includes('--role-badge-pattern') && sidebarAuroraCss.includes('.sidebar-identity-card[data-role="creator"]') && sidebarAuroraCss.includes('.sidebar-identity-card[data-role="dishwasher"]'));
-check('Sidebar currency fallback waits for missing dashboard rates before hitting protected Finance rates', sidebarCode.includes('function _hasSidebarCurrencyRates') && sidebarCode.indexOf("const result = await _fetchSidebarWidget('currency');") < sidebarCode.indexOf('if (!_hasSidebarCurrencyRates(dashboardCurrency))') && sidebarCode.indexOf('if (!_hasSidebarCurrencyRates(dashboardCurrency))') < sidebarCode.indexOf('fallbackCurrency = await _fetchSidebarCurrencyFallback();') && !/Promise\.allSettled\(\[\s*_fetchSidebarWidget\('currency'\),\s*_fetchSidebarCurrencyFallback\(\)/.test(sidebarCode));
+check('Sidebar identity card v2 keeps USD first and role badges patterned', sidebarCode.includes('function _sidebarRoleBadgeKey') && sidebarCode.includes('function _fetchSidebarCurrencyFallback') && sidebarCode.includes('function _canUseSidebarFinanceCurrencyFallback') && sidebarCode.includes('/api/finance/currency/rates') && sidebarCode.includes('cardEl.dataset.role = roleKey') && sidebarAuroraCss.includes('v0.57.1: sidebar identity card v2') && sidebarAuroraCss.includes('.sidebar-identity-meta-item[data-sidebar-meta="currency"]') && sidebarAuroraCss.includes('order: 1 !important') && sidebarAuroraCss.includes('--role-badge-pattern') && sidebarAuroraCss.includes('.sidebar-identity-card[data-role="creator"]') && sidebarAuroraCss.includes('.sidebar-identity-card[data-role="dishwasher"]'));
+check('Sidebar currency fallback waits for missing dashboard rates and Finance access before hitting protected rates', sidebarCode.includes('function _hasSidebarCurrencyRates') && sidebarCode.includes("if (!_canUseSidebarFinanceCurrencyFallback()) return null;") && sidebarCode.includes("const financeItem = { href: '/finance', access: 'finance' }") && sidebarCode.includes('hasAccess(financeItem, role)') && sidebarCode.includes('_businessAllowsSidebarItem(financeItem, user)') && sidebarCode.includes('_isNavItemVisible(financeItem, user, role)') && sidebarCode.indexOf("const result = await _fetchSidebarWidget('currency');") < sidebarCode.indexOf('if (!_hasSidebarCurrencyRates(dashboardCurrency))') && sidebarCode.indexOf('if (!_hasSidebarCurrencyRates(dashboardCurrency))') < sidebarCode.indexOf('if (_canUseSidebarFinanceCurrencyFallback())') && sidebarCode.indexOf('if (_canUseSidebarFinanceCurrencyFallback())') < sidebarCode.indexOf('fallbackCurrency = await _fetchSidebarCurrencyFallback();') && !/Promise\.allSettled\(\[\s*_fetchSidebarWidget\('currency'\),\s*_fetchSidebarCurrencyFallback\(\)/.test(sidebarCode));
 check('Sidebar identity card keeps USD as the only chip and moves time/date under the avatar', sidebarCode.includes('sidebar-identity-portrait') && sidebarCode.includes('sidebar-identity-aux') && sidebarCode.includes('sidebar-identity-aux-item') && sidebarCode.includes('sidebar-identity-aux-v') && sidebarCode.indexOf('class="sidebar-identity-portrait"') < sidebarCode.indexOf('class="sidebar-identity-main"') && sidebarCode.indexOf('id="sidebarIdentityAux"') < sidebarCode.indexOf('class="sidebar-identity-main"') && !sidebarCode.includes('class="sidebar-identity-meta-item" data-sidebar-meta="time"') && !sidebarCode.includes('class="sidebar-identity-meta-item" data-sidebar-meta="date"') && sidebarAuroraCss.includes('v0.73.35: profile time/day stack belongs under the avatar') && sidebarAuroraCss.includes('"identity-portrait identity-main"') && sidebarAuroraCss.includes('.sidebar-identity-portrait') && sidebarAuroraCss.includes('grid-area: identity-main !important') && sidebarAuroraCss.includes('flex-wrap: nowrap !important') && sidebarAuroraCss.includes('.sidebar-identity-meta-item:not([data-sidebar-meta="currency"])') && sidebarAuroraCss.includes('display: none !important'));
 check('Sidebar avatar falls back to initials when a profile image fails', sidebarCode.includes('function _sidebarAvatarFallback') && sidebarCode.includes("img.addEventListener('error'") && sidebarCode.includes("el.classList.remove('has-photo')") && sidebarCode.includes('el.textContent = fallback.label') && sidebarCode.includes('el.replaceChildren(img)') && sidebarCode.includes("img.loading = 'lazy'") && sidebarCode.includes("img.decoding = 'async'"));
 check('Sidebar polished profile card gives name/role a full row and balances alert USD time/date', sidebarCode.indexOf('class="sidebar-identity-title-row"') < sidebarCode.indexOf('class="sidebar-identity-portrait"') && sidebarCode.indexOf('class="sidebar-identity-title-row"') < sidebarCode.indexOf('class="sidebar-identity-main"') && sidebarAuroraCss.includes('v0.73.36: polished profile card composition') && sidebarAuroraCss.includes('"identity-title identity-title"') && sidebarAuroraCss.includes('grid-template-columns: minmax(0, 1fr) max-content !important') && sidebarAuroraCss.includes('@keyframes sidebarIdentityAlertPulse') && sidebarAuroraCss.includes('.sidebar-command-deck[data-tone="critical"] .sidebar-identity-summary') && sidebarAuroraCss.includes('.sidebar-identity-aux-item + .sidebar-identity-aux-item') && sidebarAuroraCss.includes('grid-template-columns: auto minmax(0, 1fr) !important') && sidebarAuroraCss.includes('.sidebar-nav.collapsed .sidebar-identity-title-row'));
@@ -4861,7 +4925,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.17')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.18')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -4870,8 +4934,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.17')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.17')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.18')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.18')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5258,7 +5322,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.17') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.17') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.18') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.18') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

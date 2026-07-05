@@ -2777,6 +2777,7 @@ const Sidebar = (() => {
     }
 
     async function _fetchSidebarCurrencyFallback() {
+        if (!_canUseSidebarFinanceCurrencyFallback()) return null;
         const token = localStorage.getItem('pzp_token');
         const response = await fetch('/api/finance/currency/rates', {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
@@ -2817,6 +2818,14 @@ const Sidebar = (() => {
         return Object.values(normalized.rates || {}).some(value => Number.isFinite(Number(value)) && Number(value) > 0);
     }
 
+    function _canUseSidebarFinanceCurrencyFallback(user = _getCurrentSidebarUser()) {
+        const role = _getSidebarActiveRole(user);
+        const financeItem = { href: '/finance', access: 'finance' };
+        return hasAccess(financeItem, role)
+            && _businessAllowsSidebarItem(financeItem, user)
+            && _isNavItemVisible(financeItem, user, role);
+    }
+
     async function _loadSidebarIdentityMeta(force = false) {
         if (!_isSidebarCurrencySignalEnabled()) {
             _state.identityMetaDetails.currency = null;
@@ -2836,10 +2845,12 @@ const Sidebar = (() => {
                 dashboardCurrency = null;
             }
             if (!_hasSidebarCurrencyRates(dashboardCurrency)) {
-                try {
-                    fallbackCurrency = await _fetchSidebarCurrencyFallback();
-                } catch {
-                    fallbackCurrency = null;
+                if (_canUseSidebarFinanceCurrencyFallback()) {
+                    try {
+                        fallbackCurrency = await _fetchSidebarCurrencyFallback();
+                    } catch {
+                        fallbackCurrency = null;
+                    }
                 }
             }
             const currencyDetails = _mergeSidebarCurrencyRates(dashboardCurrency, fallbackCurrency);

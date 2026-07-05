@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.17",
+  "version": "0.78.18",
   "eventGenix": {
-    "releaseLabel": "Акаунти: inline перевірка повтору пароля"
+    "releaseLabel": "Графік HR: якість і guardrails"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

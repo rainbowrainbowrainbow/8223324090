@@ -283,6 +283,15 @@ body.dark-mode[data-page-group="hr"] .schedule-table .staff-card-badge.neutral,
     }
 }
 
+body[data-page-group="hr"] .schedule-secondary-diagnostics > [hidden] {
+    display: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+}
+
 /* Staff schedule health */
 body[data-page-group="hr"] .schedule-health-panel {
     display: grid;
@@ -493,7 +502,7 @@ body[data-page-group="hr"] .schedule-health-badges {
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     max-width: 100%;
 }
 
@@ -503,15 +512,10 @@ body[data-page-group="hr"] .sch-cell .schedule-health-badges {
 
 body[data-page-group="hr"] .schedule-health-badge,
 body[data-page-group="hr"] .schedule-health-badge-more {
-    width: 16px;
-    min-width: 16px;
-    height: 16px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0;
     border: 1px solid transparent;
-    border-radius: 50%;
     font: inherit;
     font-size: 10px;
     font-weight: 950;
@@ -520,6 +524,36 @@ body[data-page-group="hr"] .schedule-health-badge-more {
 
 body[data-page-group="hr"] .schedule-health-badge {
     cursor: pointer;
+}
+
+body[data-page-group="hr"] .schedule-health-badge-compact {
+    min-width: 24px;
+    height: 18px;
+    gap: 3px;
+    padding: 0 6px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+body[data-page-group="hr"] .sch-cell .schedule-health-badge-compact {
+    min-width: 22px;
+    height: 16px;
+    padding: 0 5px;
+    font-size: 9px;
+}
+
+body[data-page-group="hr"] .schedule-health-badge-mark,
+body[data-page-group="hr"] .schedule-health-badge-count {
+    line-height: 1;
+}
+
+body[data-page-group="hr"] .schedule-health-badge-count {
+    font-size: 10px;
+    opacity: 0.92;
+}
+
+body[data-page-group="hr"] .sch-cell .schedule-health-badge-count {
+    font-size: 9px;
 }
 
 body[data-page-group="hr"] .schedule-health-badge.is-critical {
@@ -541,6 +575,11 @@ body[data-page-group="hr"] .schedule-health-badge.is-info {
 }
 
 body[data-page-group="hr"] .schedule-health-badge-more {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
+    border-radius: 50%;
     background: rgba(100, 116, 139, 0.12);
     color: #475569;
 }
@@ -3932,73 +3971,149 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
 @media (max-width: 768px) {
     body[data-page-group="hr"] .staff-schedule-command-bar {
+        display: grid;
+        gap: 6px;
         grid-template-columns: 1fr;
+        grid-template-areas:
+            "controls"
+            "toolbar";
         align-items: stretch;
-        padding: 8px;
-        border-radius: 16px;
+        margin-bottom: 10px;
+        padding: 6px;
+        border-radius: 14px;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls {
+        grid-area: controls;
         grid-template-columns: 1fr;
         grid-template-areas:
             "week"
-            "dept"
-            "toolbar";
-        gap: 8px;
+            "dept";
+        gap: 6px;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav,
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar,
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
-        flex-wrap: wrap;
-        overflow: visible;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-inline: contain;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav::-webkit-scrollbar,
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar::-webkit-scrollbar,
+    body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter::-webkit-scrollbar {
+        display: none;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav {
         display: grid;
-        grid-template-columns: 40px minmax(0, 1fr) 40px;
+        grid-template-columns: 36px minmax(0, 1fr) 36px minmax(72px, max-content);
         align-items: center;
         width: 100%;
-        gap: 6px;
+        min-height: 38px;
+        gap: 4px;
+        padding: 3px;
+        justify-content: stretch;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-label {
+        min-height: 34px;
         min-width: 0;
         width: 100%;
-        padding-inline: 8px;
+        padding-inline: 6px;
+        font-size: 12px;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav #todayWeekBtn {
-        grid-column: 1 / -1;
-        width: 100% !important;
+        grid-column: auto;
+        width: auto !important;
         min-width: 0;
     }
 
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button {
+        min-width: 0;
+        width: 100%;
+        height: 34px;
+        border-radius: 10px;
+        font-size: 12px;
+    }
+
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar {
+        grid-area: toolbar;
         justify-content: flex-start;
+        gap: 6px;
+        min-width: 0;
+        padding-bottom: 1px;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar,
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary {
-        flex: 1 1 calc(50% - 4px);
+        flex: 0 0 auto;
+        min-height: 34px;
         min-width: 0;
-        padding-inline: 8px;
-        white-space: normal;
+        padding: 6px 10px;
+        border-radius: 10px;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
+        gap: 6px;
+        min-width: 0;
+        padding-bottom: 1px;
+        justify-content: flex-start;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip {
-        flex: 1 1 calc(50% - 4px);
+        flex: 0 0 auto;
         min-width: 0;
-        padding-inline: 8px;
+        max-width: min(58vw, 168px);
+        min-height: 30px;
+        padding: 5px 8px;
         justify-content: space-between;
-        white-space: normal;
-        line-height: 1.15;
+        white-space: nowrap;
+        line-height: 1.1;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip-label {
-        white-space: normal;
-        overflow-wrap: anywhere;
-        text-overflow: clip;
+        white-space: nowrap;
+        overflow: hidden;
+        overflow-wrap: normal;
+        text-overflow: ellipsis;
+    }
+
+    body[data-page-group="hr"] .schedule-summary {
+        gap: 6px;
+        margin-bottom: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        padding-bottom: 1px;
+        overscroll-behavior-inline: contain;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    body[data-page-group="hr"] .schedule-summary::-webkit-scrollbar {
+        display: none;
+    }
+
+    body[data-page-group="hr"] .schedule-summary .summary-chip {
+        flex: 0 0 auto;
+        min-height: 38px;
+        padding: 6px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+
+    body[data-page-group="hr"] .schedule-summary .summary-chip .chip-count {
+        font-size: 16px;
     }
 }
 
@@ -4401,6 +4516,12 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
 .sch-cell:hover {
     background: rgba(16,185,129,0.08);
+}
+
+.sch-cell:focus-visible {
+    outline: 2px solid rgba(20,184,166,0.72);
+    outline-offset: -2px;
+    background: rgba(16,185,129,0.10);
 }
 
 .sch-cell .sch-time {

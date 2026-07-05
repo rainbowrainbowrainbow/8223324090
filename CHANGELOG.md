@@ -4,6 +4,19 @@
 
 ---
 
+## v0.78.18 - Графік HR: якість і guardrails
+
+### HR / Schedule / Mobile / Accessibility / Sidebar noise / (Клешня, 05.07.2026) [codex]
+- **Графік HR став стабільнішим у primary flow** - перемикач `Години` коректно вмикає і вимикає режим після кожного rerender, а приховані diagnostics більше не резервують порожній простір.
+- **Mobile controls ущільнено без втрати дій** - week controls, фільтри, summary chips і toolbar на вузьких екранах стали горизонтальними компактними rails, щоб таблиця була доступна раніше.
+- **Клітинки графіка відкриваються з клавіатури** - editable schedule cells отримали `role`, `tabindex`, `aria-label`, Enter/Space activation і видимий focus state без зміни mouse/touch редагування.
+- **Health badges у таблиці згорнуто до компактного сигналу** - повторні warning icons замінено одним індикатором із count і деталями через існуючий detail affordance.
+- **HR/Staff більше не шумлять finance 403 у sidebar** - currency fallback не викликає protected finance rates endpoint без frontend finance access; finance-capable users зберігають доступ до sidebar currency behavior.
+- **Regression guards оновлено** - `staff-schedule-history-static` і `ui-check` фіксують schedule render state, hidden diagnostics, mobile rails, keyboard cells, compact health indicators і sidebar finance fallback guard.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff frontend, sidebar frontend guard, tests і version/cache refs.
+
+---
+
 ## v0.78.17 - Акаунти: inline перевірка повтору пароля
 
 ### Accounts / HR / Password validation hotfix / (Клешня, 05.07.2026) [codex]

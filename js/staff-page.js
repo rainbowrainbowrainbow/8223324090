@@ -588,6 +588,31 @@ function scheduleEntryTitle(emp, date, entry, shiftStart, shiftEnd) {
     return parts.join(' | ');
 }
 
+function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, attendanceDetails = {}, healthIssues = []) {
+    const employeeName = String(emp.display_name || emp.name || '').trim() || 'Співробітник';
+    const statusLabel = status === 'unset'
+        ? 'Не заповнено'
+        : (STAFF_SCHEDULE_STATUS_LABELS[status] || status);
+    const parts = [
+        `Графік: ${employeeName}`,
+        `дата ${date}`,
+        `статус ${statusLabel}`
+    ];
+    if (shiftStart && shiftEnd) {
+        parts.push(`час ${String(shiftStart).slice(0, 5)}-${String(shiftEnd).slice(0, 5)}`);
+    }
+    if (isReplacementEntry(entry)) {
+        parts.push(`заміна за ${entry.original_staff_name || 'співробітника'}`);
+    }
+    if (attendanceDetails.status) {
+        parts.push(`attendance ${attendanceDetails.label}`);
+    }
+    const healthSummary = scheduleHealthIssueSummary(healthIssues);
+    if (healthSummary) parts.push(healthSummary);
+    parts.push(StaffState.canManage ? 'Enter або пробіл відкриває редагування' : 'Enter або пробіл відкриває перегляд');
+    return parts.join('. ');
+}
+
 function scheduleHealthCellKey(staffId, date) {
     return `${Number(staffId)}_${date}`;
 }
@@ -908,15 +933,24 @@ function renderScheduleHealthBadges(issues = [], scope = 'cell') {
     const sorted = [...issues].sort((a, b) => (
         SCHEDULE_HEALTH_SEVERITY_RANK[b.severity] - SCHEDULE_HEALTH_SEVERITY_RANK[a.severity]
     ));
-    const visible = sorted.slice(0, scope === 'row' ? 3 : 2);
-    const extra = Math.max(0, sorted.length - visible.length);
+    const counts = scheduleHealthCounts(sorted);
+    const severity = scheduleHealthSeverity(sorted);
+    const count = sorted.length;
+    const mark = severity === 'critical' ? '!' : (severity === 'warning' ? '!' : 'i');
+    const countLabel = count > 9 ? '9+' : String(count);
+    const countSummary = [
+        counts.critical ? `${counts.critical} critical` : '',
+        counts.warning ? `${counts.warning} warning` : '',
+        counts.info ? `${counts.info} info` : ''
+    ].filter(Boolean).join(', ');
+    const details = sorted.map(scheduleHealthIssueDetail).filter(Boolean);
+    const detail = [countSummary || `${count} issue${count === 1 ? '' : 's'}`, ...details].join(' | ');
+    const ariaLabel = `Schedule health ${severity}, ${count} issue${count === 1 ? '' : 's'}: ${details.join('; ') || countSummary}`;
     return `<span class="schedule-health-badges schedule-health-badges-${scope}">
-        ${visible.map(issue => {
-            const detail = scheduleHealthIssueDetail(issue);
-            const label = issue.severity === 'critical' ? '!' : (issue.severity === 'warning' ? '?' : 'i');
-            return `<button type="button" class="schedule-health-badge is-${issue.severity}" data-health-detail="${escapeHtml(detail)}" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}">${label}</button>`;
-        }).join('')}
-        ${extra ? `<span class="schedule-health-badge-more" title="${extra} more">+${extra}</span>` : ''}
+        <button type="button" class="schedule-health-badge schedule-health-badge-compact is-${severity}" data-health-detail="${escapeHtml(detail)}" title="${escapeHtml(detail)}" aria-label="${escapeHtml(ariaLabel)}">
+            <span class="schedule-health-badge-mark" aria-hidden="true">${mark}</span>
+            <span class="schedule-health-badge-count" aria-hidden="true">${countLabel}</span>
+        </button>
     </span>`;
 }
 
@@ -2498,18 +2532,54 @@ function renderEmpRow(emp, dates, today, health = null) {
             cellContent += cellHealthBadges;
         }
 
+        const cellTitle = [scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd), attendanceDetails.status ? `attendance ${attendanceDetails.label}` : '', scheduleHealthIssueSummary(cellHealthIssues)].filter(Boolean).join(' | ');
+        const cellAriaLabel = scheduleCellAriaLabel(emp, ds, entry, status, shiftStart, shiftEnd, attendanceDetails, cellHealthIssues);
+
         html += `<td>
             <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass} ${attendanceClass}"
+                 role="button" tabindex="0" aria-label="${escapeHtml(cellAriaLabel)}"
                  data-staff="${emp.id}" data-date="${ds}"
                  data-shift-load="${loadMeta.bucket || ''}" data-shift-ratio="${loadMeta.label || ''}"
                  data-schedule-id="${entry?.id || ''}" data-hr-shift="${entry?.hr_shift_id || ''}"
-                 title="${escapeHtml([scheduleEntryTitle(emp, ds, entry, shiftStart, shiftEnd), attendanceDetails.status ? `attendance ${attendanceDetails.label}` : '', scheduleHealthIssueSummary(cellHealthIssues)].filter(Boolean).join(' | '))}">
+                 title="${escapeHtml(cellTitle)}">
                 ${cellContent}
             </div>
         </td>`;
     }
     html += `</tr>`;
     return html;
+}
+
+function scheduleCellFromEvent(event, tbody) {
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') return null;
+    if (target.closest('button, a, input, select, textarea, [data-health-detail], [data-attendance-action]')) return null;
+    const cell = target.closest('.sch-cell');
+    if (!cell || (tbody && !tbody.contains(cell))) return null;
+    return cell;
+}
+
+function openScheduleCell(cell) {
+    if (!cell) return;
+    const staffId = parseInt(cell.dataset.staff, 10);
+    if (!Number.isFinite(staffId) || !cell.dataset.date) return;
+    openEditModal(staffId, cell.dataset.date);
+}
+
+function bindScheduleCellActivation(tbody) {
+    if (!tbody || tbody.dataset.scheduleCellActivationBound === 'true') return;
+    tbody.addEventListener('click', (event) => {
+        openScheduleCell(scheduleCellFromEvent(event, tbody));
+    });
+    tbody.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const cell = scheduleCellFromEvent(event, tbody);
+        if (!cell) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openScheduleCell(cell);
+    });
+    tbody.dataset.scheduleCellActivationBound = 'true';
 }
 
 function renderSchedule() {
@@ -2589,19 +2659,15 @@ function renderSchedule() {
     }
 
     tbody.innerHTML = bodyHtml;
-    if (StaffState.showHours) {
-        tbody.classList.add('show-hours');
-    }
+    tbody.classList.toggle('show-hours', Boolean(StaffState.showHours));
     renderSummary(filtered);
     renderScheduleAttendanceSummary(dates, filtered);
 
-    // Cell click handlers
+    // Cell activation handlers
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
         if (!StaffState.canManage) cell.setAttribute('aria-readonly', 'true');
-        cell.addEventListener('click', () => {
-            openEditModal(parseInt(cell.dataset.staff), cell.dataset.date);
-        });
     });
+    bindScheduleCellActivation(tbody);
 
     tbody.querySelectorAll('[data-attendance-action]').forEach(button => {
         button.addEventListener('click', (event) => {
@@ -3185,10 +3251,6 @@ async function toggleHours() {
         btn.style.borderColor = '';
     }
     renderSchedule();
-    // Apply show-hours class after render (tbody is re-created)
-    if (StaffState.showHours) {
-        document.getElementById('scheduleBody')?.classList.add('show-hours');
-    }
 }
 
 // ==========================================

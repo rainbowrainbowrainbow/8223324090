@@ -102,6 +102,14 @@ describe('staff schedule safety guards', () => {
             staffPage.indexOf('function renderSchedule()'),
             staffPage.indexOf('// Group staff by department')
         );
+        const toggleHoursBlock = staffPage.slice(
+            staffPage.indexOf('async function toggleHours()'),
+            staffPage.indexOf('// LOAD VIEW')
+        );
+        const healthBadgeBlock = staffPage.slice(
+            staffPage.indexOf('function renderScheduleHealthBadges'),
+            staffPage.indexOf('function renderScheduleHealthIssueList')
+        );
         const summaryIndex = staffScheduleShell.indexOf('id="scheduleSummary"');
         const tableIndex = staffScheduleShell.indexOf('id="scheduleWrapper"');
         const healthPanelIndex = staffScheduleShell.indexOf('id="scheduleHealthPanel"');
@@ -114,6 +122,13 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function scheduleHealthScore/);
         assert.match(staffPage, /function renderScheduleHealthPanel/);
         assert.match(staffPage, /function renderScheduleHealthBadges/);
+        assert.match(healthBadgeBlock, /const counts = scheduleHealthCounts\(sorted\)/);
+        assert.match(healthBadgeBlock, /const severity = scheduleHealthSeverity\(sorted\)/);
+        assert.match(healthBadgeBlock, /schedule-health-badge schedule-health-badge-compact is-\$\{severity\}/);
+        assert.match(healthBadgeBlock, /data-health-detail="\$\{escapeHtml\(detail\)\}"/);
+        assert.match(healthBadgeBlock, /schedule-health-badge-count/);
+        assert.doesNotMatch(healthBadgeBlock, /visible\.map\(issue/);
+        assert.doesNotMatch(healthBadgeBlock, /schedule-health-badge-more/);
         assert.match(staffPage, /function scheduleHealthFilteredStaff/);
         [
             'missing_account',
@@ -134,6 +149,14 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /StaffState\.scheduleRawEntries\.push\(normalizedEntry\)/);
         assert.match(staffPage, /const health = buildScheduleHealth\(dates, baseFiltered\)/);
         assert.match(staffPage, /const filtered = scheduleHealthFilteredStaff\(baseFiltered, health\)/);
+        assert.match(staffPage, /tbody\.classList\.toggle\('show-hours', Boolean\(StaffState\.showHours\)\)/);
+        assert.doesNotMatch(toggleHoursBlock, /classList\.add\('show-hours'\)/);
+        assert.match(staffPage, /function scheduleCellAriaLabel/);
+        assert.match(staffPage, /role="button" tabindex="0" aria-label="\$\{escapeHtml\(cellAriaLabel\)\}"/);
+        assert.match(staffPage, /function bindScheduleCellActivation/);
+        assert.match(staffPage, /event\.key !== 'Enter' && event\.key !== ' '/);
+        assert.match(staffPage, /event\.preventDefault\(\)/);
+        assert.match(staffPage, /openScheduleCell\(cell\)/);
         assert.doesNotMatch(renderSchedulePrimaryBlock, /renderScheduleHealthPanel\(health\)/);
         assert.match(staffPage, /renderSummary\(filtered\)/);
         assert.match(staffPage, /renderEmpRow\(emp, dates, today, health\)/);
@@ -143,11 +166,16 @@ describe('staff schedule safety guards', () => {
         assert.ok(summaryIndex > -1 && tableIndex > summaryIndex && healthPanelIndex > tableIndex);
         assert.match(staffScheduleShell, /id="scheduleHealthPanel"/);
         assert.match(staffScheduleShell, /id="scheduleHealthPanel"[^>]*hidden/);
+        assert.match(staffCss, /body\[data-page-group="hr"\] \.schedule-secondary-diagnostics > \[hidden\]\s*\{[\s\S]*display:\s*none\s*!important;[\s\S]*margin:\s*0\s*!important;[\s\S]*padding:\s*0\s*!important;[\s\S]*box-shadow:\s*none\s*!important;[\s\S]*\}/);
         assert.match(staffCss, /\.schedule-health-panel/);
         assert.match(staffCss, /\.schedule-health-score/);
         assert.match(staffCss, /\.schedule-health-filter/);
         assert.match(staffCss, /\.schedule-health-badge/);
+        assert.match(staffCss, /\.schedule-health-badges\s*\{[\s\S]*flex-wrap:\s*nowrap;[\s\S]*\}/);
+        assert.match(staffCss, /\.schedule-health-badge-compact\s*\{[\s\S]*border-radius:\s*999px;[\s\S]*white-space:\s*nowrap;[\s\S]*\}/);
+        assert.match(staffCss, /\.schedule-health-badge-count/);
         assert.match(staffCss, /\.sch-cell\.has-health-critical/);
+        assert.match(staffCss, /\.sch-cell:focus-visible/);
         assert.match(staffCss, /body\.dark-mode\[data-page-group="hr"\] \.schedule-health-panel/);
     });
 

@@ -62,6 +62,7 @@ const {
 const {
     buildMenuImageContext,
     createExternalMenuImageDraft,
+    MAX_EXTERNAL_IMAGE_BASE64_LENGTH,
     persistMenuImageDraft
 } = require('../services/menuImageDrafts');
 const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
@@ -69,6 +70,18 @@ const {
     createTaskWatchdogCallbackDryRunHandler,
     createTaskWatchdogPreviewHandler
 } = require('../services/taskWatchdogRoutes');
+const {
+    HERMES_JOB_ACTIVE_REVIEW_STATUSES,
+    claimHermesJob,
+    createHermesJob,
+    findActiveHermesJobBySource,
+    getHermesJobDetail,
+    listQueuedHermesJobs,
+    recordHermesJobDecision,
+    recordHermesJobResult,
+    toHermesJobApi,
+    updateHermesJobStatus
+} = require('../services/hermesJobs');
 const {
     ackNotificationOutboxEvent,
     claimNotificationOutboxEvent,
@@ -104,8 +117,16 @@ const SUPPORTED_ACTIONS = [
     'menu_photos.context',
     'menu_photos.draft',
     'menu_photos.external_draft',
+    'menu_photos.jobs.create',
     'menu_photos.apply',
     'menu_photos.reject',
+    'hermes_jobs.queue',
+    'hermes_jobs.read',
+    'hermes_jobs.create',
+    'hermes_jobs.claim',
+    'hermes_jobs.status',
+    'hermes_jobs.result',
+    'hermes_jobs.decision',
     'task_watchdog.preview',
     'task_watchdog.callback_dry_run',
     'diagnostics.owner_workload',
@@ -232,6 +253,12 @@ const HERMES_MENU_PHOTO_REJECT_ALLOWED_FIELDS = new Set([
     'reason'
 ]);
 
+const HERMES_MENU_PHOTO_JOB_BATCH_ALLOWED_FIELDS = new Set([
+    'businessContext',
+    'business_context',
+    'limit'
+]);
+
 const HERMES_MENU_PHOTO_STATUSES = new Set([
     'draft',
     'generating',
@@ -242,6 +269,7 @@ const HERMES_MENU_PHOTO_STATUSES = new Set([
     'applied'
 ]);
 const HERMES_MENU_PHOTO_EXTERNAL_DRAFT_AUTO_APPLY_DEFAULT = false;
+const HERMES_MENU_PHOTO_JOB_BATCH_LIMIT = 5;
 
 const MAX_HERMES_SUBTASKS = 50;
 const MAX_HERMES_LABELS = 20;
@@ -1257,6 +1285,124 @@ async function listHermesMenuPhotoCandidates(query, businessScope, limit) {
     return result.rows || [];
 }
 
+async function listHermesMenuPhotoJobCandidates(query, businessScope, limit) {
+    const params = [];
+    const whereParts = [
+        pushTaskBusinessScopeCondition(params, businessScope, 'p'),
+        `NULLIF(p.icon_url, '') IS NULL`,
+        `COALESCE(p.ai_card_draft->'imageStudio'->>'status', 'draft') NOT IN ('generating','ready','approved','applied')`
+    ];
+    const limitRef = pushParam(params, limit);
+    const result = await query.query(
+        menuPhotoSelectSql(whereParts.join('\n              AND '), {
+            orderBy: `ORDER BY
+                CASE COALESCE(p.ai_card_draft->'imageStudio'->>'status', 'draft')
+                    WHEN 'failed' THEN 0
+                    WHEN 'rejected' THEN 1
+                    WHEN 'draft' THEN 2
+                    ELSE 3
+                END ASC,
+                COALESCE(p.updated_at, p.created_at) DESC,
+                p.name ASC`,
+            limitSql: `LIMIT ${limitRef}`
+        }),
+        params
+    );
+    return result.rows || [];
+}
+
+function buildHermesMenuPhotoJobPrompt(product = {}, context = {}) {
+    const productContext = context.product || {};
+    const imageRules = context.imageRules || {};
+    const lines = [
+        `Menu item: ${productContext.name || product.name || product.label || product.code || product.id}`,
+        productContext.code ? `CRM code: ${productContext.code}` : '',
+        productContext.menuSection ? `Menu section: ${productContext.menuSection}` : '',
+        productContext.servingUnit ? `Serving unit: ${productContext.servingUnit}` : '',
+        productContext.weightValue ? `Weight/output: ${productContext.weightValue}` : '',
+        productContext.ingredients ? `Ingredients: ${productContext.ingredients}` : '',
+        productContext.shortDescription ? `Short description: ${productContext.shortDescription}` : '',
+        `Target size: ${imageRules.defaultSize || '1536x1024'}`,
+        `Style preset: ${imageRules.defaultStyle || 'catalog'}`,
+        imageRules.styleRules,
+        imageRules.backgroundRules,
+        imageRules.negativePrompt
+    ];
+    return lines.filter(Boolean).join('\n');
+}
+
+function buildHermesMenuPhotoJobRequest(product = {}, businessContext) {
+    const context = buildMenuImageContext(product);
+    const productContext = context.product || {};
+    const imageRules = context.imageRules || {};
+    const productId = String(product.id || productContext.id || '');
+    const productName = productContext.name || product.name || product.label || product.code || productId;
+    return {
+        jobType: 'menu_photo_job',
+        businessContext,
+        title: `Menu photo: ${productName}`,
+        sourceEntity: {
+            type: 'product',
+            id: productId
+        },
+        payload: {
+            productId,
+            productCode: productContext.code || product.code || null,
+            productName,
+            prompt: buildHermesMenuPhotoJobPrompt(product, context),
+            requirements: 'Create one reviewable kitchen menu catalog photo. Return the result to CRM through POST /api/hermes/jobs/:id/result. Do not apply or publish the image.',
+            imageRules,
+            size: imageRules.defaultSize,
+            style: imageRules.defaultStyle
+        }
+    };
+}
+
+async function createHermesMenuPhotoJobBatch(query, { businessScope, businessContext, actor, limit } = {}) {
+    const candidateLimit = Math.max(limit * 3, limit);
+    const candidates = await listHermesMenuPhotoJobCandidates(query, businessScope, candidateLimit);
+    const jobs = [];
+    const skipped = [];
+
+    for (const product of candidates) {
+        if (jobs.length >= limit) break;
+
+        const productId = String(product.id || '');
+        const activeJob = await findActiveHermesJobBySource(query, {
+            businessContext,
+            jobType: 'menu_photo_job',
+            sourceEntityType: 'product',
+            sourceEntityId: productId,
+            statuses: HERMES_JOB_ACTIVE_REVIEW_STATUSES
+        });
+
+        if (activeJob) {
+            skipped.push({
+                productId,
+                reason: 'active_menu_photo_job_exists',
+                job: toHermesJobApi(activeJob)
+            });
+            continue;
+        }
+
+        const result = await createHermesJob(
+            query,
+            buildHermesMenuPhotoJobRequest(product, businessContext),
+            { actor, businessContext }
+        );
+        jobs.push(toHermesJobApi(result.job, {
+            history: result.event ? [result.event] : []
+        }));
+    }
+
+    return {
+        jobs,
+        skipped,
+        considered: candidates.length,
+        limit
+    };
+}
+
 async function persistHermesMenuPhotoDraft(query, productId, businessContext, username, draft) {
     await query.query(
         `UPDATE products
@@ -1376,6 +1522,25 @@ function normalizeHermesMenuPhotoRejectPayload(body = {}) {
     };
 }
 
+function normalizeHermesMenuPhotoJobBatchPayload(body = {}) {
+    if (!isPlainObject(body)) {
+        throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_JOB_PAYLOAD', 'Request body must be a JSON object');
+    }
+    assertAllowedHermesFields(body, HERMES_MENU_PHOTO_JOB_BATCH_ALLOWED_FIELDS, 'HERMES_UNSUPPORTED_MENU_PHOTO_FIELD');
+
+    if (body.limit === undefined || body.limit === null || body.limit === '') {
+        return { limit: HERMES_MENU_PHOTO_JOB_BATCH_LIMIT };
+    }
+
+    const limit = Number.parseInt(body.limit, 10);
+    if (!Number.isInteger(limit) || limit <= 0) {
+        throw hermesHttpError(400, 'HERMES_INVALID_MENU_PHOTO_JOB_PAYLOAD', 'limit must be a positive integer');
+    }
+    return {
+        limit: Math.min(limit, HERMES_MENU_PHOTO_JOB_BATCH_LIMIT)
+    };
+}
+
 function hermesMenuPhotoBody(req, businessScope, product, meta = {}) {
     return {
         success: true,
@@ -1387,6 +1552,127 @@ function hermesMenuPhotoBody(req, businessScope, product, meta = {}) {
             idempotencyKey: req.hermesMutation?.idempotencyKey || null,
             ...meta
         }
+    };
+}
+
+function hermesJobBody(req, businessScope, job, meta = {}) {
+    return {
+        success: true,
+        job,
+        meta: {
+            businessScope: taskBusinessScopeMeta(businessScope),
+            sourceSurface: 'hermes',
+            source: HERMES_INTEGRATION_ID,
+            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
+            autoPublish: false,
+            autoApply: false,
+            ...meta
+        }
+    };
+}
+
+function resolveMenuPhotoJobProductId(job = {}) {
+    const sourcePayload = safeJsonObject(job.source_payload || job.sourcePayload || {});
+    const product = safeJsonObject(sourcePayload.product || {});
+    if (job.source_entity_type === 'product' || job.sourceEntity?.type === 'product') {
+        return parseMenuPhotoProductId(job.source_entity_id || job.sourceEntity?.id);
+    }
+    return parseMenuPhotoProductId(product.id || sourcePayload.productId || sourcePayload.product_id);
+}
+
+function normalizeMenuPhotoJobResultDraftPayload(body = {}, assets = []) {
+    const resultPayload = safeJsonObject(body.result || {});
+    const firstAsset = (assets || []).find(asset => cleanNullableString(asset.url, 2000));
+    const imageBase64 = cleanNullableString(
+        resultPayload.imageBase64 || resultPayload.image_base64,
+        MAX_EXTERNAL_IMAGE_BASE64_LENGTH
+    );
+    const imageUrl = imageBase64
+        ? null
+        : (
+            cleanNullableString(resultPayload.imageUrl || resultPayload.image_url || resultPayload.url, 2000)
+            || cleanNullableString(firstAsset?.url, 2000)
+        );
+
+    if (!imageUrl && !imageBase64) {
+        throw hermesHttpError(
+            400,
+            'HERMES_MENU_PHOTO_RESULT_IMAGE_REQUIRED',
+            'menu_photo_job result requires result.imageUrl, result.imageBase64, or a result asset URL'
+        );
+    }
+
+    return {
+        imageUrl,
+        imageBase64,
+        mimeType: resultPayload.mimeType || resultPayload.mime_type || firstAsset?.mime_type || firstAsset?.mimeType || null,
+        prompt: cleanNullableString(resultPayload.prompt, 5000),
+        provider: cleanNullableString(resultPayload.provider, 40) || 'hermes_job',
+        model: cleanNullableString(resultPayload.model, 100),
+        size: resultPayload.size || null,
+        style: resultPayload.style || null,
+        source: 'hermes_job'
+    };
+}
+
+async function persistMenuPhotoJobResultDraft(query, {
+    req,
+    job,
+    body,
+    assets,
+    businessContext,
+    uploadOptions = {}
+} = {}) {
+    const productId = resolveMenuPhotoJobProductId(job);
+    if (!productId) {
+        throw hermesHttpError(409, 'HERMES_MENU_PHOTO_JOB_PRODUCT_MISSING', 'menu_photo_job is not linked to a product');
+    }
+
+    const product = await selectHermesMenuPhotoProduct(query, productId, businessContext, {
+        forUpdate: false
+    });
+    if (!product) {
+        throw hermesHttpError(404, 'HERMES_MENU_PHOTO_NOT_FOUND', 'Menu photo product not found');
+    }
+
+    let result;
+    try {
+        result = await createExternalMenuImageDraft({
+            product,
+            payload: normalizeMenuPhotoJobResultDraftPayload(body, assets),
+            actor: {
+                username: req.user?.username || 'hermes',
+                source: 'hermes_job'
+            },
+            uploadOptions: {
+                ...uploadOptions,
+                query
+            },
+            currentDraft: currentHermesMenuPhotoDraft(product)
+        });
+    } catch (err) {
+        const publicError = menuPhotoExternalDraftPublicError(err);
+        if (publicError) {
+            throw hermesHttpError(publicError.status, publicError.code, publicError.error);
+        }
+        throw err;
+    }
+
+    await persistMenuImageDraft(query, {
+        productId,
+        businessContext,
+        username: req.user?.username || 'hermes',
+        draft: result.draft,
+        defaultBusinessContext: DEFAULT_TASK_BUSINESS_CONTEXT
+    });
+
+    return {
+        product: {
+            ...product,
+            ai_card_draft: result.draft
+        },
+        draft: result.draft,
+        imageStudio: result.imageStudio
     };
 }
 
@@ -1631,8 +1917,34 @@ function buildCapabilitiesPayload(env = process.env) {
                 context: 'GET /api/hermes/menu-photos/:productId/context',
                 draft: 'POST /api/hermes/menu-photos/:productId/draft',
                 externalDraft: 'POST /api/hermes/menu-photos/:productId/external-draft',
+                createJobs: 'POST /api/hermes/menu-photos/jobs',
+                createJobsLimit: HERMES_MENU_PHOTO_JOB_BATCH_LIMIT,
                 apply: 'POST /api/hermes/menu-photos/:productId/apply',
                 reject: 'POST /api/hermes/menu-photos/:productId/reject'
+            },
+            jobs: {
+                queue: 'GET /api/hermes/jobs/queue',
+                detail: 'GET /api/hermes/jobs/:id',
+                create: 'POST /api/hermes/jobs',
+                claim: 'POST /api/hermes/jobs/:id/claim',
+                status: 'POST /api/hermes/jobs/:id/status',
+                result: 'POST /api/hermes/jobs/:id/result',
+                decision: 'POST /api/hermes/jobs/:id/decision',
+                jobTypes: ['menu_photo_job', 'creative_material_job'],
+                statuses: [
+                    'queued',
+                    'claimed',
+                    'in_progress',
+                    'needs_input',
+                    'ready_for_review',
+                    'revision_requested',
+                    'approved',
+                    'rejected',
+                    'failed',
+                    'cancelled'
+                ],
+                autoPublish: false,
+                autoApply: false
             },
             diagnostics: {
                 ownerWorkload: 'GET /api/hermes/diagnostics/owner-workload'
@@ -1712,6 +2024,299 @@ function createHermesRouter(options = {}) {
             }
             log.error('Hermes owner workload diagnostics error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes owner workload diagnostics failed');
+        }
+    });
+
+    router.get('/jobs/queue', async (req, res) => {
+        try {
+            const businessScope = ensureTaskBusinessScope(req, res);
+            if (!businessScope) return;
+            const jobs = await listQueuedHermesJobs(query, {
+                businessContext: activeTaskBusinessContext(businessScope),
+                jobType: req.query.jobType || req.query.job_type || null,
+                limit: parseLimit(req.query.limit)
+            });
+            return res.json({
+                success: true,
+                items: jobs,
+                meta: {
+                    businessScope: taskBusinessScopeMeta(businessScope),
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    projection: 'hermes_jobs.queue',
+                    sanitized: true,
+                    readOnly: true,
+                    autoPublish: false,
+                    autoApply: false
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_QUEUE_FAILED', err.message);
+            }
+            log.error('Hermes job queue error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job queue failed');
+        }
+    });
+
+    router.get('/jobs/:id', async (req, res) => {
+        try {
+            const businessScope = ensureTaskBusinessScope(req, res);
+            if (!businessScope) return;
+            const job = await getHermesJobDetail(query, req.params.id, activeTaskBusinessContext(businessScope));
+            return res.json({
+                success: true,
+                job,
+                meta: {
+                    businessScope: taskBusinessScopeMeta(businessScope),
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    projection: 'hermes_jobs.detail',
+                    sanitized: true,
+                    readOnly: true,
+                    autoPublish: false,
+                    autoApply: false
+                }
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_DETAIL_FAILED', err.message);
+            }
+            log.error('Hermes job detail error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job detail failed');
+        }
+    });
+
+    router.post('/jobs', requireHermesMutationGuard, async (req, res) => {
+        let businessScope;
+        try {
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_CREATE_FAILED', err.message);
+            }
+            log.error('Hermes job create preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job create failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const result = await createHermesJob(mutationPool, req.body || {}, {
+                    actor: req.user,
+                    businessContext: activeTaskBusinessContext(businessScope)
+                });
+                const job = toHermesJobApi(result.job, {
+                    history: result.event ? [result.event] : []
+                });
+                return {
+                    status: 201,
+                    body: hermesJobBody(req, businessScope, job, {
+                        route: 'hermes_job_create'
+                    })
+                };
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/jobs',
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_CREATE_FAILED', err.message);
+            }
+            log.error('Hermes job create error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job create failed');
+        }
+    });
+
+    router.post('/jobs/:id/claim', requireHermesMutationGuard, async (req, res) => {
+        let businessScope;
+        try {
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_CLAIM_FAILED', err.message);
+            }
+            log.error('Hermes job claim preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job claim failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const result = await claimHermesJob(mutationPool, req.params.id, {
+                    actor: req.user,
+                    businessContext: activeTaskBusinessContext(businessScope),
+                    workerId: req.body?.workerId || req.body?.worker_id,
+                    claimToken: req.body?.claimToken || req.body?.claim_token
+                });
+                const job = toHermesJobApi(result.job, {
+                    history: result.event ? [result.event] : []
+                });
+                return {
+                    status: 200,
+                    body: hermesJobBody(req, businessScope, job, {
+                        route: 'hermes_job_claim'
+                    })
+                };
+            }, {
+                pool: query,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_CLAIM_FAILED', err.message);
+            }
+            log.error('Hermes job claim error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job claim failed');
+        }
+    });
+
+    router.post('/jobs/:id/status', requireHermesMutationGuard, async (req, res) => {
+        let businessScope;
+        try {
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_STATUS_FAILED', err.message);
+            }
+            log.error('Hermes job status preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job status failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const result = await updateHermesJobStatus(mutationPool, req.params.id, req.body || {}, {
+                    actor: req.user,
+                    businessContext: activeTaskBusinessContext(businessScope)
+                });
+                const job = toHermesJobApi(result.job, {
+                    history: result.event ? [result.event] : []
+                });
+                return {
+                    status: 200,
+                    body: hermesJobBody(req, businessScope, job, {
+                        route: 'hermes_job_status'
+                    })
+                };
+            }, {
+                pool: query,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_STATUS_FAILED', err.message);
+            }
+            log.error('Hermes job status error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job status failed');
+        }
+    });
+
+    router.post('/jobs/:id/result', requireHermesMutationGuard, async (req, res) => {
+        let businessScope;
+        try {
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_RESULT_FAILED', err.message);
+            }
+            log.error('Hermes job result preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job result failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const businessContext = activeTaskBusinessContext(businessScope);
+                const result = await recordHermesJobResult(mutationPool, req.params.id, req.body || {}, {
+                    actor: req.user,
+                    businessContext
+                });
+                let menuPhotoDraft = null;
+                if (result.job?.job_type === 'menu_photo_job' && result.job?.status === 'ready_for_review') {
+                    menuPhotoDraft = await persistMenuPhotoJobResultDraft(mutationPool, {
+                        req,
+                        job: result.job,
+                        body: req.body || {},
+                        assets: result.assets || [],
+                        businessContext,
+                        uploadOptions: menuImageUploadOptions
+                    });
+                }
+                const job = toHermesJobApi(result.job, {
+                    assets: result.assets || [],
+                    history: result.event ? [result.event] : []
+                });
+                const body = hermesJobBody(req, businessScope, job, {
+                    route: 'hermes_job_result',
+                    menuPhotoDraftCreated: Boolean(menuPhotoDraft),
+                    autoApplied: false
+                });
+                if (menuPhotoDraft) {
+                    body.menuPhoto = {
+                        status: 'ready',
+                        product: toHermesMenuPhotoProduct(menuPhotoDraft.product, req),
+                        draft: toHermesMenuPhotoDraft(menuPhotoDraft.draft.imageStudio || menuPhotoDraft.draft.image_studio || {}),
+                        autoApplied: false
+                    };
+                }
+                return {
+                    status: 200,
+                    body
+                };
+            }, {
+                pool: query,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_RESULT_FAILED', err.message);
+            }
+            log.error('Hermes job result error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job result failed');
+        }
+    });
+
+    router.post('/jobs/:id/decision', requireHermesMutationGuard, async (req, res) => {
+        let businessScope;
+        try {
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_DECISION_FAILED', err.message);
+            }
+            log.error('Hermes job decision preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job decision failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const result = await recordHermesJobDecision(mutationPool, req.params.id, req.body || {}, {
+                    actor: req.user,
+                    businessContext: activeTaskBusinessContext(businessScope)
+                });
+                const job = toHermesJobApi(result.job, {
+                    history: result.event ? [result.event] : [],
+                    decisions: result.decision ? [result.decision] : []
+                });
+                return {
+                    status: 200,
+                    body: hermesJobBody(req, businessScope, job, {
+                        route: 'hermes_job_decision'
+                    })
+                };
+            }, {
+                pool: query,
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_JOB_DECISION_FAILED', err.message);
+            }
+            log.error('Hermes job decision error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes job decision failed');
         }
     });
 
@@ -1917,6 +2522,66 @@ function createHermesRouter(options = {}) {
             }
             log.error('Hermes my-cabinet projection error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes my-cabinet projection failed');
+        }
+    });
+
+    router.post('/menu-photos/jobs', requireHermesMutationGuard, async (req, res) => {
+        let payload;
+        let businessScope;
+        try {
+            payload = normalizeHermesMenuPhotoJobBatchPayload(req.body || {});
+            businessScope = ensureWritableTaskBusinessScope(req, res);
+            if (!businessScope) return;
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MENU_PHOTO_JOB_CREATE_FAILED', err.message);
+            }
+            log.error('Hermes menu photo job batch preflight error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo job batch failed');
+        }
+
+        try {
+            return await withHermesIdempotency(req, res, async ({ pool: mutationPool }) => {
+                const businessContext = activeTaskBusinessContext(businessScope);
+                const result = await createHermesMenuPhotoJobBatch(mutationPool, {
+                    businessScope,
+                    businessContext,
+                    actor: req.user,
+                    limit: payload.limit
+                });
+
+                return {
+                    status: result.jobs.length ? 201 : 200,
+                    body: {
+                        success: true,
+                        jobs: result.jobs,
+                        skipped: result.skipped,
+                        meta: {
+                            businessScope: taskBusinessScopeMeta(businessScope),
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            route: 'menu_photo_job_batch_create',
+                            idempotencyKey: req.hermesMutation?.idempotencyKey || null,
+                            limit: result.limit,
+                            considered: result.considered,
+                            created: result.jobs.length,
+                            skipped: result.skipped.length,
+                            autoPublish: false,
+                            autoApply: false
+                        }
+                    }
+                };
+            }, {
+                pool: query,
+                requestPath: '/api/hermes/menu-photos/jobs',
+                transactional: true
+            });
+        } catch (err) {
+            if (err.statusCode && err.statusCode < 500) {
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_MENU_PHOTO_JOB_CREATE_FAILED', err.message);
+            }
+            log.error('Hermes menu photo job batch error', err);
+            return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo job batch failed');
         }
     });
 

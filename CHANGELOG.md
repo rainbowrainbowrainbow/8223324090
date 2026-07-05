@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.19 - Hermes Studio: черга креативних завдань
+
+### Hermes / Studio / Jobs / Access guard / (Клешня, 05.07.2026) [codex]
+- **Hermes Studio отримав окрему CRM-сторінку** - додано `/hermes-studio` з чергою creative jobs, формою brief, переглядом assets, статусами і діями approve/reject/regenerate.
+- **Додано CRM-side Hermes jobs foundation** - нова additive міграція створює `hermes_jobs`, assets, events і decisions для menu photo та creative material jobs без зміни існуючих задач або продуктів.
+- **API для Studio відокремлено від menu-photo job потоку** - `/api/hermes-studio` працює тільки з `creative_material_job`, а menu-photo jobs не потрапляють у Studio queue.
+- **Decision guard виправлено до строгого Studio контракту** - звичайний `manager` може створювати creative jobs, але не може approve/reject/regenerate; creative/admin ролі зберігають право decision.
+- **Навігацію й surface guards синхронізовано** - `/hermes-studio`, CSS, API route, sidebar link, frontend/server page access і guard-тести додані в canonical manifests.
+- **Railway settings, secrets, billing і production data не змінювались** - реліз містить additive DB schema, Hermes Studio route/page/frontend, docs, tests і version/cache refs.
+
+---
+
 ## v0.78.18 - Графік HR: якість і guardrails
 
 ### HR / Schedule / Mobile / Accessibility / Sidebar noise / (Клешня, 05.07.2026) [codex]

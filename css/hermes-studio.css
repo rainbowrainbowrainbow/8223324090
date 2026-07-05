@@ -1,0 +1,523 @@
+.hermes-studio-page {
+    background: var(--bg);
+}
+
+.hermes-studio-shell {
+    max-width: 1560px;
+    padding-bottom: 40px;
+}
+
+.hermes-studio-header,
+.hermes-studio-panel-head,
+.hermes-studio-form-actions,
+.hermes-studio-decision-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.hermes-studio-header {
+    margin-bottom: 14px;
+}
+
+.hermes-studio-header h1,
+.hermes-studio-panel-head h2 {
+    margin: 0;
+    color: var(--gray-900);
+    letter-spacing: 0;
+}
+
+.hermes-studio-header h1 {
+    font-size: 30px;
+    line-height: 1.15;
+}
+
+.hermes-studio-panel-head h2 {
+    font-size: 18px;
+    line-height: 1.2;
+}
+
+.hermes-studio-panel-head span,
+.page-kicker {
+    display: inline-block;
+    margin-bottom: 3px;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.hermes-studio-header-actions,
+.hermes-studio-decision-actions {
+    flex-wrap: wrap;
+}
+
+.hermes-studio-status-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.hermes-studio-status-tile {
+    min-height: 58px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.hermes-studio-status-tile span {
+    display: block;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.hermes-studio-status-tile strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--gray-900);
+    font-size: 22px;
+    line-height: 1;
+}
+
+.hermes-studio-workspace {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.hermes-studio-queue,
+.hermes-studio-brief,
+.hermes-studio-detail {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.hermes-studio-queue {
+    position: sticky;
+    top: 86px;
+    max-height: calc(100dvh - 112px);
+    overflow: hidden;
+}
+
+.hermes-studio-queue .hermes-studio-panel-head,
+.hermes-studio-brief .hermes-studio-panel-head,
+.hermes-studio-detail .hermes-studio-panel-head {
+    padding: 14px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.hermes-studio-queue select,
+.hermes-studio-form input,
+.hermes-studio-form select,
+.hermes-studio-form textarea,
+.hermes-studio-decision-box textarea {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--gray-900);
+    font: inherit;
+    outline: none;
+}
+
+.hermes-studio-queue select {
+    width: 132px;
+    padding: 8px 10px;
+}
+
+.hermes-studio-form input,
+.hermes-studio-form select {
+    padding: 8px 10px;
+}
+
+.hermes-studio-form textarea,
+.hermes-studio-decision-box textarea {
+    padding: 9px 10px;
+    resize: vertical;
+}
+
+.hermes-studio-form input:focus,
+.hermes-studio-form select:focus,
+.hermes-studio-form textarea:focus,
+.hermes-studio-queue select:focus,
+.hermes-studio-decision-box textarea:focus {
+    border-color: #0f766e;
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+}
+
+.hermes-studio-queue-list {
+    max-height: calc(100dvh - 184px);
+    overflow: auto;
+    padding: 10px;
+}
+
+.hermes-studio-job {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.88);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.hermes-studio-job + .hermes-studio-job {
+    margin-top: 8px;
+}
+
+.hermes-studio-job:hover,
+.hermes-studio-job.active {
+    border-color: rgba(15, 118, 110, 0.55);
+    background: #ecfeff;
+}
+
+.hermes-studio-job-title {
+    color: var(--gray-900);
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.25;
+}
+
+.hermes-studio-job-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.hermes-studio-status-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 999px;
+    background: rgba(241, 245, 249, 0.94);
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.hermes-studio-status-chip[data-status="queued"],
+.hermes-studio-status-chip[data-status="claimed"] {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.hermes-studio-status-chip[data-status="in_progress"] {
+    background: #ecfeff;
+    color: #0e7490;
+}
+
+.hermes-studio-status-chip[data-status="needs_input"],
+.hermes-studio-status-chip[data-status="revision_requested"] {
+    background: #fffbeb;
+    color: #b45309;
+}
+
+.hermes-studio-status-chip[data-status="ready_for_review"] {
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.hermes-studio-status-chip[data-status="approved"] {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.hermes-studio-status-chip[data-status="rejected"],
+.hermes-studio-status-chip[data-status="failed"],
+.hermes-studio-status-chip[data-status="cancelled"] {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.hermes-studio-board {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.88fr) minmax(360px, 1.12fr);
+    gap: 14px;
+}
+
+.hermes-studio-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 14px;
+}
+
+.hermes-studio-form .form-field {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+
+.hermes-studio-form .form-field > span {
+    color: var(--gray-600);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.hermes-studio-form .form-field-wide,
+.hermes-studio-form-actions {
+    grid-column: 1 / -1;
+}
+
+.hermes-studio-detail-body {
+    min-height: 360px;
+    padding: 14px;
+}
+
+.hermes-studio-detail-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.hermes-studio-detail-row {
+    display: grid;
+    gap: 4px;
+}
+
+.hermes-studio-detail-row span {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.hermes-studio-detail-row strong,
+.hermes-studio-detail-row p {
+    margin: 0;
+    color: var(--gray-900);
+    line-height: 1.35;
+}
+
+.hermes-studio-assets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.hermes-studio-asset {
+    min-height: 160px;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.92);
+}
+
+.hermes-studio-asset img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: #e2e8f0;
+}
+
+.hermes-studio-asset-file {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+    padding: 12px;
+    color: var(--gray-600);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.hermes-studio-asset-meta {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px 10px;
+}
+
+.hermes-studio-asset-meta a {
+    color: #0f766e;
+    font-weight: 900;
+    text-decoration: none;
+}
+
+.hermes-studio-asset-meta span {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.hermes-studio-history {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.hermes-studio-history li {
+    display: grid;
+    gap: 3px;
+    padding: 8px 10px;
+    border-left: 3px solid #0f766e;
+    border-radius: 6px;
+    background: rgba(241, 245, 249, 0.88);
+}
+
+.hermes-studio-history strong {
+    color: var(--gray-800);
+    font-size: 13px;
+}
+
+.hermes-studio-history span {
+    color: var(--gray-500);
+    font-size: 12px;
+}
+
+.hermes-studio-decision-box {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.hermes-studio-decision-box[aria-disabled="true"] {
+    opacity: 0.65;
+}
+
+.btn-page-danger {
+    min-height: 38px;
+    padding: 8px 14px;
+    border: 0;
+    border-radius: 8px;
+    background: #dc2626;
+    color: #fff;
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.btn-page-danger:disabled,
+.btn-page-primary:disabled,
+.btn-page-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.hermes-studio-empty-note,
+.hermes-studio-muted {
+    color: var(--gray-500);
+    font-size: 13px;
+}
+
+body.dark-mode .hermes-studio-status-tile,
+body.dark-mode .hermes-studio-queue,
+body.dark-mode .hermes-studio-brief,
+body.dark-mode .hermes-studio-detail {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.88);
+    box-shadow: none;
+}
+
+body.dark-mode .hermes-studio-job,
+body.dark-mode .hermes-studio-asset,
+body.dark-mode .hermes-studio-history li {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(30, 41, 59, 0.86);
+}
+
+body.dark-mode .hermes-studio-job:hover,
+body.dark-mode .hermes-studio-job.active {
+    border-color: rgba(45, 212, 191, 0.58);
+    background: rgba(20, 83, 91, 0.45);
+}
+
+body.dark-mode .hermes-studio-form input,
+body.dark-mode .hermes-studio-form select,
+body.dark-mode .hermes-studio-form textarea,
+body.dark-mode .hermes-studio-queue select,
+body.dark-mode .hermes-studio-decision-box textarea {
+    border-color: rgba(148, 163, 184, 0.34);
+    background: rgba(15, 23, 42, 0.96);
+    color: #e5e7eb;
+}
+
+body.dark-mode .hermes-studio-header h1,
+body.dark-mode .hermes-studio-panel-head h2,
+body.dark-mode .hermes-studio-status-tile strong,
+body.dark-mode .hermes-studio-job-title,
+body.dark-mode .hermes-studio-detail-row strong,
+body.dark-mode .hermes-studio-detail-row p,
+body.dark-mode .hermes-studio-history strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .hermes-studio-panel-head span,
+body.dark-mode .page-kicker,
+body.dark-mode .hermes-studio-status-tile span,
+body.dark-mode .hermes-studio-job-meta,
+body.dark-mode .hermes-studio-detail-row span,
+body.dark-mode .hermes-studio-asset-meta span,
+body.dark-mode .hermes-studio-history span,
+body.dark-mode .hermes-studio-muted,
+body.dark-mode .hermes-studio-empty-note {
+    color: #94a3b8;
+}
+
+@media (max-width: 1180px) {
+    .hermes-studio-workspace,
+    .hermes-studio-board {
+        grid-template-columns: 1fr;
+    }
+
+    .hermes-studio-queue {
+        position: static;
+        max-height: none;
+    }
+
+    .hermes-studio-queue-list {
+        max-height: 360px;
+    }
+}
+
+@media (max-width: 720px) {
+    .hermes-studio-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .hermes-studio-header-actions,
+    .hermes-studio-form-actions,
+    .hermes-studio-decision-actions {
+        width: 100%;
+    }
+
+    .hermes-studio-header-actions > *,
+    .hermes-studio-form-actions > *,
+    .hermes-studio-decision-actions > * {
+        flex: 1 1 140px;
+    }
+
+    .hermes-studio-form,
+    .hermes-studio-assets {
+        grid-template-columns: 1fr;
+    }
+
+    .hermes-studio-panel-head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .hermes-studio-queue select {
+        width: 100%;
+    }
+}

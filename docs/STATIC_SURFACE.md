@@ -36,6 +36,7 @@ and focused tests in the same pack.
 | `demo.html` | `/demo` | demo | canonical-page | Demo mode page. |
 | `designer.html` | `/designer` | designer | canonical-page | Designer production workspace. |
 | `designs.html` | `/designs` | designs | canonical-page | Also served at `/embed/designs` for embedded art-director views. |
+| `hermes-studio.html` | `/hermes-studio` | hermes-studio | canonical-page | Creative material job queue, brief intake, asset review, and human decisions. |
 | `certificates.html` | `/certificates` | certificates | canonical-page | Also serves `/certificates/new` and `/certificates/batch` for standalone creation flows. |
 | `finance.html` | `/finance` | finance | canonical-page | Finance operations page. |
 | `game.html` | `/game` | game | canonical-page | Gamification game page. |

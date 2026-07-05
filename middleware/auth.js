@@ -59,6 +59,7 @@ const MANAGER_UP = [...MANAGEMENT_UP, 'manager'];
 const ADMIN_UP = [...MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
 const LEADS_ACCESS = [...MANAGER_UP, 'marketer'];
 const ART_ACCESS = [...MANAGER_UP, 'art_director', 'marketer'];
+const HERMES_STUDIO_ACCESS = [...MANAGER_UP, 'art_director', 'marketer', 'admin'];
 const PROGRAMS_ACCESS = [...MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
 const STAFF_PAGE_ACCESS = ALL_STAFF;
 const HR_PAGE_ACCESS = [...MANAGER_UP, 'hr', 'admin', 'security'];
@@ -79,6 +80,7 @@ const PAGE_ACCESS = {
     '/content':   ART_ACCESS,
     '/designer':  ART_ACCESS,
     '/designs':   ART_ACCESS,
+    '/hermes-studio': HERMES_STUDIO_ACCESS,
     '/graduation': [...MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [...ADMIN_UP, 'reception'],
     '/staff':     STAFF_PAGE_ACCESS,

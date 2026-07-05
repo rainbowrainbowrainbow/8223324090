@@ -56,6 +56,7 @@ focused route tests in the same pack.
 | `/api/graduation` | `routes/graduation.js` | graduation |
 | `/api/guardian` | `routes/guardian.js` | guardian |
 | `/api/hermes` | `routes/hermes.js` | Hermes task, My Cabinet, and menu photo integration |
+| `/api/hermes-studio` | `routes/hermes-studio.js` | CRM-side Hermes Studio creative material jobs |
 | `/api/history` | `routes/history.js` | history |
 | `/api/hr` | `routes/hr.js` | hr |
 | `/api/kleshnya` | `routes/kleshnya.js` | kleshnya |

@@ -621,6 +621,7 @@ const _ADMIN_UP = [..._MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it
 const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
 const _LEADS_ACCESS = [..._MANAGER_UP, 'marketer'];
 const _ART_ACCESS = [..._MANAGER_UP, 'art_director', 'marketer'];
+const _HERMES_STUDIO_ACCESS = [..._MANAGER_UP, 'art_director', 'marketer', 'admin'];
 const _PROGRAMS_ACCESS = [..._MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
 const _STAFF_PAGE_ACCESS = _ALL_STAFF;
 const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
@@ -639,6 +640,7 @@ const PAGE_ACCESS = {
     '/center':    _MANAGER_UP,
     '/art':       _ART_ACCESS,
     '/content':   _ART_ACCESS,
+    '/hermes-studio': _HERMES_STUDIO_ACCESS,
     '/graduation': [..._MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [..._ADMIN_UP, 'reception'],
     '/staff':     _STAFF_PAGE_ACCESS,

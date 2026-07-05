@@ -399,10 +399,20 @@ function createHermesCreateFakePool(options = {}) {
     );
     const reportIds = new Set(options.reportIds || [321]);
     const reports = [];
+    const hermesJobs = new Map(
+        (options.hermesJobs || []).map(([id, job]) => [Number(id), { ...job, id: Number(id) }])
+    );
+    const hermesJobAssets = [];
+    const hermesJobEvents = [];
+    const hermesJobDecisions = [];
     let nextId = 2000;
     let nextSubtaskId = 9000;
     let nextHistoryId = 12000;
     let nextReportId = options.nextReportId || 41000;
+    let nextHermesJobId = options.nextHermesJobId || 61000;
+    let nextHermesJobAssetId = 71000;
+    let nextHermesJobEventId = 81000;
+    let nextHermesJobDecisionId = 91000;
 
     function key(integrationId, idempotencyKey) {
         return `${integrationId}:${idempotencyKey}`;
@@ -472,6 +482,247 @@ function createHermesCreateFakePool(options = {}) {
             record.response_status = params[3];
             record.response_body = JSON.parse(params[4]);
             return { rows: [clone(record)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('INSERT INTO hermes_jobs')) {
+            const job = {
+                id: nextHermesJobId++,
+                business_context: params[0],
+                job_type: params[1],
+                status: 'queued',
+                title: params[2],
+                source_entity_type: params[3],
+                source_entity_id: params[4],
+                source_payload: JSON.parse(params[5] || '{}'),
+                hermes_payload: JSON.parse(params[6] || '{}'),
+                result_payload: {},
+                error_message: null,
+                claim_token: null,
+                claimed_by: null,
+                claimed_at: null,
+                due_at: params[7] || null,
+                created_by_user_id: params[8] || null,
+                created_by_snapshot: params[9] || null,
+                updated_by_user_id: params[8] || null,
+                updated_by_snapshot: params[9] || null,
+                completed_at: null,
+                created_at: '2026-06-27T10:00:00.000Z',
+                updated_at: '2026-06-27T10:00:00.000Z'
+            };
+            hermesJobs.set(job.id, job);
+            return { rows: [clone(job)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('SELECT * FROM hermes_jobs WHERE COALESCE') && compact.includes('source_entity_type = $3')) {
+            const context = String(params[0] || 'event_genix');
+            const jobType = String(params[1] || '');
+            const sourceEntityType = String(params[2] || '');
+            const sourceEntityId = String(params[3] || '');
+            const statuses = Array.isArray(params[4]) ? params[4].map(String) : [];
+            const rows = Array.from(hermesJobs.values())
+                .filter(job => String(job.business_context || 'event_genix') === context)
+                .filter(job => job.job_type === jobType)
+                .filter(job => String(job.source_entity_type || '') === sourceEntityType)
+                .filter(job => String(job.source_entity_id || '') === sourceEntityId)
+                .filter(job => statuses.includes(String(job.status || '')))
+                .sort((a, b) => Number(b.id) - Number(a.id))
+                .slice(0, 1);
+            return { rows: clone(rows), rowCount: rows.length };
+        }
+
+        if (compact.startsWith('SELECT * FROM hermes_jobs WHERE COALESCE')) {
+            const context = String(params[0] || 'event_genix');
+            const hasJobTypeFilter = compact.includes('AND job_type =');
+            const jobType = hasJobTypeFilter ? String(params[1] || '') : null;
+            const limit = Number(params.at(-1) || 20);
+            const rows = Array.from(hermesJobs.values())
+                .filter(job => String(job.business_context || 'event_genix') === context)
+                .filter(job => job.status === 'queued')
+                .filter(job => !jobType || job.job_type === jobType)
+                .sort((a, b) => Number(a.id) - Number(b.id))
+                .slice(0, limit);
+            return { rows: clone(rows), rowCount: rows.length };
+        }
+
+        if (compact.startsWith('SELECT * FROM hermes_jobs WHERE id = $1')) {
+            const job = hermesJobs.get(Number(params[0]));
+            const context = String(params[1] || 'event_genix');
+            if (!job || String(job.business_context || 'event_genix') !== context) {
+                return { rows: [], rowCount: 0 };
+            }
+            return { rows: [clone(job)], rowCount: 1 };
+        }
+
+        if (compact.startsWith("UPDATE hermes_jobs SET status = 'claimed'")) {
+            const job = hermesJobs.get(Number(params[0]));
+            if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix') || job.status !== 'queued') {
+                return { rows: [], rowCount: 0 };
+            }
+            Object.assign(job, {
+                status: 'claimed',
+                claimed_by: params[2],
+                claim_token: params[3] || job.claim_token || null,
+                claimed_at: job.claimed_at || '2026-06-27T10:05:00.000Z',
+                updated_by_user_id: params[4] || null,
+                updated_by_snapshot: params[5] || null,
+                updated_at: '2026-06-27T10:05:00.000Z'
+            });
+            return { rows: [clone(job)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, result_payload =')) {
+            const job = hermesJobs.get(Number(params[0]));
+            if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
+                return { rows: [], rowCount: 0 };
+            }
+            Object.assign(job, {
+                status: params[2],
+                result_payload: JSON.parse(params[3] || '{}'),
+                error_message: params[2] === 'failed' ? (params[6] || job.error_message || null) : job.error_message,
+                completed_at: ['ready_for_review', 'failed'].includes(params[2]) ? (job.completed_at || '2026-06-27T10:20:00.000Z') : job.completed_at,
+                updated_by_user_id: params[4] || null,
+                updated_by_snapshot: params[5] || null,
+                updated_at: '2026-06-27T10:20:00.000Z'
+            });
+            return { rows: [clone(job)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, completed_at =')) {
+            const job = hermesJobs.get(Number(params[0]));
+            if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
+                return { rows: [], rowCount: 0 };
+            }
+            Object.assign(job, {
+                status: params[2],
+                completed_at: ['approved', 'rejected'].includes(params[2]) ? (job.completed_at || '2026-06-27T10:30:00.000Z') : job.completed_at,
+                updated_by_user_id: params[3] || null,
+                updated_by_snapshot: params[4] || null,
+                updated_at: '2026-06-27T10:30:00.000Z'
+            });
+            return { rows: [clone(job)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, error_message =')) {
+            const job = hermesJobs.get(Number(params[0]));
+            if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
+                return { rows: [], rowCount: 0 };
+            }
+            Object.assign(job, {
+                status: params[2],
+                error_message: params[2] === 'failed' ? (params[5] || job.error_message || null) : job.error_message,
+                completed_at: ['failed', 'cancelled'].includes(params[2]) ? (job.completed_at || '2026-06-27T10:10:00.000Z') : job.completed_at,
+                updated_by_user_id: params[3] || null,
+                updated_by_snapshot: params[4] || null,
+                updated_at: '2026-06-27T10:10:00.000Z'
+            });
+            return { rows: [clone(job)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('INSERT INTO hermes_job_assets')) {
+            const existing = params[3]
+                ? hermesJobAssets.find(item => Number(item.job_id) === Number(params[0]) && item.external_asset_id === params[3])
+                : null;
+            if (existing) {
+                Object.assign(existing, {
+                    asset_type: params[1],
+                    role: params[2],
+                    url: params[4],
+                    storage_key: params[5],
+                    mime_type: params[6],
+                    checksum_sha256: params[7],
+                    metadata: JSON.parse(params[8] || '{}'),
+                    updated_at: '2026-06-27T10:21:00.000Z'
+                });
+                return { rows: [clone(existing)], rowCount: 1 };
+            }
+            const asset = {
+                id: nextHermesJobAssetId++,
+                job_id: Number(params[0]),
+                asset_type: params[1],
+                role: params[2],
+                external_asset_id: params[3],
+                url: params[4],
+                storage_key: params[5],
+                mime_type: params[6],
+                checksum_sha256: params[7],
+                metadata: JSON.parse(params[8] || '{}'),
+                created_at: '2026-06-27T10:21:00.000Z',
+                updated_at: '2026-06-27T10:21:00.000Z'
+            };
+            hermesJobAssets.push(asset);
+            return { rows: [clone(asset)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('INSERT INTO hermes_job_events')) {
+            const existing = params[7]
+                ? hermesJobEvents.find(item => Number(item.job_id) === Number(params[0]) && item.external_event_id === params[7])
+                : null;
+            if (existing) {
+                existing.summary = params[8];
+                existing.payload = JSON.parse(params[9] || '{}');
+                return { rows: [clone(existing)], rowCount: 1 };
+            }
+            const event = {
+                id: nextHermesJobEventId++,
+                job_id: Number(params[0]),
+                event_type: params[1],
+                source: params[2],
+                status_from: params[3],
+                status_to: params[4],
+                actor_user_id: params[5],
+                actor_snapshot: params[6],
+                external_event_id: params[7],
+                summary: params[8],
+                payload: JSON.parse(params[9] || '{}'),
+                created_at: '2026-06-27T10:01:00.000Z'
+            };
+            hermesJobEvents.push(event);
+            return { rows: [clone(event)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('INSERT INTO hermes_job_decisions')) {
+            const existing = params[5]
+                ? hermesJobDecisions.find(item => Number(item.job_id) === Number(params[0]) && item.external_decision_id === params[5])
+                : null;
+            if (existing) {
+                existing.notes = params[4];
+                existing.decision_payload = JSON.parse(params[6] || '{}');
+                return { rows: [clone(existing)], rowCount: 1 };
+            }
+            const decision = {
+                id: nextHermesJobDecisionId++,
+                job_id: Number(params[0]),
+                decision: params[1],
+                decided_by_user_id: params[2],
+                decided_by_snapshot: params[3],
+                notes: params[4],
+                external_decision_id: params[5],
+                decision_payload: JSON.parse(params[6] || '{}'),
+                created_at: '2026-06-27T10:31:00.000Z'
+            };
+            hermesJobDecisions.push(decision);
+            return { rows: [clone(decision)], rowCount: 1 };
+        }
+
+        if (compact.startsWith('SELECT * FROM hermes_job_assets WHERE job_id = $1')) {
+            const rows = hermesJobAssets
+                .filter(item => Number(item.job_id) === Number(params[0]))
+                .sort((a, b) => Number(a.id) - Number(b.id));
+            return { rows: clone(rows), rowCount: rows.length };
+        }
+
+        if (compact.startsWith('SELECT * FROM hermes_job_events WHERE job_id = $1')) {
+            const rows = hermesJobEvents
+                .filter(item => Number(item.job_id) === Number(params[0]))
+                .sort((a, b) => Number(a.id) - Number(b.id));
+            return { rows: clone(rows), rowCount: rows.length };
+        }
+
+        if (compact.startsWith('SELECT * FROM hermes_job_decisions WHERE job_id = $1')) {
+            const rows = hermesJobDecisions
+                .filter(item => Number(item.job_id) === Number(params[0]))
+                .sort((a, b) => Number(b.id) - Number(a.id));
+            return { rows: clone(rows), rowCount: rows.length };
         }
 
         if (/FROM users WHERE users\.id = \$1/i.test(compact)) {
@@ -632,6 +883,12 @@ function createHermesCreateFakePool(options = {}) {
                 .filter(product => requested.includes(String(product.business_context || 'event_genix')))
                 .filter(product => product.domain === 'kitchen' && product.kitchen_type === 'menu')
                 .filter(product => product.is_active !== false && product.availability_status !== 'hidden')
+                .filter(product => !compact.includes("NULLIF(p.icon_url, '') IS NULL") || !String(product.icon_url || '').trim())
+                .filter(product => {
+                    if (!compact.includes("NOT IN ('generating','ready','approved','applied')")) return true;
+                    const status = String(product.ai_card_draft?.imageStudio?.status || 'draft');
+                    return !['generating', 'ready', 'approved', 'applied'].includes(status);
+                })
                 .filter(product => !hiddenProductIds.has(String(product.id)))
                 .slice(0, limit)
                 .map(clone);
@@ -934,6 +1191,10 @@ function createHermesCreateFakePool(options = {}) {
         historyEvents,
         outbox,
         reports,
+        hermesJobs,
+        hermesJobAssets,
+        hermesJobEvents,
+        hermesJobDecisions,
         subtasks,
         tasks,
         products,
@@ -1044,8 +1305,17 @@ describe('Hermes read-only task routes', () => {
         assert.ok(res.data.supportedActions.includes('menu_photos.read'));
         assert.ok(res.data.supportedActions.includes('menu_photos.candidates'));
         assert.ok(res.data.supportedActions.includes('menu_photos.draft'));
+        assert.ok(res.data.supportedActions.includes('menu_photos.jobs.create'));
         assert.ok(res.data.supportedActions.includes('menu_photos.apply'));
         assert.ok(res.data.supportedActions.includes('menu_photos.reject'));
+        assert.ok(res.data.supportedActions.includes('hermes_jobs.create'));
+        assert.ok(res.data.supportedActions.includes('hermes_jobs.result'));
+        assert.ok(res.data.supportedActions.includes('hermes_jobs.decision'));
+        assert.equal(res.data.endpoints.menuPhotos.createJobs, 'POST /api/hermes/menu-photos/jobs');
+        assert.equal(res.data.endpoints.menuPhotos.createJobsLimit, 5);
+        assert.deepEqual(res.data.endpoints.jobs.jobTypes, ['menu_photo_job', 'creative_material_job']);
+        assert.equal(res.data.endpoints.jobs.autoPublish, false);
+        assert.equal(res.data.endpoints.jobs.autoApply, false);
         assert.deepEqual(res.data.myCabinet, {
             available: true,
             defaultOwnerConfigured: false,
@@ -1480,6 +1750,177 @@ describe('Hermes read-only task routes', () => {
     });
 });
 
+describe('Hermes jobs foundation routes', () => {
+    it('creates separate menu photo and creative material jobs with idempotent retries', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const menuBody = {
+                jobType: 'menu_photo_job',
+                businessContext: 'event_genix',
+                title: 'Generate menu photo',
+                sourceEntity: { type: 'product', id: 'dish-foundation' },
+                payload: {
+                    productId: 'dish-foundation',
+                    productCode: 'MENU-FOUNDATION',
+                    productName: 'Foundation dish',
+                    prompt: 'Clean catalog-style dish photo',
+                    size: '1536x1024',
+                    style: 'catalog',
+                    imageRules: { targetUsage: 'booking_menu_catalog' }
+                }
+            };
+            const firstMenu = await request(baseUrl, 'POST', '/api/hermes/jobs', menuBody, mutationHeaders('hermes-job-menu-create'));
+            const retryMenu = await request(baseUrl, 'POST', '/api/hermes/jobs', menuBody, mutationHeaders('hermes-job-menu-create'));
+
+            assert.equal(firstMenu.status, 201, firstMenu.text);
+            assert.equal(retryMenu.status, 201, retryMenu.text);
+            assert.deepEqual(retryMenu.data, firstMenu.data);
+            assert.equal(firstMenu.data.job.jobType, 'menu_photo_job');
+            assert.equal(firstMenu.data.job.status, 'queued');
+            assert.equal(firstMenu.data.job.hermes.payload.target, 'menu_photo');
+            assert.equal(firstMenu.data.job.hermes.payload.product.id, 'dish-foundation');
+            assert.equal(firstMenu.data.job.hermes.payload.brief, undefined);
+            assert.equal(firstMenu.data.meta.autoPublish, false);
+            assert.equal(firstMenu.data.meta.autoApply, false);
+
+            const creativeBody = {
+                jobType: 'creative_material_job',
+                businessContext: 'event_genix',
+                title: 'Birthday promo pack',
+                sourceEntity: { type: 'campaign', id: 'summer-birthday' },
+                payload: {
+                    brief: 'Create a bright birthday campaign pack',
+                    materialTypes: ['poster', 'story', 'banner'],
+                    platforms: ['instagram', 'telegram'],
+                    dimensions: ['1080x1920', '1200x628'],
+                    tone: 'festive',
+                    eventTitle: 'Birthday Weekend'
+                }
+            };
+            const creative = await request(baseUrl, 'POST', '/api/hermes/jobs', creativeBody, mutationHeaders('hermes-job-creative-create'));
+
+            assert.equal(creative.status, 201, creative.text);
+            assert.equal(creative.data.job.jobType, 'creative_material_job');
+            assert.equal(creative.data.job.hermes.payload.target, 'creative_material');
+            assert.deepEqual(creative.data.job.hermes.payload.materialTypes, ['poster', 'story', 'banner']);
+            assert.equal(creative.data.job.hermes.payload.product, undefined);
+            assert.equal(fakePool.hermesJobs.size, 2);
+
+            const queue = await request(baseUrl, 'GET', '/api/hermes/jobs/queue?jobType=menu_photo_job&businessContext=event_genix');
+            assert.equal(queue.status, 200, queue.text);
+            assert.equal(queue.data.items.length, 1);
+            assert.equal(queue.data.items[0].jobType, 'menu_photo_job');
+            assert.equal(queue.data.meta.autoPublish, false);
+            assert.equal(queue.data.meta.autoApply, false);
+        });
+    });
+
+    it('rejects mixed menu-photo and creative-material payload fields before creating a job', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'menu_photo_job',
+                payload: {
+                    productId: 'dish-mixed',
+                    brief: 'This belongs to creative_material_job'
+                }
+            }, mutationHeaders('hermes-job-mixed-payload'));
+
+            assert.equal(res.status, 400, res.text);
+            assert.equal(res.data.code, 'HERMES_JOB_PAYLOAD_UNSUPPORTED_FIELD');
+            assert.equal(fakePool.hermesJobs.size, 0);
+        });
+    });
+
+    it('records status, result assets, history, and human decisions without duplicates on retries', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'creative_material_job',
+                title: 'Concert poster',
+                payload: {
+                    brief: 'Create concert promotion materials',
+                    materialType: 'poster',
+                    platforms: ['instagram']
+                }
+            }, mutationHeaders('hermes-job-lifecycle-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const statusBody = {
+                status: 'in_progress',
+                message: 'Worker started rendering',
+                externalEventId: 'worker-status-1'
+            };
+            const statusFirst = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/status`, statusBody, mutationHeaders('hermes-job-status-1'));
+            const statusRetry = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/status`, statusBody, mutationHeaders('hermes-job-status-1'));
+
+            assert.equal(statusFirst.status, 200, statusFirst.text);
+            assert.equal(statusRetry.status, 200, statusRetry.text);
+            assert.deepEqual(statusRetry.data, statusFirst.data);
+            assert.equal(statusFirst.data.job.status, 'in_progress');
+
+            const resultBody = {
+                status: 'ready_for_review',
+                summary: 'Ready for human review',
+                externalEventId: 'worker-result-1',
+                result: {
+                    notes: 'Generated two options; primary option selected.'
+                },
+                assets: [
+                    {
+                        externalAssetId: 'poster-final-1',
+                        assetType: 'result',
+                        role: 'final',
+                        url: 'https://cdn.example.test/poster-final.png',
+                        mimeType: 'image/png',
+                        metadata: { width: 1080, height: 1350 }
+                    }
+                ]
+            };
+            const resultFirst = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, resultBody, mutationHeaders('hermes-job-result-1'));
+            const resultRetry = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, resultBody, mutationHeaders('hermes-job-result-1'));
+
+            assert.equal(resultFirst.status, 200, resultFirst.text);
+            assert.equal(resultRetry.status, 200, resultRetry.text);
+            assert.deepEqual(resultRetry.data, resultFirst.data);
+            assert.equal(resultFirst.data.job.status, 'ready_for_review');
+            assert.equal(resultFirst.data.job.assets.length, 1);
+            assert.equal(resultFirst.data.job.assets[0].externalAssetId, 'poster-final-1');
+            assert.equal(fakePool.hermesJobAssets.length, 1);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId)).length, 3);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+
+            const decisionBody = {
+                decision: 'approved',
+                notes: 'Approved by human reviewer',
+                externalDecisionId: 'approval-1'
+            };
+            const decisionFirst = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/decision`, decisionBody, mutationHeaders('hermes-job-decision-1'));
+            const decisionRetry = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/decision`, decisionBody, mutationHeaders('hermes-job-decision-1'));
+
+            assert.equal(decisionFirst.status, 200, decisionFirst.text);
+            assert.equal(decisionRetry.status, 200, decisionRetry.text);
+            assert.deepEqual(decisionRetry.data, decisionFirst.data);
+            assert.equal(decisionFirst.data.job.status, 'approved');
+            assert.equal(decisionFirst.data.job.decision.decision, 'approved');
+            assert.equal(fakePool.hermesJobDecisions.length, 1);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId)).length, 4);
+
+            const detail = await request(baseUrl, 'GET', `/api/hermes/jobs/${jobId}?businessContext=event_genix`);
+            assert.equal(detail.status, 200, detail.text);
+            assert.equal(detail.data.job.assets.length, 1);
+            assert.equal(detail.data.job.history.length, 4);
+            assert.equal(detail.data.job.decision.decision, 'approved');
+            assert.equal(detail.data.meta.autoPublish, false);
+            assert.equal(detail.data.meta.autoApply, false);
+        });
+    });
+});
+
 describe('Hermes menu photo routes', () => {
     it('uses real products.price as the menu photo legacy price alias', async () => {
         const source = await fsp.readFile(path.join(__dirname, '..', 'routes', 'hermes.js'), 'utf8');
@@ -1608,6 +2049,147 @@ describe('Hermes menu photo routes', () => {
             assert.equal(res.status, 401, res.text);
             assert.equal(res.data.code, 'HERMES_AUTH_REQUIRED');
         });
+    });
+
+    it('creates up to five menu_photo_job records for menu products without photos', async () => {
+        const activeJob = {
+            id: 65000,
+            business_context: 'event_genix',
+            job_type: 'menu_photo_job',
+            status: 'in_progress',
+            title: 'Existing menu photo job',
+            source_entity_type: 'product',
+            source_entity_id: 'dish-no-photo-1',
+            source_payload: { product: { id: 'dish-no-photo-1' } },
+            hermes_payload: { target: 'menu_photo' },
+            result_payload: {},
+            created_at: '2026-06-27T09:00:00.000Z',
+            updated_at: '2026-06-27T09:00:00.000Z'
+        };
+        const fakePool = createHermesCreateFakePool({
+            hermesJobs: [[activeJob.id, activeJob]],
+            products: [
+                ['dish-no-photo-1', productRow('dish-no-photo-1', { icon_url: null })],
+                ['dish-no-photo-2', productRow('dish-no-photo-2', { icon_url: null })],
+                ['dish-no-photo-3', productRow('dish-no-photo-3', { icon_url: null })],
+                ['dish-no-photo-4', productRow('dish-no-photo-4', { icon_url: null })],
+                ['dish-no-photo-5', productRow('dish-no-photo-5', { icon_url: null })],
+                ['dish-no-photo-6', productRow('dish-no-photo-6', { icon_url: null })],
+                ['dish-with-photo', productRow('dish-with-photo', { icon_url: '/uploads/catalog-images/items/current.png' })],
+                ['dish-ready-draft', productRow('dish-ready-draft', {
+                    icon_url: null,
+                    ai_card_draft: {
+                        imageStudio: {
+                            status: 'ready',
+                            imageUrl: '/uploads/catalog-images/items/ready-draft.png'
+                        }
+                    }
+                })]
+            ]
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const body = { businessContext: 'event_genix', limit: 5 };
+            const first = await request(baseUrl, 'POST', '/api/hermes/menu-photos/jobs', body, mutationHeaders('menu-photo-job-batch'));
+            const retry = await request(baseUrl, 'POST', '/api/hermes/menu-photos/jobs', body, mutationHeaders('menu-photo-job-batch'));
+
+            assert.equal(first.status, 201, first.text);
+            assert.equal(retry.status, 201, retry.text);
+            assert.deepEqual(retry.data, first.data);
+            assert.equal(first.data.jobs.length, 5);
+            assert.equal(first.data.skipped.length, 1);
+            assert.equal(first.data.skipped[0].reason, 'active_menu_photo_job_exists');
+            assert.equal(first.data.meta.created, 5);
+            assert.equal(first.data.meta.autoApply, false);
+            assert.equal(first.data.meta.autoPublish, false);
+            assert.deepEqual(
+                first.data.jobs.map(job => job.sourceEntity.id).sort(),
+                ['dish-no-photo-2', 'dish-no-photo-3', 'dish-no-photo-4', 'dish-no-photo-5', 'dish-no-photo-6']
+            );
+            assert.equal(first.data.jobs.every(job => job.jobType === 'menu_photo_job'), true);
+            assert.equal(first.data.jobs.every(job => job.status === 'queued'), true);
+            assert.equal(first.data.jobs[0].hermes.payload.target, 'menu_photo');
+            assert.equal(JSON.stringify(first.data.jobs[0].hermes.payload).includes('Kitchen tech notes'), false);
+            assert.equal(fakePool.hermesJobs.size, 6);
+            assert.equal(fakePool.hermesJobEvents.filter(event => event.event_type === 'job_created').length, 5);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+        });
+    });
+
+    it('turns a menu_photo_job result into a reviewable draft without applying it', async () => {
+        const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'event-genix-hermes-menu-photo-job-result-'));
+        const fakePool = createHermesCreateFakePool({
+            products: [['dish-job-result', productRow('dish-job-result', {
+                code: 'MENU-JOB',
+                name: 'Job result dish',
+                icon_url: '/uploads/catalog-images/items/current-job-result.png'
+            })]]
+        });
+
+        try {
+            await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+                const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                    jobType: 'menu_photo_job',
+                    businessContext: 'event_genix',
+                    sourceEntity: { type: 'product', id: 'dish-job-result' },
+                    payload: {
+                        productId: 'dish-job-result',
+                        productCode: 'MENU-JOB',
+                        productName: 'Job result dish',
+                        prompt: 'Create one clean catalog photo',
+                        imageRules: { targetUsage: 'booking_menu_catalog' },
+                        size: '1536x1024',
+                        style: 'catalog'
+                    }
+                }, mutationHeaders('menu-photo-job-result-create'));
+                assert.equal(created.status, 201, created.text);
+
+                const jobId = created.data.job.id;
+                const body = {
+                    status: 'ready_for_review',
+                    summary: 'Ready for manager review',
+                    externalEventId: 'menu-photo-job-result-1',
+                    result: {
+                        imageBase64: Buffer.from('job-result-png').toString('base64'),
+                        mimeType: 'image/png',
+                        prompt: 'Hermes job final prompt',
+                        provider: 'hermes',
+                        model: 'hermes-image-model',
+                        size: '1536x1024',
+                        style: 'catalog'
+                    }
+                };
+                const first = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, body, mutationHeaders('menu-photo-job-result'));
+                const retry = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, body, mutationHeaders('menu-photo-job-result'));
+
+                assert.equal(first.status, 200, first.text);
+                assert.equal(retry.status, 200, retry.text);
+                assert.deepEqual(retry.data, first.data);
+                assert.equal(first.data.job.status, 'ready_for_review');
+                assert.equal(first.data.job.resultPayload.imageBase64, undefined);
+                assert.equal(fakePool.hermesJobs.get(Number(jobId)).result_payload.imageBase64, undefined);
+                assert.equal(first.data.meta.menuPhotoDraftCreated, true);
+                assert.equal(first.data.meta.autoApplied, false);
+                assert.equal(first.data.menuPhoto.status, 'ready');
+                assert.equal(first.data.menuPhoto.product.id, 'dish-job-result');
+                assert.equal(first.data.menuPhoto.product.currentImageUrl, '/uploads/catalog-images/items/current-job-result.png');
+                assert.equal(first.data.menuPhoto.draft.status, 'ready');
+                assert.equal(first.data.menuPhoto.draft.provider, 'hermes');
+                assert.equal(fakePool.products.get('dish-job-result').icon_url, '/uploads/catalog-images/items/current-job-result.png');
+                assert.equal(fakePool.products.get('dish-job-result').ai_card_draft.imageStudio.status, 'ready');
+                assert.equal(fakePool.products.get('dish-job-result').ai_card_draft.imageStudio.prompt, 'Hermes job final prompt');
+                assert.equal(fakePool.products.get('dish-job-result').ai_card_draft.imageStudio.source, 'hermes_job');
+                assert.equal(fakePool.catalogImageBlobs.size, 1);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 1);
+                assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+                assert.equal((await fsp.readdir(tempDir)).length, 1);
+            }, {
+                menuImageUploadOptions: { localDir: tempDir }
+            });
+        } finally {
+            await fsp.rm(tempDir, { recursive: true, force: true });
+        }
     });
 
     it('creates a failed draft safely when OpenAI image generation is unavailable', async () => {

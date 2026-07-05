@@ -401,6 +401,46 @@ External-draft success always uses `meta.status: "ready"` and
 `meta.autoApplied: false`. `product.currentImageUrl` remains the previous active
 image until a separate apply endpoint succeeds.
 
+### Durable Menu Photo Jobs
+
+CRM can queue durable Hermes work for menu products that do not have an active
+photo:
+
+```http
+POST /api/hermes/menu-photos/jobs
+Content-Type: application/json
+Idempotency-Key: menu-photo-batch-20260705-001
+X-Hermes-User-Confirmed: true
+X-Integration-Id: hermes-event-genix-crm
+```
+
+```json
+{
+  "businessContext": "event_genix",
+  "limit": 5
+}
+```
+
+This creates up to five `menu_photo_job` records. Existing active jobs for the
+same product are skipped, and products with ready/generating/applied drafts are
+not queued again.
+
+Hermes then uses the durable job endpoints:
+
+```http
+GET /api/hermes/jobs/queue?jobType=menu_photo_job&businessContext=event_genix
+POST /api/hermes/jobs/:id/claim
+POST /api/hermes/jobs/:id/status
+POST /api/hermes/jobs/:id/result
+```
+
+When a `menu_photo_job` result is posted with `status: "ready_for_review"`,
+CRM stores the final image as the same reviewable draft used by
+`external-draft`. The worker result may provide `result.imageUrl`,
+`result.imageBase64`, or a result asset URL. The result route updates
+`products.ai_card_draft.imageStudio` only; it does not update
+`products.icon_url`.
+
 ## Apply And Reject
 
 Apply and reject are explicit review actions. They remain available as separate

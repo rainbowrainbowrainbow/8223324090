@@ -321,6 +321,13 @@ const CSS_SURFACE = [
         reason: 'Graduation event builder and embedded view styles.'
     },
     {
+        file: 'css/hermes-studio.css',
+        owner: 'hermes-studio',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Hermes Studio creative job queue, brief form, asset review, and decision controls.'
+    },
+    {
         file: 'css/hr-page.css',
         owner: 'hr',
         category: 'page-scoped-large',

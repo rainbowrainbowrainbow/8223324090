@@ -1,15 +1,15 @@
 # Hermes Integration Contract
 
-This document defines the CRM-side contract for the Hermes task and menu photo
-integration. The `/api/hermes/capabilities` endpoint, read-only task endpoints,
-task create, complete, reassign, and reschedule endpoints are implemented for
-v1. Menu/product photo draft, apply, and reject endpoints are implemented as a
-safe MVP workflow.
+This document defines the CRM-side contract for the Hermes task, menu photo,
+and durable job integration. The `/api/hermes/capabilities` endpoint,
+read-only task endpoints, task mutations, menu/product photo draft workflow,
+and CRM-owned Hermes jobs are implemented as safe MVP workflows.
 
 ## Scope
 
-Hermes v1 is a pull/read/action integration for Event Genix CRM tasks and
-reviewable kitchen menu/product photo drafts.
+Hermes v1 is a pull/read/action integration for Event Genix CRM tasks,
+reviewable kitchen menu/product photo drafts, and durable CRM-owned Hermes
+jobs.
 
 Hermes will call Event Genix CRM directly over HTTPS. CRM will not push events
 to Hermes in v1, and no Hermes callback or webhook endpoint is required for the
@@ -26,13 +26,17 @@ The integration is intentionally narrow:
 - Reschedule a task after Hermes-side user confirmation.
 - Read kitchen menu/product photo status.
 - Generate a menu/product photo draft after Hermes-side user confirmation.
+- Queue durable `menu_photo_job` work for up to five kitchen menu products
+  without current photos.
 - Apply or reject a ready menu/product photo draft after Hermes-side user
   confirmation.
+- Read, create, claim, update, and return results for durable Hermes jobs.
+- Store Hermes job assets, event history, and human approval decisions.
 
 The integration must not expose generic CRM access, raw database rows, delete
 operations, bulk operations, auth/session management, finance actions, admin
 actions, unrestricted task updates, provider secrets, raw image provider
-responses, or unconfirmed bulk photo generation.
+responses, unconfirmed bulk photo generation, auto-publish, or auto-apply.
 
 ## Hermes Environment Assumptions
 
@@ -52,8 +56,8 @@ changes that requirement.
 
 ## Endpoint Contract
 
-All endpoints live under `/api/hermes`; v1 task action endpoints and menu photo
-draft endpoints are implemented.
+All endpoints live under `/api/hermes`; v1 task action endpoints, menu photo
+draft endpoints, and CRM-owned Hermes job endpoints are implemented.
 
 | Method | Path | Purpose | Mutation |
 | --- | --- | --- | --- |
@@ -69,8 +73,17 @@ draft endpoints are implemented.
 | `GET` | `/api/hermes/menu-photos/candidates` | Kitchen menu photo candidates | No |
 | `GET` | `/api/hermes/menu-photos/:productId` | Kitchen menu photo status | No |
 | `POST` | `/api/hermes/menu-photos/:productId/draft` | Generate a reviewable photo draft | Yes |
+| `POST` | `/api/hermes/menu-photos/:productId/external-draft` | Store a worker-supplied reviewable photo draft | Yes |
+| `POST` | `/api/hermes/menu-photos/jobs` | Queue up to five durable menu photo jobs for products without photos | Yes |
 | `POST` | `/api/hermes/menu-photos/:productId/apply` | Apply a ready photo draft | Yes |
 | `POST` | `/api/hermes/menu-photos/:productId/reject` | Reject a photo draft | Yes |
+| `GET` | `/api/hermes/jobs/queue` | Queued durable Hermes jobs | No |
+| `GET` | `/api/hermes/jobs/:id` | Job detail with assets, history, and decisions | No |
+| `POST` | `/api/hermes/jobs` | Create a durable Hermes job | Yes |
+| `POST` | `/api/hermes/jobs/:id/claim` | Claim a queued job for a worker | Yes |
+| `POST` | `/api/hermes/jobs/:id/status` | Post worker status | Yes |
+| `POST` | `/api/hermes/jobs/:id/result` | Post worker result and assets | Yes |
+| `POST` | `/api/hermes/jobs/:id/decision` | Record human approval decision | Yes |
 
 Implementation must use the existing task policy, execution, and business
 context services instead of duplicating authorization logic:
@@ -223,13 +236,28 @@ Example:
     "tasks.my_cabinet",
     "tasks.create",
     "tasks.complete",
+    "tasks.completion_report",
+    "tasks.comment",
+    "tasks.subtasks.read",
+    "tasks.subtask.toggle",
     "tasks.reassign",
     "tasks.reschedule",
+    "tasks.status",
     "menu_photos.read",
     "menu_photos.candidates",
+    "menu_photos.context",
     "menu_photos.draft",
+    "menu_photos.external_draft",
+    "menu_photos.jobs.create",
     "menu_photos.apply",
-    "menu_photos.reject"
+    "menu_photos.reject",
+    "hermes_jobs.queue",
+    "hermes_jobs.read",
+    "hermes_jobs.create",
+    "hermes_jobs.claim",
+    "hermes_jobs.status",
+    "hermes_jobs.result",
+    "hermes_jobs.decision"
   ],
   "mutationActionsAvailable": true,
   "plannedMutationActions": [],
@@ -548,6 +576,8 @@ Menu photo mutation endpoints:
 
 ```http
 POST /api/hermes/menu-photos/:productId/draft
+POST /api/hermes/menu-photos/:productId/external-draft
+POST /api/hermes/menu-photos/jobs
 POST /api/hermes/menu-photos/:productId/apply
 POST /api/hermes/menu-photos/:productId/reject
 ```
@@ -571,6 +601,13 @@ POST /api/hermes/menu-photos/:productId/reject
 
 `apply` accepts an empty JSON body. It succeeds only when the draft has an
 `imageUrl` and status `ready`, `approved`, or `applied`.
+
+`POST /api/hermes/menu-photos/jobs` creates up to five queued
+`menu_photo_job` records for active kitchen menu products where `products.icon_url`
+is empty and there is no ready/generating/applied menu photo draft. Existing
+active menu photo jobs for the same product are skipped. The route creates
+durable CRM jobs only; it does not generate, apply, publish, or require
+Telegram delivery.
 
 Menu photo mutations use the same Hermes auth, confirmation, idempotency, and
 writable single-business-scope rules as task mutations. Draft generation may
@@ -615,6 +652,161 @@ Hermes mutation endpoints must use the durable CRM idempotency store:
 - Same key plus same request returns the stored response.
 - Same key plus different request returns `409 IDEMPOTENCY_KEY_CONFLICT`.
 - In-progress duplicate requests return `409 IDEMPOTENCY_KEY_IN_PROGRESS`.
+
+### Hermes Jobs Foundation
+
+CRM is the source of truth for durable Hermes jobs. Hermes is a worker that can
+claim jobs, report status, and return results. A human decision can approve,
+reject, or request revision, but that decision does not auto-publish or
+auto-apply generated output.
+
+Supported job types:
+
+- `menu_photo_job` - dish/menu photos.
+- `creative_material_job` - posters, flyers, posts, stories, banners, and
+  other marketing materials.
+
+Supported job statuses:
+
+```text
+queued, claimed, in_progress, needs_input, ready_for_review,
+revision_requested, approved, rejected, failed, cancelled
+```
+
+The two job types must stay separate. `menu_photo_job` payloads accept menu
+product fields such as `productId`, `productCode`, `productName`, `prompt`,
+`size`, `style`, and `imageRules`. `creative_material_job` payloads accept
+creative brief fields such as `brief`, `materialTypes`, `platforms`,
+`dimensions`, `copy`, `tone`, `eventTitle`, `brandRules`, and `requirements`.
+Unsupported fields are rejected instead of being merged into a generic job
+payload.
+
+Queue menu photo jobs for products without photos:
+
+```http
+POST /api/hermes/menu-photos/jobs
+```
+
+```json
+{
+  "businessContext": "event_genix",
+  "limit": 5
+}
+```
+
+The route returns queued `menu_photo_job` items with sanitized worker payloads
+and skips products that already have an active menu photo job. It never applies
+images and never requires Telegram routing.
+
+Create a job:
+
+```http
+POST /api/hermes/jobs
+```
+
+```json
+{
+  "jobType": "menu_photo_job",
+  "businessContext": "event_genix",
+  "title": "Generate menu photo",
+  "sourceEntity": {
+    "type": "product",
+    "id": "dish-123"
+  },
+  "payload": {
+    "productId": "dish-123",
+    "productCode": "MENU-123",
+    "productName": "Berry cake",
+    "prompt": "Clean catalog-style dish photo",
+    "size": "1536x1024",
+    "style": "catalog",
+    "imageRules": {
+      "targetUsage": "booking_menu_catalog"
+    }
+  }
+}
+```
+
+The response includes `job.hermes.payload`, a sanitized worker payload. It must
+not include provider secrets, auth headers, raw CRM rows, customer data, or
+unbounded request data.
+
+Post status:
+
+```http
+POST /api/hermes/jobs/:id/status
+```
+
+```json
+{
+  "status": "in_progress",
+  "message": "Worker started rendering",
+  "externalEventId": "worker-status-1"
+}
+```
+
+Post result and assets:
+
+```http
+POST /api/hermes/jobs/:id/result
+```
+
+```json
+{
+  "status": "ready_for_review",
+  "summary": "Ready for human review",
+  "externalEventId": "worker-result-1",
+  "result": {
+    "notes": "Generated primary option."
+  },
+  "assets": [
+    {
+      "externalAssetId": "poster-final-1",
+      "assetType": "result",
+      "role": "final",
+      "url": "https://cdn.example.test/poster-final.png",
+      "mimeType": "image/png"
+    }
+  ]
+}
+```
+
+For `menu_photo_job`, a `ready_for_review` result must include a final image as
+`result.imageUrl`, `result.imageBase64`, or a result asset URL. CRM stores that
+image through the existing menu image draft storage path and updates only
+`products.ai_card_draft.imageStudio` to a ready review draft. It does not update
+`products.icon_url`; managers still use the existing product/menu image apply
+or reject actions.
+
+Record human decision:
+
+```http
+POST /api/hermes/jobs/:id/decision
+```
+
+```json
+{
+  "decision": "approved",
+  "notes": "Approved by human reviewer",
+  "externalDecisionId": "approval-1"
+}
+```
+
+`approved` only records approval in the job foundation. Publishing, applying to
+CRM entities, sending to channels, or replacing menu photos requires a separate
+explicit CRM action.
+
+CRM managers create and review creative-material jobs from the separate
+Hermes Studio page at `/hermes-studio`. That page uses JWT-protected CRM
+endpoints under `/api/hermes-studio` and always scopes records to
+`creative_material_job`; it does not list or mutate `menu_photo_job` rows.
+
+Hermes Studio accepts only brief-level fields: material type, title, source,
+format/size, requirements, deadline, priority, references, and comment. The
+worker still consumes the sanitized `job.hermes.payload` from the foundation.
+Approve, request edit, regenerate, and reject are human actions that write
+`hermes_job_decisions` and `hermes_job_events`; none of them auto-publish or
+apply assets to Afisha, Designs, Content, products, or external channels.
 
 ### Create Task
 

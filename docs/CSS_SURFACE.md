@@ -63,6 +63,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/entity-card.css` | leads-customers | `feature-shared` | active | Shared lead/customer entity workspace card shell and safe visual contract. |
 | `css/features.css` | timeline | `shell-large` | active-large | Root shell feature and modal adjunct styles; large-file consolidation candidate. |
 | `css/graduation.css` | graduation | `page-scoped-large` | active-large | Graduation event builder and embedded view styles. |
+| `css/hermes-studio.css` | hermes-studio | `page-scoped` | active | Hermes Studio creative job queue, brief form, asset review, and decision controls. |
 | `css/hr-page.css` | hr | `page-scoped-large` | active-large | HR workspace styles extracted from `hr.html`; large-file consolidation candidate. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Hermes Studio</title>
+    <meta name="description" content="Event Genix Hermes Studio">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.78.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.19">
+    <link rel="stylesheet" href="css/hermes-studio.css?v=0.78.19">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="hermes-studio-page" data-page="hermes-studio" data-page-group="crm">
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();
+    </script>
+
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-subtitle">AI First CRM</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user-card">
+                <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                <div class="sidebar-user-info">
+                    <button type="button" class="sidebar-user-name" id="sidebarUserName" title="Відкрити профіль">Користувач</button>
+                    <div class="sidebar-user-role" id="sidebarUserRole">Роль</div>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+        <div class="alerts-panel-v4" id="alertsPanel"></div>
+
+        <main id="main-content" class="page-container hermes-studio-shell">
+            <section class="hermes-studio-header">
+                <div>
+                    <div class="page-kicker">Hermes</div>
+                    <h1>Hermes Studio</h1>
+                </div>
+                <div class="hermes-studio-header-actions">
+                    <button type="button" class="btn-page-secondary" id="hermesStudioRefreshBtn">Оновити</button>
+                    <button type="button" class="btn-page-primary" id="hermesStudioFocusFormBtn">Новий бриф</button>
+                </div>
+            </section>
+
+            <section class="hermes-studio-status-row" id="hermesStudioStatusRow" aria-live="polite"></section>
+
+            <section class="hermes-studio-workspace" aria-label="Hermes Studio workspace">
+                <aside class="hermes-studio-queue" aria-label="Черга Hermes Studio">
+                    <div class="hermes-studio-panel-head">
+                        <div>
+                            <span>Черга</span>
+                            <h2>Creative jobs</h2>
+                        </div>
+                        <select id="hermesStudioStatusFilter" title="Статус">
+                            <option value="">Усі</option>
+                            <option value="queued">Queued</option>
+                            <option value="claimed">Claimed</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="needs_input">Needs input</option>
+                            <option value="ready_for_review">Ready for review</option>
+                            <option value="revision_requested">Revision requested</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="failed">Failed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div id="hermesStudioQueueList" class="hermes-studio-queue-list">
+                        <div class="empty-state">Завантаження...</div>
+                    </div>
+                </aside>
+
+                <section class="hermes-studio-board" aria-label="Бриф та результат">
+                    <section class="hermes-studio-brief" aria-labelledby="hermesStudioBriefTitle">
+                        <div class="hermes-studio-panel-head">
+                            <div>
+                                <span>Бриф</span>
+                                <h2 id="hermesStudioBriefTitle">Новий creative job</h2>
+                            </div>
+                        </div>
+                        <form id="hermesStudioBriefForm" class="hermes-studio-form">
+                            <label class="form-field">
+                                <span>Тип матеріалу</span>
+                                <select id="hermesStudioMaterialType" required>
+                                    <option value="poster">Афіша</option>
+                                    <option value="flyer">Флаєр</option>
+                                    <option value="post">Пост</option>
+                                    <option value="story">Сторіс</option>
+                                    <option value="banner">Банер</option>
+                                    <option value="other">Інше</option>
+                                </select>
+                            </label>
+                            <label class="form-field">
+                                <span>Пріоритет</span>
+                                <select id="hermesStudioPriority">
+                                    <option value="normal">Normal</option>
+                                    <option value="high">High</option>
+                                    <option value="urgent">Urgent</option>
+                                    <option value="low">Low</option>
+                                </select>
+                            </label>
+                            <label class="form-field form-field-wide">
+                                <span>Назва</span>
+                                <input type="text" id="hermesStudioTitle" maxlength="240" required>
+                            </label>
+                            <label class="form-field">
+                                <span>Джерело</span>
+                                <input type="text" id="hermesStudioSource" maxlength="500">
+                            </label>
+                            <label class="form-field">
+                                <span>Формат / розмір</span>
+                                <input type="text" id="hermesStudioFormatSize" maxlength="120" placeholder="1080x1350, A5, 9:16">
+                            </label>
+                            <label class="form-field">
+                                <span>Дедлайн</span>
+                                <input type="datetime-local" id="hermesStudioDeadline">
+                            </label>
+                            <label class="form-field form-field-wide">
+                                <span>Вимоги</span>
+                                <textarea id="hermesStudioRequirements" rows="4" maxlength="4000" required></textarea>
+                            </label>
+                            <label class="form-field form-field-wide">
+                                <span>References</span>
+                                <textarea id="hermesStudioReferences" rows="3" maxlength="3000"></textarea>
+                            </label>
+                            <label class="form-field form-field-wide">
+                                <span>Коментар</span>
+                                <textarea id="hermesStudioComment" rows="3" maxlength="2000"></textarea>
+                            </label>
+                            <div class="hermes-studio-form-actions">
+                                <button type="reset" class="btn-page-secondary">Очистити</button>
+                                <button type="submit" class="btn-page-primary" id="hermesStudioSubmitBtn">Створити job</button>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="hermes-studio-detail" aria-labelledby="hermesStudioDetailTitle">
+                        <div class="hermes-studio-panel-head">
+                            <div>
+                                <span>Review</span>
+                                <h2 id="hermesStudioDetailTitle">Creative draft</h2>
+                            </div>
+                            <span id="hermesStudioSelectedStatus" class="hermes-studio-status-chip">-</span>
+                        </div>
+                        <div id="hermesStudioDetailBody" class="hermes-studio-detail-body">
+                            <div class="empty-state">Оберіть job у черзі</div>
+                        </div>
+                        <div class="hermes-studio-decision-box">
+                            <textarea id="hermesStudioDecisionNotes" rows="3" maxlength="4000" placeholder="Коментар до рішення"></textarea>
+                            <div class="hermes-studio-decision-actions">
+                                <button type="button" class="btn-page-primary" data-hermes-decision="approved">Approve</button>
+                                <button type="button" class="btn-page-secondary" data-hermes-decision="revision_requested">Request edit</button>
+                                <button type="button" class="btn-page-secondary" id="hermesStudioRegenerateBtn">Regenerate</button>
+                                <button type="button" class="btn-page-danger" data-hermes-decision="rejected">Reject</button>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/ui.js?v=0.78.19"></script>
+    <script src="js/config.js?v=0.78.19"></script>
+    <script src="js/notification.js?v=0.78.19"></script>
+    <script src="js/api.js?v=0.78.19"></script>
+    <script src="js/auth.js?v=0.78.19"></script>
+    <script src="js/components/sidebar.js?v=0.78.19"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/hermes-studio-page.js?v=0.78.19"></script>
+    <script src="js/alerts.js?v=0.78.19"></script>
+</body>
+</html>

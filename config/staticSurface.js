@@ -136,6 +136,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Design catalog workspace and embedded art-director view.'
     },
     {
+        file: 'hermes-studio.html',
+        canonicalPath: '/hermes-studio',
+        owner: 'hermes-studio',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Hermes Studio creative material job queue, brief intake, asset review, and human decisions.'
+    },
+    {
         file: 'finance.html',
         canonicalPath: '/finance',
         owner: 'finance',

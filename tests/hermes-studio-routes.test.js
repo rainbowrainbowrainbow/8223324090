@@ -157,7 +157,7 @@ function createFakePool(options = {}) {
             return { rows: clone(rows), rowCount: rows.length };
         }
 
-        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, completed_at =')) {
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3::varchar, completed_at =')) {
             const row = hermesJobs.get(Number(params[0]));
             if (!row || String(row.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
                 return { rows: [], rowCount: 0 };
@@ -364,6 +364,10 @@ test('Hermes Studio records creative/admin human decisions in job history', asyn
         assert.equal(approved.data.job.status, 'approved');
         assert.equal(approved.data.job.decision.decision, 'approved');
         assert.equal(approved.data.job.history.some(event => event.eventType === 'decision_recorded'), true);
+        const decisionUpdate = fakePool.calls.find(call => call.compact?.startsWith('UPDATE hermes_jobs SET status = $3::varchar, completed_at ='));
+        assert.ok(decisionUpdate, 'Hermes Studio decision update must use explicit parameter casts');
+        assert.match(decisionUpdate.compact, /status = \$3::varchar/);
+        assert.match(decisionUpdate.compact, /CASE WHEN \$3::text IN \('approved','rejected'\)/);
         assert.equal(fakePool.hermesJobDecisions.length, 1);
         assert.equal(fakePool.hermesJobs.get(601).status, 'approved');
     });

@@ -587,7 +587,7 @@ function createHermesCreateFakePool(options = {}) {
             return { rows: [clone(job)], rowCount: 1 };
         }
 
-        if (compact.startsWith('UPDATE hermes_jobs SET status = $3, completed_at =')) {
+        if (compact.startsWith('UPDATE hermes_jobs SET status = $3::varchar, completed_at =')) {
             const job = hermesJobs.get(Number(params[0]));
             if (!job || String(job.business_context || 'event_genix') !== String(params[1] || 'event_genix')) {
                 return { rows: [], rowCount: 0 };
@@ -1917,6 +1917,10 @@ describe('Hermes jobs foundation routes', () => {
             assert.deepEqual(decisionRetry.data, decisionFirst.data);
             assert.equal(decisionFirst.data.job.status, 'approved');
             assert.equal(decisionFirst.data.job.decision.decision, 'approved');
+            const decisionUpdate = fakePool.calls.find(call => call.compact?.startsWith('UPDATE hermes_jobs SET status = $3::varchar, completed_at ='));
+            assert.ok(decisionUpdate, 'decision update must use explicit parameter casts');
+            assert.match(decisionUpdate.compact, /status = \$3::varchar/);
+            assert.match(decisionUpdate.compact, /CASE WHEN \$3::text IN \('approved','rejected'\)/);
             assert.equal(fakePool.hermesJobDecisions.length, 1);
             assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId)).length, 4);
 

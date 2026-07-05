@@ -1178,8 +1178,8 @@ async function recordHermesJobDecision(queryable, jobId, body = {}, context = {}
     const actorName = actorSnapshot(actor, 'crm');
     const updated = await queryable.query(
         `UPDATE hermes_jobs
-         SET status = $3,
-             completed_at = CASE WHEN $3 IN ('approved','rejected') THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+         SET status = $3::varchar,
+             completed_at = CASE WHEN $3::text IN ('approved','rejected') THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
              updated_by_user_id = $4,
              updated_by_snapshot = $5,
              updated_at = NOW()

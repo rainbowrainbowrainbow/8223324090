@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.24 - Клієнти: створення з дітьми
+
+### Customers / Customer children / CI runtime / (Клешня, 05.07.2026) [codex]
+- **Створення клієнта з child payload виправлено** - `replaceCustomerChildren` тепер використовує переданий pg transaction client напряму, тому `customer_children` бачить щойно створену customer row і не падає на FK.
+- **Live 500 root cause закрито** - помилка `customer_children_customer_id_fkey` виникала, коли child sync відкривав інше DB з'єднання до commit основної customer transaction.
+- **Regression coverage додано** - unit test фіксує pg-like transaction client із `connect()` і перевіряє, що helper не відкриває окремий pool transaction.
+- **GitHub Actions deprecation прибрано** - CI workflow оновлено до `actions/checkout@v5` і `actions/setup-node@v5`, які працюють на Node 24 runtime.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений customer children transaction helper, CI workflow, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.23 - Бронювання свят: другий ведучий активності
 
 ### Booking / Multi-activity / Second hosts / Live QA / (Клешня, 05.07.2026) [codex]

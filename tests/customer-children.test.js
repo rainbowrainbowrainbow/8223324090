@@ -409,6 +409,61 @@ test('replaceCustomerChildren validates children before writing', async () => {
     assert.equal(called, false);
 });
 
+test('replaceCustomerChildren uses a provided pg transaction client directly', async () => {
+    const calls = [];
+    const savedRows = [];
+    const client = {
+        connect() {
+            throw new Error('transaction client must not be used as a pool');
+        },
+        async query(text, params = []) {
+            calls.push({ text, params });
+            if (/DELETE FROM customer_children[\s\S]*AND source_kind = \$3/i.test(text)) {
+                assert.deepEqual(params, [321, 'event_genix', 'legacy_customer_child']);
+                savedRows.length = 0;
+                return { rows: [], rowCount: 0 };
+            }
+            if (/INSERT INTO customer_children/i.test(text)) {
+                savedRows.push({
+                    id: savedRows.length + 1,
+                    business_context: params[0],
+                    customer_id: params[1],
+                    lead_id: params[2],
+                    booking_id: params[3],
+                    name: params[4],
+                    birthday: params[5],
+                    age_snapshot: params[6],
+                    note: params[7],
+                    source_kind: params[8],
+                    source_payload: JSON.parse(params[9]),
+                    sort_order: params[10]
+                });
+                return { rows: [], rowCount: 1 };
+            }
+            if (/FROM customer_children/i.test(text)) {
+                return { rows: savedRows.slice() };
+            }
+            throw new Error(`unexpected query: ${text}`);
+        }
+    };
+
+    const result = await replaceCustomerChildren(
+        321,
+        [{ name: 'QA Child' }],
+        'event_genix',
+        {
+            sourceKind: 'legacy_customer_child',
+            source: 'customers.create',
+            copyRule: 'legacy_customer_fields_payload'
+        },
+        { client }
+    );
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, 'QA Child');
+    assert.ok(!calls.some(call => /^\s*BEGIN\b|\bCOMMIT\b|\bROLLBACK\b/i.test(call.text)));
+});
+
 test('replaceCustomerChildren replaces customer truth and returns all saved children', async () => {
     const calls = [];
     const savedRows = [];

@@ -167,9 +167,12 @@ function positiveIntegerOrNull(value) {
 }
 
 async function withTransaction(options, callback) {
-    const provided = options.client || options.db;
-    if (provided && typeof provided.query === 'function' && typeof provided.connect !== 'function') {
-        return callback(provided);
+    if (options.client && typeof options.client.query === 'function') {
+        return callback(options.client);
+    }
+
+    if (options.db && typeof options.db.query === 'function' && typeof options.db.connect !== 'function') {
+        return callback(options.db);
     }
 
     const pool = options.pool || options.db || defaultPool;

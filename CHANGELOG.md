@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.11 - CSP і HR Pulse guardrails
+
+### CSP / HR Pulse / Production console cleanup / (Клешня, 05.07.2026) [codex]
+- **Microsoft Clarity CSP allowlist доповнено реальним script host** - `https://scripts.clarity.ms` додано до `script-src`, щоб production не блокував уже підключений Clarity snippet.
+- **HR Pulse browser smoke додано як read-only release guard** - `test:browser:hr-pulse` перевіряє `/hr#today`, клік `Графік` без переходу на `/staff`, `/hr#reports` і standalone `/staff`.
+- **Regression guards оновлено без секретів у логах** - smoke використовує існуючі local/live credential env vars, блокує production run без явного allow flag і не змінює реальні розклади.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений CSP header, HR Pulse browser guard, tests і version/cache refs.
+
+---
+
 ## v0.78.10 - HR: спільні фільтри персоналу
 
 ### HR / Структура компанії / Сьогодні / Графік / (Клешня, 05.07.2026) [codex]

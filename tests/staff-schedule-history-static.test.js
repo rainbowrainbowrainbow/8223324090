@@ -283,6 +283,7 @@ describe('staff schedule safety guards', () => {
         assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'security', role_type: 'maintenance' }), 'tech');
         assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'admin', role_type: 'manager' }), 'reception');
         assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'admin', role_type: 'senior_manager' }), 'reception');
+        assert.equal(staffDisplayGroups.resolveStaffDisplayGroup({ department: 'cleaning', role_type: 'reception' }), 'reception');
         assert.equal(staffDisplayGroups.resolveStaffDisplayGroup(
             { department: 'security', role_type: 'maintenance' },
             { structureNode: { displayGroup: 'cafe' } }
@@ -358,6 +359,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffScheduleRoute, /s\.role_type, s\.company_structure_node_id/);
         assert.match(staffScheduleRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
         assert.match(staffScheduleRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
+        assert.match(staffListRoute, /staff\.company_structure_node_id/);
         assert.match(staffListRoute, /const displayGroupContext = await loadStaffDisplayGroupContext\(pool\)/);
         assert.match(staffListRoute, /decorateStaffRowsWithDisplayGroups\(result\.rows, \{ displayGroupContext \}\)/);
         assert.match(staffListRoute, /buildStaffDisplayGroupOptions\(result\.rows, \{ displayGroupContext \}\)/);

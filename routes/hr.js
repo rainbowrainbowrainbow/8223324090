@@ -3941,6 +3941,7 @@ router.get('/today', async (req, res) => {
                 staff_id: s.id,
                 staff_name: s.name,
                 department: s.department,
+                company_structure_node_id: s.company_structure_node_id,
                 display_group: displayStaff.display_group,
                 display_group_label: displayStaff.display_group_label,
                 displayGroup: displayStaff.displayGroup,

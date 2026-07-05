@@ -1557,6 +1557,7 @@ router.get('/', async (req, res) => {
             staff.position,
             staff.position AS role,
             staff.role_type,
+            staff.company_structure_node_id,
             COALESCE(staff.secondary_professions, '[]'::jsonb) AS secondary_professions,
             COALESCE((
                 SELECT jsonb_agg(profession_key)

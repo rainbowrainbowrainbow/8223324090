@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.12",
+  "version": "0.78.13",
   "eventGenix": {
-    "releaseLabel": "HR: структура керує фільтрами"
+    "releaseLabel": "HR: синхронні фільтри структури"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

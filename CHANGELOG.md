@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.13 - HR: синхронні фільтри структури
+
+### HR / Staff API / Structure-aware filters / (Клешня, 05.07.2026) [codex]
+- **Standalone `/staff` тепер отримує `company_structure_node_id` у staff payload** - backend resolver має той самий structure context, що й `/api/hr/today` та `/api/hr/staff`.
+- **`/api/hr/today` показує structure node id у read-only payload** - live QA може прямо бачити, коли display group прийшов зі структури, а не з fallback.
+- **Guardrails посилено під parity bug** - тест фіксує `staff.company_structure_node_id` у `/api/staff` SELECT і fallback `department=cleaning + role_type=reception -> reception`.
+- **DB, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR/staff API parity, tests і version/cache refs.
+
+---
+
 ## v0.78.12 - HR: структура керує фільтрами
 
 ### HR / Структура компанії / Сьогодні / Графік / (Клешня, 05.07.2026) [codex]

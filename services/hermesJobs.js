@@ -1,6 +1,15 @@
 'use strict';
 
+const crypto = require('crypto');
 const { DEFAULT_TASK_BUSINESS_CONTEXT, activeTaskBusinessContext } = require('./taskBusinessScope');
+const {
+    CATALOG_IMAGE_STORAGE_BUCKET,
+    CATALOG_IMAGE_STORAGE_PROVIDER,
+    DEFAULT_MAX_IMAGE_BYTES,
+    publicCatalogImageUrl,
+    safeImageFilename,
+    storeCatalogImageBlob
+} = require('./imageStorage');
 
 const HERMES_JOB_TYPES = Object.freeze([
     'menu_photo_job',
@@ -163,11 +172,21 @@ const HERMES_JOB_ASSET_ALLOWED_FIELDS = new Set([
     'mime_type',
     'checksumSha256',
     'checksum_sha256',
+    'imageBase64',
+    'image_base64',
+    'imageMimeType',
+    'image_mime_type',
     'metadata'
 ]);
 
 const HERMES_JOB_ASSET_TYPES = new Set(['source', 'reference', 'result', 'preview', 'final', 'other']);
 const MAX_JOB_ASSETS_PER_RESULT = 30;
+const HERMES_CREATIVE_ASSET_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const HERMES_CREATIVE_SAFE_IMAGE_PREFIXES = Object.freeze([
+    '/uploads/catalog-images/items/',
+    '/images/'
+]);
+const MAX_HERMES_ASSET_BASE64_LENGTH = Math.ceil((DEFAULT_MAX_IMAGE_BYTES * 4) / 3) + 1024;
 
 function hermesJobError(statusCode, code, message, extra = {}) {
     const err = new Error(message);
@@ -212,6 +231,213 @@ function safeJsonObject(value, maxLength = 12000) {
         throw hermesJobError(400, 'HERMES_JOB_PAYLOAD_TOO_LARGE', 'Hermes job payload is too large');
     }
     return copy;
+}
+
+function cleanBase64Image(value, index = 0) {
+    if (value === undefined || value === null) return null;
+    const text = String(value)
+        .replace(/\r\n?/g, '\n')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+        .trim();
+    if (!text) return null;
+    if (text.length > MAX_HERMES_ASSET_BASE64_LENGTH) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_IMAGE_TOO_LARGE',
+            `assets[${index}].imageBase64 exceeds the maximum image size`
+        );
+    }
+    return text;
+}
+
+function normalizeHermesImageMimeType(value) {
+    const mime = String(value || '').split(';')[0].trim().toLowerCase();
+    return mime === 'image/jpg' ? 'image/jpeg' : mime;
+}
+
+function assertAllowedHermesCreativeMimeType(mime, index = 0) {
+    if (!HERMES_CREATIVE_ASSET_MIME_TYPES.has(mime)) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_MIME_INVALID',
+            `assets[${index}].mimeType must be image/png, image/jpeg, or image/webp`
+        );
+    }
+}
+
+function imageExtensionForMimeType(mime) {
+    if (mime === 'image/jpeg') return 'jpg';
+    if (mime === 'image/webp') return 'webp';
+    return 'png';
+}
+
+function bufferAscii(buffer, start, end) {
+    return buffer.subarray(start, end).toString('ascii');
+}
+
+function hasImageSignature(data, mimeType) {
+    if (!Buffer.isBuffer(data)) return false;
+    if (mimeType === 'image/png') {
+        return data.length >= 8
+            && data[0] === 0x89
+            && data[1] === 0x50
+            && data[2] === 0x4e
+            && data[3] === 0x47
+            && data[4] === 0x0d
+            && data[5] === 0x0a
+            && data[6] === 0x1a
+            && data[7] === 0x0a;
+    }
+    if (mimeType === 'image/jpeg') {
+        return data.length >= 2 && data[0] === 0xff && data[1] === 0xd8;
+    }
+    if (mimeType === 'image/webp') {
+        return data.length >= 12
+            && bufferAscii(data, 0, 4) === 'RIFF'
+            && bufferAscii(data, 8, 12) === 'WEBP';
+    }
+    return false;
+}
+
+function assertHermesCreativeImageSignature(data, mimeType, index = 0) {
+    if (!hasImageSignature(data, mimeType)) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_SIGNATURE_MISMATCH',
+            `assets[${index}].imageBase64 bytes do not match declared MIME type`
+        );
+    }
+}
+
+function safeFilenamePart(value, fallback = 'asset', maxLength = 24) {
+    const text = cleanString(value, maxLength * 2, fallback) || fallback;
+    return text
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, maxLength) || fallback;
+}
+
+function buildHermesCreativeAssetFilename(job, asset, index, checksumSha256, mimeType) {
+    const jobPart = safeFilenamePart(job.id, 'job', 12);
+    const assetPart = safeFilenamePart(
+        asset.externalAssetId || asset.role || asset.assetType || `asset-${index + 1}`,
+        `asset-${index + 1}`,
+        24
+    );
+    const ext = imageExtensionForMimeType(mimeType);
+    return safeImageFilename(`hermes-creative-job-${jobPart}-${assetPart}-${checksumSha256.slice(0, 16)}.${ext}`);
+}
+
+function decodeHermesCreativeAssetImage(asset = {}, index = 0) {
+    let mimeType = normalizeHermesImageMimeType(asset.imageMimeType || asset.mimeType || 'image/png');
+    let base64 = asset.imageBase64;
+    const dataUrlMatch = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(base64 || '');
+    if (dataUrlMatch) {
+        mimeType = normalizeHermesImageMimeType(dataUrlMatch[1]);
+        base64 = dataUrlMatch[2];
+    }
+    assertAllowedHermesCreativeMimeType(mimeType, index);
+
+    const compact = String(base64 || '').replace(/\s+/g, '');
+    if (!compact || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length % 4 === 1) {
+        throw hermesJobError(400, 'HERMES_JOB_ASSET_IMAGE_INVALID', `assets[${index}].imageBase64 is invalid`);
+    }
+    const estimatedBytes = Math.floor((compact.length * 3) / 4);
+    if (estimatedBytes > DEFAULT_MAX_IMAGE_BYTES) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_IMAGE_TOO_LARGE',
+            `assets[${index}].imageBase64 exceeds the maximum image size`
+        );
+    }
+
+    const data = Buffer.from(compact, 'base64');
+    if (!data.length) {
+        throw hermesJobError(400, 'HERMES_JOB_ASSET_IMAGE_INVALID', `assets[${index}].imageBase64 is empty`);
+    }
+    if (data.length > DEFAULT_MAX_IMAGE_BYTES) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_IMAGE_TOO_LARGE',
+            `assets[${index}].imageBase64 exceeds the maximum image size`
+        );
+    }
+    assertHermesCreativeImageSignature(data, mimeType, index);
+
+    const checksumSha256 = crypto.createHash('sha256').update(data).digest('hex');
+    if (asset.checksumSha256 && asset.checksumSha256 !== checksumSha256) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_CHECKSUM_MISMATCH',
+            `assets[${index}].checksumSha256 does not match imageBase64`
+        );
+    }
+    return { data, mimeType, checksumSha256 };
+}
+
+function normalizeHermesCreativeAssetUrl(url, index = 0) {
+    const text = cleanString(url, 2000);
+    if (!text) return null;
+    if (/^local:\/\//i.test(text) || /^data:/i.test(text)) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_URL_FORBIDDEN',
+            `assets[${index}].url must be a CRM-served image URL`
+        );
+    }
+    if (text.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(text)) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_URL_FORBIDDEN',
+            `assets[${index}].url must be same-origin and CRM-served`
+        );
+    }
+    if (!text.startsWith('/')) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_URL_FORBIDDEN',
+            `assets[${index}].url must be a same-origin path`
+        );
+    }
+
+    let parsed;
+    try {
+        parsed = new URL(text, 'https://eventgenix.local');
+    } catch {
+        throw hermesJobError(400, 'HERMES_JOB_ASSET_URL_INVALID', `assets[${index}].url is invalid`);
+    }
+    const pathname = parsed.pathname;
+    let decodedPath = pathname;
+    try {
+        decodedPath = decodeURIComponent(pathname);
+    } catch {
+        throw hermesJobError(400, 'HERMES_JOB_ASSET_URL_INVALID', `assets[${index}].url is invalid`);
+    }
+    const hasAllowedPrefix = HERMES_CREATIVE_SAFE_IMAGE_PREFIXES.some(prefix => pathname.startsWith(prefix));
+    const hasAllowedExtension = /\.(png|jpe?g|webp)$/i.test(pathname);
+    if (
+        !hasAllowedPrefix
+        || !hasAllowedExtension
+        || decodedPath.includes('\\')
+        || decodedPath.includes('..')
+    ) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_URL_FORBIDDEN',
+            `assets[${index}].url must be a CRM-served image URL`
+        );
+    }
+    return `${pathname}${parsed.search}${parsed.hash}`;
+}
+
+function stripTransientAssetFields(asset = {}) {
+    const {
+        imageBase64: _imageBase64,
+        imageMimeType: _imageMimeType,
+        ...persistable
+    } = asset;
+    return persistable;
 }
 
 function normalizeStringArray(value, maxItems = 20, maxLength = 120) {
@@ -988,8 +1214,17 @@ function normalizeAssetInput(asset = {}, index = 0) {
     }
     const url = cleanString(asset.url || asset.assetUrl || asset.asset_url, 2000);
     const storageKey = cleanString(asset.storageKey || asset.storage_key, 500);
-    if (!url && !storageKey) {
-        throw hermesJobError(400, 'HERMES_JOB_ASSET_LOCATION_REQUIRED', `assets[${index}] requires url or storageKey`);
+    const imageBase64 = cleanBase64Image(asset.imageBase64 || asset.image_base64, index);
+    const imageMimeType = cleanString(asset.imageMimeType || asset.image_mime_type, 120);
+    if (imageBase64 && (url || storageKey)) {
+        throw hermesJobError(
+            400,
+            'HERMES_JOB_ASSET_SOURCE_CONFLICT',
+            `assets[${index}] must provide either imageBase64 or url/storageKey`
+        );
+    }
+    if (!url && !storageKey && !imageBase64) {
+        throw hermesJobError(400, 'HERMES_JOB_ASSET_LOCATION_REQUIRED', `assets[${index}] requires url, storageKey, or imageBase64`);
     }
     const checksum = cleanString(asset.checksumSha256 || asset.checksum_sha256, 64);
     if (checksum && !/^[a-f0-9]{64}$/.test(checksum)) {
@@ -1003,8 +1238,73 @@ function normalizeAssetInput(asset = {}, index = 0) {
         storageKey,
         mimeType: cleanString(asset.mimeType || asset.mime_type, 120),
         checksumSha256: checksum,
+        imageBase64,
+        imageMimeType,
         metadata: safeJsonObject(asset.metadata || {}, 5000)
     };
+}
+
+async function prepareHermesCreativeAsset(queryable, job, asset = {}, index = 0) {
+    if (asset.imageBase64) {
+        const decoded = decodeHermesCreativeAssetImage(asset, index);
+        const metadata = safeJsonObject({
+            ...(asset.metadata || {}),
+            storageProvider: CATALOG_IMAGE_STORAGE_PROVIDER,
+            storageBucket: CATALOG_IMAGE_STORAGE_BUCKET,
+            sourceProvider: 'hermes',
+            sourceJobType: 'creative_material_job',
+            sourceJobId: String(job.id),
+            sourceAssetExternalId: asset.externalAssetId || null,
+            sourceAssetRole: asset.role || null,
+            checksumSha256: decoded.checksumSha256,
+            sizeBytes: decoded.data.length
+        }, 5000);
+        const filename = buildHermesCreativeAssetFilename(job, asset, index, decoded.checksumSha256, decoded.mimeType);
+        const stored = await storeCatalogImageBlob(queryable, {
+            filename,
+            contentType: decoded.mimeType,
+            data: decoded.data,
+            sourceUrl: null,
+            metadata
+        });
+        return {
+            ...stripTransientAssetFields(asset),
+            url: stored.publicUrl || publicCatalogImageUrl(stored.filename),
+            storageKey: stored.filename,
+            mimeType: stored.contentType,
+            checksumSha256: decoded.checksumSha256,
+            metadata
+        };
+    }
+
+    if (asset.url) {
+        return {
+            ...stripTransientAssetFields(asset),
+            url: normalizeHermesCreativeAssetUrl(asset.url, index)
+        };
+    }
+
+    return stripTransientAssetFields(asset);
+}
+
+async function prepareHermesJobResultAssets(queryable, job, assets = []) {
+    if ((job.job_type || job.jobType) !== 'creative_material_job') {
+        const unsupportedIndex = assets.findIndex(asset => asset.imageBase64);
+        if (unsupportedIndex >= 0) {
+            throw hermesJobError(
+                400,
+                'HERMES_JOB_ASSET_IMAGE_UNSUPPORTED',
+                `assets[${unsupportedIndex}].imageBase64 is only supported for creative_material_job`
+            );
+        }
+        return assets.map(stripTransientAssetFields);
+    }
+
+    const prepared = [];
+    for (let index = 0; index < assets.length; index += 1) {
+        prepared.push(await prepareHermesCreativeAsset(queryable, job, assets[index], index));
+    }
+    return prepared;
 }
 
 function normalizeResultBody(body = {}) {
@@ -1081,6 +1381,7 @@ async function recordHermesJobResult(queryable, jobId, body = {}, context = {}) 
     const actor = context.actor || {};
     const payload = normalizeResultBody(body);
     const current = await requireHermesJob(queryable, jobId, businessContext, { forUpdate: true });
+    const preparedAssets = await prepareHermesJobResultAssets(queryable, current, payload.assets);
     const actorId = actorUserId(actor);
     const actorName = actorSnapshot(actor, 'hermes');
     const result = await queryable.query(
@@ -1107,7 +1408,7 @@ async function recordHermesJobResult(queryable, jobId, body = {}, context = {}) 
     );
     const job = result.rows[0];
     const assets = [];
-    for (const asset of payload.assets) {
+    for (const asset of preparedAssets) {
         const saved = await insertHermesJobAsset(queryable, job, asset);
         if (saved) assets.push(saved);
     }

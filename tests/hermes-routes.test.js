@@ -1,6 +1,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const crypto = require('node:crypto');
 const fsp = require('node:fs/promises');
 const jwt = require('jsonwebtoken');
 const os = require('node:os');
@@ -357,6 +358,18 @@ function mutationHeaders(idempotencyKey, extra = {}) {
         ...extra
     };
 }
+
+const SAMPLE_PNG_BYTES = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47,
+    0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d
+]);
+const SAMPLE_JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+const SAMPLE_WEBP_BYTES = Buffer.from([
+    0x52, 0x49, 0x46, 0x46,
+    0x04, 0x00, 0x00, 0x00,
+    0x57, 0x45, 0x42, 0x50
+]);
 
 function createHermesCreateFakePool(options = {}) {
     const calls = [];
@@ -1834,6 +1847,21 @@ describe('Hermes jobs foundation routes', () => {
         });
     });
 
+    it('keeps Hermes result JSON limit scoped before the global CRM JSON parser', async () => {
+        const source = await fsp.readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
+        const limitMarker = "const HERMES_JOB_RESULT_JSON_LIMIT = '20mb';";
+        const hermesParserMarker = "app.use(['/api/hermes/jobs/:id/result', '/api/v1/hermes/jobs/:id/result'], express.json({ limit: HERMES_JOB_RESULT_JSON_LIMIT }));";
+        const globalParserMarker = "app.use(express.json({ limit: '1mb' }));";
+        const limitIndex = source.indexOf(limitMarker);
+        const hermesParserIndex = source.indexOf(hermesParserMarker);
+        const globalParserIndex = source.indexOf(globalParserMarker);
+
+        assert.ok(limitIndex >= 0, 'Hermes result JSON limit must be explicit');
+        assert.ok(hermesParserIndex >= 0, 'Hermes result route must have a scoped JSON parser');
+        assert.ok(globalParserIndex >= 0, 'global CRM JSON parser must remain at 1mb');
+        assert.ok(hermesParserIndex < globalParserIndex, 'Hermes result parser must run before the global parser');
+    });
+
     it('records status, result assets, history, and human decisions without duplicates on retries', async () => {
         const fakePool = createHermesCreateFakePool();
 
@@ -1880,7 +1908,7 @@ describe('Hermes jobs foundation routes', () => {
                         externalAssetId: 'poster-final-1',
                         assetType: 'result',
                         role: 'final',
-                        url: 'https://cdn.example.test/poster-final.png',
+                        url: '/images/empty-state.png',
                         mimeType: 'image/png',
                         metadata: { width: 1080, height: 1350 }
                     }
@@ -1895,6 +1923,7 @@ describe('Hermes jobs foundation routes', () => {
             assert.equal(resultFirst.data.job.status, 'ready_for_review');
             assert.equal(resultFirst.data.job.assets.length, 1);
             assert.equal(resultFirst.data.job.assets[0].externalAssetId, 'poster-final-1');
+            assert.equal(resultFirst.data.job.assets[0].url, '/images/empty-state.png');
             const resultUpdate = fakePool.calls.find(call => call.compact?.startsWith('UPDATE hermes_jobs SET status = $3::varchar, result_payload ='));
             assert.ok(resultUpdate, 'result update must use explicit parameter casts');
             assert.match(resultUpdate.compact, /status = \$3::varchar/);
@@ -1931,6 +1960,299 @@ describe('Hermes jobs foundation routes', () => {
             assert.equal(detail.data.job.decision.decision, 'approved');
             assert.equal(detail.data.meta.autoPublish, false);
             assert.equal(detail.data.meta.autoApply, false);
+        });
+    });
+
+    it('ingests creative_material_job imageBase64 assets into catalog image blob storage', async () => {
+        const fakePool = createHermesCreateFakePool();
+        const imageData = SAMPLE_PNG_BYTES;
+        const checksumSha256 = crypto.createHash('sha256').update(imageData).digest('hex');
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'creative_material_job',
+                title: 'Summer poster',
+                payload: {
+                    brief: 'Create one clean summer poster',
+                    materialType: 'poster',
+                    formatSize: '1080x1350'
+                }
+            }, mutationHeaders('hermes-creative-asset-ingest-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const expectedFilename = `hermes-creative-job-${jobId}-creative-final-1-${checksumSha256.slice(0, 16)}.png`;
+            const expectedUrl = `/uploads/catalog-images/items/${expectedFilename}`;
+            const resultBody = {
+                status: 'ready_for_review',
+                summary: 'Creative asset ready',
+                externalEventId: 'creative-asset-ingest-result-1',
+                result: {
+                    notes: 'Generated one safe CRM-stored preview.'
+                },
+                assets: [
+                    {
+                        externalAssetId: 'creative-final-1',
+                        assetType: 'result',
+                        role: 'final',
+                        imageBase64: imageData.toString('base64'),
+                        mimeType: 'image/png',
+                        metadata: { width: 1080, height: 1350 }
+                    }
+                ]
+            };
+
+            const first = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, resultBody, mutationHeaders('hermes-creative-asset-ingest-result'));
+            const retry = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, resultBody, mutationHeaders('hermes-creative-asset-ingest-result'));
+
+            assert.equal(first.status, 200, first.text);
+            assert.equal(retry.status, 200, retry.text);
+            assert.deepEqual(retry.data, first.data);
+            assert.equal(first.data.job.status, 'ready_for_review');
+            assert.equal(first.data.job.assets.length, 1);
+            assert.equal(first.data.meta.autoPublish, false);
+            assert.equal(first.data.meta.autoApply, false);
+
+            const asset = first.data.job.assets[0];
+            assert.equal(asset.externalAssetId, 'creative-final-1');
+            assert.equal(asset.url, expectedUrl);
+            assert.equal(asset.storageKey, expectedFilename);
+            assert.equal(asset.mimeType, 'image/png');
+            assert.equal(asset.checksumSha256, checksumSha256);
+            assert.equal(asset.metadata.width, 1080);
+            assert.equal(asset.metadata.height, 1350);
+            assert.equal(asset.metadata.storageProvider, 'postgres');
+            assert.equal(asset.metadata.storageBucket, 'catalog_image_blobs');
+            assert.equal(asset.metadata.sourceProvider, 'hermes');
+            assert.equal(asset.metadata.sourceJobType, 'creative_material_job');
+            assert.equal(asset.metadata.sourceJobId, String(jobId));
+            assert.equal(asset.metadata.sourceAssetExternalId, 'creative-final-1');
+            assert.equal(asset.metadata.checksumSha256, checksumSha256);
+            assert.equal(asset.metadata.sizeBytes, imageData.length);
+
+            const blob = fakePool.catalogImageBlobs.get(expectedFilename);
+            assert.ok(blob, 'creative image must be stored in catalog_image_blobs');
+            assert.equal(blob.content_type, 'image/png');
+            assert.equal(blob.size_bytes, imageData.length);
+            assert.deepEqual(blob.data, imageData);
+            assert.equal(blob.metadata.storageProvider, 'postgres');
+            assert.equal(blob.metadata.storageBucket, 'catalog_image_blobs');
+            assert.equal(blob.metadata.sourceProvider, 'hermes');
+            assert.equal(fakePool.catalogImageBlobs.size, 1);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('INSERT INTO catalog_image_blobs')).length, 1);
+            assert.equal(fakePool.hermesJobAssets.length, 1);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET icon_url =')).length, 0);
+            assert.equal(fakePool.calls.filter(call => call.compact?.startsWith('UPDATE products SET ai_card_draft =')).length, 0);
+        });
+    });
+
+    it('rejects creative_material_job imageBase64 assets with unsafe MIME types', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'creative_material_job',
+                title: 'Unsafe MIME poster',
+                payload: {
+                    brief: 'Create poster',
+                    materialType: 'poster'
+                }
+            }, mutationHeaders('hermes-creative-invalid-mime-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const result = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, {
+                status: 'ready_for_review',
+                externalEventId: 'creative-invalid-mime-result-1',
+                assets: [
+                    {
+                        externalAssetId: 'creative-gif-1',
+                        assetType: 'result',
+                        imageBase64: Buffer.from('gif-data').toString('base64'),
+                        mimeType: 'image/gif'
+                    }
+                ]
+            }, mutationHeaders('hermes-creative-invalid-mime-result'));
+
+            assert.equal(result.status, 400, result.text);
+            assert.equal(result.data.code, 'HERMES_JOB_ASSET_MIME_INVALID');
+            assert.equal(fakePool.catalogImageBlobs.size, 0);
+            assert.equal(fakePool.hermesJobAssets.length, 0);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId) && event.event_type === 'result_posted').length, 0);
+        });
+    });
+
+    it('rejects creative_material_job imageBase64 assets when declared MIME does not match bytes', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'creative_material_job',
+                title: 'MIME mismatch poster',
+                payload: {
+                    brief: 'Create poster',
+                    materialType: 'poster'
+                }
+            }, mutationHeaders('hermes-creative-mime-mismatch-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const cases = [
+                { suffix: 'png-declared-jpeg-bytes', mimeType: 'image/png', bytes: SAMPLE_JPEG_BYTES },
+                { suffix: 'jpeg-declared-webp-bytes', mimeType: 'image/jpeg', bytes: SAMPLE_WEBP_BYTES },
+                { suffix: 'webp-declared-png-bytes', mimeType: 'image/webp', bytes: SAMPLE_PNG_BYTES }
+            ];
+
+            for (const entry of cases) {
+                const result = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, {
+                    status: 'ready_for_review',
+                    externalEventId: `creative-mime-mismatch-${entry.suffix}`,
+                    assets: [
+                        {
+                            externalAssetId: `creative-${entry.suffix}`,
+                            assetType: 'result',
+                            imageBase64: entry.bytes.toString('base64'),
+                            mimeType: entry.mimeType
+                        }
+                    ]
+                }, mutationHeaders(`hermes-creative-mime-mismatch-${entry.suffix}`));
+
+                assert.equal(result.status, 400, result.text);
+                assert.equal(result.data.code, 'HERMES_JOB_ASSET_SIGNATURE_MISMATCH');
+            }
+
+            assert.equal(fakePool.catalogImageBlobs.size, 0);
+            assert.equal(fakePool.hermesJobAssets.length, 0);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId) && event.event_type === 'result_posted').length, 0);
+        });
+    });
+
+    it('rejects creative_material_job imageBase64 assets with checksum mismatches or source conflicts', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'creative_material_job',
+                title: 'Invalid asset poster',
+                payload: {
+                    brief: 'Create poster',
+                    materialType: 'poster'
+                }
+            }, mutationHeaders('hermes-creative-invalid-asset-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const checksumMismatch = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, {
+                status: 'ready_for_review',
+                externalEventId: 'creative-checksum-mismatch-result-1',
+                assets: [
+                    {
+                        externalAssetId: 'creative-checksum-mismatch',
+                        assetType: 'result',
+                        imageBase64: SAMPLE_PNG_BYTES.toString('base64'),
+                        mimeType: 'image/png',
+                        checksumSha256: '0'.repeat(64)
+                    }
+                ]
+            }, mutationHeaders('hermes-creative-checksum-mismatch-result'));
+
+            assert.equal(checksumMismatch.status, 400, checksumMismatch.text);
+            assert.equal(checksumMismatch.data.code, 'HERMES_JOB_ASSET_CHECKSUM_MISMATCH');
+
+            const sourceConflict = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, {
+                status: 'ready_for_review',
+                externalEventId: 'creative-source-conflict-result-1',
+                assets: [
+                    {
+                        externalAssetId: 'creative-source-conflict',
+                        assetType: 'result',
+                        url: '/uploads/catalog-images/items/existing.png',
+                        imageBase64: SAMPLE_PNG_BYTES.toString('base64'),
+                        mimeType: 'image/png'
+                    }
+                ]
+            }, mutationHeaders('hermes-creative-source-conflict-result'));
+
+            assert.equal(sourceConflict.status, 400, sourceConflict.text);
+            assert.equal(sourceConflict.data.code, 'HERMES_JOB_ASSET_SOURCE_CONFLICT');
+            assert.equal(fakePool.catalogImageBlobs.size, 0);
+            assert.equal(fakePool.hermesJobAssets.length, 0);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId) && event.event_type === 'result_posted').length, 0);
+        });
+    });
+
+    it('rejects imageBase64 result assets for non-creative Hermes jobs', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'menu_photo_job',
+                title: 'Menu photo',
+                sourceEntity: { type: 'product', id: 'dish-non-creative-image' },
+                payload: {
+                    productId: 'dish-non-creative-image',
+                    productCode: 'MENU-NON-CREATIVE',
+                    productName: 'Non creative dish',
+                    prompt: 'Clean menu photo'
+                }
+            }, mutationHeaders('hermes-menu-image-asset-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const result = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, {
+                status: 'ready_for_review',
+                externalEventId: 'menu-imagebase64-asset-result-1',
+                assets: [
+                    {
+                        externalAssetId: 'menu-imagebase64-asset',
+                        assetType: 'result',
+                        imageBase64: SAMPLE_PNG_BYTES.toString('base64'),
+                        mimeType: 'image/png'
+                    }
+                ]
+            }, mutationHeaders('hermes-menu-imagebase64-asset-result'));
+
+            assert.equal(result.status, 400, result.text);
+            assert.equal(result.data.code, 'HERMES_JOB_ASSET_IMAGE_UNSUPPORTED');
+            assert.equal(fakePool.catalogImageBlobs.size, 0);
+            assert.equal(fakePool.hermesJobAssets.length, 0);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId) && event.event_type === 'result_posted').length, 0);
+        });
+    });
+
+    it('rejects dummyimage.com and other external URLs as creative_material_job final assets', async () => {
+        const fakePool = createHermesCreateFakePool();
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const created = await request(baseUrl, 'POST', '/api/hermes/jobs', {
+                jobType: 'creative_material_job',
+                title: 'External URL poster',
+                payload: {
+                    brief: 'Create poster',
+                    materialType: 'poster'
+                }
+            }, mutationHeaders('hermes-creative-dummy-url-create'));
+            assert.equal(created.status, 201, created.text);
+
+            const jobId = created.data.job.id;
+            const result = await request(baseUrl, 'POST', `/api/hermes/jobs/${jobId}/result`, {
+                status: 'ready_for_review',
+                externalEventId: 'creative-dummy-url-result-1',
+                assets: [
+                    {
+                        externalAssetId: 'creative-dummy-1',
+                        assetType: 'result',
+                        url: 'https://dummyimage.com/1080x1350/2f7d32/ffffff.png&text=Hermes',
+                        mimeType: 'image/png'
+                    }
+                ]
+            }, mutationHeaders('hermes-creative-dummy-url-result'));
+
+            assert.equal(result.status, 400, result.text);
+            assert.equal(result.data.code, 'HERMES_JOB_ASSET_URL_FORBIDDEN');
+            assert.equal(fakePool.catalogImageBlobs.size, 0);
+            assert.equal(fakePool.hermesJobAssets.length, 0);
+            assert.equal(fakePool.hermesJobEvents.filter(event => Number(event.job_id) === Number(jobId) && event.event_type === 'result_posted').length, 0);
         });
     });
 });

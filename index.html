@@ -1744,6 +1744,15 @@
                 <div class="changelog-section">
                     <h4>v0.78.31 — HR Pulse unified headers</h4>
                     <ul>
+                        <li><b>Шапку <code>Графік</code> уніфіковано зі <code>Сьогодні</code></b> — compact hero має той самий ритм, top accent, padding, radius і праву зону з 4 метриками.</li>
+                        <li><b>Шапку <code>Звіти</code> перебрано під той самий pattern</b> — з hero прибрано некорисні <code>CSV готовий</code>, <code>KPI</code>, <code>ризики</code> і <code>42 людей</code>.</li>
+                        <li><b>Період і CSV export винесено під hero</b> — controls лишилися доступними, але більше не роздувають шапку <code>Звіти</code>.</li>
+                        <li><b>Regression coverage оновлено</b> — static UI guard перевіряє нові report metrics і блокує повернення старих hero-KPI.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.78.30 — Hermes: creative assets у CRM storage</h4>
+                    <ul>
                         <li><b>Creative result assets приймають <code>imageBase64</code></b> — CRM декодує PNG/JPEG/WebP, перевіряє MIME signature і зберігає фінальний asset у <code>catalog_image_blobs</code>.</li>
                         <li><b>Preview URL лишається CRM-served</b> — відповідь повертає same-origin шлях <code>/uploads/catalog-images/items/...</code> без provider/temp/dummy/data/local URL.</li>
                         <li><b>Review-first контракт збережено</b> — creative result не auto-apply і не auto-publish; рішення лишається за людиною.</li>

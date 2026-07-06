@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.27 - HR сьогодні без дублювання
+
+### HR / Сьогодні / Pulse layout / Responsive QA / (Клешня, 06.07.2026) [codex]
+- **Заголовок HR-пульсу спрощено** - вкладка `Сьогодні` показує дату під заголовком, без бейджа `Команда сьогодні`, окремої дата-картки та фейкової готовності.
+- **Дублі статусів прибрано** - цифри `На зміні` і `Запізнення` лишаються тільки у верхній шапці, а нижній summary більше не повторює `На роботі` та `Запізнились`.
+- **Нижній summary став чистим** - знизу показуються тільки `Відсутні` та обʼєднана картка `Хвороба / відпустка` на реальних `s.absent` і `s.sick + s.on_vacation`.
+- **Responsive layout перевірено** - статусні картки використовують adaptive grid, а Chromium-check пройшов desktop/tablet/mobile без overlap.
+- **Regression coverage оновлено** - `tests/ui-check.js` фіксує новий HR Today contract, відсутність старих KPI і заборону повторного дублювання.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений HR frontend, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.26 - Мій день: чеклісти і прострочені
 
 ### Profile / My Day / Checklist UI / Responsive layout / (Клешня, 06.07.2026) [codex]

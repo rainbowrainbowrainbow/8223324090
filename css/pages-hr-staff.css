@@ -4023,7 +4023,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav,
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar,
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -4034,7 +4033,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav::-webkit-scrollbar,
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar::-webkit-scrollbar,
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter::-webkit-scrollbar {
         display: none;
     }
@@ -4074,22 +4072,27 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar {
         grid-area: toolbar;
-        display: flex;
-        flex-wrap: nowrap;
-        justify-content: flex-start;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(148px, 100%), 1fr));
+        align-items: stretch;
+        justify-content: stretch;
         gap: 6px;
+        width: 100%;
         min-width: 0;
-        padding-bottom: 1px;
+        overflow: visible;
+        padding-bottom: 0;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar,
     body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary {
-        flex: 0 0 auto;
-        min-height: 34px;
+        flex: initial;
+        width: 100%;
+        min-height: 36px;
         min-width: 0;
         padding: 6px 10px;
         border-radius: 10px;
         font-size: 11px;
+        line-height: 1.1;
         white-space: normal;
         overflow-wrap: anywhere;
     }

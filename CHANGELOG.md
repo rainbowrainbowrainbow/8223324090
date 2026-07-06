@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.34 - HR Schedule mobile controls polish
+
+### HR Pulse / Графік / Mobile toolbar / Auto-deploy proof / (Клешня, 06.07.2026) [codex]
+- **Mobile toolbar у HR `Графіку` більше не є довгою горизонтальною стрічкою** - command buttons переходять у compact auto-fit grid: на вузьких екранах вони стають акуратними колонками без виїзду за блок.
+- **Week nav і department chips лишаються компактними rails** - горизонтальний scroll збережено тільки для елементів, де це природний control pattern.
+- **Regression coverage оновлено** - UI smoke фіксує mobile stacked command grid, щоб toolbar не повернувся до nowrap/overflow mode.
+- **DB schema, migrations, auth/roles, env/secrets, billing не змінювались** - реліз обмежений HR frontend CSS, static guard, changelog і version/cache refs.
+
+---
+
 ## v0.78.33 - HR Schedule controls cleanup
 
 ### HR Pulse / Графік / Toolbar cleanup / Attendance chips / (Клешня, 06.07.2026) [codex]

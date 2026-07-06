@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.37 - Schedule Preference Active State
+
+### HR / Staff schedule / Типові зміни / Active state / (Клешня, 06.07.2026) [codex]
+- **Активна кнопка `Будні / Вихідні` тепер синхронізується з вибраним шаблоном** - коли менеджер натискає `Вихідні`, зеленою стає саме кнопка вихідних; коли натискає `Будні`, активний стан повертається на будні.
+- **Час зміни і візуальна індикація більше не роз'їжджаються** - quick option оновлює start/end і `is-recommended` в одному потоці без зміни логіки збереження графіка.
+- **Додано regression guard** - статичний тест фіксує оновлення класу і `aria-pressed`, щоб active-state не зламався повторно.
+- **DB schema, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений frontend state fix, test guard, changelog і version/cache refs.
+
+---
+
 ## v0.78.36 - Staff Shift Preferences
 
 ### HR / Staff schedule / Типові зміни / DB migration / (Клешня, 06.07.2026) [codex]

@@ -1748,7 +1748,18 @@ function renderTodayStaffProfileAction(staffId, staffName) {
 
 function renderTodayStaffScheduleAction(staffId, staffName) {
     const label = `Відкрити графік: ${staffName}`;
-    return `<a href="/staff?highlight=${encodeURIComponent(staffId)}" class="hr-today-row-action hr-today-row-action--schedule" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation()">${hrTodayActionIconSvg('schedule')}</a>`;
+    const id = Number(staffId);
+    if (!Number.isInteger(id) || id <= 0) return '';
+    return `<a href="/hr?scheduleStaff=${encodeURIComponent(id)}#schedule" class="hr-today-row-action hr-today-row-action--schedule" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.preventDefault();event.stopPropagation();openTodayStaffSchedule(${id})">${hrTodayActionIconSvg('schedule')}</a>`;
+}
+
+async function openTodayStaffSchedule(staffId) {
+    const id = Number(staffId);
+    if (!Number.isInteger(id) || id <= 0) return;
+    await activateHrTab('schedule', { updateHash: true });
+    if (window.StaffSchedulePage && typeof window.StaffSchedulePage.focusStaff === 'function') {
+        window.StaffSchedulePage.focusStaff(id);
+    }
 }
 
 async function loadToday() {

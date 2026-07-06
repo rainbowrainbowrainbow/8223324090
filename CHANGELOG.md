@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.32 - HR Today focused schedule link
+
+### HR Pulse / Сьогодні / Графік співробітника / Focus navigation / (Клешня, 06.07.2026) [codex]
+- **Кнопка графіка у рядку `Сьогодні` тепер відкриває конкретного співробітника** - клік лишає користувача в HR `Пульсі компанії`, перемикає вкладку `Графік`, ставить фільтр потрібного відділу і центрує рядок людини.
+- **Старий перехід на загальний `/staff?highlight=...` прибрано** - deep-link тепер веде на `/hr?scheduleStaff=<id>#schedule`, а shared schedule module читає `scheduleStaff` і legacy `highlight`.
+- **Фокус у графіку став видимим** - рядок співробітника отримує акуратну підсвітку в light/dark mode без повторного автоскролу після кожного rerender.
+- **Regression coverage оновлено** - static UI guard фіксує новий HR Today -> focused schedule contract і блокує повернення старого загального `/staff` переходу.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений HR frontend, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.31 - HR Pulse unified headers
 
 ### HR Pulse / Сьогодні / Графік / Звіти / Header styleguide / (Клешня, 06.07.2026) [codex]

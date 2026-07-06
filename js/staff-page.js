@@ -85,6 +85,8 @@ const StaffState = {
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
     allUsers: [],           // v39.1: all users for linking
     professions: [],
+    focusedStaffId: null,
+    focusScrollPending: false,
     linkingStaffId: null,   // v39.1: staff being linked
     selectedUserId: null,   // v39.1: selected user in link modal
     bulkResults: null,      // v39.1: bulk create results
@@ -1884,6 +1886,91 @@ function todayStr() {
     return formatDateStr(new Date());
 }
 
+function normalizeScheduleFocusStaffId(value) {
+    const raw = String(value ?? '').trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const id = Number(raw);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function scheduleFocusStaffIdFromLocation() {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search || '');
+    return normalizeScheduleFocusStaffId(
+        params.get('scheduleStaff')
+        || params.get('highlight')
+        || params.get('staff')
+    );
+}
+
+function scheduleStaffById(staffId) {
+    const id = normalizeScheduleFocusStaffId(staffId);
+    if (!id) return null;
+    return StaffState.staff.find(staff => Number(staff.id) === id) || null;
+}
+
+function syncScheduleFocusDepartment(staffId) {
+    const staff = scheduleStaffById(staffId);
+    if (!staff) return false;
+    const department = scheduleDisplayDepartmentKey(staff);
+    if (department && StaffState.activeDept !== department) {
+        StaffState.activeDept = department;
+        renderDeptFilter();
+    }
+    return true;
+}
+
+function focusScheduleStaffRow(staffId, options = {}) {
+    const id = normalizeScheduleFocusStaffId(staffId);
+    const tbody = document.getElementById('scheduleBody');
+    if (!id || !tbody) return false;
+
+    tbody.querySelectorAll('.is-schedule-focus').forEach(row => row.classList.remove('is-schedule-focus'));
+    const row = tbody.querySelector(`[data-schedule-staff-row="${id}"]`);
+    if (!row) return false;
+
+    row.classList.add('is-schedule-focus');
+    if (options.scroll === false) return true;
+
+    const target = row.querySelector('[data-hr-profile]') || row;
+    const reduceMotion = typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const scrollToRow = () => {
+        target.scrollIntoView({
+            block: 'center',
+            inline: 'nearest',
+            behavior: reduceMotion ? 'auto' : 'smooth'
+        });
+        target.focus?.({ preventScroll: true });
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(scrollToRow);
+    } else {
+        scrollToRow();
+    }
+
+    return true;
+}
+
+function focusScheduleStaff(staffId, options = {}) {
+    const id = normalizeScheduleFocusStaffId(staffId);
+    if (!id) return false;
+
+    StaffState.focusedStaffId = id;
+    if (options.scroll !== false) StaffState.focusScrollPending = true;
+    if (options.syncDepartment !== false) syncScheduleFocusDepartment(id);
+
+    if (options.render !== false && document.getElementById('scheduleBody')) {
+        renderSchedule();
+    } else if (options.scroll !== false) {
+        const applied = focusScheduleStaffRow(id);
+        if (applied) StaffState.focusScrollPending = false;
+    }
+
+    return true;
+}
+
 // ==========================================
 // API CALLS
 // ==========================================
@@ -2470,7 +2557,8 @@ function renderEmpRow(emp, dates, today, health = null) {
     const roleSummary = staffCardRoleSummary(emp) || emp.position || '';
     const hrLink = renderHrCrosslink(emp);
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
-    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass}">`;
+    const focusClass = Number(StaffState.focusedStaffId) === Number(emp.id) ? 'is-schedule-focus' : '';
+    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''} ${rowHealthClass} ${focusClass}" data-schedule-staff-row="${Number(emp.id)}">`;
     html += `<td>
         <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
              title="Відкрити HR профіль: ${escapeHtml(employeeName)}"
@@ -2502,8 +2590,6 @@ function renderEmpRow(emp, dates, today, health = null) {
         const cellHealthBadges = renderScheduleHealthBadges(cellHealthIssues, 'cell');
         const attendanceRecord = scheduleAttendanceRecord(emp.id, ds);
         const attendanceDetails = scheduleAttendanceDetails(entry, attendanceRecord, ds);
-        const attendanceClass = attendanceDetails.status ? `has-attendance-${attendanceDetails.status}` : '';
-        const attendanceIndicator = renderScheduleAttendanceIndicator(emp.id, ds, entry);
         let cellContent = '';
         if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
             cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
@@ -2525,9 +2611,6 @@ function renderEmpRow(emp, dates, today, health = null) {
         if (entry?.note) {
             cellContent += `<span class="sch-note">${escapeHtml(entry.note)}</span>`;
         }
-        if (attendanceIndicator) {
-            cellContent += attendanceIndicator;
-        }
         if (cellHealthBadges) {
             cellContent += cellHealthBadges;
         }
@@ -2536,7 +2619,7 @@ function renderEmpRow(emp, dates, today, health = null) {
         const cellAriaLabel = scheduleCellAriaLabel(emp, ds, entry, status, shiftStart, shiftEnd, attendanceDetails, cellHealthIssues);
 
         html += `<td>
-            <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass} ${attendanceClass}"
+            <div class="sch-cell status-${status} ${loadClass} ${isToday ? 'today-col' : ''} ${isReplacement ? 'is-replacement' : ''} ${cellHealthClass}"
                  role="button" tabindex="0" aria-label="${escapeHtml(cellAriaLabel)}"
                  data-staff="${emp.id}" data-date="${ds}"
                  data-shift-load="${loadMeta.bucket || ''}" data-shift-ratio="${loadMeta.label || ''}"
@@ -2709,6 +2792,13 @@ function renderSchedule() {
             open();
         });
     });
+
+    if (StaffState.focusedStaffId) {
+        const applied = focusScheduleStaffRow(StaffState.focusedStaffId, {
+            scroll: StaffState.focusScrollPending
+        });
+        if (applied) StaffState.focusScrollPending = false;
+    }
 }
 
 // ==========================================
@@ -4008,6 +4098,7 @@ async function initStaffSchedulePage(options = {}) {
     if (staffScheduleInitPromise) return staffScheduleInitPromise;
     staffScheduleInitPromise = (async () => {
         const mode = staffScheduleMode(options);
+        const initialFocusStaffId = normalizeScheduleFocusStaffId(options.focusStaffId) || scheduleFocusStaffIdFromLocation();
         applyStaffScheduleHostMode(mode);
         const host = ensureStaffScheduleShell(options);
         if (!host) throw new Error('Staff schedule shell is not available');
@@ -4051,12 +4142,13 @@ async function initStaffSchedulePage(options = {}) {
         // v39.1: Show bulk create and import buttons only for creator/director
         const bulkBtn = document.getElementById('bulkCreateBtn');
         const importBtn = document.getElementById('importExcelBtn');
-        if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
+        if (bulkBtn) bulkBtn.style.display = isAdmin && mode !== 'hr' ? '' : 'none';
         if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
 
         // Load data
         await fetchHrProfessions();
         await fetchStaff();
+        if (initialFocusStaffId) focusScheduleStaff(initialFocusStaffId, { render: false });
         renderDeptFilter();
 
         // Init the rolling window: yesterday, today, and the upcoming days.
@@ -4158,6 +4250,7 @@ async function initStaffSchedulePage(options = {}) {
 window.StaffSchedulePage = {
     init: initStaffSchedulePage,
     isInitialized: () => staffScheduleInitialized,
+    focusStaff: focusScheduleStaff,
     renderSchedule
 };
 

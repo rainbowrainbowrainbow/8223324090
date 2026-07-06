@@ -110,6 +110,10 @@ describe('staff schedule safety guards', () => {
             staffPage.indexOf('function renderScheduleHealthBadges'),
             staffPage.indexOf('function renderScheduleHealthIssueList')
         );
+        const renderEmpRowBlock = staffPage.slice(
+            staffPage.indexOf('function renderEmpRow'),
+            staffPage.indexOf('function scheduleCellFromEvent')
+        );
         const summaryIndex = staffScheduleShell.indexOf('id="scheduleSummary"');
         const tableIndex = staffScheduleShell.indexOf('id="scheduleWrapper"');
         const healthPanelIndex = staffScheduleShell.indexOf('id="scheduleHealthPanel"');
@@ -160,7 +164,8 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(renderSchedulePrimaryBlock, /renderScheduleHealthPanel\(health\)/);
         assert.match(staffPage, /renderSummary\(filtered\)/);
         assert.match(staffPage, /renderEmpRow\(emp, dates, today, health\)/);
-        assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\} \$\{attendanceClass\}"/);
+        assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\}"/);
+        assert.doesNotMatch(renderEmpRowBlock, /attendanceClass|attendanceIndicator|renderScheduleAttendanceIndicator\(emp\.id|has-attendance-/);
         assert.match(staffPage, /bindScheduleHealthDetailButtons\(tbody\)/);
         assert.match(staffPage, /event\.stopPropagation\(\)/);
         assert.ok(summaryIndex > -1 && tableIndex > summaryIndex && healthPanelIndex > tableIndex);
@@ -278,6 +283,10 @@ describe('staff schedule safety guards', () => {
     });
 
     it('links schedule plans to payroll-ready attendance without adding a new data model', () => {
+        const renderEmpRowBlock = staffPage.slice(
+            staffPage.indexOf('function renderEmpRow'),
+            staffPage.indexOf('function scheduleCellFromEvent')
+        );
         const attendanceRoute = routeBlock('/attendance');
         assert.match(attendanceRoute, /hr_time_records tr/);
         assert.match(attendanceRoute, /FULL OUTER JOIN staff_checkins sc/);
@@ -299,6 +308,7 @@ describe('staff schedule safety guards', () => {
             .forEach(status => assert.match(staffPage, new RegExp(status)));
         assert.match(staffPage, /function renderScheduleAttendanceIndicator/);
         assert.match(staffPage, /function renderScheduleAttendanceSummary/);
+        assert.doesNotMatch(renderEmpRowBlock, /renderScheduleAttendanceIndicator|attendanceIndicator|attendanceClass|has-attendance-/);
         assert.match(staffPage, /postAttendanceAction\(action, staffId\)/);
         assert.match(staffPage, /\/api\/hr\/clock-in/);
         assert.match(staffPage, /\/api\/hr\/clock-out/);

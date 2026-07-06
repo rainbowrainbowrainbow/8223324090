@@ -2887,7 +2887,17 @@ function applyScheduleShiftPreference(preference = {}) {
     const end = document.getElementById('schEnd');
     if (start) start.value = normalized.startTime;
     if (end) end.value = normalized.endTime;
+    setScheduleShiftPreferenceActiveDay(normalized.dayType);
     return true;
+}
+
+function setScheduleShiftPreferenceActiveDay(dayType = '') {
+    const activeDayType = String(dayType || '').trim().toLowerCase();
+    document.querySelectorAll('#schShiftPreferencePanel .sch-shift-preference-option').forEach(button => {
+        const isActive = button.dataset.shiftPrefDay === activeDayType;
+        button.classList.toggle('is-recommended', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
 }
 
 function applyRecommendedScheduleShiftPreference(preferences = [], mode = false, options = {}) {
@@ -2944,7 +2954,7 @@ function renderScheduleShiftPreferencePanel(preferences = [], options = {}) {
         </div>
         <div class="sch-shift-preference-options">
             ${current.map(row => `
-                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" ${StaffState.canManage ? '' : 'disabled'}>
+                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" aria-pressed="${row.dayType === activeDayType ? 'true' : 'false'}" ${StaffState.canManage ? '' : 'disabled'}>
                     <strong>${escapeHtml(SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[row.dayType] || row.dayType)}</strong>
                     <span>${escapeHtml(row.startTime)}-${escapeHtml(row.endTime)}</span>
                 </button>

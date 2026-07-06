@@ -598,6 +598,11 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function fetchScheduleShiftPreferences/);
         assert.match(staffPage, /function renderScheduleShiftPreferencePanel/);
         assert.match(staffPage, /function applyScheduleShiftPreference/);
+        assert.match(staffPage, /function setScheduleShiftPreferenceActiveDay/);
+        assert.match(staffPage, /setScheduleShiftPreferenceActiveDay\(normalized\.dayType\)/);
+        assert.match(staffPage, /button\.classList\.toggle\('is-recommended', isActive\)/);
+        assert.match(staffPage, /button\.setAttribute\('aria-pressed', isActive \? 'true' : 'false'\)/);
+        assert.match(staffPage, /aria-pressed="\$\{row\.dayType === activeDayType \? 'true' : 'false'\}"/);
         assert.match(staffPage, /\/api\/staff\/\$\{encodeURIComponent\(numericStaffId\)\}\/shift-preferences/);
         assert.match(staffPage, /renderScheduleShiftPreferencePanel\(preferences, \{ autoApply: 'force' \}\)/);
         assert.match(staffPage, /loadScheduleShiftPreferences\(staffId, \{/);

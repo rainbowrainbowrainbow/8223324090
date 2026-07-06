@@ -1074,17 +1074,26 @@ async function _loadStaffLinks() {
     } catch { return []; }
 }
 
+function staffAccountBadgeIconSvg() {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>';
+}
+
 function staffAccountBadge(staffId, opts = {}) {
     if (!_staffLinkCache) return '';
-    const link = _staffLinkCache.find(r => r.id === staffId);
+    const link = _staffLinkCache.find(r => Number(r.id) === Number(staffId));
     if (!link) return '';
     const { compact = false } = opts;
     if (link.user_id) {
-        const username = link.username || '';
+        const userId = Number(link.user_id);
+        if (!Number.isInteger(userId) || userId <= 0) return compact ? '' : '<span class="staff-crm-badge no-account" title="Немає кабінету">—</span>';
+        const username = window.escapeHtml ? window.escapeHtml(link.username || '') : String(link.username || '');
+        const label = username ? `Кабінет: ${username}` : 'Відкрити робочий профіль';
+        const profileHandler = `openStaffProfile(${userId})`;
+        const icon = staffAccountBadgeIconSvg();
         if (compact) {
-            return `<span class="staff-crm-badge has-account" title="Кабінет: ${username}" onclick="event.stopPropagation();openStaffProfile('${username}')">👤</span>`;
+            return `<button type="button" class="staff-crm-badge staff-crm-badge--profile has-account" title="${label}" aria-label="${label}" onclick="event.stopPropagation();${profileHandler}">${icon}</button>`;
         }
-        return `<span class="staff-crm-badge has-account" onclick="event.stopPropagation();openStaffProfile('${username}')" title="Відкрити профіль">👤 ${username}</span>`;
+        return `<button type="button" class="staff-crm-badge staff-crm-badge--profile has-account" onclick="event.stopPropagation();${profileHandler}" title="${label}" aria-label="${label}">${icon}<span>${username}</span></button>`;
     }
     if (link.is_freelance) return compact ? '' : '<span class="staff-crm-badge freelance">~</span>';
     return compact ? '' : '<span class="staff-crm-badge no-account" title="Немає кабінету">—</span>';
@@ -1175,9 +1184,25 @@ function finishAsyncNavigationWindow(asyncWindow, url) {
     return openSafeNewTab(url);
 }
 
-function openStaffProfile(username) {
-    if (!username) return;
-    openSafeNewTab('/profile?user=' + encodeURIComponent(username));
+function openStaffProfile(identifier) {
+    if (identifier === null || identifier === undefined || identifier === '') return;
+    const raw = String(identifier).trim();
+    const userId = Number(raw);
+    if (Number.isInteger(userId) && userId > 0) {
+        openSafeNewTab('/profile?id=' + encodeURIComponent(String(userId)));
+        return;
+    }
+    const link = Array.isArray(_staffLinkCache)
+        ? _staffLinkCache.find(item => String(item.username || '').toLowerCase() === raw.toLowerCase())
+        : null;
+    const linkedUserId = Number(link?.user_id);
+    if (Number.isInteger(linkedUserId) && linkedUserId > 0) {
+        openSafeNewTab('/profile?id=' + encodeURIComponent(String(linkedUserId)));
+        return;
+    }
+    if (typeof showNotification === 'function') {
+        showNotification('Не вдалося знайти робочий профіль цього співробітника', 'warning');
+    }
 }
 
 window.openSafeNewTab = openSafeNewTab;

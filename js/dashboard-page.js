@@ -6489,15 +6489,16 @@ const DashboardPage = (() => {
             const isRecent = !isOnline && (m.recentlyActive === true || m.status === 'recently_active');
             const lastSeen = m.lastSeenAt || m.lastSeen || m.last_seen || null;
             const statusText = formatTeamLastSeen(lastSeen, isOnline);
-            const profileArg = String(m.username || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            const profileLink = m.username ? ` onclick="openStaffProfile('${profileArg}')" style="cursor:pointer" title="Профіль: ${escapeHtml(m.username)}"` : '';
+            const profileUserId = Number(m.id || m.user_id || m.userId || 0);
+            const profileArg = String(profileUserId);
+            const profileLink = profileUserId > 0 ? ` onclick="openStaffProfile(${profileArg})" style="cursor:pointer" title="Профіль: ${escapeHtml(m.username || name)}"` : '';
             return `<div class="team-member team-presence-member ${isOnline ? 'is-online' : isRecent ? 'is-recent' : 'is-offline'}"${profileLink}>
                 <div class="team-avatar">${escapeHtml(initial)}</div>
                 <div class="team-presence-copy">
                     <div class="team-presence-name">${escapeHtml(name)}</div>
                     <div class="team-presence-last-seen">${escapeHtml(statusText)}</div>
                 </div>
-                ${m.username ? '<span class="staff-crm-badge has-account" style="margin-left:2px;padding:0 4px;font-size:9px">👤</span>' : ''}
+                ${m.username ? `<span class="staff-crm-badge staff-crm-badge--profile has-account" style="margin-left:2px;padding:0 4px;font-size:9px">${typeof staffAccountBadgeIconSvg === 'function' ? staffAccountBadgeIconSvg() : ''}</span>` : ''}
                 <div class="team-online-dot" aria-label="${isOnline ? 'онлайн зараз' : isRecent ? 'був нещодавно' : 'офлайн'}"></div>
             </div>`;
         }).join('');

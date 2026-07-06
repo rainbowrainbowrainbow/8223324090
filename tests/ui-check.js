@@ -5322,6 +5322,26 @@ check('HR Pulse Reports has CSS header controls, summary chips, export, and repo
     && hrPageCss.includes('#tab-reports .hr-report-table')
     && hrPageCss.includes('body.dark-mode #tab-reports .hr-report-table'));
 check('HR Pulse Today moves arrived people to review bottom with color indication', hrCode.includes('const TODAY_ARRIVED_STATUSES') && hrCode.includes('function isTodayItemArrived') && hrCode.includes('function sortTodayItemsForReview') && hrCode.includes('return sortTodayItemsForReview(filtered);') && hrCode.includes('hr-staff-row--arrived') && hrCode.includes('data-attendance-state="${arrived ?') && htmlContains('hr.html', '.hr-staff-row--arrived') && htmlContains('hr.html', 'body.dark-mode .hr-staff-row.hr-staff-row--arrived'));
+check('HR Today profile quick action opens target worker profile by user id with SVG controls',
+    hrCode.includes('await _loadStaffLinks().catch(() => [])')
+    && hrCode.includes('function renderTodayStaffProfileAction')
+    && hrCode.includes('function renderTodayStaffScheduleAction')
+    && hrCode.includes('openStaffProfile(${userId})')
+    && hrCode.includes("hrTodayActionIconSvg('profile')")
+    && hrCode.includes("hrTodayActionIconSvg('schedule')")
+    && hrCode.includes('class="hr-today-row-action hr-today-row-action--profile"')
+    && hrCode.includes('class="hr-today-row-action hr-today-row-action--schedule"')
+    && !hrCode.includes('staffAccountBadge(item.staff_id')
+    && !hrCode.includes('>📅</a>')
+    && uiCode.includes("openSafeNewTab('/profile?id='")
+    && !uiCode.includes("openSafeNewTab('/profile?user='")
+    && uiCode.includes('function staffAccountBadgeIconSvg')
+    && baseCss.includes('.staff-crm-badge svg')
+    && hrPageCss.includes('.hr-today-row-action svg')
+    && hrPageCss.includes('body.dark-mode #tab-today .hr-today-row-action')
+    && dashboardPageCode.includes('openStaffProfile(${profileArg})')
+    && !dashboardPageCode.includes("openStaffProfile('${profileArg}')")
+    && !dashboardPageCode.includes('>👤</span>'));
 check('HR schedule UI filters scheduleable staff, replacements, and stale lifecycle rows', hrCode.includes('function isHrScheduleableStaffForDate') && hrCode.includes('function hrScheduleableStaffErrorMessage') && hrCode.includes('async function refreshHrOperationalViews') && hrCode.includes('scheduleStaff = hrScheduleableStaffForUi(staffData.data || [])') && hrCode.includes('const scheduleableIds = new Set(scheduleStaff.map(staff => Number(staff.id)).filter(Number.isFinite))') && hrCode.includes('const visibleStaff = hrScheduleableStaffForUi(scheduleStaff);') && hrCode.includes('!staff || !isHrScheduleableStaffForDate(staff, date)') && hrCode.includes("isHrScheduleableStaffForDate(s, editingShift.existing.shift_date || editingShift.date)") && hrCode.includes("action !== 'out' && todayItem && !isHrScheduleableStaffForDate(todayItem, todayStr())") && hrCode.includes("return { ...data, success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };") && hrCode.includes('await refreshHrOperationalViews();'));
 check('HR and staff schedule reads use shared scheduleable staff filters', hrRouteCode.includes("require('../services/staffOperationalFilters')") && hrRouteCode.includes('function operationalStaffForDateWhere') && hrRouteCode.includes('return scheduleableStaffWhere(alias, { dateExpression });') && hrRouteCode.includes("scheduleableStaffWhere('staff', {") && hrRouteCode.includes("scheduleableStaffWhere('s', { dateExpression: 'hs.shift_date' })") && staffRouteCode.includes('function activeScheduleStaffWhere') && staffRouteCode.includes('return scheduleableStaffWhere(alias, {') && staffRouteCode.includes("activeScheduleStaffWhere('s', 'ss.date')") && staffRouteCode.includes("activeScheduleStaffWhere('staff', 'CURRENT_DATE'") && htmlContains('services/staffOperationalFilters.js', "COALESCE(${safeAlias}.hr_pool_status, 'core') = 'core'") && htmlContains('services/staffOperationalFilters.js', "COALESCE(${safeAlias}.is_freelance, false) = false") && htmlContains('services/booking.js', "scheduleableStaffWhere('s', { dateExpression: 'ss.date' })") && htmlContains('routes/bookings.js', "scheduleableStaffWhere('s', { dateExpression: '$3' })") && htmlContains('routes/lines.js', "scheduleableStaffWhere('s', { dateExpression: 'l.date' })"));
 check('Camera check-in syncs into HR Today attendance records', staffRouteCode.includes('const { getKyivDate, getKyivDateStr } = require') && staffRouteCode.includes('function syncHrClockInFromStaffCheckin') && staffRouteCode.includes('function syncHrClockOutFromStaffCheckout') && staffRouteCode.includes('INSERT INTO hr_time_records (business_context, staff_id, record_date, clock_in') && staffRouteCode.includes('hrTimeRecord = await syncHrClockInFromStaffCheckin(client, staffId') && staffRouteCode.includes('hrTimeRecord = await syncHrClockOutFromStaffCheckout(client, staffId') && staffRouteCode.includes('WHERE staff_id = $1 AND date = $2') && staffRouteCode.includes('const date = req.query.date || getKyivDateStr();') && staffRouteCode.includes("broadcast('hr:attendance-updated'") && htmlContains('js/ws.js', "case 'hr:attendance-updated':") && hrCode.includes('function initHrRealtime') && hrCode.includes("window.addEventListener('ws:hr-attendance'") && htmlContains('hr.html', 'js/ws.js'));

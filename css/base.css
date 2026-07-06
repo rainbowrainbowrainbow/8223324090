@@ -1026,18 +1026,38 @@ body.dark-mode .ap-group-count { background: rgba(255,255,255,0.08); }
 }
 /* ── Staff CRM Badge (v39.8.0) ───────── */
 .staff-crm-badge {
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 11px; font-weight: 600; padding: 1px 8px;
-    border-radius: 6px; cursor: pointer; transition: all 0.15s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+    font: inherit; font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 8px;
+    border-radius: 8px; cursor: pointer; transition: all 0.15s;
     vertical-align: middle; margin-left: 4px;
+    appearance: none;
 }
 .staff-crm-badge.has-account {
-    background: rgba(34,197,94,0.1); color: #16a34a;
-    border: 1px solid rgba(34,197,94,0.2);
+    background: rgba(20,184,166,0.10); color: #0f766e;
+    border: 1px solid rgba(20,184,166,0.24);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.40);
 }
 .staff-crm-badge.has-account:hover {
-    background: rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.4);
+    background: rgba(20,184,166,0.18); border-color: rgba(20,184,166,0.42);
     transform: translateY(-1px);
+}
+.staff-crm-badge:focus-visible {
+    outline: 2px solid rgba(20,184,166,0.38);
+    outline-offset: 2px;
+}
+.staff-crm-badge svg {
+    width: 13px;
+    height: 13px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.staff-crm-badge--profile {
+    min-width: 30px;
+    min-height: 28px;
 }
 .staff-crm-badge.no-account {
     background: var(--gray-50, rgba(0,0,0,0.03)); color: var(--gray-400);
@@ -1047,6 +1067,15 @@ body.dark-mode .ap-group-count { background: rgba(255,255,255,0.08); }
     background: rgba(139,92,246,0.08); color: #7c3aed;
     border: 1px solid rgba(139,92,246,0.15); cursor: default;
 }
-body.dark-mode .staff-crm-badge.has-account { background: rgba(34,197,94,0.15); color: #4ade80; border-color: rgba(34,197,94,0.25); }
+body.dark-mode .staff-crm-badge.has-account {
+    background: rgba(20,184,166,0.15);
+    color: #5eead4;
+    border-color: rgba(20,184,166,0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.16);
+}
+body.dark-mode .staff-crm-badge.has-account:hover {
+    background: rgba(20,184,166,0.24);
+    border-color: rgba(94,234,212,0.42);
+}
 body.dark-mode .staff-crm-badge.no-account { background: rgba(255,255,255,0.05); color: var(--gray-500); border-color: rgba(255,255,255,0.08); }
 

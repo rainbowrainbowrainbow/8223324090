@@ -1726,8 +1726,33 @@ function updateTodayHeaderMetrics(summary = {}) {
     setTodayHeaderMetricText('todayLeaveMeta', metrics.leave > 0 ? `${metrics.sick} хвороба · ${metrics.vacation} відпустка` : 'немає');
 }
 
+function hrTodayActionIconSvg(type) {
+    if (type === 'profile') {
+        return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg>';
+}
+
+function renderTodayStaffProfileAction(staffId, staffName) {
+    const link = typeof _staffLinkCache !== 'undefined' && Array.isArray(_staffLinkCache)
+        ? _staffLinkCache.find(item => Number(item.id) === Number(staffId))
+        : null;
+    const userId = Number(link?.user_id);
+    if (Number.isInteger(userId) && userId > 0 && typeof openStaffProfile === 'function') {
+        const label = `Відкрити робочий профіль: ${staffName}`;
+        return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffProfile(${userId})">${hrTodayActionIconSvg('profile')}</button>`;
+    }
+    const label = `Відкрити HR картку: ${staffName}`;
+    return `<button type="button" class="hr-today-row-action hr-today-row-action--profile" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation();openStaffEdit(${Number(staffId)})">${hrTodayActionIconSvg('profile')}</button>`;
+}
+
+function renderTodayStaffScheduleAction(staffId, staffName) {
+    const label = `Відкрити графік: ${staffName}`;
+    return `<a href="/staff?highlight=${encodeURIComponent(staffId)}" class="hr-today-row-action hr-today-row-action--schedule" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" onclick="event.stopPropagation()">${hrTodayActionIconSvg('schedule')}</a>`;
+}
+
 async function loadToday() {
-    if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
+    if (typeof _loadStaffLinks === 'function') await _loadStaffLinks().catch(() => []);
     const data = await hrFetch('/today');
     if (!data || !data.success) {
         updateTodayHeaderDate();
@@ -1849,7 +1874,13 @@ function renderToday(data) {
         return `<div class="hr-staff-row${arrived ? ' hr-staff-row--arrived' : ''}" data-staff-id="${item.staff_id}" data-attendance-state="${arrived ? 'arrived' : 'pending'}" oncontextmenu="showContext(event, ${item.staff_id})">
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
-                <div class="hr-staff-name">${escapeHtml(item.staff_name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(item.staff_id, {compact:true}) : ''} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>
+                <div class="hr-staff-name">
+                    <span class="hr-staff-name-text">${escapeHtml(item.staff_name)}</span>
+                    <span class="hr-today-row-actions">
+                        ${renderTodayStaffProfileAction(item.staff_id, item.staff_name)}
+                        ${renderTodayStaffScheduleAction(item.staff_id, item.staff_name)}
+                    </span>
+                </div>
                 <div class="hr-staff-meta">${roleMeta}${meta ? ' · ' + meta : ''}</div>
             </div>
             <button type="button" class="hr-clock-btn ${btnClass}" ${disabled}

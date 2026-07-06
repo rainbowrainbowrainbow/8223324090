@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.31 - HR Pulse unified headers
+
+### HR Pulse / Сьогодні / Графік / Звіти / Header styleguide / (Клешня, 06.07.2026) [codex]
+- **Шапку `Графік` уніфіковано зі `Сьогодні`** - compact hero тепер має той самий ритм, top accent, padding, radius і праву зону з 4 метриками.
+- **Шапку `Звіти` перебрано під той самий pattern** - з hero прибрано некорисні `CSV готовий`, `KPI`, `ризики` і `42 людей`.
+- **Період і CSV export винесено під hero** - controls лишилися доступними, але більше не роздувають шапку `Звіти`.
+- **Regression coverage оновлено** - static UI guard перевіряє нові report metrics і блокує повернення старих hero-KPI.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений HR frontend, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.30 - Hermes: creative assets у CRM storage
 
 ### Hermes / Creative assets / Worker contract / Safe storage / (Клешня, 06.07.2026) [codex]

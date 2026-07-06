@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.35",
+  "version": "0.78.36",
   "eventGenix": {
-    "releaseLabel": "HR Pulse light theme polish"
+    "releaseLabel": "Staff Shift Preferences"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

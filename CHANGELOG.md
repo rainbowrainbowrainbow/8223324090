@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.36 - Staff Shift Preferences
+
+### HR / Staff schedule / Типові зміни / DB migration / (Клешня, 06.07.2026) [codex]
+- **Графік бере типові зміни з картки співробітника** - у модалці слота з'явилися швидкі варіанти часу для поточної професії, а новий порожній слот може автоматично підтягнути weekday/weekend default.
+- **Картка співробітника отримала секцію `Типові зміни`** - менеджер може редагувати будні/вихідні start/end для основної та додаткових професій без зміни фактичних рядків графіка.
+- **Додано staff-level schema і API** - нова таблиця `staff_shift_preferences`, `GET/PUT /api/staff/:id/shift-preferences`, validation професій/часу/day type і audit запис `staff_shift_preferences_update`.
+- **Dark-mode modal графіка виправлено** - статус, професія і time inputs читаються в темній темі, select caret і clock icon більше не ламають контроль.
+- **DB migration є additive** - `279_staff_shift_preferences.sql` створює preference rows і backfill-дефолти для аніматорів/інструкторів, не змінюючи `staff_schedule` або `hr_shifts`; auth/roles/env/secrets/Railway settings не змінювались.
+
+---
+
 ## v0.78.35 - HR Pulse light theme polish
 
 ### HR Pulse / Світла тема / Графік / Regression guard / (Клешня, 06.07.2026) [codex]

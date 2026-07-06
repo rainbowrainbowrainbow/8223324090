@@ -1292,6 +1292,9 @@ body.dark-mode .hr-org-detail {
     gap: 14px;
     margin-bottom: 24px;
 }
+#tab-today .hr-summary:empty {
+    display: none;
+}
 #tab-today .hr-summary-card {
     position: relative;
     min-height: 112px;
@@ -1371,7 +1374,7 @@ body.dark-mode .hr-org-detail {
     z-index: 1;
     min-height: inherit;
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(360px, 0.72fr);
+    grid-template-columns: minmax(260px, 1fr) minmax(560px, 0.92fr);
     align-items: center;
     gap: 18px;
     padding: 18px 20px;
@@ -1401,18 +1404,18 @@ body.dark-mode .hr-org-detail {
 }
 .hr-today-hero-metrics {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
     min-width: 0;
 }
 .hr-today-metric-chip {
     --today-metric-tone: 59, 130, 246;
     display: grid;
     align-content: center;
-    gap: 4px;
+    gap: 3px;
     min-width: 0;
-    min-height: 76px;
-    padding: 12px 13px;
+    min-height: 62px;
+    padding: 9px 10px;
     border: 1px solid rgba(var(--today-metric-tone),0.20);
     border-radius: 12px;
     background: linear-gradient(135deg, rgba(var(--today-metric-tone),0.10), rgba(255,255,255,0.70));
@@ -1420,10 +1423,12 @@ body.dark-mode .hr-org-detail {
 }
 .hr-today-metric-chip--shift { --today-metric-tone: 16, 185, 129; }
 .hr-today-metric-chip--late { --today-metric-tone: 245, 158, 11; }
+.hr-today-metric-chip--absent { --today-metric-tone: 239, 68, 68; }
+.hr-today-metric-chip--leave { --today-metric-tone: 139, 92, 246; }
 .hr-today-metric-label {
     min-width: 0;
     color: rgba(51,65,85,0.72);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 900;
     line-height: 1;
     text-transform: uppercase;
@@ -1432,7 +1437,7 @@ body.dark-mode .hr-org-detail {
 .hr-today-metric-chip strong {
     min-width: 0;
     color: #0F172A;
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 900;
     line-height: 1.08;
     overflow-wrap: anywhere;
@@ -1440,7 +1445,7 @@ body.dark-mode .hr-org-detail {
 .hr-today-metric-chip small {
     min-width: 0;
     color: rgba(71,85,105,0.82);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
     line-height: 1.15;
     overflow-wrap: anywhere;
@@ -4707,8 +4712,8 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         gap: 8px;
     }
     .hr-today-metric-chip {
-        min-height: 68px;
-        padding: 10px;
+        min-height: 60px;
+        padding: 9px;
     }
     .hr-today-metric-chip strong {
         font-size: 16px;
@@ -4954,8 +4959,8 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
     }
 
     .hr-today-metric-chip {
-        min-height: 64px;
-        padding: 9px;
+        min-height: 58px;
+        padding: 8px;
         border-radius: 10px;
     }
 

@@ -1704,18 +1704,26 @@ function todayHeaderMetricsFromSummary(summary = {}) {
     const total = todayMetricNumber(summary.total_staff);
     const present = todayMetricNumber(summary.present);
     const late = todayMetricNumber(summary.late);
+    const absent = todayMetricNumber(summary.absent);
+    const sick = todayMetricNumber(summary.sick);
+    const vacation = todayMetricNumber(summary.on_vacation);
+    const leave = sick + vacation;
 
-    return { total, present, late };
+    return { total, present, late, absent, sick, vacation, leave };
 }
 
 function updateTodayHeaderMetrics(summary = {}) {
-    // Today header chips use the current attendance summary without duplicating lower status cards.
+    // Today header chips own the status counters so the lower list does not duplicate them.
     const metrics = todayHeaderMetricsFromSummary(summary);
 
     setTodayHeaderMetricText('todayOnShiftMetric', metrics.present);
     setTodayHeaderMetricText('todayOnShiftMeta', metrics.total > 0 ? `${metrics.present} з ${metrics.total}` : 'немає активних');
     setTodayHeaderMetricText('todayLateMetric', metrics.late);
     setTodayHeaderMetricText('todayLateMeta', metrics.late > 0 ? `${metrics.late} потребують уваги` : 'без запізнень');
+    setTodayHeaderMetricText('todayAbsentMetric', metrics.absent);
+    setTodayHeaderMetricText('todayAbsentMeta', metrics.absent > 0 ? `${metrics.absent} не вийшли` : 'без відсутніх');
+    setTodayHeaderMetricText('todayLeaveMetric', metrics.leave);
+    setTodayHeaderMetricText('todayLeaveMeta', metrics.leave > 0 ? `${metrics.sick} хвороба · ${metrics.vacation} відпустка` : 'немає');
 }
 
 async function loadToday() {
@@ -1742,10 +1750,7 @@ function renderToday(data) {
 
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
     updateTodayHeaderMetrics(s);
-    document.getElementById('todaySummary').innerHTML = `
-        <div class="hr-summary-card red"><div class="value">${s.absent}</div><div class="label">Відсутні</div></div>
-        <div class="hr-summary-card purple"><div class="value">${s.sick + s.on_vacation}</div><div class="label">Хвороба / відпустка</div></div>
-    `;
+    document.getElementById('todaySummary').innerHTML = '';
 
     const list = document.getElementById('todayList');
     if (allItems.length === 0) {

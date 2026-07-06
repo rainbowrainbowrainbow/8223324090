@@ -85,16 +85,11 @@
                 <section class="hr-today-hero" aria-label="Операційний пульс команди">
                     <div class="hr-today-hero-content">
                         <div class="hr-today-hero-copy">
-                            <span class="hr-today-hero-eyebrow">Команда сьогодні</span>
-                            <h3>Пульс зміни</h3>
+                            <h3>Сьогодні</h3>
+                            <strong id="todayDate" class="hr-today-date">-</strong>
                             <p>Присутність, запізнення і доступність у живому режимі.</p>
                         </div>
                         <div class="hr-today-hero-metrics" aria-label="Ключові метрики сьогодні" aria-live="polite">
-                            <div class="hr-today-metric-chip hr-today-metric-chip--date" data-today-metric="date">
-                                <span class="hr-today-metric-label">Дата</span>
-                                <strong id="todayDate" class="hr-today-date">-</strong>
-                                <small>Операційний день</small>
-                            </div>
                             <div class="hr-today-metric-chip hr-today-metric-chip--shift" data-today-metric="shift">
                                 <span class="hr-today-metric-label">На зміні</span>
                                 <strong id="todayOnShiftMetric">0</strong>
@@ -104,11 +99,6 @@
                                 <span class="hr-today-metric-label">Запізнення</span>
                                 <strong id="todayLateMetric">0</strong>
                                 <small id="todayLateMeta">без запізнень</small>
-                            </div>
-                            <div class="hr-today-metric-chip hr-today-metric-chip--readiness" data-today-metric="readiness">
-                                <span class="hr-today-metric-label">Готовність</span>
-                                <strong id="todayReadinessMetric">0%</strong>
-                                <small id="todayReadinessMeta">0 ризиків</small>
                             </div>
                         </div>
                     </div>

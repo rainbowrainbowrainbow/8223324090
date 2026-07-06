@@ -503,10 +503,7 @@ body.dark-mode .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon,
     color: var(--pulse-switcher-active-icon-color);
 }
 body.dark-mode .hr-today-date {
-    border-color: rgba(34,211,238,0.14);
-    background: linear-gradient(135deg, rgba(20,184,166,0.10), rgba(99,102,241,0.08));
     color: #E2E8F0;
-    box-shadow: 0 5px 14px rgba(0,0,0,0.14);
 }
 body.dark-mode .hr-nav-count { background: rgba(255,255,255,0.08); color: #CBD5E1; }
 body.dark-mode .hr-tab.active .hr-nav-count { background: rgba(129,140,248,0.18); color: var(--primary-light); }
@@ -1289,8 +1286,9 @@ body.dark-mode .hr-org-detail {
 .hr-summary-card.green .value { color: #10B981; }
 .hr-summary-card.yellow .value { color: #F59E0B; }
 .hr-summary-card.red .value { color: #EF4444; }
+.hr-summary-card.purple .value { color: #8B5CF6; }
 #tab-today .hr-summary {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 14px;
     margin-bottom: 24px;
 }
@@ -1322,6 +1320,7 @@ body.dark-mode .hr-org-detail {
 #tab-today .hr-summary-card.green::before { background: #10B981; }
 #tab-today .hr-summary-card.yellow::before { background: #F59E0B; }
 #tab-today .hr-summary-card.red::before { background: #EF4444; }
+#tab-today .hr-summary-card.purple::before { background: #8B5CF6; }
 #tab-today .hr-summary-card .value {
     position: relative;
     z-index: 1;
@@ -1372,7 +1371,7 @@ body.dark-mode .hr-org-detail {
     z-index: 1;
     min-height: inherit;
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(420px, 0.95fr);
+    grid-template-columns: minmax(260px, 1fr) minmax(360px, 0.72fr);
     align-items: center;
     gap: 18px;
     padding: 18px 20px;
@@ -1381,24 +1380,11 @@ body.dark-mode .hr-org-detail {
     max-width: 680px;
     color: #0F172A;
 }
-.hr-today-hero-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-    padding: 4px 9px;
-    border: 1px solid rgba(14,165,233,0.24);
-    border-radius: 999px;
-    background: rgba(255,255,255,0.62);
-    color: #0F766E;
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1;
-}
 .hr-today-hero-copy h3 {
-    margin: 6px 0 2px;
+    margin: 0 0 4px;
     max-width: 100%;
     color: #0F172A;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 850;
     line-height: 1.05;
     letter-spacing: 0;
@@ -1406,7 +1392,7 @@ body.dark-mode .hr-org-detail {
     text-shadow: 0 1px 0 rgba(255,255,255,0.70);
 }
 .hr-today-hero-copy p {
-    margin: 0;
+    margin: 7px 0 0;
     color: rgba(51,65,85,0.88);
     font-size: 12px;
     font-weight: 700;
@@ -1432,10 +1418,8 @@ body.dark-mode .hr-org-detail {
     background: linear-gradient(135deg, rgba(var(--today-metric-tone),0.10), rgba(255,255,255,0.70));
     box-shadow: 0 8px 20px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.70);
 }
-.hr-today-metric-chip--date { --today-metric-tone: 14, 165, 233; }
 .hr-today-metric-chip--shift { --today-metric-tone: 16, 185, 129; }
 .hr-today-metric-chip--late { --today-metric-tone: 245, 158, 11; }
-.hr-today-metric-chip--readiness { --today-metric-tone: 99, 102, 241; }
 .hr-today-metric-label {
     min-width: 0;
     color: rgba(51,65,85,0.72);
@@ -1464,31 +1448,23 @@ body.dark-mode .hr-org-detail {
 .hr-today-date {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     width: fit-content;
     max-width: 100%;
-    min-height: 30px;
-    padding: 5px 10px;
-    border: 1px solid rgba(20,184,166,0.14);
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(99,102,241,0.06));
-    color: var(--gray-700);
-    font-size: 13px;
-    font-weight: 700;
-    line-height: 1.2;
-    margin: 0 0 16px;
-    box-shadow: 0 4px 12px rgba(15,23,42,0.04);
-}
-.hr-today-hero .hr-today-date {
-    flex: 0 0 auto;
-    margin: 0;
+    min-height: 22px;
     padding: 0;
     border: 0;
+    border-radius: 0;
     background: transparent;
-    color: #0F172A;
+    color: rgba(51,65,85,0.82);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin: 0;
     box-shadow: none;
-    backdrop-filter: none;
-    justify-content: flex-start;
+}
+.hr-today-hero .hr-today-date {
+    margin: 0;
 }
 
 .hr-today-controls {
@@ -4051,12 +4027,6 @@ body.dark-mode .hr-today-hero-copy,
 html[data-theme="dark"] body .hr-today-hero-copy {
     color: #F8FAFC;
 }
-body.dark-mode .hr-today-hero-eyebrow,
-html[data-theme="dark"] body .hr-today-hero-eyebrow {
-    border-color: rgba(94,234,212,0.30);
-    background: rgba(15,23,42,0.44);
-    color: #99F6E4;
-}
 body.dark-mode .hr-today-hero-copy h3,
 html[data-theme="dark"] body .hr-today-hero-copy h3 {
     color: #FFFFFF;
@@ -4087,7 +4057,7 @@ html[data-theme="dark"] body .hr-today-metric-chip small {
 }
 body.dark-mode .hr-today-hero .hr-today-date,
 html[data-theme="dark"] body .hr-today-hero .hr-today-date {
-    color: #F8FAFC;
+    color: rgba(226,232,240,0.84);
 }
 body.dark-mode #tab-today .hr-summary-card {
     border-color: rgba(148,163,184,0.16);
@@ -4102,6 +4072,7 @@ body.dark-mode #tab-today .hr-summary-card .value {
 body.dark-mode #tab-today .hr-summary-card.green .value { color: #34D399; }
 body.dark-mode #tab-today .hr-summary-card.yellow .value { color: #FBBF24; }
 body.dark-mode #tab-today .hr-summary-card.red .value { color: #F87171; }
+body.dark-mode #tab-today .hr-summary-card.purple .value { color: #A78BFA; }
 body.dark-mode #tab-today .hr-summary-card .label {
     color: #CBD5E1;
 }
@@ -4725,16 +4696,11 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         padding: 16px;
     }
     .hr-today-hero-copy h3 {
-        margin: 8px 0 0;
+        margin: 0 0 4px;
         font-size: 22px;
     }
     .hr-today-hero-copy p {
         display: none;
-    }
-    .hr-today-hero-eyebrow {
-        min-height: 24px;
-        padding: 5px 9px;
-        font-size: 10px;
     }
     .hr-today-hero-metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4751,18 +4717,16 @@ body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
         font-size: 10px;
     }
     .hr-today-date {
-        width: 100%;
-        min-height: 32px;
-        padding: 6px 10px;
-        border-radius: 12px;
+        width: fit-content;
+        min-height: 22px;
+        padding: 0;
+        border-radius: 0;
         font-size: 13px;
-        margin-bottom: 12px;
     }
     .hr-today-hero .hr-today-date {
         width: fit-content;
         max-width: 100%;
-        margin-bottom: 0;
-        border-radius: 12px;
+        margin: 0;
     }
     #tab-today .hr-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));

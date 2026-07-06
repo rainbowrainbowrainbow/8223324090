@@ -37,6 +37,34 @@ const inviteShareCode = fileText('js/invite-share.js');
 
 runInviteChecks(ui);
 
+const hermesStudioHtml = fileText('hermes-studio.html');
+const hermesStudioCss = fileText('css/hermes-studio.css');
+const hermesStudioJs = fileText('js/hermes-studio-page.js');
+const hermesStudioBoardRule = cssRuleText(hermesStudioCss, '.hermes-studio-board');
+const hermesStudioAssetRule = cssRuleText(hermesStudioCss, '.hermes-studio-assets');
+const hermesStudioDecisionActionsRule = cssRuleText(hermesStudioCss, '.hermes-studio-decision-actions');
+const hermesStudioDesktopNarrowBlock = cssAtRuleBlock(hermesStudioCss, '@media (max-width: 1380px)');
+const hermesStudioMobileBlock = cssAtRuleBlock(hermesStudioCss, '@media (max-width: 720px)');
+check('Hermes Studio review workspace keeps assets history and actions responsive',
+    hermesStudioHtml.includes('class="hermes-studio-workspace"')
+    && hermesStudioHtml.includes('class="hermes-studio-detail"')
+    && hermesStudioHtml.includes('class="hermes-studio-decision-box"')
+    && hermesStudioJs.includes('function renderAssets(job)')
+    && hermesStudioJs.includes('const url = safeUrl(asset.url);')
+    && hermesStudioJs.includes('<img src="${esc(url)}" alt="${esc(role)}">')
+    && /grid-template-columns:\s*minmax\(360px,\s*0\.82fr\)\s*minmax\(480px,\s*1\.18fr\);/.test(hermesStudioBoardRule)
+    && /min-width:\s*0;/.test(hermesStudioBoardRule)
+    && hermesStudioDesktopNarrowBlock.includes('.hermes-studio-board')
+    && hermesStudioDesktopNarrowBlock.includes('grid-template-columns: 1fr;')
+    && /repeat\(auto-fit,\s*minmax\(170px,\s*1fr\)\)/.test(hermesStudioAssetRule)
+    && /min-width:\s*0;/.test(hermesStudioAssetRule)
+    && /display:\s*grid;/.test(hermesStudioDecisionActionsRule)
+    && /repeat\(2,\s*minmax\(0,\s*1fr\)\)/.test(hermesStudioDecisionActionsRule)
+    && hermesStudioCss.includes('.hermes-studio-decision-actions > button')
+    && hermesStudioCss.includes('overflow-wrap: anywhere;')
+    && hermesStudioMobileBlock.includes('.hermes-studio-decision-actions')
+    && hermesStudioMobileBlock.includes('grid-template-columns: 1fr;'));
+
 function cssImportVersionTagsAreCurrent(filename) {
     const css = fileText(filename);
     const imports = [...css.matchAll(/@import\s+(?:url\(\s*)?["']?([^"')\s;?]+\.css)(?:\?v=([^"')\s;]+))?["']?\s*\)?\s*;/g)];
@@ -5138,8 +5166,8 @@ const hrTodayMetricChipRule = cssRuleText(hrPageCss, '.hr-today-metric-chip');
 const hrTodayHeroHeadingRule = cssRuleText(hrPageCss, '.hr-today-hero-copy h3');
 const hrTodayMetricLabelRule = cssRuleText(hrPageCss, '.hr-today-metric-label');
 const hrLoadKpiBlock = hrCode.slice(hrCode.indexOf('async function loadKpi'), hrCode.indexOf('async function loadRatings'));
-check('HR Pulse date badge stays below tabs without sticky overlap', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*30px;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*100%;/.test(hrTodayDateMobileRule));
-check('HR Pulse Today has CSS header metric chips, search, department segmentation, and no mini staff board',
+check('HR Pulse Today date sits under the heading without returning to a date badge', htmlContains('hr.html', '.hr-nav--pulse + #tab-today.active') && /position:\s*relative;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseNavRule) && !/position:\s*sticky;/.test(hrPulseNavRule) && /top:\s*auto;/.test(hrPulseMobileNavRule) && /display:\s*inline-flex;/.test(hrTodayDateRule) && /width:\s*fit-content;/.test(hrTodayDateRule) && /min-height:\s*22px;/.test(hrTodayDateRule) && /background:\s*transparent;/.test(hrTodayDateRule) && /border:\s*0;/.test(hrTodayDateRule) && htmlContains('hr.html', 'body.dark-mode .hr-today-date') && /width:\s*fit-content;/.test(hrTodayDateMobileRule));
+check('HR Pulse Today has simplified CSS header metric chips, search, department segmentation, and no mini staff board',
     !htmlContains('hr.html', 'pulse-strip-dark.png')
     && !htmlContains('hr.html', 'pulse-strip-light.png')
     && !htmlContains('hr.html', 'hr-today-hero-img--light')
@@ -5150,10 +5178,11 @@ check('HR Pulse Today has CSS header metric chips, search, department segmentati
     && !hrPageCss.includes('.hr-today-hero-overlay')
     && htmlContains('hr.html', 'class="hr-today-hero"')
     && htmlContains('hr.html', 'class="hr-today-hero-metrics"')
-    && htmlContains('hr.html', 'class="hr-today-metric-chip hr-today-metric-chip--date"')
+    && !htmlContains('hr.html', 'hr-today-metric-chip--date')
+    && !htmlContains('hr.html', 'hr-today-metric-chip--readiness')
     && htmlContains('hr.html', 'id="todayOnShiftMetric"')
     && htmlContains('hr.html', 'id="todayLateMetric"')
-    && htmlContains('hr.html', 'id="todayReadinessMetric"')
+    && !htmlContains('hr.html', 'id="todayReadinessMetric"')
     && /background:\s*[\s\S]*linear-gradient/.test(hrTodayHeroRule)
     && !/url\(/.test(hrTodayHeroRule)
     && /display:\s*grid;/.test(hrTodayHeroContentRule)
@@ -5167,8 +5196,10 @@ check('HR Pulse Today has CSS header metric chips, search, department segmentati
     && /overflow-wrap:\s*anywhere;/.test(hrTodayMetricLabelRule)
     && hrPageCss.includes('body.dark-mode .hr-today-metric-chip')
     && hrPageCss.includes('html[data-theme="dark"] body .hr-today-metric-chip')
-    && htmlContains('hr.html', 'Команда сьогодні')
-    && htmlContains('hr.html', 'Пульс зміни')
+    && htmlContains('hr.html', '<h3>Сьогодні</h3>')
+    && !htmlContains('hr.html', 'Команда сьогодні')
+    && !htmlContains('hr.html', 'Пульс зміни')
+    && !htmlContains('hr.html', 'Готовність')
     && htmlContains('hr.html', 'id="todayDate"')
     && htmlContains('hr.html', 'id="todaySearch"')
     && htmlContains('hr.html', 'id="todayDepartmentSegments"')
@@ -5197,7 +5228,7 @@ check('HR Pulse Today has CSS header metric chips, search, department segmentati
     && hrCode.includes('function updateTodayHeaderMetrics')
     && hrCode.includes("setTodayHeaderMetricText('todayOnShiftMetric'")
     && hrCode.includes("setTodayHeaderMetricText('todayLateMetric'")
-    && hrCode.includes("setTodayHeaderMetricText('todayReadinessMetric'")
+    && !hrCode.includes("setTodayHeaderMetricText('todayReadinessMetric'")
     && !hrCode.includes('renderTodayHoneycombBoard(visibleItems)')
     && !hrCode.includes('todayCompactStaffName(name)')
     && !hrCode.includes('hr-today-hex-name')
@@ -5208,7 +5239,13 @@ check('HR Pulse Today has CSS header metric chips, search, department segmentati
     && htmlContains('hr.html', '.hr-today-hero')
     && htmlContains('hr.html', '.hr-today-hero .hr-today-date')
     && htmlContains('hr.html', '#tab-today .hr-summary-card')
+    && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));')
     && htmlContains('hr.html', 'grid-template-columns: repeat(2, minmax(0, 1fr));')
+    && hrCode.includes('<div class="hr-summary-card red"><div class="value">${s.absent}</div><div class="label">Відсутні</div></div>')
+    && hrCode.includes('<div class="hr-summary-card purple"><div class="value">${s.sick + s.on_vacation}</div><div class="label">Хвороба / відпустка</div></div>')
+    && !hrCode.includes('<div class="hr-summary-card green"><div class="value">${s.present}</div><div class="label">На роботі</div></div>')
+    && !hrCode.includes('<div class="hr-summary-card yellow"><div class="value">${s.late}</div><div class="label">Запізнились</div></div>')
+    && hrPageCss.includes('#tab-today .hr-summary-card.purple::before')
     && !hrPageCss.includes('.hr-today-honeycomb-board')
     && !hrPageCss.includes('.hr-today-honeycomb-empty')
     && !hrPageCss.includes('.hr-today-hex-tile')

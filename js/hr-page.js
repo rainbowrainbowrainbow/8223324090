@@ -1700,34 +1700,22 @@ function todayMetricNumber(value) {
     return Number.isFinite(number) ? number : 0;
 }
 
-function formatTodayRiskCount(count) {
-    const value = todayMetricNumber(count);
-    if (value === 1) return '1 ризик';
-    if (value >= 2 && value <= 4) return `${value} ризики`;
-    return `${value} ризиків`;
-}
-
 function todayHeaderMetricsFromSummary(summary = {}) {
     const total = todayMetricNumber(summary.total_staff);
     const present = todayMetricNumber(summary.present);
     const late = todayMetricNumber(summary.late);
-    const absent = todayMetricNumber(summary.absent);
-    const risks = Math.max(0, late + absent);
-    const readiness = total > 0 ? Math.max(0, Math.min(100, Math.round(((total - risks) / total) * 100))) : 0;
 
-    return { total, present, late, risks, readiness };
+    return { total, present, late };
 }
 
 function updateTodayHeaderMetrics(summary = {}) {
-    // Today header chips use the current attendance summary: on-shift, late, and risk-based readiness.
+    // Today header chips use the current attendance summary without duplicating lower status cards.
     const metrics = todayHeaderMetricsFromSummary(summary);
 
     setTodayHeaderMetricText('todayOnShiftMetric', metrics.present);
     setTodayHeaderMetricText('todayOnShiftMeta', metrics.total > 0 ? `${metrics.present} з ${metrics.total}` : 'немає активних');
     setTodayHeaderMetricText('todayLateMetric', metrics.late);
     setTodayHeaderMetricText('todayLateMeta', metrics.late > 0 ? `${metrics.late} потребують уваги` : 'без запізнень');
-    setTodayHeaderMetricText('todayReadinessMetric', `${metrics.readiness}%`);
-    setTodayHeaderMetricText('todayReadinessMeta', formatTodayRiskCount(metrics.risks));
 }
 
 async function loadToday() {
@@ -1755,10 +1743,8 @@ function renderToday(data) {
     const s = isTodayFilterActive() ? summarizeTodayItems(visibleItems) : (data.summary || summarizeTodayItems(allItems));
     updateTodayHeaderMetrics(s);
     document.getElementById('todaySummary').innerHTML = `
-        <div class="hr-summary-card green"><div class="value">${s.present}</div><div class="label">На роботі</div></div>
-        <div class="hr-summary-card yellow"><div class="value">${s.late}</div><div class="label">Запізнились</div></div>
         <div class="hr-summary-card red"><div class="value">${s.absent}</div><div class="label">Відсутні</div></div>
-        <div class="hr-summary-card"><div class="value">${s.sick + s.on_vacation}</div><div class="label">Хвороба / відпустка</div></div>
+        <div class="hr-summary-card purple"><div class="value">${s.sick + s.on_vacation}</div><div class="label">Хвороба / відпустка</div></div>
     `;
 
     const list = document.getElementById('todayList');

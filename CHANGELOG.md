@@ -4,6 +4,19 @@
 
 ---
 
+## v0.78.30 - Hermes: creative assets у CRM storage
+
+### Hermes / Creative assets / Worker contract / Safe storage / (Клешня, 06.07.2026) [codex]
+- **Creative result assets тепер приймають `imageBase64`** - для `creative_material_job` CRM декодує PNG/JPEG/WebP bytes, перевіряє MIME signature і зберігає фінальний asset у `catalog_image_blobs`.
+- **Публічний preview лишається CRM-served** - відповідь повертає same-origin URL `/uploads/catalog-images/items/...`, а не provider/temp/dummy/data/local URL.
+- **Небезпечні creative URLs заблоковано** - фінальні creative assets не можуть приходити з `dummyimage.com`, зовнішніх URL, `data:`, `local://`, protocol-relative або path traversal джерел.
+- **Review-first контракт збережено** - `autoApply` і `autoPublish` не вмикаються; creative result тільки готується до людського review.
+- **Worker contract зафіксовано** - додано `docs/HERMES_WORKER_CONTRACT.md` з payload examples, headers, idempotency rules, safety gates і known limits.
+- **Regression coverage розширено** - Hermes route tests покривають storage ingest, MIME/signature validation, checksum mismatch, source conflict, non-creative rejection і 20mb scoped parser.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз використовує існуючу таблицю `catalog_image_blobs` і існуючий Hermes auth contract.
+
+---
+
 ## v0.78.29 - HR сьогодні: профілі співробітників
 
 ### HR / Сьогодні / Staff profile links / Dark-light polish / (Клешня, 06.07.2026) [codex]

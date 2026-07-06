@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.29",
+  "version": "0.78.30",
   "eventGenix": {
-    "releaseLabel": "HR сьогодні: профілі співробітників"
+    "releaseLabel": "Hermes: creative assets у CRM storage"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

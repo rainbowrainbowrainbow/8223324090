@@ -27,7 +27,7 @@ const ROOT = path.resolve(__dirname, '..');
 const FIX = process.argv.includes('--fix');
 const BUMP = process.argv.indexOf('--bump');
 const BUMP_TYPE = BUMP !== -1 ? process.argv[BUMP + 1] : null;
-const LABEL_ARG = readArg('--label') || readArg('--release-label');
+const LABEL_ARG = readReleaseLabelArg();
 
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
@@ -67,6 +67,39 @@ function readArg(name) {
     if (idx === -1) return null;
     const value = process.argv[idx + 1];
     return value && !value.startsWith('--') ? value : null;
+}
+
+function readArgWords(name) {
+    const idx = process.argv.indexOf(name);
+    if (idx === -1) return null;
+
+    const values = [];
+    for (let i = idx + 1; i < process.argv.length; i += 1) {
+        const value = process.argv[i];
+        if (!value || value.startsWith('--')) break;
+        values.push(value);
+    }
+
+    return values.length ? values.join(' ') : null;
+}
+
+function readTrailingReleaseLabel() {
+    if (BUMP === -1 || !BUMP_TYPE) return null;
+
+    const values = [];
+    for (let i = BUMP + 2; i < process.argv.length; i += 1) {
+        const value = process.argv[i];
+        if (!value || value.startsWith('--')) continue;
+        values.push(value);
+    }
+
+    return values.length ? values.join(' ') : null;
+}
+
+function readReleaseLabelArg() {
+    return readArgWords('--label')
+        || readArgWords('--release-label')
+        || readTrailingReleaseLabel();
 }
 
 function htmlEscape(value) {
@@ -220,6 +253,37 @@ function publicFirstScreenLabel(releaseLabel) {
     return normalizeLabel(releaseLabel).replace(/^CRM\s+\d+(?:\.\d+)?\s*:\s*/i, '');
 }
 
+function defaultReleaseDateLabel(date = new Date()) {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+}
+
+function buildDefaultChangelogModalSection(version, releaseLabel) {
+    const title = releaseLabel || `Release v${version}`;
+    const heading = `v${version}${releaseLabel ? ` вЂ” ${releaseLabel}` : ''}`;
+    return `                <div class="changelog-section">
+                    <h4>${htmlEscape(heading)}</h4>
+                    <ul>
+                        <li><b>${htmlEscape(title)}</b> вЂ” release marker, cache tags and visible version metadata were prepared automatically.</li>
+                    </ul>
+                </div>
+`;
+}
+
+function buildDefaultMarkdownChangelogEntry(version, releaseLabel) {
+    const title = releaseLabel || `Release v${version}`;
+    return `## v${version} - ${title}
+
+### Release / Versioning / (${defaultReleaseDateLabel()}) [codex]
+- **${title}** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
+`;
+}
+
 function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal = false, releaseLabelInText = false } = {}) {
     if (!exists(file)) return;
 
@@ -273,7 +337,17 @@ function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal =
             const expectedHeadingHtml = htmlEscape(expectedHeading);
             if (latestModalMatch[2] !== expectedHeadingHtml) {
                 report(file, 'latest changelog modal entry', latestModalMatch[2], expectedHeadingHtml);
-                if (FIX) html = html.replace(latestModalRegex, `$1${expectedHeadingHtml}$3`);
+                if (FIX) {
+                    const actualVersion = latestModalMatch[2].match(/v([\d.]+)/)?.[1] || '';
+                    if (actualVersion === version) {
+                        html = html.replace(latestModalRegex, `$1${expectedHeadingHtml}$3`);
+                    } else {
+                        html = html.replace(
+                            /(<div class="changelog-list">\s*)/,
+                            `$1${buildDefaultChangelogModalSection(version, releaseLabel)}`
+                        );
+                    }
+                }
             } else {
                 ok(file, 'latest changelog modal entry');
             }
@@ -287,7 +361,7 @@ function checkMarkdownChangelog(version, releaseLabel) {
     const file = 'CHANGELOG.md';
     if (!exists(file)) return;
 
-    const markdown = read(file);
+    let markdown = read(file);
     const latestHeading = markdown.match(/^## v([\d.]+)\s+[-—]\s+(.+)$/m);
     if (!latestHeading) {
         report(file, 'latest heading', 'missing', `v${version} - ${releaseLabel}`, false);
@@ -295,14 +369,27 @@ function checkMarkdownChangelog(version, releaseLabel) {
     }
 
     if (latestHeading[1] !== version) {
-        report(file, 'latest heading version', latestHeading[1], version, false);
+        report(file, 'latest heading version', latestHeading[1], version);
+        if (FIX) {
+            markdown = markdown.replace(
+                /(---\r?\n\r?\n)/,
+                `$1${buildDefaultMarkdownChangelogEntry(version, releaseLabel)}`
+            );
+            write(file, markdown);
+            ok(file, 'latest heading label');
+            return;
+        }
     } else {
         ok(file, 'latest heading version');
     }
 
     const headingLabel = normalizeLabel(latestHeading[2].replace(/\s*\([^)]*\)\s*$/, ''));
     if (headingLabel !== releaseLabel) {
-        report(file, 'latest heading label', latestHeading[2], releaseLabel, false);
+        report(file, 'latest heading label', latestHeading[2], releaseLabel);
+        if (FIX) {
+            markdown = markdown.replace(/^## v([\d.]+)\s+[-—]\s+(.+)$/m, `## v$1 - ${releaseLabel}`);
+            write(file, markdown);
+        }
     } else {
         ok(file, 'latest heading label');
     }

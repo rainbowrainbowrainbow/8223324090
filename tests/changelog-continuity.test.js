@@ -31,6 +31,10 @@ function currentPackageVersion() {
     return String(JSON.parse(read('package.json')).version || '');
 }
 
+function versionSyncScript() {
+    return read('scripts/version-sync.js');
+}
+
 function isVisibleContinuityTrain(version) {
     return version.startsWith(currentReleasePrefix())
         || version.startsWith('0.61.')
@@ -79,5 +83,17 @@ describe('visible changelog version continuity', () => {
             assert.ok(source.has(version), `CHANGELOG.md missing ${version}`);
             assert.ok(visible.has(version), `index.html modal missing ${version}`);
         }
+    });
+
+    it('keeps version sync from dropping labels or overwriting previous changelog entries', () => {
+        const script = versionSyncScript();
+
+        assert.match(script, /function readReleaseLabelArg/);
+        assert.match(script, /function readTrailingReleaseLabel/);
+        assert.match(script, /readArgWords\('--label'\)/);
+        assert.match(script, /readArgWords\('--release-label'\)/);
+        assert.match(script, /buildDefaultChangelogModalSection\(version, releaseLabel\)/);
+        assert.match(script, /buildDefaultMarkdownChangelogEntry\(version, releaseLabel\)/);
+        assert.match(script, /actualVersion === version/);
     });
 });

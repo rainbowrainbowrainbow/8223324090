@@ -50,6 +50,34 @@ const STAFF_RATE_UNIT_LABELS = {
     month: 'За місяць'
 };
 
+const STAFF_SHIFT_PREFERENCE_DAY_TYPES = [
+    { key: 'weekday', label: 'Будні' },
+    { key: 'weekend', label: 'Вихідні' }
+];
+
+const STAFF_SHIFT_PREFERENCE_DEFAULTS = {
+    default: {
+        weekday: { startTime: '10:00', endTime: '20:00' },
+        weekend: { startTime: '10:00', endTime: '20:00' }
+    },
+    animator: {
+        weekday: { startTime: '12:00', endTime: '20:00' },
+        weekend: { startTime: '10:00', endTime: '20:00' }
+    },
+    instructor: {
+        weekday: { startTime: '11:00', endTime: '20:00' },
+        weekend: { startTime: '09:00', endTime: '20:00' }
+    },
+    trampoline_instructor: {
+        weekday: { startTime: '11:00', endTime: '20:00' },
+        weekend: { startTime: '09:00', endTime: '20:00' }
+    },
+    senior_instructor: {
+        weekday: { startTime: '11:00', endTime: '20:00' },
+        weekend: { startTime: '09:00', endTime: '20:00' }
+    }
+};
+
 const STAFF_DOCUMENT_TYPE_LABELS = {
     passport: 'Паспорт',
     tax_id: 'ІПН',
@@ -371,6 +399,8 @@ let staffFoundationLoadSeq = 0;
 let staffResourceOptionsLoadSeq = 0;
 let staffRoleAssignmentsLoadSeq = 0;
 let staffPayrollSchemeLoadSeq = 0;
+let staffShiftPreferencesLoadSeq = 0;
+let staffShiftPreferencesByStaffId = new Map();
 let staffOffboardingReadiness = null;
 let staffLifecycleLoadSeq = 0;
 let hrRealtimeRefreshTimer = null;
@@ -1207,6 +1237,7 @@ function initNewTabs() {
         populateSecondaryProfessionSelect(selected, document.getElementById('editRoleType')?.value);
         refreshStaffRateEditorFromCurrentForm();
         refreshStaffRoleAssignmentsFromCurrentForm();
+        refreshStaffShiftPreferencesFromCurrentForm();
     });
     document.getElementById('editHourlyRate')?.addEventListener('input', () => {
         refreshStaffRateEditorFromCurrentForm();
@@ -4449,6 +4480,189 @@ function currentStaffProfessionKeysForEdit(staff = {}) {
     ]);
 }
 
+function normalizeShiftPreferenceTimeForUi(value, fallback = '') {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!match) return fallback;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return fallback;
+    }
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function shiftPreferenceDomKey(professionKey, dayType) {
+    return `${normalizeProfessionKey(professionKey)}:${String(dayType || '').trim().toLowerCase()}`;
+}
+
+function defaultShiftPreferenceForProfession(professionKey, dayType) {
+    const normalizedProfession = normalizeProfessionKey(professionKey);
+    const normalizedDayType = String(dayType || '').trim().toLowerCase();
+    const defaults = STAFF_SHIFT_PREFERENCE_DEFAULTS[normalizedProfession] || STAFF_SHIFT_PREFERENCE_DEFAULTS.default;
+    return defaults[normalizedDayType] || STAFF_SHIFT_PREFERENCE_DEFAULTS.default[normalizedDayType] || STAFF_SHIFT_PREFERENCE_DEFAULTS.default.weekday;
+}
+
+function shiftPreferenceRowsByKey(preferences = []) {
+    const map = new Map();
+    (Array.isArray(preferences) ? preferences : []).forEach(row => {
+        const professionKey = normalizeProfessionKey(row.profession_key || row.professionKey);
+        const dayType = String(row.day_type || row.dayType || '').trim().toLowerCase();
+        if (!professionKey || !STAFF_SHIFT_PREFERENCE_DAY_TYPES.some(item => item.key === dayType)) return;
+        if (row.is_active === false || row.isActive === false) return;
+        map.set(shiftPreferenceDomKey(professionKey, dayType), {
+            professionKey,
+            dayType,
+            startTime: normalizeShiftPreferenceTimeForUi(row.start_time || row.startTime),
+            endTime: normalizeShiftPreferenceTimeForUi(row.end_time || row.endTime)
+        });
+    });
+    return map;
+}
+
+function readCurrentStaffShiftPreferenceInputs() {
+    const root = document.getElementById('editStaffShiftPreferences');
+    const map = new Map();
+    if (!root) return map;
+    root.querySelectorAll('[data-shift-pref-profession][data-shift-pref-day]').forEach(row => {
+        const professionKey = normalizeProfessionKey(row.dataset.shiftPrefProfession);
+        const dayType = String(row.dataset.shiftPrefDay || '').trim().toLowerCase();
+        const startInput = row.querySelector('[data-shift-pref-start]');
+        const endInput = row.querySelector('[data-shift-pref-end]');
+        const startTime = normalizeShiftPreferenceTimeForUi(startInput?.value);
+        const endTime = normalizeShiftPreferenceTimeForUi(endInput?.value);
+        if (professionKey && dayType && startTime && endTime) {
+            map.set(shiftPreferenceDomKey(professionKey, dayType), { startTime, endTime });
+        }
+    });
+    return map;
+}
+
+function renderStaffShiftPreferencesEditor(staff = {}, preferences = []) {
+    const root = document.getElementById('editStaffShiftPreferences');
+    if (!root) return;
+    const keys = currentStaffProfessionKeysForEdit(staff);
+    const apiRows = shiftPreferenceRowsByKey(preferences);
+    const currentRows = readCurrentStaffShiftPreferenceInputs();
+    if (!keys.length) {
+        root.innerHTML = '<div class="hr-shift-preferences-empty">Додайте основну або додаткову професію, щоб налаштувати типові зміни.</div>';
+        return;
+    }
+    root.innerHTML = keys.map(professionKey => {
+        const dayRows = STAFF_SHIFT_PREFERENCE_DAY_TYPES.map(dayType => {
+            const domKey = shiftPreferenceDomKey(professionKey, dayType.key);
+            const fallback = defaultShiftPreferenceForProfession(professionKey, dayType.key);
+            const source = currentRows.get(domKey) || apiRows.get(domKey) || fallback;
+            const startTime = normalizeShiftPreferenceTimeForUi(source.startTime || source.start_time, fallback.startTime);
+            const endTime = normalizeShiftPreferenceTimeForUi(source.endTime || source.end_time, fallback.endTime);
+            return `<div class="hr-shift-preference-day" data-shift-pref-profession="${escapeHtml(professionKey)}" data-shift-pref-day="${escapeHtml(dayType.key)}">
+                <span>${escapeHtml(dayType.label)}</span>
+                <div class="hr-shift-preference-time-row">
+                    <label>
+                        <small>Початок</small>
+                        <input type="time" data-shift-pref-start value="${escapeHtml(startTime)}" aria-label="${escapeHtml(professionTitle(professionKey))}: ${escapeHtml(dayType.label)} початок">
+                    </label>
+                    <label>
+                        <small>Кінець</small>
+                        <input type="time" data-shift-pref-end value="${escapeHtml(endTime)}" aria-label="${escapeHtml(professionTitle(professionKey))}: ${escapeHtml(dayType.label)} кінець">
+                    </label>
+                </div>
+            </div>`;
+        }).join('');
+        return `<article class="hr-shift-preference-card" data-shift-pref-card="${escapeHtml(professionKey)}">
+            <div class="hr-shift-preference-head">
+                <strong>${escapeHtml(professionTitle(professionKey))}</strong>
+                <span>${escapeHtml(professionKey)}</span>
+            </div>
+            <div class="hr-shift-preference-grid">${dayRows}</div>
+        </article>`;
+    }).join('');
+}
+
+function refreshStaffShiftPreferencesFromCurrentForm() {
+    const staffId = Number(activeEditStaffId());
+    const staff = teamStaff.find(item => Number(item.id) === staffId) || {};
+    renderStaffShiftPreferencesEditor(staff, staffShiftPreferencesByStaffId.get(staffId) || []);
+}
+
+async function loadStaffShiftPreferences(staffId, options = {}) {
+    const numericStaffId = Number(staffId);
+    const root = document.getElementById('editStaffShiftPreferences');
+    if (!numericStaffId || !root) return null;
+    if (!options.force && staffShiftPreferencesByStaffId.has(numericStaffId)) {
+        refreshStaffShiftPreferencesFromCurrentForm();
+        return { success: true, data: staffShiftPreferencesByStaffId.get(numericStaffId) };
+    }
+    const seq = ++staffShiftPreferencesLoadSeq;
+    root.innerHTML = '<div class="hr-shift-preferences-empty">Типові зміни завантажуються...</div>';
+    const data = await crmApiFetch(`/api/staff/${encodeURIComponent(numericStaffId)}/shift-preferences`);
+    if (seq !== staffShiftPreferencesLoadSeq || Number(activeEditStaffId()) !== numericStaffId) return data;
+    if (!data?.success) {
+        root.innerHTML = '<div class="hr-shift-preferences-empty">Не вдалося завантажити типові зміни.</div>';
+        return data;
+    }
+    const rows = Array.isArray(data.data) ? data.data : [];
+    staffShiftPreferencesByStaffId.set(numericStaffId, rows);
+    refreshStaffShiftPreferencesFromCurrentForm();
+    return data;
+}
+
+function readStaffShiftPreferences() {
+    const root = document.getElementById('editStaffShiftPreferences');
+    const preferences = [];
+    if (!root) return { ok: true, preferences };
+    let error = '';
+    root.querySelectorAll('[data-shift-pref-profession][data-shift-pref-day]').forEach(row => {
+        row.classList.remove('has-error');
+        const professionKey = normalizeProfessionKey(row.dataset.shiftPrefProfession);
+        const dayType = String(row.dataset.shiftPrefDay || '').trim().toLowerCase();
+        const startTime = normalizeShiftPreferenceTimeForUi(row.querySelector('[data-shift-pref-start]')?.value);
+        const endTime = normalizeShiftPreferenceTimeForUi(row.querySelector('[data-shift-pref-end]')?.value);
+        if (!professionKey || !STAFF_SHIFT_PREFERENCE_DAY_TYPES.some(item => item.key === dayType)) return;
+        if (!startTime || !endTime) {
+            row.classList.add('has-error');
+            error = error || 'Заповніть початок і кінець для всіх типових змін.';
+            return;
+        }
+        if (startTime === endTime) {
+            row.classList.add('has-error');
+            error = error || 'Початок і кінець типової зміни не можуть бути однаковими.';
+            return;
+        }
+        preferences.push({
+            professionKey,
+            dayType,
+            startTime,
+            endTime,
+            isActive: true
+        });
+    });
+    return { ok: !error, preferences, error };
+}
+
+async function saveStaffShiftPreferences(staffId) {
+    const numericStaffId = Number(staffId);
+    if (!numericStaffId) return { success: false, error: 'Невідомий співробітник для збереження типових змін.' };
+    const root = document.getElementById('editStaffShiftPreferences');
+    if (root && !root.querySelector('[data-shift-pref-profession]') && !staffShiftPreferencesByStaffId.has(numericStaffId)) {
+        const loaded = await loadStaffShiftPreferences(numericStaffId);
+        if (!loaded?.success) {
+            return { success: false, error: loaded?.error || 'Не вдалося завантажити типові зміни перед збереженням.' };
+        }
+    }
+    const payload = readStaffShiftPreferences();
+    if (!payload.ok) return { success: false, error: payload.error };
+    const data = await crmApiFetch(`/api/staff/${encodeURIComponent(numericStaffId)}/shift-preferences`, {
+        method: 'PUT',
+        body: { preferences: payload.preferences }
+    });
+    if (data?.success) {
+        staffShiftPreferencesByStaffId.set(numericStaffId, Array.isArray(data.data) ? data.data : payload.preferences);
+        refreshStaffShiftPreferencesFromCurrentForm();
+    }
+    return data;
+}
+
 function renderStaffProfessionRatesEditor(staff = {}) {
     const root = document.getElementById('editProfessionRates');
     if (!root) return;
@@ -4555,6 +4769,7 @@ function bindSecondaryProfessionPicker() {
             }
             refreshStaffRateEditorFromCurrentForm();
             refreshStaffRoleAssignmentsFromCurrentForm();
+            refreshStaffShiftPreferencesFromCurrentForm();
         };
         document.addEventListener('click', event => {
             if (!picker.contains(event.target)) setSecondaryProfessionPickerOpen(false);
@@ -5610,6 +5825,7 @@ async function openStaffEdit(staffId, options = {}) {
     loadStaffLifecycleChecklist(staffId);
     loadStaffFoundation(staffId);
     loadStaffRoleAssignments(staffId);
+    loadStaffShiftPreferences(staffId);
     loadStaffPayrollScheme(staffId);
     loadStaffResourceOptions('custom');
 }
@@ -5644,6 +5860,11 @@ async function saveStaffEdit() {
         body: JSON.stringify(body)
     });
     if (data && data.success) {
+        const preferenceData = await saveStaffShiftPreferences(staffId);
+        if (!preferenceData?.success) {
+            showNotification(preferenceData?.error || 'Профіль оновлено, але типові зміни не збереглися.', 'error');
+            return;
+        }
         showNotification('Профіль оновлено', 'success');
         await closeHrEditableModal('staffEditModal', true);
         await loadTeam();

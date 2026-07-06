@@ -4824,6 +4824,106 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     line-height: 1.35;
 }
 
+.sch-shift-preferences {
+    display: grid;
+    gap: 9px;
+    margin: 0 0 12px;
+    padding: 10px;
+    border: 1px solid rgba(20, 184, 166, 0.22);
+    border-radius: 12px;
+    background: rgba(20, 184, 166, 0.06);
+}
+
+.sch-shift-preferences[hidden] {
+    display: none !important;
+}
+
+.sch-shift-preferences-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.sch-shift-preferences-head strong {
+    min-width: 0;
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sch-shift-preferences-head span {
+    flex: 0 0 auto;
+    max-width: 50%;
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sch-shift-preference-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.sch-shift-preference-option {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: 1px solid rgba(20, 184, 166, 0.24);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--gray-700);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sch-shift-preference-option strong {
+    color: inherit;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.sch-shift-preference-option span {
+    color: var(--gray-600);
+    font-size: 14px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.sch-shift-preference-option.is-recommended {
+    border-color: rgba(16, 185, 129, 0.58);
+    background: rgba(16, 185, 129, 0.13);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.sch-shift-preference-option:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.sch-shift-preferences-empty {
+    padding: 9px;
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+    border-radius: 10px;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    text-align: center;
+}
+
 .sch-modal select,
 .sch-modal input {
     width: 100%;
@@ -4974,6 +5074,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
     .schedule-table td:first-child {
         min-width: 140px;
+    }
+    .sch-shift-preference-options {
+        grid-template-columns: 1fr;
     }
     .emp-position { display: none; }
 }
@@ -5550,6 +5653,21 @@ body.dark-mode #schModalOverlay .sch-modal--schedule select,
     background-image:
         linear-gradient(45deg, transparent 50%, #CBD5E1 50%),
         linear-gradient(135deg, #CBD5E1 50%, transparent 50%);
+    background-position:
+        calc(100% - 25px) 50%,
+        calc(100% - 17px) 50%;
+    background-size: 8px 8px, 8px 8px;
+    background-repeat: no-repeat;
+    padding-right: 52px;
+}
+
+body.dark-mode #schModalOverlay .sch-modal--schedule input[type="time"],
+[data-theme="dark"] #schModalOverlay .sch-modal--schedule input[type="time"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23CBD5E1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+    background-position: calc(100% - 18px) 50%;
+    background-size: 20px 20px;
+    background-repeat: no-repeat;
+    padding-right: 52px;
 }
 
 body.dark-mode #schModalOverlay .sch-modal--schedule input::placeholder,
@@ -5590,8 +5708,51 @@ body.dark-mode #schModalOverlay .sch-modal--schedule select:disabled option,
 
 body.dark-mode #schModalOverlay .sch-modal--schedule input[type="time"]::-webkit-calendar-picker-indicator,
 [data-theme="dark"] #schModalOverlay .sch-modal--schedule input[type="time"]::-webkit-calendar-picker-indicator {
-    filter: invert(1) brightness(1.35);
-    opacity: 0.92;
+    cursor: pointer;
+    opacity: 0;
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preferences,
+[data-theme="dark"] #schModalOverlay .sch-shift-preferences {
+    background: rgba(20, 184, 166, 0.10);
+    border-color: rgba(45, 212, 191, 0.24);
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preferences-head strong,
+[data-theme="dark"] #schModalOverlay .sch-shift-preferences-head strong {
+    color: #E2E8F0;
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preferences-head span,
+body.dark-mode #schModalOverlay .sch-shift-preferences-empty,
+[data-theme="dark"] #schModalOverlay .sch-shift-preferences-head span,
+[data-theme="dark"] #schModalOverlay .sch-shift-preferences-empty {
+    color: #94A3B8;
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preference-option,
+[data-theme="dark"] #schModalOverlay .sch-shift-preference-option {
+    background: rgba(15, 23, 42, 0.46);
+    border-color: rgba(148, 163, 184, 0.20);
+    color: #E2E8F0;
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preference-option span,
+[data-theme="dark"] #schModalOverlay .sch-shift-preference-option span {
+    color: #F8FAFC;
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preference-option.is-recommended,
+[data-theme="dark"] #schModalOverlay .sch-shift-preference-option.is-recommended {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(52, 211, 153, 0.48);
+    box-shadow: none;
+}
+
+body.dark-mode #schModalOverlay .sch-shift-preferences-empty,
+[data-theme="dark"] #schModalOverlay .sch-shift-preferences-empty {
+    background: rgba(15, 23, 42, 0.32);
+    border-color: rgba(148, 163, 184, 0.24);
 }
 
 /* Extracted from staff.html presentation-only inline attrs. */

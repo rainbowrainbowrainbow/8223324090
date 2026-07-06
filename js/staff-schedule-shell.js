@@ -100,6 +100,7 @@
                     <h3 id="schModalTitle">Редагувати зміну</h3>
                     <div class="sch-modal-scroll">
                         <div id="schReadOnlyHint" class="sch-readonly-hint" hidden>Режим перегляду: можна дивитись технічну історію, редагування доступне HR/керівникам.</div>
+                        <div id="schShiftPreferencePanel" class="sch-shift-preferences" hidden></div>
                         <div class="form-group">
                             <label>Статус</label>
                             <select id="schStatus">

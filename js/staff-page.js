@@ -70,6 +70,8 @@ const StaffState = {
     accountabilityDeptFilter: 'all',
     accountabilityManagerFilter: 'all',
     scheduleHistory: {}, // { staffId_date: audit entries }
+    shiftPreferences: {}, // { staffId: preference[] }
+    shiftPreferencesLoadSeq: 0,
     departments: {},
     displayGroups: [],
     activeDept: 'all',
@@ -2808,6 +2810,191 @@ function renderSchedule() {
 let _staffScheduleInitialState = '';
 let _staffFillInitialState = '';
 
+const SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS = {
+    weekday: 'Будні',
+    weekend: 'Вихідні'
+};
+
+function scheduleShiftPreferenceDayType(date) {
+    const parsed = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return 'weekday';
+    const day = parsed.getDay();
+    return day === 0 || day === 6 ? 'weekend' : 'weekday';
+}
+
+function normalizeScheduleShiftPreferenceTime(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!match) return '';
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return '';
+    }
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function normalizeScheduleShiftPreference(row = {}) {
+    const professionKey = normalizeProfessionKey(row.profession_key || row.professionKey);
+    const dayType = String(row.day_type || row.dayType || '').trim().toLowerCase();
+    const startTime = normalizeScheduleShiftPreferenceTime(row.start_time || row.startTime);
+    const endTime = normalizeScheduleShiftPreferenceTime(row.end_time || row.endTime);
+    if (!professionKey || !SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[dayType] || !startTime || !endTime) return null;
+    if (row.is_active === false || row.isActive === false) return null;
+    return { professionKey, dayType, startTime, endTime };
+}
+
+function scheduleShiftPreferencesForCurrentProfession(preferences = []) {
+    const professionKey = normalizeProfessionKey(document.getElementById('schProfession')?.value);
+    if (!professionKey) return [];
+    return (Array.isArray(preferences) ? preferences : [])
+        .map(normalizeScheduleShiftPreference)
+        .filter(row => row && row.professionKey === professionKey)
+        .sort((a, b) => {
+            const rank = { weekday: 1, weekend: 2 };
+            return (rank[a.dayType] || 9) - (rank[b.dayType] || 9);
+        });
+}
+
+async function fetchScheduleShiftPreferences(staffId, options = {}) {
+    const numericStaffId = Number(staffId);
+    if (!numericStaffId) return { success: false, data: [] };
+    if (!options.force && Array.isArray(StaffState.shiftPreferences[numericStaffId])) {
+        return { success: true, data: StaffState.shiftPreferences[numericStaffId] };
+    }
+    try {
+        const res = await staffApiFetch(`/api/staff/${encodeURIComponent(numericStaffId)}/shift-preferences`);
+        const data = await res.json().catch(() => ({}));
+        if (data?.success) {
+            StaffState.shiftPreferences[numericStaffId] = Array.isArray(data.data) ? data.data : [];
+        }
+        return data;
+    } catch (err) {
+        console.error('fetchScheduleShiftPreferences error:', err);
+        return { success: false, data: [] };
+    }
+}
+
+function applyScheduleShiftPreference(preference = {}) {
+    const normalized = normalizeScheduleShiftPreference(preference);
+    if (!normalized) return false;
+    const status = document.getElementById('schStatus');
+    if (status && !['working', 'remote'].includes(status.value)) {
+        status.value = 'working';
+        toggleTimeFields();
+    }
+    const start = document.getElementById('schStart');
+    const end = document.getElementById('schEnd');
+    if (start) start.value = normalized.startTime;
+    if (end) end.value = normalized.endTime;
+    return true;
+}
+
+function applyRecommendedScheduleShiftPreference(preferences = [], mode = false, options = {}) {
+    if (!mode || !StaffState.canManage) return;
+    const editing = StaffState.editingCell;
+    if (!editing) return;
+    if (options.onlyIfState && getStaffScheduleState() !== options.onlyIfState) return;
+    const current = scheduleShiftPreferencesForCurrentProfession(preferences);
+    if (!current.length) return;
+    if (mode === 'missing-only') {
+        const entry = editing.entry || StaffState.schedule[`${editing.staffId}_${editing.date}`];
+        if (entry?.shift_start || entry?.shift_end) return;
+    }
+    const dayType = scheduleShiftPreferenceDayType(editing.date);
+    const recommended = current.find(row => row.dayType === dayType);
+    if (recommended && applyScheduleShiftPreference(recommended) && options.resetInitialState) {
+        _staffScheduleInitialState = getStaffScheduleState();
+    }
+}
+
+function renderScheduleShiftPreferencePanel(preferences = [], options = {}) {
+    const panel = document.getElementById('schShiftPreferencePanel');
+    if (!panel) return;
+    const status = document.getElementById('schStatus')?.value || 'working';
+    if (!['working', 'remote'].includes(status)) {
+        panel.hidden = true;
+        panel.innerHTML = '';
+        return;
+    }
+    const editing = StaffState.editingCell;
+    const professionKey = normalizeProfessionKey(document.getElementById('schProfession')?.value);
+    if (!editing || !professionKey) {
+        panel.hidden = true;
+        panel.innerHTML = '';
+        return;
+    }
+    const current = scheduleShiftPreferencesForCurrentProfession(preferences);
+    const activeDayType = scheduleShiftPreferenceDayType(editing.date);
+    panel.hidden = false;
+    if (!current.length) {
+        panel.innerHTML = `
+            <div class="sch-shift-preferences-head">
+                <strong>Типові зміни з картки</strong>
+                <span>${escapeHtml(professionLabel(professionKey))}</span>
+            </div>
+            <div class="sch-shift-preferences-empty">Для цієї професії немає збережених типових змін у картці співробітника.</div>
+        `;
+        return;
+    }
+    panel.innerHTML = `
+        <div class="sch-shift-preferences-head">
+            <strong>Типові зміни з картки</strong>
+            <span>${escapeHtml(professionLabel(professionKey))}</span>
+        </div>
+        <div class="sch-shift-preference-options">
+            ${current.map(row => `
+                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" ${StaffState.canManage ? '' : 'disabled'}>
+                    <strong>${escapeHtml(SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[row.dayType] || row.dayType)}</strong>
+                    <span>${escapeHtml(row.startTime)}-${escapeHtml(row.endTime)}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+    applyRecommendedScheduleShiftPreference(preferences, options.autoApply, options);
+}
+
+function renderScheduleShiftPreferenceLoading() {
+    const panel = document.getElementById('schShiftPreferencePanel');
+    if (!panel) return;
+    panel.hidden = false;
+    panel.innerHTML = `
+        <div class="sch-shift-preferences-head">
+            <strong>Типові зміни з картки</strong>
+            <span>Завантажуються...</span>
+        </div>
+    `;
+}
+
+async function loadScheduleShiftPreferences(staffId, options = {}) {
+    const numericStaffId = Number(staffId);
+    const seq = ++StaffState.shiftPreferencesLoadSeq;
+    renderScheduleShiftPreferenceLoading();
+    const result = await fetchScheduleShiftPreferences(numericStaffId, { force: options.force });
+    const editing = StaffState.editingCell;
+    if (seq !== StaffState.shiftPreferencesLoadSeq || !editing || Number(editing.staffId) !== numericStaffId) return result;
+    if (!result?.success) {
+        const panel = document.getElementById('schShiftPreferencePanel');
+        if (panel) {
+            panel.hidden = false;
+            panel.innerHTML = `
+                <div class="sch-shift-preferences-head">
+                    <strong>Типові зміни з картки</strong>
+                    <span>Помилка</span>
+                </div>
+                <div class="sch-shift-preferences-empty">Не вдалося завантажити типові зміни.</div>
+            `;
+        }
+        return result;
+    }
+    renderScheduleShiftPreferencePanel(result.data || [], {
+        autoApply: options.autoApply,
+        onlyIfState: options.onlyIfState,
+        resetInitialState: options.resetInitialState
+    });
+    return result;
+}
+
 function getStaffScheduleState() {
     return ['schStatus', 'schProfession', 'schStart', 'schEnd', 'schNote'].map(id => {
         const el = document.getElementById(id);
@@ -2881,8 +3068,14 @@ function openEditModal(staffId, date) {
     toggleTimeFields();
     setScheduleModalReadOnly(!StaffState.canManage);
     loadScheduleCellHistory(staffId, date);
+    const stateBeforePreferences = getStaffScheduleState();
+    loadScheduleShiftPreferences(staffId, {
+        autoApply: (!entry?.shift_start && !entry?.shift_end) ? 'missing-only' : false,
+        onlyIfState: stateBeforePreferences,
+        resetInitialState: true
+    });
     const overlay = document.getElementById('schModalOverlay');
-    _staffScheduleInitialState = getStaffScheduleState();
+    _staffScheduleInitialState = stateBeforePreferences;
     overlay?.classList.add('visible');
     if (window.ModalLayer) window.ModalLayer.ensureTopLayer(overlay);
     if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
@@ -2893,6 +3086,11 @@ async function closeEditModal(force = false) {
     const closeNow = () => {
         overlay?.classList.remove('visible');
         StaffState.editingCell = null;
+        const shiftPreferencePanel = document.getElementById('schShiftPreferencePanel');
+        if (shiftPreferencePanel) {
+            shiftPreferencePanel.hidden = true;
+            shiftPreferencePanel.innerHTML = '';
+        }
         _staffScheduleInitialState = getStaffScheduleState();
     };
     if (window.UnsafeDismissGuard && overlay) {
@@ -2914,6 +3112,17 @@ function toggleTimeFields() {
     document.getElementById('schTimeFields').style.display = visible ? '' : 'none';
     const professionGroup = document.getElementById('schProfessionGroup');
     if (professionGroup) professionGroup.style.display = visible ? '' : 'none';
+    const shiftPreferencePanel = document.getElementById('schShiftPreferencePanel');
+    if (!visible) {
+        if (shiftPreferencePanel) {
+            shiftPreferencePanel.hidden = true;
+            shiftPreferencePanel.innerHTML = '';
+        }
+    } else {
+        const editing = StaffState.editingCell;
+        const preferences = editing ? StaffState.shiftPreferences[Number(editing.staffId)] : null;
+        if (Array.isArray(preferences)) renderScheduleShiftPreferencePanel(preferences);
+    }
     const entry = getEditingScheduleEntry();
     const isReplacement = isReplacementEntry(entry);
     const canReplace = visible && StaffState.canManage && entry?.id && entry.shift_start && entry.shift_end;
@@ -3029,6 +3238,9 @@ function setScheduleModalReadOnly(readOnly) {
     if (saveBtn) saveBtn.hidden = readOnly;
     const readOnlyHint = document.getElementById('schReadOnlyHint');
     if (readOnlyHint) readOnlyHint.hidden = !readOnly;
+    document.querySelectorAll('#schShiftPreferencePanel .sch-shift-preference-option').forEach(button => {
+        button.disabled = readOnly;
+    });
 }
 
 async function handleSave() {
@@ -4171,6 +4383,22 @@ async function initStaffSchedulePage(options = {}) {
         document.getElementById('schClearReplacementBtn')?.addEventListener('click', handleClearReplacement);
         document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
         document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
+        document.getElementById('schProfession')?.addEventListener('change', () => {
+            const editing = StaffState.editingCell;
+            const preferences = editing ? StaffState.shiftPreferences[Number(editing.staffId)] : null;
+            if (Array.isArray(preferences)) renderScheduleShiftPreferencePanel(preferences, { autoApply: 'force' });
+        });
+        document.getElementById('schShiftPreferencePanel')?.addEventListener('click', event => {
+            const button = event.target.closest('[data-shift-pref-start][data-shift-pref-end]');
+            if (!button || button.disabled || !StaffState.canManage) return;
+            applyScheduleShiftPreference({
+                professionKey: document.getElementById('schProfession')?.value,
+                dayType: button.dataset.shiftPrefDay,
+                startTime: button.dataset.shiftPrefStart,
+                endTime: button.dataset.shiftPrefEnd,
+                isActive: true
+            });
+        });
         document.getElementById('schHistoryRefreshBtn')?.addEventListener('click', () => {
             const editing = StaffState.editingCell;
             if (editing) loadScheduleCellHistory(editing.staffId, editing.date);

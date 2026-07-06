@@ -267,6 +267,13 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrPage, /function renderStaffProfessionRatesEditor/);
         assert.match(hrPage, /currentInputValues\.has\(key\)/);
         assert.match(hrPage, /function readStaffProfessionRates/);
+        assert.match(hrPage, /function renderStaffShiftPreferencesEditor/);
+        assert.match(hrPage, /function loadStaffShiftPreferences/);
+        assert.match(hrPage, /function readStaffShiftPreferences/);
+        assert.match(hrPage, /function saveStaffShiftPreferences/);
+        assert.match(hrPage, /refreshStaffShiftPreferencesFromCurrentForm/);
+        assert.match(hrPage, /crmApiFetch\(`\/api\/staff\/\$\{encodeURIComponent\(numericStaffId\)\}\/shift-preferences`/);
+        assert.match(hrPage, /saveStaffShiftPreferences\(staffId\)/);
         assert.match(hrPage, /function initTeamDragAndDrop/);
         assert.match(hrPage, /moveStaffToBucket/);
         assert.match(hrPage, /staffHasProfession\(staff \|\| \{\}, selectedProfession\)/);
@@ -278,6 +285,10 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(hrHtml, /id="teamSearch"/);
         assert.match(hrHtml, /id="teamRoleFilter" class="hr-team-select" hidden aria-hidden="true"/);
         assert.match(hrHtml, /id="editProfessionRates"/);
+        assert.match(hrHtml, /id="editStaffShiftPreferences"/);
+        assert.match(hrHtml, /id="editShiftPreferencesRefresh"/);
+        assert.match(hrHtml, /hr-shift-preference-card/);
+        assert.match(hrHtml, /hr-shift-preference-time-row input\[type="time"\]/);
         assert.match(hrHtml, /id="editCompanyStructureNode"/);
         assert.match(hrHtml, /hr-ready-badge/);
         assert.match(hrHtml, /hr-profession-rate-editor/);

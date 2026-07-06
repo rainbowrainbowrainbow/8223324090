@@ -554,6 +554,7 @@ describe('staff schedule safety guards', () => {
         assert.ok(darkModalCssBlock.length > 0, 'schedule modal dark-theme CSS block is present');
         assert.match(scheduleModal, /class="sch-modal sch-modal--schedule"/);
         assert.match(scheduleModal, /class="sch-modal-scroll"/);
+        assert.match(scheduleModal, /id="schShiftPreferencePanel"/);
         assert.match(scheduleModal, /class="modal-actions sch-primary-actions"/);
         assert.ok(scheduleModal.indexOf('class="sch-modal-scroll"') < scheduleModal.indexOf('class="modal-actions sch-primary-actions"'));
 
@@ -563,6 +564,9 @@ describe('staff schedule safety guards', () => {
         assert.match(modalCssBlock, /#schModalOverlay \.sch-modal-scroll\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*overflow-y:\s*auto;[\s\S]*scrollbar-gutter:\s*stable;[\s\S]*\}/);
         assert.match(modalCssBlock, /#schModalOverlay \.sch-primary-actions\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*border-top:\s*1px solid rgba\(148, 163, 184, 0\.22\);[\s\S]*background:\s*inherit;[\s\S]*\}/);
         assert.match(modalCssBlock, /#schModalOverlay \.sch-primary-actions > button\s*\{[\s\S]*min-height:\s*44px;[\s\S]*\}/);
+        assert.match(modalCssBlock, /\.sch-shift-preferences\s*\{/);
+        assert.match(modalCssBlock, /\.sch-shift-preference-options\s*\{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);[\s\S]*\}/);
+        assert.match(modalCssBlock, /\.sch-shift-preference-option\.is-recommended/);
         assert.match(staffCss, /#schModalOverlay \.sch-history-list\s*\{[\s\S]*max-height:\s*min\(190px, 28dvh\);[\s\S]*\}/);
 
         assert.match(darkModalCssBlock, /body\.dark-mode #schModalOverlay \.sch-modal--schedule select/);
@@ -570,13 +574,36 @@ describe('staff schedule safety guards', () => {
         assert.match(darkModalCssBlock, /color-scheme:\s*dark;/);
         assert.match(darkModalCssBlock, /background-color:\s*#0B1220;/);
         assert.match(darkModalCssBlock, /color:\s*#F8FAFC;/);
+        assert.match(darkModalCssBlock, /background-position:\s*[\s\S]*calc\(100% - 25px\) 50%,[\s\S]*calc\(100% - 17px\) 50%;/);
+        assert.match(darkModalCssBlock, /background-size:\s*8px 8px,\s*8px 8px;/);
+        assert.match(darkModalCssBlock, /background-repeat:\s*no-repeat;/);
+        assert.match(darkModalCssBlock, /padding-right:\s*52px;/);
+        assert.match(darkModalCssBlock, /input\[type="time"\][\s\S]*background-image:\s*url\("data:image\/svg\+xml/);
+        assert.match(darkModalCssBlock, /input\[type="time"\][\s\S]*background-position:\s*calc\(100% - 18px\) 50%;/);
+        assert.match(darkModalCssBlock, /input\[type="time"\][\s\S]*background-size:\s*20px 20px;/);
         assert.match(darkModalCssBlock, /select option,\s*[\s\S]*select optgroup/);
         assert.match(darkModalCssBlock, /select option:checked/);
         assert.match(darkModalCssBlock, /select:disabled/);
         assert.match(darkModalCssBlock, /input:disabled/);
         assert.match(darkModalCssBlock, /input::placeholder/);
         assert.match(darkModalCssBlock, /input\[type="time"\]::-webkit-calendar-picker-indicator/);
+        assert.match(darkModalCssBlock, /input\[type="time"\]::-webkit-calendar-picker-indicator,[\s\S]*opacity:\s*0;/);
+        assert.match(darkModalCssBlock, /body\.dark-mode #schModalOverlay \.sch-shift-preferences/);
+        assert.match(darkModalCssBlock, /body\.dark-mode #schModalOverlay \.sch-shift-preference-option\.is-recommended/);
         assert.doesNotMatch(darkModalCssBlock, /!important/);
+    });
+
+    it('loads staff shift preferences into schedule modal quick options without changing schedule save API', () => {
+        assert.match(staffPage, /shiftPreferences:\s*\{\}/);
+        assert.match(staffPage, /function fetchScheduleShiftPreferences/);
+        assert.match(staffPage, /function renderScheduleShiftPreferencePanel/);
+        assert.match(staffPage, /function applyScheduleShiftPreference/);
+        assert.match(staffPage, /\/api\/staff\/\$\{encodeURIComponent\(numericStaffId\)\}\/shift-preferences/);
+        assert.match(staffPage, /renderScheduleShiftPreferencePanel\(preferences, \{ autoApply: 'force' \}\)/);
+        assert.match(staffPage, /loadScheduleShiftPreferences\(staffId, \{/);
+        assert.match(staffPage, /autoApply: \(!entry\?\.shift_start && !entry\?\.shift_end\) \? 'missing-only' : false/);
+        assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey\)/);
+        assert.doesNotMatch(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey,\s*shiftPreferences/);
     });
 
     it('marks partial shifts with durable load classes and theme-safe colors', () => {

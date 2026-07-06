@@ -45,6 +45,7 @@ const { calculateHrClockOutPayroll } = require('../services/hrAttendance');
 const {
     normalizeProfessionKey,
     normalizeSecondaryProfessions,
+    staffProfessionKeys,
     resolveStaffProfessionAssignment
 } = require('../services/professions');
 const {
@@ -235,6 +236,144 @@ function scheduleProfessionFromPayload(payload = {}) {
 async function resolveScheduleProfession(staffId, status, payload = {}, db = pool) {
     if (!scheduleStatusNeedsProfession(status)) return { ok: true, professionKey: null };
     return resolveStaffProfessionAssignment(db, staffId, scheduleProfessionFromPayload(payload));
+}
+
+const STAFF_SHIFT_PREFERENCE_DAY_TYPES = new Set(['weekday', 'weekend']);
+const STAFF_SHIFT_PREFERENCE_MAX_ITEMS = 100;
+
+function normalizeShiftPreferenceDayType(value) {
+    const raw = String(value || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+    if (['weekday', 'weekdays', 'workday', 'workdays'].includes(raw)) return 'weekday';
+    if (['weekend', 'weekends'].includes(raw)) return 'weekend';
+    return null;
+}
+
+function normalizeShiftPreferenceTime(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):([0-5]\d)(?::[0-5]\d)?$/);
+    if (!match) return null;
+    const hour = Number(match[1]);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+    return `${String(hour).padStart(2, '0')}:${match[2]}`;
+}
+
+function formatShiftPreferenceTime(value) {
+    if (!value) return null;
+    return String(value).slice(0, 5);
+}
+
+function mapStaffShiftPreferenceRow(row = {}) {
+    const startTime = formatShiftPreferenceTime(row.start_time);
+    const endTime = formatShiftPreferenceTime(row.end_time);
+    return {
+        id: Number(row.id) || null,
+        staff_id: Number(row.staff_id) || null,
+        staffId: Number(row.staff_id) || null,
+        profession_key: row.profession_key || '',
+        professionKey: row.profession_key || '',
+        day_type: row.day_type || '',
+        dayType: row.day_type || '',
+        start_time: startTime,
+        startTime,
+        end_time: endTime,
+        endTime,
+        is_active: row.is_active !== false,
+        isActive: row.is_active !== false,
+        created_at: row.created_at || null,
+        createdAt: row.created_at || null,
+        updated_at: row.updated_at || null,
+        updatedAt: row.updated_at || null
+    };
+}
+
+function shiftPreferenceItemsFromBody(body = {}) {
+    const items = body.preferences ?? body.shiftPreferences ?? body.data;
+    return Array.isArray(items) ? items : null;
+}
+
+function validateStaffShiftPreferencePayload(staff = {}, items = []) {
+    if (!Array.isArray(items)) {
+        return { ok: false, status: 400, error: 'preferences must be an array' };
+    }
+    if (items.length > STAFF_SHIFT_PREFERENCE_MAX_ITEMS) {
+        return { ok: false, status: 400, error: `maximum ${STAFF_SHIFT_PREFERENCE_MAX_ITEMS} preferences per request` };
+    }
+    const allowedProfessions = staffProfessionKeys(staff);
+    const allowedProfessionSet = new Set(allowedProfessions);
+    const seen = new Set();
+    const preferences = [];
+
+    for (const item of items) {
+        const professionKey = normalizeProfessionKey(item?.profession_key ?? item?.professionKey ?? item?.role_type ?? item?.roleType);
+        const dayType = normalizeShiftPreferenceDayType(item?.day_type ?? item?.dayType);
+        const startTime = normalizeShiftPreferenceTime(item?.start_time ?? item?.startTime ?? item?.shiftStart ?? item?.planned_start);
+        const endTime = normalizeShiftPreferenceTime(item?.end_time ?? item?.endTime ?? item?.shiftEnd ?? item?.planned_end);
+        const key = `${professionKey}:${dayType}`;
+        const isActive = item?.is_active === false || item?.isActive === false ? false : true;
+
+        if (!professionKey) {
+            return { ok: false, status: 400, error: 'professionKey is required' };
+        }
+        if (!allowedProfessionSet.has(professionKey)) {
+            return {
+                ok: false,
+                status: 400,
+                error: `profession "${professionKey}" is not available for this staff member`,
+                allowedProfessions
+            };
+        }
+        if (!STAFF_SHIFT_PREFERENCE_DAY_TYPES.has(dayType)) {
+            return { ok: false, status: 400, error: 'dayType must be weekday or weekend' };
+        }
+        if (!startTime || !endTime) {
+            return { ok: false, status: 400, error: 'startTime and endTime must be valid HH:MM values' };
+        }
+        if (startTime === endTime) {
+            return { ok: false, status: 400, error: 'startTime and endTime must be different' };
+        }
+        if (seen.has(key)) {
+            return { ok: false, status: 400, error: `duplicate preference for ${key}` };
+        }
+        seen.add(key);
+        preferences.push({ professionKey, dayType, startTime, endTime, isActive });
+    }
+
+    return { ok: true, allowedProfessions, preferences };
+}
+
+async function loadStaffForShiftPreferences(db, staffId, options = {}) {
+    const id = Number(staffId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const result = await db.query(
+        `SELECT id, name, role_type, COALESCE(secondary_professions, '[]'::jsonb) AS secondary_professions, is_active
+         FROM staff
+         WHERE id = $1
+         ${options.forUpdate ? 'FOR UPDATE' : ''}`,
+        [id]
+    );
+    return result.rows[0] || null;
+}
+
+async function loadStaffShiftPreferences(db, staffId, options = {}) {
+    const params = [staffId];
+    let professionFilter = '';
+    if (Array.isArray(options.professionKeys) && options.professionKeys.length === 0) {
+        return [];
+    }
+    if (Array.isArray(options.professionKeys) && options.professionKeys.length) {
+        params.push(options.professionKeys);
+        professionFilter = ` AND profession_key = ANY($${params.length}::text[])`;
+    }
+    const result = await db.query(
+        `SELECT id, staff_id, profession_key, day_type, start_time, end_time, is_active, created_at, updated_at
+         FROM staff_shift_preferences
+         WHERE staff_id = $1
+         ${professionFilter}
+         ORDER BY profession_key,
+                  CASE day_type WHEN 'weekday' THEN 1 WHEN 'weekend' THEN 2 ELSE 3 END`,
+        params
+    );
+    return result.rows.map(mapStaffShiftPreferenceRow);
 }
 
 function normalizeScheduleDate(value) {
@@ -1539,6 +1678,117 @@ router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (re
         }
         log.error('GET /staff/attendance error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// GET /api/staff/:id/shift-preferences - staff-level default shift times by profession and day type
+router.get('/:id/shift-preferences', async (req, res) => {
+    try {
+        const staffId = Number(req.params.id);
+        if (!Number.isInteger(staffId) || staffId <= 0) {
+            return res.status(400).json({ success: false, error: 'valid staff id is required' });
+        }
+        const staff = await loadStaffForShiftPreferences(pool, staffId);
+        if (!staff) {
+            return res.status(404).json({ success: false, error: 'staff member not found' });
+        }
+        const allowedProfessions = staffProfessionKeys(staff);
+        const data = await loadStaffShiftPreferences(pool, staffId, { professionKeys: allowedProfessions });
+        res.json({
+            success: true,
+            staffId,
+            allowedProfessions,
+            data
+        });
+    } catch (err) {
+        log.error('GET /staff/:id/shift-preferences error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// PUT /api/staff/:id/shift-preferences - upsert staff-level defaults without touching actual schedule rows
+router.put('/:id/shift-preferences', requireAction('manage_staff'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const staffId = Number(req.params.id);
+        if (!Number.isInteger(staffId) || staffId <= 0) {
+            return res.status(400).json({ success: false, error: 'valid staff id is required' });
+        }
+        const items = shiftPreferenceItemsFromBody(req.body);
+        if (!items) {
+            return res.status(400).json({ success: false, error: 'preferences must be an array' });
+        }
+
+        await client.query('BEGIN');
+        const staff = await loadStaffForShiftPreferences(client, staffId, { forUpdate: true });
+        if (!staff) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'staff member not found' });
+        }
+
+        const validation = validateStaffShiftPreferencePayload(staff, items);
+        if (!validation.ok) {
+            await client.query('ROLLBACK');
+            return res.status(validation.status || 400).json({
+                success: false,
+                error: validation.error,
+                allowedProfessions: validation.allowedProfessions
+            });
+        }
+
+        for (const preference of validation.preferences) {
+            await client.query(
+                `INSERT INTO staff_shift_preferences
+                    (staff_id, profession_key, day_type, start_time, end_time, is_active, created_by, updated_by)
+                 VALUES ($1, $2, $3, $4::time, $5::time, $6, $7, $7)
+                 ON CONFLICT (staff_id, profession_key, day_type)
+                 DO UPDATE SET
+                    start_time = EXCLUDED.start_time,
+                    end_time = EXCLUDED.end_time,
+                    is_active = EXCLUDED.is_active,
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW()`,
+                [
+                    staffId,
+                    preference.professionKey,
+                    preference.dayType,
+                    preference.startTime,
+                    preference.endTime,
+                    preference.isActive,
+                    req.user?.username || null
+                ]
+            );
+        }
+
+        if (validation.preferences.length) {
+            await insertHrAuditLog(client, 'staff_shift_preferences_update', staffId, req.user?.username || null, {
+                source: 'staff.shift_preferences.put',
+                count: validation.preferences.length,
+                preferences: validation.preferences.map(item => ({
+                    professionKey: item.professionKey,
+                    dayType: item.dayType,
+                    startTime: item.startTime,
+                    endTime: item.endTime,
+                    isActive: item.isActive
+                }))
+            }, req.ip || null);
+        }
+
+        const data = await loadStaffShiftPreferences(client, staffId, { professionKeys: validation.allowedProfessions });
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            staffId,
+            allowedProfessions: validation.allowedProfessions,
+            count: validation.preferences.length,
+            data
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('PUT /staff/:id/shift-preferences error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 });
 

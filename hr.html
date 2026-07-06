@@ -677,6 +677,16 @@
                     <div id="editProfessionRates" class="hr-profession-rate-editor"></div>
                 </div>
             </div>
+            <section class="hr-staff-foundation-panel hr-shift-preferences-panel" aria-label="Типові зміни">
+                <div class="hr-staff-foundation-head">
+                    <div>
+                        <strong>Типові зміни</strong>
+                        <span>Дефолтний час для графіка за професією, буднями та вихідними.</span>
+                    </div>
+                    <button type="button" id="editShiftPreferencesRefresh" class="btn-secondary" onclick="loadStaffShiftPreferences(activeEditStaffId(), { force: true })">Оновити</button>
+                </div>
+                <div id="editStaffShiftPreferences" class="hr-shift-preferences-list">Типові зміни завантажуються...</div>
+            </section>
             <div class="form-group">
                 <label>Дата народження</label>
                 <input type="date" id="editBirthDate">

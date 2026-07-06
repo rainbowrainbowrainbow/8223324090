@@ -19,12 +19,9 @@
             ${nav}
             <section class="staff-schedule-command" aria-label="Керування графіком роботи">
                 <div class="staff-schedule-command-content">
-                    <div class="page-header">
-                        <div class="staff-schedule-command-title">
-                            <span class="staff-schedule-command-eyebrow">Операційний центр</span>
-                            <h2>Графік роботи</h2>
-                        </div>
-                        <button type="button" id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
+                    <div class="staff-schedule-command-copy">
+                        <h2>Графік роботи</h2>
+                        <p>Період, фільтр і активні зміни команди.</p>
                     </div>
                     <div class="staff-schedule-command-metrics" aria-label="Стан графіка" aria-live="polite">
                         <div class="staff-schedule-metric-chip staff-schedule-metric-chip--period">
@@ -58,6 +55,7 @@
                     <div id="deptFilter" class="dept-filter"></div>
                 </div>
                 <div class="schedule-toolbar">
+                    <button type="button" id="addStaffBtn" class="btn-page-primary staff-schedule-add-staff-btn" style="display:none">+ Додати співробітника</button>
                     <button type="button" id="copyWeekBtn" class="btn-page-toolbar" style="display:none" title="Скопіювати цей тиждень на наступний">Копія тижня</button>
                     <button type="button" id="fillWeekBtn" class="btn-page-toolbar" style="display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
                     <button type="button" id="toggleHoursBtn" class="btn-page-toolbar" title="Показати/сховати години">Години</button>

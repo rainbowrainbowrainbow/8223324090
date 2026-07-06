@@ -290,39 +290,41 @@
                 <section class="hr-reports-hero" aria-label="Аналітика HR Pulse">
                     <div class="hr-reports-hero-content">
                         <div class="hr-reports-hero-copy">
-                            <span class="hr-reports-hero-eyebrow">Аналітичний центр</span>
                             <h2>Звіти</h2>
-                            <p>Місячний HR-зріз присутності, запізнень, задач, KPI та рольових допусків команди.</p>
+                            <strong class="hr-reports-context">Місячний HR-зріз</strong>
+                            <p>Присутність, запізнення, задачі та рольові допуски команди.</p>
                         </div>
-                        <div class="hr-reports-hero-panel">
-                            <div class="hr-report-controls" aria-label="Фільтри звіту">
-                                <label class="hr-report-control-field" for="reportMonth">
-                                    <span>Період</span>
-                                    <select id="reportMonth" class="hr-team-select"></select>
-                                </label>
-                                <button type="button" id="reportExport" class="btn-export btn-page-toolbar">Експорт CSV</button>
+                        <div class="hr-reports-hero-metrics" aria-label="Ключові показники звіту" aria-live="polite">
+                            <div class="hr-reports-metric-chip hr-reports-metric-chip--presence">
+                                <span class="hr-reports-metric-label">Присутність</span>
+                                <strong id="reportHeroAttendance">0%</strong>
+                                <small id="reportHeroAttendanceMeta">немає змін</small>
                             </div>
-                            <div class="hr-reports-hero-chips" aria-label="Ключові показники звіту" aria-live="polite">
-                                <div class="hr-reports-chip hr-reports-chip--csv">
-                                    <span>CSV</span>
-                                    <strong id="reportHeroCsv">Готовий</strong>
-                                </div>
-                                <div class="hr-reports-chip hr-reports-chip--kpi">
-                                    <span>KPI</span>
-                                    <strong id="reportHeroKpi">0%</strong>
-                                </div>
-                                <div class="hr-reports-chip hr-reports-chip--risks">
-                                    <span>Ризики</span>
-                                    <strong id="reportHeroRisks">0</strong>
-                                </div>
-                                <div class="hr-reports-chip hr-reports-chip--summary">
-                                    <span>Звіт</span>
-                                    <strong id="reportHeroSummary">0 людей</strong>
-                                </div>
+                            <div class="hr-reports-metric-chip hr-reports-metric-chip--late">
+                                <span class="hr-reports-metric-label">Запізнення</span>
+                                <strong id="reportHeroLate">0</strong>
+                                <small id="reportHeroLateMeta">без запізнень</small>
+                            </div>
+                            <div class="hr-reports-metric-chip hr-reports-metric-chip--absent">
+                                <span class="hr-reports-metric-label">Відсутні</span>
+                                <strong id="reportHeroAbsent">0</strong>
+                                <small id="reportHeroAbsentMeta">без відсутніх</small>
+                            </div>
+                            <div class="hr-reports-metric-chip hr-reports-metric-chip--tasks">
+                                <span class="hr-reports-metric-label">Задачі</span>
+                                <strong id="reportHeroTasks">0/0</strong>
+                                <small id="reportHeroTasksMeta">без прострочених</small>
                             </div>
                         </div>
                     </div>
                 </section>
+                <div class="hr-report-controls hr-report-command-bar workspace-command-bar" aria-label="Фільтри звіту">
+                    <label class="hr-report-control-field" for="reportMonth">
+                        <span>Період</span>
+                        <select id="reportMonth" class="hr-team-select"></select>
+                    </label>
+                    <button type="button" id="reportExport" class="btn-export btn-page-toolbar">Експорт CSV</button>
+                </div>
                 <div id="reportSummary" class="hr-report-summary"></div>
                 <div class="hr-report-table-wrap">
                     <table class="hr-report-table">

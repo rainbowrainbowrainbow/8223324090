@@ -6985,30 +6985,11 @@ function reportMetricNumber(value) {
     return Number.isFinite(number) ? number : 0;
 }
 
-function formatReportPeopleCount(count) {
+function formatReportOverdueTasks(count) {
     const value = reportMetricNumber(count);
-    if (value === 1) return '1 людина';
-    if (value >= 2 && value <= 4) return `${value} людини`;
-    return `${value} людей`;
-}
-
-function formatReportRiskCount(count) {
-    const value = reportMetricNumber(count);
-    if (value === 1) return '1 ризик';
-    if (value >= 2 && value <= 4) return `${value} ризики`;
-    return `${value} ризиків`;
-}
-
-function reportRiskSummaryFromMetrics(metrics = {}) {
-    const late = reportMetricNumber(metrics.totalLate);
-    const absent = reportMetricNumber(metrics.totalAbsent);
-    const overdueTasks = reportMetricNumber(metrics.totalTasksOverdue);
-    return {
-        late,
-        absent,
-        overdueTasks,
-        total: Math.max(0, late + absent + overdueTasks)
-    };
+    if (value <= 0) return 'без прострочених';
+    if (value === 1) return '1 прострочена';
+    return `${value} прострочені`;
 }
 
 function reportHeaderMetricsFromRows(rows = []) {
@@ -7052,15 +7033,24 @@ function reportHeaderMetricsFromRows(rows = []) {
 }
 
 function updateReportHeaderMetrics(metrics = {}) {
-    // Reports header chips mirror the monthly rows rendered below: CSV availability, KPI, risks, and people count.
-    const staffCount = reportMetricNumber(metrics.staffCount);
-    const taskDoneRate = reportMetricNumber(metrics.taskDoneRate);
-    const risks = reportRiskSummaryFromMetrics(metrics);
+    // Reports hero mirrors useful monthly row totals without duplicating CSV/KPI/risk placeholders.
+    const totalPresent = reportMetricNumber(metrics.totalPresent);
+    const totalScheduled = reportMetricNumber(metrics.totalScheduled);
+    const totalLate = reportMetricNumber(metrics.totalLate);
+    const totalAbsent = reportMetricNumber(metrics.totalAbsent);
+    const totalTasksDone = reportMetricNumber(metrics.totalTasksDone);
+    const totalTasksAssigned = reportMetricNumber(metrics.totalTasksAssigned);
+    const totalTasksOverdue = reportMetricNumber(metrics.totalTasksOverdue);
+    const attendanceRate = Math.max(0, Math.min(100, reportMetricNumber(metrics.attendanceRate)));
 
-    setReportHeaderMetricText('reportHeroCsv', 'Готовий');
-    setReportHeaderMetricText('reportHeroKpi', `${Math.max(0, Math.min(100, taskDoneRate))}%`);
-    setReportHeaderMetricText('reportHeroRisks', formatReportRiskCount(risks.total));
-    setReportHeaderMetricText('reportHeroSummary', formatReportPeopleCount(staffCount));
+    setReportHeaderMetricText('reportHeroAttendance', `${attendanceRate}%`);
+    setReportHeaderMetricText('reportHeroAttendanceMeta', totalScheduled > 0 ? `${totalPresent} з ${totalScheduled} змін` : 'немає змін');
+    setReportHeaderMetricText('reportHeroLate', totalLate);
+    setReportHeaderMetricText('reportHeroLateMeta', totalLate > 0 ? `${totalLate} за період` : 'без запізнень');
+    setReportHeaderMetricText('reportHeroAbsent', totalAbsent);
+    setReportHeaderMetricText('reportHeroAbsentMeta', totalAbsent > 0 ? `${totalAbsent} за період` : 'без відсутніх');
+    setReportHeaderMetricText('reportHeroTasks', `${totalTasksDone}/${totalTasksAssigned}`);
+    setReportHeaderMetricText('reportHeroTasksMeta', formatReportOverdueTasks(totalTasksOverdue));
 }
 
 async function loadReports() {

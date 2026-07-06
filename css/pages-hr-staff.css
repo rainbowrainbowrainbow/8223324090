@@ -2089,7 +2089,7 @@ body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
 
 .staff-schedule-command {
     position: relative;
-    min-height: 0;
+    min-height: 126px;
     max-width: 100%;
     margin: 0 0 12px;
     overflow: hidden;
@@ -2116,55 +2116,50 @@ body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
     position: relative;
     z-index: 1;
     display: grid;
-    gap: 14px;
+    grid-template-columns: minmax(260px, 1fr) minmax(560px, 0.92fr);
+    align-items: center;
+    gap: 18px;
     min-height: inherit;
     padding: 18px 20px;
     min-width: 0;
 }
 
-.staff-schedule-command .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin: 0;
-}
-
-.staff-schedule-command-title {
+.staff-schedule-command-copy {
+    max-width: 680px;
     min-width: 0;
+    color: #0F172A;
 }
 
-.staff-schedule-command-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    min-height: 26px;
-    padding: 5px 10px;
-    border: 1px solid rgba(14,165,233,0.24);
-    border-radius: 999px;
-    background: rgba(255,255,255,0.64);
-    color: #0F766E;
-    font-size: 11px;
-    font-weight: 950;
-    line-height: 1;
-    text-transform: uppercase;
-}
-
-.staff-schedule-command .page-header h2 {
-    margin: 8px 0 0;
+.staff-schedule-command-copy h2 {
+    margin: 0 0 4px;
     max-width: 100%;
     color: #0F172A;
-    font-size: 26px;
-    font-weight: 950;
-    line-height: 1.02;
+    font-size: 24px;
+    font-weight: 850;
+    line-height: 1.05;
     letter-spacing: 0;
     overflow-wrap: anywhere;
     text-shadow: 0 1px 0 rgba(255,255,255,0.70);
 }
 
+.staff-schedule-command .page-header h2 {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.staff-schedule-command-copy p {
+    margin: 7px 0 0;
+    color: rgba(51,65,85,0.88);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.62);
+}
+
 .staff-schedule-command-metrics {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    gap: 8px;
     min-width: 0;
 }
 
@@ -2172,10 +2167,10 @@ body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
     --staff-schedule-metric-tone: 59, 130, 246;
     display: grid;
     align-content: center;
-    gap: 5px;
+    gap: 3px;
     min-width: 0;
-    min-height: 70px;
-    padding: 12px 13px;
+    min-height: 62px;
+    padding: 9px 10px;
     border: 1px solid rgba(var(--staff-schedule-metric-tone),0.20);
     border-radius: 12px;
     background: linear-gradient(135deg, rgba(var(--staff-schedule-metric-tone),0.10), rgba(255,255,255,0.70));
@@ -2190,7 +2185,7 @@ body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
 .staff-schedule-metric-chip span {
     min-width: 0;
     color: rgba(51,65,85,0.72);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 900;
     line-height: 1;
     text-transform: uppercase;
@@ -2202,20 +2197,20 @@ body.staff-schedule-hr-mode #hrStaffScheduleShell .staff-schedule-command {
 .staff-schedule-metric-chip strong {
     min-width: 0;
     color: #0F172A;
-    font-size: 17px;
-    font-weight: 950;
+    font-size: 18px;
+    font-weight: 900;
     line-height: 1.08;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
-.staff-schedule-command .btn-page-primary {
-    min-height: 44px;
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn {
+    min-height: 40px;
+    padding: 8px 14px;
     border: 1px solid rgba(52,211,153,0.42);
-    border-radius: 14px;
+    border-radius: 12px;
     background: linear-gradient(135deg, rgba(16,185,129,0.96), rgba(20,184,166,0.86));
     color: #FFFFFF;
+    font-size: 13px;
     box-shadow: 0 18px 34px rgba(16,185,129,0.22), inset 0 1px 0 rgba(255,255,255,0.24);
 }
 
@@ -2926,17 +2921,21 @@ body.dark-mode .staff-schedule-command,
     box-shadow: 0 14px 34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07);
 }
 
-body.dark-mode .staff-schedule-command .page-header h2,
-[data-theme="dark"] .staff-schedule-command .page-header h2 {
+body.dark-mode .staff-schedule-command-copy,
+[data-theme="dark"] .staff-schedule-command-copy {
+    color: #F8FAFC;
+}
+
+body.dark-mode .staff-schedule-command-copy h2,
+[data-theme="dark"] .staff-schedule-command-copy h2 {
     color: #FFFFFF;
     text-shadow: 0 1px 10px rgba(0,0,0,0.30);
 }
 
-body.dark-mode .staff-schedule-command-eyebrow,
-[data-theme="dark"] .staff-schedule-command-eyebrow {
-    border-color: rgba(94,234,212,0.30);
-    background: rgba(15,23,42,0.44);
-    color: #99F6E4;
+body.dark-mode .staff-schedule-command-copy p,
+[data-theme="dark"] .staff-schedule-command-copy p {
+    color: #CBD5E1;
+    text-shadow: none;
 }
 
 body.dark-mode .staff-schedule-metric-chip,
@@ -2956,8 +2955,8 @@ body.dark-mode .staff-schedule-metric-chip strong,
     color: #F8FAFC;
 }
 
-body.dark-mode .staff-schedule-command .btn-page-primary,
-[data-theme="dark"] .staff-schedule-command .btn-page-primary {
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn {
     border-color: rgba(52,211,153,0.44);
     background: linear-gradient(135deg, rgba(16,185,129,0.94), rgba(20,184,166,0.82));
     color: #FFFFFF;
@@ -3679,18 +3678,25 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
     .staff-schedule-command {
         min-height: 0;
-        margin-bottom: 14px;
-        border-radius: 18px;
+        margin-bottom: 12px;
+        border-radius: 16px;
     }
 
     .staff-schedule-command-content {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
         gap: 12px;
         padding: 16px;
     }
 
-    .staff-schedule-command .page-header {
-        display: grid;
-        gap: 12px;
+    .staff-schedule-command-copy h2 {
+        margin: 0 0 4px;
+        font-size: 22px;
+        line-height: 1.05;
+    }
+
+    .staff-schedule-command-copy p {
+        display: none;
     }
 
     .staff-schedule-command-metrics {
@@ -3699,27 +3705,15 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     .staff-schedule-metric-chip {
-        min-height: 64px;
-        padding: 10px;
+        min-height: 60px;
+        padding: 9px;
     }
 
     .staff-schedule-metric-chip strong {
-        font-size: 15px;
+        font-size: 16px;
     }
 
-    .staff-schedule-command-eyebrow {
-        min-height: 22px;
-        padding: 4px 8px;
-        font-size: 10px;
-    }
-
-    .staff-schedule-command .page-header h2 {
-        margin-top: 8px;
-        font-size: 24px;
-        line-height: 1.08;
-    }
-
-    .staff-schedule-command .btn-page-primary {
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn {
         width: 100%;
         min-height: 44px;
         border-radius: 12px;
@@ -3909,13 +3903,9 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         padding: 14px;
     }
 
-    .staff-schedule-command-metrics {
-        gap: 7px;
-    }
-
     .staff-schedule-metric-chip {
-        min-height: 60px;
-        padding: 9px;
+        min-height: 58px;
+        padding: 8px;
         border-radius: 10px;
     }
 
@@ -3924,10 +3914,10 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     .staff-schedule-metric-chip strong {
-        font-size: 13px;
+        font-size: 14px;
     }
 
-    .staff-schedule-command .page-header h2 {
+    .staff-schedule-command-copy h2 {
         font-size: 22px;
     }
 
@@ -3948,8 +3938,8 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .staff-pulse-tab *,
     .staff-pulse-tab-icon,
     .staff-pulse-tab-line,
-    .staff-schedule-command .btn-page-primary,
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary {
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn,
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary {
         animation: none !important;
         transition: none !important;
     }
@@ -3959,10 +3949,10 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .staff-pulse-tab:active,
     .staff-pulse-tab:hover .staff-pulse-tab-icon,
     .staff-pulse-tab:focus-visible .staff-pulse-tab-icon,
-    .staff-schedule-command .btn-page-primary:hover,
-    .staff-schedule-command .btn-page-primary:focus-visible,
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:hover,
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:focus-visible {
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn:hover,
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn:focus-visible,
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:hover,
+    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:focus-visible {
         transform: none !important;
     }
 
@@ -4123,19 +4113,11 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
 
 @media (max-width: 480px) {
     .staff-schedule-command {
-        min-height: 120px;
+        min-height: 0;
     }
 
     .staff-schedule-command-content {
         padding: 14px;
-    }
-
-    .staff-schedule-command .page-header {
-        align-items: flex-start;
-    }
-
-    .staff-schedule-command .page-header h2 {
-        font-size: 22px;
     }
 }
 

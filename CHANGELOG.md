@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.35 - HR Pulse light theme polish
+
+### HR Pulse / Світла тема / Графік / Regression guard / (Клешня, 06.07.2026) [codex]
+- **Світла тема HR `Пульсу компанії` більше не лишає темні блоки** - верхній перемикач `Сьогодні / Графік / Звіти` отримав світлі base tokens, а темна палітра винесена тільки в dark-mode overrides.
+- **Панель керування `Графіком` стала світлою у light mode** - week nav, label періоду, toolbar buttons і command bar більше не використовують темні hardcoded backgrounds.
+- **Regression coverage посилено** - static UI guard ловить повернення темних base-токенів, а browser smoke тепер може перевіряти light theme через `HR_PULSE_BROWSER_SMOKE_THEME=light`.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений HR frontend CSS, browser/static guards, changelog і version/cache refs.
+
+---
+
 ## v0.78.34 - HR Schedule mobile controls polish
 
 ### HR Pulse / Графік / Mobile toolbar / Auto-deploy proof / (Клешня, 06.07.2026) [codex]

@@ -13,6 +13,7 @@ const HEADLESS = process.env.HR_PULSE_BROWSER_SMOKE_HEADLESS !== 'false';
 const ALLOW_NON_LOCAL = process.env.HR_PULSE_BROWSER_SMOKE_ALLOW_PRODUCTION === 'true'
     || process.env.LIVE_SMOKE_ALLOW_PRODUCTION === 'true';
 const REQUIRE_ROWS = process.env.HR_PULSE_BROWSER_SMOKE_REQUIRE_ROWS !== 'false';
+const THEME_MODE = String(process.env.HR_PULSE_BROWSER_SMOKE_THEME || 'light').toLowerCase();
 
 const EXPECTED_PULSE_TEXTS = [
     'Сьогодні Хто на зміні',
@@ -25,6 +26,10 @@ const SCHEDULE_ROW_SELECTOR = '#scheduleBody tr';
 function fail(message) {
     console.error(`HR Pulse browser smoke failed: ${message}`);
     process.exit(1);
+}
+
+if (!['light', 'dark'].includes(THEME_MODE)) {
+    fail('HR_PULSE_BROWSER_SMOKE_THEME must be "light" or "dark"');
 }
 
 function normalizeBase(url) {
@@ -116,14 +121,14 @@ async function login(base) {
 
 async function openAuthenticatedPage(browser, base, session) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
+    await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user, themeMode }) => {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_access_token', token);
         if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
         if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', refreshExpiresAt);
         if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
-        localStorage.setItem('pzp_dark_mode', 'true');
-    }, session);
+        localStorage.setItem('pzp_dark_mode', themeMode === 'dark' ? 'true' : 'false');
+    }, { ...session, themeMode: THEME_MODE });
     const page = await context.newPage();
     page.setDefaultTimeout(20000);
     return { context, page };
@@ -156,6 +161,41 @@ async function assertNoScheduleIframe(page, label) {
     assert.equal(await page.locator('iframe, #hrScheduleEmbedFrame').count(), 0, `${label}: no schedule iframe/embed frame exists`);
 }
 
+async function assertThemeMode(page, label) {
+    await page.waitForFunction(themeMode => {
+        const isDark = document.body.classList.contains('dark-mode')
+            || document.documentElement.dataset.theme === 'dark';
+        return themeMode === 'dark' ? isDark : !isDark;
+    }, THEME_MODE, { timeout: 20000 });
+
+    if (THEME_MODE !== 'light') return;
+
+    const pulseTokens = await page.locator('.hr-nav--pulse, .staff-pulse-nav').first().evaluate(el => {
+        const styles = getComputedStyle(el);
+        return {
+            shell: styles.getPropertyValue('--pulse-switcher-shell-bg').trim(),
+            card: styles.getPropertyValue('--pulse-switcher-card-bg').trim(),
+            color: styles.getPropertyValue('--pulse-switcher-card-color').trim()
+        };
+    });
+    const darkTokenPattern = /15,\s*23,\s*42/;
+    assert.equal(darkTokenPattern.test(pulseTokens.shell), false, `${label}: light pulse shell token is not dark`);
+    assert.equal(darkTokenPattern.test(pulseTokens.card), false, `${label}: light pulse card token is not dark`);
+    assert.equal(pulseTokens.color, '#0F172A', `${label}: light pulse card text token is dark readable text`);
+}
+
+async function assertLightScheduleCommandBar(page, label) {
+    if (THEME_MODE !== 'light') return;
+    const bar = page.locator('.staff-schedule-command-bar').first();
+    await bar.waitFor({ timeout: 20000 });
+    const styles = await bar.evaluate(el => {
+        const computed = getComputedStyle(el);
+        return `${computed.backgroundImage} ${computed.backgroundColor}`;
+    });
+    assert.equal(/15,\s*23,\s*42/.test(styles), false, `${label}: light schedule command bar is not dark`);
+    assert.ok(/255,\s*255,\s*255/.test(styles), `${label}: light schedule command bar keeps a white surface`);
+}
+
 async function assertStaffScheduleInitialized(page, label) {
     await page.waitForFunction(() => Boolean(
         window.StaffSchedulePage
@@ -173,6 +213,7 @@ async function assertStaffScheduleInitialized(page, label) {
 
 async function runHrPulseFlow(page, base) {
     await page.goto(`${base}/hr#today`, { waitUntil: 'domcontentloaded' });
+    await assertThemeMode(page, 'today tab');
     await assertHrShell(page, '#today', 'today tab');
     await assertPulseNavClean(page, 'today tab');
     await assertNoScheduleIframe(page, 'today tab');
@@ -182,6 +223,7 @@ async function runHrPulseFlow(page, base) {
     await assertPulseNavClean(page, 'schedule click');
     await assertNoScheduleIframe(page, 'schedule click');
     await assertStaffScheduleInitialized(page, 'HR schedule tab');
+    await assertLightScheduleCommandBar(page, 'HR schedule tab');
 
     await page.locator('.hr-pulse-card').filter({ hasText: 'Звіти' }).first().click();
     await assertHrShell(page, '#reports', 'reports click');
@@ -191,10 +233,12 @@ async function runHrPulseFlow(page, base) {
 
 async function runStandaloneStaffFlow(page, base) {
     await page.goto(`${base}/staff`, { waitUntil: 'domcontentloaded' });
+    await assertThemeMode(page, 'standalone staff');
     const url = new URL(page.url());
     assert.equal(url.pathname, '/staff', 'standalone staff route stays on /staff');
     assert.equal(await page.locator('[data-staff-schedule-shell="standalone"]').count(), 1, 'standalone staff schedule shell exists');
     await assertStaffScheduleInitialized(page, 'standalone staff schedule');
+    await assertLightScheduleCommandBar(page, 'standalone staff schedule');
     assert.equal(await page.locator(BADGE_SELECTOR).count(), 0, 'standalone staff page has no legacy pulse badge elements');
 }
 

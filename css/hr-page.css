@@ -133,23 +133,23 @@
     padding: 10px 12px;
     border: 1px solid transparent;
     border-radius: 12px;
-    background: rgba(255,255,255,0.04);
-    color: #AEB6CB;
+    background: rgba(255,255,255,0.48);
+    color: #475569;
     font-size: 13px;
     font-weight: 900;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.62);
 }
 .hr-nav--pulse .hr-tab:hover,
 .hr-nav--pulse .hr-tab:focus-visible {
-    border-color: rgba(148,163,184,0.30);
-    background: rgba(30,41,59,0.70);
-    color: #F8FAFC;
+    border-color: var(--pulse-switcher-hover-border);
+    background: var(--pulse-switcher-hover-bg);
+    color: var(--pulse-switcher-hover-color);
 }
 .hr-nav--pulse .hr-tab.active {
-    border-color: rgba(20,184,166,0.42);
-    background: rgba(15,23,42,0.78);
-    color: #FFFFFF;
-    box-shadow: inset 0 0 0 1px rgba(20,184,166,0.10);
+    border-color: var(--pulse-switcher-active-border);
+    background: var(--pulse-switcher-active-bg);
+    color: var(--pulse-switcher-active-color);
+    box-shadow: var(--pulse-switcher-active-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card {
     position: relative;
@@ -275,7 +275,7 @@
     transform: translateY(-1px);
     border-color: var(--pulse-switcher-hover-border);
     background: var(--pulse-switcher-hover-bg);
-    color: #FFFFFF;
+    color: var(--pulse-switcher-hover-color);
     box-shadow: var(--pulse-switcher-hover-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card:hover::before,
@@ -303,7 +303,7 @@
 .hr-nav--pulse .hr-tab.hr-pulse-card.active {
     border-color: var(--pulse-switcher-active-border);
     background: var(--pulse-switcher-active-bg);
-    color: #FFFFFF;
+    color: var(--pulse-switcher-active-color);
     box-shadow: var(--pulse-switcher-active-shadow);
 }
 .hr-nav--pulse .hr-tab.hr-pulse-card.active .hr-pulse-card-icon {

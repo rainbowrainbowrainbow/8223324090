@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.29 - HR сьогодні: профілі співробітників
+
+### HR / Сьогодні / Staff profile links / Dark-light polish / (Клешня, 06.07.2026) [codex]
+- **Клік по профілю співробітника виправлено** - HR `Сьогодні` більше не відкриває мій профіль через старий `?user=...`, а веде на конкретний робочий профіль через `?id=<user_id>`.
+- **Today row чекає account link-status перед рендером** - для привʼязаних акаунтів кнопка профілю має реальний `user_id`, а без акаунта fallback відкриває HR-картку співробітника.
+- **Emoji-іконки замінено на SVG controls** - профіль і графік у рядку співробітника мають компактні однакові іконки в стилі HR `Сьогодні / Графік / Звіти`.
+- **Dark/light visual polish додано** - action chips стали читабельними на темному і світлому фоні, без зеленого emoji-бейджа, що вибивався з UI.
+- **Regression coverage оновлено** - static UI guard блокує повернення `/profile?user=...`, emoji-кнопок у Today row і неочікуваного username routing.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений frontend navigation, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.28 - HR сьогодні: статуси в шапці
 
 ### HR / Сьогодні / Header metrics / Responsive QA / (Клешня, 06.07.2026) [codex]

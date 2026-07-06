@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.33 - HR Schedule controls cleanup
+
+### HR Pulse / Графік / Toolbar cleanup / Attendance chips / (Клешня, 06.07.2026) [codex]
+- **Кнопки керування графіком більше не наїжджають одна на одну** - toolbar у HR `Графіку` переведено на bounded wrapping grid, тому довгі дії не вилазять за межі блока.
+- **`Масове створення` сховано у HR-вкладці графіка** - bulk-create лишається доступним у standalone `/staff`, але не захаращує щоденний HR-графік.
+- **Червоні attendance-індекси прибрано з клітинок змін** - `Не вийшов`, `plan ...`, `IN` і `EX` більше не дублюються всередині людського графіка; summary attendance лишився окремим.
+- **Regression coverage оновлено** - static UI guards фіксують відсутність inline attendance chips і новий bounded toolbar contract.
+- **DB schema, migrations, auth/roles, env/secrets, billing і Railway settings не змінювались** - реліз обмежений HR frontend, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.32 - HR Today focused schedule link
 
 ### HR Pulse / Сьогодні / Графік співробітника / Focus navigation / (Клешня, 06.07.2026) [codex]

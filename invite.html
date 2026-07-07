@@ -444,8 +444,8 @@ body { padding: 12px; }
         </div>
     </div>
 
-    <script src="js/event-cards.js?v=0.78.44"></script>
-    <script src="js/invite-config.js?v=0.78.44"></script>
+    <script src="js/event-cards.js?v=0.78.45"></script>
+    <script src="js/invite-config.js?v=0.78.45"></script>
     <script>
         const DEFAULT_INVITE_CONFIG = Object.freeze({
             brandName: 'Event Genix',
@@ -503,7 +503,8 @@ body { padding: 12px; }
             renderInviteContact();
 
             const timeRange = formatInviteTimeRange(time, end);
-            const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));
+            const hasArrival = Boolean(arrival);
+            const hasActivityTime = Boolean(timeRange && (!hasArrival || normalizeInviteTime(arrival) !== normalizeInviteTime(time)));
             if (date || arrival || timeRange || program || room) {
                 const container = document.getElementById('eventDetails');
                 if (!container) return;
@@ -511,8 +512,8 @@ body { padding: 12px; }
                 div.className = 'event-details';
                 let html = '';
                 if (date) html += renderEventDetailRow('📅', 'Дата', date);
-                if (hasDistinctArrival) html += renderEventDetailRow('🕐', 'Прихід гостей', arrival);
-                if (timeRange) html += renderEventDetailRow('⏱', 'Час активності', timeRange);
+                if (hasArrival) html += renderEventDetailRow('🕐', 'Прихід гостей', arrival);
+                if (hasActivityTime) html += renderEventDetailRow('⏱', 'Час активності', timeRange);
                 if (program) html += renderEventDetailRow('🎉', 'Активність', program);
                 if (room) html += renderEventDetailRow('📍', 'Кімната', room);
                 div.innerHTML = html;

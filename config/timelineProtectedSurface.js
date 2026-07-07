@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '944c13a59afe618fda3faaf43d8d3e7d13c3d6cf1703ce8ccb0f68382254c7ea',
+        sha256: '82847eab1ba9ca7dc8f80e5d67759adbb24052a7fdd96ef54201d6eb81df305c',
         approval: {
             approvedBy: 'Serhii',
-            approvedOn: '2026-07-03',
-            reason: 'Canonical modal must survive optional section failures.'
+            approvedOn: '2026-07-07',
+            reason: 'Booking detail invite model must receive canonical banquet arrival from the resolved banquet snapshot without exposing private fields.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",

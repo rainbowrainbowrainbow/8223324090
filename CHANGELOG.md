@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.45 - Banquet Arrival Timeline
+
+### Банкети / Прихід гостей / Timeline / Invite / (Клешня, 07.07.2026) [codex]
+- **Канонічний `Прихід гостей` винесено у banquet snapshot** - backend read model повертає `arrival` / `banquetArrival` з primary/source booking без schema або migration змін.
+- **Банкетний лист, PDF і copied text читають одне джерело** - дата, час, кімната й schedule row `Прихід гостей` більше не вгадуються окремо з `primaryBooking.time`.
+- **Room timeline отримав операційний marker приходу гостей** - marker відкриває той самий banquet inspector, належить групі й не створює окреме бронювання.
+- **Public invite links передають `arrival=HH:MM`** - preview chips, share text і `invite.html` показують `Прихід гостей`, а час активності лишається окремим тільки коли він справді потрібен.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений backend read model, summary/PDF/invite/timeline render paths, protected manifest, tests і version/cache refs.
+
+---
+
 ## v0.78.44 - Timeline Room Summary Guards
 
 ### Timeline / Booking drawer / Summary guards / (Клешня, 07.07.2026) [codex]

@@ -103,6 +103,16 @@ function pdfText(value, fallback = '—') {
     return cleanText(value, fallback);
 }
 
+function summaryArrival(summary = {}) {
+    const event = summary.event || {};
+    const arrival = summary.arrival || summary.banquetArrival || {};
+    return {
+        date: cleanText(arrival.date) || event.date || null,
+        time: cleanText(arrival.time) || event.time || null,
+        room: cleanText(arrival.room) || event.room || null
+    };
+}
+
 function nullableNumber(value) {
     if (value === undefined || value === null || value === '') return null;
     const n = Number(value);
@@ -312,11 +322,12 @@ function entryValidationIssues(summary = {}) {
 
 function clientValidationIssues(summary = {}) {
     const errors = [];
+    const arrival = summaryArrival(summary);
     if (!cleanText(summary.customer?.name)) errors.push(issue('customer_name_missing', 'Не вказано імʼя клієнта.'));
     if (!cleanText(summary.customer?.phone)) errors.push(issue('customer_phone_missing', 'Не вказано телефон клієнта.'));
-    if (!cleanText(summary.event?.date)) errors.push(issue('event_date_missing', 'Не вказано дату банкету.'));
-    if (!cleanText(summary.event?.time)) errors.push(issue('event_time_missing', 'Не вказано час приходу гостей.'));
-    if (!cleanText(summary.event?.room)) errors.push(issue('event_room_missing', 'Не вказано кімнату.'));
+    if (!cleanText(arrival.date)) errors.push(issue('event_date_missing', 'Не вказано дату банкету.'));
+    if (!cleanText(arrival.time)) errors.push(issue('event_time_missing', 'Не вказано час приходу гостей.'));
+    if (!cleanText(arrival.room)) errors.push(issue('event_room_missing', 'Не вказано кімнату.'));
     if (!positiveNumber(summary.counts?.children)) errors.push(issue('children_count_missing', 'Не вказано кількість дітей.'));
     if (financeOrderTotal(summary) === null) errors.push(issue('order_total_missing', 'Не розраховано загальну суму.'));
     return uniqueIssues([...errors, ...entryValidationIssues(summary)]);
@@ -504,8 +515,9 @@ function buildScheduleItems(summary = {}, rows = [], mode = 'client') {
     const items = [];
     const seen = new Set();
     const event = summary.event || {};
+    const arrival = summaryArrival(summary);
     if (mode !== 'kitchen') {
-        pushUniqueScheduleItem(items, seen, event.time, 'Прихід гостей', event.room ? `Кімната: ${event.room}` : '');
+        pushUniqueScheduleItem(items, seen, arrival.time, 'Прихід гостей', arrival.room ? `Кімната: ${arrival.room}` : '');
     }
     for (const row of rows) {
         if (row.type === 'program' || row.type === 'activity') {
@@ -1226,6 +1238,7 @@ function summaryCelebrantsBirthdays(summary = {}) {
 
 function buildBriefItems(summary = {}, view) {
     const event = summary.event || {};
+    const arrival = summaryArrival(summary);
     const customer = summary.customer || {};
     const celebrant = summary.celebrant || {};
     const counts = summary.counts || {};
@@ -1238,9 +1251,9 @@ function buildBriefItems(summary = {}, view) {
     const items = [
         { label: 'Клієнт', value: customer.name },
         { label: 'Телефон', value: customer.phone },
-        { label: 'Кімната', value: event.room },
-        { label: 'Дата', value: formatDate(event.date) },
-        { label: 'Прихід гостей', value: event.time },
+        { label: 'Кімната', value: arrival.room || event.room },
+        { label: 'Дата', value: formatDate(arrival.date || event.date) },
+        { label: 'Прихід гостей', value: arrival.time || event.time },
         { label: 'Діти', value: counts.children },
         { label: 'Дорослі', value: counts.adults },
         { label: 'Столи', value: counts.tables },

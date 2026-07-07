@@ -1603,6 +1603,18 @@ function bookingStatusWarningLabel(status) {
     return 'підтверджені';
 }
 
+function buildBanquetArrivalProjection(primaryBooking = null, group = null, snapshotSource = null) {
+    const bookingId = cleanId(primaryBooking?.id || primaryBooking?.bookingId);
+    if (!bookingId) return null;
+    return {
+        bookingId,
+        date: primaryBooking?.date || group?.date || null,
+        time: primaryBooking?.time || null,
+        room: primaryBooking?.room || group?.room || null,
+        source: group?.source || snapshotSource || null
+    };
+}
+
 function buildSnapshot({
     source,
     businessContext,
@@ -1651,6 +1663,7 @@ function buildSnapshot({
         services: members.filter(item => item.role === 'service'),
         manual: members.filter(item => item.role === 'manual')
     };
+    const arrival = buildBanquetArrivalProjection(roleBuckets.primary?.booking || null, group, source);
 
     const warnings = [];
     if (!schemaAvailable) warnings.push({ code: 'banquet_group_schema_unavailable', message: 'Banquet group schema is not available; legacy links were used if possible.' });
@@ -1674,6 +1687,8 @@ function buildSnapshot({
         group,
         groupId: group?.id || null,
         anchorBookingId: anchorBookingId || null,
+        arrival,
+        banquetArrival: arrival,
         memberships,
         legacyLinks: legacyLinks.map(mapLegacyLinkRow),
         members,

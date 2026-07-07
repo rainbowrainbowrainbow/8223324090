@@ -66,6 +66,7 @@ function inviteVisitTipValues(dom) {
 }
 
 const inviteShowProgramDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program');
+const inviteArrivalDom = renderInviteSmokeDom('?date=2026-06-25&arrival=13:00&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program');
 const inviteQuestDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=16:00&program=Квест&room=Карта&card=quest');
 const inviteInvalidCardDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&program=Невідома%20подія&room=Поні&card=broken-card');
 const invitePrivateQueryDom = renderInviteSmokeDom('?date=2026-06-25&time=15:00&end=15:30&program=Паперове%20Неон-шоу&room=Поні&card=show-program&phone=%2B380000000000&comment=internal-note&price=9999&status=confirmed');
@@ -81,6 +82,18 @@ const inviteShareSmokePayload = inviteShare.buildInviteSharePayload({
     card: 'show-program',
     phone: '+380000000000',
     comment: 'internal note'
+}, inviteConfig, 'https://crm.example');
+const inviteArrivalShareSmokePayload = inviteShare.buildInviteSharePayload({
+    date: '2026-06-25',
+    arrival: '13:00',
+    time: '15:00',
+    end: '15:30',
+    program: 'Паперове Неон-шоу',
+    room: 'Поні',
+    card: 'show-program',
+    phone: '+380000000000',
+    comment: 'internal note',
+    bookingId: 'BK-PRIVATE'
 }, inviteConfig, 'https://crm.example');
 const inviteDetailsSmokeModel = inviteShare.buildBookingDetailsInviteModel({
     booking: {
@@ -99,6 +112,66 @@ const inviteDetailsSmokeModel = inviteShare.buildBookingDetailsInviteModel({
 }, inviteConfig, 'https://crm.example', {
     resolveEventCardKey: () => 'show-program',
     EVENT_CARDS: { 'show-program': { key: 'show-program' } }
+});
+const inviteDetailsArrivalModel = inviteShare.buildBookingDetailsInviteModel({
+    booking: {
+        id: 'BK-ACTIVITY-PRIVATE',
+        date: '2026-06-25',
+        time: '15:00',
+        programName: 'Паперове Неон-шоу',
+        label: 'Internal fallback label',
+        room: 'Поні',
+        phone: '+380000000000',
+        comment: 'private note',
+        price: 9999,
+        status: 'confirmed'
+    },
+    banquetSnapshot: {
+        success: true,
+        arrival: {
+            bookingId: 'BK-SOURCE-PRIVATE',
+            date: '2026-06-25',
+            time: '13:00',
+            room: 'Банкетна кімната',
+            source: 'activity'
+        },
+        members: [
+            { bookingId: 'BK-ACTIVITY-PRIVATE', role: 'activity' }
+        ]
+    },
+    eventCardRecord: { title: 'Show program' },
+    endTimeLabel: '15:30'
+}, inviteConfig, 'https://crm.example', {
+    resolveEventCardKey: () => 'show-program',
+    EVENT_CARDS: { 'show-program': { key: 'show-program' } }
+});
+const inviteDetailsBanquetRootModel = inviteShare.buildBookingDetailsInviteModel({
+    booking: {
+        id: 'BK-BANQUET-PRIVATE',
+        category: 'banquet',
+        date: '2026-06-25',
+        time: '13:00',
+        programName: 'Банкет',
+        room: 'Поні'
+    },
+    banquetSnapshot: {
+        success: true,
+        arrival: {
+            bookingId: 'BK-BANQUET-PRIVATE',
+            date: '2026-06-25',
+            time: '13:00',
+            room: 'Банкетна кімната',
+            source: 'primary'
+        },
+        members: [
+            { bookingId: 'BK-BANQUET-PRIVATE', role: 'primary' }
+        ]
+    },
+    eventCardRecord: { title: 'Private party' },
+    endTimeLabel: '16:00'
+}, inviteConfig, 'https://crm.example', {
+    resolveEventCardKey: () => 'private-party',
+    EVENT_CARDS: { 'private-party': { key: 'private-party' } }
 });
 
 check('Event card visual smoke is static, ordered, and DB-free',
@@ -156,8 +229,12 @@ check('Invite share helper builds safe public URL and config-based share payload
     && typeof inviteShare.buildInviteUrl === 'function'
     && typeof inviteShare.buildInviteSharePayload === 'function'
     && typeof inviteShare.buildBookingDetailsInviteModel === 'function'
-    && inviteShareCode.includes("const SAFE_INVITE_KEYS = Object.freeze(['date', 'time', 'end', 'program', 'room', 'card'])")
+    && inviteShareCode.includes("const SAFE_INVITE_KEYS = Object.freeze(['date', 'time', 'end', 'arrival', 'program', 'room', 'card'])")
     && inviteShareSmokePayload.fullInviteUrl === 'https://crm.example/invite?date=2026-06-25&time=15%3A00&end=15%3A30&program=%D0%9F%D0%B0%D0%BF%D0%B5%D1%80%D0%BE%D0%B2%D0%B5+%D0%9D%D0%B5%D0%BE%D0%BD-%D1%88%D0%BE%D1%83&room=%D0%9F%D0%BE%D0%BD%D1%96&card=show-program'
+    && inviteArrivalShareSmokePayload.fullInviteUrl.includes('arrival=13%3A00')
+    && inviteArrivalShareSmokePayload.shortText.includes('Прихід гостей: 13:00')
+    && inviteArrivalShareSmokePayload.messengerText.includes('Прихід гостей: 13:00')
+    && inviteArrivalShareSmokePayload.messengerText.includes('Час активності: 15:00 - 15:30')
     && inviteShareSmokePayload.inviteUrl.startsWith('/invite?date=2026-06-25&time=15%3A00&end=15%3A30')
     && inviteShareSmokePayload.messengerText.includes(inviteConfig.location.rows[0].value)
     && inviteShareSmokePayload.shortText.includes(inviteConfig.location.rows[0].value)
@@ -173,14 +250,35 @@ check('Invite share helper builds safe public URL and config-based share payload
     && inviteDetailsSmokeModel.previewChips.includes('Паперове Неон-шоу')
     && inviteDetailsSmokeModel.previewChips.includes('15:00 - 15:30')
     && inviteDetailsSmokeModel.publicData.card === 'show-program'
+    && inviteDetailsArrivalModel.publicData.arrival === '13:00'
+    && inviteDetailsArrivalModel.publicData.time === '15:00'
+    && inviteDetailsArrivalModel.publicData.end === '15:30'
+    && inviteDetailsArrivalModel.publicData.room === 'Банкетна кімната'
+    && inviteDetailsArrivalModel.payload.fullInviteUrl.includes('arrival=13%3A00')
+    && inviteDetailsArrivalModel.previewChips.includes('Прихід гостей 13:00')
+    && inviteDetailsArrivalModel.previewChips.includes('15:00 - 15:30')
+    && inviteDetailsBanquetRootModel.publicData.arrival === '13:00'
+    && inviteDetailsBanquetRootModel.publicData.time === ''
+    && inviteDetailsBanquetRootModel.publicData.end === ''
+    && inviteDetailsBanquetRootModel.previewChips.includes('Прихід гостей 13:00')
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('phone')
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('comment')
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('price')
     && !inviteDetailsSmokeModel.payload.fullInviteUrl.includes('status')
+    && !inviteArrivalShareSmokePayload.fullInviteUrl.includes('phone')
+    && !inviteArrivalShareSmokePayload.fullInviteUrl.includes('comment')
+    && !inviteArrivalShareSmokePayload.fullInviteUrl.includes('bookingId')
+    && !inviteDetailsArrivalModel.payload.fullInviteUrl.includes('BK-ACTIVITY-PRIVATE')
+    && !inviteDetailsArrivalModel.payload.fullInviteUrl.includes('BK-SOURCE-PRIVATE')
+    && !inviteDetailsArrivalModel.payload.fullInviteUrl.includes('phone')
+    && !inviteDetailsArrivalModel.payload.fullInviteUrl.includes('comment')
+    && !inviteDetailsArrivalModel.payload.fullInviteUrl.includes('price')
+    && !inviteDetailsArrivalModel.payload.fullInviteUrl.includes('status')
     && inviteDetailsSmokeModel.payload.shortText.includes(inviteConfig.location.rows[0].value)
     && inviteDetailsSmokeModel.payload.messengerText.includes(inviteConfig.location.rows[0].value));
 check('Invite event details use labeled rows for date, activity time, program, and room',
-    inviteHtml.includes("const hasDistinctArrival = Boolean(arrival && normalizeInviteTime(arrival) !== normalizeInviteTime(time));")
+    inviteHtml.includes("const hasArrival = Boolean(arrival);")
+    && inviteHtml.includes("const hasActivityTime = Boolean(timeRange && (!hasArrival || normalizeInviteTime(arrival) !== normalizeInviteTime(time)));")
     && inviteHtml.includes("renderEventDetailRow('📅', 'Дата', date)")
     && inviteHtml.includes("renderEventDetailRow('🕐', 'Прихід гостей', arrival)")
     && inviteHtml.includes("renderEventDetailRow('⏱', 'Час активності', timeRange)")
@@ -235,6 +333,10 @@ check('Invite lower flow focuses on guest visit details instead of generic servi
     && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('Як нас знайти')
     && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection')?.textContent.includes('вул. Закревського 61/2, 3 поверх')
     && inviteShowProgramDom.window.document.querySelector('#inviteLocationSection .map-link')?.getAttribute('href') === inviteConfig.location.mapUrl
+    && inviteArrivalDom.window.document.querySelector('#eventDetails')?.textContent.includes('Прихід гостей')
+    && inviteArrivalDom.window.document.querySelector('#eventDetails')?.textContent.includes('13:00')
+    && inviteArrivalDom.window.document.querySelector('#eventDetails')?.textContent.includes('Час активності')
+    && inviteArrivalDom.window.document.querySelector('#eventDetails')?.textContent.includes('15:00 - 15:30')
     && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('+380000000000')
     && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('internal-note')
     && !invitePrivateQueryDom.window.document.querySelector('.invite-card')?.textContent.includes('9999')
@@ -288,6 +390,7 @@ check('Invite browser smoke covers real public invite render without joining npm
     && inviteBrowserSmokeCode.includes("const shareButtons = page.locator('.share-btn')")
     && inviteBrowserSmokeCode.includes('assertSkipLinkHiddenByDefault(page)'));
 inviteShowProgramDom.window.close();
+inviteArrivalDom.window.close();
 inviteQuestDom.window.close();
 inviteInvalidCardDom.window.close();
 invitePrivateQueryDom.window.close();

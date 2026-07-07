@@ -1681,8 +1681,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.44')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.44')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.45')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.45')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -2574,6 +2574,11 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineCode.includes('function applyTimelineBanquetPreview')
     && timelineCode.includes('function renderTimelineBanquetRoomCard')
     && timelineCode.includes('function showTimelineBanquetInspector')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetSnapshotArrival')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetArrivalMarker')
+    && timelineBanquetInspectorHelpersCode.includes('const arrival = timelineBanquetSnapshotArrival(snapshot)')
+    && timelineBanquetInspectorHelpersCode.includes('arrival?.time || fallbackTime')
+    && timelineBanquetInspectorHelpersCode.includes("type: 'guest_arrival'")
     && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetCommentItems')
     && timelineCode.includes('function timelineBanquetCommentsHtml')
     && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetActivityStartsText')
@@ -2621,6 +2626,7 @@ check('Room timeline banquet preview hydrates from cached group snapshots withou
     && timelineConstructorCss.includes('.timeline-banquet-room-card')
     && timelineConstructorCss.includes('.timeline-banquet-room-card-signal')
     && timelineConstructorCss.includes('.timeline-banquet-room-marker')
+    && timelineConstructorCss.includes('.timeline-banquet-room-card-signal--guest-arrival')
     && timelineConstructorCss.includes('.timeline-banquet-room-card-signal--room-setup')
     && timelineConstructorCss.includes('.timeline-banquet-room-card-glance')
     && timelineConstructorCss.includes('.timeline-banquet-inspector')
@@ -2700,6 +2706,7 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineConstructorCss.includes('.timeline-room-service-marker')
     && timelineConstructorCss.includes('.timeline-room-service-marker-main')
     && timelineConstructorCss.includes('.timeline-room-service-marker-detail')
+    && timelineConstructorCss.includes('.timeline-room-service-marker--guest-arrival')
     && timelineConstructorCss.includes('min-width: 168px')
     && timelineConstructorCss.includes('height: 54px')
     && timelineConstructorCss.includes('font-size: 11px')
@@ -2707,6 +2714,11 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineConstructorCss.includes('.timeline-room-service-marker--room-setup')
     && timelineCode.includes('function timelineRoomServiceMarkerDisplay')
     && timelineCode.includes('function timelineRoomServiceMarkerLane')
+    && timelineCode.includes('function timelineBanquetRoomOperationalMarkers')
+    && timelineRoomServiceMarkerBlock.includes('timelineBanquetRoomOperationalMarkers(summary)')
+    && timelineRoomServiceMarkerBlock.includes('showTimelineBanquetInspector(event, summary, markerEl)')
+    && !timelineRoomServiceMarkerBlock.includes('openBookingPanel')
+    && !timelineRoomServiceMarkerBlock.includes('showBookingDetails')
     && timelineCode.includes('function syncTimelineRoomServiceMarkerLayout')
     && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(target.block, targetRole, hasRoomServiceMarkers, target.booking, { isPrimary: targetIsPrimary })')
     && timelineCode.includes('applyTimelineBanquetGridPreviewVisuals(block, carrierRole, hasRoomServiceMarkers, carrierBooking, { isPrimary: carrierIsPrimary })')
@@ -2723,6 +2735,9 @@ check('Room timeline service markers remain isolated from animator timeline',
     && timelineResourcesTestCode.includes('room timeline renders multiple menu serving markers inside the room grid')
     && timelineResourcesTestCode.includes('room timeline renders room_setup service event as a separate room-grid marker')
     && timelineResourcesTestCode.includes('room timeline keeps mixed same-time room-grid markers without dedupe')
+    && timelineResourcesTestCode.includes('room timeline renders canonical banquet arrival as a room-grid operational marker')
+    && timelineResourcesTestCode.includes("'.timeline-room-service-marker--guest-arrival'")
+    && timelineResourcesTestCode.includes("ctx.__timelineViewState.room = false")
     && timelineResourcesTestCode.includes('room timeline hides duplicate banquet grid blocks when service markers exist')
     && timelineResourcesTestCode.includes("querySelector('.booking-block.is-timeline-banquet-occupancy-band')")
     && timelineResourcesTestCode.includes("rootBlock.classList.contains('is-timeline-banquet-grid-duplicate')")
@@ -2777,6 +2792,8 @@ check('Room timeline banquet activity blocks open booking modal instead of compa
     && timelineCode.includes('fallbackBooking: renderBooking'));
 check('Room timeline banquet serving signals stay frontend-only and snapshot-backed',
     timelineBanquetInspectorHelpersCode.includes('function timelineBanquetServingInfo')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetSnapshotArrival')
+    && timelineBanquetInspectorHelpersCode.includes('function timelineBanquetArrivalMarker')
     && timelineBanquetInspectorHelpersCode.includes('timelineBanquetMenuPositions(booking)')
     && timelineCode.includes('function timelineBanquetServiceEvents')
     && timelineCode.includes('function timelineBanquetRoomServingSignals')
@@ -2784,6 +2801,8 @@ check('Room timeline banquet serving signals stay frontend-only and snapshot-bac
     && timelineCode.includes('data-banquet-room-marker')
     && timelineCode.includes('timelineBanquetGlanceRows')
     && timelineCode.includes('summary.servingMarkers')
+    && timelineCode.includes('timelineBanquetRoomOperationalMarkers(summary)')
+    && timelineCode.includes("case 'guest_arrival':")
     && timelineBanquetInspectorHelpersCode.includes("case 'room_setup':")
     && timelineBanquetInspectorHelpersCode.includes("return 'Підготувати кімнату'")
     && timelineCode.includes('Не вказано час видачі')
@@ -2817,7 +2836,7 @@ check('Room timeline suppresses banquet connector visual lines',
     && timelineConstructorCss.includes('display: none;'));
 check('Animator timeline booking blocks show room meta without room timeline duplication', timelineCode.includes('const bookingRoomName = String(renderBooking.room || \'\').trim()') && timelineCode.includes('&& isParkAnimatorTimelineView()') && timelineCode.includes("(!isRoomTimelineView() && !shouldShowBookingRoomMeta ? bookingRoomName : '')") && timelineCode.includes('class="booking-block-room"') && timelineConstructorCss.includes('.booking-block .booking-block-room') && timelineConstructorCss.includes('.booking-block.has-booking-room-meta .subtitle') && timelineConstructorCss.includes('gap: 6px') && timelineConstructorCss.includes('.booking-block.has-booking-room-meta .booking-block-room') && timelineConstructorCss.includes('margin-left: 0') && timelineConstructorCss.includes('max-width: min(96px, calc(100% - 48px))') && timelineConstructorCss.includes('.booking-block.booking-block--short.has-booking-room-meta .timeline-compact-booking-meta .booking-block-room') && timelineConstructorCss.includes('max-width: min(72px, 100%)') && timelineConstructorCss.includes('body.dark-mode .booking-block .booking-block-room') && timelineConstructorCss.includes('html[data-theme="dark"] .booking-block .booking-block-room'));
 check('Room timeline activity blocks share marker card styling', timelineCode.includes('const isRoomTimelineActivityCard = isRoomTimelineView()') && timelineCode.includes("block.classList.add('is-room-timeline-activity-card')") && timelineCode.includes('class="timeline-room-activity-main"') && timelineCode.indexOf('class="timeline-room-activity-main"') < timelineCode.indexOf('class="timeline-room-activity-title"') && timelineCode.includes('class="timeline-room-activity-detail"') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card') && timelineConstructorCss.includes('body.timeline-view-rooms .timeline-room-service-marker') && timelineConstructorCss.includes('--timeline-room-card-accent') && timelineConstructorCss.includes('border-left: 4px solid var(--timeline-room-card-accent)') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.animation') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .timeline-room-activity-detail') && timelineConstructorCss.includes('-webkit-line-clamp: 2') && timelineConstructorCss.includes('body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-banquet-link-handle'));
-check('Room timeline service marker backgrounds are solid category surfaces', timelineConstructorCss.includes('background: var(--timeline-service-card-bg)') && timelineConstructorCss.includes('--timeline-service-card-bg: #0F766E') && timelineConstructorCss.includes('--timeline-service-card-bg: #5B21B6') && timelineConstructorCss.includes('--timeline-service-card-bg: #1D4ED8') && timelineConstructorCss.includes('--timeline-service-card-bg: #BE185D') && timelineConstructorCss.includes('--timeline-service-card-bg: #334155') && timelineConstructorCss.includes('--timeline-service-card-bg: #0E7490') && !/timeline-room-service-marker--(?:food-service|room-setup|cake|drinks|custom|service)[^{]*\{[^}]*background:\s*linear-gradient/i.test(timelineConstructorCss));
+check('Room timeline service marker backgrounds are solid category surfaces', timelineConstructorCss.includes('background: var(--timeline-service-card-bg)') && timelineConstructorCss.includes('--timeline-service-card-bg: #4D7C0F') && timelineConstructorCss.includes('--timeline-service-card-bg: #0F766E') && timelineConstructorCss.includes('--timeline-service-card-bg: #5B21B6') && timelineConstructorCss.includes('--timeline-service-card-bg: #1D4ED8') && timelineConstructorCss.includes('--timeline-service-card-bg: #BE185D') && timelineConstructorCss.includes('--timeline-service-card-bg: #334155') && timelineConstructorCss.includes('--timeline-service-card-bg: #0E7490') && !/timeline-room-service-marker--(?:guest-arrival|food-service|room-setup|cake|drinks|custom|service)[^{]*\{[^}]*background:\s*linear-gradient/i.test(timelineConstructorCss));
 check('Room timeline activity card backgrounds are solid category surfaces', timelineConstructorCss.includes('--timeline-room-card-bg: #1D4ED8') && timelineConstructorCss.includes('--timeline-room-card-bg: #C2410C') && timelineConstructorCss.includes('--timeline-room-card-bg: #BE185D') && timelineConstructorCss.includes('--timeline-room-card-bg: #0E7490') && !timelineConstructorCss.includes('--timeline-room-card-bg: linear-gradient') && !timelineConstructorCss.includes('--timeline-room-card-bg: rgba('));
 check('Room timeline operational lanes separate markers and activity cards', timelineCode.includes('function syncTimelineRoomOperationalLayout(lineGrid = null)') && timelineCode.includes("lineGrid.querySelectorAll('.timeline-room-service-marker')") && timelineCode.includes(".booking-block.is-room-timeline-activity-card:not(.status-hidden)") && timelineCode.includes('dataset.roomOperationalLane = String(lane)') && timelineCode.includes("style.setProperty('--timeline-room-lane-top'") && timelineCode.includes('dataset.roomActivityLane = String(lane)') && timelineCode.includes('syncTimelineRoomOperationalLayout(lineGrid);') && timelineConstructorCss.includes('.line-grid.has-timeline-room-operational-lanes') && timelineConstructorCss.includes('.timeline-line.has-timeline-room-operational-lanes') && timelineConstructorCss.includes('body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-operational-lanes') && timelineConstructorCss.includes('body.timeline-view-rooms .timeline-container.compact .timeline-line.has-timeline-room-service-marker-lanes > .line-grid') && controlsCss.includes('body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-operational-lanes') && controlsCss.includes('body.timeline-view-rooms .timeline-container[data-zoom] .timeline-line.has-timeline-room-service-marker-lanes > .line-grid') && timelineConstructorCss.includes('--timeline-room-operational-row-height') && timelineConstructorCss.includes('--timeline-room-activity-card-height: 72px') && timelineConstructorCss.includes('height: var(--timeline-room-activity-card-height)'));
 check('Timeline booking blocks expose width-based density display modes', timelineCode.includes('function timelineBookingBlockDensity(width)') && timelineCode.includes("safeWidth < 44) return 'micro'") && timelineCode.includes("safeWidth < 90) return 'tiny'") && timelineCode.includes("safeWidth < 140) return 'short'") && timelineCode.includes("safeWidth < 220) return 'medium'") && timelineCode.includes("return 'wide'") && timelineCode.includes('const bookingBlockDensity = timelineBookingBlockDensity(width)') && timelineCode.includes('booking-block--${bookingBlockDensity}') && timelineConstructorCss.includes('.booking-block--micro') && timelineConstructorCss.includes('.booking-block--tiny') && timelineConstructorCss.includes('.booking-block--short') && timelineConstructorCss.includes('.booking-block--medium') && timelineConstructorCss.includes('.booking-block--wide'));
@@ -3838,7 +3857,7 @@ const mobileBanquetMenuMoneyRule = cssRuleIncludingSelectorText(
     '.booking-banquet-section--menu .booking-detail-package-money'
 );
 const bookingInviteParamsBlock = sourceBlock(bookingCode, "const inviteModel = bookingDetailSafeRender('invite-model'", 'const invitePayload = inviteModel.payload');
-const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'let banquetSnapshot');
+const bookingInviteSectionBlock = sourceBlock(bookingCode, 'const inviteSectionHtml = roomFirstServiceBooking', 'const summaryPreviewHref');
 const bookingStatusActionStart = uiCode.indexOf('async function changeBookingStatus');
 const bookingStatusActionEnd = uiCode.indexOf('// ==========================================', bookingStatusActionStart + 1);
 const bookingStatusActionBlock = bookingStatusActionStart >= 0 && bookingStatusActionEnd > bookingStatusActionStart
@@ -4298,19 +4317,27 @@ check('Booking detail banquet package, comments, and invite controls stay compac
     && darkModeCss.includes('body.dark-mode .btn-invite-open:focus-visible'));
 check('Booking invite URL exposes only public event card contract',
     Boolean(bookingInviteParamsBlock)
+    && inviteShareCode.includes("const SAFE_INVITE_KEYS = Object.freeze(['date', 'time', 'end', 'arrival', 'program', 'room', 'card'])")
     && inviteShareCode.includes('function buildBookingDetailsInviteModel(input, config, origin, eventCards)')
+    && inviteShareCode.includes('function bookingInviteSnapshotArrival(snapshot)')
+    && inviteShareCode.includes('function bookingInviteHasMeaningfulActivityTime(booking = {}, snapshot = null, arrival = null)')
     && inviteShareCode.includes('const cardKey = resolveInviteCardKey(eventCardRecord, eventCards);')
-    && inviteShareCode.includes("date: cleanText(booking.date)")
-    && inviteShareCode.includes("time: cleanText(booking.time)")
-    && inviteShareCode.includes("end: cleanText(input && input.endTimeLabel)")
+    && inviteShareCode.includes('const banquetSnapshot = input && (input.banquetSnapshot || input.snapshot);')
+    && inviteShareCode.includes('const arrival = bookingInviteSnapshotArrival(banquetSnapshot) || bookingInviteSnapshotArrival(input);')
+    && inviteShareCode.includes("date: cleanText(arrival?.date || booking.date)")
+    && inviteShareCode.includes("time: hasActivityTime ? cleanText(booking.time) : ''")
+    && inviteShareCode.includes("end: hasActivityTime ? cleanText(input && input.endTimeLabel) : ''")
+    && inviteShareCode.includes("arrival: cleanText(arrival?.time)")
     && inviteShareCode.includes("program: cleanText(booking.programName || booking.label)")
-    && inviteShareCode.includes("room: cleanText(booking.room)")
+    && inviteShareCode.includes("room: cleanText(arrival?.room || booking.room)")
     && inviteShareCode.includes('card: cardKey')
     && inviteShareCode.includes('previewChips')
+    && inviteShareCode.includes('payload.arrivalLabel ? `Прихід гостей ${payload.arrivalLabel}` : \'\'')
     && bookingCode.includes("const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';")
     && bookingInviteParamsBlock.includes('booking,')
     && bookingInviteParamsBlock.includes('eventCardRecord: bookingEventCardRecord')
     && bookingInviteParamsBlock.includes('endTimeLabel: inviteEndTimeLabel')
+    && bookingInviteParamsBlock.includes('banquetSnapshot')
     && bookingCode.includes('const inviteUrl = invitePayload.inviteUrl;')
     && bookingCode.includes('const fullInviteUrl = invitePayload.fullInviteUrl;')
     && !/(customer|client|phone|comment|notes|price|sum|status|deposit|id)/i.test(bookingInviteParamsBlock));
@@ -5031,7 +5058,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.44')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.45')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -5040,8 +5067,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.44')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.44')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.45')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.45')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5480,7 +5507,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.44') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.44') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.45') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.45') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

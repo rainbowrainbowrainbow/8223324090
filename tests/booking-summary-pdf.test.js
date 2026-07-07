@@ -7,7 +7,8 @@ const { buildBanquetSummary } = require('../services/banquetSummary');
 const { renderBanquetTermsFromPriceRules } = require('../services/banquetTerms');
 const {
     buildBanquetSummaryPdfBuffer,
-    buildBanquetSummaryPdfView
+    buildBanquetSummaryPdfView,
+    validateBanquetSummaryPdf
 } = require('../services/banquetSummaryPdf');
 
 function standardTerms() {
@@ -267,6 +268,36 @@ test('banquet PDF client view keeps header, comments, program duration, finance,
         [...clientView.schedule.map(item => item.time)].sort()
     );
     assert.ok(clientView.orderTableRows.flat().some(cell => String(cell).includes('Паперове неон-шоу')));
+});
+
+test('banquet PDF validation and fallback schedule use canonical arrival projection', async () => {
+    const summary = qualitySummary();
+    summary.arrival = {
+        bookingId: summary.bookingId,
+        date: '2026-06-24',
+        time: '12:30',
+        room: 'Sun Hall',
+        source: 'test_arrival'
+    };
+    summary.banquetArrival = summary.arrival;
+    summary.event = {
+        ...summary.event,
+        date: null,
+        time: null,
+        room: null
+    };
+    delete summary.schedule;
+
+    const validation = validateBanquetSummaryPdf(summary, 'client');
+    assert.equal(validation.valid, true, JSON.stringify(validation.errors));
+
+    const clientView = buildBanquetSummaryPdfView(summary, 'client', { validation });
+    const arrivalRow = clientView.schedule.find(row => row.title === 'Прихід гостей');
+    assert.equal(arrivalRow?.time, '12:30');
+    assert.equal(arrivalRow?.note, 'Кімната: Sun Hall');
+
+    const buffer = await buildBanquetSummaryPdfBuffer(summary, { mode: 'client' });
+    assert.equal(buffer.subarray(0, 4).toString(), '%PDF');
 });
 
 test('banquet PDF buffer is a clean server PDF without browser print footer artifacts', async () => {

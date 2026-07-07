@@ -252,6 +252,8 @@ function createTimelineBanquetMarkerHarness() {
         AppState: { selectedDate: new Date('2099-06-18T00:00:00') },
         CONFIG: { TIMELINE: { CELL_MINUTES: 30, CELL_WIDTH: 50 } },
         isRoomTimelineView: () => viewState.room,
+        setTimelineActiveBanquetContext: () => ({ groupId: 'group-regression' }),
+        clearTimelineActiveBanquetContext: () => {},
         _getTimelineCachedBookings: () => context.__cachedBookings,
         timelineBusinessContextValue: () => 'event_genix',
         getTimeRange: () => ({ start: 10, end: 20 }),
@@ -307,6 +309,10 @@ function createTimelineBanquetMarkerScenario(bookingPackage, options = {}) {
         menuPreviewItems: ctx.timelineBanquetMenuPreviewItems([kitchenBooking]),
         warnings: []
     };
+    if (options.arrival) {
+        summary.arrival = options.arrival;
+        summary.banquetArrival = options.arrival;
+    }
     const servingInfo = ctx.timelineBanquetServingInfo(summary);
     const inspectorSummary = ctx.timelineBanquetSummaryForInspector(summary, servingInfo, kitchenBooking);
     return { ctx, inspectorSummary };
@@ -407,6 +413,52 @@ function renderTimelineBanquetRoomGridMarkers(bookingPackage, options = {}) {
         }))
     };
 }
+
+test('timeline banquet snapshot summary reads canonical arrival projection', () => {
+    const ctx = createTimelineBanquetMarkerHarness();
+    const summary = ctx.timelineBanquetSnapshotSummary({
+        success: true,
+        source: 'group',
+        group: {
+            id: 'GRP-ARRIVAL-1',
+            date: '2099-06-18',
+            room: 'Old Room',
+            primaryBookingId: 'BK-PRIMARY'
+        },
+        arrival: {
+            bookingId: 'BK-ACTIVITY',
+            date: '2099-06-19',
+            time: '13:05',
+            room: 'Arrival Room',
+            source: 'activity'
+        },
+        bookings: {
+            primary: {
+                id: 'BK-PRIMARY',
+                category: 'banquet',
+                date: '2099-06-18',
+                time: '11:00',
+                room: 'Old Room',
+                customerName: 'Regression Customer'
+            },
+            activities: [{
+                id: 'BK-ACTIVITY',
+                category: 'animation',
+                date: '2099-06-19',
+                time: '13:05',
+                room: 'Arrival Room'
+            }],
+            kitchen: []
+        },
+        members: []
+    });
+
+    assert.equal(summary.arrival.bookingId, 'BK-ACTIVITY');
+    assert.equal(summary.date, '2099-06-19');
+    assert.equal(summary.time, '13:05');
+    assert.equal(summary.room, 'Arrival Room');
+    assert.equal(summary.banquetArrival.source, 'activity');
+});
 
 function applyTimelineBanquetPreviewWithVisibleBlocks(bookingPackage) {
     const ctx = createTimelineBanquetMarkerHarness();
@@ -2364,6 +2416,7 @@ test('room timeline service markers omit creator badge when owner is unavailable
 test('room timeline service markers use solid category surfaces instead of transparent gradients', () => {
     const css = read('css/timeline.css');
     const solidTypes = [
+        ['.timeline-room-service-marker--guest-arrival', '#4D7C0F'],
         ['.timeline-room-service-marker--food-service', '#0F766E'],
         ['.timeline-room-service-marker--room-setup', '#5B21B6'],
         ['.timeline-room-service-marker--cake', '#BE185D'],
@@ -2379,8 +2432,8 @@ test('room timeline service markers use solid category surfaces instead of trans
         assert.doesNotMatch(rule, /background:\s*linear-gradient/i);
     });
 
-    const darkTypeRules = [...css.matchAll(/(?:body\.dark-mode|html\[data-theme="dark"\]) \.timeline-room-service-marker--(?:food-service|room-setup|cake|drinks|custom|service)\s*\{([\s\S]*?)\}/g)];
-    assert.ok(darkTypeRules.length >= 6);
+    const darkTypeRules = [...css.matchAll(/(?:body\.dark-mode|html\[data-theme="dark"\]) \.timeline-room-service-marker--(?:guest-arrival|food-service|room-setup|cake|drinks|custom|service)\s*\{([\s\S]*?)\}/g)];
+    assert.ok(darkTypeRules.length >= 7);
     darkTypeRules.forEach(([, rule]) => {
         assert.match(cssDeclaration(rule, '--timeline-service-card-bg'), /^#[0-9A-F]{6}$/i);
         assert.doesNotMatch(rule, /background:\s*linear-gradient/i);
@@ -2864,6 +2917,57 @@ test('room timeline renders multiple menu serving markers inside the room grid',
     assert.equal(layout.hasGridOperationalLaneClass, true);
     assert.equal(layout.hasLineLaneClass, true);
     assert.equal(layout.hasLineOperationalLaneClass, true);
+});
+
+test('room timeline renders canonical banquet arrival as a room-grid operational marker', () => {
+    const { ctx, inspectorSummary, markers, activities, layout } = renderTimelineBanquetRoomGridMarkers({
+        menuPositions: [
+            { id: 'item-a', title: 'Pizza', servingTime: '12:30' }
+        ],
+        serviceEvents: [
+            { id: 'setup-1', type: 'room_setup', title: 'Prepare room', time: '12:00' }
+        ]
+    }, {
+        arrival: {
+            bookingId: 'BK-ACTIVITY-ARRIVAL',
+            date: '2099-06-18',
+            time: '12:00',
+            room: 'Room A',
+            source: 'activity'
+        },
+        activityBlocks: [
+            { id: 'activity-1', category: 'show', time: '12:00', duration: 30, title: 'Activity' }
+        ]
+    });
+
+    const arrivalNode = ctx.document.querySelector('.line-grid .timeline-room-service-marker--guest-arrival');
+    assert.ok(arrivalNode);
+    assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker').length, 3);
+    assert.deepEqual(markers.map(marker => marker.type), ['guest_arrival', 'room_setup', 'food_service']);
+    assert.deepEqual(markers.map(marker => marker.primary), [
+        '12:00 Прихід гостей',
+        '12:00 Підготовка',
+        '12:30 Видача'
+    ]);
+    assert.equal(markers[0].bookingId, 'BK-ACTIVITY-ARRIVAL');
+    assert.equal(markers[0].bookingIds, 'BK-ACTIVITY-ARRIVAL');
+    assert.equal(markers[0].groupId, 'group-regression');
+    assert.equal(markers[0].markerTitle, 'Прихід гостей');
+    assert.equal(markers[0].detail, 'Room A');
+    assert.equal(markers[0].ariaHaspopup, 'dialog');
+    assert.ok(!markers[0].className.includes('booking-block'));
+    assert.equal(activities.length, 1);
+    assert.equal(layout.hasGridOperationalLaneClass, true);
+    assert.equal(layout.hasLineOperationalLaneClass, true);
+
+    arrivalNode.click();
+    assert.equal(ctx.document.body.classList.contains('timeline-banquet-inspector-open'), true);
+    assert.equal(ctx.document.getElementById('timelineBanquetInspector')?.dataset.banquetGroupId, 'group-regression');
+
+    ctx.__timelineViewState.room = false;
+    ctx.clearTimelineRoomServiceMarkers();
+    ctx.renderTimelineRoomServiceMarkers(inspectorSummary, { groupId: 'group-regression' });
+    assert.equal(ctx.document.querySelectorAll('.line-grid .timeline-room-service-marker--guest-arrival').length, 0);
 });
 
 test('room timeline banquet inspector and service markers use clear menu quantity wording', () => {

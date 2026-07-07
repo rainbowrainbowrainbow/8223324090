@@ -57,3 +57,7 @@ Forbidden timeline details fallbacks:
    `npm test`.
 
 Do not update the hash just to make CI green.
+
+## Approval Log
+
+- 2026-07-07, `booking-detail-safe-open`: booking detail invite generation now receives the resolved banquet snapshot so public invite links can carry canonical banquet arrival time while keeping private booking/customer fields out of the URL.

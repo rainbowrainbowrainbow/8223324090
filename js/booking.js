@@ -12259,20 +12259,33 @@ async function showBookingDetails(bookingId, options = {}) {
         ? `<div class="booking-detail-description"><span class="label">Опис:</span><p>${escapeHtml(program.description)}</p></div>`
         : '';
 
+    let banquetSnapshot = null;
+    if (typeof apiGetBanquetByBooking === 'function') {
+        try {
+            const snapshot = await apiGetBanquetByBooking(booking.id);
+            if (snapshot?.success) banquetSnapshot = snapshot;
+        } catch (err) {
+            console.warn('Banquet detail snapshot unavailable:', err);
+        }
+    }
+
     // B2: Per-event invite URL with booking details
     const inviteEndTimeLabel = booking.duration || booking.duration === 0 ? endTime : '';
     const inviteModel = bookingDetailSafeRender('invite-model', booking, () => window.InviteShare?.buildBookingDetailsInviteModel?.({
         booking,
         eventCardRecord: bookingEventCardRecord,
-        endTimeLabel: inviteEndTimeLabel
+        endTimeLabel: inviteEndTimeLabel,
+        banquetSnapshot
     }, window.InviteConfig, window.location.origin, window.EventCards) || buildBookingDetailsInviteModelFallback({
         booking,
         eventCardRecord: bookingEventCardRecord,
-        endTimeLabel: inviteEndTimeLabel
+        endTimeLabel: inviteEndTimeLabel,
+        banquetSnapshot
     }), buildBookingDetailsInviteModelFallback({
         booking,
         eventCardRecord: bookingEventCardRecord,
-        endTimeLabel: inviteEndTimeLabel
+        endTimeLabel: inviteEndTimeLabel,
+        banquetSnapshot
     }));
     const invitePayload = inviteModel.payload;
     const invitePreviewChips = Array.isArray(inviteModel.previewChips) && inviteModel.previewChips.length
@@ -12318,15 +12331,6 @@ async function showBookingDetails(bookingId, options = {}) {
         </div>
     `;
 
-    let banquetSnapshot = null;
-    if (typeof apiGetBanquetByBooking === 'function') {
-        try {
-            const snapshot = await apiGetBanquetByBooking(booking.id);
-            if (snapshot?.success) banquetSnapshot = snapshot;
-        } catch (err) {
-            console.warn('Banquet detail snapshot unavailable:', err);
-        }
-    }
     const summaryPreviewHref = bookingDetailSafeRender('summary-preview-url', booking, () => bookingSummaryPreviewUrl(booking, banquetSnapshot), `/booking-summary.html?id=${encodeURIComponent(String(booking.id || ''))}`);
     const secondaryActionHtml = [
         `<button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="booking-detail-secondary-action">Повторити</button>`,
@@ -12886,22 +12890,47 @@ async function duplicateBooking(bookingId) {
 // INVITE HELPERS (v5.48)
 // ==========================================
 
+function bookingInviteFallbackTime(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '';
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return '';
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function bookingInviteFallbackSnapshotArrival(snapshot = {}) {
+    const raw = snapshot?.arrival || snapshot?.banquetArrival || snapshot?.group?.arrival || snapshot?.group?.banquetArrival;
+    if (!raw || typeof raw !== 'object') return null;
+    const time = bookingInviteFallbackTime(raw.time);
+    if (!time) return null;
+    return {
+        time,
+        date: String(raw.date || '').trim().slice(0, 10),
+        room: String(raw.room || '').trim()
+    };
+}
+
 function buildBookingDetailsInviteModelFallback(input) {
     const booking = input?.booking || {};
     const eventCardRecord = input?.eventCardRecord || booking;
     const inviteCardKeyCandidate = window.EventCards?.resolveEventCardKey?.(eventCardRecord);
     const inviteCardKey = window.EventCards?.EVENT_CARDS?.[inviteCardKeyCandidate]?.key || 'holiday-party';
+    const arrival = bookingInviteFallbackSnapshotArrival(input?.banquetSnapshot || input?.snapshot || input);
     const publicData = {
-        date: booking.date,
+        date: arrival?.date || booking.date,
         time: booking.time,
         end: input?.endTimeLabel,
+        arrival: arrival?.time || '',
         program: booking.programName || booking.label,
-        room: booking.room,
+        room: arrival?.room || booking.room,
         card: inviteCardKey
     };
     const payload = buildBookingInviteSharePayloadFallback(publicData);
     const previewChips = [
         payload.dateLabel,
+        payload.arrivalLabel ? `Прихід гостей ${payload.arrivalLabel}` : '',
         payload.timeRangeLabel,
         payload.programLabel,
         payload.roomLabel
@@ -12920,33 +12949,48 @@ function buildBookingInviteSharePayloadFallback(data) {
         date: clean(data?.date),
         time: clean(data?.time),
         end: clean(data?.end),
+        arrival: bookingInviteFallbackTime(data?.arrival),
         program: clean(data?.program),
         room: clean(data?.room),
         card: clean(data?.card)
     };
     const params = new URLSearchParams();
-    ['date', 'time', 'end', 'program', 'room', 'card'].forEach(key => params.set(key, safeData[key]));
+    ['date', 'time', 'end', 'arrival', 'program', 'room', 'card'].forEach(key => {
+        if (key === 'arrival' && !safeData[key]) return;
+        params.set(key, safeData[key]);
+    });
     const inviteUrl = `/invite?${params.toString()}`;
     const fullInviteUrl = `${String(window.location?.origin || '').replace(/\/+$/, '')}${inviteUrl}`;
     const programLabel = safeData.program || 'подію';
     const timeRangeLabel = safeData.time && safeData.end && safeData.time !== safeData.end
         ? `${safeData.time} - ${safeData.end}`
         : safeData.time;
+    const arrivalLabel = safeData.arrival;
+    const timeLines = arrivalLabel
+        ? [
+            `Прихід гостей: ${arrivalLabel}`,
+            timeRangeLabel && timeRangeLabel !== arrivalLabel ? `Час активності: ${timeRangeLabel}` : ''
+        ].filter(Boolean)
+        : (timeRangeLabel ? [`Час: ${timeRangeLabel}`] : []);
     const rows = Array.isArray(window.InviteConfig?.location?.rows) ? window.InviteConfig.location.rows : [];
     const addressRow = rows.find(row => clean(row?.label).toLowerCase() === 'адреса');
     const address = clean(addressRow?.value);
     const addressLabel = address ? ` Адреса: ${address}.` : '';
     const shareTitle = clean(window.InviteConfig?.shareTitle) || clean(window.InviteConfig?.brandName) || 'Event Genix';
-    const shortText = `Запрошуємо на ${programLabel}${safeData.date ? ` ${safeData.date}` : ''}${timeRangeLabel ? ` о ${timeRangeLabel}` : ''}.${safeData.room ? ` Кімната: ${safeData.room}.` : ''}${addressLabel} ${fullInviteUrl}`;
+    const shortTimeText = timeLines.length ? ` ${timeLines.join('. ')}.` : '';
+    const shortText = `Запрошуємо на ${programLabel}${safeData.date ? ` ${safeData.date}` : ''}.${shortTimeText}${safeData.room ? ` Кімната: ${safeData.room}.` : ''}${addressLabel} ${fullInviteUrl}`;
     const messengerText = [
         `Вітаємо! Запрошуємо на ${programLabel}.`,
         `Дата: ${safeData.date || '-'}`,
-        `Час: ${timeRangeLabel || '-'}`,
+        ...timeLines,
         safeData.room ? `Кімната: ${safeData.room}` : '',
         address ? `Адреса: ${address}` : '',
         `Деталі: ${fullInviteUrl}`
     ].filter(Boolean).join('\n');
-    const instagramText = `${programLabel}${safeData.date ? ` · ${safeData.date}` : ''}${timeRangeLabel ? ` · ${timeRangeLabel}` : ''}${safeData.room ? ` · ${safeData.room}` : ''}\n${fullInviteUrl}`;
+    const instagramTime = arrivalLabel
+        ? ` · Прихід гостей ${arrivalLabel}${timeRangeLabel && timeRangeLabel !== arrivalLabel ? ` · ${timeRangeLabel}` : ''}`
+        : (timeRangeLabel ? ` · ${timeRangeLabel}` : '');
+    const instagramText = `${programLabel}${safeData.date ? ` · ${safeData.date}` : ''}${instagramTime}${safeData.room ? ` · ${safeData.room}` : ''}\n${fullInviteUrl}`;
 
     return {
         inviteUrl,
@@ -12954,6 +12998,7 @@ function buildBookingInviteSharePayloadFallback(data) {
         programLabel,
         roomLabel: safeData.room,
         dateLabel: safeData.date,
+        arrivalLabel,
         timeRangeLabel,
         shareTitle,
         address,

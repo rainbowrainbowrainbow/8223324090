@@ -1465,6 +1465,13 @@ body.timeline-view-rooms .timeline-room-service-marker-detail {
     --timeline-service-card-detail: #CCFBF1;
 }
 
+.timeline-room-service-marker--guest-arrival {
+    --timeline-service-card-bg: #4D7C0F;
+    --timeline-service-card-border: rgba(190, 242, 100, 0.48);
+    --timeline-service-card-accent: #BEF264;
+    --timeline-service-card-detail: #ECFCCB;
+}
+
 .timeline-room-service-marker--room-setup {
     --timeline-service-card-bg: #5B21B6;
     --timeline-service-card-border: rgba(167, 139, 250, 0.48);
@@ -1612,6 +1619,11 @@ body.timeline-view-rooms .timeline-room-service-marker-detail {
     color: #0F766E;
 }
 
+.timeline-banquet-room-card-signal--guest-arrival {
+    background: rgba(132, 204, 22, 0.14);
+    color: #4D7C0F;
+}
+
 .timeline-banquet-room-card-signal--drinks {
     background: rgba(59, 130, 246, 0.12);
     color: #1D4ED8;
@@ -1740,6 +1752,12 @@ html[data-theme="dark"] .timeline-banquet-room-card-signal--food-service {
     color: #CCFBF1;
 }
 
+body.dark-mode .timeline-banquet-room-card-signal--guest-arrival,
+html[data-theme="dark"] .timeline-banquet-room-card-signal--guest-arrival {
+    background: rgba(190, 242, 100, 0.18);
+    color: #ECFCCB;
+}
+
 body.dark-mode .timeline-banquet-room-card-signal--drinks,
 html[data-theme="dark"] .timeline-banquet-room-card-signal--drinks {
     background: rgba(96, 165, 250, 0.18);
@@ -1820,6 +1838,14 @@ html[data-theme="dark"] .timeline-room-service-marker--food-service {
     --timeline-service-card-border: rgba(45, 212, 191, 0.48);
     --timeline-service-card-accent: #2DD4BF;
     --timeline-service-card-detail: #CCFBF1;
+}
+
+body.dark-mode .timeline-room-service-marker--guest-arrival,
+html[data-theme="dark"] .timeline-room-service-marker--guest-arrival {
+    --timeline-service-card-bg: #4D7C0F;
+    --timeline-service-card-border: rgba(190, 242, 100, 0.48);
+    --timeline-service-card-accent: #BEF264;
+    --timeline-service-card-detail: #ECFCCB;
 }
 
 body.dark-mode .timeline-room-service-marker--room-setup,

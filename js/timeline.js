@@ -2312,6 +2312,28 @@ function timelineBanquetRoomServingSignals(markers = []) {
         }));
 }
 
+function timelineBanquetRoomOperationalMarkers(summary = {}) {
+    const arrivalMarker = timelineBanquetArrivalMarker(summary);
+    const markers = [
+        ...(arrivalMarker ? [{ ...arrivalMarker, __roomMarkerOrder: -1 }] : []),
+        ...(Array.isArray(summary.servingMarkers) ? summary.servingMarkers : [])
+            .map((marker, index) => ({ ...marker, __roomMarkerOrder: index }))
+    ]
+        .map(marker => ({ ...marker, time: normalizeTimelineBanquetServingTime(marker?.time) }))
+        .filter(marker => marker.time);
+
+    markers.sort((a, b) => {
+        const byTime = String(a.time || '').localeCompare(String(b.time || ''));
+        if (byTime) return byTime;
+        return Number(a.__roomMarkerOrder || 0) - Number(b.__roomMarkerOrder || 0);
+    });
+
+    return markers.map(marker => {
+        const { __roomMarkerOrder, ...cleanMarker } = marker;
+        return cleanMarker;
+    });
+}
+
 function timelineBanquetSummaryForInspector(summary = {}, servingInfo = {}, carrierBooking = null) {
     const missingCount = Number(servingInfo.missingCount || 0);
     return {
@@ -2642,6 +2664,11 @@ function timelineRoomServiceMarkerDisplay(marker = {}, type = '') {
                 title: 'Видача',
                 detail: count > 0 ? `Кухня ${count} поз.` : (firstItemTitle || markerTitle || markerLabel)
             };
+        case 'guest_arrival':
+            return {
+                title: 'Прихід гостей',
+                detail: marker.room || markerTitle || firstItemTitle || markerLabel
+            };
         case 'room_setup':
             return {
                 title: 'Підготовка',
@@ -2672,6 +2699,7 @@ function timelineRoomServiceMarkerDisplay(marker = {}, type = '') {
 
 function timelineRoomServiceMarkerPreferredLane(type = '') {
     switch (normalizeTimelineBanquetServiceEventType(type)) {
+        case 'guest_arrival':
         case 'room_setup':
             return 0;
         case 'food_service':
@@ -2902,9 +2930,7 @@ function renderTimelineRoomServiceMarkers(summary = {}, options = {}) {
     const lineGrid = timelineBanquetRoomGridForSummary(summary);
     if (!lineGrid) return;
 
-    const markers = (Array.isArray(summary.servingMarkers) ? summary.servingMarkers : [])
-        .map(marker => ({ ...marker, time: normalizeTimelineBanquetServingTime(marker?.time) }))
-        .filter(marker => marker.time);
+    const markers = timelineBanquetRoomOperationalMarkers(summary);
     if (!markers.length) return;
 
     const range = getTimeRange(AppState.selectedDate);

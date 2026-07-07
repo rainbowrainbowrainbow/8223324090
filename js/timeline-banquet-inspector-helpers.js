@@ -150,12 +150,14 @@ function normalizeTimelineBanquetServingTime(value) {
 
 function normalizeTimelineBanquetServiceEventType(value) {
     const type = String(value || '').trim().toLowerCase();
-    if (['food_service', 'cake', 'drinks', 'room_setup', 'custom'].includes(type)) return type;
+    if (['guest_arrival', 'food_service', 'cake', 'drinks', 'room_setup', 'custom'].includes(type)) return type;
     return 'service';
 }
 
 function timelineBanquetServiceEventLabel(type) {
     switch (normalizeTimelineBanquetServiceEventType(type)) {
+        case 'guest_arrival':
+            return 'Прихід гостей';
         case 'cake':
             return 'Торт';
         case 'drinks':
@@ -169,6 +171,50 @@ function timelineBanquetServiceEventLabel(type) {
         default:
             return 'Сервіс';
     }
+}
+
+function timelineBanquetSnapshotArrival(snapshot = {}) {
+    const raw = snapshot?.arrival || snapshot?.banquetArrival || snapshot?.group?.arrival || snapshot?.group?.banquetArrival;
+    if (!raw || typeof raw !== 'object') return null;
+    const bookingId = String(raw.bookingId || raw.booking_id || '').trim();
+    const date = String(raw.date || '').trim().slice(0, 10);
+    const time = normalizeTimelineBanquetServingTime(raw.time);
+    const room = String(raw.room || '').trim();
+    const source = String(raw.source || '').trim();
+    if (!bookingId && !date && !time && !room && !source) return null;
+    return {
+        bookingId: bookingId || null,
+        date: date || null,
+        time: time || null,
+        room: room || null,
+        source: source || null
+    };
+}
+
+function timelineBanquetArrivalMarker(summary = {}) {
+    const arrival = summary.arrival || summary.banquetArrival || null;
+    if (!arrival || typeof arrival !== 'object') return null;
+    const time = normalizeTimelineBanquetServingTime(arrival.time);
+    if (!time) return null;
+    const bookingId = String(arrival.bookingId || arrival.booking_id || '').trim();
+    const room = String(arrival.room || summary.room || '').trim();
+    return {
+        type: 'guest_arrival',
+        label: 'Прихід гостей',
+        title: 'Прихід гостей',
+        time,
+        date: String(arrival.date || summary.date || '').trim().slice(0, 10) || null,
+        room: room || null,
+        source: String(arrival.source || '').trim() || null,
+        bookingId: bookingId || null,
+        bookingIds: bookingId ? [bookingId] : [],
+        count: 1,
+        items: [{
+            title: 'Прихід гостей',
+            quantity: null,
+            note: room || null
+        }]
+    };
 }
 
 function timelineBanquetBookingHasMenu(booking = {}) {
@@ -255,12 +301,18 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         .map(timelineBanquetSnapshotWarningText)
         .filter(Boolean);
     const carrierBooking = null;
-    const date = snapshot?.group?.date || firstTimelineBanquetValue(sourceForCounts, booking => booking.date);
-    const time = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.time);
+    const arrival = timelineBanquetSnapshotArrival(snapshot);
+    const fallbackDate = snapshot?.group?.date || firstTimelineBanquetValue(sourceForCounts, booking => booking.date);
+    const fallbackTime = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.time);
+    const fallbackRoom = snapshot?.group?.room || firstTimelineBanquetValue(sourceForCounts, booking => booking.room);
+    const date = arrival?.date || fallbackDate;
+    const time = arrival?.time || fallbackTime;
     const duration = firstTimelineBanquetValue([primaryBooking, ...allBookings].filter(Boolean), booking => booking.duration);
     const activityPreviewItems = timelineBanquetActivityPreviewItems(activityBookings);
     return {
         snapshot,
+        arrival,
+        banquetArrival: arrival,
         groupId: timelineBanquetSnapshotGroupId(snapshot),
         primaryBooking,
         carrierBooking,
@@ -274,7 +326,7 @@ function timelineBanquetSnapshotSummary(snapshot = {}) {
         activityPreviewItems,
         summaryAvailable: true,
         customerName: firstTimelineBanquetValue(sourceForCounts, booking => booking.customerName || booking.customer_name || booking.groupName || booking.group_name),
-        room: snapshot?.group?.room || firstTimelineBanquetValue(sourceForCounts, booking => booking.room),
+        room: arrival?.room || fallbackRoom,
         date,
         time,
         duration,

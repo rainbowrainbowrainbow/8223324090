@@ -893,6 +893,12 @@ function assertNoDuplicateBanquetReadModel(state, groupId, expectedBookingIds = 
     assert.equal(new Set(linkKeys).size, linkKeys.length, 'compatibility links should not contain duplicate pairs');
 }
 
+function assertBanquetArrival(snapshot, expected) {
+    assert.ok(snapshot?.arrival, 'banquet snapshot should expose arrival');
+    assert.deepEqual(snapshot.arrival, expected);
+    assert.deepEqual(snapshot.banquetArrival, expected);
+}
+
 function kitchenFirstSourceBooking(overrides = {}) {
     return bookingRow({
         id: 'BK-KITCHEN-FIRST',
@@ -1320,6 +1326,82 @@ test('GET banquet candidates validates date and selected customer', async () => 
     });
 });
 
+test('GET banquet read endpoints expose canonical arrival from group primary booking', async () => {
+    await withApp([
+        bookingRow({
+            id: 'BK-ROOT',
+            time: '14:20',
+            customer_id: 101,
+            label: 'Yurii banquet',
+            program_name: 'Yurii banquet',
+            room: 'Room A'
+        }),
+        bookingRow({
+            id: 'BK-KITCHEN',
+            time: '16:00',
+            line_id: 'banquet-service',
+            program_id: null,
+            program_code: 'KITCHEN',
+            label: 'Kitchen order',
+            program_name: 'Kitchen order',
+            category: 'kitchen',
+            room: 'Room A',
+            customer_id: 101,
+            extra_data: JSON.stringify({
+                bookingPackage: {
+                    menuPositions: [{ id: 'pizza', title: 'Pizza', quantity: 2, unitPrice: 250, subtotal: 500 }]
+                }
+            })
+        })
+    ], [], async ({ baseUrl }) => {
+        const expected = {
+            bookingId: 'BK-ROOT',
+            date: '2099-06-01',
+            time: '14:20',
+            room: 'Room A',
+            source: 'manual'
+        };
+
+        const byBooking = await fetch(`${baseUrl}/api/banquets/by-booking/BK-KITCHEN?businessContext=event_genix`);
+        const byBookingData = await byBooking.json();
+        assert.equal(byBooking.status, 200, JSON.stringify(byBookingData));
+        assertBanquetArrival(byBookingData, expected);
+
+        const byGroup = await fetch(`${baseUrl}/api/banquets/BQ-ROOT?businessContext=event_genix`);
+        const byGroupData = await byGroup.json();
+        assert.equal(byGroup.status, 200, JSON.stringify(byGroupData));
+        assertBanquetArrival(byGroupData, expected);
+    }, {
+        banquetGroups: [{
+            id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            primary_booking_id: 'BK-ROOT',
+            customer_id: 101,
+            date: '2099-06-01',
+            room: 'Room A',
+            group_name: 'Yurii banquet',
+            status: 'active',
+            source: 'manual',
+            meta: {}
+        }],
+        banquetMemberships: [{
+            id: 1,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-ROOT',
+            role: 'primary',
+            sort_order: 10
+        }, {
+            id: 2,
+            group_id: 'BQ-ROOT',
+            business_context: 'event_genix',
+            booking_id: 'BK-KITCHEN',
+            role: 'kitchen',
+            sort_order: 30
+        }]
+    });
+});
+
 test('POST banquet source member-booking creates group from activity-first booking atomically', async () => {
     await withApp([
         activityFirstSourceBooking()
@@ -1331,6 +1413,13 @@ test('POST banquet source member-booking creates group from activity-first booki
         assert.equal(data.success, true);
         assert.equal(data.createdGroup, true);
         assert.equal(data.booking.id, 'BK-2099-9999');
+        assertBanquetArrival(data.banquetGroup, {
+            bookingId: 'BK-ACTIVITY-FIRST',
+            date: '2099-06-01',
+            time: '12:45',
+            room: 'Room A',
+            source: 'activity_first_kitchen_bridge'
+        });
 
         const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-ACTIVITY-FIRST');
         assert.ok(group, 'source activity should become the banquet primary booking');
@@ -1595,6 +1684,13 @@ test('POST banquet source activity-booking creates group from kitchen-first book
         assert.equal(data.success, true);
         assert.equal(data.createdGroup, true);
         assert.equal(data.booking.id, 'BK-2099-9999');
+        assertBanquetArrival(data.banquetGroup, {
+            bookingId: 'BK-KITCHEN-FIRST',
+            date: '2099-06-01',
+            time: '13:15',
+            room: 'Room A',
+            source: 'kitchen_first_activity_bridge'
+        });
 
         const group = state.banquetGroups.find(row => row.primary_booking_id === 'BK-KITCHEN-FIRST');
         assert.ok(group, 'source kitchen should become the banquet primary booking when it is first');
@@ -2590,6 +2686,18 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         assert.equal(data.event.status, 'preliminary');
         assert.equal(data.document.generatedAt, undefined);
         assert.equal(data.event.createdAt, new Date('2099-01-01T00:00:00Z').toISOString());
+        const expectedArrival = {
+            bookingId: 'BK-ROOT',
+            date: '2099-06-01',
+            time: '12:00',
+            room: 'Room A',
+            source: 'test'
+        };
+        assert.deepEqual(data.arrival, expectedArrival);
+        assert.deepEqual(data.banquetArrival, expectedArrival);
+        assert.equal(data.event.date, data.arrival.date);
+        assert.equal(data.event.time, data.arrival.time);
+        assert.equal(data.event.room, data.arrival.room);
         assert.deepEqual(data.finance.rows.map(row => row.key), ['total', 'deposit']);
         assert.equal(data.finance.rows.find(row => row.key === 'total')?.amount, 1700);
         assert.equal(data.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
@@ -2873,10 +2981,29 @@ test('banquet summary reads workspace comments and does not borrow booking group
                 { bookingId: primary.id, role: 'primary', isPrimary: true, booking: primary, technicalChildren: [] },
                 { bookingId: kitchen.id, role: 'kitchen', isKitchenCandidate: true, booking: kitchen, technicalChildren: [] },
                 { bookingId: activity.id, role: 'activity', booking: activity, technicalChildren: [] }
-            ]
+            ],
+            arrival: {
+                bookingId: primary.id,
+                date: '2099-06-02',
+                time: '14:10',
+                room: 'Room B',
+                source: 'test_arrival'
+            }
         }
     });
 
+    assert.deepEqual(summary.arrival, {
+        bookingId: primary.id,
+        date: '2099-06-02',
+        time: '14:10',
+        room: 'Room B',
+        source: 'test_arrival'
+    });
+    assert.deepEqual(summary.banquetArrival, summary.arrival);
+    assert.equal(summary.event.date, '2099-06-02');
+    assert.equal(summary.event.time, '14:10');
+    assert.equal(summary.event.room, 'Room B');
+    assert.equal(summary.schedule.find(row => row.type === 'arrival')?.time, '14:10');
     assert.equal(summary.event.groupName, 'canonical banquet group');
     assert.equal(summary.orderRows.find(row => row.type === 'program')?.comment, 'workspace activity comment');
     assert.equal(summary.orderRows.find(row => row.type === 'menu')?.comment, 'workspace kitchen comment');

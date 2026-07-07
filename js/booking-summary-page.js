@@ -429,6 +429,16 @@
         return noteModes.length && !noteModes.includes(mode) ? '' : note;
     }
 
+    function summaryArrival(summary = {}) {
+        const event = summary?.event || {};
+        const arrival = summary?.arrival || summary?.banquetArrival || {};
+        return {
+            date: arrival?.date || event.date || null,
+            time: arrival?.time || event.time || null,
+            room: arrival?.room || event.room || null
+        };
+    }
+
     function pushSummaryScheduleFallback(items, seen, time, title, note = '') {
         if (!time || !title) return;
         const key = `${time}|${title}|${note}`.toLowerCase();
@@ -441,10 +451,11 @@
         const items = [];
         const seen = new Set();
         const event = summary?.event || {};
+        const arrival = summaryArrival(summary);
         const contract = summaryModeContract(summary, mode);
         const scheduleSourceTypes = new Set(contract.scheduleSourceRowTypes || contract.orderRowTypes || []);
         if (mode !== 'kitchen') {
-            pushSummaryScheduleFallback(items, seen, event.time, 'Прихід гостей', event.room ? `Кімната: ${event.room}` : '');
+            pushSummaryScheduleFallback(items, seen, arrival.time, 'Прихід гостей', arrival.room ? `Кімната: ${arrival.room}` : '');
         }
         (Array.isArray(summary?.orderRows) ? summary.orderRows : [])
             .filter(row => row && scheduleSourceTypes.has(row.type))
@@ -860,6 +871,7 @@
         const printRoot = el('bookingSummaryPrintRoot');
         const venue = summary.venue || {};
         const event = summary.event || {};
+        const arrival = summaryArrival(summary);
         const customer = summary.customer || {};
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
@@ -917,9 +929,9 @@
                     ${briefColumn([
                         briefItem('Клієнт', customer.name),
                         briefItem('Телефон', customer.phone),
-                        briefItem('Кімната', event.room),
-                        briefItem('Дата банкету', formatDate(event.date)),
-                        briefItem('Прихід гостей', event.time)
+                        briefItem('Кімната', arrival.room || event.room),
+                        briefItem('Дата банкету', formatDate(arrival.date || event.date)),
+                        briefItem('Прихід гостей', arrival.time || event.time)
                     ])}
                     ${briefColumn([
                         briefItem('Діти', counts.children),
@@ -988,6 +1000,7 @@
 
     function summaryText(summary) {
         const event = summary.event || {};
+        const arrival = summaryArrival(summary);
         const customer = summary.customer || {};
         const celebrant = summary.celebrant || {};
         const counts = summary.counts || {};
@@ -1016,13 +1029,13 @@
             summary.venue?.name || 'Банкетний лист',
             `Booking ID: ${summary.bookingId || '—'}`,
             '',
-            `Дата банкету: ${formatDate(event.date)}`,
-            `Прихід гостей: ${formatValue(event.time)}`,
+            `Дата банкету: ${formatDate(arrival.date || event.date)}`,
+            `Прихід гостей: ${formatValue(arrival.time || event.time)}`,
             `Замовник: ${formatValue(customer.name)}`,
             `Телефон: ${formatValue(customer.phone)}`,
             `${celebrantsNameLabel}: ${formatValue(celebrantsNameDisplay)}`,
             `${celebrantsBirthdayLabel}: ${formatValue(celebrantsBirthdayDisplay)}`,
-            `Кімната: ${formatValue(event.room)}`,
+            `Кімната: ${formatValue(arrival.room || event.room)}`,
             `Бронь створено: ${formatDateTime(event.createdAt)}`,
             `Менеджер: ${formatValue(event.manager)}`,
             `Дітей: ${formatValue(counts.children)}`,

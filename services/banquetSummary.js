@@ -1164,13 +1164,36 @@ function firstNonNull(...values) {
     return null;
 }
 
+function normalizeBanquetArrivalProjection(candidate = null, fallbackBooking = {}, fallbackGroup = null, fallbackSource = null) {
+    const source = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : {};
+    const group = fallbackGroup && typeof fallbackGroup === 'object' && !Array.isArray(fallbackGroup) ? fallbackGroup : {};
+    const arrival = {
+        bookingId: cleanText(valueOf(source, 'bookingId', 'booking_id'), 100) || bookingIdOf(fallbackBooking),
+        date: cleanText(valueOf(source, 'date'), 40)
+            || cleanText(valueOf(fallbackBooking, 'date'), 40)
+            || cleanText(valueOf(group, 'date'), 40),
+        time: cleanText(valueOf(source, 'time'), 20)
+            || cleanText(valueOf(fallbackBooking, 'time'), 20),
+        room: cleanText(valueOf(source, 'room'), 120)
+            || cleanText(valueOf(fallbackBooking, 'room'), 120)
+            || cleanText(valueOf(group, 'room'), 120),
+        source: cleanText(valueOf(source, 'source'), 120)
+            || cleanText(fallbackSource, 120)
+            || null
+    };
+    return arrival.bookingId || arrival.date || arrival.time || arrival.room ? arrival : null;
+}
+
 function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, fallbackLinkedBookings = []) {
     if (!resolvedGroup || typeof resolvedGroup !== 'object') {
+        const arrival = normalizeBanquetArrivalProjection(null, fallbackMainBooking, null, 'current_booking');
         return {
             source: 'current_booking',
             group: null,
             groupId: null,
             warnings: [],
+            arrival,
+            banquetArrival: arrival,
             primaryBooking: fallbackMainBooking,
             kitchenBooking: fallbackMainBooking,
             activityBookings: (Array.isArray(fallbackLinkedBookings) ? fallbackLinkedBookings : []).filter(isRootBooking),
@@ -1204,12 +1227,20 @@ function normalizeResolvedGroup(resolvedGroup = null, fallbackMainBooking = {}, 
         .map(member => member.booking)
         .filter(isRootBooking)
         .filter(isActiveBooking);
+    const arrival = normalizeBanquetArrivalProjection(
+        resolvedGroup.arrival || resolvedGroup.banquetArrival,
+        primaryBooking,
+        resolvedGroup.group || null,
+        resolvedGroup.source || (resolvedGroup.groupId ? 'banquet_group' : 'legacy_booking_banquet_links')
+    );
 
     return {
         source: resolvedGroup.source || (resolvedGroup.groupId ? 'banquet_group' : 'legacy_booking_banquet_links'),
         group: resolvedGroup.group || null,
         groupId: resolvedGroup.groupId || resolvedGroup.group?.id || null,
         warnings: Array.isArray(resolvedGroup.warnings) ? resolvedGroup.warnings : [],
+        arrival,
+        banquetArrival: arrival,
         primaryBooking,
         kitchenBooking,
         activityBookings,
@@ -1575,12 +1606,18 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
         valueOf(kitchenBooking, 'banquetGuests', 'banquet_guests'),
         valueOf(primaryBooking, 'banquetGuests', 'banquet_guests')
     );
+    const arrival = normalizeBanquetArrivalProjection(
+        groupState.arrival || groupState.banquetArrival,
+        primaryBooking,
+        groupState.group || null,
+        groupState.source
+    );
     const eventProgramName = cleanText(valueOf(primaryBooking, 'programName', 'program_name'), 200);
     const hasRealProgram = isRealBanquetProgram(primaryBooking);
     const eventSummary = {
-        date: cleanText(valueOf(primaryBooking, 'date'), 40),
-        time: cleanText(valueOf(primaryBooking, 'time'), 20),
-        room: cleanText(valueOf(primaryBooking, 'room'), 120),
+        date: arrival?.date || cleanText(valueOf(primaryBooking, 'date'), 40),
+        time: arrival?.time || cleanText(valueOf(primaryBooking, 'time'), 20),
+        room: arrival?.room || cleanText(valueOf(primaryBooking, 'room'), 120),
         programName: eventProgramName,
         hasRealProgram,
         programDisplayName: hasRealProgram ? eventProgramName : null,
@@ -1631,6 +1668,8 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
             generatedBy: cleanText(generatedBy?.name || generatedBy?.username || generatedBy, 160)
         },
         venue: venueForContext(context, warnings),
+        arrival,
+        banquetArrival: arrival,
         event: eventSummary,
         customer: normalizedCustomer,
         celebrants: normalizedCustomer.children,

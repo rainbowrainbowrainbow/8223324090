@@ -2530,6 +2530,7 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(pageCode, /function summaryClientOrderRowViews\(summary = \{\}, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /summary\?\.orderRowViews\?\.\[normalizedMode\]/);
     assert.match(pageCode, /function summaryScheduleRows\(summary, mode = summaryMode\(summary\)\)/);
+    assert.match(pageCode, /function summaryArrival\(summary = \{\}\)/);
     assert.match(pageCode, /function renderSchedule\(summary, mode = summaryMode\(summary\)\)/);
     assert.match(pageCode, /summary-section--schedule/);
     assert.match(pageCode, /Розклад/);
@@ -2544,6 +2545,8 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(pdfService, /banquetSummaryModeContract/);
     assert.doesNotMatch(pdfService, /const MODE_CONFIG/);
     assert.match(pdfService, /function validateBanquetSummaryPdf\(summary = \{\}, mode = 'client'\)/);
+    assert.match(pdfService, /function summaryArrival\(summary = \{\}\)/);
+    assert.match(pdfService, /const arrival = summaryArrival\(summary\);/);
     assert.match(pdfService, /const ENTRY_BLOCKING_WARNING_CODES = new Set/);
     assert.match(pdfService, /if \(!validation\.valid\) throw pdfValidationError\(validation\)/);
     assert.match(pdfService, /function rowDurationLabel\(row = {}\)/);
@@ -2567,6 +2570,8 @@ test('banquet summary PDF export has clean server endpoint and distinct modes', 
     assert.match(pdfService, /formatDateTime\(renderedAt\)/);
     assert.doesNotMatch(pdfService, /Booking ID: \$\{pdfText\(summary\.bookingId\)\}/);
     assert.match(summaryService, /function buildBanquetSchedule/);
+    assert.match(summaryService, /function normalizeBanquetArrivalProjection/);
+    assert.match(summaryService, /banquetArrival: arrival/);
     assert.match(summaryService, /function buildResponsiblePeople/);
     assert.match(summaryService, /BANQUET_SUMMARY_MODES\s*=\s*Object\.freeze\(\['client', 'kitchen', 'staff'\]\)/);
     assert.match(summaryService, /function banquetSummaryModeContract/);

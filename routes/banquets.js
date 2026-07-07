@@ -72,10 +72,15 @@ function sanitizeSnapshotForUser(snapshot, user) {
             message: `${hiddenCount} banquet booking member(s) were omitted by booking visibility rules.`
         });
     }
+    const arrival = snapshot.arrival?.bookingId && visibleBookingIds.has(String(snapshot.arrival.bookingId))
+        ? snapshot.arrival
+        : null;
 
     return {
         ...snapshot,
         group,
+        arrival,
+        banquetArrival: arrival,
         memberships: (snapshot.memberships || []).filter(item => visibleBookingIds.has(String(item.bookingId))),
         members: visibleMembers.map(member => ({
             ...member,

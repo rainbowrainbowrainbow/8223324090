@@ -278,6 +278,25 @@ function bookingBanquetSelectorVirtualInvalidMessage(virtualState, realState, se
     return virtualState.error || 'Джерело для автоматичного банкету застаріло. Оберіть кімнату або клієнта ще раз.';
 }
 
+function bookingBanquetSelectorMissingRoomSourceMessage(realState, selectedGroupId = '') {
+    if (String(selectedGroupId || '').trim()) return '';
+    if (realState?.hasRealCandidates || realState?.fallbackCandidates?.length) return '';
+    if (!isParkTimelineBookingMode() || !isBookingKitchenEnabled()) return '';
+    if (AppState.editingBookingId) return '';
+
+    const drawerMode = normalizeBookingDrawerMode(BookingDrawerState.drawerMode || inferBookingDrawerModeForOpen());
+    if (drawerMode !== BOOKING_DRAWER_MODES.CREATE_KITCHEN) return '';
+    if (BookingDrawerState.roomSelectionBanquetContext?.sourceBookingId) return '';
+    if (BookingDrawerState.roomBookingAnimationBridge?.sourceBookingId) return '';
+
+    const room = String(document.getElementById('roomSelect')?.value || '').trim();
+    const customerId = bookingBanquetGroupSelectedCustomerId();
+    const date = bookingBanquetGroupDateValue();
+    if (!room || !customerId || !date) return '';
+
+    return 'Активність у вибраній кімнаті ще не підтягнулась. Оновіть таймлайн або оберіть кімнату ще раз; інакше кухня збережеться без прямої прив’язки, а система зведе записи після збереження, якщо дата, кімната і клієнт збігаються.';
+}
+
 function bookingBanquetSelectorSourceMeta() {
     const sourceContext = BookingDrawerState.roomSourceContext
         || BookingDrawerState.roomSelectionBanquetContext?.roomSourceContext
@@ -483,6 +502,7 @@ function renderBookingBanquetGroupSelector(options = {}) {
     const virtualState = bookingBanquetSelectorVirtualState();
     const showVirtualBanquetCreateOption = bookingBanquetSelectorCanShowVirtual(virtualState, realState, selectedGroupId);
     const virtualInvalidMessage = bookingBanquetSelectorVirtualInvalidMessage(virtualState, realState, selectedGroupId);
+    const missingRoomSourceMessage = bookingBanquetSelectorMissingRoomSourceMessage(realState, selectedGroupId);
     const unlinkedOptionLabel = showVirtualBanquetCreateOption ? virtualState.label : 'Без прив’язки';
     const optionRows = [
         `<option value="">${escapeHtml(unlinkedOptionLabel)}</option>`,
@@ -511,6 +531,8 @@ function renderBookingBanquetGroupSelector(options = {}) {
             hint.textContent = virtualState.hint;
         } else if (virtualInvalidMessage) {
             hint.textContent = virtualInvalidMessage;
+        } else if (missingRoomSourceMessage) {
+            hint.textContent = missingRoomSourceMessage;
         } else if (selected) {
             hint.textContent = `Вибрано: ${bookingBanquetGroupCandidateLabel(selected)}`;
         } else if (visibleCandidates.length) {

@@ -3545,6 +3545,34 @@ test('activity-first kitchen selector renders virtual create state without fake 
     assert.doesNotMatch(selectorBlock, /__activity_first|virtualGroupId|fakeGroupId/);
 });
 
+test('room-first kitchen selector explains missing source activity before generic empty hint', () => {
+    const bookingJs = readBookingSurface();
+    const selectorBlock = bookingJs.slice(
+        bookingJs.indexOf('function renderBookingBanquetGroupSelector'),
+        bookingJs.indexOf('async function refreshBookingBanquetGroupCandidates')
+    );
+    const sourceMissingBlock = bookingJs.slice(
+        bookingJs.indexOf('function bookingBanquetSelectorMissingRoomSourceMessage'),
+        bookingJs.indexOf('function bookingBanquetSelectorSourceMeta')
+    );
+    const missingHint = selectorBlock.indexOf('hint.textContent = missingRoomSourceMessage');
+    const genericEmptyHint = selectorBlock.indexOf("hint.textContent = 'Банкетів цього клієнта на дату не знайдено.'");
+
+    assert.match(sourceMissingBlock, /if \(String\(selectedGroupId \|\| ''\)\.trim\(\)\) return '';/);
+    assert.match(sourceMissingBlock, /realState\?\.hasRealCandidates \|\| realState\?\.fallbackCandidates\?\.length/);
+    assert.match(sourceMissingBlock, /if \(!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)\) return '';/);
+    assert.match(sourceMissingBlock, /if \(AppState\.editingBookingId\) return '';/);
+    assert.match(sourceMissingBlock, /if \(drawerMode !== BOOKING_DRAWER_MODES\.CREATE_KITCHEN\) return '';/);
+    assert.match(sourceMissingBlock, /BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
+    assert.match(sourceMissingBlock, /BookingDrawerState\.roomBookingAnimationBridge\?\.sourceBookingId/);
+    assert.match(sourceMissingBlock, /document\.getElementById\('roomSelect'\)\?\.value/);
+    assert.match(sourceMissingBlock, /Активність у вибраній кімнаті ще не підтягнулась/);
+    assert.match(selectorBlock, /const missingRoomSourceMessage = bookingBanquetSelectorMissingRoomSourceMessage\(realState, selectedGroupId\);/);
+    assert.match(selectorBlock, /else if \(missingRoomSourceMessage\) \{\s*hint\.textContent = missingRoomSourceMessage;\s*\} else if \(selected\)/);
+    assert.ok(missingHint >= 0, 'missing source activity hint is rendered');
+    assert.ok(genericEmptyHint > missingHint, 'missing source activity hint wins over generic empty hint');
+});
+
 test('banquet selector separates real candidates from virtual source bridge state', () => {
     const bookingJs = readBookingSurface();
     const apiJs = read('js', 'api.js');

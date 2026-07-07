@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.41 - Banquet Link Selector Clarity
+
+### Банкети / Прив'язка кухні / Booking drawer / (Клешня, 07.07.2026) [codex]
+- **Селектор банкету пояснює відсутній source activity** - якщо кухня створюється з кімнати, але активність у цій кімнаті ще не підтягнулась у форму як джерело, оператор бачить конкретну підказку замість generic `Банкетів цього клієнта на дату не знайдено`.
+- **Валідні сценарії прив'язки не змінювались** - реальні кандидатні банкетні групи, virtual bridge `активність -> кухня`, fallback groups і edit mode мають вищий пріоритет і працюють за старою логікою.
+- **Додано regression guard** - контрактний тест фіксує умови показу нової підказки й порядок пріоритетів перед generic empty state.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend booking selector, regression test, changelog і version/cache refs.
+
+---
+
 ## v0.78.40 - Booking Drawer Promo Summary
 
 ### Booking drawer / Promo / Підсумок пакета / (Клешня, 07.07.2026) [codex]

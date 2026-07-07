@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.51 - Lead Workspace Cleanup
+
+### Ліди / Робочий простір / UX / (Клешня, 08.07.2026) [codex]
+- **З робочого простору ліда прибрано великий декоративний event-card банер** - менеджер одразу бачить ім'я, контакт, етап, бейджі й швидкі дії без зайвої картинки зверху.
+- **Сторінка лідів більше не вантажить `js/event-cards.js`** - shared event-card helper лишився для booking, programs, afisha та invite, але не підтягується в lead workspace.
+- **Додано regression guards** - `tests/event-cards.test.js` і `tests/static/invite-checks.js` фіксують, що декоративна картинка не повернеться в lead workspace.
+- **DB schema, migrations, auth/roles, billing, env/secrets, Railway settings і protected booking/timeline flow не змінювались** - реліз обмежений frontend UX, static guards, changelog і version/cache refs.
+
+---
+
 ## v0.78.50 - Lead Event Preferences
 
 ### Ліди / Бажана дата / DB / API / (Клешня, 07.07.2026) [codex]

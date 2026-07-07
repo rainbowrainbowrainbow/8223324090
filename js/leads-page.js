@@ -2076,7 +2076,6 @@ function renderLeadWorkspaceContent(workspace) {
 
     body.innerHTML = `
         <section class="workspace-hero">
-            ${window.EventCards.renderEventCardImage(lead, { modifier: 'workspace' })}
             <div class="workspace-hero-main">
                 <div>
                     <h3 class="workspace-name">${workspaceText(lead.clientName, maysternyaMode ? `Заявка #${lead.id}` : `Лід #${lead.id}`)}</h3>

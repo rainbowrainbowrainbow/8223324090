@@ -166,7 +166,6 @@ test('event card resolver covers real CRM catalog and lead values', () => {
 test('event card resolver is wired into event UI surfaces', () => {
     assertScriptBefore('index.html', 'js/event-cards.js', 'js/booking.js');
     assertScriptBefore('programs.html', 'js/event-cards.js', 'js/programs-page.js');
-    assertScriptBefore('leads.html', 'js/event-cards.js', 'js/leads-page.js');
     assertScriptBefore('afisha.html', 'js/event-cards.js', 'js/afisha-page.js');
 
     const pagesCss = readProjectFile('css', 'pages.css');
@@ -182,7 +181,6 @@ test('event card resolver is wired into event UI surfaces', () => {
     assert.match(readProjectFile('js', 'programs-page.js'), /window\.EventCards\.renderEventCardImage\(p\)/);
     assert.match(readProjectFile('js', 'afisha-page.js'), /window\.EventCards\.renderEventCardImage\(item,\s*\{\s*modifier:\s*'compact'\s*\}\)/);
     assert.match(readProjectFile('js', 'afisha-page.js'), /window\.EventCards\.renderEventCardImage\(item,\s*\{\s*modifier:\s*'workspace'\s*\}\)/);
-    assert.match(readProjectFile('js', 'leads-page.js'), /window\.EventCards\.renderEventCardImage\(lead,\s*\{\s*modifier:\s*'workspace'\s*\}\)/);
     assert.match(readProjectFile('js', 'booking.js'), /window\.EventCards\.renderEventCardImage\(bookingEventCardRecord,\s*\{\s*modifier:\s*'booking'\s*\}\)/);
 
     [
@@ -195,4 +193,10 @@ test('event card resolver is wired into event UI surfaces', () => {
         assert.doesNotMatch(source, /function render(?:Program|Afisha|Lead|Booking)EventCardVisual/);
         assert.doesNotMatch(source, /function get(?:Program|Afisha|Lead|Booking)EventCardMeta/);
     });
+});
+
+test('lead workspace does not render decorative event card images', () => {
+    assert.doesNotMatch(readProjectFile('leads.html'), /js\/event-cards\.js/);
+    assert.doesNotMatch(readProjectFile('js', 'leads-page.js'), /EventCards\.renderEventCardImage\(lead/);
+    assert.doesNotMatch(readProjectFile('js', 'leads-page.js'), /event-card-visual--workspace/);
 });

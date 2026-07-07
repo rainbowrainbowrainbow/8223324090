@@ -26,6 +26,8 @@ const eventCardPagesCss = cssTextWithImports('css/pages.css');
 const eventCardVisualRule = cssRuleText(eventCardPagesCss, '.event-card-visual');
 const eventCardImageRule = cssRuleText(eventCardPagesCss, '.event-card-visual img');
 const inviteHtml = fileText('invite.html');
+const leadsHtml = fileText('leads.html');
+const leadsPageCode = fileText('js/leads-page.js');
 const inviteConfigCode = fileText('js/invite-config.js');
 const inviteShareCode = fileText('js/invite-share.js');
 const inviteBrowserSmokeCode = fileText('tests/browser/invite-browser-smoke.js');
@@ -179,13 +181,16 @@ check('Event card visual smoke is static, ordered, and DB-free',
     && htmlScriptLoadsBefore('index.html', 'js/invite-config.js', 'js/invite-share.js')
     && htmlScriptLoadsBefore('index.html', 'js/invite-share.js', 'js/booking.js')
     && htmlScriptLoadsBefore('programs.html', 'js/event-cards.js', 'js/programs-page.js')
-    && htmlScriptLoadsBefore('leads.html', 'js/event-cards.js', 'js/leads-page.js')
     && htmlScriptLoadsBefore('afisha.html', 'js/event-cards.js', 'js/afisha-page.js')
     && eventCardSmokeImage?.closest('.event-card-visual')
     && eventCardSmokeImage?.getAttribute('src')?.startsWith('/images/event-cards/')
     && eventCardVisualRule.includes('aspect-ratio: 16 / 9')
     && eventCardImageRule.includes('object-fit: cover'));
 eventCardSmokeDom.window.close();
+check('Lead workspace does not load decorative event card images',
+    !leadsHtml.includes('js/event-cards.js')
+    && !leadsPageCode.includes('EventCards.renderEventCardImage(lead')
+    && !leadsPageCode.includes('event-card-visual--workspace'));
 check('Invite page uses dynamic event-card header contract',
     scriptIndex(getHtmlScripts(inviteHtml), 'js/event-cards.js') >= 0
     && scriptIndex(getHtmlScripts(inviteHtml), 'js/invite-config.js') >= 0

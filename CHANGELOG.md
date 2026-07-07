@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.48 - Lead Customer Auto Link
+
+### Ліди / Клієнти / Зв'язки / (Клешня, 07.07.2026) [codex]
+- **Новий лід із customer fallback тепер прив'язується до клієнта після save** - коли менеджер натиснув `Створити лід`, перевірив prefill і явно зберіг форму, CRM викликає існуючий `POST /api/leads/:id/link-customer`.
+- **Auto-link не стартує під час пошуку або prefill** - сам fallback і кнопка `Створити лід` лише відкривають форму; запис і зв'язок створюються тільки після явного `Зберегти`.
+- **Помилка link не ламає створення ліда** - якщо прив'язка не пройшла, лід лишається створеним, а менеджер бачить попередження `Лід створено, але клієнта не прив'язано`.
+- **Додано regression guard** - `tests/ui-check.js` фіксує, що fallback click не пише в API, а `/link-customer` викликається тільки після успішного `POST /api/leads`.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend state/save flow, static UI guard, changelog і version/cache refs.
+
+---
+
 ## v0.78.47 - Lead Customer Search Fallback
 
 ### Ліди / Пошук / Клієнти / (Клешня, 07.07.2026) [codex]

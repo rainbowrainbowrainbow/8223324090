@@ -3669,6 +3669,7 @@ function openAddModal() {
     if (stageGroup) stageGroup.style.display = 'none';
 
     const modal = document.getElementById('leadModal');
+    if (modal) delete modal.dataset.sourceCustomerId;
     modalInitialState = getModalState();
     modal?.classList.add('active');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
@@ -3694,6 +3695,7 @@ function prefillLeadModalFromCustomer(customer = {}) {
     if (notesEl) notesEl.value = customerFallbackLeadNote(customer);
 
     const modal = document.getElementById('leadModal');
+    if (modal && customer.id) modal.dataset.sourceCustomerId = String(customer.id);
     modalInitialState = getModalState();
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
     nameEl?.focus();
@@ -3739,6 +3741,7 @@ function editLead(id) {
     }
 
     const modal = document.getElementById('leadModal');
+    if (modal) delete modal.dataset.sourceCustomerId;
     modalInitialState = getModalState();
     modal?.classList.add('active');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
@@ -3761,6 +3764,7 @@ async function closeLeadModal(force = false) {
     if (window.UnsafeDismissGuard && modal) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, () => {
             modal.classList.remove('active');
+            delete modal.dataset.sourceCustomerId;
             modalInitialState = getModalState();
         }, {
             force,
@@ -3776,7 +3780,47 @@ async function closeLeadModal(force = false) {
             if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
         }
     }
-    document.getElementById('leadModal')?.classList.remove('active');
+    const leadModal = document.getElementById('leadModal');
+    leadModal?.classList.remove('active');
+    if (leadModal) delete leadModal.dataset.sourceCustomerId;
+}
+
+function leadModalSourceCustomerId() {
+    const customerId = Number(document.getElementById('leadModal')?.dataset.sourceCustomerId || 0);
+    return Number.isInteger(customerId) && customerId > 0 ? customerId : null;
+}
+
+async function linkSavedLeadToFallbackCustomer(leadId, customerId) {
+    const normalizedLeadId = Number(leadId);
+    const normalizedCustomerId = Number(customerId);
+    if (!Number.isInteger(normalizedLeadId) || normalizedLeadId <= 0 || !Number.isInteger(normalizedCustomerId) || normalizedCustomerId <= 0) {
+        return false;
+    }
+    try {
+        const res = await apiFetch(`/api/leads/${normalizedLeadId}/link-customer`, {
+            method: 'POST',
+            body: JSON.stringify(leadPayload({
+                customerId: normalizedCustomerId
+            }))
+        });
+        if (!res) {
+            if (typeof showNotification === 'function') showNotification('Лід створено, але клієнта не привʼязано.', 'warning');
+            return false;
+        }
+        const data = await res.json();
+        if (!data.success) {
+            if (typeof showNotification === 'function') {
+                showNotification(data.error || 'Лід створено, але клієнта не привʼязано.', 'warning');
+            }
+            return false;
+        }
+        if (typeof showNotification === 'function') showNotification('Лід створено і привʼязано до клієнта.', 'success');
+        return true;
+    } catch (err) {
+        console.warn('Link saved lead to fallback customer failed', err);
+        if (typeof showNotification === 'function') showNotification('Лід створено, але клієнта не привʼязано.', 'warning');
+        return false;
+    }
 }
 
 async function saveLead() {
@@ -3837,6 +3881,7 @@ async function saveLead() {
     }
 
     const saveBtn = document.getElementById('leadModalSave');
+    const sourceCustomerId = editId ? null : leadModalSourceCustomerId();
     try {
         leadSaveInFlight = true;
         if (saveBtn) {
@@ -3851,6 +3896,10 @@ async function saveLead() {
         }
         const data = await res.json();
         if (!data.success) { if (typeof showNotification === 'function') showNotification(data.error || 'Помилка', 'error'); return; }
+        const savedLeadId = editId || data.lead?.id;
+        if (!editId && sourceCustomerId && savedLeadId) {
+            await linkSavedLeadToFallbackCustomer(savedLeadId, sourceCustomerId);
+        }
         closeLeadModal(true);
         await loadLeads();
         if (editId && workspaceLeadId === parseInt(editId, 10)) {

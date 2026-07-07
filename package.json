@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.48",
+  "version": "0.78.49",
   "eventGenix": {
-    "releaseLabel": "Lead Customer Auto Link"
+    "releaseLabel": "Lead Event Guests UX"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

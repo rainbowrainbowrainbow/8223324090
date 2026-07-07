@@ -445,7 +445,7 @@ function syncLeadGuestsTotal() {
     const totalEl = document.getElementById('leadGuestsTotal');
     if (!totalEl) return;
     const counts = readLeadGuestCounts();
-    totalEl.textContent = `${counts.children + counts.adults} гостей`;
+    totalEl.textContent = `Разом гостей: ${counts.children + counts.adults}`;
 }
 
 function syncLeadEventDetailsVisibility(options = {}) {

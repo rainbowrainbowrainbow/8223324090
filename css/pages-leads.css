@@ -131,6 +131,10 @@ body[data-page-group="mgmt"] .kanban-cards {
     display: none !important;
 }
 
+body[data-lead-business-context="maysternya_doli"] .lead-event-details {
+    display: none !important;
+}
+
 .lead-event-details-head {
     display: flex;
     align-items: center;

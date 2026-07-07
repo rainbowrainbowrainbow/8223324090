@@ -870,6 +870,12 @@ html[data-theme="dark"] .booking-active-banquet-context.is-mismatch {
     gap: 12px;
 }
 
+.program-card-shell {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
 .program-icon {
     display: grid;
     grid-template-rows: auto minmax(76px, 1fr) auto;
@@ -889,6 +895,10 @@ html[data-theme="dark"] .booking-active-banquet-context.is-mismatch {
     font-family: inherit;
     text-align: center;
     touch-action: manipulation;
+}
+
+.program-card-shell .program-icon {
+    width: 100%;
 }
 
 .program-icon::before {
@@ -1113,6 +1123,36 @@ body.dark-mode .program-next-price-badge,
 [data-theme="dark"] .program-next-price-badge {
     background: rgba(245,158,11,0.18);
     color: #FCD34D;
+}
+
+.booking-activity-promo-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    padding: 4px 9px;
+    border: 1px solid rgba(59,130,246,0.24);
+    border-radius: 7px;
+    background: rgba(59,130,246,0.08);
+    color: #1D4ED8;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1.2;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.booking-activity-promo-action:hover,
+.booking-activity-promo-action:focus-visible {
+    border-color: rgba(59,130,246,0.42);
+    background: rgba(59,130,246,0.14);
+    outline: none;
+}
+
+.booking-activity-promo-action--program-list {
+    width: 100%;
+    min-height: 30px;
 }
 
 .program-duration {
@@ -1519,7 +1559,7 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
 
 .selected-activity-item {
     display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) minmax(88px, auto) auto 28px;
+    grid-template-columns: 24px minmax(0, 1fr) minmax(88px, auto) auto minmax(28px, auto);
     align-items: start;
     gap: 8px;
     min-width: 0;
@@ -1618,6 +1658,19 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     font-weight: 900;
     line-height: 1.25;
     white-space: normal;
+}
+
+.selected-activity-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+}
+
+.selected-activity-actions .booking-activity-promo-action {
+    min-height: 26px;
+    padding-inline: 8px;
 }
 
 .selected-activity-remove {
@@ -4356,6 +4409,52 @@ body.booking-menu-catalog-active {
     color: var(--gray-700);
 }
 
+.booking-summary-section-title {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(59,130,246,0.12);
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.booking-summary-row--item {
+    align-items: flex-start;
+}
+
+.booking-summary-row-main {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.booking-summary-row-main > span {
+    color: var(--gray-800);
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.booking-summary-row-main small {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.booking-summary-row-side {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: max-content;
+}
+
+.booking-summary-row-side .booking-activity-promo-action {
+    min-height: 24px;
+    padding-inline: 7px;
+}
+
 .booking-summary-row strong {
     color: var(--gray-900);
     min-width: 0;
@@ -4412,6 +4511,113 @@ body.booking-menu-catalog-active {
 
 .booking-summary-note li + li {
     margin-top: 4px;
+}
+
+.booking-activity-promo-panel {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal, 30000);
+    display: grid;
+    place-items: center;
+    padding: 18px;
+}
+
+.booking-activity-promo-panel.hidden,
+.booking-activity-promo-panel[hidden] {
+    display: none;
+}
+
+.booking-activity-promo-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15,23,42,0.42);
+}
+
+.booking-activity-promo-card {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 12px;
+    width: min(420px, 100%);
+    max-height: min(720px, calc(100dvh - 36px));
+    overflow: auto;
+    padding: 14px;
+    border: 1px solid rgba(148,163,184,0.28);
+    border-radius: 12px;
+    background: var(--white);
+    box-shadow: var(--shadow-xl);
+}
+
+.booking-activity-promo-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.booking-activity-promo-head div {
+    display: grid;
+    gap: 2px;
+}
+
+.booking-activity-promo-head span {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.booking-activity-promo-head strong {
+    color: var(--gray-900);
+    font-size: 16px;
+    line-height: 1.25;
+}
+
+.booking-activity-promo-head button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(148,163,184,0.28);
+    border-radius: 8px;
+    background: rgba(248,250,252,0.92);
+    color: var(--gray-700);
+    font-size: 18px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.booking-activity-promo-body {
+    display: grid;
+    gap: 10px;
+}
+
+.booking-activity-promo-visual {
+    display: grid;
+    place-items: center;
+    min-height: 180px;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 10px;
+    background: rgba(248,250,252,0.9);
+    overflow: hidden;
+}
+
+.booking-activity-promo-visual img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: 320px;
+    object-fit: cover;
+}
+
+.booking-activity-promo-visual span {
+    font-size: 46px;
+}
+
+.booking-activity-promo-body p {
+    margin: 0;
+    color: var(--gray-700);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.45;
 }
 
 .booking-validation-checklist li {

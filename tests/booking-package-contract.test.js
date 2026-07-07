@@ -744,6 +744,201 @@ function createMultiActivityScheduleHarness(options = {}) {
     return context;
 }
 
+function createBookingPinataLabelHarness() {
+    const bookingJs = read('js', 'booking.js');
+    const start = bookingJs.indexOf('function _escB');
+    const end = bookingJs.indexOf('async function loadPinataPickerStatus', start);
+    assert.ok(start >= 0 && end > start, 'booking pinata label helper slice exists');
+    const context = {
+        window: {},
+        console
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(start, end)}
+        this.__pinataLabelHooks = { pinataChoiceDisplayLabel, renderPinataChoiceCard };
+    `, context, { filename: 'js/booking.js' });
+    return context.__pinataLabelHooks;
+}
+
+function createBookingActivityPromoHarness(products = []) {
+    const bookingJs = read('js', 'booking.js');
+    const start = bookingJs.indexOf('const BOOKING_ACTIVITY_KNOWN_CATALOG_URLS');
+    const end = bookingJs.indexOf('function bookingActivitiesTotalPrice', start);
+    assert.ok(start >= 0 && end > start, 'booking activity promo helper slice exists');
+    const dom = new JSDOM(`
+        <!doctype html>
+        <html><body><div id="bookingPanel"></div></body></html>
+    `, { url: 'http://localhost/booking.html' });
+    const openedPromoUrls = [];
+    const context = {
+        console,
+        document: dom.window.document,
+        window: dom.window,
+        __products: products,
+        __openedPromoUrls: openedPromoUrls,
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;'),
+        isPinataProgram: program => String(program?.category || '').toLowerCase() === 'pinata',
+        getProductsSync: () => context.__products,
+        openSafeNewTab: url => {
+            openedPromoUrls.push(url);
+        }
+    };
+    context.window.open = url => {
+        openedPromoUrls.push(url);
+        return null;
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(start, end)}
+        this.__activityPromoHooks = {
+            resolveBookingActivityPromoSource,
+            renderBookingActivityPromoAction,
+            openBookingActivityPromo,
+            openBookingActivityPromoById,
+            bindBookingActivityPromoActions,
+            closeBookingActivityPromoPanel
+        };
+    `, context, { filename: 'js/booking.js' });
+    const hooks = context.__activityPromoHooks;
+    hooks.document = dom.window.document;
+    hooks.window = dom.window;
+    hooks.openedPromoUrls = openedPromoUrls;
+    hooks.context = context;
+    return hooks;
+}
+
+function createBookingDrawerSummaryHarness() {
+    const bookingJs = read('js', 'booking.js');
+    const start = bookingJs.indexOf('function bookingSummaryActivityName');
+    const end = bookingJs.indexOf("if (typeof window !== 'undefined' && window.BookingPackageRenderer)", start);
+    assert.ok(start >= 0 && end > start, 'booking drawer summary helper slice exists');
+    const dom = new JSDOM(`
+        <!doctype html>
+        <html>
+            <body>
+                <div id="bookingPackageSummary"></div>
+                <input id="selectedProgram" value="pinata">
+                <input id="customerName" value="Test Customer">
+                <input id="selectedCustomerId" value="">
+                <select id="roomSelect"><option value="Room A" selected>Room A</option></select>
+                <div id="bookingSelectedCustomerCard"><strong>Test Customer</strong></div>
+            </body>
+        </html>
+    `);
+    const programs = [
+        {
+            id: 'pinata',
+            code: 'PIN',
+            label: 'PIN(15)',
+            name: 'Pinata',
+            category: 'pinata',
+            duration: 15,
+            price: 700,
+            promoDescription: 'Catalog promo'
+        },
+        {
+            id: 'bubble',
+            code: 'BUB',
+            label: 'BUB(30)',
+            name: 'Bubble Show',
+            category: 'show',
+            duration: 30,
+            price: 2400,
+            description: 'Bubble promo'
+        }
+    ];
+    const menuPositions = [{
+        title: 'Pizza',
+        quantity: 2,
+        servingUnit: 'portion',
+        unitPrice: 250,
+        subtotal: 500,
+        servingTime: '14:30',
+        note: 'warm'
+    }];
+    const context = {
+        console,
+        document: dom.window.document,
+        window: dom.window,
+        BookingDrawerState: { validationAttempted: false },
+        CLIENT_PINATA_FILLER_VALUE: 'client_filler',
+        CLIENT_PINATA_FILLER_LABEL: 'Client filler',
+        updateBookingContextHeaderSummary: () => {},
+        getBookingWorkspaceHasEvent: () => true,
+        getProductsSync: () => programs,
+        isRoomFirstTimelineView: () => false,
+        isBookingKitchenEnabled: () => true,
+        getSmartBookingValidationState: () => ({ canSubmit: true, warnings: [] }),
+        getBookingDepositFormData: () => null,
+        getBookingPackageTotals: () => ({
+            programBasePrice: 3100,
+            positionsSubtotal: 500,
+            entrySubtotal: 0,
+            finalTotal: 3600,
+            menuPositions,
+            activityPrograms: programs,
+            warnings: []
+        }),
+        toBookingMoney: value => Math.round(Number(value || 0) * 100) / 100,
+        formatPrice: value => `${Number(value || 0)} грн`,
+        bookingActivityPriceValue: program => Math.round(Number(program?.price || 0) * 100) / 100,
+        formatBookingPackageEntryAmount: entry => `${Number(entry?.subtotal || 0)} грн`,
+        formatBookingMenuPositionQuantity: item => `${item.quantity} portions`,
+        getSelectedActivityScheduleRows: () => [
+            { programId: 'pinata', program: programs[0], time: '13:00', endTime: '13:15' },
+            { programId: 'bubble', program: programs[1], time: '13:20', endTime: '13:50' }
+        ],
+        selectedActivityScheduleLabel: row => `${row.time}-${row.endTime}`,
+        isPinataProgram: program => String(program?.category || '').toLowerCase() === 'pinata',
+        useSelectedActivityPinataSubflow: () => true,
+        selectedActivityPinataDraft: () => ({
+            pinataMode: 'park',
+            pinataNumber: '529',
+            pinataFillerNumber: 'M',
+            pinataFiller: 'M',
+            clientPinataServicePrice: null,
+            clientPinataServiceNote: null
+        }),
+        currentPinataChoice: () => ({
+            number: '529',
+            value: '529',
+            title: '\u041f\u0456\u043d\u044c\u044f\u0442\u0430 \u2116529'
+        }),
+        pinataChoiceDisplayLabel: choice => choice.title,
+        bookingPinataNumberDisplay: value => String(value || ''),
+        pinataFillerNumberLabel: value => value,
+        isClientPinataFillerChoice: value => String(value || '') === 'client_filler',
+        renderBookingActivityPromoAction: program => program.description || program.promoDescription
+            ? `<button type="button" data-booking-activity-promo="${program.id}">Promo</button>`
+            : '',
+        renderSelectedActivityPreflightWarning: () => '',
+        renderBookingValidationIssues: () => '',
+        bindSelectedActivityPreflightWarningActions: () => {},
+        bindBookingActivityPromoActions: root => {
+            context.__boundPromoButtons = root.querySelectorAll('[data-booking-activity-promo]').length;
+        },
+        updateBookingSubmitState: () => {},
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(start, end)}
+        this.__summaryHooks = { renderBookingPackageSummary };
+    `, context, { filename: 'js/booking.js' });
+    return context;
+}
+
 function multiActivityBaseBooking() {
     return {
         date: '2099-02-13',
@@ -777,6 +972,165 @@ function multiActivityBaseBooking() {
         paymentMethod: null
     };
 }
+
+test('booking pinata choice labels avoid duplicated operational numbers', () => {
+    const hooks = createBookingPinataLabelHarness();
+    const pinataTitle = '\u041f\u0456\u043d\u044c\u044f\u0442\u0430 \u2116529';
+
+    assert.equal(
+        hooks.pinataChoiceDisplayLabel({ number: '529', value: '529', title: pinataTitle }),
+        pinataTitle
+    );
+    assert.equal(
+        hooks.pinataChoiceDisplayLabel({ number: '529', value: '529', title: '\u0404\u0434\u0438\u043d\u043e\u0440\u0456\u0433' }),
+        '529 · \u0404\u0434\u0438\u043d\u043e\u0440\u0456\u0433'
+    );
+    assert.equal(
+        hooks.pinataChoiceDisplayLabel({ number: '529', value: '529', title: 'XL #529' }),
+        'XL #529'
+    );
+    const duplicatedCard = hooks.renderPinataChoiceCard({ number: '529', value: '529', title: pinataTitle }, '');
+    assert.match(duplicatedCard, /\u041f\u0456\u043d\u044c\u044f\u0442\u0430 \u2116529/);
+    assert.doesNotMatch(duplicatedCard, /pinata-choice-number[^>]*>\s*529\s*<\/span>/);
+
+    const customCard = hooks.renderPinataChoiceCard({
+        number: '529',
+        value: '529',
+        title: '\u0404\u0434\u0438\u043d\u043e\u0440\u0456\u0433'
+    }, '');
+    assert.match(customCard, /pinata-choice-number[^>]*>\s*529\s*<\/span>/);
+});
+
+test('booking activity promo resolver prefers catalogs and hides empty promo actions', () => {
+    const hooks = createBookingActivityPromoHarness();
+
+    const pinata = hooks.resolveBookingActivityPromoSource({
+        id: 'pinata',
+        category: 'pinata',
+        name: 'Pinata'
+    });
+    assert.equal(pinata.kind, 'catalog');
+    assert.equal(pinata.url, '/designs#catalog-pinyata');
+
+    const card = hooks.resolveBookingActivityPromoSource({
+        id: 'bubble',
+        name: 'Bubble Show',
+        promoDescription: 'Short operator promo',
+        imageUrl: '/uploads/bubble.png'
+    });
+    assert.equal(card.kind, 'card');
+    assert.equal(card.text, 'Short operator promo');
+    assert.equal(card.imageUrl, '/uploads/bubble.png');
+
+    assert.equal(hooks.resolveBookingActivityPromoSource({ id: 'custom', name: 'Custom' }), null);
+    assert.equal(hooks.renderBookingActivityPromoAction({ id: 'custom', name: 'Custom' }), '');
+    assert.match(
+        hooks.renderBookingActivityPromoAction({ id: 'bubble', name: 'Bubble Show', description: 'Promo' }, 'summary'),
+        /data-booking-activity-promo="bubble"/
+    );
+    assert.match(
+        hooks.renderBookingActivityPromoAction({ id: 'bubble', name: 'Bubble Show', description: 'Promo' }, 'selected-activity'),
+        /booking-activity-promo-action--selected-activity/
+    );
+    assert.match(
+        hooks.renderBookingActivityPromoAction({ id: 'bubble', name: 'Bubble Show', description: 'Promo' }, 'summary'),
+        /booking-activity-promo-action--summary/
+    );
+    assert.doesNotMatch(
+        hooks.renderBookingActivityPromoAction({ id: 'bubble', name: 'Bubble Show', description: 'Promo' }, 'summary'),
+        /data-menu-catalog-insight/
+    );
+});
+
+test('booking activity promo catalog clicks do not bubble into activity selection', () => {
+    const hooks = createBookingActivityPromoHarness([{
+        id: 'pinata',
+        category: 'pinata',
+        name: 'Pinata'
+    }]);
+    const parent = hooks.document.createElement('div');
+    let selectedCount = 0;
+    let packageTotal = 700;
+    parent.addEventListener('click', () => {
+        selectedCount += 1;
+        packageTotal = 0;
+    });
+    parent.innerHTML = '<button type="button" data-booking-activity-promo="pinata">Promo</button>';
+    hooks.document.getElementById('bookingPanel').appendChild(parent);
+
+    hooks.bindBookingActivityPromoActions(parent);
+    const button = parent.querySelector('[data-booking-activity-promo]');
+    const event = new hooks.window.MouseEvent('click', { bubbles: true, cancelable: true });
+    const result = button.dispatchEvent(event);
+
+    assert.equal(result, false);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(selectedCount, 0);
+    assert.equal(packageTotal, 700);
+    assert.deepEqual(hooks.openedPromoUrls, ['/designs#catalog-pinyata']);
+    assert.equal(hooks.document.getElementById('bookingActivityPromoPanel'), null);
+});
+
+test('booking activity promo fallback clicks open drawer card without changing selection state', () => {
+    const hooks = createBookingActivityPromoHarness([{
+        id: 'bubble',
+        name: 'Bubble Show',
+        description: 'Bright bubble promo',
+        imageUrl: '/uploads/bubble.png'
+    }]);
+    const parent = hooks.document.createElement('div');
+    let selectedCount = 0;
+    let packageTotal = 2400;
+    parent.addEventListener('click', () => {
+        selectedCount += 1;
+        packageTotal = 0;
+    });
+    parent.innerHTML = '<button type="button" data-booking-activity-promo="bubble">Promo</button>';
+    hooks.document.getElementById('bookingPanel').appendChild(parent);
+
+    hooks.bindBookingActivityPromoActions(parent);
+    const button = parent.querySelector('[data-booking-activity-promo]');
+    const event = new hooks.window.MouseEvent('click', { bubbles: true, cancelable: true });
+    const result = button.dispatchEvent(event);
+
+    assert.equal(result, false);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(selectedCount, 0);
+    assert.equal(packageTotal, 2400);
+    assert.deepEqual(hooks.openedPromoUrls, []);
+    const panel = hooks.document.getElementById('bookingActivityPromoPanel');
+    assert.ok(panel);
+    assert.equal(panel.hidden, false);
+    assert.equal(panel.getAttribute('aria-hidden'), 'false');
+    assert.match(panel.textContent, /Bubble Show/);
+    assert.match(panel.textContent, /Bright bubble promo/);
+    assert.equal(panel.querySelector('img')?.getAttribute('src'), '/uploads/bubble.png');
+
+    const close = panel.querySelector('[data-booking-activity-promo-close]');
+    close.dispatchEvent(new hooks.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    assert.equal(panel.hidden, true);
+    assert.equal(panel.getAttribute('aria-hidden'), 'true');
+});
+
+test('booking drawer package summary renders all selected activities, pinata details, menu rows, and promo actions', () => {
+    const ctx = createBookingDrawerSummaryHarness();
+
+    ctx.__summaryHooks.renderBookingPackageSummary();
+
+    const summary = ctx.document.getElementById('bookingPackageSummary');
+    const text = summary.textContent;
+    assert.match(text, /PIN/);
+    assert.match(text, /BUB/);
+    assert.match(text, /Pizza/);
+    assert.match(text, /2 portions/);
+    assert.match(text, /3600 грн/);
+    assert.match(text, /\u041f\u0456\u043d\u044c\u044f\u0442\u0430 \u2116529/);
+    assert.doesNotMatch(text, /529\s*·\s*\u041f\u0456\u043d\u044c\u044f\u0442\u0430 \u2116529/);
+    assert.equal(summary.querySelectorAll('.booking-summary-row--activity').length, 2);
+    assert.equal(summary.querySelectorAll('.booking-summary-row--menu').length, 1);
+    assert.equal(summary.querySelectorAll('[data-booking-activity-promo]').length, 2);
+    assert.equal(ctx.__boundPromoButtons, 2);
+});
 
 test('booking activity schedule helper defaults sequentially from base time', () => {
     const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(multiActivitySchedulePrograms(), {

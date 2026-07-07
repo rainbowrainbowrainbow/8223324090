@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.44 - Timeline Room Summary Guards
+
+### Timeline / Booking drawer / Summary guards / (Клешня, 07.07.2026) [codex]
+- **Назва кімнати відділена від службової підказки** - `roomSelect` зберігає чистий label у `data-room-label`, а dropdown і далі показує денний hint з часом, клієнтом і `+1`.
+- **Підсумок бронювання більше не бере display text option як джерело кімнати** - рядок `Кімната` показує тільки чисту кімнату, а ім'я клієнта лишається в рядку `Клієнт`.
+- **Посилено regression coverage** - contract tests перевіряють `data-room-label`, fallback на `value`, event-mode і room-first kitchen; окремий browser smoke відкриває mocked timeline drawer без live credentials і production records.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend summary contract, browser/static guards, changelog і version/cache refs.
+
+---
+
 ## v0.78.43 - Timeline Summary Room Labels
 
 ### Timeline / Booking drawer / Підсумок / (Клешня, 07.07.2026) [codex]

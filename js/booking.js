@@ -4963,6 +4963,12 @@ function renderBookingSummaryMenuRows(menuPositions = []) {
     ].join('');
 }
 
+function bookingSummaryRoomLabel(roomSelect, fallbackValue = '') {
+    const value = String(fallbackValue || roomSelect?.value || '').trim();
+    if (value) return value;
+    return roomSelect?.selectedOptions?.[0]?.textContent?.trim() || 'не вибрано';
+}
+
 function renderBookingPackageSummary() {
     updateBookingContextHeaderSummary();
     const container = document.getElementById('bookingPackageSummary');
@@ -4974,7 +4980,7 @@ function renderBookingPackageSummary() {
     const customerId = document.getElementById('selectedCustomerId')?.value;
     const roomSelect = document.getElementById('roomSelect');
     const roomValue = roomSelect?.value || '';
-    const roomLabel = roomSelect?.selectedOptions?.[0]?.textContent?.trim() || roomValue || 'не вибрано';
+    const roomLabel = bookingSummaryRoomLabel(roomSelect, roomValue);
     const selectedCustomerName = document.querySelector('#bookingSelectedCustomerCard strong')?.textContent?.trim() || '';
     const resolvedCustomerName = selectedCustomerName || customerName || (customerId ? 'Існуючий клієнт' : 'не вибрано');
     const totals = getBookingPackageTotals(program);

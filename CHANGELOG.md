@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.43 - Timeline Summary Room Labels
+
+### Timeline / Booking drawer / Підсумок / (Клешня, 07.07.2026) [codex]
+- **Клієнт більше не дублюється у рядку кімнати** - підсумок бронювання показує чисту назву кімнати, навіть якщо option кімнати містить денну підказку на кшталт часу, клієнта і `+1`.
+- **Рядок `Клієнт` лишається єдиним місцем для імені клієнта** - службовий текст доступності кімнати не потрапляє в комерційний підсумок перед збереженням.
+- **Додано regression guard** - контрактний тест відтворює option із day-booking hint і блокує повернення дубля клієнта.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend summary render, test guard, changelog і version/cache refs.
+
+---
+
 ## v0.78.42 - Banquet Source Auto Refresh
 
 ### Банкети / Source activity / Booking drawer / (Клешня, 07.07.2026) [codex]

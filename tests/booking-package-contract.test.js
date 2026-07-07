@@ -1132,6 +1132,20 @@ test('booking drawer package summary renders all selected activities, pinata det
     assert.equal(ctx.__boundPromoButtons, 2);
 });
 
+test('booking drawer package summary keeps day-booking room option hints out of the room row', () => {
+    const ctx = createBookingDrawerSummaryHarness();
+    const option = ctx.document.querySelector('#roomSelect option');
+    option.textContent = 'Room A - 15:00 Test Customer +1';
+
+    ctx.__summaryHooks.renderBookingPackageSummary();
+
+    const rows = Array.from(ctx.document.querySelectorAll('#bookingPackageSummary .booking-summary-row'));
+    const roomRow = rows.find(row => row.querySelector('span')?.textContent?.trim() === 'Кімната');
+    const clientRow = rows.find(row => row.querySelector('span')?.textContent?.trim() === 'Клієнт');
+    assert.equal(roomRow?.querySelector('strong')?.textContent?.trim(), 'Room A');
+    assert.equal(clientRow?.querySelector('strong')?.textContent?.trim(), 'Test Customer');
+});
+
 test('booking activity schedule helper defaults sequentially from base time', () => {
     const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(multiActivitySchedulePrograms(), {
         baseTime: '12:00'

@@ -1955,11 +1955,36 @@ function createFakePool() {
                         business_context: params[0] || 'event_genix',
                         client_name: params[1],
                         phone: params[2],
-                        source: 'landing',
+                        source: params.length > 4 ? params[5] : 'landing',
+                        event_date: params[7] || null,
+                        children_count: params[8] || null,
+                        notes: params[10] || params[3] || null,
+                        assigned_to: params[11] || null,
                         status: 'new',
                         created_at: new Date('2026-05-11T00:00:00Z').toISOString()
                     }]
                 };
+            }
+            if (/INSERT INTO lead_event_preferences/i.test(text)) {
+                return {
+                    rows: [{
+                        event_preference: {
+                            id: 701,
+                            lead_id: params[0],
+                            business_context: params[1] || 'event_genix',
+                            preferred_date: params[2],
+                            children_count: params[3],
+                            adults_count: params[4],
+                            notes: params[5] || null,
+                            created_at: '2099-05-01T10:00:00Z',
+                            updated_at: '2099-05-02T10:00:00Z'
+                        }
+                    }],
+                    rowCount: 1
+                };
+            }
+            if (/DELETE FROM lead_event_preferences/i.test(text)) {
+                return { rows: [], rowCount: 1 };
             }
             if (/SELECT id, username, name, role FROM users WHERE is_active = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
                 return {
@@ -2062,7 +2087,7 @@ function createFakePool() {
                 });
                 return { rows: [], rowCount: 1 };
             }
-            if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id WHERE l\.id = \$1(?: AND COALESCE\(l\.business_context, 'event_genix'\) = \$2)? LIMIT 1/i.test(text)) {
+            if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id[\s\S]*WHERE l\.id = \$1(?: AND COALESCE\(l\.business_context, 'event_genix'\) = \$2)? LIMIT 1/i.test(text)) {
                 return {
                     rows: [{
                         id: params[0],
@@ -2091,6 +2116,15 @@ function createFakePool() {
                         quality_category: 'birthday',
                         event_date: '2099-05-12',
                         children_count: 12,
+                        event_preference: {
+                            id: 702,
+                            lead_id: params[0],
+                            business_context: params[1] || 'event_genix',
+                            preferred_date: '2099-05-12',
+                            children_count: 12,
+                            adults_count: 8,
+                            notes: null
+                        },
                         program_name: 'Quest',
                         booking_id: null,
                         created_at: '2099-05-01T10:00:00Z',
@@ -4701,6 +4735,57 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.lead.pipeline_stage, 'contacted');
         assert.equal(res.data.lead.status, 'contact');
+    });
+
+    it('stores lead event preference separately from lead notes on create', async () => {
+        queries.length = 0;
+        const res = await request('POST', '/api/leads', {
+            client_name: 'Preference Smoke',
+            phone: '+380000000777',
+            source: 'facebook',
+            event_date: '2099-07-14',
+            children_count: 7,
+            notes: 'Manager note only\nГості на бажану дату: дітей - 7, дорослих - 4, разом - 11.',
+            eventPreference: {
+                preferredDate: '2099-07-14',
+                childrenCount: 7,
+                adultsCount: 4
+            }
+        }, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.notes, 'Manager note only');
+        assert.equal(res.data.lead.eventPreference.preferredDate, '2099-07-14');
+        assert.equal(res.data.lead.eventPreference.childrenCount, 7);
+        assert.equal(res.data.lead.eventPreference.adultsCount, 4);
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO lead_event_preferences/i.test(q.text)));
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
+        assert.ok(!queries.some(q => /Гості на бажану дату/i.test(JSON.stringify(q.params || []))));
+    });
+
+    it('upserts lead event preference on lead patch', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/501', {
+            notes: 'Updated note only\nГості на бажану дату: дітей - 8, дорослих - 5, разом - 13.',
+            eventPreference: {
+                preferredDate: '2099-08-15',
+                childrenCount: 8,
+                adultsCount: 5
+            }
+        }, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.lead.eventPreference.preferredDate, '2099-08-15');
+        assert.equal(res.data.lead.eventPreference.childrenCount, 8);
+        assert.equal(res.data.lead.eventPreference.adultsCount, 5);
+        assert.ok(queries.some(q => /^BEGIN$/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE leads SET/i.test(q.text) && /event_date = /i.test(q.text) && /children_count = /i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO lead_event_preferences/i.test(q.text)));
+        assert.ok(queries.some(q => /^COMMIT$/i.test(q.text)));
+        assert.ok(!queries.some(q => /Гості на бажану дату/i.test(JSON.stringify(q.params || []))));
     });
 
     it('maps legacy lead status updates to canonical pipeline stages', async () => {

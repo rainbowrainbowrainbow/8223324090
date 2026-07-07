@@ -483,18 +483,59 @@ function stripLeadGuestSummary(notes = '') {
         .trim();
 }
 
-function leadGuestSummaryLine(counts = {}) {
-    const children = Math.max(0, Number.parseInt(counts.children, 10) || 0);
-    const adults = Math.max(0, Number.parseInt(counts.adults, 10) || 0);
-    if (!children && !adults) return '';
-    return `${LEAD_GUEST_NOTE_PREFIX} дітей - ${children}, дорослих - ${adults}, разом - ${children + adults}.`;
+function parseJsonObject(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return {};
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
 }
 
-function notesWithLeadGuestSummary(notes = '', counts = {}, eventDate = '') {
-    const cleanNotes = stripLeadGuestSummary(notes);
-    if (!eventDate) return cleanNotes || null;
-    const summary = leadGuestSummaryLine(counts);
-    return [cleanNotes, summary].filter(Boolean).join('\n') || null;
+function leadGuestCountValue(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null || value === '') continue;
+        const parsed = Number.parseInt(value, 10);
+        if (Number.isFinite(parsed) && parsed >= 0) return Math.min(parsed, 200);
+    }
+    return 0;
+}
+
+function leadPreferenceDateValue(...values) {
+    for (const value of values) {
+        if (!value) continue;
+        const date = String(value).slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    }
+    return '';
+}
+
+function leadEventPreferenceFromLead(lead = {}) {
+    const rawPreference = parseJsonObject(lead.eventPreference || lead.event_preference);
+    const legacyCounts = guestCountsFromLeadNotes(lead.notes || '');
+    return {
+        preferredDate: leadPreferenceDateValue(
+            rawPreference.preferredDate,
+            rawPreference.preferred_date,
+            rawPreference.date,
+            rawPreference.eventDate,
+            rawPreference.event_date,
+            lead.event_date
+        ),
+        childrenCount: leadGuestCountValue(
+            rawPreference.childrenCount,
+            rawPreference.children_count,
+            lead.children_count,
+            legacyCounts.children
+        ),
+        adultsCount: leadGuestCountValue(
+            rawPreference.adultsCount,
+            rawPreference.adults_count,
+            legacyCounts.adults
+        )
+    };
 }
 
 function isLeadBusinessReadOnly() {
@@ -3723,10 +3764,10 @@ function editLead(id) {
     document.getElementById('leadPhone').value = lead.phone || '';
     document.getElementById('leadInstagram').value = lead.instagram || '';
     document.getElementById('leadSource').value = lead.source || '';
-    document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
-    const guestCounts = guestCountsFromLeadNotes(lead.notes || '');
-    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (lead.children_count || guestCounts.children || '');
-    document.getElementById('leadAdultsCount').value = isMaysternyaLeadContext() ? '' : (guestCounts.adults || '');
+    const eventPreference = leadEventPreferenceFromLead(lead);
+    document.getElementById('leadEventDate').value = eventPreference.preferredDate || '';
+    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (eventPreference.childrenCount || '');
+    document.getElementById('leadAdultsCount').value = isMaysternyaLeadContext() ? '' : (eventPreference.adultsCount || '');
     setCelebrantsEditorValue('leadCelebrants', isMaysternyaLeadContext() ? [] : normalizeLeadCelebrants(lead), { markInitial: true });
     document.getElementById('leadNotes').value = isMaysternyaLeadContext() ? (lead.notes || '') : stripLeadGuestSummary(lead.notes || '');
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
@@ -3836,7 +3877,7 @@ async function saveLead() {
     const childrenCount = isMaysternyaLeadContext()
         ? null
         : (guestCounts.children || (leadCelebrants.length ? leadCelebrants.length : null));
-    const rawNotes = document.getElementById('leadNotes')?.value.trim() || '';
+    const rawNotes = stripLeadGuestSummary(document.getElementById('leadNotes')?.value.trim() || '');
 
     const body = {
         client_name: name,
@@ -3845,9 +3886,15 @@ async function saveLead() {
         source: document.getElementById('leadSource')?.value || null,
         event_date: eventDate,
         children_count: childrenCount,
-        notes: isMaysternyaLeadContext()
-            ? (rawNotes || null)
-            : notesWithLeadGuestSummary(rawNotes, { ...guestCounts, children: childrenCount || 0 }, eventDate),
+        notes: rawNotes || null,
+        eventPreference: isMaysternyaLeadContext()
+            ? null
+            : (eventDate ? {
+                preferredDate: eventDate,
+                childrenCount: childrenCount || 0,
+                adultsCount: guestCounts.adults,
+                notes: null
+            } : null),
         assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
     };
     if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants;

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.50 - Lead Event Preferences
+
+### Ліди / Бажана дата / DB / API / (Клешня, 07.07.2026) [codex]
+- **Змінна інформація бажаної дати винесена в `lead_event_preferences`** - дата, кількість дітей, кількість дорослих і нотатка по даті тепер мають окрему нормалізовану таблицю з індексами по ліду, бізнес-контексту й даті.
+- **Create/Edit ліда працюють через `eventPreference`** - `POST /api/leads` створює preference разом із лідом, а `PATCH /api/leads/:id` робить upsert або видаляє preference в одній транзакції з основним lead update.
+- **Нотатки більше не зберігають технічний рядок гостей** - frontend читає/пише `eventPreference`, backend вирізає старий контрольований рядок із `notes`, а дорослі більше не пакуються в текст нотатки.
+- **Старі MVP-дані підхоплюються без ламання лідів** - міграція backfill-ить preferences з `event_date`, `children_count` і старого контрольованого рядка гостей, але не видаляє історичні нотатки напряму.
+- **Додано regression coverage** - route-smoke перевіряє create/update preference і чисті notes, UI guard фіксує normalized storage, а повний `npm test` проходить локально.
+- **Auth/roles, billing, Railway settings, env/secrets і protected booking/timeline flow не змінювались** - реліз зачіпає schema migration для лідів, `routes/leads.js`, frontend форми ліда, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.49 - Lead Event Guests UX
 
 ### Ліди / Бажана дата / UX / (Клешня, 07.07.2026) [codex]

@@ -137,6 +137,7 @@ const LEAD_TYPE_WORKFLOW = {
 };
 const LEADS_DEFAULT_LIMIT = 100;
 const LEADS_MAX_LIMIT = 500;
+const LEAD_EVENT_GUEST_MAX = 200;
 
 const PIPELINE_STAGE_ORDER_SQL = `CASE COALESCE(l.pipeline_stage, 'new')
     ${PIPELINE_STAGE_ORDER.map((stage, index) => `WHEN '${stage}' THEN ${index + 1}`).join(' ')}
@@ -147,6 +148,20 @@ const LEAD_STATUS_FROM_STAGE_SQL = `CASE COALESCE(pipeline_stage, 'new')
     ${Object.entries(STAGE_TO_STATUS).map(([stage, status]) => `WHEN '${stage}' THEN '${status}'`).join(' ')}
     ELSE COALESCE(status, 'new')
 END`;
+
+const LEAD_EVENT_PREFERENCE_JSON_SQL = `CASE WHEN lep.id IS NULL THEN NULL ELSE json_build_object(
+    'id', lep.id,
+    'lead_id', lep.lead_id,
+    'business_context', lep.business_context,
+    'preferred_date', lep.preferred_date,
+    'children_count', lep.children_count,
+    'adults_count', lep.adults_count,
+    'notes', lep.notes,
+    'created_at', lep.created_at,
+    'updated_at', lep.updated_at
+) END`;
+
+const LEAD_GUEST_SUMMARY_PREFIX_PATTERN = /^\s*\u0413\u043e\u0441\u0442\u0456\s+\u043d\u0430\s+\u0431\u0430\u0436\u0430\u043d\u0443\s+\u0434\u0430\u0442\u0443:/i;
 
 function emptyStatusStats() {
     return Object.fromEntries(Object.values(STAGE_TO_STATUS).map(status => [status, 0]));
@@ -526,6 +541,190 @@ function normalizeDateOnly(value) {
     return dateOnly && /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly : null;
 }
 
+function hasOwnValue(source = {}, key) {
+    return Object.prototype.hasOwnProperty.call(source, key);
+}
+
+function firstDefined(...values) {
+    for (const value of values) {
+        if (value !== undefined) return value;
+    }
+    return undefined;
+}
+
+function parseLeadEventGuestCount(value, fieldName) {
+    if (value === undefined || value === null || value === '') return { value: 0 };
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > LEAD_EVENT_GUEST_MAX) {
+        return { error: `${fieldName} повинен бути цілим числом від 0 до ${LEAD_EVENT_GUEST_MAX}` };
+    }
+    return { value: parsed };
+}
+
+function normalizeLeadEventPreferenceInput(body = {}) {
+    const hasCamelPreference = hasOwnValue(body, 'eventPreference');
+    const hasSnakePreference = hasOwnValue(body, 'event_preference');
+    const hasExplicitPreference = hasCamelPreference || hasSnakePreference;
+    const rawPreferenceValue = hasCamelPreference ? body.eventPreference : body.event_preference;
+    const hasLegacyPreferenceFields = ['event_date', 'adults_count', 'adult_count'].some(key => hasOwnValue(body, key));
+    const provided = hasExplicitPreference || hasLegacyPreferenceFields;
+    if (!provided) return { provided: false };
+
+    if (hasExplicitPreference && (rawPreferenceValue === null || rawPreferenceValue === false || rawPreferenceValue === '')) {
+        return { provided: true, preference: null };
+    }
+
+    const rawPreference = hasExplicitPreference ? parseJsonObject(rawPreferenceValue) : {};
+    const dateRaw = firstDefined(
+        rawPreference.preferredDate,
+        rawPreference.preferred_date,
+        rawPreference.date,
+        rawPreference.eventDate,
+        rawPreference.event_date,
+        hasExplicitPreference ? undefined : body.event_date
+    );
+    const preferredDate = normalizeDateOnly(dateRaw);
+    if (dateRaw !== undefined && dateRaw !== null && dateRaw !== '' && !preferredDate) {
+        return { provided: true, error: 'Некоректна бажана дата' };
+    }
+
+    const children = parseLeadEventGuestCount(firstDefined(
+        rawPreference.childrenCount,
+        rawPreference.children_count,
+        hasExplicitPreference ? undefined : body.children_count
+    ), 'children_count');
+    if (children.error) return { provided: true, error: children.error };
+
+    const adults = parseLeadEventGuestCount(firstDefined(
+        rawPreference.adultsCount,
+        rawPreference.adults_count,
+        rawPreference.adultCount,
+        rawPreference.adult_count,
+        hasExplicitPreference ? undefined : body.adults_count,
+        hasExplicitPreference ? undefined : body.adult_count
+    ), 'adults_count');
+    if (adults.error) return { provided: true, error: adults.error };
+
+    const notes = cleanText(firstDefined(
+        rawPreference.notes,
+        rawPreference.note,
+        rawPreference.dateNotes,
+        rawPreference.date_notes
+    ));
+
+    if (!preferredDate) {
+        return { provided: true, preference: null };
+    }
+
+    return {
+        provided: true,
+        preference: {
+            preferredDate,
+            childrenCount: children.value,
+            adultsCount: adults.value,
+            notes
+        }
+    };
+}
+
+function stripLeadGuestSummaryNote(notes) {
+    if (notes === undefined) return undefined;
+    const clean = String(notes || '')
+        .split(/\r?\n/)
+        .filter(line => !LEAD_GUEST_SUMMARY_PREFIX_PATTERN.test(line.trim()))
+        .join('\n')
+        .trim();
+    return clean || null;
+}
+
+function mapLeadEventPreference(value = null) {
+    const raw = parseJsonObject(value);
+    const preferredDate = normalizeDateOnly(raw.preferredDate || raw.preferred_date);
+    const childrenCount = Math.max(0, Number.parseInt(raw.childrenCount ?? raw.children_count ?? 0, 10) || 0);
+    const adultsCount = Math.max(0, Number.parseInt(raw.adultsCount ?? raw.adults_count ?? 0, 10) || 0);
+    if (!raw.id && !preferredDate && !childrenCount && !adultsCount && !cleanText(raw.notes)) return null;
+    return {
+        id: raw.id ?? null,
+        leadId: raw.leadId ?? raw.lead_id ?? null,
+        lead_id: raw.lead_id ?? raw.leadId ?? null,
+        businessContext: normalizeBusinessContext(raw.businessContext || raw.business_context) || DEFAULT_BUSINESS_CONTEXT,
+        business_context: normalizeBusinessContext(raw.businessContext || raw.business_context) || DEFAULT_BUSINESS_CONTEXT,
+        preferredDate,
+        preferred_date: preferredDate,
+        childrenCount,
+        children_count: childrenCount,
+        adultsCount,
+        adults_count: adultsCount,
+        notes: cleanText(raw.notes),
+        createdAt: raw.createdAt || raw.created_at || null,
+        created_at: raw.created_at || raw.createdAt || null,
+        updatedAt: raw.updatedAt || raw.updated_at || null,
+        updated_at: raw.updated_at || raw.updatedAt || null
+    };
+}
+
+function attachLeadEventPreference(row = {}) {
+    const preference = mapLeadEventPreference(row.eventPreference || row.event_preference);
+    if (!preference) {
+        row.eventPreference = null;
+        row.event_preference = null;
+        return row;
+    }
+    row.eventPreference = preference;
+    row.event_preference = preference;
+    return row;
+}
+
+async function saveLeadEventPreference(queryable, { leadId, businessContext, preference }) {
+    if (!preference) {
+        await queryable.query(
+            `DELETE FROM lead_event_preferences
+             WHERE lead_id = $1
+               AND business_context = $2`,
+            [leadId, businessContext]
+        );
+        return null;
+    }
+
+    const result = await queryable.query(
+        `INSERT INTO lead_event_preferences (
+            lead_id,
+            business_context,
+            preferred_date,
+            children_count,
+            adults_count,
+            notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (business_context, lead_id) DO UPDATE
+        SET preferred_date = EXCLUDED.preferred_date,
+            children_count = EXCLUDED.children_count,
+            adults_count = EXCLUDED.adults_count,
+            notes = EXCLUDED.notes,
+            updated_at = NOW()
+        RETURNING json_build_object(
+            'id', id,
+            'lead_id', lead_id,
+            'business_context', business_context,
+            'preferred_date', preferred_date,
+            'children_count', children_count,
+            'adults_count', adults_count,
+            'notes', notes,
+            'created_at', created_at,
+            'updated_at', updated_at
+        ) AS event_preference`,
+        [
+            leadId,
+            businessContext,
+            preference.preferredDate,
+            preference.childrenCount,
+            preference.adultsCount,
+            preference.notes || null
+        ]
+    );
+    return mapLeadEventPreference(result.rows[0]?.event_preference);
+}
+
 function normalizeLeadPatchStageStatus({ pipelineStage, status }) {
     const hasStage = pipelineStage !== undefined;
     const hasStatus = status !== undefined;
@@ -798,10 +997,19 @@ async function fetchLeadList({ businessScope, query = {}, order = query.order, l
     const offsetRef = `$${params.length}`;
     const result = await pool.query(`
         SELECT l.*, u.name AS assigned_name, p.label AS program_name,
-               COALESCE(l.potential_value, latest_card.budget_approx) AS budget_approx
+               COALESCE(l.potential_value, latest_card.budget_approx) AS budget_approx,
+               ${LEAD_EVENT_PREFERENCE_JSON_SQL} AS event_preference
         FROM leads l
         LEFT JOIN users u ON l.assigned_to = u.id
         LEFT JOIN products p ON l.program_id = p.id
+        LEFT JOIN LATERAL (
+            SELECT lep.*
+            FROM lead_event_preferences lep
+            WHERE lep.lead_id = l.id
+              AND lep.business_context = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+            ORDER BY lep.updated_at DESC NULLS LAST, lep.id DESC
+            LIMIT 1
+        ) lep ON true
         LEFT JOIN LATERAL (
             SELECT cc.budget_approx
             FROM customer_cards cc
@@ -817,7 +1025,7 @@ async function fetchLeadList({ businessScope, query = {}, order = query.order, l
     `, params);
 
     return {
-        leads: result.rows,
+        leads: result.rows.map(attachLeadEventPreference),
         pagination: {
             total,
             limit: effectiveLimit,
@@ -1870,6 +2078,7 @@ async function optionalWorkspaceQuery(sql, params = []) {
 function mapWorkspaceLead(row) {
     const stage = row.pipeline_stage || 'new';
     const inbound = buildLeadInboundMetadata(row);
+    const eventPreference = mapLeadEventPreference(row.event_preference);
     return {
         id: row.id,
         businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
@@ -1900,6 +2109,7 @@ function mapWorkspaceLead(row) {
         leadType: row.lead_type,
         qualityCategory: row.quality_category,
         eventDate: row.event_date,
+        eventPreference,
         childrenCount: row.children_count,
         childAge: row.child_age,
         celebrants: normalizeCelebrants(row.celebrants, {
@@ -2248,6 +2458,8 @@ router.get('/stats', async (req, res) => {
 
 // POST /api/leads — create new lead
 router.post('/', async (req, res) => {
+    let client = null;
+    let transactionStarted = false;
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -2262,22 +2474,51 @@ router.post('/', async (req, res) => {
         if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
         }
+        const eventPreferenceInput = normalizeLeadEventPreferenceInput(req.body);
+        if (eventPreferenceInput.error) {
+            return res.status(400).json({ success: false, error: eventPreferenceInput.error });
+        }
+        const eventPreference = eventPreferenceInput.preference;
+        const effectiveEventDate = eventPreference ? eventPreference.preferredDate : (event_date || null);
+        const effectiveChildrenCount = eventPreference
+            ? (eventPreference.childrenCount || null)
+            : (children_count || null);
+        const leadNotes = eventPreferenceInput.provided ? stripLeadGuestSummaryNote(notes) : (notes || null);
         const normalizedCelebrants = normalizeCelebrants(celebrants);
-        const result = await pool.query(`
+        client = await pool.connect();
+        await client.query('BEGIN');
+        transactionStarted = true;
+        const result = await client.query(`
             INSERT INTO leads (business_context, client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
             RETURNING *
         `, [businessContext, client_name, phone || null, telegram_id || null, instagram || null, source || null,
-            program_id || null, event_date || null,
-            children_count || null, child_age || null, notes || null,
+            program_id || null, effectiveEventDate,
+            effectiveChildrenCount, child_age || null, leadNotes,
             assignedTo.provided ? assignedTo.value : null,
             JSON.stringify(normalizedCelebrants)]);
 
+        const lead = result.rows[0];
+        if (eventPreferenceInput.provided) {
+            const savedPreference = await saveLeadEventPreference(client, {
+                leadId: lead.id,
+                businessContext,
+                preference: eventPreference
+            });
+            lead.event_preference = savedPreference;
+            lead.eventPreference = savedPreference;
+        }
+        await client.query('COMMIT');
+        transactionStarted = false;
+
         log.info(`Lead created: ${client_name} by ${req.user.username}`);
-        res.json({ success: true, lead: result.rows[0] });
+        res.json({ success: true, lead: attachLeadEventPreference(lead) });
     } catch (err) {
+        if (transactionStarted && client) await client.query('ROLLBACK').catch(() => {});
         log.error('POST /leads error', err);
         res.status(500).json({ success: false, error: 'Помилка створення ліду' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -2468,7 +2709,7 @@ router.patch('/:id/stage', async (req, res) => {
             );
         }
 
-        const response = { success: true, lead: updatedLead };
+        const response = { success: true, lead: attachLeadEventPreference(updatedLead) };
         if (dealCustomerLink?.customer) {
             response.customer = mapWorkspaceCustomer(dealCustomerLink.customer);
             response.customerLinkMode = dealCustomerLink.mode;
@@ -2526,6 +2767,7 @@ router.patch('/:id', async (req, res) => {
         const params = [];
         const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
         const potentialValue = parseOptionalNonNegativeInt(potential_value, 'potential_value');
+        const eventPreferenceInput = normalizeLeadEventPreferenceInput(req.body);
         const leadTypePatch = lead_type !== undefined ? normalizeLeadType(lead_type) : { value: undefined };
         const leadTypeRule = leadTypePatch.value ? leadTypeWorkflowRule(leadTypePatch.value) : null;
         const stageStatus = normalizeLeadPatchStageStatus({
@@ -2538,6 +2780,9 @@ router.patch('/:id', async (req, res) => {
         }
         if (potentialValue.error) {
             return res.status(400).json({ success: false, error: potentialValue.error });
+        }
+        if (eventPreferenceInput.error) {
+            return res.status(400).json({ success: false, error: eventPreferenceInput.error });
         }
         if (leadTypePatch.error) {
             return res.status(400).json({ success: false, error: leadTypePatch.error });
@@ -2556,7 +2801,10 @@ router.patch('/:id', async (req, res) => {
             updates.push(`status = $${params.length}`);
             if (stageStatus.status === 'booked') updates.push(`booked_at = COALESCE(booked_at, NOW())`);
         }
-        if (notes !== undefined) { params.push(notes); updates.push(`notes = $${params.length}`); }
+        if (notes !== undefined) {
+            params.push(eventPreferenceInput.provided ? stripLeadGuestSummaryNote(notes) : notes);
+            updates.push(`notes = $${params.length}`);
+        }
         if (assignedTo.provided) { params.push(assignedTo.value); updates.push(`assigned_to = $${params.length}`); }
         if (booking_id !== undefined) { params.push(booking_id); updates.push(`booking_id = $${params.length}`); }
         if (lost_reason !== undefined) { params.push(lost_reason); updates.push(`lost_reason = $${params.length}`); }
@@ -2565,8 +2813,26 @@ router.patch('/:id', async (req, res) => {
         if (phone !== undefined) { params.push(phone); updates.push(`phone = $${params.length}`); }
         if (instagram !== undefined) { params.push(instagram); updates.push(`instagram = $${params.length}`); }
         if (source !== undefined) { params.push(source); updates.push(`source = $${params.length}`); }
-        if (event_date !== undefined) { params.push(event_date || null); updates.push(`event_date = $${params.length}`); }
-        if (children_count !== undefined) { params.push(children_count); updates.push(`children_count = $${params.length}`); }
+        if (event_date !== undefined) {
+            params.push(event_date || null);
+            updates.push(`event_date = $${params.length}`);
+        } else if (eventPreferenceInput.provided && eventPreferenceInput.preference) {
+            params.push(eventPreferenceInput.preference.preferredDate);
+            updates.push(`event_date = $${params.length}`);
+        } else if (eventPreferenceInput.provided && eventPreferenceInput.preference === null) {
+            params.push(null);
+            updates.push(`event_date = $${params.length}`);
+        }
+        if (children_count !== undefined) {
+            params.push(children_count);
+            updates.push(`children_count = $${params.length}`);
+        } else if (eventPreferenceInput.provided && eventPreferenceInput.preference) {
+            params.push(eventPreferenceInput.preference.childrenCount || null);
+            updates.push(`children_count = $${params.length}`);
+        } else if (eventPreferenceInput.provided && eventPreferenceInput.preference === null) {
+            params.push(null);
+            updates.push(`children_count = $${params.length}`);
+        }
         if (child_age !== undefined) { params.push(child_age); updates.push(`child_age = $${params.length}`); }
         if (celebrants !== undefined) {
             params.push(JSON.stringify(normalizeCelebrants(celebrants)));
@@ -2598,7 +2864,8 @@ router.patch('/:id', async (req, res) => {
         const effectivePipelineStage = stageStatus.stageProvided ? stageStatus.stage : undefined;
         const shouldEnsureCustomerCard = CUSTOMER_CARD_PIPELINE_STAGES.has(effectivePipelineStage);
         const shouldSyncLinkedCustomerChildren = celebrants !== undefined && !shouldEnsureCustomerCard;
-        const updateClient = shouldEnsureCustomerCard || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length ? await pool.connect() : null;
+        const shouldPersistEventPreference = eventPreferenceInput.provided;
+        const updateClient = shouldEnsureCustomerCard || shouldSyncLinkedCustomerChildren || stageStatus.stageProvided || kanbanOrderIds.length || shouldPersistEventPreference ? await pool.connect() : null;
         try {
             if (updateClient) {
                 await updateClient.query('BEGIN');
@@ -2633,6 +2900,15 @@ router.patch('/:id', async (req, res) => {
             }
 
             updatedLead = result.rows[0];
+            if (shouldPersistEventPreference) {
+                const savedPreference = await saveLeadEventPreference(queryable, {
+                    leadId: updatedLead.id,
+                    businessContext,
+                    preference: eventPreferenceInput.preference
+                });
+                updatedLead.event_preference = savedPreference;
+                updatedLead.eventPreference = savedPreference;
+            }
             if (stageStatus.stageProvided) {
                 const oldStage = previousLead?.pipeline_stage || 'new';
                 const newStage = updatedLead.pipeline_stage || effectivePipelineStage || 'new';
@@ -3137,10 +3413,19 @@ router.get('/:id/workspace', async (req, res) => {
 
         const leadResult = await pool.query(`
             SELECT l.*, u.name AS assigned_name, u.username AS assigned_username,
-                   p.label AS program_name, p.name AS program_full_name
+                   p.label AS program_name, p.name AS program_full_name,
+                   ${LEAD_EVENT_PREFERENCE_JSON_SQL} AS event_preference
             FROM leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN products p ON l.program_id = p.id
+            LEFT JOIN LATERAL (
+                SELECT lep.*
+                FROM lead_event_preferences lep
+                WHERE lep.lead_id = l.id
+                  AND lep.business_context = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                ORDER BY lep.updated_at DESC NULLS LAST, lep.id DESC
+                LIMIT 1
+            ) lep ON true
             WHERE l.id = $1
               AND COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
             LIMIT 1

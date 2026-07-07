@@ -31,6 +31,7 @@ const {
     banquetSummaryPdfFilename
 } = require('../services/banquetSummaryPdf');
 const { loadBanquetTermsDefaults, snapshotBanquetTermsForBooking } = require('../services/banquetTerms');
+const { upsertManagerBookingDeposit } = require('../services/banquetDeposits');
 const {
     loadBanquetGroupByBookingId,
     loadBanquetGroupById,
@@ -1683,6 +1684,49 @@ function isRoomProjectableBanquetServiceRootBooking(booking = {}) {
         || Boolean(booking.banquetGuests || booking.banquet_guests || booking.banquetAdults || booking.banquet_adults || booking.banquetTables || booking.banquet_tables);
 }
 
+function managerDepositPayloadForBooking(booking = {}) {
+    const extra = getBookingExtraDataObject(booking);
+    const payload = booking.deposit
+        || booking.banquetDeposit
+        || booking.bookingDeposit
+        || booking.depositData
+        || extra.deposit
+        || extra.banquetDeposit
+        || extra.bookingDeposit
+        || extra.depositData
+        || null;
+    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+}
+
+function bookingAcceptsManagerDeposit(booking = {}) {
+    if (isRoomProjectableBanquetServiceRootBooking(booking)) return true;
+    const extra = getBookingExtraDataObject(booking);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    const bookingPackage = bookingPackageFromPayload(booking);
+    const category = String(booking.category || booking.category_id || '').trim().toLowerCase();
+    const programCode = String(booking.programCode || booking.program_code || '').trim().toUpperCase();
+    return category === 'banquet'
+        || category === 'kitchen'
+        || programCode === 'KITCHEN'
+        || String(workspace.scenario || '').trim().toLowerCase() === 'kitchen_only'
+        || hasNonEmptyArray(bookingPackage.menuPositions || bookingPackage.menu_positions)
+        || Boolean(String(booking.banquetMenu || booking.banquet_menu || '').trim())
+        || Boolean(booking.banquetGuests || booking.banquet_guests || booking.banquetAdults || booking.banquet_adults || booking.banquetTables || booking.banquet_tables);
+}
+
+async function syncManagerDepositForBooking(db, booking = {}, row = {}, businessContext, user) {
+    const payload = managerDepositPayloadForBooking(booking);
+    if (!payload || !bookingAcceptsManagerDeposit({ ...booking, ...row })) return null;
+    return upsertManagerBookingDeposit({
+        bookingId: row.id || booking.id,
+        businessContext,
+        deposit: payload,
+        source: 'routes/bookings.syncManagerDepositForBooking',
+        actor: user,
+        managerReportedBy: user?.id || null
+    }, { db });
+}
+
 function projectBookingsForTimelineView(bookings = [], timelineView = 'animators') {
     if (timelineView !== 'rooms') {
         return bookings.map(booking => projectBookingForTimelineView(booking, timelineView));
@@ -2177,8 +2221,13 @@ function banquetSummaryDepositProjection(row = null, context = {}) {
             eventDate: row.event_date || null,
             banquetNumberSnapshot: row.banquet_number_snapshot || null,
             amount: row.amount ?? null,
+            expectedAmount: row.expected_amount ?? null,
+            paidAmount: row.paid_amount ?? null,
             paymentMethod: row.payment_method || null,
             status: row.status || 'manager_reported',
+            managerStatus: row.manager_status || null,
+            accountingStatus: row.accounting_status || null,
+            dueDate: row.due_date || null,
             sourceKind: row.source_kind || null,
             sourcePayload,
             verifiedAt: row.verified_at || null,
@@ -2191,9 +2240,9 @@ function banquetSummaryDepositProjection(row = null, context = {}) {
         bookingId: row.primary_booking_id || context.bookingId || null,
         banquetGroupId: row.banquet_group_id || context.groupId || null,
         display: {
-            amount: row.amount ?? null,
+            amount: row.paid_amount ?? row.expected_amount ?? row.amount ?? null,
             paymentMethod: row.payment_method || null,
-            isVerified: ['accountant_verified', 'corrected'].includes(row.status),
+            isVerified: ['accountant_verified', 'corrected'].includes(row.status) || row.accounting_status === 'Підтверджено',
             needsBookingLink: row.status === 'needs_booking_link'
         }
     };
@@ -2868,6 +2917,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
              RETURNING *`,
             [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status, b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, b.banquetGuests || null, b.banquetAdults || null, b.banquetTables || null, b.banquetMenu || null]
         );
+        const managerDepositResult = await syncManagerDepositForBooking(client, b, insertResult.rows[0], businessContext, req.user);
 
         const linkedInsertedRows = [];
         if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
@@ -3008,6 +3058,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             log.warn(`Created booking visual link enrichment failed: ${linkErr.message}`);
         }
         const responseBooking = allBookings.find(item => String(item.id) === String(booking.id)) || booking;
+        if (managerDepositResult?.projection) responseBooking.banquetDeposit = managerDepositResult.projection;
         const linkedIdSet = new Set(linkedInsertedRows.map(row => String(row.id)));
         const responseLinkedBookings = allBookings.filter(item => linkedIdSet.has(String(item.id)));
 
@@ -3749,6 +3800,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
              RETURNING *`,
             [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status, main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, main.banquetGuests || null, main.banquetAdults || null, main.banquetTables || null, main.banquetMenu || null]
         );
+        const managerDepositResult = await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user);
 
         // v19.10: CRM aggregates now handled by DB trigger
         if (sideEffectsAllowedForContext(businessContext) && customerId) {
@@ -4026,6 +4078,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const linkedIdSet = new Set(linkedRows.map(row => String(row.id)));
         const activityIdSet = new Set(activityRows.map(row => String(row.id)));
         const responseMainBooking = allBookings.find(item => String(item.id) === String(mainBooking.id)) || mainBooking;
+        if (managerDepositResult?.projection) responseMainBooking.banquetDeposit = managerDepositResult.projection;
         const responseLinkedBookings = allBookings.filter(item => linkedIdSet.has(String(item.id)));
         const responseActivityBookings = allBookings.filter(item => activityIdSet.has(String(item.id)));
 
@@ -4951,6 +5004,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         const savedBooking = mapBookingRow(updateResult.rows[0]);
+        const managerDepositResult = await syncManagerDepositForBooking(client, b, updateResult.rows[0], businessContext, req.user);
 
         // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
@@ -5101,6 +5155,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         // WebSocket: notify other clients
+        if (managerDepositResult?.projection) savedBooking.banquetDeposit = managerDepositResult.projection;
         broadcast('booking:updated', savedBooking, req.user?.id?.toString(), b.date);
         _alertPush();
 

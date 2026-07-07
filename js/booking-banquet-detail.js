@@ -37,11 +37,15 @@ function renderBanquetDepositStatusSection(anchorBooking = {}, snapshot = null, 
     } else if (projection?.success === false) {
         detailRows.push(['Помилка', projection.error || 'Не вдалося завантажити завдаток']);
     } else if (deposit && canViewMoney) {
-        const amount = display.amount ?? deposit.amount;
+        const amount = display.amount ?? deposit.paidAmount ?? deposit.expectedAmount ?? deposit.amount;
         const receivedDate = bookingDetailDepositDateLabel(bookingDetailDepositReceivedDate(deposit));
         const method = bookingDetailDepositPaymentLabel(display.paymentMethod || deposit.paymentMethod);
+        const dueDate = bookingDetailDepositDateLabel(display.dueDate || deposit.dueDate);
+        const managerStatus = display.managerStatus || deposit.managerStatus || '';
         if (amount !== null && amount !== undefined && amount !== '') detailRows.push(['Сума', formatPrice(amount)]);
         if (receivedDate) detailRows.push(['Дата отримання', receivedDate]);
+        if (managerStatus) detailRows.push(['Статус менеджера', managerStatus]);
+        if (dueDate) detailRows.push(['Дедлайн', dueDate]);
         if (method) detailRows.push(['Спосіб', method]);
     } else if (deposit && !canViewMoney) {
         detailRows.push(['Деталі', 'Фінансові дані приховані для вашої ролі']);

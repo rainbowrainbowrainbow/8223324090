@@ -16,6 +16,7 @@ const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 const { canEditBooking } = require('./bookingVisibility');
 const { insertHistory } = require('./historyLog');
 const { applyBookingPackage, applyBookingPackageEntryCharge } = require('./bookingPackage');
+const { upsertManagerBookingDeposit } = require('./banquetDeposits');
 
 const BANQUET_LINK_RELATION_TYPE = 'banquet_activity';
 const WRITABLE_MEMBER_ROLES = new Set(['kitchen', 'activity', 'service', 'manual']);
@@ -1063,6 +1064,33 @@ function normalizeActivityText(value, maxLength = 2000) {
 function normalizeActivityExtraData(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     return JSON.stringify(value);
+}
+
+function managerDepositPayloadFromBookingInput(input = {}) {
+    const extra = input.extraData || input.extra_data || {};
+    const payload = input.deposit
+        || input.banquetDeposit
+        || input.bookingDeposit
+        || input.depositData
+        || extra.deposit
+        || extra.banquetDeposit
+        || extra.bookingDeposit
+        || extra.depositData
+        || null;
+    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+}
+
+async function syncManagerDepositForMemberBooking(db, inputBooking = {}, memberRow = {}, businessContext, user) {
+    const payload = managerDepositPayloadFromBookingInput(inputBooking);
+    if (!payload || !memberRow?.id) return null;
+    return upsertManagerBookingDeposit({
+        bookingId: memberRow.id,
+        businessContext,
+        deposit: payload,
+        source: 'services/banquetGroups.syncManagerDepositForMemberBooking',
+        actor: user,
+        managerReportedBy: actorUserId(user)
+    }, { db });
 }
 
 function resolveSourceBanquetAnchorFields(source = {}) {
@@ -2141,6 +2169,7 @@ async function createMemberBookingFromSourceBooking({
             group.group_name || rootMember.label || rootMember.programName,
             user
         );
+        const managerDepositResult = await syncManagerDepositForMemberBooking(client, inputBooking, memberRow, context, user);
         await client.query(
             `UPDATE banquet_groups
                 SET updated_at = NOW(), updated_by = $3
@@ -2165,6 +2194,7 @@ async function createMemberBookingFromSourceBooking({
 
         const mappedBooking = mapBookingRow(memberRow);
         mappedBooking.serverVerified = true;
+        if (managerDepositResult?.projection) mappedBooking.banquetDeposit = managerDepositResult.projection;
         return {
             success: true,
             createdGroup,
@@ -2520,6 +2550,7 @@ async function createMemberBookingInBanquetGroup({
             group.group_name || rootMember.label || rootMember.programName,
             user
         );
+        const managerDepositResult = await syncManagerDepositForMemberBooking(client, inputBooking, memberRow, businessContext, user);
         await client.query(
             `UPDATE banquet_groups
                 SET updated_at = NOW(), updated_by = $3
@@ -2543,6 +2574,7 @@ async function createMemberBookingInBanquetGroup({
 
         const mappedBooking = mapBookingRow(memberRow);
         mappedBooking.serverVerified = true;
+        if (managerDepositResult?.projection) mappedBooking.banquetDeposit = managerDepositResult.projection;
         return {
             success: true,
             booking: mappedBooking,

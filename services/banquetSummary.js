@@ -1305,7 +1305,14 @@ function canonicalDepositProjectionOf(projection = null) {
     );
     return {
         found: true,
-        amount: money(deposit?.amount ?? display.amount),
+        amount: money(
+            deposit?.paidAmount
+            ?? deposit?.paid_amount
+            ?? deposit?.expectedAmount
+            ?? deposit?.expected_amount
+            ?? deposit?.amount
+            ?? display.amount
+        ),
         paymentMethod: cleanText(deposit?.paymentMethod || display.paymentMethod, 80),
         paymentStatus: status || null,
         status: status || null,
@@ -1352,7 +1359,8 @@ function buildFinanceRows({ programBasePrice, entrySubtotal, menuSubtotal, activ
     const normalizedOrderTotal = money(orderTotal);
     const normalizedBookingPrice = money(bookingPrice);
     add('total', 'Загальна сума', normalizedOrderTotal ?? normalizedBookingPrice, { hideZero: false, role: 'total' });
-    const depositAmount = deposit?.amount === null || deposit?.amount === undefined ? null : money(deposit.amount);
+    const depositAmount = deposit?.amount === null || deposit?.amount === undefined ? 0 : (money(deposit.amount) ?? 0);
+    add('deposit', 'Завдаток', depositAmount, { hideZero: false, role: 'line' });
 
     return {
         currency,
@@ -1542,19 +1550,6 @@ function buildBanquetSummary({ mainBooking, customer = null, linkedBookings = []
     const computedTotal = addMoney(programBasePrice, activitySubtotal, menuSubtotal, entrySubtotal);
     const orderTotal = rowsTotal ?? computedTotal ?? packageTotal ?? bookingPrice;
     const deposit = summaryDepositOf(primaryBooking, canonicalDepositProjection || depositProjection);
-    const paidAmount = money(valueOf(primaryBooking, 'paidAmount', 'paid_amount'));
-    if (deposit.amount === null) {
-        warnings.push({
-            code: 'deposit_not_specified',
-            message: 'Завдаток не вказано'
-        });
-        if (paidAmount !== null && paidAmount > 0) {
-            warnings.push({
-                code: 'paid_amount_not_used_as_deposit',
-                message: 'У бронюванні є paid_amount, але немає явного маркера завдатку, тому paid_amount не підставлено як завдаток.'
-            });
-        }
-    }
 
     if (!menuPositions.length && !menuRows.length) {
         warnings.push({

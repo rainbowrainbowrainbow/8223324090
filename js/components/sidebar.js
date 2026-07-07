@@ -151,6 +151,7 @@ const Sidebar = (() => {
         { href: '/omni#accounts', icon: '🔌', label: 'Підключення чатів', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/reports',      icon: '📋', label: 'Звіти',         access: 'reports',        group: 'sales' },
         { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
+        { href: '/accounting-deposits', icon: 'finance', label: 'Перевірка завдатків', access: 'accounting_deposits', group: 'sales' },
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 
         { type: 'group', key: 'team', label: 'HR', icon: '🤝', priority: 3, defaultOpen: false },
@@ -215,6 +216,7 @@ const Sidebar = (() => {
         hr:             [..._MGR_UP, 'hr', 'admin', 'security'],
         hr_page:        [..._MGR_UP, 'hr', 'admin', 'security'],
         finance:        ['creator', 'director', 'accountant'],
+        accounting_deposits: ['creator', 'director', 'accountant'],
         analytics:      ['creator', 'director', 'accountant'],
         reports:        ['creator','director','vice_director','senior_manager','accountant'],
         programs:       [..._MGR_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'],

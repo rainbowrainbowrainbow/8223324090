@@ -4628,10 +4628,12 @@ function resetBookingPackageWorkspace() {
     BookingPackageState.catalogEditing = null;
     BookingPackageState.catalogInsight = null;
     if (typeof clearAutoFilledBanquetGuestsFromRoom === 'function') clearAutoFilledBanquetGuestsFromRoom();
-    ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables'].forEach(id => {
+    ['bookingMenuProductSelect', 'bookingMenuNote', 'bookingMenuUnitPrice', 'bookingMenuPositionsJson', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables', 'bookingDepositExpectedAmount', 'bookingDepositDueDate', 'bookingDepositManagerNote'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    const depositStatus = document.getElementById('bookingDepositManagerStatus');
+    if (depositStatus) depositStatus.value = 'Очікуємо оплату';
     const catalogSearch = document.getElementById('bookingMenuCatalogSearch');
     if (catalogSearch) catalogSearch.value = '';
     setBookingMenuCatalogOpen(false, { skipCommit: true });
@@ -4643,6 +4645,68 @@ function resetBookingPackageWorkspace() {
     renderBookingMenuPositions();
     renderBookingPackageSummary();
     syncBookingWorkspaceMode();
+}
+
+function normalizeBookingDepositAmount(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return null;
+    const normalized = Number(String(value).replace(/\s+/g, '').replace(',', '.'));
+    if (!Number.isFinite(normalized) || normalized < 0) return null;
+    return Math.round(normalized);
+}
+
+function getBookingDepositFormData() {
+    const status = document.getElementById('bookingDepositManagerStatus')?.value || 'Очікуємо оплату';
+    const expectedAmount = normalizeBookingDepositAmount(document.getElementById('bookingDepositExpectedAmount')?.value);
+    const dueDate = document.getElementById('bookingDepositDueDate')?.value || '';
+    const managerNote = document.getElementById('bookingDepositManagerNote')?.value?.trim() || '';
+    const provided = expectedAmount !== null
+        || Boolean(dueDate)
+        || Boolean(managerNote)
+        || status !== 'Очікуємо оплату';
+    return {
+        provided,
+        expectedAmount,
+        dueDate: dueDate || null,
+        managerStatus: status,
+        managerNote: managerNote || null
+    };
+}
+
+function bookingDepositFromProjection(source = null) {
+    const projection = source?.deposit ? source : (source?.banquetDeposit || source?.bookingDeposit || source?.deposit || null);
+    const deposit = projection?.deposit || projection || null;
+    if (!deposit || typeof deposit !== 'object') return null;
+    return {
+        expectedAmount: deposit.expectedAmount ?? deposit.expected_amount ?? deposit.amount ?? projection?.display?.amount ?? null,
+        dueDate: deposit.dueDate || deposit.due_date || projection?.display?.dueDate || null,
+        managerStatus: deposit.managerStatus || deposit.manager_status || projection?.managerStatus || projection?.display?.managerStatus || 'Очікуємо оплату',
+        managerNote: deposit.managerNote || deposit.manager_note || null
+    };
+}
+
+function setBookingDepositFormData(source = null) {
+    const deposit = bookingDepositFromProjection(source) || {};
+    const amountInput = document.getElementById('bookingDepositExpectedAmount');
+    if (amountInput) amountInput.value = deposit.expectedAmount ?? '';
+    const dueInput = document.getElementById('bookingDepositDueDate');
+    if (dueInput) dueInput.value = deposit.dueDate ? String(deposit.dueDate).slice(0, 10) : '';
+    const statusSelect = document.getElementById('bookingDepositManagerStatus');
+    if (statusSelect) statusSelect.value = deposit.managerStatus || 'Очікуємо оплату';
+    const noteInput = document.getElementById('bookingDepositManagerNote');
+    if (noteInput) noteInput.value = deposit.managerNote || '';
+    renderBookingPackageSummary();
+}
+
+async function hydrateBookingDepositFromServer(bookingId) {
+    if (!bookingId || typeof apiGetBanquetDepositByBooking !== 'function') return;
+    try {
+        const projection = await apiGetBanquetDepositByBooking(bookingId);
+        if (projection?.success !== false && projection?.deposit) {
+            setBookingDepositFormData(projection);
+        }
+    } catch (err) {
+        console.warn('Booking deposit hydrate skipped', err);
+    }
 }
 
 function getProgramBasePrice(program) {
@@ -4747,6 +4811,8 @@ function renderBookingPackageSummary() {
     const programSubtotal = hasEvent ? toBookingMoney(totals.programBasePrice) : 0;
     const menuSubtotal = kitchenEnabled ? toBookingMoney(totals.positionsSubtotal) : 0;
     const entrySubtotal = kitchenEnabled ? toBookingMoney(totals.entrySubtotal || 0) : 0;
+    const deposit = kitchenEnabled ? getBookingDepositFormData() : null;
+    const depositAmount = deposit?.provided ? (deposit.expectedAmount ?? 0) : null;
     const finalTotal = toBookingMoney(programSubtotal + menuSubtotal + entrySubtotal);
     const menuCount = Array.isArray(totals.menuPositions) ? totals.menuPositions.length : 0;
     const programLabel = program
@@ -4774,6 +4840,7 @@ function renderBookingPackageSummary() {
         ${programSubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Програма / активність</span><strong>${escapeHtml(formatPrice(programSubtotal))}</strong></div>` : ''}
         ${kitchenEnabled && (menuSubtotal > 0 || menuCount > 0) ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Меню</span><strong>${escapeHtml(formatPrice(menuSubtotal))}</strong></div>` : ''}
         ${kitchenEnabled && entrySubtotal > 0 ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Вхід</span><strong>${escapeHtml(formatBookingPackageEntryAmount(entryCharge))}</strong></div>` : ''}
+        ${kitchenEnabled && deposit?.provided ? `<div class="booking-summary-row booking-summary-row--subtotal"><span>Завдаток</span><strong>${escapeHtml(formatPrice(depositAmount))}</strong></div>` : ''}
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${preflightWarning}
@@ -4852,6 +4919,7 @@ function hydrateBookingPackageWorkspace(booking) {
     if (adults) adults.value = booking?.banquetAdults || '';
     const tables = document.getElementById('banquetTables');
     if (tables) tables.value = booking?.banquetTables || '';
+    setBookingDepositFormData(booking);
     renderBookingPackageSummary();
 }
 
@@ -5349,6 +5417,7 @@ function initBookingPackageWorkspace() {
     });
     ['roomSelect', 'customerSearch', 'customerName', 'customerChildName', 'selectedProgram', 'bookingPrimaryAnimatorSelect', 'kidsCountInput', 'clientPinataServicePrice', 'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
      'secondAnimatorSelect', 'extraHostToggle', 'extraHostAnimatorSelect', 'banquetMenu', 'banquetGuests', 'banquetAdults', 'banquetTables',
+     'bookingDepositExpectedAmount', 'bookingDepositDueDate', 'bookingDepositManagerStatus', 'bookingDepositManagerNote',
      'educationLessonTitle', 'educationLessonTeacher', 'educationLessonGroup', 'educationLessonCourse',
      'educationLessonSeriesSize', 'educationLessonRepeatEvery', 'educationLessonType',
      'bookingGroupName', 'bookingNotes', 'bookingLeadSource', 'bookingLeadStatus', 'bookingLeadInterestDate',
@@ -8458,7 +8527,8 @@ function getBookingFormData() {
         finalTotal: kitchenEnabled ? packageTotals.finalTotal : packageTotals.programBasePrice,
         childrenCountSource,
         kidsCount: childrenCountSource.value || null,
-        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue || null) : null
+        kitchenChildrenCount: kitchenEnabled ? (childrenCountSource.kitchenValue || null) : null,
+        deposit: kitchenEnabled ? getBookingDepositFormData() : null
     };
     baseFormData.educationLesson = getEducationLessonDetails(baseFormData);
 
@@ -8964,6 +9034,15 @@ function buildBookingObject(formData, program) {
             || bookingMenuPositionsToLegacyText(formData.menuPositions || [])
             || null)
         : null;
+    obj.deposit = formData.kitchenEnabled && formData.deposit?.provided
+        ? {
+            expectedAmount: formData.deposit.expectedAmount,
+            dueDate: formData.deposit.dueDate,
+            managerStatus: formData.deposit.managerStatus,
+            managerNote: formData.deposit.managerNote
+        }
+        : null;
+    obj.banquetDeposit = obj.deposit;
 
     if (!obj.extraData) obj.extraData = {};
     obj.extraData.bookingPackage = {
@@ -12255,6 +12334,7 @@ async function editBooking(bookingId) {
 
     await hydrateBookingCustomerSelection(booking, { renderSummary: false });
     hydrateBookingPackageWorkspace(booking);
+    await hydrateBookingDepositFromServer(booking.id);
 
     // Статус
     const statusRadio = document.querySelector(`input[name="bookingStatus"][value="${booking.status || 'confirmed'}"]`);

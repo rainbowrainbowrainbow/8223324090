@@ -189,10 +189,10 @@ test('banquet summary builds structured KeyCRM-like contract from booking packag
     assert.equal(summary.deposit.paymentMethod, 'cash');
     assert.equal(summary.deposit.paymentStatus, 'partial');
     assert.equal(summary.deposit.source, 'extra_data.banquetDeposit');
-    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total']);
+    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total', 'deposit']);
     assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 4400);
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 1000);
     assert.equal(summary.finance.amountDue, 3400);
-    assert.equal(summary.finance.rows.some(row => row.key === 'deposit'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'amount_due'), false);
     assert.deepEqual(summary.terms.items, ['Завдаток не повертається']);
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
@@ -252,8 +252,9 @@ test('banquet summary builds compact finance rows without duplicate booking or z
         }
     });
 
-    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total']);
+    assert.deepEqual(summary.finance.rows.map(row => row.key), ['total', 'deposit']);
     assert.equal(summary.finance.rows.find(row => row.key === 'total')?.amount, 1500);
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
     assert.equal(summary.finance.amountDue, 1500);
     assert.equal(summary.finance.rows.some(row => row.key === 'amount_due'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'program'), false);
@@ -261,8 +262,8 @@ test('banquet summary builds compact finance rows without duplicate booking or z
     assert.equal(summary.finance.rows.some(row => row.key === 'entry'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'menu'), false);
     assert.equal(summary.finance.rows.some(row => row.key === 'activities'), false);
-    assert.equal(summary.finance.rows.some(row => row.key === 'deposit'), false);
-    assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
+    assert.equal(summary.finance.rows.some(row => row.key === 'deposit'), true);
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
 });
 
 test('banquet summary adds staff warning for schedule items without time', () => {
@@ -1171,7 +1172,7 @@ test('banquet summary uses legacy banquetMenu only when structured menu position
     assert.ok(summary.warnings.some(warning => warning.code === 'legacy_banquet_menu_used'));
 });
 
-test('banquet summary warns for neutral venue and missing deposit data', () => {
+test('banquet summary warns for neutral venue and shows zero deposit data', () => {
     const summary = buildBanquetSummary({
         businessContext: 'maysternya_doli',
         mainBooking: {
@@ -1185,7 +1186,8 @@ test('banquet summary warns for neutral venue and missing deposit data', () => {
     assert.equal(summary.businessContext, 'maysternya_doli');
     assert.ok(summary.venue.name);
     assert.ok(summary.warnings.some(warning => warning.code === 'venue_neutral_fallback'));
-    assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
     assert.ok(summary.warnings.some(warning => warning.code === 'menu_rows_missing'));
 });
 
@@ -1239,7 +1241,7 @@ test('banquet summary prefers canonical deposit projection before legacy marker'
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
 });
 
-test('banquet summary does not treat paid_amount as deposit without explicit marker', () => {
+test('banquet summary shows zero deposit without treating paid_amount as deposit', () => {
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',
         mainBooking: {
@@ -1255,6 +1257,7 @@ test('banquet summary does not treat paid_amount as deposit without explicit mar
     assert.equal(summary.deposit.amount, null);
     assert.equal(summary.deposit.paymentMethod, null);
     assert.equal(summary.deposit.paymentStatus, null);
-    assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
-    assert.ok(summary.warnings.some(warning => warning.code === 'paid_amount_not_used_as_deposit'));
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+    assert.equal(summary.warnings.some(warning => warning.code === 'paid_amount_not_used_as_deposit'), false);
 });

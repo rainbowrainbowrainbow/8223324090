@@ -2590,8 +2590,9 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
         assert.equal(data.event.status, 'preliminary');
         assert.equal(data.document.generatedAt, undefined);
         assert.equal(data.event.createdAt, new Date('2099-01-01T00:00:00Z').toISOString());
-        assert.deepEqual(data.finance.rows.map(row => row.label), ['Загальна сума']);
+        assert.deepEqual(data.finance.rows.map(row => row.key), ['total', 'deposit']);
         assert.equal(data.finance.rows.find(row => row.key === 'total')?.amount, 1700);
+        assert.equal(data.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
         assert.deepEqual(data.schedule.map(item => `${item.time} ${item.title}`), [
             '12:00 Прихід гостей',
             '12:00 Banquet root',
@@ -2987,7 +2988,7 @@ test('banquet summary falls back to explicit legacy deposit when canonical proje
     assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
 });
 
-test('banquet summary warns about paid_amount without using it as deposit', () => {
+test('banquet summary shows zero deposit without using paid_amount as deposit', () => {
     const { buildBanquetSummary } = require('../services/banquetSummary');
     const summary = buildBanquetSummary({
         businessContext: 'event_genix',
@@ -3008,8 +3009,9 @@ test('banquet summary warns about paid_amount without using it as deposit', () =
 
     assert.equal(summary.deposit.amount, null);
     assert.equal(summary.deposit.source, null);
-    assert.ok(summary.warnings.some(warning => warning.code === 'deposit_not_specified'));
-    assert.ok(summary.warnings.some(warning => warning.code === 'paid_amount_not_used_as_deposit'));
+    assert.equal(summary.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
+    assert.equal(summary.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+    assert.equal(summary.warnings.some(warning => warning.code === 'paid_amount_not_used_as_deposit'), false);
 });
 
 test('DELETE booking detaches cancelled banquet activity from group while keeping primary root', async () => {

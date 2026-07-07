@@ -152,6 +152,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Finance operations page.'
     },
     {
+        file: 'accounting-deposits.html',
+        canonicalPath: '/accounting-deposits',
+        owner: 'finance',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Accounting review page for banquet booking deposits.'
+    },
+    {
         file: 'game.html',
         canonicalPath: '/game',
         owner: 'game',

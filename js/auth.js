@@ -654,6 +654,7 @@ const PAGE_ACCESS = {
     '/hr':        _HR_PAGE_ACCESS,
     '/checkin':   _HR_PAGE_ACCESS,
     '/finance':   _FINANCE_ANALYTICS_ACCESS,
+    '/accounting-deposits': _FINANCE_ANALYTICS_ACCESS,
     '/analytics': _FINANCE_ANALYTICS_ACCESS,
     '/status':    _MANAGER_UP,
     '/guardian-ops': _GUARDIAN_OPS_ACCESS,

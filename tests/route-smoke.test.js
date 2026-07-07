@@ -2904,7 +2904,7 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.text.includes('Invalid date format'), false);
     });
 
-    it('returns structured banquet summary rows with adults, linked activities, and deposit warning', async () => {
+    it('returns structured banquet summary rows with adults, linked activities, and zero deposit row', async () => {
         const res = await request(
             'GET',
             '/api/bookings/BK-SUMMARY/banquet-summary?businessContext=event_genix',
@@ -2926,7 +2926,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.orderRows.filter(row => row.type === 'menu').length, 2);
         assert.equal(res.data.totals.currency, 'UAH');
         assert.equal(res.data.deposit.amount, null);
-        assert.ok(res.data.warnings.some(warning => warning.code === 'deposit_not_specified'));
+        assert.equal(res.data.finance.rows.find(row => row.key === 'deposit')?.amount, 0);
+        assert.equal(res.data.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
         assert.ok(queries.some(q => /FROM booking_banquet_links/i.test(q.text)));
         const writeQueries = queries.filter(q => /\bINSERT\s+INTO\b|\bUPDATE\b|\bDELETE\b/i.test(q.text));
         const dataWriteQueries = writeQueries.filter(q =>

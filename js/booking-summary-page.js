@@ -815,12 +815,12 @@
         const totalRow = normalized.find(row => row.key === 'total')
             || normalized.find(row => row.role === 'total');
         if (totalRow) {
-            return [{
+            return normalized.map(row => row === totalRow ? {
                 ...totalRow,
                 key: 'total',
                 label: 'Загальна сума',
                 role: 'total'
-            }];
+            } : row);
         }
         return fallbackSummaryFinanceRows(summary);
     }

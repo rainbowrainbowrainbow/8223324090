@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Перевірка завдатків</title>
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.78.39">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.39">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.39">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.39">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.39">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.39">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.39">
+    <style>
+        .deposit-review-page { display: grid; gap: 16px; }
+        .deposit-review-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .deposit-review-header h1 { margin: 0; font-size: 28px; line-height: 1.2; }
+        .deposit-review-header p { margin: 4px 0 0; color: var(--gray-500); }
+        .deposit-review-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .deposit-review-toolbar select,
+        .deposit-review-form input,
+        .deposit-review-form select,
+        .deposit-review-form textarea {
+            min-height: 42px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+            background: var(--white);
+            color: var(--gray-900);
+            font: inherit;
+            box-sizing: border-box;
+        }
+        .deposit-review-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr); gap: 16px; align-items: start; }
+        .deposit-review-list,
+        .deposit-review-panel {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-xs);
+            overflow: hidden;
+        }
+        .deposit-review-list-head,
+        .deposit-review-panel-head { padding: 14px 16px; border-bottom: 1px solid var(--gray-100); }
+        .deposit-review-list-head strong,
+        .deposit-review-panel-head strong { display: block; font-size: 16px; }
+        .deposit-review-list-head span,
+        .deposit-review-panel-head span { display: block; margin-top: 2px; color: var(--gray-500); font-size: 13px; }
+        .deposit-review-rows { display: grid; }
+        .deposit-review-row {
+            display: grid;
+            grid-template-columns: minmax(120px, 1fr) 120px 150px 130px;
+            gap: 12px;
+            align-items: center;
+            width: 100%;
+            border: 0;
+            border-bottom: 1px solid var(--gray-100);
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            padding: 12px 16px;
+            cursor: pointer;
+        }
+        .deposit-review-row:hover,
+        .deposit-review-row[aria-selected="true"] { background: var(--gray-50); }
+        .deposit-review-row strong { display: block; }
+        .deposit-review-muted { color: var(--gray-500); font-size: 13px; }
+        .deposit-review-pill { justify-self: start; border-radius: 999px; padding: 4px 8px; background: var(--gray-100); font-size: 12px; font-weight: 800; }
+        .deposit-review-state { padding: 18px 16px; color: var(--gray-500); }
+        .deposit-review-panel-body { padding: 16px; }
+        .deposit-review-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .deposit-review-fact { background: var(--gray-50); border-radius: var(--radius-sm); padding: 10px; }
+        .deposit-review-fact span { display: block; color: var(--gray-500); font-size: 12px; }
+        .deposit-review-fact strong { display: block; margin-top: 4px; }
+        .deposit-review-form { display: grid; gap: 12px; }
+        .deposit-review-form label { display: grid; gap: 6px; font-weight: 700; }
+        .deposit-review-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .deposit-review-btn {
+            min-height: 42px;
+            border: 0;
+            border-radius: var(--radius-sm);
+            padding: 9px 14px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .deposit-review-btn-primary { background: var(--primary); color: var(--white); }
+        .deposit-review-btn-secondary { background: var(--gray-100); color: var(--gray-800); }
+        @media (max-width: 980px) {
+            .deposit-review-layout { grid-template-columns: 1fr; }
+            .deposit-review-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body data-page-group="mgmt">
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <section class="deposit-review-page">
+                <div class="deposit-review-header">
+                    <div>
+                        <h1>Перевірка завдатків</h1>
+                        <p>Банкетні завдатки, які потребують бухгалтерської перевірки.</p>
+                    </div>
+                    <div class="deposit-review-toolbar">
+                        <label for="depositStatusFilter">Статус</label>
+                        <select id="depositStatusFilter">
+                            <option value="Не перевірено">Не перевірено</option>
+                            <option value="На перевірці">На перевірці</option>
+                            <option value="Підтверджено">Підтверджено</option>
+                            <option value="Оплату не знайдено">Оплату не знайдено</option>
+                            <option value="Сума не збігається">Сума не збігається</option>
+                            <option value="Скасовано / повернено">Скасовано / повернено</option>
+                            <option value="all">Усі</option>
+                        </select>
+                        <button type="button" id="depositRefreshBtn" class="deposit-review-btn deposit-review-btn-secondary">Оновити</button>
+                    </div>
+                </div>
+
+                <div class="deposit-review-layout">
+                    <section class="deposit-review-list" aria-label="Список завдатків">
+                        <div class="deposit-review-list-head">
+                            <strong id="depositListTitle">Завдатки</strong>
+                            <span id="depositListMeta">Завантаження...</span>
+                        </div>
+                        <div id="depositReviewRows" class="deposit-review-rows"></div>
+                    </section>
+
+                    <section class="deposit-review-panel" aria-label="Перевірка завдатку">
+                        <div class="deposit-review-panel-head">
+                            <strong id="depositDetailTitle">Запис не вибрано</strong>
+                            <span id="depositDetailMeta">Відкрийте конкретний завдаток для перевірки.</span>
+                        </div>
+                        <div id="depositDetailBody" class="deposit-review-panel-body"></div>
+                    </section>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/ui.js?v=0.78.39"></script>
+    <script src="js/config.js?v=0.78.39"></script>
+    <script src="js/notification.js?v=0.78.39"></script>
+    <script src="js/api.js?v=0.78.39"></script>
+    <script src="js/auth.js?v=0.78.39"></script>
+    <script src="js/components/sidebar.js?v=0.78.39"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/accounting-deposits.js?v=0.78.39"></script>
+    <script src="js/alerts.js?v=0.78.39"></script>
+</body>
+</html>

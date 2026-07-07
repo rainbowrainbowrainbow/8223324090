@@ -82,10 +82,13 @@ async function withApp(run) {
     clearModules();
     const calls = {
         confirm: [],
+        listAccounting: [],
         patch: [],
         projectionById: [],
         projectionForBooking: [],
-        projectionForGroup: []
+        projectionForGroup: [],
+        reviewStarted: [],
+        verifyAccounting: []
     };
 
     class BanquetDepositError extends Error {
@@ -145,9 +148,21 @@ async function withApp(run) {
             calls.projectionById.push(args);
             return projection({ deposit: { id: args.depositId, amount: 1500, paymentMethod: 'cash', status: 'accountant_verified' } });
         },
+        listDepositsForAccounting: async args => {
+            calls.listAccounting.push(args);
+            return { deposits: [projection({ accountingStatus: args.accountingStatus || 'Не перевірено' })] };
+        },
+        markDepositReviewStarted: async input => {
+            calls.reviewStarted.push(input);
+            return { changed: true, projection: projection({ accountingStatus: 'На перевірці' }) };
+        },
         confirmDeposit: async input => {
             calls.confirm.push(input);
             return { projection: projection() };
+        },
+        verifyDepositAccounting: async input => {
+            calls.verifyAccounting.push(input);
+            return { projection: projection({ accountingStatus: input.accountingStatus }) };
         },
         patchDeposit: async input => {
             calls.patch.push(input);
@@ -239,6 +254,65 @@ test('non banquet finance viewer cannot read deposit by id', async () => {
 
         assert.equal(res.status, 403);
         assert.equal(calls.projectionById.length, 0);
+    });
+});
+
+test('accountant list filters deposits without starting review', async () => {
+    await withApp(async ({ request, calls }) => {
+        const res = await request('GET', '/api/banquet-deposits?businessContext=event_genix&accountingStatus=%D0%9D%D0%B5%20%D0%BF%D0%B5%D1%80%D0%B5%D0%B2%D1%96%D1%80%D0%B5%D0%BD%D0%BE', undefined, 'accountant');
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(calls.listAccounting.length, 1);
+        assert.equal(calls.listAccounting[0].businessContext, 'event_genix');
+        assert.equal(calls.listAccounting[0].accountingStatus, 'Не перевірено');
+        assert.equal(calls.reviewStarted.length, 0);
+    });
+});
+
+test('opening accountant deposit review marks the specific record in review', async () => {
+    await withApp(async ({ request, calls }) => {
+        const res = await request('POST', '/api/banquet-deposits/10/review-start?businessContext=event_genix', {}, 'accountant');
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.changed, true);
+        assert.equal(res.data.accountingStatus, 'На перевірці');
+        assert.equal(calls.reviewStarted.length, 1);
+        assert.equal(calls.reviewStarted[0].depositId, 10);
+        assert.equal(calls.reviewStarted[0].reviewStartedBy, 19);
+    });
+});
+
+test('manager cannot update accountant deposit review fields', async () => {
+    await withApp(async ({ request, calls }) => {
+        const res = await request('PATCH', '/api/banquet-deposits/10/accounting?businessContext=event_genix', {
+            paidAmount: 1500,
+            accountingStatus: 'Підтверджено',
+            accountingNote: 'verified'
+        }, 'manager');
+
+        assert.equal(res.status, 403);
+        assert.equal(calls.verifyAccounting.length, 0);
+    });
+});
+
+test('accountant accounting update forwards paid amount and final status only', async () => {
+    await withApp(async ({ request, calls }) => {
+        const res = await request('PATCH', '/api/banquet-deposits/10/accounting?businessContext=event_genix', {
+            paidAmount: 1500,
+            accountingStatus: 'Підтверджено',
+            accountingNote: 'verified'
+        }, 'accountant');
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(calls.verifyAccounting.length, 1);
+        assert.equal(calls.verifyAccounting[0].businessContext, 'event_genix');
+        assert.equal(calls.verifyAccounting[0].paidAmount, 1500);
+        assert.equal(calls.verifyAccounting[0].accountingStatus, 'Підтверджено');
+        assert.equal(calls.verifyAccounting[0].verifiedBy, 19);
+        assert.equal(Object.prototype.hasOwnProperty.call(calls.verifyAccounting[0], 'managerStatus'), false);
     });
 });
 

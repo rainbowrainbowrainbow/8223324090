@@ -1607,6 +1607,61 @@ async function apiGetBanquetDepositByGroup(groupId) {
     }
 }
 
+async function apiListBanquetDepositsForAccounting(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        const status = filters.accountingStatus || filters.accounting_status || filters.status || '';
+        if (status) params.set('accountingStatus', status);
+        const query = params.toString();
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits${query ? `?${query}` : ''}`)}`, {
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API listBanquetDepositsForAccounting error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiStartBanquetDepositReview(depositId) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits/${encodeURIComponent(depositId)}/review-start`)}`, {
+            method: 'POST',
+            headers: getTimelineAuthHeaders(true),
+            body: JSON.stringify({})
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', status: response.status };
+        return body;
+    } catch (err) {
+        console.error('API startBanquetDepositReview error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
+async function apiUpdateBanquetDepositAccounting(depositId, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits/${encodeURIComponent(depositId)}/accounting`)}`, {
+            method: 'PATCH',
+            headers: getTimelineAuthHeaders(true),
+            body: JSON.stringify(payload)
+        });
+        if (handleAuthError(response)) return { success: false };
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return { success: false, error: body.error || 'API error', status: response.status };
+        return body;
+    } catch (err) {
+        console.error('API updateBanquetDepositAccounting error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiGetBanquetCandidates(options = {}) {
     try {
         const params = new URLSearchParams();

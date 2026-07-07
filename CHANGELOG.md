@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.38 - HR Team Card Profession Truth
+
+### HR Team / Картка персоналу / Професії / (Клешня, 07.07.2026) [codex]
+- **Міні-картка персоналу більше не показує стару `position` як актуальну професію** - основний рядок бере назву з канонічного `staff.role_type` і каталогу `hr_professions`.
+- **Legacy `position` залишено тільки як fallback** - старий підпис показується лише для записів без `role_type`, тому після перенесення професії картка не лишає stale назву на кшталт "Хозяюшка залу".
+- **Regression guard додано** - статичний HR-тест блокує повернення прямого `s.position` у професійний рядок team card.
+- **DB schema, migrations, auth/roles, env/secrets і Railway settings не змінювались** - реліз обмежений HR frontend render contract, static guard, changelog і version/cache refs.
+
+---
+
 ## v0.78.37 - Schedule Preference Active State
 
 ### HR / Staff schedule / Типові зміни / Active state / (Клешня, 06.07.2026) [codex]

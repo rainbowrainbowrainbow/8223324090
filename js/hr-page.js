@@ -810,6 +810,18 @@ function renderProfessionChips(keys = []) {
     return `<div class="hr-secondary-profession-row">${normalized.map(key => `<span class="hr-secondary-profession-chip">${escapeHtml(professionTitle(key))}</span>`).join('')}</div>`;
 }
 
+function staffTeamPrimaryProfessionLabel(staff = {}) {
+    const roleKey = normalizeProfessionKey(staff.role_type);
+    const roleLabel = ROLE_LABELS[roleKey] || staff.role_type || '';
+    return professionTitle(roleKey) || roleLabel || 'Професія не задана';
+}
+
+function staffTeamLegacyPositionMeta(staff = {}) {
+    const position = String(staff.position || '').trim();
+    if (!position) return '';
+    return normalizeProfessionKey(staff.role_type) ? '' : position;
+}
+
 function staffTrainingReadiness(staff = {}) {
     const readiness = staff.training_readiness || staff.trainingReadiness || {};
     const total = Number(readiness.total || 0);
@@ -3313,7 +3325,6 @@ function renderTeamCards(staff) {
         const avatar = s.photo_url
             ? `<img src="${escapeHtml(s.photo_url)}" alt="${escapeHtml(s.name)}">`
             : initials;
-        const roleLabel = ROLE_LABELS[s.role_type] || s.role_type || '';
         const secondary = staffSecondaryProfessions(s);
         const secondaryChips = renderProfessionChips(secondary);
         const hireStr = s.hire_date ? new Date(s.hire_date).toLocaleDateString('uk-UA') : '';
@@ -3346,7 +3357,8 @@ function renderTeamCards(staff) {
             renderStaffRateSummary(s) ? `<span><b>Ставка</b>${escapeHtml(renderStaffRateSummary(s))}</span>` : '',
             staffStructureNodeTitle(s) ? `<span><b>Структ.</b>${escapeHtml(staffStructureNodeTitle(s))}</span>` : ''
         ].filter(Boolean).join('');
-        const primaryRole = professionTitle(s.role_type) || roleLabel || 'Професія не задана';
+        const primaryRole = staffTeamPrimaryProfessionLabel(s);
+        const legacyPosition = staffTeamLegacyPositionMeta(s);
         const profileClick = `openStaffEdit(${Number(s.id)})`;
         const avatarNode = canManage
             ? `<button type="button" class="hr-team-avatar hr-team-profile-trigger" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}" onclick="${profileClick}" title="Відкрити профіль: ${escapeHtml(s.name)}" aria-label="Відкрити профіль: ${escapeHtml(s.name)}">${avatar}</button>`
@@ -3371,7 +3383,7 @@ function renderTeamCards(staff) {
                     </div>
                     <div class="hr-team-role">
                         <strong>${escapeHtml(primaryRole)}</strong>
-                        ${s.position ? `<span>${escapeHtml(s.position)}</span>` : ''}
+                        ${legacyPosition ? `<span>${escapeHtml(legacyPosition)}</span>` : ''}
                         ${hireStr ? `<span>з ${hireStr}</span>` : ''}
                     </div>
                 </div>

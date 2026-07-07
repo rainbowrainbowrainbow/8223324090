@@ -239,6 +239,15 @@ describe('HR profession readiness, schedule gating, and profile history', () => 
         assert.match(staffPage, /saveScheduleEntry\(staffId, date, shiftStart, shiftEnd, status, note, professionKey\)/);
     });
 
+    it('keeps HR team card profession display on canonical role fields', () => {
+        assert.match(hrPage, /function staffTeamPrimaryProfessionLabel\(staff = \{\}\)/);
+        assert.match(hrPage, /function staffTeamLegacyPositionMeta\(staff = \{\}\) \{[\s\S]*return normalizeProfessionKey\(staff\.role_type\) \? '' : position;/);
+        assert.match(hrPage, /const primaryRole = staffTeamPrimaryProfessionLabel\(s\);/);
+        assert.match(hrPage, /const legacyPosition = staffTeamLegacyPositionMeta\(s\);/);
+        assert.match(hrPage, /\$\{legacyPosition \? `<span>\$\{escapeHtml\(legacyPosition\)\}<\/span>` : ''\}/);
+        assert.doesNotMatch(hrPage, /s\.position \? `<span>\$\{escapeHtml\(s\.position\)\}<\/span>` : ''/);
+    });
+
     it('links HR team search, profession rates, structure nodes, and drag-drop moves', () => {
         assert.match(priorityMigration, /MIGRATION_KIND:\s*mixed/);
         assert.match(priorityMigration, /ADD COLUMN IF NOT EXISTS company_structure_node_id VARCHAR\(64\)/);

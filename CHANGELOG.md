@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.42 - Banquet Source Auto Refresh
+
+### Банкети / Source activity / Booking drawer / (Клешня, 07.07.2026) [codex]
+- **Drawer сам оновлює source activity перед скиданням прив'язки** - якщо локальний timeline cache ще не бачить щойно створену активність у кімнаті, форма робить fresh `/api/bookings` lookup і повторно вибирає source booking.
+- **Сценарій `активність -> кухня` більше не залежить від ручного reload** - коли дата, кімната і клієнт збігаються, selector має перейти у virtual bridge `Створити банкет з активності`, а save path лишається `source_activity_to_kitchen`.
+- **Підказка `активність ще не підтягнулась` лишилась fallback-станом** - вона показується тільки коли навіть fresh lookup не знайшов source activity; якщо source є, але клієнт конфліктує, missing-source hint не перебиває conflict state.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend drawer source refresh, regression tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.41 - Banquet Link Selector Clarity
 
 ### Банкети / Прив'язка кухні / Booking drawer / (Клешня, 07.07.2026) [codex]

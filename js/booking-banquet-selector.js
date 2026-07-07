@@ -286,6 +286,7 @@ function bookingBanquetSelectorMissingRoomSourceMessage(realState, selectedGroup
 
     const drawerMode = normalizeBookingDrawerMode(BookingDrawerState.drawerMode || inferBookingDrawerModeForOpen());
     if (drawerMode !== BOOKING_DRAWER_MODES.CREATE_KITCHEN) return '';
+    if (BookingDrawerState.roomSourceContext?.sourceBookingId) return '';
     if (BookingDrawerState.roomSelectionBanquetContext?.sourceBookingId) return '';
     if (BookingDrawerState.roomBookingAnimationBridge?.sourceBookingId) return '';
 

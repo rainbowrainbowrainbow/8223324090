@@ -3468,6 +3468,29 @@ test('activity-first kitchen room open initializes source context after programm
     assert.doesNotMatch(initBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBooking/);
 });
 
+test('activity-first kitchen source context refreshes bookings when room cache is stale', () => {
+    const bookingJs = readBookingSurface();
+    const sourcePickerBlock = bookingJs.slice(
+        bookingJs.indexOf('function pickBestRoomBanquetSourceBooking'),
+        bookingJs.indexOf('function sourceBookingToBanquetContext')
+    );
+    const roomSelectionBlock = bookingJs.slice(
+        bookingJs.indexOf('async function handleBookingRoomSelectionContextChange'),
+        bookingJs.indexOf('function clearSelectedCustomerLink')
+    );
+
+    assert.match(sourcePickerBlock, /function pickRoomBanquetSourceBookingFromBookings\(bookings = \[\], roomName, targetTime = ''\)/);
+    assert.match(sourcePickerBlock, /sameBookingRoom\(booking\.room, room\)/);
+    assert.match(sourcePickerBlock, /!roomBookingIsCancelled\(booking\)[\s\S]*!roomBookingIsLinkedChild\(booking\)/);
+    assert.match(sourcePickerBlock, /function fetchFreshRoomBanquetSourceBooking\(roomName, targetTime = document\.getElementById\('bookingTime'\)\?\.value \|\| ''\)/);
+    assert.match(sourcePickerBlock, /getBookingsForDate\(AppState\.selectedDate, \{ force: true \}\)/);
+    assert.match(sourcePickerBlock, /pickRoomBanquetSourceBookingFromBookings\(bookings, roomName, targetTime\)/);
+    assert.match(roomSelectionBlock, /let sourceBooking = pickRoomBanquetSourceBooking\(roomName, targetTime\);/);
+    assert.match(roomSelectionBlock, /if \(!sourceBooking\) \{\s*sourceBooking = await fetchFreshRoomBanquetSourceBooking\(roomName, targetTime\);\s*if \(!isLatestBookingRoomSelectionContextRequest\(token\)\) return;\s*\}/);
+    assert.match(roomSelectionBlock, /if \(!sourceBooking\) \{\s*clearAutoFilledBanquetFromRoomSelection\(\);\s*return;\s*\}/);
+    assert.doesNotMatch(sourcePickerBlock, /apiCreateBanquetGroup|apiCreateBanquetMemberBooking|apiCreateBooking/);
+});
+
 test('booking details do not render the room timeline visibility notice block', () => {
     const bookingJs = readBookingSurface();
     const timelineCss = read('css', 'timeline.css');
@@ -3563,6 +3586,7 @@ test('room-first kitchen selector explains missing source activity before generi
     assert.match(sourceMissingBlock, /if \(!isParkTimelineBookingMode\(\) \|\| !isBookingKitchenEnabled\(\)\) return '';/);
     assert.match(sourceMissingBlock, /if \(AppState\.editingBookingId\) return '';/);
     assert.match(sourceMissingBlock, /if \(drawerMode !== BOOKING_DRAWER_MODES\.CREATE_KITCHEN\) return '';/);
+    assert.match(sourceMissingBlock, /BookingDrawerState\.roomSourceContext\?\.sourceBookingId/);
     assert.match(sourceMissingBlock, /BookingDrawerState\.roomSelectionBanquetContext\?\.sourceBookingId/);
     assert.match(sourceMissingBlock, /BookingDrawerState\.roomBookingAnimationBridge\?\.sourceBookingId/);
     assert.match(sourceMissingBlock, /document\.getElementById\('roomSelect'\)\?\.value/);

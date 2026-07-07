@@ -1046,14 +1046,7 @@ function roomBookingTargetOverlapRank(booking = {}, targetTime = '') {
     return targetStart >= start && targetStart < end ? 0 : 1;
 }
 
-function pickRoomBanquetSourceBooking(roomName, targetTime = document.getElementById('bookingTime')?.value || '') {
-    if (!isParkTimelineBookingMode()) return null;
-    const room = String(roomName || document.getElementById('roomSelect')?.value || '').trim();
-    if (!room) return null;
-    const candidates = selectedRoomDayBookings(room)
-        .map(normalizeRoomDayBookingEntry)
-        .filter(booking => booking.id && !roomBookingIsCancelled(booking) && !roomBookingIsLinkedChild(booking));
-    if (!candidates.length) return null;
+function pickBestRoomBanquetSourceBooking(candidates = [], targetTime = '') {
     return candidates.sort((a, b) =>
         roomBookingTargetOverlapRank(a, targetTime) - roomBookingTargetOverlapRank(b, targetTime)
         || scoreRoomCustomerSourceBooking(a, targetTime) - scoreRoomCustomerSourceBooking(b, targetTime)
@@ -1062,6 +1055,41 @@ function pickRoomBanquetSourceBooking(roomName, targetTime = document.getElement
         || String(a.time || '').localeCompare(String(b.time || ''))
         || String(a.id || '').localeCompare(String(b.id || ''))
     )[0] || null;
+}
+
+function pickRoomBanquetSourceBookingFromBookings(bookings = [], roomName, targetTime = '') {
+    const room = String(roomName || document.getElementById('roomSelect')?.value || '').trim();
+    if (!room || !isParkTimelineBookingMode()) return null;
+    const candidates = (Array.isArray(bookings) ? bookings : [])
+        .map(normalizeRoomDayBookingEntry)
+        .filter(booking =>
+            booking.id
+            && !roomBookingIsCancelled(booking)
+            && !roomBookingIsLinkedChild(booking)
+            && sameBookingRoom(booking.room, room)
+        );
+    if (!candidates.length) return null;
+    return pickBestRoomBanquetSourceBooking(candidates, targetTime);
+}
+
+function pickRoomBanquetSourceBooking(roomName, targetTime = document.getElementById('bookingTime')?.value || '') {
+    if (!isParkTimelineBookingMode()) return null;
+    const room = String(roomName || document.getElementById('roomSelect')?.value || '').trim();
+    if (!room) return null;
+    const candidates = selectedRoomDayBookings(room)
+        .map(normalizeRoomDayBookingEntry)
+        .filter(booking => booking.id && !roomBookingIsCancelled(booking) && !roomBookingIsLinkedChild(booking));
+    if (!candidates.length) return null;
+    return pickBestRoomBanquetSourceBooking(candidates, targetTime);
+}
+
+async function fetchFreshRoomBanquetSourceBooking(roomName, targetTime = document.getElementById('bookingTime')?.value || '') {
+    if (!isParkTimelineBookingMode() || typeof getBookingsForDate !== 'function') return null;
+    const bookings = await getBookingsForDate(AppState.selectedDate, { force: true }).catch(error => {
+        console.warn('[Booking] Не вдалося оновити бронювання для прив’язки банкету', error);
+        return [];
+    });
+    return pickRoomBanquetSourceBookingFromBookings(bookings, roomName, targetTime);
 }
 
 function sourceBookingToBanquetContext(booking = {}) {
@@ -6533,7 +6561,12 @@ async function handleBookingRoomSelectionContextChange() {
         clearAutoFilledBanquetFromRoomSelection();
         return;
     }
-    const sourceBooking = pickRoomBanquetSourceBooking(roomName, document.getElementById('bookingTime')?.value || '');
+    const targetTime = document.getElementById('bookingTime')?.value || '';
+    let sourceBooking = pickRoomBanquetSourceBooking(roomName, targetTime);
+    if (!sourceBooking) {
+        sourceBooking = await fetchFreshRoomBanquetSourceBooking(roomName, targetTime);
+        if (!isLatestBookingRoomSelectionContextRequest(token)) return;
+    }
     if (!sourceBooking) {
         clearAutoFilledBanquetFromRoomSelection();
         return;

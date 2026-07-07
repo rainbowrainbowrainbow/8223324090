@@ -1201,6 +1201,7 @@ function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), option
         const takeawayOption = document.createElement('option');
         takeawayOption.value = BOOKING_TAKEAWAY_ROOM_VALUE;
         takeawayOption.textContent = BOOKING_TAKEAWAY_ROOM_VALUE;
+        takeawayOption.dataset.roomLabel = BOOKING_TAKEAWAY_ROOM_VALUE;
         takeawayOption.dataset.serviceRoom = 'takeaway';
         fragment.appendChild(takeawayOption);
         availableRooms.add(BOOKING_TAKEAWAY_ROOM_VALUE);
@@ -1220,6 +1221,7 @@ function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), option
             const option = document.createElement('option');
             option.value = optionData.value;
             const dayBookings = roomDayBookings.get(optionData.value) || [];
+            option.dataset.roomLabel = optionData.text || optionData.value;
             option.textContent = `${optionData.text}${isOperationalBookingRoomValue(optionData.value) ? roomDayBookingSuffix(dayBookings) : ''}`;
             option.disabled = optionData.disabled;
             if (dayBookings.length > 0) option.dataset.hasDayBookings = 'true';
@@ -1236,6 +1238,7 @@ function renderBookingRoomOptionsForDay(roomDayBookingsInput = new Map(), option
         const option = document.createElement('option');
         option.value = selectedRoom;
         option.textContent = selectedLabel || selectedRoom;
+        option.dataset.roomLabel = selectedLabel || selectedRoom;
         option.dataset.currentBookingRoom = 'true';
         fragment.appendChild(option);
     }
@@ -4964,9 +4967,12 @@ function renderBookingSummaryMenuRows(menuPositions = []) {
 }
 
 function bookingSummaryRoomLabel(roomSelect, fallbackValue = '') {
-    const value = String(fallbackValue || roomSelect?.value || '').trim();
+    const selectedOption = roomSelect?.selectedOptions?.[0] || null;
+    const datasetLabel = String(selectedOption?.dataset?.roomLabel || '').trim();
+    if (datasetLabel) return datasetLabel;
+    const value = String(fallbackValue || roomSelect?.value || selectedOption?.value || '').trim();
     if (value) return value;
-    return roomSelect?.selectedOptions?.[0]?.textContent?.trim() || 'не вибрано';
+    return selectedOption?.textContent?.trim() || 'не вибрано';
 }
 
 function renderBookingPackageSummary() {

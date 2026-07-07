@@ -813,21 +813,27 @@ function createBookingActivityPromoHarness(products = []) {
     return hooks;
 }
 
-function createBookingDrawerSummaryHarness() {
+function createBookingDrawerSummaryHarness(options = {}) {
     const bookingJs = read('js', 'booking.js');
     const start = bookingJs.indexOf('function bookingSummaryActivityName');
     const end = bookingJs.indexOf("if (typeof window !== 'undefined' && window.BookingPackageRenderer)", start);
     assert.ok(start >= 0 && end > start, 'booking drawer summary helper slice exists');
+    const selectedProgramValue = options.selectedProgramValue ?? 'pinata';
+    const customerName = options.customerName ?? 'Test Customer';
+    const selectedCustomerId = options.selectedCustomerId ?? '';
+    const roomValue = options.roomValue ?? 'Room A';
+    const roomText = options.roomText ?? roomValue;
+    const selectedCustomerCardName = options.selectedCustomerCardName ?? customerName;
     const dom = new JSDOM(`
         <!doctype html>
         <html>
             <body>
                 <div id="bookingPackageSummary"></div>
-                <input id="selectedProgram" value="pinata">
-                <input id="customerName" value="Test Customer">
-                <input id="selectedCustomerId" value="">
-                <select id="roomSelect"><option value="Room A" selected>Room A</option></select>
-                <div id="bookingSelectedCustomerCard"><strong>Test Customer</strong></div>
+                <input id="selectedProgram" value="${selectedProgramValue}">
+                <input id="customerName" value="${customerName}">
+                <input id="selectedCustomerId" value="${selectedCustomerId}">
+                <select id="roomSelect"><option value="${roomValue}" selected>${roomText}</option></select>
+                <div id="bookingSelectedCustomerCard"><strong>${selectedCustomerCardName}</strong></div>
             </body>
         </html>
     `);
@@ -853,7 +859,7 @@ function createBookingDrawerSummaryHarness() {
             description: 'Bubble promo'
         }
     ];
-    const menuPositions = [{
+    const menuPositions = options.menuPositions || [{
         title: 'Pizza',
         quantity: 2,
         servingUnit: 'portion',
@@ -862,6 +868,18 @@ function createBookingDrawerSummaryHarness() {
         servingTime: '14:30',
         note: 'warm'
     }];
+    const hasEvent = options.hasEvent ?? true;
+    const roomFirst = options.roomFirst ?? false;
+    const kitchenEnabled = options.kitchenEnabled ?? true;
+    const packageTotals = options.packageTotals || {
+        programBasePrice: 3100,
+        positionsSubtotal: 500,
+        entrySubtotal: 0,
+        finalTotal: 3600,
+        menuPositions,
+        activityPrograms: programs,
+        warnings: []
+    };
     const context = {
         console,
         document: dom.window.document,
@@ -870,21 +888,13 @@ function createBookingDrawerSummaryHarness() {
         CLIENT_PINATA_FILLER_VALUE: 'client_filler',
         CLIENT_PINATA_FILLER_LABEL: 'Client filler',
         updateBookingContextHeaderSummary: () => {},
-        getBookingWorkspaceHasEvent: () => true,
+        getBookingWorkspaceHasEvent: () => hasEvent,
         getProductsSync: () => programs,
-        isRoomFirstTimelineView: () => false,
-        isBookingKitchenEnabled: () => true,
+        isRoomFirstTimelineView: () => roomFirst,
+        isBookingKitchenEnabled: () => kitchenEnabled,
         getSmartBookingValidationState: () => ({ canSubmit: true, warnings: [] }),
         getBookingDepositFormData: () => null,
-        getBookingPackageTotals: () => ({
-            programBasePrice: 3100,
-            positionsSubtotal: 500,
-            entrySubtotal: 0,
-            finalTotal: 3600,
-            menuPositions,
-            activityPrograms: programs,
-            warnings: []
-        }),
+        getBookingPackageTotals: () => packageTotals,
         toBookingMoney: value => Math.round(Number(value || 0) * 100) / 100,
         formatPrice: value => `${Number(value || 0)} грн`,
         bookingActivityPriceValue: program => Math.round(Number(program?.price || 0) * 100) / 100,
@@ -937,6 +947,18 @@ function createBookingDrawerSummaryHarness() {
         this.__summaryHooks = { renderBookingPackageSummary };
     `, context, { filename: 'js/booking.js' });
     return context;
+}
+
+function bookingSummaryRows(ctx) {
+    return Array.from(ctx.document.querySelectorAll('#bookingPackageSummary .booking-summary-row'));
+}
+
+function bookingSummaryRowByLabel(ctx, label) {
+    return bookingSummaryRows(ctx).find(row => row.querySelector('span')?.textContent?.trim() === label) || null;
+}
+
+function bookingSummaryRowValue(ctx, label) {
+    return bookingSummaryRowByLabel(ctx, label)?.querySelector('strong')?.textContent?.trim() || '';
 }
 
 function multiActivityBaseBooking() {
@@ -1139,11 +1161,50 @@ test('booking drawer package summary keeps day-booking room option hints out of 
 
     ctx.__summaryHooks.renderBookingPackageSummary();
 
-    const rows = Array.from(ctx.document.querySelectorAll('#bookingPackageSummary .booking-summary-row'));
-    const roomRow = rows.find(row => row.querySelector('span')?.textContent?.trim() === 'Кімната');
-    const clientRow = rows.find(row => row.querySelector('span')?.textContent?.trim() === 'Клієнт');
-    assert.equal(roomRow?.querySelector('strong')?.textContent?.trim(), 'Room A');
-    assert.equal(clientRow?.querySelector('strong')?.textContent?.trim(), 'Test Customer');
+    const roomRow = bookingSummaryRowByLabel(ctx, 'Кімната');
+    assert.equal(bookingSummaryRowValue(ctx, 'Кімната'), 'Room A');
+    assert.equal(bookingSummaryRowValue(ctx, 'Клієнт'), 'Test Customer');
+    assert.doesNotMatch(roomRow?.textContent || '', /15:00|Test Customer|\+1/);
+});
+
+test('booking drawer package summary prefers clean room dataset label over select display hints in event mode', () => {
+    const ctx = createBookingDrawerSummaryHarness();
+    const option = ctx.document.querySelector('#roomSelect option');
+    option.value = 'room-a-resource-id';
+    option.dataset.roomLabel = 'Room A';
+    option.textContent = 'Room A - 15:00 Test Customer +1';
+    ctx.document.getElementById('roomSelect').value = 'room-a-resource-id';
+
+    ctx.__summaryHooks.renderBookingPackageSummary();
+
+    const summary = ctx.document.getElementById('bookingPackageSummary');
+    const roomRow = bookingSummaryRowByLabel(ctx, 'Кімната');
+    assert.equal(bookingSummaryRowValue(ctx, 'Кімната'), 'Room A');
+    assert.doesNotMatch(roomRow?.textContent || '', /15:00|Test Customer|\+1|room-a-resource-id/);
+    assert.equal(summary.querySelectorAll('.booking-summary-row--activity').length, 2);
+    assert.equal(summary.querySelectorAll('.booking-summary-row--menu').length, 1);
+});
+
+test('booking drawer package summary keeps clean room label in room-first kitchen mode', () => {
+    const ctx = createBookingDrawerSummaryHarness({
+        hasEvent: false,
+        roomFirst: true,
+        selectedProgramValue: ''
+    });
+    const option = ctx.document.querySelector('#roomSelect option');
+    option.dataset.roomLabel = 'Room A';
+    option.textContent = 'Room A - 15:00 Test Customer +1';
+
+    ctx.__summaryHooks.renderBookingPackageSummary();
+
+    const summary = ctx.document.getElementById('bookingPackageSummary');
+    const roomRow = bookingSummaryRowByLabel(ctx, 'Кімната');
+    assert.equal(bookingSummaryRowValue(ctx, 'Кімната'), 'Room A');
+    assert.equal(bookingSummaryRowValue(ctx, 'Клієнт'), 'Test Customer');
+    assert.doesNotMatch(roomRow?.textContent || '', /15:00|Test Customer|\+1/);
+    assert.equal(summary.querySelectorAll('.booking-summary-row--activity').length, 0);
+    assert.equal(summary.querySelectorAll('.booking-summary-row--menu').length, 1);
+    assert.match(summary.textContent, /Pizza/);
 });
 
 test('booking activity schedule helper defaults sequentially from base time', () => {
@@ -3443,6 +3504,8 @@ test('booking create flow bridges room-source kitchen without an existing banque
     assert.match(bookingJs, /BookingDrawerState\.autoFilledBanquetGuestsFromRoom = \{[\s\S]*sourceBookingId,[\s\S]*value: String\(sourceKidsCount\)/);
     assert.match(bookingJs, /if \(id === 'banquetGuests' && typeof markBanquetGuestsManualOverride === 'function'\) markBanquetGuestsManualOverride\(\)/);
     assert.match(bookingJs, /function clearAutoFilledBanquetFromRoomSelection\(\)[\s\S]*BookingDrawerState\.roomSelectionBanquetContext = null;[\s\S]*clearAutoFilledBanquetGuestsFromRoom\(\);/);
+    assert.match(bookingJs, /option\.dataset\.roomLabel = optionData\.text \|\| optionData\.value/);
+    assert.match(bookingJs, /function bookingSummaryRoomLabel\(roomSelect, fallbackValue = ''\)[\s\S]*selectedOption\?\.dataset\?\.roomLabel[\s\S]*fallbackValue \|\| roomSelect\?\.value \|\| selectedOption\?\.value/);
     assert.match(bookingJs, /syncAutoFilledBanquetGuestsFromRoom\(sourceBooking\)/);
     assert.match(bookingJs, /BookingDrawerState\.roomSelectionBanquetContext = banquetContext;\s*if \(banquetContext\.groupId\)/);
     assert.match(bookingJs, /if \(!booking \|\| \(!context\.groupId && !context\.sourceBookingId\)\) return booking;/);

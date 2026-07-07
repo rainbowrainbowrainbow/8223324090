@@ -152,6 +152,8 @@ const PIPELINE_STAGES = [
 ];
 
 const WIP_LIMIT = 10;
+const LEAD_CUSTOMER_FALLBACK_LIMIT = 5;
+const LEAD_GUEST_NOTE_PREFIX = 'Гості на бажану дату:';
 
 const LOSS_REASONS = [
     'Вибрали конкурента',
@@ -192,6 +194,8 @@ let currentBusinessContext = 'event_genix';
 let leadsData = [];
 let leadStatsData = null;
 let leadLoadSeq = 0;
+let leadCustomerSearchMatches = [];
+let leadCustomerSearchQuery = '';
 let pipelineData = {};
 let usersData = [];
 let modalInitialState = '';
@@ -374,9 +378,7 @@ function syncLeadPresentationUi() {
 
 function syncLeadModalBusinessFields() {
     const maysternyaMode = isMaysternyaLeadContext();
-    const childrenGroup = document.getElementById('leadChildrenCount')?.closest('.form-group');
     const celebrantsGroup = document.getElementById('leadCelebrants')?.closest('.form-group');
-    if (childrenGroup) childrenGroup.hidden = maysternyaMode;
     if (celebrantsGroup) celebrantsGroup.hidden = maysternyaMode;
     const dateLabel = document.querySelector('label[for="leadEventDate"], #leadEventDate')?.closest('.form-group')?.querySelector('label');
     if (dateLabel) dateLabel.textContent = maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата';
@@ -384,9 +386,115 @@ function syncLeadModalBusinessFields() {
     if (notesLabel) notesLabel.textContent = maysternyaMode ? 'Запит / повідомлення' : 'Нотатки';
     if (maysternyaMode) {
         const children = document.getElementById('leadChildrenCount');
+        const adults = document.getElementById('leadAdultsCount');
         if (children) children.value = '';
+        if (adults) adults.value = '';
         setCelebrantsEditorValue('leadCelebrants', [], { markInitial: false });
     }
+    syncLeadEventDetailsVisibility();
+}
+
+function currentLeadUser() {
+    const stateUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    if (stateUser?.id || stateUser?.username || stateUser?.name) return stateUser;
+    try {
+        const saved = JSON.parse(localStorage.getItem('pzp_current_user') || 'null');
+        return saved && typeof saved === 'object' ? saved : null;
+    } catch {
+        return null;
+    }
+}
+
+function findCurrentLeadAssigneeId() {
+    const currentUser = currentLeadUser();
+    if (!currentUser) return '';
+    const currentId = Number(currentUser.id);
+    const currentUsername = String(currentUser.username || '').trim().toLowerCase();
+    const match = (usersData || []).find(user => {
+        if (Number.isInteger(currentId) && currentId > 0 && Number(user.id) === currentId) return true;
+        return currentUsername && String(user.username || '').trim().toLowerCase() === currentUsername;
+    });
+    return match?.id ? String(match.id) : '';
+}
+
+function applyDefaultLeadAssignee(options = {}) {
+    const sel = document.getElementById('leadAssignedTo');
+    if (!sel) return;
+    if (!options.force && sel.value) return;
+    const assigneeId = findCurrentLeadAssigneeId();
+    if (assigneeId && Array.from(sel.options).some(option => option.value === assigneeId)) {
+        sel.value = assigneeId;
+    }
+}
+
+function readLeadGuestInput(id) {
+    const value = document.getElementById(id)?.value;
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.min(parsed, 200);
+}
+
+function readLeadGuestCounts() {
+    return {
+        children: readLeadGuestInput('leadChildrenCount'),
+        adults: readLeadGuestInput('leadAdultsCount')
+    };
+}
+
+function syncLeadGuestsTotal() {
+    const totalEl = document.getElementById('leadGuestsTotal');
+    if (!totalEl) return;
+    const counts = readLeadGuestCounts();
+    totalEl.textContent = `${counts.children + counts.adults} гостей`;
+}
+
+function syncLeadEventDetailsVisibility(options = {}) {
+    const panel = document.getElementById('leadEventDetails');
+    const dateEl = document.getElementById('leadEventDate');
+    const show = Boolean(dateEl?.value) && !isMaysternyaLeadContext();
+    if (panel) panel.hidden = !show;
+    if (!show && options.clearWhenHidden) {
+        const children = document.getElementById('leadChildrenCount');
+        const adults = document.getElementById('leadAdultsCount');
+        if (children) children.value = '';
+        if (adults) adults.value = '';
+    }
+    syncLeadGuestsTotal();
+}
+
+function guestCountsFromLeadNotes(notes = '') {
+    const line = String(notes || '')
+        .split(/\r?\n/)
+        .find(item => item.trim().startsWith(LEAD_GUEST_NOTE_PREFIX));
+    if (!line) return { children: 0, adults: 0 };
+    const children = line.match(/дітей\s*[-–—:]\s*(\d+)/i);
+    const adults = line.match(/дорослих\s*[-–—:]\s*(\d+)/i);
+    return {
+        children: children ? Math.min(Number.parseInt(children[1], 10) || 0, 200) : 0,
+        adults: adults ? Math.min(Number.parseInt(adults[1], 10) || 0, 200) : 0
+    };
+}
+
+function stripLeadGuestSummary(notes = '') {
+    return String(notes || '')
+        .split(/\r?\n/)
+        .filter(line => !line.trim().startsWith(LEAD_GUEST_NOTE_PREFIX))
+        .join('\n')
+        .trim();
+}
+
+function leadGuestSummaryLine(counts = {}) {
+    const children = Math.max(0, Number.parseInt(counts.children, 10) || 0);
+    const adults = Math.max(0, Number.parseInt(counts.adults, 10) || 0);
+    if (!children && !adults) return '';
+    return `${LEAD_GUEST_NOTE_PREFIX} дітей - ${children}, дорослих - ${adults}, разом - ${children + adults}.`;
+}
+
+function notesWithLeadGuestSummary(notes = '', counts = {}, eventDate = '') {
+    const cleanNotes = stripLeadGuestSummary(notes);
+    if (!eventDate) return cleanNotes || null;
+    const summary = leadGuestSummaryLine(counts);
+    return [cleanNotes, summary].filter(Boolean).join('\n') || null;
 }
 
 function isLeadBusinessReadOnly() {
@@ -594,6 +702,7 @@ async function loadUsers() {
         opt.textContent = u.name || u.username;
         sel.appendChild(opt);
     }
+    applyDefaultLeadAssignee();
 }
 
 async function loadLeads() {
@@ -602,6 +711,8 @@ async function loadLeads() {
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
     syncLeadPresentationUi();
     currentTypeFilter = leadTypeForCurrentQueue();
+    leadCustomerSearchMatches = [];
+    leadCustomerSearchQuery = '';
     try {
         const params = new URLSearchParams();
         if (currentFilter) params.set('status', currentFilter);
@@ -618,6 +729,11 @@ async function loadLeads() {
         if (loadSeq !== leadLoadSeq) return;
         leadStatsData = stats;
         leadsData = leads;
+        if (leadsData.length === 0 && shouldLoadLeadCustomerFallback(search)) {
+            leadCustomerSearchQuery = search;
+            leadCustomerSearchMatches = await loadLeadCustomerSearchFallback(search);
+            if (loadSeq !== leadLoadSeq) return;
+        }
 
         renderStats();
         if (currentView === 'kanban') {
@@ -974,6 +1090,107 @@ function renderLeadExplainability() {
     Explainability.setRegion('leadsExplainability', html);
 }
 
+function shouldLoadLeadCustomerFallback(search) {
+    return String(search || '').trim().length >= 2;
+}
+
+function leadCustomerFallbackQueries(search) {
+    const trimmed = String(search || '').trim().replace(/\s+/g, ' ');
+    if (trimmed.length < 2) return [];
+    const compact = trimmed.replace(/\s+/g, '');
+    return Array.from(new Set([trimmed, compact].filter(query => query.length >= 2)));
+}
+
+async function loadLeadCustomerSearchFallback(search) {
+    const matches = [];
+    const seenIds = new Set();
+    for (const query of leadCustomerFallbackQueries(search)) {
+        if (matches.length >= LEAD_CUSTOMER_FALLBACK_LIMIT) break;
+        try {
+            const params = new URLSearchParams({ q: query });
+            const res = await fetch(leadApiUrl(`/api/customers/search?${params}`), {
+                headers: getHeaders(false)
+            });
+            if (!res || res.status === 401 || res.status === 403 || !res.ok) continue;
+            const payload = await res.json().catch(() => []);
+            const customers = Array.isArray(payload) ? payload : (Array.isArray(payload?.customers) ? payload.customers : []);
+            for (const rawCustomer of customers) {
+                const customer = normalizeLeadCustomerOption(rawCustomer);
+                if (!customer || seenIds.has(customer.id)) continue;
+                seenIds.add(customer.id);
+                matches.push(customer);
+                if (matches.length >= LEAD_CUSTOMER_FALLBACK_LIMIT) break;
+            }
+        } catch (err) {
+            console.warn('Lead customer fallback search failed', err);
+        }
+    }
+    return matches;
+}
+
+function leadCustomerFallbackChildrenText(customer = {}) {
+    const children = Array.isArray(customer.children)
+        ? customer.children.map(child => String(child?.name || child?.childName || child?.child_name || '').trim()).filter(Boolean)
+        : [];
+    if (children.length === 1) return children[0];
+    if (children.length > 1) {
+        const visible = children.slice(0, 3).join(', ');
+        return children.length > 3 ? `${visible} +${children.length - 3}` : visible;
+    }
+    return customer.childName || '';
+}
+
+function leadCustomerInstagramValue(customer = {}) {
+    const direct = String(customer.instagram || '').replace(/^@+/, '').trim();
+    if (direct) return direct;
+    const identities = Array.isArray(customer.socialIdentities) ? customer.socialIdentities : [];
+    const instagram = identities.find(item => /instagram/i.test(String(item?.platform || item?.type || item?.channel || '')));
+    return String(instagram?.value || instagram?.handle || instagram?.username || '').replace(/^@+/, '').trim();
+}
+
+function leadCustomerFallbackById(customerId) {
+    const id = Number(customerId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    return (leadCustomerSearchMatches || []).find(customer => Number(customer.id) === id) || null;
+}
+
+function renderLeadCustomerSearchFallback() {
+    const search = document.getElementById('leadsSearch')?.value?.trim() || '';
+    const matches = Array.isArray(leadCustomerSearchMatches) ? leadCustomerSearchMatches.slice(0, LEAD_CUSTOMER_FALLBACK_LIMIT) : [];
+    if (!shouldLoadLeadCustomerFallback(search) || search !== leadCustomerSearchQuery || matches.length === 0) return '';
+    const visitLabel = isMaysternyaLeadContext() ? 'сес.' : 'віз.';
+    const rows = matches.map(customer => {
+        const childText = isMaysternyaLeadContext() ? '' : leadCustomerFallbackChildrenText(customer);
+        const instagram = leadCustomerInstagramValue(customer);
+        const totalBookings = normalizeLeadCount(customer.totalBookings);
+        const customerHref = leadCrmContextHref('/customers', { open: customer.id }, customer.businessContext || leadBusinessContext());
+        const createLeadDisabled = isLeadBusinessReadOnly() ? ' disabled aria-disabled="true"' : '';
+        const meta = [
+            customer.phone || '',
+            instagram ? '@' + instagram : '',
+            childText ? `Діти: ${childText}` : '',
+            totalBookings ? `${totalBookings} ${visitLabel}` : ''
+        ].filter(Boolean).join(' · ');
+        return `<div class="lead-customer-link-preview" data-lead-customer-fallback-id="${escapeHtml(customer.id)}">
+            <strong>${escapeHtml(customer.name)}</strong>
+            ${meta ? `<span>${escapeHtml(meta)}</span>` : ''}
+            <div class="lead-customer-fallback-actions" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px">
+                <a class="workspace-action" href="${escapeHtml(customerHref)}">
+                    <span>Відкрити клієнта</span>
+                </a>
+                <button type="button" class="workspace-action primary" data-lead-write-action="true" data-lead-customer-create-lead="${escapeHtml(customer.id)}"${createLeadDisabled}>
+                    <span>Створити лід</span>
+                    <span class="workspace-action-note">без автозбереження</span>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+    return `<div class="lead-customer-search-fallback" role="status" aria-live="polite" style="display:grid;gap:8px;max-width:640px;margin:16px auto 0;text-align:left">
+        <div class="lead-customer-link-hint" style="margin:0">Ліда не знайдено, але є клієнт</div>
+        ${rows}
+    </div>`;
+}
+
 function resetLeadFilters() {
     currentFilter = '';
     currentLeadQueue = DEFAULT_LEAD_QUEUE;
@@ -994,8 +1211,9 @@ function leadEmptyHtml() {
     const queue = leadQueueMeta();
     const hasExtraFilters = filters.some(filter => !String(filter.label || '').startsWith('Черга'));
     const maysternyaMode = isMaysternyaLeadContext();
+    const customerFallback = renderLeadCustomerSearchFallback();
     if (window.Explainability) {
-        return Explainability.renderEmptyState({
+        const emptyState = Explainability.renderEmptyState({
             icon: '🔎',
             title: hasExtraFilters
                 ? `У черзі “${queue.label}” немає лідів за цими фільтрами`
@@ -1006,10 +1224,14 @@ function leadEmptyHtml() {
             clearAction: filters.length ? 'leads' : '',
             clearLabel: maysternyaMode ? 'Скинути фільтри заявок' : 'Скинути фільтри лідів'
         });
+        return customerFallback
+            ? `<div class="lead-empty-with-fallback" style="width:100%;max-width:760px;margin:0 auto">${emptyState}${customerFallback}</div>`
+            : emptyState;
     }
-    return hasExtraFilters
+    const text = hasExtraFilters
         ? `У черзі “${queue.label}” немає лідів за цими фільтрами`
         : queue.emptyTitle;
+    return customerFallback ? `${escapeHtml(text)}${customerFallback}` : text;
 }
 
 function renderTable() {
@@ -3347,6 +3569,12 @@ function setupEvents() {
         e.preventDefault();
         resetLeadFilters();
     });
+    document.addEventListener('click', (e) => {
+        const createFromCustomer = e.target.closest('[data-lead-customer-create-lead]');
+        if (!createFromCustomer) return;
+        e.preventDefault();
+        openLeadFromCustomerFallback(createFromCustomer.dataset.leadCustomerCreateLead);
+    });
 
     // Add lead button
     const addBtn = document.getElementById('addLeadBtn');
@@ -3355,6 +3583,12 @@ function setupEvents() {
     bindLeadModalButton('leadModalCancel', closeLeadModal);
     bindLeadModalButton('leadModalSave', saveLead);
     bindCelebrantsEditors();
+    const leadEventDate = document.getElementById('leadEventDate');
+    leadEventDate?.addEventListener('input', () => syncLeadEventDetailsVisibility({ clearWhenHidden: true }));
+    leadEventDate?.addEventListener('change', () => syncLeadEventDetailsVisibility({ clearWhenHidden: true }));
+    ['leadChildrenCount', 'leadAdultsCount'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', syncLeadGuestsTotal);
+    });
     document.getElementById('lostReasonSelect')?.addEventListener('change', updateLostReasonDetailsVisibility);
 
     // Close modals on overlay click
@@ -3422,10 +3656,13 @@ function openAddModal() {
     document.getElementById('leadSource').value = '';
     document.getElementById('leadEventDate').value = '';
     document.getElementById('leadChildrenCount').value = '';
+    document.getElementById('leadAdultsCount').value = '';
     setCelebrantsEditorValue('leadCelebrants', [], { markInitial: true });
     document.getElementById('leadNotes').value = '';
     document.getElementById('leadAssignedTo').value = '';
+    applyDefaultLeadAssignee({ force: true });
     syncLeadModalBusinessFields();
+    syncLeadEventDetailsVisibility({ clearWhenHidden: true });
 
     // Hide pipeline/type fields for new lead
     const stageGroup = document.getElementById('leadStageGroup');
@@ -3435,6 +3672,42 @@ function openAddModal() {
     modalInitialState = getModalState();
     modal?.classList.add('active');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+}
+
+function customerFallbackLeadNote(customer = {}) {
+    const parts = [
+        `Клієнт у базі #${customer.id}: ${customer.name || 'без імені'}.`,
+        'Лід відкрито вручну з клієнтської картки; запис ще не створено.'
+    ];
+    return parts.join('\n');
+}
+
+function prefillLeadModalFromCustomer(customer = {}) {
+    const instagram = leadCustomerInstagramValue(customer);
+    const nameEl = document.getElementById('leadName');
+    const phoneEl = document.getElementById('leadPhone');
+    const instagramEl = document.getElementById('leadInstagram');
+    const notesEl = document.getElementById('leadNotes');
+    if (nameEl) nameEl.value = customer.name || '';
+    if (phoneEl) phoneEl.value = customer.phone || '';
+    if (instagramEl) instagramEl.value = instagram ? '@' + instagram : '';
+    if (notesEl) notesEl.value = customerFallbackLeadNote(customer);
+
+    const modal = document.getElementById('leadModal');
+    modalInitialState = getModalState();
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+    nameEl?.focus();
+}
+
+function openLeadFromCustomerFallback(customerId) {
+    const customer = leadCustomerFallbackById(customerId);
+    if (!customer) {
+        if (typeof showNotification === 'function') showNotification('Клієнта з підказки вже не знайдено. Повторіть пошук.', 'error');
+        return;
+    }
+    openAddModal();
+    if (!document.getElementById('leadModal')?.classList.contains('active')) return;
+    prefillLeadModalFromCustomer(customer);
 }
 
 function editLead(id) {
@@ -3449,10 +3722,13 @@ function editLead(id) {
     document.getElementById('leadInstagram').value = lead.instagram || '';
     document.getElementById('leadSource').value = lead.source || '';
     document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
-    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (lead.children_count || '');
+    const guestCounts = guestCountsFromLeadNotes(lead.notes || '');
+    document.getElementById('leadChildrenCount').value = isMaysternyaLeadContext() ? '' : (lead.children_count || guestCounts.children || '');
+    document.getElementById('leadAdultsCount').value = isMaysternyaLeadContext() ? '' : (guestCounts.adults || '');
     setCelebrantsEditorValue('leadCelebrants', isMaysternyaLeadContext() ? [] : normalizeLeadCelebrants(lead), { markInitial: true });
-    document.getElementById('leadNotes').value = lead.notes || '';
+    document.getElementById('leadNotes').value = isMaysternyaLeadContext() ? (lead.notes || '') : stripLeadGuestSummary(lead.notes || '');
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
+    syncLeadEventDetailsVisibility();
 
     // Show pipeline/type fields for existing lead
     const stageGroup = document.getElementById('leadStageGroup');
@@ -3469,7 +3745,7 @@ function editLead(id) {
 }
 
 function getModalState() {
-    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadCelebrants', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
+    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadAdultsCount', 'leadCelebrants', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
     return fields.map(id => {
         const el = document.getElementById(id);
         return el ? el.value : '';
@@ -3511,19 +3787,26 @@ async function saveLead() {
     if (leadSaveInFlight) return;
     const leadCelebrants = isMaysternyaLeadContext() ? [] : getCelebrantsPayload('leadCelebrants');
     const leadCelebrantsDirty = !isMaysternyaLeadContext() && isCelebrantsEditorDirty('leadCelebrants');
+    const eventDate = document.getElementById('leadEventDate')?.value || null;
+    const guestCounts = isMaysternyaLeadContext() ? { children: 0, adults: 0 } : readLeadGuestCounts();
+    const childrenCount = isMaysternyaLeadContext()
+        ? null
+        : (guestCounts.children || (leadCelebrants.length ? leadCelebrants.length : null));
+    const rawNotes = document.getElementById('leadNotes')?.value.trim() || '';
 
     const body = {
         client_name: name,
         phone: document.getElementById('leadPhone')?.value.trim() || null,
         instagram: document.getElementById('leadInstagram')?.value.trim() || null,
         source: document.getElementById('leadSource')?.value || null,
-        event_date: document.getElementById('leadEventDate')?.value || null,
-        children_count: isMaysternyaLeadContext() ? null : (parseInt(document.getElementById('leadChildrenCount')?.value) || null),
-        notes: document.getElementById('leadNotes')?.value.trim() || null,
+        event_date: eventDate,
+        children_count: childrenCount,
+        notes: isMaysternyaLeadContext()
+            ? (rawNotes || null)
+            : notesWithLeadGuestSummary(rawNotes, { ...guestCounts, children: childrenCount || 0 }, eventDate),
         assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
     };
     if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants;
-    if (!body.children_count && (body.celebrants || []).length) body.children_count = body.celebrants.length;
 
     // Add pipeline/type if editing
     if (editId) {
@@ -4145,10 +4428,16 @@ function normalizeLeadCustomerOption(customer) {
     if (!customer || !customer.id) return null;
     return {
         id: Number(customer.id),
+        businessContext: customer.businessContext || customer.business_context || '',
         name: customer.name || customer.clientName || `Клієнт #${customer.id}`,
         phone: customer.phone || '',
         instagram: customer.instagram || '',
+        socialIdentities: Array.isArray(customer.socialIdentities)
+            ? customer.socialIdentities
+            : (Array.isArray(customer.social_identities) ? customer.social_identities : []),
         childName: customer.childName || customer.child_name || '',
+        children: Array.isArray(customer.children) ? customer.children : [],
+        source: customer.source || '',
         totalBookings: Number(customer.totalBookings ?? customer.total_bookings ?? 0) || 0
     };
 }

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.46",
+  "version": "0.78.47",
   "eventGenix": {
-    "releaseLabel": "Lead Modal Celebrants Layout"
+    "releaseLabel": "Lead Customer Search Fallback"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

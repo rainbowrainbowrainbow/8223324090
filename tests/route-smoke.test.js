@@ -1857,10 +1857,31 @@ function createFakePool() {
             if (/SELECT id FROM leads/i.test(text) && /regexp_replace\(COALESCE\(phone/i.test(text)) {
                 return { rows: [] };
             }
+            if (/SELECT COUNT\(\*\)::int AS total\s+FROM leads l/i.test(text) && params.includes('%LinkedCustomerNeedle%')) {
+                return { rows: [{ total: 1 }] };
+            }
             if (/SELECT COUNT\(\*\)::int AS total\s+FROM leads l/i.test(text)) {
                 return { rows: [{ total: 650 }] };
             }
             if (/SELECT l\.\*, u\.name AS assigned_name, p\.label AS program_name,\s+COALESCE\(l\.potential_value, latest_card\.budget_approx\) AS budget_approx/i.test(text)) {
+                if (params.includes('%LinkedCustomerNeedle%')) {
+                    return {
+                        rows: [{
+                            id: 901,
+                            business_context: 'event_genix',
+                            client_name: 'Lead with linked customer data',
+                            phone: '+380000000901',
+                            source: 'manual',
+                            source_channel: 'manual',
+                            status: 'new',
+                            pipeline_stage: 'new',
+                            potential_value: 900,
+                            budget_approx: 900,
+                            created_at: '2099-05-01T10:00:00Z',
+                            updated_at: '2099-05-02T10:00:00Z'
+                        }]
+                    };
+                }
                 const limit = Number(params[params.length - 2]) || 100;
                 const offset = Number(params[params.length - 1]) || 0;
                 const count = offset >= 500 ? 150 : Math.min(limit, 500);
@@ -4418,6 +4439,32 @@ describe('route-level API safety smoke', () => {
         const listQuery = queries.find(q => /FROM leads l/i.test(q.text) && /ORDER BY l\.created_at DESC/i.test(q.text));
         assert.ok(listQuery);
         assert.match(listQuery.text, /COALESCE\(NULLIF\(l\.lead_type, ''\), 'quality'\) = \$\d+/i);
+    });
+
+    it('searches lead rows through linked customers without duplicating pagination', async () => {
+        queries.length = 0;
+        const res = await request('GET', '/api/leads?search=LinkedCustomerNeedle&limit=10&offset=0', undefined, withAuth({}, 'manager'));
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.deepEqual(res.data.leads.map(lead => lead.id), [901]);
+        assert.deepEqual(res.data.pagination, {
+            total: 1,
+            limit: 10,
+            offset: 0,
+            nextOffset: 1,
+            hasMore: false
+        });
+
+        const countQuery = queries.find(q => /SELECT COUNT\(\*\)::int AS total\s+FROM leads l/i.test(q.text) && q.params.includes('%LinkedCustomerNeedle%'));
+        const listQuery = queries.find(q => /COALESCE\(l\.potential_value, latest_card\.budget_approx\) AS budget_approx/i.test(q.text) && q.params.includes('%LinkedCustomerNeedle%'));
+        assert.ok(countQuery, 'lead search should count against the canonical leads table');
+        assert.ok(listQuery, 'lead search should list canonical lead rows');
+        for (const query of [countQuery, listQuery]) {
+            assert.match(query.text, /EXISTS \( SELECT 1 FROM customers c WHERE c\.lead_id = l\.id/i);
+            assert.match(query.text, /EXISTS \( SELECT 1 FROM lead_customer_links lcl JOIN customers c ON c\.id = lcl\.customer_id WHERE lcl\.lead_id = l\.id/i);
+            assert.doesNotMatch(query.text, /FROM leads l\s+(?:INNER\s+|LEFT\s+)?JOIN\s+(?:customers|lead_customer_links)/i);
+        }
     });
 
     it('composes the lead manager workspace from the canonical pipeline stage', async () => {

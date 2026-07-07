@@ -113,6 +113,81 @@ body[data-page-group="mgmt"] .kanban-cards {
     overflow-x: hidden;
 }
 
+.lead-date-row {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.lead-event-details {
+    display: grid;
+    gap: 10px;
+    margin: -2px 0 12px;
+    padding: 12px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 8px;
+    background: #F8FAFC;
+}
+
+.lead-event-details[hidden] {
+    display: none !important;
+}
+
+.lead-event-details-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.lead-event-total {
+    flex: 0 0 auto;
+    color: #047857;
+}
+
+.lead-event-guests-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    overflow: hidden;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.lead-event-guests-table th,
+.lead-event-guests-table td {
+    padding: 8px;
+    border-bottom: 1px solid #E2E8F0;
+    color: #334155;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.lead-event-guests-table thead th {
+    background: #EEF2FF;
+    color: #3730A3;
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+.lead-event-guests-table tbody tr:last-child th,
+.lead-event-guests-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.lead-event-guests-table label {
+    margin: 0;
+    color: inherit;
+    font-size: 12px;
+}
+
+.lead-event-guests-table input {
+    text-align: right;
+}
+
 .lead-celebrants-editor {
     display: flex;
     flex-direction: column;
@@ -411,6 +486,35 @@ body.dark-mode .lead-active-queue-hint {
     border-color: rgba(96,165,250,0.24);
     background: rgba(59,130,246,0.12);
     color: #BFDBFE;
+}
+
+body.dark-mode .lead-event-details {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.12);
+}
+
+body.dark-mode .lead-event-details-head {
+    color: #CBD5E1;
+}
+
+body.dark-mode .lead-event-total {
+    color: #A7F3D0;
+}
+
+body.dark-mode .lead-event-guests-table {
+    background: rgba(15,23,42,0.42);
+    border-color: rgba(255,255,255,0.10);
+}
+
+body.dark-mode .lead-event-guests-table th,
+body.dark-mode .lead-event-guests-table td {
+    border-color: rgba(255,255,255,0.10);
+    color: #E2E8F0;
+}
+
+body.dark-mode .lead-event-guests-table thead th {
+    background: rgba(99,102,241,0.16);
+    color: #C7D2FE;
 }
 
 body.dark-mode .lead-celebrant-row {

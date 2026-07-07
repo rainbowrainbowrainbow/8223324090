@@ -1681,8 +1681,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.46')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.46')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.47')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.47')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -1949,6 +1949,17 @@ checkPage('leads.html', (doc, html) => {
     check('Leads explainability region exists', !!doc.getElementById('leadsExplainability'));
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
+    check('Lead modal date details collects child and adult guest counts safely',
+        !!doc.getElementById('leadEventDetails')
+        && doc.getElementById('leadEventDate')?.getAttribute('aria-controls') === 'leadEventDetails'
+        && doc.getElementById('leadAdultsCount')?.type === 'number'
+        && doc.getElementById('leadGuestsTotal')
+        && leadPageStyles.includes('.lead-event-details')
+        && leadPageStyles.includes('.lead-event-guests-table')
+        && leadPageCode.includes("const LEAD_GUEST_NOTE_PREFIX = 'Гості на бажану дату:'")
+        && leadPageCode.includes('function notesWithLeadGuestSummary')
+        && leadPageCode.includes('function guestCountsFromLeadNotes')
+        && leadPageCode.includes("const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadAdultsCount'"));
     check('Lead celebrants use structured rows with birthday and preview', doc.getElementById('leadCelebrants')?.hasAttribute('hidden') && doc.getElementById('ccCelebrants')?.hasAttribute('hidden') && doc.getElementById('leadCelebrantsRows') && doc.getElementById('ccCelebrantsRows') && doc.getElementById('leadCelebrantsPreview') && doc.getElementById('ccCelebrantsPreview') && html.includes('data-celebrants-editor="leadCelebrants"') && html.includes('data-celebrants-editor="ccCelebrants"') && leadPageCode.includes('function renderCelebrantsEditor') && leadPageCode.includes('function getCelebrantsPayload') && leadPageCode.includes('function isCelebrantsEditorDirty') && leadPageCode.includes("if (!editId || leadCelebrantsDirty) body.celebrants = leadCelebrants") && leadPageCode.includes('if (ccCelebrantsDirty) leadBody.celebrants = body.celebrants || []') && leadPageStyles.includes('.lead-celebrant-row') && leadPageStyles.includes('.lead-celebrants-preview'));
     check('Lead edit modal celebrants layout stays inside the dialog', leadPageStyles.includes('#leadModal .lead-modal') && leadPageStyles.includes('overflow-x: hidden;') && leadPageStyles.includes('grid-template-columns: minmax(140px, 1.4fr) minmax(130px, 1fr) minmax(76px, .55fr) 40px') && leadPageStyles.includes('grid-column: 1 / -1;') && leadPageStyles.includes('body.dark-mode .lead-celebrant-remove'));
     check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
@@ -3462,6 +3473,11 @@ check('Lead deal drag opens customer card flow instead of booking prompt', leads
 const updateLeadStageBlock = sourceBlock(leadsCode, 'async function updateLeadStage', '// ==========================================\n// LEAD TYPE MENU');
 const loadLeadsBlock = sourceBlock(leadsCode, 'async function loadLeads', 'async function loadLeadQueueStats');
 const loadLeadQueueStatsBlock = sourceBlock(leadsCode, 'async function loadLeadQueueStats', 'function leadQueueMeta');
+const leadCustomerFallbackSearchBlock = sourceBlock(leadsCode, 'async function loadLeadCustomerSearchFallback', 'function leadCustomerFallbackChildrenText');
+const renderLeadCustomerFallbackBlock = sourceBlock(leadsCode, 'function renderLeadCustomerSearchFallback', 'function resetLeadFilters');
+const prefillLeadFromCustomerFallbackBlock = sourceBlock(leadsCode, 'function prefillLeadModalFromCustomer', 'function openLeadFromCustomerFallback');
+const openLeadFromCustomerFallbackBlock = sourceBlock(leadsCode, 'function openLeadFromCustomerFallback', 'function editLead');
+const leadCustomerSearchEndpointCount = (leadsCode.match(/\/api\/customers\/search/g) || []).length;
 const legacyLeadPatchRouteBlock = sourceBlock(leadsRouteCode, "router.patch('/:id', async", "// POST /api/leads/:id/collaboration-task");
 check('Lead deal stage refreshes kanban even when customer card prompt is dismissed',
     updateLeadStageBlock.includes("const openedCustomerCard = stage === 'deal'")
@@ -3510,6 +3526,39 @@ check('Lead kanban load ignores stale responses before rendering',
     && loadLeadsBlock.indexOf('if (loadSeq !== leadLoadSeq) return;') < loadLeadsBlock.indexOf('leadsData = leads;')
     && loadLeadsBlock.indexOf('if (loadSeq !== leadLoadSeq) return;') < loadLeadsBlock.indexOf('renderKanban();')
     && !loadLeadQueueStatsBlock.includes('leadStatsData ='));
+check('Lead page only adds customer search to the empty lead fallback path',
+    leadCustomerSearchEndpointCount === 2
+    && leadsCode.includes("apiFetch(`/api/customers/search?q=")
+    && leadsCode.includes('const LEAD_CUSTOMER_FALLBACK_LIMIT = 5')
+    && leadsCode.includes('let leadCustomerSearchMatches = []')
+    && leadsCode.includes("let leadCustomerSearchQuery = ''")
+    && loadLeadsBlock.includes('leadsData.length === 0 && shouldLoadLeadCustomerFallback(search)')
+    && loadLeadsBlock.includes('leadCustomerSearchQuery = search;')
+    && loadLeadsBlock.indexOf('leadsData = leads;') < loadLeadsBlock.indexOf('leadCustomerSearchMatches = await loadLeadCustomerSearchFallback(search);')
+    && /leadCustomerSearchMatches = await loadLeadCustomerSearchFallback\(search\);\s*if \(loadSeq !== leadLoadSeq\) return;/.test(loadLeadsBlock)
+    && leadCustomerFallbackSearchBlock.includes("fetch(leadApiUrl(`/api/customers/search?${params}`)")
+    && leadCustomerFallbackSearchBlock.includes('res.status === 401 || res.status === 403 || !res.ok')
+    && !leadCustomerFallbackSearchBlock.includes('apiFetch'));
+check('Lead empty search customer fallback exposes explicit customer actions',
+    renderLeadCustomerFallbackBlock.includes('lead-customer-search-fallback')
+    && renderLeadCustomerFallbackBlock.includes('Ліда не знайдено, але є клієнт')
+    && renderLeadCustomerFallbackBlock.includes('Відкрити клієнта')
+    && renderLeadCustomerFallbackBlock.includes('Створити лід')
+    && renderLeadCustomerFallbackBlock.includes('без автозбереження')
+    && renderLeadCustomerFallbackBlock.includes("leadCrmContextHref('/customers', { open: customer.id }")
+    && renderLeadCustomerFallbackBlock.includes('data-lead-customer-create-lead')
+    && renderLeadCustomerFallbackBlock.includes('data-lead-write-action="true"'));
+check('Lead customer fallback create action only prefills the existing add-lead modal',
+    leadsCode.includes("const createFromCustomer = e.target.closest('[data-lead-customer-create-lead]')")
+    && openLeadFromCustomerFallbackBlock.includes('openAddModal();')
+    && openLeadFromCustomerFallbackBlock.includes('prefillLeadModalFromCustomer(customer);')
+    && !/apiFetch|fetch\s*\(|saveLead\s*\(/.test(openLeadFromCustomerFallbackBlock)
+    && prefillLeadFromCustomerFallbackBlock.includes("document.getElementById('leadName')")
+    && prefillLeadFromCustomerFallbackBlock.includes("document.getElementById('leadPhone')")
+    && prefillLeadFromCustomerFallbackBlock.includes("document.getElementById('leadInstagram')")
+    && prefillLeadFromCustomerFallbackBlock.includes("document.getElementById('leadNotes')")
+    && prefillLeadFromCustomerFallbackBlock.includes('modalInitialState = getModalState();')
+    && prefillLeadFromCustomerFallbackBlock.includes('UnsafeDismissGuard'));
 check('Lead customer stages auto-create or link a SQL customer card',
     leadsRouteCode.includes('const CUSTOMER_CARD_PIPELINE_STAGES = new Set')
     && leadsRouteCode.includes("'deposit_received'")
@@ -5059,7 +5108,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.46')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.47')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -5068,8 +5117,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.46')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.46')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.47')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.47')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5508,7 +5557,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.46') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.46') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.47') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.47') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

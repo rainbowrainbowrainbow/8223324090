@@ -732,7 +732,36 @@ function buildLeadListFilters(query, businessScope) {
     if (search) {
         const pattern = `%${search}%`;
         params.push(pattern);
-        conditions.push(`(l.client_name ILIKE $${params.length} OR l.phone ILIKE $${params.length} OR l.instagram ILIKE $${params.length})`);
+        const searchRef = `$${params.length}`;
+        const linkedCustomerSearchSql = `
+            (
+                COALESCE(c.name, '') ILIKE ${searchRef}
+                OR COALESCE(c.phone, '') ILIKE ${searchRef}
+                OR COALESCE(c.instagram, '') ILIKE ${searchRef}
+                OR COALESCE(c.child_name, '') ILIKE ${searchRef}
+                OR COALESCE(c.social_identities::text, '') ILIKE ${searchRef}
+            )`;
+        conditions.push(`(
+            l.client_name ILIKE ${searchRef}
+            OR l.phone ILIKE ${searchRef}
+            OR l.instagram ILIKE ${searchRef}
+            OR EXISTS (
+                SELECT 1
+                FROM customers c
+                WHERE c.lead_id = l.id
+                  AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                  AND ${linkedCustomerSearchSql}
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM lead_customer_links lcl
+                JOIN customers c ON c.id = lcl.customer_id
+                WHERE lcl.lead_id = l.id
+                  AND COALESCE(lcl.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                  AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(l.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                  AND ${linkedCustomerSearchSql}
+            )
+        )`);
     }
     if (query.event_date) {
         params.push(query.event_date);

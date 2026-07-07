@@ -11,15 +11,15 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.78.46">
-    <link rel="stylesheet" href="css/layout.css?v=0.78.46">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.46">
-    <link rel="stylesheet" href="css/pages.css?v=0.78.46">
-    <link rel="stylesheet" href="css/pages-leads.css?v=0.78.46">
-    <link rel="stylesheet" href="css/modals.css?v=0.78.46">
-    <link rel="stylesheet" href="css/entity-card.css?v=0.78.46">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.46">
-    <link rel="stylesheet" href="css/responsive.css?v=0.78.46">
+    <link rel="stylesheet" href="css/base.css?v=0.78.47">
+    <link rel="stylesheet" href="css/layout.css?v=0.78.47">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.78.47">
+    <link rel="stylesheet" href="css/pages.css?v=0.78.47">
+    <link rel="stylesheet" href="css/pages-leads.css?v=0.78.47">
+    <link rel="stylesheet" href="css/modals.css?v=0.78.47">
+    <link rel="stylesheet" href="css/entity-card.css?v=0.78.47">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.78.47">
+    <link rel="stylesheet" href="css/responsive.css?v=0.78.47">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1032,15 +1032,35 @@
                     </select>
                 </div>
             </div>
-            <div class="form-row">
+            <div class="form-row lead-date-row">
                 <div class="form-group">
                     <label>Бажана дата</label>
-                    <input type="date" id="leadEventDate">
+                    <input type="date" id="leadEventDate" aria-controls="leadEventDetails">
                 </div>
-                <div class="form-group">
-                    <label>Кількість дітей</label>
-                    <input type="number" id="leadChildrenCount" min="1" max="100" placeholder="10">
+            </div>
+            <div class="lead-event-details" id="leadEventDetails" hidden>
+                <div class="lead-event-details-head">
+                    <span id="leadEventDetailsTitle">Деталі бажаної дати</span>
+                    <span class="lead-event-total" id="leadGuestsTotal">0 гостей</span>
                 </div>
+                <table class="lead-event-guests-table" aria-labelledby="leadEventDetailsTitle">
+                    <thead>
+                        <tr>
+                            <th scope="col">Категорія</th>
+                            <th scope="col">Кількість</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="leadChildrenCount">Діти</label></th>
+                            <td><input type="number" id="leadChildrenCount" min="0" max="200" inputmode="numeric" placeholder="0"></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="leadAdultsCount">Дорослі</label></th>
+                            <td><input type="number" id="leadAdultsCount" min="0" max="200" inputmode="numeric" placeholder="0"></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
             <div class="form-group">
                 <label>Іменинники / діти</label>
@@ -1304,14 +1324,14 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.78.46"></script>
-    <script src="js/notification.js?v=0.78.46"></script>
-    <script src="js/api.js?v=0.78.46"></script>
-    <script src="js/auth.js?v=0.78.46"></script>
-    <script src="js/components/sidebar.js?v=0.78.46"></script>
+    <script src="js/config.js?v=0.78.47"></script>
+    <script src="js/notification.js?v=0.78.47"></script>
+    <script src="js/api.js?v=0.78.47"></script>
+    <script src="js/auth.js?v=0.78.47"></script>
+    <script src="js/components/sidebar.js?v=0.78.47"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/event-cards.js?v=0.78.46"></script>
-    <script src="js/leads-page.js?v=0.78.46"></script>
-    <script src="js/ui.js?v=0.78.46"></script>
-    <script src="js/alerts.js?v=0.78.46"></script></body>
+    <script src="js/event-cards.js?v=0.78.47"></script>
+    <script src="js/leads-page.js?v=0.78.47"></script>
+    <script src="js/ui.js?v=0.78.47"></script>
+    <script src="js/alerts.js?v=0.78.47"></script></body>
 </html>

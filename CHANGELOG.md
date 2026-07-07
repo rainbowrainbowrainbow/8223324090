@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.47 - Lead Customer Search Fallback
+
+### Ліди / Пошук / Клієнти / (Клешня, 07.07.2026) [codex]
+- **Порожній пошук лідів тепер підказує клієнтів** - якщо у воронці ліда не знайдено, CRM показує блок `Ліда не знайдено, але є клієнт` без додавання клієнта в лічильники лідів.
+- **Менеджер має безпечні дії з fallback** - можна відкрити картку клієнта або відкрити форму нового ліда з prefill; лід не створюється без явного save.
+- **Backend пошук лідів бачить вже прив'язаних клієнтів** - `/api/leads?search=...` шукає по `customers.lead_id` і `lead_customer_links`, але не показує клієнтів без ліда як fake lead rows.
+- **Форма ліда отримала деталізацію гостей на бажану дату** - після вибору дати можна окремо вказати дітей і дорослих, а службовий підсумок зберігається в нотатках.
+- **Додано regression guards** - `tests/ui-check.js` фіксує fallback UI, відсутність автозбереження, guest details, а `tests/route-smoke.test.js` перевіряє пошук через linked customers без дублікатів pagination.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend лідів, backend read search для `/api/leads`, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.46 - Lead Modal Celebrants Layout
 
 ### Ліди / Редагування / Іменинники / (Клешня, 07.07.2026) [codex]

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.55 - Lead Conversion Handoff Guard
+
+### Ліди / Kanban / Timeline / Hotfix / (Клешня, 08.07.2026) [codex]
+- **Збережено URL handoff після переходу з Kanban у Timeline** - business-context routing більше не скидає `leadId`, `date`, `eventDate` і `bookingMode` на canonical `/` перед відкриттям drawer.
+- **Конвертація ліда тепер доходить до booking drawer на live-сайті** - `Бронь з активністю` і `Бронь з їжею та кімнатою` не гублять контекст під час стартової ініціалізації Timeline.
+- **Додано regression coverage** - static UI guard фіксує, що business-context navigation не перетирає lead booking conversion query.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - hotfix обмежений frontend route guard, тестом і version/cache refs.
+
+---
+
 ## v0.78.54 - Lead Kanban Booking Conversion
 
 ### Ліди / Kanban / Бронювання / (Клешня, 08.07.2026) [codex]

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.78.64 - Cake Decorations Follow-up
+
+### Бронювання / Оформлення торта / (Клешня, 08.07.2026) [codex]
+- **Backend контракт `bookingPackage` уточнено** — create/update тепер приймає top-level `bookingPackage.menuPositions` і `bookingPackage.serviceEvents`, щоб API payload не втрачав structured меню.
+- **Mobile cart warning для індивідуального оформлення читабельний** — bottom sheet піднято над footer, фон ущільнено, збереження лишилось неблокуючим.
+- **Cache/version markers синхронізовано** — visible version, asset tags, Service Worker і `/api/version` піднято до `0.78.64`.
+
+---
+
 ## v0.78.63 - Cake Decorations Menu Guard
 
 ### Бронювання / Оформлення торта / QA / (Клешня, 08.07.2026) [codex]

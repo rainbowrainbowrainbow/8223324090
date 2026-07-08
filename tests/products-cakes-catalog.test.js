@@ -11,6 +11,7 @@ function read(relPath) {
 
 const migration = read('db/migrations/201_kitchen_cakes_catalog.sql');
 const menuMigration = read('db/migrations/220_kitchen_menu_2026_catalog.sql');
+const cakeDecorationsMigration = read('db/migrations/283_kitchen_cake_decorations_catalog.sql');
 
 const expectedCakes = [
     ['Три шоколади', 110, 1, 'Три шари ніжного мусу на основі бельгійського шоколаду. Легкий, повітряний, делікатний смак із мʼякою шоколадною гармонією.'],
@@ -31,6 +32,14 @@ const expectedCakes = [
     ['Червоний оксамит', 115, 16, 'Мʼякі червоні коржі та вершковий крем-чіз. Ніжна текстура і делікатний смак, у який легко закохатись.'],
     ['Лісова казка', 105, 17, 'Шаровий зріз із природними кольорами коржів, ароматом халви й горіхами. Дуже ефектний і незвичний торт.'],
     ['Баунті', 100, 18, 'Шоколадний бісквіт і соковита кокосова прошарка. Ніжний тропічний смак із мʼякою текстурою.']
+];
+
+const expectedCakeDecorations = [
+    ['Солодощі', 250, null, 1],
+    ['Ягідне оформлення', 500, null, 2],
+    ['Рисова картинка', 150, 'Будь-яка тематика', 3],
+    ['Крем + напис', 0, 'Безкоштовно', 4],
+    ['Індивідуальне оформлення', 0, 'Прораховується окремо', 5]
 ];
 
 test('cakes catalog migration contains the approved 18 records in fixed order', () => {
@@ -114,4 +123,38 @@ test('menu 2026 migration is scoped to kitchen menu products and preserves price
     assert.match(menuMigration, /'грн\/' \|\| serving_unit/);
     assert.match(menuMigration, /'0,2 л \/ 1 л - 50 \/ 180 грн'/);
     assert.doesNotMatch(menuMigration, /kitchen_type = 'cake'/);
+});
+
+test('cake decorations migration seeds the approved 5 menu records in fixed order', () => {
+    const rowMatches = [...cakeDecorationsMigration.matchAll(/^\('cake_decor_[^']+',\s*'CAKEDECOR-(\d{3})',\s*'([^']+)',\s*'Оформлення торта',\s*'[^']+',\s*(\d+),\s*'додаток',\s*(NULL|'[^']+'),\s*'[^']+',\s*'[^']+',\s*(\d+)\)/gm)];
+
+    assert.equal(rowMatches.length, 5);
+    for (const [index, match] of rowMatches.entries()) {
+        const [name, price, note, sortOrder] = expectedCakeDecorations[index];
+        assert.equal(Number(match[1]), index + 1);
+        assert.equal(match[2], name);
+        assert.equal(Number(match[3]), price);
+        assert.equal(match[4] === 'NULL' ? null : match[4].slice(1, -1), note);
+        assert.equal(Number(match[5]), sortOrder);
+    }
+});
+
+test('cake decorations migration is scoped to kitchen menu products and preserves price rules', () => {
+    assert.match(cakeDecorationsMigration, /MIGRATION_KIND: seed/);
+    assert.match(cakeDecorationsMigration, /DATA_SCOPE: Products \/ Kitchen \/ Menu \/ Cake decorations/);
+    assert.match(cakeDecorationsMigration, /business_context = 'event_genix'/);
+    assert.match(cakeDecorationsMigration, /domain = 'kitchen'/);
+    assert.match(cakeDecorationsMigration, /kitchen_type = 'menu'/);
+    assert.match(cakeDecorationsMigration, /category = 'menu'/);
+    assert.match(cakeDecorationsMigration, /menu_section = c\.menu_section/);
+    assert.match(cakeDecorationsMigration, /serving_unit = c\.serving_unit/);
+    assert.match(cakeDecorationsMigration, /price_variant_note = c\.price_variant_note/);
+    assert.match(cakeDecorationsMigration, /availability_status = 'active'/);
+    assert.match(cakeDecorationsMigration, /ON CONFLICT \(id\) DO UPDATE SET/);
+    assert.match(cakeDecorationsMigration, /lower\(trim\(p\.name\)\) = lower\(trim\(c\.name\)\)/);
+    assert.match(cakeDecorationsMigration, /INSERT INTO price_rules/);
+    assert.match(cakeDecorationsMigration, /'грн\/' \|\| serving_unit AS unit/);
+    assert.match(cakeDecorationsMigration, /'Центральна ціна для оформлення торта: ' \|\| name AS description/);
+    assert.match(cakeDecorationsMigration, /updated_by = 'migration_283_kitchen_cake_decorations_catalog'/);
+    assert.doesNotMatch(cakeDecorationsMigration, /kitchen_type = 'cake'/);
 });

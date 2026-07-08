@@ -40,6 +40,7 @@ test('products compatibility page keeps business-aware products IA with restored
     assert.match(html, /css\/pages-products\.css/);
     assert.match(html, /Холодні закуски/);
     assert.match(html, /Коктейлі та холодні напої/);
+    assert.match(html, /<option value="Оформлення торта"><\/option>/);
     assert.match(html, /id="productDocumentModal"/);
     assert.match(html, /Картку перевірено вручну/);
     assert.match(html, /Картка відповідає документу/);
@@ -78,6 +79,7 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /renderKitchenProducts/);
     assert.match(pageJs, /renderMenuSectionFilter/);
     assert.match(pageJs, /MENU_SECTION_ORDER/);
+    assert.match(pageJs, /'Оформлення торта'/);
     assert.match(pageJs, /getMenuCompleteness/);
     assert.match(pageJs, /menuSection/);
     assert.match(pageJs, /weightValue/);

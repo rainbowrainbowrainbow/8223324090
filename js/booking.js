@@ -3551,6 +3551,12 @@ const BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS = [
         label: 'Холодні напої',
         aliases: ['коктейлі та холодні напої', 'холодні напої', 'коктейлі'],
         patterns: [/сік|сок|вода|лимонад|коктейл|молочн|морс|компот|кола|cola|швепс|schweppes|холодн.*нап/]
+    },
+    {
+        key: 'section:cake-decorations',
+        label: 'Оформлення торта',
+        aliases: ['оформлення торта', 'оформлення', 'декор', 'декор торта'],
+        patterns: [/оформл|декор|солодощ|ягід|ягод|рисов|картинк|крем\s*\+\s*напис|крем.*напис|напис.*торт|індивідуальн/]
     }
 ];
 const BOOKING_MENU_CATALOG_INSIGHT_MODES = Object.freeze({

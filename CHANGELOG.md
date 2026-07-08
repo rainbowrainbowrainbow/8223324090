@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.62 - Cake Decorations Menu
+
+### Кухня / Торти / Оформлення / Booking catalog / (Клешня, 08.07.2026) [codex]
+- **Оформлення тортів винесено в окремий розділ меню** - додано seed-міграцію з 5 позиціями `Оформлення торта`: солодощі, ягоди, рисова картинка, крем + напис та індивідуальне оформлення.
+- **Products UI показує новий розділ кухні** - `Оформлення торта` додано в порядок menu section chips і в datalist форми продукту.
+- **Booking catalog отримав окремий таб для декору** - нові позиції не падають в `Інше меню`, а самі торти залишаються в існуючому табі `Торти`.
+- **Додано regression coverage** - migration, Products IA і booking drawer тести перевіряють 5 seed-позицій, UI section і booking filter.
+- **Production impact: є DB seed migration** - зміна додає kitchen/menu продукти й linked `price_rules`; auth/roles, billing, env/secrets, Railway settings і protected booking detail flow не змінювались.
+
+---
+
 ## v0.78.61 - Customer Dietary Tags UI
 
 ### Клієнти / Діти / Харчування / Booking drawer / (Клешня, 08.07.2026) [codex]

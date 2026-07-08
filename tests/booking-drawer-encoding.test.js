@@ -778,6 +778,9 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.match(bookingJs, /data-menu-insight-save/);
     assert.match(bookingJs, /BOOKING_MENU_CATALOG_FOOD_SECTION_FILTERS/);
     assert.match(bookingJs, /section:pizza/);
+    assert.match(bookingJs, /section:cake-decorations/);
+    assert.match(bookingJs, /Оформлення торта/);
+    assert.match(bookingJs, /aliases: \['оформлення торта', 'оформлення', 'декор', 'декор торта'\]/);
     assert.match(bookingJs, /Холодні закуски/);
     assert.match(bookingJs, /Холодні напої/);
     assert.doesNotMatch(bookingJs, /key:\s*'food'/);

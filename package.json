@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.61",
+  "version": "0.78.62",
   "eventGenix": {
-    "releaseLabel": "Customer Dietary Tags UI"
+    "releaseLabel": "Cake Decorations Menu"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

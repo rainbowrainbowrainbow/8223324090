@@ -377,6 +377,8 @@ describe('Hermes capabilities route auth', () => {
                 'menu_photos.jobs.create',
                 'menu_photos.apply',
                 'menu_photos.reject',
+                'menu_photos.approval.preview',
+                'menu_photos.approval.callback_dry_run',
                 'hermes_jobs.queue',
                 'hermes_jobs.read',
                 'hermes_jobs.create',

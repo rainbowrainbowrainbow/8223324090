@@ -67,6 +67,10 @@ const {
 } = require('../services/menuImageDrafts');
 const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
 const {
+    createMenuPhotoApprovalCallbackDryRunHandler,
+    createMenuPhotoApprovalCardPreviewHandler
+} = require('../services/menuPhotoApprovalCards');
+const {
     createTaskWatchdogCallbackDryRunHandler,
     createTaskWatchdogPreviewHandler
 } = require('../services/taskWatchdogRoutes');
@@ -120,6 +124,8 @@ const SUPPORTED_ACTIONS = [
     'menu_photos.jobs.create',
     'menu_photos.apply',
     'menu_photos.reject',
+    'menu_photos.approval.preview',
+    'menu_photos.approval.callback_dry_run',
     'hermes_jobs.queue',
     'hermes_jobs.read',
     'hermes_jobs.create',
@@ -1919,6 +1925,9 @@ function buildCapabilitiesPayload(env = process.env) {
                 externalDraft: 'POST /api/hermes/menu-photos/:productId/external-draft',
                 createJobs: 'POST /api/hermes/menu-photos/jobs',
                 createJobsLimit: HERMES_MENU_PHOTO_JOB_BATCH_LIMIT,
+                approvalPreview: 'POST /api/hermes/menu-photos/approval-card/preview',
+                approvalCallbackDryRun: 'POST /api/hermes/menu-photos/approval-card/callback-dry-run',
+                approvalCallbackData: 'egmp:<token>',
                 apply: 'POST /api/hermes/menu-photos/:productId/apply',
                 reject: 'POST /api/hermes/menu-photos/:productId/reject'
             },
@@ -1999,6 +2008,8 @@ function createHermesRouter(options = {}) {
 
     const taskWatchdogPreviewHandler = createTaskWatchdogPreviewHandler({ pool: query });
     const taskWatchdogCallbackDryRunHandler = createTaskWatchdogCallbackDryRunHandler({ pool: query });
+    const menuPhotoApprovalCardPreviewHandler = createMenuPhotoApprovalCardPreviewHandler();
+    const menuPhotoApprovalCallbackDryRunHandler = createMenuPhotoApprovalCallbackDryRunHandler();
 
     router.get('/task-watchdog/preview', taskWatchdogPreviewHandler);
     router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
@@ -2612,6 +2623,9 @@ function createHermesRouter(options = {}) {
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes menu photo candidates failed');
         }
     });
+
+    router.post('/menu-photos/approval-card/preview', menuPhotoApprovalCardPreviewHandler);
+    router.post('/menu-photos/approval-card/callback-dry-run', menuPhotoApprovalCallbackDryRunHandler);
 
     router.get('/menu-photos/:productId', async (req, res) => {
         try {

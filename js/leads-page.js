@@ -236,6 +236,10 @@ let kanbanLeadTypeMenuEventsBound = false;
 let kanbanLeadTypeTriggerOpenedAt = 0;
 let kanbanLeadTypeTriggerOpenedLeadId = 0;
 let activeKanbanLeadTypePopover = null;
+let kanbanBookingConversionMenuEventsBound = false;
+let kanbanBookingConversionTriggerOpenedAt = 0;
+let kanbanBookingConversionTriggerOpenedLeadId = 0;
+let activeKanbanBookingConversionPopover = null;
 let leadTypeReasonRequest = null;
 const MAYSTERNYA_LEAD_TASK_PRESETS = {
     callback: {
@@ -369,6 +373,31 @@ function isMaysternyaLeadContext() {
 
 function leadConversionActionLabel() {
     return isMaysternyaLeadContext() ? 'Створити запис' : 'Конвертувати';
+}
+
+const LEAD_BOOKING_CONVERSION_MODES = Object.freeze({
+    activity: Object.freeze({ bookingMode: 'activity', timelineView: 'animators' }),
+    kitchen_room: Object.freeze({ bookingMode: 'kitchen_room', timelineView: 'rooms' })
+});
+
+const LEAD_BOOKING_CONVERSION_MENU_ITEMS = Object.freeze([
+    Object.freeze({
+        mode: 'activity',
+        icon: '🎭',
+        label: 'Бронь з активністю',
+        description: 'Свято / програма'
+    }),
+    Object.freeze({
+        mode: 'kitchen_room',
+        icon: '🍽',
+        label: 'Бронь з їжею та кімнатою',
+        description: 'Банкет / меню'
+    })
+]);
+
+function leadBookingConversionModeConfig(mode) {
+    const key = String(mode || '').trim();
+    return LEAD_BOOKING_CONVERSION_MODES[key] || null;
 }
 
 function syncLeadPresentationUi() {
@@ -536,7 +565,8 @@ function leadEventPreferenceFromLead(lead = {}) {
             rawPreference.date,
             rawPreference.eventDate,
             rawPreference.event_date,
-            lead.event_date
+            lead.event_date,
+            lead.eventDate
         ),
         childrenCount: leadGuestCountValue(
             rawPreference.childrenCount,
@@ -550,6 +580,19 @@ function leadEventPreferenceFromLead(lead = {}) {
             legacyCounts.adults
         )
     };
+}
+
+function leadConversionPreferredDate(lead = {}) {
+    const preference = leadEventPreferenceFromLead(lead);
+    return leadPreferenceDateValue(
+        preference.preferredDate,
+        preference.preferred_date,
+        lead.event_date,
+        lead.eventDate,
+        lead.booking_date,
+        lead.bookingDate,
+        lead.date
+    );
 }
 
 function isLeadBusinessReadOnly() {
@@ -637,7 +680,7 @@ function syncLeadReadOnlyUi() {
         '#lostReasonModal .btn-save',
         '#addMailingModal .btn-save'
     ].join(',')).forEach(el => {
-        const keepClickableForGuard = el.matches?.('[data-lead-type-select]');
+        const keepClickableForGuard = el.matches?.('[data-lead-type-select], [data-lead-booking-convert]');
         if ('disabled' in el) el.disabled = readOnly && !keepClickableForGuard;
         el.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
         el.classList.toggle('crm-business-readonly-control', readOnly);
@@ -716,6 +759,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     normalizeLeadCanonicalRoute();
     setupEvents();
     bindKanbanLeadTypeMenuEvents();
+    bindKanbanBookingConversionMenuEvents();
     applyLeadQueryParams();
     await loadUsers();
     await loadLeads();
@@ -2463,6 +2507,12 @@ function renderLeadTypeSelect(lead = {}) {
     </button>`;
 }
 
+function renderLeadBookingConversionButton(lead = {}) {
+    const leadId = Number(lead.id || 0);
+    const clientName = lead.client_name || 'лід';
+    return `<button type="button" draggable="false" class="kanban-action-btn kanban-booking-convert-btn" data-lead-booking-convert data-kanban-interactive="true" data-lead-id="${leadId}" aria-haspopup="menu" aria-expanded="false" aria-label="Створити бронь: ${escapeHtml(clientName)}" title="Створити бронь">📅</button>`;
+}
+
 function renderKanban() {
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
@@ -2546,6 +2596,7 @@ function renderKanban() {
                 <div class="kanban-card-actions" data-kanban-actions onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()">
                     ${phoneTel ? `<a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
                     <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>` : ''}
+                    ${renderLeadBookingConversionButton(l)}
                     <button class="kanban-action-btn" type="button" onclick="event.stopPropagation(); editLead(${l.id})" title="Редагувати">✎</button>
                 </div>
             </div>`;
@@ -2569,6 +2620,7 @@ function renderKanban() {
     }).join('');
 
     bindKanbanLeadTypeTriggerControls(kanbanWrap);
+    bindKanbanBookingConversionTriggerControls(kanbanWrap);
     setupKanbanDragDrop();
     syncLeadReadOnlyUi();
     syncLeadStageMovePendingUi();
@@ -2581,6 +2633,7 @@ function setupKanbanDragDrop() {
     cards.forEach(card => {
         card.querySelectorAll('a, button, select, [data-kanban-actions]').forEach(control => {
             if (control.matches?.('[data-lead-type-select]')) return;
+            if (control.matches?.('[data-lead-booking-convert]')) return;
             control.addEventListener('click', event => event.stopPropagation());
             control.addEventListener('pointerdown', event => event.stopPropagation());
         });
@@ -3042,6 +3095,19 @@ function closeDetachedLeadTypeMenus() {
     document.querySelectorAll('.type-menu-popup').forEach(el => el.remove());
 }
 
+function closeKanbanBookingConversionMenus() {
+    document.querySelectorAll('.lead-booking-conversion-popover').forEach(el => el.remove());
+    document.querySelectorAll('[data-lead-booking-convert][aria-expanded="true"]').forEach(control => {
+        control.setAttribute('aria-expanded', 'false');
+    });
+    activeKanbanBookingConversionPopover = null;
+}
+
+function closeDetachedBookingConversionMenus() {
+    if (!activeKanbanBookingConversionPopover && !document.querySelector('.lead-booking-conversion-popover')) return;
+    closeKanbanBookingConversionMenus();
+}
+
 function closestLeadTypeElement(target, selector) {
     const elementTarget = target?.nodeType === 1 ? target : target?.parentElement;
     return elementTarget?.closest?.(selector) || null;
@@ -3057,7 +3123,9 @@ function isKanbanInteractiveTarget(target) {
         '[data-kanban-actions]',
         '[data-kanban-interactive="true"]',
         '[data-lead-type-select]',
-        '.lead-type-popover'
+        '[data-lead-booking-convert]',
+        '.lead-type-popover',
+        '.lead-booking-conversion-popover'
     ].join(',')));
 }
 
@@ -3100,6 +3168,139 @@ function bindKanbanLeadTypeTriggerControls(root = document) {
             handleKanbanLeadTypeTriggerEvent(event);
         });
     });
+}
+
+function leadBookingConversionTriggerFromEvent(event) {
+    if (event?.currentTarget?.matches?.('[data-lead-booking-convert]')) {
+        return event.currentTarget;
+    }
+    return closestLeadTypeElement(event?.target, '[data-lead-booking-convert]');
+}
+
+function handleKanbanBookingConversionTriggerEvent(event) {
+    const trigger = leadBookingConversionTriggerFromEvent(event);
+    if (!trigger) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (trigger.disabled) return;
+
+    const leadId = Number(trigger.dataset.leadId || 0);
+    if (!leadId) return;
+    const justOpened = kanbanBookingConversionTriggerOpenedLeadId === leadId
+        && Date.now() - kanbanBookingConversionTriggerOpenedAt < 700;
+    if (justOpened) return;
+
+    kanbanBookingConversionTriggerOpenedAt = Date.now();
+    kanbanBookingConversionTriggerOpenedLeadId = leadId;
+    if (!guardLeadWrite('створювати бронювання з ліда')) return;
+
+    showKanbanBookingConversionMenu(leadId, event);
+}
+
+function bindKanbanBookingConversionTriggerControls(root = document) {
+    root.querySelectorAll('[data-lead-booking-convert]').forEach(trigger => {
+        if (trigger.dataset.leadBookingConversionTriggerBound === 'true') return;
+        trigger.dataset.leadBookingConversionTriggerBound = 'true';
+        trigger.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            handleKanbanBookingConversionTriggerEvent(event);
+        });
+    });
+}
+
+function bindKanbanBookingConversionMenuEvents() {
+    if (kanbanBookingConversionMenuEventsBound) return;
+    kanbanBookingConversionMenuEventsBound = true;
+
+    const handleTriggerCapture = event => {
+        const trigger = leadBookingConversionTriggerFromEvent(event);
+        if (trigger) {
+            handleKanbanBookingConversionTriggerEvent(event);
+            return;
+        }
+        if (closestLeadTypeElement(event.target, '.lead-booking-conversion-popover')) {
+            event.stopPropagation();
+            return;
+        }
+    };
+
+    document.addEventListener('pointerdown', handleTriggerCapture, true);
+    document.addEventListener('mousedown', handleTriggerCapture, true);
+    document.addEventListener('touchstart', handleTriggerCapture, true);
+
+    document.addEventListener('click', event => {
+        const option = closestLeadTypeElement(event.target, '[data-lead-booking-conversion-option]');
+        if (option) {
+            event.preventDefault();
+            event.stopPropagation();
+            const leadId = Number(option.dataset.leadId || 0);
+            updateLeadBookingConversionFromKanban(leadId, option.dataset.bookingMode || '', event);
+            return;
+        }
+
+        const trigger = closestLeadTypeElement(event.target, '[data-lead-booking-convert]');
+        if (trigger) {
+            handleKanbanBookingConversionTriggerEvent(event);
+            return;
+        }
+
+        if (!closestLeadTypeElement(event.target, '.lead-booking-conversion-popover')) {
+            closeKanbanBookingConversionMenus();
+        }
+    }, true);
+
+    document.addEventListener('scroll', event => {
+        if (closestLeadTypeElement(event.target, '.lead-booking-conversion-popover')) return;
+        closeDetachedBookingConversionMenus();
+    }, true);
+
+    window.addEventListener('resize', closeDetachedBookingConversionMenus);
+}
+
+function showKanbanBookingConversionMenu(leadId, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const trigger = leadBookingConversionTriggerFromEvent(event)
+        || document.querySelector(`[data-lead-booking-convert][data-lead-id="${Number(leadId)}"]`);
+    if (!trigger) return;
+    if (!guardLeadWrite('створювати бронювання з ліда')) return;
+
+    const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
+    closeKanbanLeadTypeMenus();
+    closeKanbanBookingConversionMenus();
+    if (wasOpen) return;
+
+    trigger.setAttribute('aria-expanded', 'true');
+    const rect = trigger.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'lead-booking-conversion-popover';
+    menu.setAttribute('role', 'menu');
+    menu.dataset.leadId = String(leadId);
+    menu.style.top = `${Math.round(rect.bottom + 8)}px`;
+    menu.style.left = `${Math.round(Math.max(8, Math.min(rect.left, window.innerWidth - 256)))}px`;
+    menu.innerHTML = LEAD_BOOKING_CONVERSION_MENU_ITEMS.map(item => `<button type="button" class="lead-booking-conversion-item" role="menuitem" data-lead-booking-conversion-option="true" data-lead-id="${Number(leadId)}" data-booking-mode="${escapeHtml(item.mode)}">
+        <span class="lead-booking-conversion-icon" aria-hidden="true">${item.icon}</span>
+        <span class="lead-booking-conversion-copy">
+            <span class="lead-booking-conversion-label">${escapeHtml(item.label)}</span>
+            <span class="lead-booking-conversion-description">${escapeHtml(item.description)}</span>
+        </span>
+    </button>`).join('');
+    document.body.appendChild(menu);
+    activeKanbanBookingConversionPopover = { leadId: Number(leadId), trigger, menu };
+}
+
+async function updateLeadBookingConversionFromKanban(leadId, bookingMode, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    closeKanbanBookingConversionMenus();
+    if (!leadBookingConversionModeConfig(bookingMode)) return false;
+    if (!guardLeadWrite('створювати бронювання з ліда')) return false;
+    return convertLeadToBookingMode(leadId, bookingMode);
 }
 
 function showKanbanLeadTypeReadOnlyNotice(trigger) {
@@ -3203,6 +3404,7 @@ function showKanbanLeadTypeMenu(leadId, event) {
     const lead = leadsData.find(l => Number(l.id) === Number(leadId));
     const currentType = LEAD_TYPE_MAP[lead?.lead_type] ? lead.lead_type : 'quality';
     const wasOpen = trigger?.getAttribute('aria-expanded') === 'true';
+    closeKanbanBookingConversionMenus();
     closeKanbanLeadTypeMenus();
     if (wasOpen || !trigger) return;
 
@@ -4319,17 +4521,21 @@ async function convertLead(id, options = {}) {
     const params = new URLSearchParams();
     const customerName = customer?.name || leadRecordText(conversionLead, ['client_name', 'clientName', 'customerName', 'name']);
     const customerPhone = customer?.phone || leadRecordText(conversionLead, ['phone', 'clientPhone', 'customerPhone', 'contact_phone', 'contactPhone', 'contact', 'whatsapp']);
-    const rawEventDate = leadRecordText(conversionLead, ['event_date', 'eventDate', 'booking_date', 'bookingDate', 'date']);
+    const preferredEventDate = leadConversionPreferredDate(conversionLead);
     if (customer?.id) params.set('customerId', customer.id);
     if (customerName) params.set('customerName', customerName);
     if (customerPhone) params.set('customerPhone', customerPhone);
-    if (rawEventDate) {
-        const eventDate = String(rawEventDate).split('T')[0];
-        params.set('date', eventDate);
-        params.set('eventDate', eventDate);
+    if (preferredEventDate) {
+        params.set('date', preferredEventDate);
+        params.set('eventDate', preferredEventDate);
     }
     params.set('leadId', id);
     params.set('convert', 'booking');
+    const conversionMode = leadBookingConversionModeConfig(options.bookingMode || options.mode);
+    if (conversionMode) {
+        params.set('bookingMode', conversionMode.bookingMode);
+        params.set('timelineView', conversionMode.timelineView);
+    }
     if (isMaysternyaLeadContext()) {
         const topic = leadRecordText(conversionLead, ['topic', 'request_topic', 'requestTopic', 'sessionType', 'quality_category', 'qualityCategory', 'programName', 'program_name']);
         const message = leadRecordText(conversionLead, ['message', 'notes', 'comment', 'description']);
@@ -4344,6 +4550,10 @@ async function convertLead(id, options = {}) {
     }
     window.location.href = leadTimelineHref(Object.fromEntries(params.entries()), leadContextFromRecord(conversionLead));
     return true;
+}
+
+async function convertLeadToBookingMode(id, bookingMode, options = {}) {
+    return convertLead(id, { ...options, bookingMode });
 }
 
 async function offerDealCustomerCardFlow(leadId, lead = null, customer = null, mode = '') {
@@ -4938,3 +5148,5 @@ window.updateLeadTypeFromKanbanSelect = updateLeadTypeFromKanbanSelect;
 window.closeQualityCategoryModal = closeQualityCategoryModal;
 window.closeLostReasonModal = closeLostReasonModal;
 window.closeAddMailingModal = closeAddMailingModal;
+window.LEAD_BOOKING_CONVERSION_MODES = LEAD_BOOKING_CONVERSION_MODES;
+window.convertLeadToBookingMode = convertLeadToBookingMode;

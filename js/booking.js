@@ -6686,6 +6686,27 @@ function clearSelectedCustomerLinkIfEdited(el) {
     return false;
 }
 
+function leadConversionBookingModeFromContext() {
+    const mode = String(AppState.leadConversionContext?.bookingMode || '').trim();
+    return mode === 'activity' || mode === 'kitchen_room' ? mode : '';
+}
+
+function applyLeadConversionBookingModeToForm() {
+    const mode = leadConversionBookingModeFromContext();
+    if (!mode || AppState.editingBookingId) return false;
+    if (mode === 'activity') {
+        setBookingWorkspaceHasEvent(true, { markDirty: false });
+        setBookingKitchenEnabled(false, { markDirty: false });
+        return true;
+    }
+    if (mode === 'kitchen_room') {
+        setBookingWorkspaceHasEvent(false, { markDirty: false });
+        setBookingKitchenEnabled(true, { markDirty: false });
+        return true;
+    }
+    return false;
+}
+
 function applyLeadConversionContextToBookingForm() {
     const ctx = AppState.leadConversionContext;
     if (!ctx || !ctx.leadId || AppState.editingBookingId) return;
@@ -6742,6 +6763,7 @@ function applyLeadConversionContextToBookingForm() {
             ctx.page ? `Сторінка: ${ctx.page}` : null
         ].filter(Boolean).join('\n')
     });
+    applyLeadConversionBookingModeToForm();
     renderBookingPackageSummary();
 }
 
@@ -6753,6 +6775,7 @@ function clearLeadConversionContextAfterBooking(bookingId) {
     url.searchParams.delete('lead');
     url.searchParams.delete('convert');
     url.searchParams.delete('eventDate');
+    url.searchParams.delete('bookingMode');
     url.searchParams.delete('customerId');
     url.searchParams.delete('customerName');
     url.searchParams.delete('customerPhone');

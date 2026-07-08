@@ -1445,6 +1445,18 @@ function getTimelineLineGrid(lineId) {
         .find(grid => String(grid.dataset.lineId) === id) || null;
 }
 
+function normalizeLeadBookingMode(value) {
+    const mode = String(value || '').trim();
+    return mode === 'activity' || mode === 'kitchen_room' ? mode : '';
+}
+
+function leadConversionRequiredTimelineView(bookingMode) {
+    const mode = normalizeLeadBookingMode(bookingMode);
+    if (mode === 'activity') return TIMELINE_VIEW_ANIMATORS;
+    if (mode === 'kitchen_room') return TIMELINE_VIEW_ROOMS;
+    return '';
+}
+
 function getLeadConversionContextFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const leadId = parseInt(params.get('leadId') || params.get('lead'), 10);
@@ -1456,12 +1468,30 @@ function getLeadConversionContextFromUrl() {
         customerName: (params.get('customerName') || '').trim(),
         customerPhone: (params.get('customerPhone') || '').trim(),
         eventDate: /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : '',
+        bookingMode: normalizeLeadBookingMode(params.get('bookingMode')),
         topic: (params.get('topic') || '').trim(),
         message: (params.get('message') || '').trim(),
         source: (params.get('source') || '').trim(),
         page: (params.get('page') || '').trim(),
         sessionType: (params.get('sessionType') || '').trim()
     };
+}
+
+function enforceLeadConversionTimelineViewFromUrl(context = AppState.leadConversionContext) {
+    const requiredView = leadConversionRequiredTimelineView(context?.bookingMode);
+    if (!requiredView) return '';
+    if (requiredView === TIMELINE_VIEW_ROOMS && !canUseRoomTimelineView()) return '';
+    if (timelineCurrentView() === requiredView) return requiredView;
+    const url = new URL(window.location.href);
+    url.searchParams.set('timelineView', requiredView);
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+    return requiredView;
+}
+
+function leadConversionTimelineViewReady(context = AppState.leadConversionContext) {
+    const requiredView = leadConversionRequiredTimelineView(context?.bookingMode);
+    if (!requiredView) return true;
+    return timelineCurrentView() === requiredView;
 }
 
 function shouldAutoOpenLeadConversionBooking() {
@@ -1481,6 +1511,13 @@ async function maybeAutoOpenLeadConversionBooking() {
     if (_leadConversionAutoOpenAttempted || !shouldAutoOpenLeadConversionBooking()) return false;
     _leadConversionAutoOpenAttempted = true;
     if (typeof openTimelineCreateBookingFromToolbar !== 'function') return false;
+    enforceLeadConversionTimelineViewFromUrl(AppState.leadConversionContext);
+    if (!leadConversionTimelineViewReady(AppState.leadConversionContext)) {
+        if (typeof showNotification === 'function') {
+            showNotification('Не вдалося відкрити бронь у потрібному режимі таймлайну. Перевірте доступність вкладки «Банкети».', 'warning');
+        }
+        return false;
+    }
     const opened = await openTimelineCreateBookingFromToolbar();
     if (opened) clearLeadConversionOpenHint();
     return opened;
@@ -1509,6 +1546,7 @@ if (typeof window !== 'undefined') window.setTimelineDateInUrl = setTimelineDate
 
 function initializeTimeline() {
     AppState.leadConversionContext = getLeadConversionContextFromUrl();
+    enforceLeadConversionTimelineViewFromUrl(AppState.leadConversionContext);
     AppState.selectedDate = getTimelineDateFromUrl() || new Date();
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     updateTimelineViewControls();

@@ -162,7 +162,7 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /event\.preventDefault\(\)/);
         assert.match(staffPage, /openScheduleCell\(cell\)/);
         assert.doesNotMatch(renderSchedulePrimaryBlock, /renderScheduleHealthPanel\(health\)/);
-        assert.match(staffPage, /renderSummary\(filtered\)/);
+        assert.match(staffPage, /renderSummary\(filtered, dates\)/);
         assert.match(staffPage, /renderEmpRow\(emp, dates, today, health\)/);
         assert.match(staffPage, /class="sch-cell status-\$\{status\} \$\{loadClass\}[\s\S]*\$\{cellHealthClass\}"/);
         assert.doesNotMatch(renderEmpRowBlock, /attendanceClass|attendanceIndicator|renderScheduleAttendanceIndicator\(emp\.id|has-attendance-/);
@@ -467,6 +467,10 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /if \(StaffState\.activeDept !== 'all' && !options\.some\(option => option\.value === StaffState\.activeDept\)\) \{[\s\S]*StaffState\.activeDept = 'all'/);
         assert.match(staffPage, /function openFillWeekModal\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
         assert.match(staffPage, /if \(staffValue === 'all'\) \{[\s\S]*targetStaff = scheduleVisibleStaff\(\)/);
+        assert.match(staffPage, /function handleFillWeekSave\(\) \{[\s\S]*const dates = getScheduleDates\(\)[\s\S]*checkedDays\.includes\(d\.getDay\(\)\)/);
+        assert.match(staffPage, /const needsConfirmation = dates\.length > STAFF_SCHEDULE_WINDOW_DAYS[\s\S]*entries\.length >= STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD/);
+        assert.match(staffPage, /confirmModal\(confirmLines\.join\('\\n'\), \{ type: 'warning', okText: 'Заповнити' \}\)/);
+        assert.match(staffPage, /await goToScheduleRange\(currentRange\.start, currentRange\.end, currentMode\)/);
         assert.match(staffPage, /function renderLoadView\(\) \{[\s\S]*const filtered = scheduleVisibleStaff\(\)/);
         assert.match(staffPage, /groupStaffByScheduleDepartment\(StaffState\.staff\)/);
         assert.match(staffPage, /function handleExcelExport\(\) \{[\s\S]*const grouped = groupStaffByScheduleDepartment\(StaffState\.staff\)/);
@@ -478,6 +482,9 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function scheduleCopyWeekPayload/);
         assert.match(staffPage, /body\.department = department/);
         assert.match(staffPage, /body\.staffIds = scheduleCopyWeekVisibleStaffIds\(\)/);
+        assert.match(staffPage, /function canCopyWeekInCurrentRange\(\) \{[\s\S]*scheduleRangeDayCount\(range\.start, range\.end\) === STAFF_SCHEDULE_WINDOW_DAYS/);
+        assert.match(staffPage, /if \(!canCopyWeekInCurrentRange\(\)\) \{[\s\S]*Копія тижня недоступна для довільного періоду/);
+        assert.match(staffPage, /Довільний visible range не копіюється цією дією/);
         assert.match(staffPage, /copyWeekSchedule\(fromMonday, toMonday, \{ dryRun: true \}\)/);
         assert.match(staffPage, /visible staffIds\[\]/);
     });

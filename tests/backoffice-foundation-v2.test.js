@@ -195,7 +195,8 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffPage, /const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1/);
         assert.match(staffPage, /function getScheduleFocusStart\(d\)/);
         assert.match(staffPage, /goToWeek\(getScheduleFocusStart\(new Date\(\)\)\)/);
-        assert.match(staffPage, /StaffState\.weekStart = getScheduleFocusStart\(new Date\(\)\)/);
+        assert.match(staffPage, /function setScheduleRangeState\(startValue, endValue, mode = 'custom'\) \{[\s\S]*StaffState\.weekStart = start/);
+        assert.match(staffPage, /async function goToWeek\(monday\) \{[\s\S]*return goToScheduleRange\(range\.start, range\.end, 'rolling'\)/);
         assert.match(staffPage, /getScheduleRangeEnd\(dates\)/);
         assert.doesNotMatch(staffPage, /dates\[6\]/);
         assert.match(staffScheduleShell, /Вчора, сьогодні і найближчі дні/);

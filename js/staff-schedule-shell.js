@@ -52,6 +52,22 @@
                         <button type="button" id="nextWeekBtn" title="Наступний період">›</button>
                         <button type="button" id="todayWeekBtn" title="Вчора, сьогодні і найближчі дні">Сьогодні</button>
                     </div>
+                    <div class="staff-schedule-range-row" aria-label="Вибір періоду графіка">
+                        <label class="staff-schedule-date-field">
+                            <span>Від</span>
+                            <input type="date" id="scheduleDateFrom" class="staff-schedule-date-input">
+                        </label>
+                        <label class="staff-schedule-date-field">
+                            <span>До</span>
+                            <input type="date" id="scheduleDateTo" class="staff-schedule-date-input">
+                        </label>
+                        <button type="button" id="applyScheduleRangeBtn" class="staff-schedule-range-apply">Застосувати</button>
+                        <div class="staff-schedule-range-presets" aria-label="Швидкі періоди графіка">
+                            <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="first-half">1-15</button>
+                            <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="second-half">16-кінець</button>
+                            <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="month">Місяць</button>
+                        </div>
+                    </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
                         <div id="scheduleStaffFilterInfo" class="staff-schedule-filter-info" aria-live="polite"></div>
@@ -158,7 +174,8 @@
 
             <div id="fillWeekOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Заповнити тиждень">
                 <div class="sch-modal">
-                    <h3>Заповнити тиждень</h3>
+                    <h3 id="fillWeekTitle">Заповнити тиждень</h3>
+                    <p id="fillWeekPeriodHint" class="fill-period-hint"></p>
                     <div class="form-group">
                         <label>Працівник</label>
                         <select id="fillStaffSelect"></select>

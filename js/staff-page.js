@@ -57,6 +57,9 @@ function shouldAutoInitStaffSchedulePage() {
 
 const StaffState = {
     weekStart: null,    // First date of the current visible schedule window
+    rangeStart: null,   // First date of the current visible schedule range
+    rangeEnd: null,     // Last date of the current visible schedule range
+    rangeMode: 'rolling',
     staff: [],
     schedule: {},       // { staffId_date: entry }
     scheduleLoadedRange: null,
@@ -703,7 +706,7 @@ function scheduleHealthIssue({ code, severity = 'warning', scope = 'row', title,
     };
 }
 
-function buildScheduleHealth(dates = getWeekDates(StaffState.weekStart), visibleStaff = scheduleVisibleStaff()) {
+function buildScheduleHealth(dates = getScheduleDates(), visibleStaff = scheduleVisibleStaff()) {
     const dateKeys = dates.map(formatDateStr);
     const dateSet = new Set(dateKeys);
     const staffById = new Map((visibleStaff || []).map(staff => [Number(staff.id), staff]));
@@ -1260,7 +1263,7 @@ function staffingForecastGap(recommended = {}, scheduled = {}, departmentKeys = 
     }, {});
 }
 
-function buildStaffingDemandForecast(dates = getWeekDates(StaffState.weekStart), visibleStaff = scheduleVisibleStaff()) {
+function buildStaffingDemandForecast(dates = getScheduleDates(), visibleStaff = scheduleVisibleStaff()) {
     const departmentKeys = staffingForecastVisibleDepartments();
     const days = (dates || []).map(dateObj => {
         const date = typeof dateObj === 'string' ? dateObj : formatDateStr(dateObj);
@@ -1439,7 +1442,7 @@ function managerAccountabilityMetric(value, source = 'available') {
     };
 }
 
-function buildManagerAccountability(dates = getWeekDates(StaffState.weekStart), staffList = StaffState.staff, health = null) {
+function buildManagerAccountability(dates = getScheduleDates(), staffList = StaffState.staff, health = null) {
     const grouped = groupStaffByScheduleDepartment(staffList || []);
     const departmentKeys = managerAccountabilityDepartmentKeys(staffList);
     const managers = (staffList || []).filter(isManagerAccountabilityStaff);
@@ -1757,10 +1760,7 @@ function normalizeScheduleSearchText(value) {
 }
 
 function scheduleVisibleDateKeys() {
-    const start = StaffState.weekStart instanceof Date && !Number.isNaN(StaffState.weekStart.getTime())
-        ? StaffState.weekStart
-        : getScheduleFocusStart(new Date());
-    return getWeekDates(start).map(formatDateStr);
+    return getScheduleDates().map(formatDateStr);
 }
 
 function scheduleEntrySearchParts(entry = null) {
@@ -1907,6 +1907,8 @@ const STAFF_SCHEDULE_DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 
 const STAFF_SCHEDULE_MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
 const STAFF_SCHEDULE_WINDOW_DAYS = 9;
 const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1;
+const STAFF_SCHEDULE_MAX_RANGE_DAYS = 31;
+const STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD = 40;
 
 // ==========================================
 // HELPERS
@@ -1957,6 +1959,226 @@ function getWeekDates(startDate) {
 
 function getScheduleRangeEnd(dates) {
     return dates[dates.length - 1];
+}
+
+function cloneScheduleDate(value) {
+    const source = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(source.getTime())) return null;
+    const date = new Date(source);
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+function parseScheduleDateInput(value) {
+    if (value instanceof Date) return cloneScheduleDate(value);
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        const date = new Date(year, month, day);
+        date.setHours(0, 0, 0, 0);
+        if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+        return date;
+    }
+    return cloneScheduleDate(raw);
+}
+
+function scheduleRangeDayCount(from, to) {
+    const start = cloneScheduleDate(from);
+    const end = cloneScheduleDate(to);
+    if (!start || !end) return 0;
+    return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+function getScheduleWindowRange(startDate) {
+    const start = cloneScheduleDate(startDate) || getScheduleFocusStart(new Date());
+    const dates = getWeekDates(start);
+    return { start: dates[0], end: getScheduleRangeEnd(dates) };
+}
+
+function scheduleCurrentRange() {
+    const start = cloneScheduleDate(StaffState.rangeStart || StaffState.weekStart);
+    const end = cloneScheduleDate(StaffState.rangeEnd);
+    if (start && end && start <= end) return { start, end };
+    return getScheduleWindowRange(start || getScheduleFocusStart(new Date()));
+}
+
+function getScheduleDates(startValue = null, endValue = null) {
+    const range = startValue && endValue
+        ? { start: cloneScheduleDate(startValue), end: cloneScheduleDate(endValue) }
+        : scheduleCurrentRange();
+    const start = cloneScheduleDate(range.start);
+    const end = cloneScheduleDate(range.end);
+    if (!start || !end || start > end) {
+        return getWeekDates(getScheduleFocusStart(new Date()));
+    }
+    const dates = [];
+    for (const current = new Date(start); current <= end && dates.length < STAFF_SCHEDULE_MAX_RANGE_DAYS; current.setDate(current.getDate() + 1)) {
+        dates.push(new Date(current));
+    }
+    return dates;
+}
+
+function validateScheduleRange(startValue, endValue) {
+    const start = parseScheduleDateInput(startValue);
+    const end = parseScheduleDateInput(endValue);
+    if (!start || !end) {
+        return { ok: false, error: 'Оберіть коректні дати періоду' };
+    }
+    if (start > end) {
+        return { ok: false, error: 'Дата початку має бути не пізніше дати завершення' };
+    }
+    const days = scheduleRangeDayCount(start, end);
+    if (days > STAFF_SCHEDULE_MAX_RANGE_DAYS) {
+        return { ok: false, error: `Максимальний період графіка — ${STAFF_SCHEDULE_MAX_RANGE_DAYS} день` };
+    }
+    return { ok: true, start, end, days };
+}
+
+function setScheduleRangeState(startValue, endValue, mode = 'custom') {
+    const start = cloneScheduleDate(startValue);
+    const end = cloneScheduleDate(endValue);
+    StaffState.rangeStart = start;
+    StaffState.rangeEnd = end;
+    StaffState.rangeMode = mode || 'custom';
+    StaffState.weekStart = start;
+}
+
+function syncScheduleRangeControls() {
+    const fromInput = document.getElementById('scheduleDateFrom');
+    const toInput = document.getElementById('scheduleDateTo');
+    if (!fromInput && !toInput) return;
+    const range = scheduleCurrentRange();
+    if (fromInput) fromInput.value = formatDateStr(range.start);
+    if (toInput) toInput.value = formatDateStr(range.end);
+    document.querySelectorAll('[data-schedule-range-preset]').forEach(button => {
+        const active = button.dataset.scheduleRangePreset === StaffState.rangeMode;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function schedulePresetBaseDate() {
+    return cloneScheduleDate(StaffState.rangeStart || StaffState.weekStart) || new Date();
+}
+
+function scheduleMonthRange(baseDate = schedulePresetBaseDate()) {
+    const base = cloneScheduleDate(baseDate) || new Date();
+    const start = new Date(base.getFullYear(), base.getMonth(), 1);
+    const end = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    return { start, end };
+}
+
+function schedulePresetRange(preset, baseDate = schedulePresetBaseDate()) {
+    const month = scheduleMonthRange(baseDate);
+    if (preset === 'first-half') {
+        const end = new Date(month.start.getFullYear(), month.start.getMonth(), Math.min(15, month.end.getDate()));
+        end.setHours(0, 0, 0, 0);
+        return { start: month.start, end };
+    }
+    if (preset === 'second-half') {
+        const start = new Date(month.start.getFullYear(), month.start.getMonth(), Math.min(16, month.end.getDate()));
+        start.setHours(0, 0, 0, 0);
+        return { start, end: month.end };
+    }
+    if (preset === 'month') return month;
+    return null;
+}
+
+function scheduleNavigationStepDays() {
+    if (StaffState.rangeMode === 'rolling' || !StaffState.rangeMode) return 7;
+    const range = scheduleCurrentRange();
+    return Math.max(1, scheduleRangeDayCount(range.start, range.end));
+}
+
+function shiftSchedulePresetRange(direction) {
+    const mode = StaffState.rangeMode || 'rolling';
+    if (!['first-half', 'second-half', 'month'].includes(mode)) return null;
+    const range = scheduleCurrentRange();
+    const base = new Date(range.start.getFullYear(), range.start.getMonth() + direction, 1);
+    base.setHours(0, 0, 0, 0);
+    return schedulePresetRange(mode, base);
+}
+
+function shiftScheduleDate(dateValue, days) {
+    const date = cloneScheduleDate(dateValue) || getScheduleFocusStart(new Date());
+    date.setDate(date.getDate() + days);
+    return date;
+}
+
+function formatScheduleRangeLabel(from, to) {
+    if (!from || !to) return '-';
+    const fromLabel = `${from.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[from.getMonth()]}`;
+    const toLabel = `${to.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
+    if (from.getFullYear() !== to.getFullYear()) {
+        return `${fromLabel} ${from.getFullYear()} — ${toLabel}`;
+    }
+    return `${fromLabel} — ${toLabel}`;
+}
+
+function scheduleCurrentRangeLabel() {
+    const range = scheduleCurrentRange();
+    return formatScheduleRangeLabel(range.start, range.end);
+}
+
+function isScheduleCustomRangeMode() {
+    return Boolean(StaffState.rangeMode && StaffState.rangeMode !== 'rolling');
+}
+
+function canCopyWeekInCurrentRange() {
+    const range = scheduleCurrentRange();
+    return !isScheduleCustomRangeMode()
+        && scheduleRangeDayCount(range.start, range.end) === STAFF_SCHEDULE_WINDOW_DAYS;
+}
+
+function selectedWeekdayLabels(weekdayNumbers = []) {
+    return weekdayNumbers
+        .map(day => STAFF_SCHEDULE_DAYS_UK[Number(day)])
+        .filter(Boolean)
+        .join(', ');
+}
+
+function updateFillWeekModalCopy() {
+    const rangeLabel = scheduleCurrentRangeLabel();
+    const customRange = isScheduleCustomRangeMode();
+    const title = customRange ? 'Заповнити період' : 'Заповнити тиждень';
+    const hint = customRange
+        ? `Буде заповнено тільки видимий період ${rangeLabel}. Дні тижня нижче працюють як фільтр усередині цього періоду.`
+        : `Буде заповнено поточний видимий період ${rangeLabel}. Дні тижня нижче працюють як фільтр.`;
+    const overlay = document.getElementById('fillWeekOverlay');
+    const titleEl = document.getElementById('fillWeekTitle');
+    const hintEl = document.getElementById('fillWeekPeriodHint');
+    if (overlay) overlay.setAttribute('aria-label', title);
+    if (titleEl) titleEl.textContent = title;
+    if (hintEl) hintEl.textContent = hint;
+}
+
+function syncScheduleBulkActionLabels() {
+    const rangeLabel = scheduleCurrentRangeLabel();
+    const customRange = isScheduleCustomRangeMode();
+    const fillBtn = document.getElementById('fillWeekBtn');
+    if (fillBtn) {
+        fillBtn.textContent = customRange ? 'Заповнити період' : 'Заповнити тиждень';
+        fillBtn.title = customRange
+            ? `Масове заповнення видимого періоду ${rangeLabel}`
+            : `Масове заповнення поточного періоду ${rangeLabel}`;
+    }
+
+    const copyBtn = document.getElementById('copyWeekBtn');
+    if (copyBtn) {
+        const allowed = canCopyWeekInCurrentRange();
+        copyBtn.textContent = 'Копія тижня';
+        copyBtn.classList.toggle('is-disabled', !allowed);
+        copyBtn.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+        copyBtn.title = allowed
+            ? 'Копіює тільки канонічний 7-денний тиждень у наступний тиждень'
+            : `Копія тижня вимкнена для довільного періоду ${rangeLabel}, щоб не копіювати 15-31 день випадково`;
+    }
 }
 
 function todayStr() {
@@ -2146,7 +2368,7 @@ async function fetchScheduleAttendance(from, to) {
 }
 
 function staffingForecastDateKeys(from, to) {
-    const fallback = getWeekDates(StaffState.weekStart || new Date()).map(formatDateStr);
+    const fallback = getScheduleDates().map(formatDateStr);
     if (!from || !to) return fallback;
     const start = new Date(`${from}T00:00:00`);
     const end = new Date(`${to}T00:00:00`);
@@ -2472,7 +2694,7 @@ async function handleAttendanceAction(button) {
     button.disabled = true;
     const result = await postAttendanceAction(action, staffId);
     if (result.success) {
-        const dates = getWeekDates(StaffState.weekStart);
+        const dates = getScheduleDates();
         await fetchScheduleAttendance(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
         renderSchedule();
         showNotification('Attendance оновлено');
@@ -2545,12 +2767,60 @@ function bindScheduleStaffSearchControls() {
     search.dataset.scheduleSearchBound = 'true';
 }
 
+async function applyScheduleRangeFromInputs() {
+    const fromInput = document.getElementById('scheduleDateFrom');
+    const toInput = document.getElementById('scheduleDateTo');
+    const validation = validateScheduleRange(fromInput?.value, toInput?.value);
+    if (!validation.ok) {
+        showNotification(validation.error, 'error');
+        syncScheduleRangeControls();
+        return false;
+    }
+    return goToScheduleRange(validation.start, validation.end, 'custom');
+}
+
+async function applyScheduleRangePreset(preset) {
+    const range = schedulePresetRange(preset);
+    if (!range) return false;
+    return goToScheduleRange(range.start, range.end, preset);
+}
+
+function bindScheduleRangeControls() {
+    const applyBtn = document.getElementById('applyScheduleRangeBtn');
+    const fromInput = document.getElementById('scheduleDateFrom');
+    const toInput = document.getElementById('scheduleDateTo');
+
+    syncScheduleRangeControls();
+    if (applyBtn && applyBtn.dataset.scheduleRangeBound !== 'true') {
+        applyBtn.addEventListener('click', applyScheduleRangeFromInputs);
+        applyBtn.dataset.scheduleRangeBound = 'true';
+    }
+    [fromInput, toInput].forEach(input => {
+        if (!input || input.dataset.scheduleRangeBound === 'true') return;
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyScheduleRangeFromInputs();
+            }
+        });
+        input.dataset.scheduleRangeBound = 'true';
+    });
+    document.querySelectorAll('[data-schedule-range-preset]').forEach(button => {
+        if (button.dataset.scheduleRangeBound === 'true') return;
+        button.addEventListener('click', () => applyScheduleRangePreset(button.dataset.scheduleRangePreset));
+        button.dataset.scheduleRangeBound = 'true';
+    });
+}
+
 function renderWeekLabel() {
-    const dates = getWeekDates(StaffState.weekStart);
+    const dates = getScheduleDates();
     const from = dates[0];
     const to = getScheduleRangeEnd(dates);
-    const label = `${from.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[from.getMonth()]} — ${to.getDate()} ${STAFF_SCHEDULE_MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
-    document.getElementById('weekLabel').textContent = label;
+    const label = formatScheduleRangeLabel(from, to);
+    const weekLabel = document.getElementById('weekLabel');
+    if (weekLabel) weekLabel.textContent = label;
+    syncScheduleRangeControls();
+    syncScheduleBulkActionLabels();
     updateScheduleHeaderMetrics();
 }
 
@@ -2614,26 +2884,50 @@ function summarizeScheduleToday(staffList = null) {
     return summary;
 }
 
-function renderSummary(staffList = null) {
-    const container = document.getElementById('scheduleSummary');
-    const today = todayStr();
+function summarizeScheduleRange(staffList = null, dates = getScheduleDates()) {
     const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
-
-    let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0, unset = 0, replacements = 0;
+    const safeDates = Array.isArray(dates) && dates.length ? dates : getScheduleDates();
+    const summary = {
+        days: safeDates.length,
+        total: filtered.length,
+        cells: filtered.length * safeDates.length,
+        working: 0,
+        dayoff: 0,
+        vacation: 0,
+        sick: 0,
+        remote: 0,
+        unset: 0,
+        replacements: 0
+    };
     for (const s of filtered) {
-        const entry = StaffState.schedule[`${s.id}_${today}`];
-        if (!entry) unset++;
-        else {
-            if (isReplacementEntry(entry)) replacements++;
-            if (entry.status === 'working') working++;
-            else if (entry.status === 'dayoff') dayoff++;
-            else if (entry.status === 'vacation') vacation++;
-            else if (entry.status === 'sick') sick++;
-            else if (entry.status === 'remote') remote++;
+        for (const d of safeDates) {
+            const ds = typeof d === 'string' ? d : formatDateStr(d);
+            const entry = StaffState.schedule[`${s.id}_${ds}`];
+            if (!entry) {
+                summary.unset++;
+                continue;
+            }
+            const status = normalizeScheduleStatus(entry.status);
+            if (isReplacementEntry(entry)) summary.replacements++;
+            if (status === 'working') summary.working++;
+            else if (status === 'dayoff') summary.dayoff++;
+            else if (status === 'vacation') summary.vacation++;
+            else if (status === 'sick') summary.sick++;
+            else if (status === 'remote') summary.remote++;
+            else summary.unset++;
         }
     }
+    return summary;
+}
+
+function renderSummary(staffList = null, dates = getScheduleDates()) {
+    const container = document.getElementById('scheduleSummary');
+    const filtered = Array.isArray(staffList) ? staffList : scheduleVisibleStaff();
+    const summary = summarizeScheduleRange(filtered, dates);
+    const { days, working, dayoff, vacation, sick, remote, unset, replacements } = summary;
 
     container.innerHTML = `
+        <div class="summary-chip"><span class="chip-dot" style="background:#14B8A6"></span> Період: <span class="chip-count">${days}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#10B981"></span> На роботі: <span class="chip-count">${working}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#94A3B8"></span> Вихідні: <span class="chip-count">${dayoff}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#3B82F6"></span> Відпустка: <span class="chip-count">${vacation}</span></div>
@@ -2642,7 +2936,7 @@ function renderSummary(staffList = null) {
         ${replacements > 0 ? `<div class="summary-chip summary-chip-replacement"><span class="chip-dot" style="background:#F97316"></span> Заміни: <span class="chip-count">${replacements}</span></div>` : ''}
         ${unset > 0 ? `<div class="summary-chip"><span class="chip-dot" style="background:#CBD5E1"></span> Не заповнено: <span class="chip-count">${unset}</span></div>` : ''}
     `;
-    updateScheduleHeaderMetrics({ total: filtered.length, working, dayoff, vacation, sick, remote, unset, replacements }, filtered);
+    updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered);
 }
 
 function renderEmpRow(emp, dates, today, health = null) {
@@ -2769,7 +3063,7 @@ function bindScheduleCellActivation(tbody) {
 }
 
 function renderSchedule() {
-    const dates = getWeekDates(StaffState.weekStart);
+    const dates = getScheduleDates();
     const today = todayStr();
     bindScheduleStaffSearchControls();
 
@@ -2848,7 +3142,7 @@ function renderSchedule() {
 
     tbody.innerHTML = bodyHtml;
     tbody.classList.toggle('show-hours', Boolean(StaffState.showHours));
-    renderSummary(filtered);
+    renderSummary(filtered, dates);
     renderScheduleAttendanceSummary(dates, filtered);
 
     // Cell activation handlers
@@ -3459,28 +3753,61 @@ async function handleClearReplacement() {
 // WEEK NAVIGATION
 // ==========================================
 
-async function goToWeek(monday) {
-    StaffState.weekStart = monday;
+async function goToScheduleRange(startValue, endValue, mode = 'custom') {
+    const validation = validateScheduleRange(startValue, endValue);
+    if (!validation.ok) {
+        showNotification(validation.error, 'error');
+        syncScheduleRangeControls();
+        return false;
+    }
+    setScheduleRangeState(validation.start, validation.end, mode);
     renderWeekLabel();
-    const dates = getWeekDates(monday);
-    const from = formatDateStr(dates[0]);
-    const to = formatDateStr(getScheduleRangeEnd(dates));
+    const from = formatDateStr(validation.start);
+    const to = formatDateStr(validation.end);
     await fetchSchedule(from, to);
     await fetchScheduleAttendance(from, to);
+    if (StaffState.showHours) {
+        const hours = await fetchScheduleHours(from, to);
+        StaffState.hoursData = hours.success ? hours.data : null;
+    }
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
+    return true;
+}
+
+async function goToWeek(monday) {
+    const range = getScheduleWindowRange(monday);
+    return goToScheduleRange(range.start, range.end, 'rolling');
 }
 
 function prevWeek() {
-    const d = new Date(StaffState.weekStart);
-    d.setDate(d.getDate() - 7);
-    goToWeek(d);
+    const presetRange = shiftSchedulePresetRange(-1);
+    if (presetRange) {
+        goToScheduleRange(presetRange.start, presetRange.end, StaffState.rangeMode);
+        return;
+    }
+    const range = scheduleCurrentRange();
+    const step = scheduleNavigationStepDays();
+    goToScheduleRange(
+        shiftScheduleDate(range.start, -step),
+        shiftScheduleDate(range.end, -step),
+        StaffState.rangeMode || 'rolling'
+    );
 }
 
 function nextWeek() {
-    const d = new Date(StaffState.weekStart);
-    d.setDate(d.getDate() + 7);
-    goToWeek(d);
+    const presetRange = shiftSchedulePresetRange(1);
+    if (presetRange) {
+        goToScheduleRange(presetRange.start, presetRange.end, StaffState.rangeMode);
+        return;
+    }
+    const range = scheduleCurrentRange();
+    const step = scheduleNavigationStepDays();
+    goToScheduleRange(
+        shiftScheduleDate(range.start, step),
+        shiftScheduleDate(range.end, step),
+        StaffState.rangeMode || 'rolling'
+    );
 }
 
 function goToday() {
@@ -3505,6 +3832,7 @@ function openFillWeekModal() {
     document.getElementById('fillEnd').value = '20:00';
     document.getElementById('fillNote').value = '';
     toggleFillTimeFields();
+    updateFillWeekModalCopy();
     const overlay = document.getElementById('fillWeekOverlay');
     _staffFillInitialState = getStaffFillState();
     overlay?.classList.add('visible');
@@ -3563,8 +3891,8 @@ async function handleFillWeekSave() {
     }
     targetStaff = scheduleableStaffForUi(targetStaff);
 
-    // Build entries for the current week's selected days
-    const dates = getWeekDates(StaffState.weekStart);
+    // Build entries for the visible period; selected weekdays stay as a filter inside that period.
+    const dates = getScheduleDates();
     const entries = [];
     for (const emp of targetStaff) {
         for (const d of dates) {
@@ -3585,11 +3913,29 @@ async function handleFillWeekSave() {
         return;
     }
 
+    const currentRange = scheduleCurrentRange();
+    const currentMode = StaffState.rangeMode || 'custom';
+    const rangeLabel = formatScheduleRangeLabel(dates[0], getScheduleRangeEnd(dates));
+    const needsConfirmation = dates.length > STAFF_SCHEDULE_WINDOW_DAYS
+        || entries.length >= STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD;
+    if (needsConfirmation) {
+        const confirmLines = [
+            `Заповнити ${entries.length} записів за період ${rangeLabel}?`,
+            '',
+            `Працівників: ${targetStaff.length}`,
+            `Днів у періоді: ${dates.length}`,
+            `Вибрані дні тижня: ${selectedWeekdayLabels(checkedDays) || '-'}`,
+            '',
+            'Існуючі записи для цих дат і працівників можуть бути оновлені.'
+        ];
+        if (!await confirmModal(confirmLines.join('\n'), { type: 'warning', okText: 'Заповнити' })) return;
+    }
+
     const result = await bulkSaveSchedule(entries);
     if (result.success) {
         closeFillWeekModal(true);
         showNotification(`Заповнено ${result.count} записів`);
-        await goToWeek(StaffState.weekStart);
+        await goToScheduleRange(currentRange.start, currentRange.end, currentMode);
     } else {
         showNotification(scheduleableStaffErrorMessage(result, 'Помилка збереження'), 'error');
     }
@@ -3600,10 +3946,28 @@ async function handleFillWeekSave() {
 // ==========================================
 
 async function handleCopyWeek() {
+    if (!canCopyWeekInCurrentRange()) {
+        const rangeLabel = scheduleCurrentRangeLabel();
+        const message = [
+            `Копія тижня недоступна для довільного періоду ${rangeLabel}.`,
+            '',
+            'Ця дія копіює тільки канонічний 7-денний тижневий шаблон у наступний тиждень.',
+            'Щоб уникнути випадкового копіювання 15-31 днів, спочатку поверніться до режиму "Сьогодні".'
+        ].join('\n');
+        if (typeof confirmModal === 'function') {
+            await confirmModal(message, { type: 'warning', okText: 'Зрозуміло' });
+        } else {
+            showNotification('Копія тижня доступна тільки у звичайному тижневому режимі', 'error');
+        }
+        return;
+    }
+
     const fromMonday = formatDateStr(StaffState.weekStart);
+    const sourceEnd = formatDateStr(shiftScheduleDate(StaffState.weekStart, 6));
     const nextMon = new Date(StaffState.weekStart);
     nextMon.setDate(nextMon.getDate() + 7);
     const toMonday = formatDateStr(nextMon);
+    const targetEnd = formatDateStr(shiftScheduleDate(nextMon, 6));
 
     const deptLabel = StaffState.activeDept === 'all'
         ? 'всіх відділів'
@@ -3618,6 +3982,9 @@ async function handleCopyWeek() {
 
     const previewLines = [
         `Скопіювати графік ${deptLabel} з тижня ${fromMonday} на тиждень ${toMonday}?`,
+        '',
+        `Діапазон копіювання: ${fromMonday} - ${sourceEnd} -> ${toMonday} - ${targetEnd}`,
+        'Довільний visible range не копіюється цією дією.',
         '',
         `Режим: ${copyMode === 'explicit_staff_ids' ? 'visible staffIds[]' : (copyMode === 'raw_department' ? 'raw department' : 'all staff')}`,
         `Працівників: ${preview.staffCount || 0}`,
@@ -3649,7 +4016,7 @@ async function toggleHours() {
 
     if (StaffState.showHours) {
         // Fetch hours for the current visible period.
-        const dates = getWeekDates(StaffState.weekStart);
+        const dates = getScheduleDates();
         const from = formatDateStr(dates[0]);
         const to = formatDateStr(getScheduleRangeEnd(dates));
         const result = await fetchScheduleHours(from, to);
@@ -3695,7 +4062,7 @@ function toggleLoadView() {
 }
 
 function renderLoadView() {
-    const dates = getWeekDates(StaffState.weekStart);
+    const dates = getScheduleDates();
     const today = todayStr();
     const filtered = scheduleVisibleStaff();
     renderScheduleStaffFilterInfo(filtered);
@@ -4282,7 +4649,7 @@ async function handleExcelImport(e) {
 // ==========================================
 
 function handleExcelExport() {
-    const dates = getWeekDates(StaffState.weekStart);
+    const dates = getScheduleDates();
     const grouped = groupStaffByScheduleDepartment(StaffState.staff);
 
     // Build CSV (BOM for Excel)
@@ -4478,17 +4845,10 @@ async function initStaffSchedulePage(options = {}) {
         renderDeptFilter();
 
         // Init the rolling window: yesterday, today, and the upcoming days.
-        StaffState.weekStart = getScheduleFocusStart(new Date());
-        renderWeekLabel();
-
-        const dates = getWeekDates(StaffState.weekStart);
-        const from = formatDateStr(dates[0]);
-        const to = formatDateStr(getScheduleRangeEnd(dates));
-        await fetchSchedule(from, to);
-        await fetchScheduleAttendance(from, to);
-        renderSchedule();
+        await goToWeek(getScheduleFocusStart(new Date()));
 
         // Event listeners
+        bindScheduleRangeControls();
         document.getElementById('prevWeekBtn')?.addEventListener('click', prevWeek);
         document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
         document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);

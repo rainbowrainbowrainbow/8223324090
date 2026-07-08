@@ -1671,6 +1671,10 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleHealthBadgeRenderBlock = staffCode.slice(staffCode.indexOf('function renderScheduleHealthBadges'), staffCode.indexOf('function renderScheduleHealthIssueList'));
     const staffSchedulePrimaryRenderBlock = staffCode.slice(staffCode.indexOf('function renderSchedule()'), staffCode.indexOf('// Group staff by department'));
     const staffScheduleToggleHoursBlock = staffCode.slice(staffCode.indexOf('async function toggleHours()'), staffCode.indexOf('// LOAD VIEW'));
+    const staffScheduleLoadViewBlock = staffCode.slice(staffCode.indexOf('function renderLoadView()'), staffCode.indexOf('// ACCOUNT LINKING'));
+    const staffScheduleExportBlock = staffCode.slice(staffCode.indexOf('function handleExcelExport()'), staffCode.indexOf('// PRINT'));
+    const staffScheduleSummaryBlock = staffCode.slice(staffCode.indexOf('function summarizeScheduleRange'), staffCode.indexOf('function renderEmpRow'));
+    const staffScheduleBulkActionsBlock = staffCode.slice(staffCode.indexOf('function openFillWeekModal()'), staffCode.indexOf('// HOURS TOGGLE'));
     const staffScheduleWeekNavBlock = staffCode.slice(staffCode.indexOf('async function goToWeek'), staffCode.indexOf('function prevWeek'));
     const staffScheduleInitLoadBlock = staffCode.slice(staffCode.indexOf('async function initStaffSchedulePage'), staffCode.indexOf('// Event listeners'));
     const staffDeptFilterRenderBlock = staffCode.slice(staffCode.indexOf('function renderDeptFilter()'), staffCode.indexOf('function renderWeekLabel()'));
@@ -1689,6 +1693,13 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleSearchInfoRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info');
     const staffScheduleSearchDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search');
     const staffScheduleSearchInfoDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info');
+    const staffScheduleRangeRowRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-row');
+    const staffScheduleDateFieldRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-field');
+    const staffScheduleRangeApplyRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-apply');
+    const staffScheduleRangePresetsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-presets');
+    const staffScheduleRangeDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input');
+    const staffScheduleToolbarDisabledRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar.is-disabled');
+    const staffFillPeriodHintRule = cssRuleText(staffPagesCss, '#fillWeekOverlay .fill-period-hint');
     const staffScheduleCommandBarRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar');
     const staffScheduleCommandBarControlsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls');
     const staffScheduleCommandBarDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar');
@@ -1857,8 +1868,72 @@ checkPage('staff.html', (doc, html) => {
         && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
         && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
         && staffCode.includes('const grouped = groupStaffByScheduleDepartment(filtered)'));
+    check('Staff schedule exposes a validated custom period picker',
+        staffScheduleShellCode.includes('id="scheduleDateFrom"')
+        && staffScheduleShellCode.includes('id="scheduleDateTo"')
+        && staffScheduleShellCode.includes('id="applyScheduleRangeBtn"')
+        && staffScheduleShellCode.includes('data-schedule-range-preset="first-half"')
+        && staffScheduleShellCode.includes('data-schedule-range-preset="second-half"')
+        && staffScheduleShellCode.includes('data-schedule-range-preset="month"')
+        && staffCode.includes('rangeStart: null')
+        && staffCode.includes('rangeEnd: null')
+        && staffCode.includes("rangeMode: 'rolling'")
+        && staffCode.includes('const STAFF_SCHEDULE_MAX_RANGE_DAYS = 31')
+        && staffCode.includes('function validateScheduleRange')
+        && staffCode.includes('Дата початку має бути не пізніше дати завершення')
+        && staffCode.includes('function getScheduleDates')
+        && staffCode.includes('return getScheduleDates().map(formatDateStr);')
+        && staffCode.includes('function bindScheduleRangeControls')
+        && staffCode.includes("document.getElementById('applyScheduleRangeBtn')")
+        && staffCode.includes("return goToScheduleRange(range.start, range.end, 'rolling');")
+        && staffCode.includes('scheduleNavigationStepDays()')
+        && staffCode.includes('await goToWeek(getScheduleFocusStart(new Date()));'));
+    check('Staff schedule read-only surfaces use the selected visible period',
+        staffSchedulePrimaryRenderBlock.includes('const dates = getScheduleDates()')
+        && staffSchedulePrimaryRenderBlock.includes('const health = buildScheduleHealth(dates, baseFiltered)')
+        && staffScheduleRenderBlock.includes('renderSummary(filtered, dates)')
+        && staffScheduleSummaryBlock.includes('function summarizeScheduleRange')
+        && staffScheduleSummaryBlock.includes('const ds = typeof d ===')
+        && staffScheduleSummaryBlock.includes('updateScheduleHeaderMetrics(summarizeScheduleToday(filtered), filtered)')
+        && staffScheduleToggleHoursBlock.includes('const dates = getScheduleDates()')
+        && staffScheduleToggleHoursBlock.includes('fetchScheduleHours(from, to)')
+        && staffScheduleLoadViewBlock.includes('const dates = getScheduleDates()')
+        && staffScheduleExportBlock.includes('const dates = getScheduleDates()')
+        && staffScheduleExportBlock.includes('const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.csv`;')
+        && staffCode.includes('await fetchSchedule(from, to);')
+        && staffCode.includes('await fetchScheduleAttendance(from, to);')
+        && staffCode.includes('StaffState.hoursData = hours.success ? hours.data : null;')
+        && staffCode.includes('function buildScheduleHealth(dates = getScheduleDates()')
+        && staffCode.includes('function buildStaffingDemandForecast(dates = getScheduleDates()')
+        && staffCode.includes('function buildManagerAccountability(dates = getScheduleDates()'));
+    check('Staff schedule bulk actions respect the selected period safely',
+        staffScheduleShellCode.includes('id="fillWeekTitle"')
+        && staffScheduleShellCode.includes('id="fillWeekPeriodHint"')
+        && staffCode.includes('const STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD = 40')
+        && staffCode.includes('function syncScheduleBulkActionLabels')
+        && staffCode.includes('scheduleRangeDayCount(range.start, range.end) === STAFF_SCHEDULE_WINDOW_DAYS')
+        && staffCode.includes("fillBtn.textContent = customRange ? 'Заповнити період' : 'Заповнити тиждень'")
+        && staffCode.includes("copyBtn.setAttribute('aria-disabled', allowed ? 'false' : 'true')")
+        && staffScheduleBulkActionsBlock.includes('updateFillWeekModalCopy()')
+        && staffScheduleBulkActionsBlock.includes('const dates = getScheduleDates()')
+        && staffScheduleBulkActionsBlock.includes('const currentRange = scheduleCurrentRange()')
+        && staffScheduleBulkActionsBlock.includes('entries.length >= STAFF_SCHEDULE_BULK_CONFIRM_ENTRY_THRESHOLD')
+        && staffScheduleBulkActionsBlock.includes("confirmModal(confirmLines.join('\\n'), { type: 'warning', okText: 'Заповнити' })")
+        && staffScheduleBulkActionsBlock.includes('await goToScheduleRange(currentRange.start, currentRange.end, currentMode)')
+        && staffScheduleBulkActionsBlock.includes('if (!canCopyWeekInCurrentRange())')
+        && staffScheduleBulkActionsBlock.includes('Копія тижня недоступна для довільного періоду')
+        && staffScheduleBulkActionsBlock.includes('const sourceEnd = formatDateStr(shiftScheduleDate(StaffState.weekStart, 6))')
+        && staffScheduleBulkActionsBlock.includes('Довільний visible range не копіюється цією дією.')
+        && /cursor:\s*help;/.test(staffScheduleToolbarDisabledRule)
+        && /font-size:\s*13px;/.test(staffFillPeriodHintRule));
     check('Staff schedule people search matches HR Today light dark and mobile control rhythm',
-        /"week search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
+        /"week range"\s*"search search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
+        && /grid-area:\s*range;/.test(staffScheduleRangeRowRule)
+        && /repeat\(2,\s*minmax\(132px,\s*1fr\)\)/.test(staffScheduleRangeRowRule)
+        && /text-transform:\s*uppercase;/.test(staffScheduleDateFieldRule)
+        && /background:\s*rgba\(20,184,166,0\.12\);/.test(staffScheduleRangeApplyRule)
+        && /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*max-content\)\);/.test(staffScheduleRangePresetsRule)
+        && /background:\s*rgba\(15,23,42,0\.54\);/.test(staffScheduleRangeDarkRule)
         && /grid-area:\s*search;/.test(staffScheduleSearchRowRule)
         && /grid-template-columns:\s*minmax\(220px,\s*1fr\) auto;/.test(staffScheduleSearchRowRule)
         && /min-height:\s*38px;/.test(staffScheduleSearchInputRule)
@@ -1868,7 +1943,8 @@ checkPage('staff.html', (doc, html) => {
         && /white-space:\s*nowrap;/.test(staffScheduleSearchInfoRule)
         && /background:\s*rgba\(15,23,42,0\.54\);/.test(staffScheduleSearchDarkRule)
         && /color:\s*#CBD5E1;/.test(staffScheduleSearchInfoDarkRule)
-        && /"week"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
+        && /"week"\s*"range"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-range-row[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-search-row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-filter-info[\s\S]*white-space:\s*normal;/.test(staffScheduleMobileCommandBlock));
     check('Staff schedule mobile controls use compact rails and a stacked command grid',

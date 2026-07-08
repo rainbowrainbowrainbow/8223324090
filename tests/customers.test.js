@@ -90,6 +90,7 @@ liveDescribe('Customers', () => {
             name: `Multi Children Smoke ${Date.now()}`,
             phone: `+38066${String(Date.now()).slice(-7)}`,
             source: 'manual',
+            notes: 'multi child search notes',
             children: [
                 { name: 'Anna', birthday: '2018-01-01', ageSnapshot: 8 },
                 { name: 'Bohdan', birthday: null, ageSnapshot: 6, note: 'note' },
@@ -175,8 +176,10 @@ liveDescribe('Customers', () => {
         assert.ok(Array.isArray(res.data), 'Should return quick search array');
         const found = res.data.find(customer => customer.id === multiChildCustomerId);
         assert.ok(found, 'Should find customer by canonical child name');
+        assert.equal(found.notes, 'multi child search notes');
         assert.ok(Array.isArray(found.children), 'Search result should include canonical children projection');
         assert.deepEqual(found.children.map(child => child.name), ['Anna', 'Bohdan', 'Sofia']);
+        assert.equal(found.children[1].note, 'note');
     });
 
     // ==========================================

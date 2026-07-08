@@ -17,6 +17,7 @@ test('customer search query mirrors /api/customers/search matching rules', () =>
     assert.match(query.sql, /c\.phone ILIKE \$1/);
     assert.match(query.sql, /c\.instagram ILIKE \$1/);
     assert.match(query.sql, /c\.child_name ILIKE \$1/);
+    assert.match(query.sql, /c\.notes/);
     assert.match(query.sql, /FROM customer_children cc_search/);
     assert.match(query.sql, /c\.social_identities::text ILIKE \$1/);
     assert.match(query.sql, /c\.instagram ILIKE \$2/);
@@ -45,4 +46,11 @@ test('customers route uses the shared search query builder', () => {
     const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'customers.js'), 'utf8');
     assert.match(routeCode, /buildCustomerSearchQuery/);
     assert.doesNotMatch(routeCode, /const normalizedPhoneSql = phoneDigits\.length >= 2/);
+});
+
+test('customers search route projects customer notes and child notes', () => {
+    const routeCode = fs.readFileSync(path.join(__dirname, '..', 'routes', 'customers.js'), 'utf8');
+    assert.match(routeCode, /loadCustomerChildrenMap\(result\.rows\.map\(row => row\.id\), businessContext\)/);
+    assert.match(routeCode, /applyCustomerChildrenProjection\(/);
+    assert.match(routeCode, /age_snapshot, note, source_kind/);
 });

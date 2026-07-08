@@ -1522,6 +1522,135 @@ function setBookingClientMode(mode = 'search', options = {}) {
     if (options.focusSearch) customerSearch?.focus();
 }
 
+function bookingCustomerCleanText(value) {
+    if (value === undefined || value === null) return '';
+    return String(value).trim();
+}
+
+function bookingCustomerVisitWord(count) {
+    const value = Math.abs(Number(count));
+    const mod10 = value % 10;
+    const mod100 = value % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'візит';
+    if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return 'візити';
+    return 'візитів';
+}
+
+function bookingCustomerVisitLabel(value) {
+    const count = Number(value);
+    if (!Number.isFinite(count) || count <= 0) return '';
+    const visits = Math.trunc(count);
+    return `${visits} ${bookingCustomerVisitWord(visits)}`;
+}
+
+function bookingCustomerInstagramDisplay(value) {
+    const text = bookingCustomerCleanText(value);
+    if (!text) return '';
+    return `@${text.replace(/^@+/, '')}`;
+}
+
+function bookingSelectedCustomerFactHtml(label, value) {
+    const text = bookingCustomerCleanText(value);
+    if (!text) return '';
+    const safeText = escapeHtml(text);
+    return `
+        <div class="booking-selected-customer__fact">
+            <span>${escapeHtml(label)}</span>
+            <strong title="${safeText}">${safeText}</strong>
+        </div>
+    `;
+}
+
+function bookingSelectedCustomerNoteHtml(label, text) {
+    const note = bookingCustomerCleanText(text);
+    if (!note) return '';
+    const safeNote = escapeHtml(note);
+    return `
+        <div class="booking-selected-customer__note">
+            <span>${escapeHtml(label)}</span>
+            <p title="${safeNote}">${safeNote}</p>
+        </div>
+    `;
+}
+
+function bookingCustomerKitchenNoteIsPriority(note) {
+    const text = bookingCustomerCleanText(note).toLocaleLowerCase('uk-UA');
+    if (!text) return false;
+    return /алерг|аллерг|не можна|нельзя|заборон|без\s+(горіх|орех|арахіс|арахис|глютен|лактоз|молок|цукр|сахар|яєць|яиц|мед)|горіх|орех|арахіс|арахис|nut|peanut|gluten|lactose|milk|dairy|egg|seafood|fish|риба|морепроду|шоколад|полуниц|клубник|цитрус|діабет|диабет/.test(text);
+}
+
+function bookingCustomerKitchenNoteRows(customer = {}) {
+    return bookingCustomerChildrenProjection(customer)
+        .map((child, index) => {
+            const note = bookingCustomerCleanText(child.note);
+            if (!note) return null;
+            const childLabel = bookingCustomerCleanText(child.name) || `Дитина ${index + 1}`;
+            return {
+                childLabel,
+                note,
+                priority: bookingCustomerKitchenNoteIsPriority(note)
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => Number(b.priority) - Number(a.priority));
+}
+
+function bookingSelectedCustomerKitchenHtml(customer = {}) {
+    const rows = bookingCustomerKitchenNoteRows(customer);
+    if (!rows.length) return '';
+    const visible = rows.slice(0, 4);
+    const hiddenCount = rows.length - visible.length;
+    const rowHtml = visible.map(row => {
+        const safeLabel = escapeHtml(row.childLabel);
+        const safeNote = escapeHtml(row.note);
+        return `
+            <div class="booking-selected-customer__kitchen-row${row.priority ? ' is-priority' : ''}">
+                <strong title="${safeLabel}">${safeLabel}</strong>
+                <span title="${safeNote}">${safeNote}</span>
+            </div>
+        `;
+    }).join('');
+    return `
+        <div class="booking-selected-customer__kitchen">
+            <span class="booking-selected-customer__section-label">Важливо для кухні</span>
+            ${rowHtml}
+            ${hiddenCount > 0 ? `<small>+${escapeHtml(String(hiddenCount))} ще у списку дітей</small>` : ''}
+        </div>
+    `;
+}
+
+function bookingSelectedCustomerChildrenHtml(customer = {}) {
+    const children = bookingCustomerChildrenProjection(customer);
+    if (!children.length) {
+        return `
+            <div class="booking-selected-customer__section">
+                <span class="booking-selected-customer__section-label">Діти</span>
+                <div class="booking-selected-customer__empty">Діти не вказані</div>
+            </div>
+        `;
+    }
+
+    const childRows = children.map(child => {
+        const line = bookingCustomerChildLine(child) || bookingCustomerCleanText(child.name) || 'Дитина';
+        const note = bookingCustomerCleanText(child.note);
+        const safeLine = escapeHtml(line);
+        const safeNote = escapeHtml(note);
+        return `
+            <div class="booking-selected-customer__child">
+                <strong title="${safeLine}">${safeLine}</strong>
+                ${note ? `<small title="${safeNote}">${safeNote}</small>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="booking-selected-customer__section">
+            <span class="booking-selected-customer__section-label">Діти</span>
+            <div class="booking-selected-customer__children">${childRows}</div>
+        </div>
+    `;
+}
+
 function renderSelectedCustomerCard(customer = null) {
     const card = document.getElementById('bookingSelectedCustomerCard');
     if (!card) return;
@@ -1530,16 +1659,23 @@ function renderSelectedCustomerCard(customer = null) {
         card.classList.add('hidden');
         return;
     }
-    const name = customer.name || 'Клієнт';
-    const phone = customer.phone ? `<small>${escapeHtml(customer.phone)}</small>` : '';
-    const instagram = customer.instagram ? `<small>@${escapeHtml(customer.instagram)}</small>` : '';
-    const childDisplay = bookingCustomerChildrenDisplay(customer);
-    const childName = childDisplay ? `<small>Діти: ${escapeHtml(childDisplay)}</small>` : '';
+    const name = bookingCustomerCleanText(customer.name) || 'Клієнт';
+    const visits = bookingCustomerVisitLabel(customer.totalBookings ?? customer.total_bookings);
+    const facts = [
+        bookingSelectedCustomerFactHtml('Телефон', customer.phone ?? customer.customerPhone ?? customer.customer_phone),
+        bookingSelectedCustomerFactHtml('Instagram', bookingCustomerInstagramDisplay(customer.instagram))
+    ].filter(Boolean).join('');
+    const notes = bookingSelectedCustomerNoteHtml('Примітки клієнта', customer.notes ?? customer.customerNotes ?? customer.customer_notes);
+    const kitchenNotes = bookingSelectedCustomerKitchenHtml(customer);
     card.innerHTML = `
-        <strong>${escapeHtml(name)}</strong>
-        ${phone}
-        ${instagram}
-        ${childName}
+        <div class="booking-selected-customer__header">
+            <strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
+            ${visits ? `<span>${escapeHtml(visits)}</span>` : ''}
+        </div>
+        ${facts ? `<div class="booking-selected-customer__facts">${facts}</div>` : ''}
+        ${kitchenNotes}
+        ${notes}
+        ${bookingSelectedCustomerChildrenHtml(customer)}
     `;
     card.classList.remove('hidden');
 }
@@ -6156,6 +6292,7 @@ function normalizeBookingCustomerSelection(customer = {}, fallback = {}) {
         childName: primaryChild.name || source.childName || source.child_name || base.childName || base.child_name || '',
         childBirthday: birthday ? String(birthday).split('T')[0] : '',
         source: source.source ?? base.source ?? '',
+        notes: source.notes ?? source.customerNotes ?? source.customer_notes ?? base.notes ?? base.customerNotes ?? base.customer_notes ?? '',
         totalBookings: Number(source.totalBookings ?? source.total_bookings ?? base.totalBookings ?? base.total_bookings ?? 0) || 0
     };
 }
@@ -6192,12 +6329,8 @@ function applySelectedCustomerToBookingForm(customer = {}, options = {}) {
 
     const info = document.getElementById('customerInfo');
     const badge = document.getElementById('customerVisitBadge');
-    if (info && badge && normalized.totalBookings > 0) {
-        badge.textContent = `${normalized.totalBookings} візит${normalized.totalBookings === 1 ? '' : normalized.totalBookings < 5 ? 'и' : 'ів'}`;
-        info.classList.remove('hidden');
-    } else {
-        info?.classList.add('hidden');
-    }
+    if (badge) badge.textContent = bookingCustomerVisitLabel(normalized.totalBookings) || '0 візитів';
+    info?.classList.add('hidden');
 
     if (options.renderSummary !== false) renderBookingPackageSummary();
     updateBookingContextHeaderSummary();

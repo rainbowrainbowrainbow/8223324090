@@ -75,7 +75,7 @@ function buildCustomerSearchQuery({
         q,
         params,
         sql: `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.child_birthday,
-                    c.source, c.total_bookings,
+                    c.source, c.notes, c.total_bookings,
                     COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
                     COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
                     b_agg.real_last_visit

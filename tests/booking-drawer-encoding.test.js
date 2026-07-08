@@ -160,6 +160,68 @@ test('booking customer validation and payload distinguish existing, new, search-
     assert.equal(hooks.bookingCustomerPayloadFromDraft(), null);
 });
 
+test('selected customer card renders manager context without mutating booking notes', () => {
+    const bookingJs = read('js', 'booking.js');
+    const renderStart = bookingJs.indexOf('function bookingCustomerCleanText');
+    const renderEnd = bookingJs.indexOf('function renderBookingCustomerSearchState', renderStart);
+    assert.ok(renderStart >= 0 && renderEnd > renderStart, 'selected customer render helper slice exists');
+
+    const card = {
+        innerHTML: '',
+        classList: {
+            added: [],
+            removed: [],
+            add(value) { this.added.push(value); },
+            remove(value) { this.removed.push(value); }
+        }
+    };
+    const context = {
+        document: {
+            getElementById: id => (id === 'bookingSelectedCustomerCard' ? card : null)
+        },
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(renderStart, renderEnd)}
+        this.__selectedCustomerCardHooks = { renderSelectedCustomerCard };
+    `, context, { filename: 'js/booking.js' });
+
+    context.__selectedCustomerCardHooks.renderSelectedCustomerCard({
+        name: 'Client <X>',
+        phone: '+380000000000',
+        instagram: '@ice',
+        notes: 'allergy <nuts>',
+        totalBookings: 22,
+        children: [
+            { name: 'Bohdan', ageSnapshot: 6, note: 'без горіхів <alert>' },
+            { name: 'Sofia', birthday: '2020-03-04', note: 'посадити поруч з мамою' }
+        ]
+    });
+
+    assert.match(card.innerHTML, /booking-selected-customer__header/);
+    assert.match(card.innerHTML, /Client &lt;X&gt;/);
+    assert.match(card.innerHTML, /22 візити/);
+    assert.match(card.innerHTML, /Важливо для кухні/);
+    assert.match(card.innerHTML, /booking-selected-customer__kitchen-row is-priority/);
+    assert.match(card.innerHTML, /Примітки клієнта/);
+    assert.match(card.innerHTML, /allergy &lt;nuts&gt;/);
+    assert.match(card.innerHTML, /Bohdan · 6 р\./);
+    assert.match(card.innerHTML, /без горіхів &lt;alert&gt;/);
+    assert.match(card.innerHTML, /посадити поруч з мамою/);
+    assert.doesNotMatch(card.innerHTML, /<alert>|<nuts>|<X>/);
+    assert.doesNotMatch(card.innerHTML, /bookingMenuNote|bookingNotes|data-menu/);
+    assert.deepEqual(card.classList.removed, ['hidden']);
+
+    context.__selectedCustomerCardHooks.renderSelectedCustomerCard({ name: 'No Kids' });
+    assert.match(card.innerHTML, /Діти не вказані/);
+    assert.doesNotMatch(card.innerHTML, /bookingNotes/);
+});
+
 test('created booking recovery rejects wrong timeline-view projections before cache merge', () => {
     const bookingJs = read('js', 'booking.js');
     const projectionStart = bookingJs.indexOf('function createdBookingTimelineProjection');
@@ -421,6 +483,20 @@ test('booking drawer controls keep reliable hit targets and footer spacing', () 
     assert.doesNotMatch(bookingPanelHtml, /Що входить у бронювання/);
     assert.doesNotMatch(html, /bookingCreateCustomerBtn/);
     assert.match(html, /Знайдіть і виберіть існуючу картку клієнта перед збереженням бронювання/);
+    assert.match(bookingPanelHtml, /id="bookingCustomerContextPanel" class="booking-customer-context-panel"/);
+    assert.match(bookingPanelHtml, /id="bookingSelectedCustomerCard" class="booking-selected-customer hidden"/);
+    assert.ok(
+        bookingPanelHtml.indexOf('id="customerDataSection"') < bookingPanelHtml.indexOf('id="bookingHasEventToggle"'),
+        'customer context stays before scenario toggles'
+    );
+    assert.ok(
+        bookingPanelHtml.indexOf('id="bookingCustomerContextPanel"') < bookingPanelHtml.indexOf('id="bookingEventFields"'),
+        'customer context is not inside event-only fields'
+    );
+    assert.ok(
+        bookingPanelHtml.indexOf('id="bookingCustomerContextPanel"') < bookingPanelHtml.indexOf('id="banquetFields"'),
+        'customer context is not inside kitchen-only fields'
+    );
     assert.match(html, /id="bookingPrimaryAnimatorSelect"/);
 
     assert.match(bookingJs, /const BOOKING_PROGRAM_ONLY_WORKSPACE = true/);

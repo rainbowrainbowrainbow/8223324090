@@ -459,7 +459,8 @@ describe('staff schedule safety guards', () => {
     });
 
     it('uses schedule display groups in filters, fill-week, load view, export, and copy-week safety', () => {
-        assert.match(staffPage, /function scheduleVisibleStaff\(staffList = StaffState\.staff\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\) === StaffState\.activeDept[\s\S]*\}/);
+        assert.match(staffPage, /function scheduleStaffVisibleWithoutSearch\(staffList = StaffState\.staff\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\) === StaffState\.activeDept[\s\S]*\}/);
+        assert.match(staffPage, /function scheduleVisibleStaff\(staffList = StaffState\.staff\) \{[\s\S]*const visible = scheduleStaffVisibleWithoutSearch\(staffList\);[\s\S]*const query = normalizeScheduleSearchText\(StaffState\.searchQuery\);[\s\S]*scheduleStaffSearchHaystack\(staff\)\.includes\(query\)[\s\S]*\}/);
         assert.match(staffPage, /function legacyScheduleDisplayDepartmentKey\(staff = \{\}\)/);
         assert.match(staffPage, /function scheduleDepartmentOptions\(\) \{[\s\S]*scheduleDisplayDepartmentKey\(staff\)[\s\S]*scheduleDisplayGroupOrder\(\)/);
         assert.match(staffPage, /function scheduleDepartmentRenderOrder\(grouped = \{\}\) \{[\s\S]*scheduleDisplayGroupOrder\(\)\.filter\(key => grouped\[key\]\)/);

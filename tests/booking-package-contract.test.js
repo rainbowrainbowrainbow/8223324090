@@ -1207,6 +1207,40 @@ test('booking drawer package summary keeps clean room label in room-first kitche
     assert.match(summary.textContent, /Pizza/);
 });
 
+test('booking drawer package summary shows non-blocking warning for zero-price custom cake decoration', () => {
+    const menuPositions = [{
+        productId: 'cake_decor_custom',
+        title: 'Індивідуальне оформлення',
+        quantity: 1,
+        servingUnit: 'додаток',
+        unitPrice: 0,
+        subtotal: 0,
+        kitchenType: 'menu'
+    }];
+    const ctx = createBookingDrawerSummaryHarness({
+        hasEvent: false,
+        roomFirst: true,
+        selectedProgramValue: '',
+        menuPositions,
+        packageTotals: {
+            programBasePrice: 0,
+            positionsSubtotal: 0,
+            entrySubtotal: 0,
+            finalTotal: 0,
+            menuPositions,
+            activityPrograms: [],
+            warnings: []
+        }
+    });
+
+    ctx.__summaryHooks.renderBookingPackageSummary();
+
+    const warning = ctx.document.querySelector('#bookingPackageSummary .booking-summary-note--warning');
+    assert.ok(warning, 'custom decoration zero-price warning is visible in the summary');
+    assert.match(warning.textContent, /Індивідуальне оформлення має ціну 0 грн/);
+    assert.match(warning.textContent, /Збереження не блокується/);
+});
+
 test('booking activity schedule helper defaults sequentially from base time', () => {
     const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(multiActivitySchedulePrograms(), {
         baseTime: '12:00'
@@ -1715,6 +1749,46 @@ test('booking menu catalog inline edits keep menuPositions, legacy text, and res
     assert.equal(doc.getElementById('bookingMenuInsightPanel').hidden, true);
     assert.equal(doc.body.classList.contains('booking-menu-catalog-active'), false);
     assert.equal(doc.getElementById('bookingMenuCatalogPanel').classList.contains('booking-menu-catalog-cart-open'), false);
+});
+
+test('booking menu catalog warns when custom cake decoration price remains zero', () => {
+    const ctx = createBookingMenuCatalogHarness();
+    const doc = ctx.document;
+    doc.getElementById('bookingMenuCatalogPanel').hidden = false;
+    ctx.AppState.products.push({
+        id: 'cake_decor_custom',
+        domain: 'kitchen',
+        category: 'menu',
+        kitchenType: 'menu',
+        name: 'Індивідуальне оформлення',
+        price: 0,
+        menuSection: 'Оформлення торта',
+        servingUnit: 'додаток',
+        sortOrder: 99,
+        isActive: true
+    });
+
+    ctx.BookingPackageState.catalogFilter = 'section:cake-decorations';
+    ctx.renderBookingMenuCatalog();
+
+    assert.match(doc.getElementById('bookingMenuCatalogTabs').textContent, /Оформлення торта/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /Індивідуальне оформлення/);
+    assert.match(doc.getElementById('bookingMenuCatalogList').textContent, /ціну потрібно вказати вручну/);
+
+    ctx.upsertBookingMenuCatalogProduct('cake_decor_custom', 1);
+
+    assert.equal(ctx.getBookingMenuPositions()[0].unitPrice, 0);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /Індивідуальне оформлення має ціну 0 грн/);
+    assert.match(doc.getElementById('bookingMenuCatalogCartList').textContent, /Збереження не блокується/);
+
+    ctx.setBookingMenuCatalogEditing('cake_decor_custom', 'price');
+    const priceInput = doc.querySelector('[data-menu-catalog-price-input="cake_decor_custom"]');
+    assert.ok(priceInput, 'custom decoration price input rendered');
+    priceInput.value = '250';
+    ctx.commitBookingMenuCatalogInlineInput(priceInput);
+
+    assert.equal(ctx.getBookingMenuPositions()[0].unitPrice, 250);
+    assert.doesNotMatch(doc.getElementById('bookingMenuCatalogCartList').textContent, /Індивідуальне оформлення має ціну 0 грн/);
 });
 
 test('booking menu catalog uses active generated images and ignores legacy static fallbacks', () => {

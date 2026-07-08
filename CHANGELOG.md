@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.63 - Cake Decorations Menu Guard
+
+### Бронювання / Оформлення торта / QA / (Клешня, 08.07.2026) [codex]
+- **Менеджер бачить попередження для індивідуального оформлення** - `cake_decor_custom` показує hint `ціну потрібно вказати вручну`, а cart і summary попереджають, якщо позиція лишилась із `0 грн`.
+- **Збереження не блокується** - warning тільки підсвічує ризик, бо індивідуальне оформлення іноді може бути безкоштовним за домовленістю.
+- **Live smoke став повторюваним** - додано `smoke:cake-decorations`, який перевіряє Products API/UI, booking tab, cart subtotal, safe test booking і cleanup.
+- **Додано regression coverage** - booking package/catalog тести перевіряють warning copy і зникнення warning після ручної ціни.
+- **DB schema, auth/roles, billing, secrets і Railway settings не змінювались** - реліз обмежений booking UI, CSS, smoke script, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.62 - Cake Decorations Menu
 
 ### Кухня / Торти / Оформлення / Booking catalog / (Клешня, 08.07.2026) [codex]

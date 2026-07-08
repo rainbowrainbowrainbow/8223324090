@@ -4646,6 +4646,10 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
         const groupLabel = bookingMenuCatalogProductGroupLabel(product, filter, selectedIds.has(String(product.id || '')));
         const section = product.menuSection ? String(product.menuSection) : '';
         const unit = normalizeBookingMenuServingUnitDisplay(product.servingUnit || product.priceUnit || '');
+        const customCakeDecorationHint = bookingMenuCustomCakeDecorationPriceHint(product.id);
+        const customCakeDecorationWarning = selectedPosition
+            ? bookingMenuCustomCakeDecorationZeroPriceWarning([selectedPosition])
+            : '';
         if (groupLabel !== currentGroup) {
             currentGroup = groupLabel;
             rows.push(`<div class="booking-menu-catalog-group-heading">${escapeHtml(groupLabel)}</div>`);
@@ -4676,8 +4680,10 @@ function renderBookingMenuCatalogList(products = getBookingMenuProducts()) {
                             <span class="booking-menu-catalog-kind">${escapeHtml(typeLabel)}</span>
                             <span>${priceControl}${unit ? ` / ${escapeHtml(unit)}` : ''}</span>
                             ${section ? `<span>${escapeHtml(section)}</span>` : ''}
+                            ${customCakeDecorationHint ? `<span class="booking-menu-catalog-price-hint">${escapeHtml(customCakeDecorationHint)}</span>` : ''}
                             ${note ? `<span class="booking-menu-catalog-note-preview">${escapeHtml(note)}</span>` : ''}
                         </div>
+                        ${customCakeDecorationWarning ? `<div class="booking-menu-catalog-price-warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
                     </div>
                     ${bookingMenuCatalogInsightActionsHtml(product, title)}
                 </div>
@@ -4717,6 +4723,7 @@ function renderBookingMenuCatalogCart() {
         const unitPrice = toBookingMoney(item.unitPrice || 0);
         const note = item.note || '';
         const cartQuantityLabel = formatBookingMenuPositionQuantity(item);
+        const customCakeDecorationWarning = bookingMenuCustomCakeDecorationZeroPriceWarning([item]);
         const quantityControl = productId && isBookingMenuCatalogEditing(productId, 'quantity')
             ? `<input class="booking-menu-catalog-inline-input booking-menu-catalog-qty-input" type="number" min="0.1" step="0.1" value="${escapeHtml(String(quantity))}" data-menu-catalog-quantity-input="${escapeHtml(productId)}" aria-label="Кількість ${escapeHtml(title)}">`
             : productId
@@ -4750,6 +4757,7 @@ function renderBookingMenuCatalogCart() {
                 ${note ? `<div class="booking-menu-catalog-note-preview">${escapeHtml(note)}</div>` : ''}
                 ${noteEditor}
                 <div class="booking-menu-catalog-cart-subtotal">${escapeHtml(formatPrice(item.subtotal || 0))}</div>
+                ${customCakeDecorationWarning ? `<div class="booking-menu-catalog-price-warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
             </div>
         `;
     }).join('');
@@ -5335,6 +5343,31 @@ function bookingSummaryPinataDetails(program = {}) {
     return rows;
 }
 
+const BOOKING_MENU_CUSTOM_CAKE_DECORATION_PRODUCT_ID = 'cake_decor_custom';
+const BOOKING_MENU_CUSTOM_CAKE_DECORATION_PRICE_HINT = 'ціну потрібно вказати вручну';
+const BOOKING_MENU_CUSTOM_CAKE_DECORATION_ZERO_PRICE_WARNING = 'Індивідуальне оформлення має ціну 0 грн. Якщо це не домовленість, вкажіть ціну вручну. Збереження не блокується.';
+
+function bookingMenuIsCustomCakeDecoration(value = {}) {
+    const productId = typeof value === 'string'
+        ? value
+        : (value.productId || value.product_id || value.id || '');
+    return String(productId || '') === BOOKING_MENU_CUSTOM_CAKE_DECORATION_PRODUCT_ID;
+}
+
+function bookingMenuCustomCakeDecorationPriceHint(productId) {
+    return bookingMenuIsCustomCakeDecoration(productId)
+        ? BOOKING_MENU_CUSTOM_CAKE_DECORATION_PRICE_HINT
+        : '';
+}
+
+function bookingMenuCustomCakeDecorationZeroPriceWarning(positions = []) {
+    const hasZeroPriceCustomDecoration = (Array.isArray(positions) ? positions : [])
+        .some(item => bookingMenuIsCustomCakeDecoration(item) && toBookingMoney(item.unitPrice ?? item.unit_price ?? item.price ?? 0) === 0);
+    return hasZeroPriceCustomDecoration
+        ? BOOKING_MENU_CUSTOM_CAKE_DECORATION_ZERO_PRICE_WARNING
+        : '';
+}
+
 function renderBookingSummaryActivityRows(programs = []) {
     const list = Array.isArray(programs) ? programs.filter(Boolean) : [];
     if (!list.length) return '';
@@ -5434,6 +5467,9 @@ function renderBookingPackageSummary() {
     const entryCharge = totals.entryCharge || (entrySubtotal > 0 ? { title: 'Вхід', subtotal: entrySubtotal } : null);
     const shouldShowValidationChecklist = !validation.canSubmit || BookingDrawerState.validationAttempted;
     const preflightWarning = renderSelectedActivityPreflightWarning();
+    const customCakeDecorationWarning = kitchenEnabled
+        ? bookingMenuCustomCakeDecorationZeroPriceWarning(totals.menuPositions || [])
+        : '';
 
     if (!roomValue && !customerId && !customerName && !document.getElementById('selectedProgram')?.value && menuCount === 0) {
         container.innerHTML = `
@@ -5458,6 +5494,7 @@ function renderBookingPackageSummary() {
         <div class="booking-summary-row booking-summary-total"><span>Разом</span><strong>${escapeHtml(formatPrice(finalTotal))}</strong></div>
         ${shouldShowValidationChecklist ? renderBookingValidationIssues(validation) : ''}
         ${preflightWarning}
+        ${customCakeDecorationWarning ? `<div class="booking-summary-note booking-summary-note--warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
         ${totals.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(totals.warnings[0].message || totals.warnings[0].code)}</div>` : ''}
         ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;

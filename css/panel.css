@@ -3106,6 +3106,18 @@ body.booking-menu-catalog-active {
     font-weight: 950;
 }
 
+.booking-menu-catalog-price-warning {
+    margin-top: 8px;
+    padding: 7px 9px;
+    border: 1px solid rgba(245, 158, 11, 0.34);
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.13);
+    color: #fde68a;
+    font-size: 11px;
+    font-weight: 850;
+    line-height: 1.35;
+}
+
 .booking-menu-catalog-mobile-cart {
     display: none;
     min-height: 38px;
@@ -3469,6 +3481,19 @@ body.booking-menu-catalog-active {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.booking-menu-catalog-meta > .booking-menu-catalog-price-hint {
+    padding: 2px 6px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.12);
+    color: #fde68a;
+    font-weight: 900;
+    line-height: 1.25;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .booking-menu-catalog-kind {
@@ -4820,6 +4845,13 @@ body.booking-menu-catalog-active {
     border-color: rgba(248, 113, 113, 0.38);
     background: rgba(127, 29, 29, 0.28);
     color: #fecaca;
+}
+
+.booking-summary-note--warning {
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fde68a;
+    font-weight: 800;
 }
 
 .booking-validation-checklist {

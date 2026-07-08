@@ -278,6 +278,24 @@ function printTextReport(report) {
     }
 }
 
+function safeErrorMessage(error) {
+    const message = String(error?.message || '').trim();
+    if (message) return message;
+    const parts = [
+        error?.name ? `name=${error.name}` : '',
+        error?.code ? `code=${error.code}` : ''
+    ].filter(Boolean);
+    if (Array.isArray(error?.errors) && error.errors.length) {
+        const nested = error.errors
+            .slice(0, 3)
+            .map(item => [item?.name, item?.code, item?.message].filter(Boolean).join('/'))
+            .filter(Boolean)
+            .join('; ');
+        if (nested) parts.push(`nested=${nested}`);
+    }
+    return parts.join(' ') || 'unknown error';
+}
+
 async function main() {
     loadEnvFile();
     const { pool } = require('../db');
@@ -304,7 +322,7 @@ async function main() {
 
 if (require.main === module) {
     main().catch(error => {
-        console.error(`Child dietary notes discovery failed: ${error.message}`);
+        console.error(`Child dietary notes discovery failed: ${safeErrorMessage(error)}`);
         process.exitCode = 1;
     }).finally(async () => {
         try {

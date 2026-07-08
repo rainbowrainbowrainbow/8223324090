@@ -29,7 +29,7 @@ The current regex/keyword highlight is useful for MVP, but it is not a reliable 
 Use the anonymized audit script before approving schema work:
 
 ```bash
-npm run audit:child-dietary-notes -- --business-context event_genix --limit 500
+npm run audit:child-dietary-notes -- --business-context=event_genix --limit=500
 ```
 
 Default output is aggregate-only:
@@ -43,7 +43,7 @@ Default output is aggregate-only:
 Redacted snippets require an explicit flag:
 
 ```bash
-npm run audit:child-dietary-notes -- --business-context event_genix --limit 500 --samples
+npm run audit:child-dietary-notes -- --business-context=event_genix --limit=500 --samples
 ```
 
 Safety rules:
@@ -53,6 +53,22 @@ Safety rules:
 - it does not print database credentials or environment values;
 - samples redact obvious phone numbers, emails, handles, URLs, and dates;
 - do not paste raw production notes into chat, commits, or release notes.
+
+## Audit Run Notes
+
+2026-07-08 Codex local run:
+
+- command: `npm run audit:child-dietary-notes -- --business-context=event_genix --limit=500`;
+- result: blocked before reading data because no reachable PostgreSQL connection was available from the local environment;
+- observed connection error class: `AggregateError`, code `ECONNREFUSED`, local targets `::1:5432` and `127.0.0.1:5432`;
+- no production child notes were printed or committed.
+
+Next required action before schema decisions:
+
+1. Run the aggregate-only command from an environment with read-only DB access.
+2. Review counts only first.
+3. Use `--samples` only if an operator needs redacted examples for wording patterns.
+4. Keep raw child notes out of chat, logs, commits, screenshots, and release notes.
 
 ## Recommendation
 

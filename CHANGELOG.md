@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.54 - Lead Kanban Booking Conversion
+
+### Ліди / Kanban / Бронювання / (Клешня, 08.07.2026) [codex]
+- **На картках лідів у Kanban додано компактне меню конвертації** - оператор може окремо відкрити чернетку `Бронь з активністю` або `Бронь з їжею та кімнатою`.
+- **Конвертація веде у правильний режим таймлайну** - активність відкриває `Свята`, а кухня з кімнатою відкриває `Банкети`, без автосоздання броні до натискання save.
+- **Бажана дата ліда передається у чернетку без timezone-зсувів** - URL handoff ставить `date` і `eventDate` із нормалізованого event preference.
+- **Додано regression coverage** - static UI guards фіксують Kanban menu, `bookingMode`, `timelineView`, cleanup query params і drawer mode.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend handoff, booking drawer state, стилями, тестами, changelog і version/cache refs.
+
+---
+
 ## v0.78.53 - Lead Workspace Child Sync Fix
 
 ### Ліди / Workspace / Діти / Hotfix / (Клешня, 08.07.2026) [codex]

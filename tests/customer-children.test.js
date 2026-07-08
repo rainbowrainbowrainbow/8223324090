@@ -61,6 +61,27 @@ test('customer_children migration is additive idempotent and preserves source da
     assert.doesNotMatch(sql, /make_date\([^)]*age/i);
 });
 
+test('customer child dietary tags migration is additive and does not backfill free text', () => {
+    const sql = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '282_customer_child_dietary_tags.sql'), 'utf8');
+
+    assert.match(sql, /MIGRATION_KIND:\s*schema/i);
+    assert.match(sql, /SAFETY:\s*Additive customer_children dietary fields/i);
+    assert.match(sql, /OPERATOR_APPROVAL:\s*required/i);
+    assert.match(sql, /ROLLBACK:\s*Export customer_children\.dietary_tags/i);
+    assert.match(sql, /DATA_SCOPE:\s*No destructive data changes/i);
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS dietary_tags TEXT\[\] NOT NULL DEFAULT ARRAY\[\]::TEXT\[\]/i);
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS dietary_note TEXT/i);
+    assert.match(sql, /customer_children_dietary_tags_count_check/i);
+    assert.match(sql, /customer_children_dietary_note_length_check/i);
+    assert.match(sql, /DROP CONSTRAINT IF EXISTS customer_children_has_data_check/i);
+    assert.match(sql, /OR cardinality\(dietary_tags\) > 0/i);
+    assert.match(sql, /OR NULLIF\(BTRIM\(COALESCE\(dietary_note, ''\)\), ''\) IS NOT NULL/i);
+    assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_customer_children_dietary_tags_gin/i);
+    assert.doesNotMatch(sql, /\bUPDATE\b/i);
+    assert.doesNotMatch(sql, /\bDELETE\s+FROM\b/i);
+    assert.doesNotMatch(sql, /children?\.note/i);
+});
+
 test('legacy child fields policy keeps customer_children as canonical truth', () => {
     const policyDoc = fs.readFileSync(path.join(ROOT, 'docs', 'CUSTOMER_CHILDREN_LEGACY_FIELDS_POLICY_2026-06-23.md'), 'utf8');
 
@@ -163,29 +184,73 @@ test('normalizeChildInput preserves explicit fields without inventing birthday f
         name: '  Sasha  ',
         birthday: '2019-05-20',
         ageSnapshot: '4',
-        notes: '  note  '
+        notes: '  note  ',
+        dietaryTags: ['nuts', ' no_nuts ', 'lactose'],
+        dietaryNote: '  no peanuts  '
     }), {
         name: 'Sasha',
         birthday: '2019-05-20',
         ageSnapshot: 4,
-        note: 'note'
+        note: 'note',
+        dietaryTags: ['nuts', 'lactose'],
+        dietaryNote: 'no peanuts'
     });
 
     assert.deepEqual(normalizeChildInput({ name: 'Mia', age: 5 }), {
         name: 'Mia',
         birthday: null,
         ageSnapshot: 5,
-        note: null
+        note: null,
+        dietaryTags: [],
+        dietaryNote: null
     });
     assert.deepEqual(normalizeChildInput({ name: 'Age Only', ageSnapshot: 4 }), {
         name: 'Age Only',
         birthday: null,
         ageSnapshot: 4,
-        note: null
+        note: null,
+        dietaryTags: [],
+        dietaryNote: null
     });
     assert.equal(normalizeChildInput({}), null);
     assert.throws(() => normalizeChildInput({ name: 'Mia', birthday: '2026-13-01' }), CustomerChildrenError);
     assert.throws(() => normalizeChildInput({ birthday: '2019-05-20' }, 0, { requireName: true }), CustomerChildrenError);
+});
+
+test('normalizeChildInput validates structured dietary fields separately from general child note', () => {
+    assert.deepEqual(normalizeChildInput({
+        name: 'Diet Child',
+        note: 'seat near parent',
+        dietary_tags: 'peanut; dairy_free; sugar_free; peanut',
+        allergy_note: 'severe peanut allergy'
+    }), {
+        name: 'Diet Child',
+        birthday: null,
+        ageSnapshot: null,
+        note: 'seat near parent',
+        dietaryTags: ['peanuts', 'dairy', 'sugar'],
+        dietaryNote: 'severe peanut allergy'
+    });
+
+    assert.deepEqual(normalizeChildInput({
+        dietaryNote: 'only dietary detail'
+    }), {
+        name: null,
+        birthday: null,
+        ageSnapshot: null,
+        note: null,
+        dietaryTags: [],
+        dietaryNote: 'only dietary detail'
+    });
+
+    assert.throws(
+        () => normalizeChildInput({ name: 'Bad Tag', dietaryTags: ['***'] }),
+        CustomerChildrenError
+    );
+    assert.throws(
+        () => normalizeChildInput({ name: 'Too Many', dietaryTags: Array.from({ length: 21 }, (_, index) => `tag_${index}`) }),
+        CustomerChildrenError
+    );
 });
 
 test('buildLegacyChildSnapshot uses only explicit first-child compatibility data', () => {
@@ -264,6 +329,8 @@ test('buildCustomerChildrenProjection falls back to legacy customer fields only 
             child_birthday: '2020-06-01',
             fallback_projection: true
         },
+        dietaryTags: [],
+        dietaryNote: null,
         sortOrder: 0,
         createdAt: null,
         updatedAt: null,
@@ -385,6 +452,8 @@ test('listCustomerChildren maps canonical rows and falls back cleanly when stora
                     birthday: '2018-03-04',
                     age_snapshot: 6,
                     note: 'prefers cake',
+                    dietary_tags: ['dairy'],
+                    dietary_note: 'no cold milk',
                     source_kind: 'lead_celebrant',
                     source_payload: { source_table: 'leads' },
                     sort_order: 10,
@@ -400,6 +469,8 @@ test('listCustomerChildren maps canonical rows and falls back cleanly when stora
     assert.equal(rows[0].name, 'Anna');
     assert.equal(rows[0].birthday, '2018-03-04');
     assert.equal(rows[0].ageSnapshot, 6);
+    assert.deepEqual(rows[0].dietaryTags, ['dairy']);
+    assert.equal(rows[0].dietaryNote, 'no cold milk');
 
     const missingDb = {
         async query() {
@@ -452,7 +523,9 @@ test('replaceCustomerChildren uses a provided pg transaction client directly', a
                     note: params[7],
                     source_kind: params[8],
                     source_payload: JSON.parse(params[9]),
-                    sort_order: params[10]
+                    sort_order: params[10],
+                    dietary_tags: params[11],
+                    dietary_note: params[12]
                 });
                 return { rows: [], rowCount: 1 };
             }
@@ -465,7 +538,7 @@ test('replaceCustomerChildren uses a provided pg transaction client directly', a
 
     const result = await replaceCustomerChildren(
         321,
-        [{ name: 'QA Child' }],
+        [{ name: 'QA Child', dietaryTags: ['nuts'], dietaryNote: 'no peanuts' }],
         'event_genix',
         {
             sourceKind: 'legacy_customer_child',
@@ -477,6 +550,8 @@ test('replaceCustomerChildren uses a provided pg transaction client directly', a
 
     assert.equal(result.length, 1);
     assert.equal(result[0].name, 'QA Child');
+    assert.deepEqual(result[0].dietaryTags, ['nuts']);
+    assert.equal(result[0].dietaryNote, 'no peanuts');
     assert.ok(!calls.some(call => /^\s*BEGIN\b|\bCOMMIT\b|\bROLLBACK\b/i.test(call.text)));
 });
 

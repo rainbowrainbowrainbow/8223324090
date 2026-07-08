@@ -622,7 +622,8 @@ async function loadCustomerChildrenMap(customerIds = [], businessContext = null,
     try {
         const result = await (options.queryable || pool).query(
             `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
-                    age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at
+                    age_snapshot, note, source_kind, source_payload, sort_order,
+                    dietary_tags, dietary_note, created_at, updated_at
              FROM customer_children
              WHERE customer_id = ANY($1::int[])
                ${contextSql}
@@ -875,6 +876,8 @@ router.get('/children-review', requireRole('manager', 'admin'), async (req, res)
                     cc.source_kind,
                     cc.source_payload,
                     cc.sort_order,
+                    cc.dietary_tags,
+                    cc.dietary_note,
                     cc.created_at,
                     cc.updated_at,
                     ${customerChildReviewIssueCodesSql('cc')} AS issue_codes
@@ -971,7 +974,8 @@ router.post('/children-review/:customerId/resolve', requireRole('manager', 'admi
         }
         const sourceResult = await client.query(
             `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
-                    age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at,
+                    age_snapshot, note, source_kind, source_payload, sort_order,
+                    dietary_tags, dietary_note, created_at, updated_at,
                     ${customerChildReviewIssueCodesSql('cc')} AS issue_codes
              FROM customer_children cc
              WHERE cc.customer_id = $1
@@ -1038,9 +1042,9 @@ router.post('/children-review/:customerId/resolve', requireRole('manager', 'admi
             await client.query(
                 `INSERT INTO customer_children (
                     business_context, customer_id, lead_id, booking_id, name, birthday, age_snapshot, note,
-                    source_kind, source_payload, sort_order
+                    source_kind, source_payload, sort_order, dietary_tags, dietary_note
                  )
-                 VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, 'manual_review', $7::jsonb, $8)`,
+                 VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, 'manual_review', $7::jsonb, $8, $9::text[], $10)`,
                 [
                     businessContext,
                     customerId,
@@ -1058,7 +1062,9 @@ router.post('/children-review/:customerId/resolve', requireRole('manager', 'admi
                         input_index: index,
                         original_preserved_in_source_rows: true
                     }),
-                    100 + index
+                    100 + index,
+                    child.dietaryTags,
+                    child.dietaryNote
                 ]
             );
         }

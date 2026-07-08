@@ -2214,7 +2214,8 @@ async function loadWorkspaceCustomerChildren(customerId, businessContext = DEFAU
     if (!Number.isInteger(id) || id <= 0) return [];
     const result = await optionalWorkspaceQuery(
         `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
-                age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at
+                age_snapshot, note, source_kind, source_payload, sort_order,
+                dietary_tags, dietary_note, created_at, updated_at
          FROM customer_children
          WHERE customer_id = $1
            AND business_context = $2

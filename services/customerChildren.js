@@ -10,6 +10,32 @@ const MAX_CHILDREN_PER_CUSTOMER = 50;
 const CHILD_SOURCE_KIND_MAX = 64;
 const CHILD_NAME_MAX = 200;
 const CHILD_NOTE_MAX = 1000;
+const CHILD_DIETARY_TAG_MAX = 40;
+const CHILD_DIETARY_TAGS_MAX = 20;
+const CHILD_DIETARY_TAG_ALIASES = Object.freeze(new Map([
+    ['allergy', 'other'],
+    ['allergies', 'other'],
+    ['arachis', 'peanuts'],
+    ['bez_gluten', 'gluten'],
+    ['bez_glutenu', 'gluten'],
+    ['bez_gorihiv', 'nuts'],
+    ['bez_laktozy', 'lactose'],
+    ['bez_moloka', 'dairy'],
+    ['bez_yayets', 'eggs'],
+    ['dairy_free', 'dairy'],
+    ['egg', 'eggs'],
+    ['gluten_free', 'gluten'],
+    ['gorihi', 'nuts'],
+    ['lactose_free', 'lactose'],
+    ['milk', 'dairy'],
+    ['no_gluten', 'gluten'],
+    ['no_lactose', 'lactose'],
+    ['no_milk', 'dairy'],
+    ['no_nuts', 'nuts'],
+    ['peanut', 'peanuts'],
+    ['sugar_free', 'sugar'],
+    ['yaytsya', 'eggs']
+]));
 const LEGACY_CHILD_FIELD_POLICY = Object.freeze({
     canonicalTruth: 'customer_children',
     legacyFields: Object.freeze(['customers.child_name', 'customers.child_birthday']),
@@ -63,6 +89,91 @@ function cleanText(value, maxLength = 500) {
     if (value === undefined || value === null) return null;
     const text = String(value).trim();
     return text ? text.slice(0, maxLength) : null;
+}
+
+function normalizeDietaryTagValue(value, index = 0, options = {}) {
+    const raw = typeof value === 'object' && value !== null
+        ? value.tag ?? value.key ?? value.id ?? value.value ?? value.name
+        : value;
+    const text = cleanText(raw, CHILD_DIETARY_TAG_MAX * 2);
+    if (!text) return null;
+
+    const normalized = text
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/^#+/, '')
+        .replace(/\+/g, '_plus_')
+        .replace(/&/g, '_and_')
+        .replace(/[\s./]+/g, '_')
+        .replace(/[^a-z0-9_:-]/g, '')
+        .replace(/_+/g, '_')
+        .replace(/^[_:-]+|[_:-]+$/g, '')
+        .slice(0, CHILD_DIETARY_TAG_MAX);
+
+    const tag = CHILD_DIETARY_TAG_ALIASES.get(normalized) || normalized;
+    if (/^[a-z0-9][a-z0-9_:-]{0,39}$/.test(tag)) return tag;
+
+    if (options.strict === false) return null;
+    throw new CustomerChildrenError(`children[${index}].dietaryTags contains an invalid tag`, {
+        code: 'VALIDATION_CHILD_DIETARY_TAG_INVALID',
+        details: { field: `children[${index}].dietaryTags`, index }
+    });
+}
+
+function parseDietaryTagList(value) {
+    if (value === undefined || value === null || value === '') return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'object') return [value];
+    const text = String(value).trim();
+    if (!text) return [];
+    if (/^\s*\[/.test(text)) {
+        try {
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed)) return parsed;
+        } catch {
+            // Fall back to delimiter parsing below.
+        }
+    }
+    return text.split(/[,;\n|]+/);
+}
+
+function normalizeDietaryTags(value, index = 0, options = {}) {
+    const tags = [];
+    for (const item of parseDietaryTagList(value)) {
+        const tag = normalizeDietaryTagValue(item, index, options);
+        if (!tag || tags.includes(tag)) continue;
+        tags.push(tag);
+        if (tags.length > CHILD_DIETARY_TAGS_MAX) {
+            if (options.strict === false) return tags.slice(0, CHILD_DIETARY_TAGS_MAX);
+            throw new CustomerChildrenError(`children[${index}].dietaryTags can contain at most ${CHILD_DIETARY_TAGS_MAX} tags`, {
+                code: 'VALIDATION_CHILD_DIETARY_TAGS_TOO_MANY',
+                details: { field: `children[${index}].dietaryTags`, index, max: CHILD_DIETARY_TAGS_MAX }
+            });
+        }
+    }
+    return tags;
+}
+
+function firstProvidedValue(...values) {
+    for (const value of values) {
+        if (value !== undefined) return value;
+    }
+    return undefined;
+}
+
+function customerChildHasData(child = {}) {
+    const ageSnapshot = child.ageSnapshot ?? child.age_snapshot ?? null;
+    const dietaryTags = child.dietaryTags ?? child.dietary_tags;
+    const dietaryNote = child.dietaryNote ?? child.dietary_note;
+    return Boolean(
+        child.name
+        || child.birthday
+        || ageSnapshot !== null
+        || child.note
+        || (Array.isArray(dietaryTags) && dietaryTags.length)
+        || dietaryNote
+    );
 }
 
 function dateOnlyFromRow(value) {
@@ -139,15 +250,35 @@ function normalizeChildInput(input = {}, index = 0, options = {}) {
         `children[${index}].ageSnapshot`
     );
     const note = cleanText(input.note ?? input.notes, CHILD_NOTE_MAX);
+    const dietaryTags = normalizeDietaryTags(firstProvidedValue(
+        input.dietaryTags,
+        input.dietary_tags,
+        input.dietaryTag,
+        input.dietary_tag,
+        input.allergyTags,
+        input.allergy_tags,
+        input.allergens,
+        input.allergies
+    ), index);
+    const dietaryNote = cleanText(firstProvidedValue(
+        input.dietaryNote,
+        input.dietary_note,
+        input.dietaryNotes,
+        input.dietary_notes,
+        input.foodNote,
+        input.food_note,
+        input.allergyNote,
+        input.allergy_note
+    ), CHILD_NOTE_MAX);
 
-    if (!name && !birthday && ageSnapshot === null && !note) return null;
+    if (!customerChildHasData({ name, birthday, ageSnapshot, note, dietaryTags, dietaryNote })) return null;
     if (options.requireName && !name) {
         throw new CustomerChildrenError(`children[${index}].name is required`, {
             code: 'VALIDATION_CHILD_NAME_REQUIRED',
             details: { field: `children[${index}].name`, index }
         });
     }
-    return { name, birthday, ageSnapshot, note };
+    return { name, birthday, ageSnapshot, note, dietaryTags, dietaryNote };
 }
 
 function isCustomerChildrenStorageMissing(err) {
@@ -193,6 +324,7 @@ async function withTransaction(options, callback) {
 function mapCustomerChildRow(row = {}) {
     const sourcePayload = jsonObject(row.source_payload ?? row.sourcePayload);
     const manualReview = jsonObject(sourcePayload.manual_review ?? sourcePayload.manualReview, null);
+    const dietaryTags = normalizeDietaryTags(row.dietary_tags ?? row.dietaryTags, 0, { strict: false });
     const superseded = manualReview?.superseded === true || manualReview?.status === 'superseded';
     const needsReview = sourcePayload.needs_review === true
         || sourcePayload.needsReview === true
@@ -210,6 +342,8 @@ function mapCustomerChildRow(row = {}) {
         birthday: dateOnlyFromRow(row.birthday),
         ageSnapshot: row.age_snapshot ?? row.ageSnapshot ?? null,
         note: row.note || null,
+        dietaryTags,
+        dietaryNote: cleanText(row.dietary_note ?? row.dietaryNote, CHILD_NOTE_MAX),
         sourceKind: row.source_kind || row.sourceKind || 'unknown',
         sourcePayload,
         manualReview,
@@ -234,7 +368,8 @@ async function listCustomerChildren(customerId, businessContext = DEFAULT_BUSINE
     try {
         const result = await queryable(options).query(
             `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
-                    age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at
+                    age_snapshot, note, source_kind, source_payload, sort_order,
+                    dietary_tags, dietary_note, created_at, updated_at
              FROM customer_children
              WHERE customer_id = $1
                AND business_context = $2
@@ -306,9 +441,9 @@ async function replaceCustomerChildren(
             await client.query(
                 `INSERT INTO customer_children (
                     business_context, customer_id, lead_id, booking_id, name, birthday, age_snapshot, note,
-                    source_kind, source_payload, sort_order
+                    source_kind, source_payload, sort_order, dietary_tags, dietary_note
                  )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::text[], $13)`,
                 [
                     ctx,
                     id,
@@ -327,7 +462,9 @@ async function replaceCustomerChildren(
                         input_index: index,
                         copy_rule: source.copyRule || 'replace_customer_children'
                     }),
-                    sortOrderBase + index
+                    sortOrderBase + index,
+                    child.dietaryTags,
+                    child.dietaryNote
                 ]
             );
         }
@@ -351,6 +488,8 @@ function buildLegacyChildProjection(customerRow = {}) {
         birthday,
         ageSnapshot: null,
         note: null,
+        dietaryTags: [],
+        dietaryNote: null,
         sourceKind: 'legacy_customer_fields',
         sourcePayload: {
             source_table: 'customers',
@@ -370,7 +509,7 @@ function buildCustomerChildrenProjection(customerRow = {}, canonicalRows = []) {
     const projection = rows
         .map(mapCustomerChildRow)
         .filter(child => !child.superseded)
-        .filter(child => child.name || child.birthday || child.ageSnapshot !== null || child.note)
+        .filter(customerChildHasData)
         .sort((a, b) => (a.sortOrder - b.sortOrder) || ((a.id || 0) - (b.id || 0)));
 
     return projection.length ? projection : buildLegacyChildProjection(customerRow);
@@ -439,7 +578,7 @@ function customerChildrenFullDisplay(children = [], options = {}) {
 
 function firstCustomerChild(children = []) {
     return (Array.isArray(children) ? children : []).find(child =>
-        child && (child.name || child.birthday || child.ageSnapshot !== null || child.note)
+        child && customerChildHasData(child)
     ) || null;
 }
 
@@ -449,6 +588,7 @@ module.exports = {
     CUSTOMER_CHILD_DISPLAY_POLICY,
     validateChildBirthday,
     normalizeChildInput,
+    normalizeDietaryTags,
     listCustomerChildren,
     replaceCustomerChildren,
     buildCustomerChildrenProjection,

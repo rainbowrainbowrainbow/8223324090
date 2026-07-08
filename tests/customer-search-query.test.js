@@ -53,4 +53,5 @@ test('customers search route projects customer notes and child notes', () => {
     assert.match(routeCode, /loadCustomerChildrenMap\(result\.rows\.map\(row => row\.id\), businessContext\)/);
     assert.match(routeCode, /applyCustomerChildrenProjection\(/);
     assert.match(routeCode, /age_snapshot, note, source_kind/);
+    assert.match(routeCode, /dietary_tags, dietary_note/);
 });

@@ -2244,6 +2244,38 @@ test('booking package persists final total into booking price and extraData', ()
     assert.match(booking.banquetMenu, /Піца - 2 порції × 300 грн/);
 });
 
+test('booking package persists top-level bookingPackage menu positions from create payload', () => {
+    const booking = applyBookingPackage({
+        price: 1700,
+        programBasePrice: 1000,
+        bookingPackage: {
+            menuPositions: [
+                { productId: 'menu_pizza', title: 'Піца', quantity: 2, unitPrice: 250, servingTime: '15:30' },
+                { productId: 'cake_decor_custom', title: 'Індивідуальне оформлення', quantity: 1, unitPrice: 200, servingUnit: 'додаток', note: 'manual price' }
+            ],
+            serviceEvents: [
+                { type: 'food_service', title: 'Видача меню', time: '15:30' }
+            ]
+        },
+        extraData: { source: 'api_create_test' }
+    });
+
+    assert.equal(booking.price, 1700);
+    assert.equal(booking.extraData.source, 'api_create_test');
+    assert.equal(booking.extraData.bookingPackage.programBasePrice, 1000);
+    assert.equal(booking.extraData.bookingPackage.positionsSubtotal, 700);
+    assert.equal(booking.extraData.bookingPackage.finalTotal, 1700);
+    assert.equal(booking.extraData.bookingPackage.menuPositions.length, 2);
+    assert.equal(booking.extraData.bookingPackage.menuPositions[0].productId, 'menu_pizza');
+    assert.equal(booking.extraData.bookingPackage.menuPositions[0].servingTime, '15:30');
+    assert.equal(booking.extraData.bookingPackage.menuPositions[1].productId, 'cake_decor_custom');
+    assert.equal(booking.extraData.bookingPackage.menuPositions[1].unitPrice, 200);
+    assert.equal(booking.extraData.bookingPackage.serviceEvents[0].type, 'food_service');
+    assert.equal(booking.extraData.bookingPackage.serviceEvents[0].time, '15:30');
+    assert.match(booking.banquetMenu, /Піца - 2 порції × 250 грн/);
+    assert.match(booking.banquetMenu, /Індивідуальне оформлення - 1 додаток × 200 грн/);
+});
+
 test('booking package calculates banquet entry from center price rules by weekday and weekend', async () => {
     assert.equal(banquetEntryDateType('2026-06-23'), 'weekday');
     assert.equal(banquetEntryDateType('2026-06-27'), 'weekend');

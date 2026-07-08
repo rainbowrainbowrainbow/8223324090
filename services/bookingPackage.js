@@ -407,9 +407,12 @@ function buildLegacyBanquetMenu(positions, fallback = null) {
 }
 
 function extractIncomingPositions(booking = {}) {
+    const topLevelPackage = booking.bookingPackage || booking.booking_package || {};
     const extra = booking.extraData || booking.extra_data || {};
     return booking.menuPositions
         || booking.menu_positions
+        || topLevelPackage.menuPositions
+        || topLevelPackage.menu_positions
         || extra.bookingPackage?.menuPositions
         || extra.booking_package?.menu_positions
         || extra.menuPositions
@@ -417,9 +420,12 @@ function extractIncomingPositions(booking = {}) {
 }
 
 function extractIncomingServiceEvents(booking = {}) {
+    const topLevelPackage = booking.bookingPackage || booking.booking_package || {};
     const extra = booking.extraData || booking.extra_data || {};
     return booking.serviceEvents
         || booking.service_events
+        || topLevelPackage.serviceEvents
+        || topLevelPackage.service_events
         || extra.bookingPackage?.serviceEvents
         || extra.booking_package?.service_events
         || extra.serviceEvents
@@ -434,6 +440,8 @@ function hasBookingPackageInput(booking = {}) {
         || Object.prototype.hasOwnProperty.call(booking, 'service_events')
         || Object.prototype.hasOwnProperty.call(booking, 'programBasePrice')
         || Object.prototype.hasOwnProperty.call(booking, 'program_base_price')
+        || Object.prototype.hasOwnProperty.call(booking, 'bookingPackage')
+        || Object.prototype.hasOwnProperty.call(booking, 'booking_package')
         || Boolean(extra.bookingPackage || extra.booking_package || extra.menuPositions || extra.serviceEvents);
 }
 

@@ -4203,7 +4203,18 @@ body.booking-menu-catalog-active {
         transition: transform 0.18s ease;
     }
 
+    .booking-menu-catalog-panel.booking-menu-catalog-cart-open > .booking-menu-catalog-body {
+        z-index: 3;
+    }
+
+    .booking-menu-catalog-panel.booking-menu-catalog-cart-open .booking-menu-catalog-browser {
+        opacity: 0.38;
+        pointer-events: none;
+    }
+
     .booking-menu-catalog-cart-open .booking-menu-catalog-cart {
+        z-index: 4;
+        background: rgba(15, 23, 42, 0.98);
         transform: translateY(0);
     }
 

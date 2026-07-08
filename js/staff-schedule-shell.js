@@ -52,6 +52,10 @@
                         <button type="button" id="nextWeekBtn" title="Наступний період">›</button>
                         <button type="button" id="todayWeekBtn" title="Вчора, сьогодні і найближчі дні">Сьогодні</button>
                     </div>
+                    <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
+                        <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
+                        <div id="scheduleStaffFilterInfo" class="staff-schedule-filter-info" aria-live="polite"></div>
+                    </div>
                     <div id="deptFilter" class="dept-filter"></div>
                 </div>
                 <div class="schedule-toolbar">

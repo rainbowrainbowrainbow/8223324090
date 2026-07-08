@@ -75,6 +75,7 @@ const StaffState = {
     departments: {},
     displayGroups: [],
     activeDept: 'all',
+    searchQuery: '',
     healthFilter: 'all',
     includeFreelance: false,
     editingCell: null,  // { staffId, date }
@@ -1746,10 +1747,84 @@ function scheduleDisplayDepartmentLabel(departmentKey) {
     return scheduleDepartmentLabels()[departmentKey] || departmentKey;
 }
 
-function scheduleVisibleStaff(staffList = StaffState.staff) {
+function normalizeScheduleSearchText(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+function scheduleVisibleDateKeys() {
+    const start = StaffState.weekStart instanceof Date && !Number.isNaN(StaffState.weekStart.getTime())
+        ? StaffState.weekStart
+        : getScheduleFocusStart(new Date());
+    return getWeekDates(start).map(formatDateStr);
+}
+
+function scheduleEntrySearchParts(entry = null) {
+    if (!entry) return [];
+    const status = normalizeScheduleStatus(entry.status);
+    const professionKey = normalizeProfessionKey(entry.profession_key || entry.professionKey);
+    const start = entry.shift_start ? String(entry.shift_start).slice(0, 5) : '';
+    const end = entry.shift_end ? String(entry.shift_end).slice(0, 5) : '';
+    return [
+        status,
+        STAFF_SCHEDULE_STATUS_LABELS[status] || status,
+        professionKey,
+        professionKey ? professionLabel(professionKey) : '',
+        start,
+        end,
+        start && end ? `${start}-${end}` : ''
+    ];
+}
+
+function scheduleStaffSearchHaystack(staff = {}) {
+    const displayGroup = scheduleDisplayDepartmentKey(staff);
+    const secondaryKeys = staffSecondaryProfessions(staff);
+    const rawSecondary = parseProfessionArray(staff.secondary_professions || staff.secondaryProfessions);
+    const todayEntry = StaffState.schedule[`${staff.id}_${todayStr()}`];
+    const todayStatus = normalizeScheduleStatus(todayEntry?.status || 'unset');
+    const visibleEntryParts = scheduleVisibleDateKeys().flatMap(date => {
+        const entry = StaffState.schedule[`${staff.id}_${date}`];
+        return scheduleEntrySearchParts(entry);
+    });
+
+    return normalizeScheduleSearchText([
+        staff.display_name,
+        staff.displayName,
+        staff.name,
+        staff.position,
+        staff.role_type,
+        staff.roleType,
+        staff.role_type ? professionLabel(staff.role_type) : '',
+        ...rawSecondary,
+        ...secondaryKeys,
+        ...secondaryKeys.map(professionLabel),
+        staff.department,
+        staff.display_group,
+        staff.displayGroup,
+        displayGroup,
+        scheduleDisplayDepartmentLabel(displayGroup),
+        todayStatus,
+        STAFF_SCHEDULE_STATUS_LABELS[todayStatus] || todayStatus,
+        ...scheduleEntrySearchParts(todayEntry),
+        ...visibleEntryParts
+    ].filter(Boolean).join(' '));
+}
+
+function scheduleStaffVisibleWithoutSearch(staffList = StaffState.staff) {
     const scheduleable = scheduleableStaffForUi(staffList || []);
     if (StaffState.activeDept === 'all') return scheduleable;
     return scheduleable.filter(staff => scheduleDisplayDepartmentKey(staff) === StaffState.activeDept);
+}
+
+function scheduleVisibleStaff(staffList = StaffState.staff) {
+    const visible = scheduleStaffVisibleWithoutSearch(staffList);
+    const query = normalizeScheduleSearchText(StaffState.searchQuery);
+    if (!query) return visible;
+    return visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query));
 }
 
 function scheduleDepartmentOptions() {
@@ -2439,9 +2514,35 @@ function renderDeptFilter() {
             chip.classList.add('active');
             chip.setAttribute('aria-pressed', 'true');
             renderSchedule();
+            if (StaffState.showLoadView) renderLoadView();
         });
     });
     updateScheduleHeaderMetrics();
+}
+
+function renderScheduleStaffFilterInfo(filteredStaff = null) {
+    const info = document.getElementById('scheduleStaffFilterInfo');
+    if (!info) return;
+    const base = scheduleStaffVisibleWithoutSearch();
+    const visible = Array.isArray(filteredStaff) ? filteredStaff : scheduleVisibleStaff();
+    const query = normalizeScheduleSearchText(StaffState.searchQuery);
+    info.textContent = query
+        ? `Показано ${visible.length} з ${base.length}`
+        : `${base.length} співробітників у графіку`;
+}
+
+function bindScheduleStaffSearchControls() {
+    const search = document.getElementById('scheduleStaffSearch');
+    if (!search) return;
+    const stateValue = StaffState.searchQuery || '';
+    if (search.value !== stateValue) search.value = stateValue;
+    if (search.dataset.scheduleSearchBound === 'true') return;
+    search.addEventListener('input', () => {
+        StaffState.searchQuery = search.value;
+        renderSchedule();
+        if (StaffState.showLoadView) renderLoadView();
+    });
+    search.dataset.scheduleSearchBound = 'true';
 }
 
 function renderWeekLabel() {
@@ -2670,6 +2771,7 @@ function bindScheduleCellActivation(tbody) {
 function renderSchedule() {
     const dates = getWeekDates(StaffState.weekStart);
     const today = todayStr();
+    bindScheduleStaffSearchControls();
 
     // Header
     const thead = document.getElementById('scheduleHead');
@@ -2688,6 +2790,7 @@ function renderSchedule() {
     // Body — group by department
     const tbody = document.getElementById('scheduleBody');
     const baseFiltered = scheduleVisibleStaff();
+    renderScheduleStaffFilterInfo(baseFiltered);
     const health = buildScheduleHealth(dates, baseFiltered);
     const filtered = scheduleHealthFilteredStaff(baseFiltered, health);
 
@@ -3595,6 +3698,7 @@ function renderLoadView() {
     const dates = getWeekDates(StaffState.weekStart);
     const today = todayStr();
     const filtered = scheduleVisibleStaff();
+    renderScheduleStaffFilterInfo(filtered);
 
     // Header
     const thead = document.getElementById('loadViewHead');
@@ -3654,7 +3758,7 @@ function renderLoadView() {
 
     // Department breakdown (if showing all departments)
     if (StaffState.activeDept === 'all') {
-        const grouped = groupStaffByScheduleDepartment(StaffState.staff);
+        const grouped = groupStaffByScheduleDepartment(filtered);
         bodyHtml += `<tr><td colspan="${dates.length + 2}" style="padding:8px 16px;font-weight:800;font-size:12px;color:var(--gray-500);background:var(--gray-50);border-top:2px solid var(--gray-200)">По відділах (на роботі + віддалено)</td></tr>`;
 
         for (const dept of scheduleDepartmentRenderOrder(grouped)) {

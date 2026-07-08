@@ -1683,7 +1683,14 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleDeptChipActiveRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip.active');
     const staffScheduleDeptChipCountRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip-count');
     const staffScheduleDeptChipDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .dept-chip');
+    const staffScheduleSearchRowRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search-row');
+    const staffScheduleSearchInputRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search');
+    const staffScheduleSearchFocusRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search:focus');
+    const staffScheduleSearchInfoRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info');
+    const staffScheduleSearchDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search');
+    const staffScheduleSearchInfoDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info');
     const staffScheduleCommandBarRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar');
+    const staffScheduleCommandBarControlsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls');
     const staffScheduleCommandBarDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar');
     const staffScheduleCommandBarWeekNavRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav');
     const staffScheduleCommandBarWeekButtonRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button');
@@ -1835,6 +1842,35 @@ checkPage('staff.html', (doc, html) => {
         && /min-width:\s*22px;/.test(staffScheduleDeptChipCountRule)
         && /border-radius:\s*999px;/.test(staffScheduleDeptChipCountRule)
         && /background:\s*rgba\(255,255,255,0\.035\);/.test(staffScheduleDeptChipDarkRule));
+    check('Staff schedule people search filters rows and load view from the shared shell',
+        staffScheduleShellCode.includes('id="scheduleStaffSearch"')
+        && staffScheduleShellCode.includes('id="scheduleStaffFilterInfo"')
+        && staffScheduleShellCode.includes('class="staff-schedule-search-row"')
+        && staffScheduleShellCode.includes('role="search"')
+        && staffCode.includes("searchQuery: ''")
+        && staffCode.includes('function normalizeScheduleSearchText')
+        && staffCode.includes('function scheduleStaffSearchHaystack')
+        && staffCode.includes('function scheduleStaffVisibleWithoutSearch')
+        && staffCode.includes('function bindScheduleStaffSearchControls')
+        && staffCode.includes("document.getElementById('scheduleStaffSearch')")
+        && staffCode.includes('return visible.filter(staff => scheduleStaffSearchHaystack(staff).includes(query));')
+        && staffCode.includes('renderScheduleStaffFilterInfo(baseFiltered)')
+        && staffCode.includes('if (StaffState.showLoadView) renderLoadView();')
+        && staffCode.includes('const grouped = groupStaffByScheduleDepartment(filtered)'));
+    check('Staff schedule people search matches HR Today light dark and mobile control rhythm',
+        /"week search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
+        && /grid-area:\s*search;/.test(staffScheduleSearchRowRule)
+        && /grid-template-columns:\s*minmax\(220px,\s*1fr\) auto;/.test(staffScheduleSearchRowRule)
+        && /min-height:\s*38px;/.test(staffScheduleSearchInputRule)
+        && /border-radius:\s*10px;/.test(staffScheduleSearchInputRule)
+        && /background:\s*rgba\(255,255,255,0\.88\);/.test(staffScheduleSearchInputRule)
+        && /border-color:\s*rgba\(20,184,166,0\.54\);/.test(staffScheduleSearchFocusRule)
+        && /white-space:\s*nowrap;/.test(staffScheduleSearchInfoRule)
+        && /background:\s*rgba\(15,23,42,0\.54\);/.test(staffScheduleSearchDarkRule)
+        && /color:\s*#CBD5E1;/.test(staffScheduleSearchInfoDarkRule)
+        && /"week"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-search-row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-filter-info[\s\S]*white-space:\s*normal;/.test(staffScheduleMobileCommandBlock));
     check('Staff schedule mobile controls use compact rails and a stacked command grid',
         staffScheduleMobileCommandBlock.includes('body[data-page-group="hr"] .staff-schedule-command-bar')
         && /display:\s*grid;/.test(staffScheduleMobileCommandBlock)

@@ -80,6 +80,24 @@ const SOURCE_ALIASES = {
     other: ['other', 'інше', 'інший', 'інше джерело']
 };
 
+const CUSTOMER_CHILD_DIETARY_TAGS = Object.freeze([
+    Object.freeze({ tag: 'nuts', label: 'Горіхи' }),
+    Object.freeze({ tag: 'peanuts', label: 'Арахіс' }),
+    Object.freeze({ tag: 'lactose', label: 'Лактоза' }),
+    Object.freeze({ tag: 'dairy', label: 'Молочне' }),
+    Object.freeze({ tag: 'gluten', label: 'Глютен' }),
+    Object.freeze({ tag: 'eggs', label: 'Яйця' }),
+    Object.freeze({ tag: 'sugar', label: 'Цукор' }),
+    Object.freeze({ tag: 'other', label: 'Інше' })
+]);
+
+const CUSTOMER_CHILD_DIETARY_TAG_LABELS = Object.freeze(
+    CUSTOMER_CHILD_DIETARY_TAGS.reduce((acc, item) => {
+        acc[item.tag] = item.label;
+        return acc;
+    }, {})
+);
+
 const SOURCE_BY_ALIAS = Object.entries(SOURCE_ALIASES).reduce((map, [source, aliases]) => {
     aliases.forEach(alias => map.set(alias, source));
     return map;
@@ -258,19 +276,65 @@ function customerPayload(payload = {}) {
         : { ...(payload || {}), businessContext: customerBusinessContext() };
 }
 
+function normalizeCustomerChildDietaryTag(value) {
+    const text = String(value?.tag ?? value?.key ?? value?.id ?? value?.value ?? value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/^#+/, '')
+        .replace(/[\s./]+/g, '_')
+        .replace(/[^a-z0-9_:-]/g, '')
+        .replace(/_+/g, '_')
+        .replace(/^[_:-]+|[_:-]+$/g, '')
+        .slice(0, 40);
+    return /^[a-z0-9][a-z0-9_:-]{0,39}$/.test(text) ? text : '';
+}
+
+function normalizeCustomerChildDietaryTags(value) {
+    const raw = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\n|]+/);
+    const tags = [];
+    raw.forEach(item => {
+        const tag = normalizeCustomerChildDietaryTag(item);
+        if (tag && !tags.includes(tag)) tags.push(tag);
+    });
+    return tags.slice(0, 20);
+}
+
+function customerChildDietaryTagLabel(tag) {
+    const key = normalizeCustomerChildDietaryTag(tag);
+    return CUSTOMER_CHILD_DIETARY_TAG_LABELS[key] || key;
+}
+
+function customerChildHasEditData(child = {}) {
+    const ageSnapshot = child.ageSnapshot ?? child.age_snapshot ?? '';
+    const dietaryTags = child.dietaryTags ?? child.dietary_tags;
+    const dietaryNote = child.dietaryNote ?? child.dietary_note;
+    return Boolean(
+        child.name
+        || child.birthday
+        || ageSnapshot !== ''
+        || child.note
+        || (Array.isArray(dietaryTags) && dietaryTags.length)
+        || dietaryNote
+    );
+}
+
 function normalizeCustomerChildForEdit(child = {}) {
     const ageSnapshot = child.ageSnapshot ?? child.age_snapshot ?? child.age ?? child.childAge ?? child.child_age ?? '';
     return {
         name: String(child.name ?? child.childName ?? child.child_name ?? '').trim(),
         birthday: dateInputValue(child.birthday ?? child.birthDate ?? child.birth_date ?? child.childBirthday ?? child.child_birthday),
         ageSnapshot: ageSnapshot === null || ageSnapshot === undefined ? '' : String(ageSnapshot).trim(),
-        note: String(child.note ?? child.notes ?? '').trim()
+        note: String(child.note ?? child.notes ?? '').trim(),
+        dietaryTags: normalizeCustomerChildDietaryTags(child.dietaryTags ?? child.dietary_tags ?? child.allergyTags ?? child.allergy_tags ?? child.allergens),
+        dietaryNote: String(child.dietaryNote ?? child.dietary_note ?? child.dietaryNotes ?? child.dietary_notes ?? child.foodNote ?? child.food_note ?? child.allergyNote ?? child.allergy_note ?? '').trim()
     };
 }
 
 function customerChildrenForEdit(customer = {}) {
     const canonical = Array.isArray(customer?.children)
-        ? customer.children.map(normalizeCustomerChildForEdit).filter(child => child.name || child.birthday || child.ageSnapshot || child.note)
+        ? customer.children.map(normalizeCustomerChildForEdit).filter(customerChildHasEditData)
         : [];
     if (canonical.length) return canonical;
     const legacy = normalizeCustomerChildForEdit({
@@ -283,7 +347,7 @@ function customerChildrenForEdit(customer = {}) {
 function serializedCustomerEditingChildren() {
     return (CrmState.editingChildren || [])
         .map(normalizeCustomerChildForEdit)
-        .filter(child => child.name || child.birthday || child.ageSnapshot || child.note);
+        .filter(customerChildHasEditData);
 }
 
 function customerChildrenStateSignature() {
@@ -295,6 +359,10 @@ function renderCustomerChildrenValue(customer = {}) {
     if (!children.length) return '<div class="customer-children-empty">Дітей не вказано</div>';
     return `<div class="customer-children-view" role="list">${children.map((child, index) => {
         const title = child.name || `#${index + 1}`;
+        const dietaryTags = (child.dietaryTags || [])
+            .map(tag => `<span class="customer-child-dietary-tag">${escapeHtml(customerChildDietaryTagLabel(tag))}</span>`)
+            .join('');
+        const dietaryNote = child.dietaryNote ? escapeHtml(child.dietaryNote) : '';
         return `<div class="customer-child-card" role="listitem">
             <div class="customer-child-card-head">
                 <strong>${escapeHtml(title)}</strong>
@@ -313,6 +381,13 @@ function renderCustomerChildrenValue(customer = {}) {
                     <dd>${child.note ? escapeHtml(child.note) : '—'}</dd>
                 </div>
             </dl>
+            ${(dietaryTags || dietaryNote) ? `
+                <div class="customer-child-dietary">
+                    <div class="customer-child-dietary-title">Харчування / алергії</div>
+                    ${dietaryTags ? `<div class="customer-child-dietary-tags">${dietaryTags}</div>` : ''}
+                    ${dietaryNote ? `<div class="customer-child-dietary-note">${dietaryNote}</div>` : ''}
+                </div>
+            ` : ''}
         </div>`;
     }).join('')}</div>`;
 }
@@ -341,7 +416,7 @@ function customerChildrenInlineLabel(customer = {}) {
 function setCustomerEditingChildren(children = []) {
     CrmState.editingChildren = (Array.isArray(children) ? children : [])
         .map(normalizeCustomerChildForEdit)
-        .filter(child => child.name || child.birthday || child.ageSnapshot || child.note);
+        .filter(customerChildHasEditData);
 }
 
 function updateCustomerEditingChild(index, field, value) {
@@ -351,6 +426,34 @@ function updateCustomerEditingChild(index, field, value) {
         ...CrmState.editingChildren[index],
         [field]: value
     });
+}
+
+function toggleCustomerEditingChildDietaryTag(index, tag) {
+    if (!Array.isArray(CrmState.editingChildren)) CrmState.editingChildren = [];
+    if (!CrmState.editingChildren[index]) CrmState.editingChildren[index] = normalizeCustomerChildForEdit();
+    const normalizedTag = normalizeCustomerChildDietaryTag(tag);
+    if (!normalizedTag) return;
+    const child = normalizeCustomerChildForEdit(CrmState.editingChildren[index]);
+    const tags = child.dietaryTags.includes(normalizedTag)
+        ? child.dietaryTags.filter(item => item !== normalizedTag)
+        : [...child.dietaryTags, normalizedTag].slice(0, 20);
+    CrmState.editingChildren[index] = normalizeCustomerChildForEdit({
+        ...child,
+        dietaryTags: tags
+    });
+}
+
+function renderCustomerChildDietaryTagButtons(child = {}, index = 0) {
+    const selected = new Set(normalizeCustomerChildDietaryTags(child.dietaryTags));
+    return CUSTOMER_CHILD_DIETARY_TAGS.map(item => {
+        const pressed = selected.has(item.tag);
+        return `<button type="button"
+            class="customer-child-dietary-toggle${pressed ? ' is-selected' : ''}"
+            data-child-dietary-tag="${escapeHtml(item.tag)}"
+            aria-pressed="${pressed ? 'true' : 'false'}">
+            ${escapeHtml(item.label)}
+        </button>`;
+    }).join('');
 }
 
 function renderCustomerEditChildren() {
@@ -376,6 +479,14 @@ function renderCustomerEditChildren() {
                     <label class="customer-child-label" for="editChildNote${index}">Нотатка</label>
                     <input type="text" id="editChildNote${index}" class="customer-child-input" data-child-field="note" value="${escapeHtml(child.note)}" autocomplete="off">
                 </div>
+                <div class="customer-child-field customer-child-field--dietary-tags">
+                    <span class="customer-child-label">Харчові теги</span>
+                    <div class="customer-child-dietary-toggles" role="group" aria-label="Харчові теги дитини">${renderCustomerChildDietaryTagButtons(child, index)}</div>
+                </div>
+                <div class="customer-child-field customer-child-field--dietary-note">
+                    <label class="customer-child-label" for="editChildDietaryNote${index}">Харчова примітка</label>
+                    <input type="text" id="editChildDietaryNote${index}" class="customer-child-input" data-child-field="dietaryNote" value="${escapeHtml(child.dietaryNote)}" autocomplete="off">
+                </div>
                 <button type="button" class="customer-child-remove-btn" data-child-remove="${index}" aria-label="Прибрати дитину">×</button>
             </div>
         `).join('')
@@ -396,6 +507,14 @@ function bindCustomerEditChildrenTools() {
         updateCustomerEditingChild(Number.parseInt(row.dataset.childIndex, 10), field, event.target.value);
     });
     document.getElementById('editChildrenList')?.addEventListener('click', (event) => {
+        const tagButton = event.target.closest('[data-child-dietary-tag]');
+        if (tagButton) {
+            const row = tagButton.closest('[data-child-index]');
+            if (!row) return;
+            toggleCustomerEditingChildDietaryTag(Number.parseInt(row.dataset.childIndex, 10), tagButton.dataset.childDietaryTag);
+            renderCustomerEditChildren();
+            return;
+        }
         const button = event.target.closest('[data-child-remove]');
         if (!button) return;
         const index = Number.parseInt(button.dataset.childRemove, 10);
@@ -628,7 +747,9 @@ async function saveChildrenReviewEditor() {
                     name: child.name,
                     birthday: child.birthday || null,
                     ageSnapshot: child.ageSnapshot === '' ? null : Number(child.ageSnapshot),
-                    note: child.note || null
+                    note: child.note || null,
+                    dietaryTags: child.dietaryTags || [],
+                    dietaryNote: child.dietaryNote || null
                 }))
             }))
         });
@@ -2278,7 +2399,7 @@ async function handleSave() {
         return;
     }
     const children = isMaysternyaCustomerContext() ? [] : serializedCustomerEditingChildren();
-    const incompleteChild = children.find(child => !child.name && (child.birthday || child.ageSnapshot || child.note));
+    const incompleteChild = children.find(child => !child.name && customerChildHasEditData(child));
     if (incompleteChild) {
         showNotification('Вкажіть імʼя для кожної дитини або очистіть порожній рядок', 'error');
         return;
@@ -2307,7 +2428,9 @@ async function handleSave() {
             name: child.name,
             birthday: child.birthday || null,
             ageSnapshot: child.ageSnapshot === '' ? null : Number(child.ageSnapshot),
-            note: child.note || null
+            note: child.note || null,
+            dietaryTags: child.dietaryTags || [],
+            dietaryNote: child.dietaryNote || null
         })),
         socialIdentities: parseSocialIdentitiesInput(document.getElementById('editSocialIdentities')?.value),
         source: document.getElementById('editSource')?.value || null,

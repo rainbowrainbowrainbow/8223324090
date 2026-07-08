@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.61 - Customer Dietary Tags UI
+
+### Клієнти / Діти / Харчування / Booking drawer / (Клешня, 08.07.2026) [codex]
+- **Картка клієнта отримала structured dietary UI для дітей** - у редакторі дітей додано харчові теги й окрему харчову примітку без зміни старого `children[].note`.
+- **Детальна картка клієнта показує харчові ризики окремо** - менеджер бачить теги, `dietaryNote` і загальні дитячі нотатки як різні read-only сигнали.
+- **Booking drawer підтягує structured dietary context** - права панель клієнта і блок `Важливо для кухні` показують теги/харчову примітку разом із legacy нотатками.
+- **Кнопка `Додати в примітки кухні` лишається явною дією** - structured dietary дані додаються в kitchen notes тільки після кліку й не дублюються автоматично.
+- **Додано regression/live-smoke coverage** - customer children/search, booking drawer, UI smoke і live booking customer context smoke перевіряють `dietaryTags`/`dietaryNote`.
+- **DB schema, auth/roles, secrets, billing і Railway settings не змінювались** - реліз використовує вже підготовлені additive поля `customer_children.dietary_tags` і `customer_children.dietary_note`.
+
+---
+
 ## v0.78.60 - Hermes Approval And Dietary Tags
 
 ### Hermes / Меню-фото / Діти / DB foundation / (Клешня, 08.07.2026) [codex]

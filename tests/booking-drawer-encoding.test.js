@@ -210,7 +210,7 @@ test('selected customer card renders manager context without mutating booking no
         notes: 'allergy <nuts>',
         totalBookings: 22,
         children: [
-            { name: 'Bohdan', ageSnapshot: 6, note: 'без горіхів <alert>' },
+            { name: 'Bohdan', ageSnapshot: 6, note: 'без горіхів <alert>', dietaryTags: ['nuts', 'lactose'], dietaryNote: 'no dairy <milk>' },
             { name: 'Sofia', birthday: '2020-03-04', note: 'посадити поруч з мамою' }
         ]
     });
@@ -223,6 +223,8 @@ test('selected customer card renders manager context without mutating booking no
     assert.match(card.innerHTML, /Примітки клієнта/);
     assert.match(card.innerHTML, /allergy &lt;nuts&gt;/);
     assert.match(card.innerHTML, /Bohdan · 6 р\./);
+    assert.match(card.innerHTML, /booking-selected-customer__dietary-tag/);
+    assert.match(card.innerHTML, /no dairy &lt;milk&gt;/);
     assert.match(card.innerHTML, /без горіхів &lt;alert&gt;/);
     assert.match(card.innerHTML, /посадити поруч з мамою/);
     assert.doesNotMatch(card.innerHTML, /<alert>|<nuts>|<X>/);
@@ -321,10 +323,13 @@ test('selected customer kitchen action appends child notes only after explicit c
         name: 'Kitchen Customer',
         children: [
             { name: 'Nut Child', note: 'nut allergy, no peanuts' },
+            { name: 'Structured Child', dietaryTags: ['dairy'], dietaryNote: 'separate dairy-free plate' },
             { name: 'Seat Child', note: 'seat near mother' }
         ]
     };
     const expectedBlock = context.__selectedCustomerKitchenHooks.bookingSelectedCustomerKitchenNoteBlock(customer);
+    assert.match(expectedBlock, /Structured Child/);
+    assert.match(expectedBlock, /separate dairy-free plate/);
 
     context.__selectedCustomerKitchenHooks.renderSelectedCustomerCard(customer);
     assert.match(card.innerHTML, /data-booking-kitchen-context-add/);

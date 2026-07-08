@@ -737,10 +737,14 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
 
 .customer-child-edit-row {
     display: grid;
-    grid-template-columns: minmax(120px, 1.4fr) minmax(120px, 1fr) minmax(90px, 0.7fr) minmax(120px, 1fr) 40px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 8px;
     align-items: end;
     min-width: 0;
+}
+
+.customer-child-field--dietary-tags {
+    min-width: min(220px, 100%);
 }
 
 .customer-child-field {
@@ -796,6 +800,48 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
 
 .customer-child-remove-btn:hover {
     background: rgba(239, 68, 68, 0.16);
+}
+
+.customer-child-dietary-toggles,
+.customer-child-dietary-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-width: 0;
+}
+
+.customer-child-dietary-toggle,
+.customer-child-dietary-tag {
+    max-width: 100%;
+    min-height: 26px;
+    padding: 4px 7px;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 999px;
+    background: rgba(20, 184, 166, 0.08);
+    color: #0F766E;
+    font-size: 11px;
+    font-weight: 850;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.customer-child-dietary-toggle {
+    cursor: pointer;
+}
+
+.customer-child-dietary-toggle.is-selected,
+.customer-child-dietary-toggle[aria-pressed="true"],
+.customer-child-dietary-tag {
+    border-color: rgba(13, 148, 136, 0.48);
+    background: rgba(13, 148, 136, 0.15);
+    color: #0F766E;
+}
+
+.customer-child-dietary-toggle:hover,
+.customer-child-dietary-toggle:focus-visible {
+    border-color: rgba(13, 148, 136, 0.66);
+    background: rgba(13, 148, 136, 0.18);
+    outline: none;
 }
 
 .customer-child-empty,
@@ -877,6 +923,30 @@ html[data-theme="dark"] .customer-hero-omni.suggested,
     overflow-wrap: anywhere;
 }
 
+.customer-child-dietary {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.customer-child-dietary-title {
+    color: var(--gray-500);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.customer-child-dietary-note {
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
 [data-theme="dark"] .customer-child-input,
 body.dark-mode .customer-child-input {
     background: rgba(15, 23, 42, 0.72);
@@ -907,6 +977,20 @@ body.dark-mode .customer-child-facts dd {
 [data-theme="dark"] .customer-child-note,
 body.dark-mode .customer-child-note {
     color: #CBD5E1;
+}
+
+[data-theme="dark"] .customer-child-dietary-note,
+body.dark-mode .customer-child-dietary-note {
+    color: #D1FAE5;
+}
+
+[data-theme="dark"] .customer-child-dietary-toggle,
+[data-theme="dark"] .customer-child-dietary-tag,
+body.dark-mode .customer-child-dietary-toggle,
+body.dark-mode .customer-child-dietary-tag {
+    border-color: rgba(45, 212, 191, 0.34);
+    background: rgba(20, 184, 166, 0.14);
+    color: #99F6E4;
 }
 
 .children-review-panel {

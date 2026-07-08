@@ -212,6 +212,8 @@ function disposableCustomerPayload() {
             {
                 name: 'QA Nut Child',
                 birthday: '2020-01-02',
+                dietaryTags: ['nuts', 'peanuts'],
+                dietaryNote: 'structured dietary smoke: no peanuts, separate plate',
                 note: allergyNote
             },
             {
@@ -253,6 +255,8 @@ async function assertSearchProjection(base, token, customer) {
     assert.equal(found.children.length, 2, 'search result includes both disposable children');
     assert.equal(found.children[0].note, customer.children[0].note, 'search result includes first child note');
     assert.equal(found.children[1].note, customer.children[1].note, 'search result includes second child note');
+    assert.deepEqual(found.children[0].dietaryTags, customer.children[0].dietaryTags, 'search result includes first child dietary tags');
+    assert.equal(found.children[0].dietaryNote, customer.children[0].dietaryNote, 'search result includes first child dietary note');
 }
 
 async function openAuthenticatedContext(browser, session, scenario) {
@@ -361,9 +365,29 @@ async function readContextState(page) {
 }
 
 function expectedKitchenNotesBlock(customer) {
+    const tagLabels = {
+        nuts: 'Горіхи',
+        peanuts: 'Арахіс',
+        lactose: 'Лактоза',
+        dairy: 'Молочне',
+        gluten: 'Глютен',
+        eggs: 'Яйця',
+        sugar: 'Цукор',
+        other: 'Інше'
+    };
+    const childLine = child => {
+        const dietaryTags = Array.isArray(child.dietaryTags) ? child.dietaryTags : [];
+        const tagLabel = dietaryTags.map(tag => tagLabels[tag] || tag).filter(Boolean).join(', ');
+        const parts = [
+            tagLabel ? `Теги: ${tagLabel}` : '',
+            child.dietaryNote ? `Харчова примітка: ${child.dietaryNote}` : '',
+            child.note ? `Нотатка: ${child.note}` : ''
+        ].filter(Boolean);
+        return `- ${child.name}: ${parts.join('; ')}`;
+    };
     return [
         'Важливо для кухні:',
-        ...customer.children.map(child => `- ${child.name}: ${child.note}`)
+        ...customer.children.map(childLine)
     ].join('\n');
 }
 
@@ -376,6 +400,7 @@ function assertPanelText(state, customer, scenario) {
         customer.notes,
         customer.children[0].name,
         customer.children[1].name,
+        customer.children[0].dietaryNote,
         customer.children[0].note,
         customer.children[1].note,
         'Важливо для кухні'
@@ -464,6 +489,7 @@ async function assertKitchenNotesAction(page, customer, scenario) {
     const afterFirstClick = await readContextState(page);
     assert.equal(afterFirstClick.bookingNotesTagName, 'TEXTAREA', `${scenario.name}: kitchen notes target must be textarea`);
     assert.equal(afterFirstClick.bookingNotes, expectedKitchenNotesBlock(customer), `${scenario.name}: kitchen notes are not multiline block formatted`);
+    assert.ok(afterFirstClick.bookingNotes.includes(customer.children[0].dietaryNote), `${scenario.name}: first child dietary note was not copied`);
     assert.ok(afterFirstClick.bookingNotes.includes(customer.children[0].note), `${scenario.name}: first child note was not copied`);
     assert.ok(afterFirstClick.bookingNotes.includes(customer.children[1].note), `${scenario.name}: second child note was not copied`);
     assert.equal(afterFirstClick.kitchenAddStatus, 'Додано', `${scenario.name}: kitchen action added state missing`);

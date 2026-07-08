@@ -2656,6 +2656,42 @@ body.timeline-dashboard-page .pinata-client-filler-active input:disabled {
     white-space: nowrap;
 }
 
+.booking-selected-customer__dietary {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.booking-selected-customer__dietary-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+}
+
+.booking-selected-customer__dietary-tag {
+    max-width: 100%;
+    padding: 3px 6px;
+    border: 1px solid rgba(245,158,11,0.26);
+    border-radius: 999px;
+    background: rgba(245,158,11,0.12);
+    color: #92400e;
+    font-size: 10px;
+    font-weight: 850;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.booking-selected-customer__dietary-note {
+    display: -webkit-box;
+    color: #92400e;
+    font-weight: 750;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
 .booking-selected-customer__child small {
     display: -webkit-box;
     overflow: hidden;

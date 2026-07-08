@@ -1550,6 +1550,67 @@ function bookingCustomerInstagramDisplay(value) {
 }
 
 const BOOKING_SELECTED_CUSTOMER_NOTE_EXPAND_THRESHOLD = 130;
+const BOOKING_CUSTOMER_DIETARY_TAGS = Object.freeze({
+    nuts: 'Горіхи',
+    peanuts: 'Арахіс',
+    lactose: 'Лактоза',
+    dairy: 'Молочне',
+    gluten: 'Глютен',
+    eggs: 'Яйця',
+    sugar: 'Цукор',
+    other: 'Інше'
+});
+
+function bookingCustomerNormalizeDietaryTag(value) {
+    const text = String(value?.tag ?? value?.key ?? value?.id ?? value?.value ?? value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/^#+/, '')
+        .replace(/[\s./]+/g, '_')
+        .replace(/[^a-z0-9_:-]/g, '')
+        .replace(/_+/g, '_')
+        .replace(/^[_:-]+|[_:-]+$/g, '')
+        .slice(0, 40);
+    return /^[a-z0-9][a-z0-9_:-]{0,39}$/.test(text) ? text : '';
+}
+
+function bookingCustomerDietaryTags(value) {
+    const raw = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[,;\n|]+/);
+    const tags = [];
+    raw.forEach(item => {
+        const tag = bookingCustomerNormalizeDietaryTag(item);
+        if (tag && !tags.includes(tag)) tags.push(tag);
+    });
+    return tags.slice(0, 20);
+}
+
+function bookingCustomerDietaryTagLabel(tag) {
+    const key = bookingCustomerNormalizeDietaryTag(tag);
+    return BOOKING_CUSTOMER_DIETARY_TAGS[key] || key;
+}
+
+function bookingCustomerDietaryTagsLabel(tags = []) {
+    return bookingCustomerDietaryTags(tags)
+        .map(bookingCustomerDietaryTagLabel)
+        .filter(Boolean)
+        .join(', ');
+}
+
+function bookingCustomerChildHasContext(child = {}) {
+    const ageSnapshot = child.ageSnapshot ?? child.age_snapshot ?? null;
+    const dietaryTags = child.dietaryTags ?? child.dietary_tags;
+    const dietaryNote = child.dietaryNote ?? child.dietary_note;
+    return Boolean(
+        child.name
+        || child.birthday
+        || ageSnapshot !== null
+        || child.note
+        || (Array.isArray(dietaryTags) && dietaryTags.length)
+        || dietaryNote
+    );
+}
 
 function bookingSelectedCustomerFactHtml(label, value) {
     const text = bookingCustomerCleanText(value);
@@ -1654,12 +1715,20 @@ function bookingCustomerKitchenNoteRows(customer = {}) {
     return bookingCustomerChildrenProjection(customer)
         .map((child, index) => {
             const note = bookingCustomerCleanText(child.note);
-            if (!note) return null;
+            const dietaryTags = bookingCustomerDietaryTags(child.dietaryTags);
+            const dietaryNote = bookingCustomerCleanText(child.dietaryNote);
+            const tagLabel = bookingCustomerDietaryTagsLabel(dietaryTags);
+            if (!note && !dietaryTags.length && !dietaryNote) return null;
             const childLabel = bookingCustomerCleanText(child.name) || `Дитина ${index + 1}`;
+            const noteParts = [
+                tagLabel ? `Теги: ${tagLabel}` : '',
+                dietaryNote ? `Харчова примітка: ${dietaryNote}` : '',
+                note ? `Нотатка: ${note}` : ''
+            ].filter(Boolean);
             return {
                 childLabel,
-                note,
-                priority: bookingCustomerKitchenNoteIsPriority(note)
+                note: noteParts.join('; '),
+                priority: Boolean(dietaryTags.length || dietaryNote || bookingCustomerKitchenNoteIsPriority(note))
             };
         })
         .filter(Boolean)
@@ -1796,6 +1865,23 @@ function bookingSelectedCustomerKitchenHtml(customer = {}) {
     `;
 }
 
+function bookingSelectedCustomerDietaryHtml(child = {}) {
+    const dietaryTags = bookingCustomerDietaryTags(child.dietaryTags);
+    const dietaryNote = bookingCustomerCleanText(child.dietaryNote);
+    if (!dietaryTags.length && !dietaryNote) return '';
+    const tagHtml = dietaryTags.map(tag => {
+        const label = bookingCustomerDietaryTagLabel(tag);
+        return `<span class="booking-selected-customer__dietary-tag" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+    }).join('');
+    const safeDietaryNote = escapeHtml(dietaryNote);
+    return `
+        <div class="booking-selected-customer__dietary">
+            ${tagHtml ? `<div class="booking-selected-customer__dietary-tags">${tagHtml}</div>` : ''}
+            ${dietaryNote ? `<small class="booking-selected-customer__dietary-note" title="${safeDietaryNote}">${safeDietaryNote}</small>` : ''}
+        </div>
+    `;
+}
+
 function bookingSelectedCustomerChildrenHtml(customer = {}) {
     const children = bookingCustomerChildrenProjection(customer);
     if (!children.length) {
@@ -1811,9 +1897,11 @@ function bookingSelectedCustomerChildrenHtml(customer = {}) {
         const line = bookingCustomerChildLine(child) || bookingCustomerCleanText(child.name) || 'Дитина';
         const note = bookingCustomerCleanText(child.note);
         const safeLine = escapeHtml(line);
+        const dietary = bookingSelectedCustomerDietaryHtml(child);
         return `
             <div class="booking-selected-customer__child">
                 <strong title="${safeLine}">${safeLine}</strong>
+                ${dietary}
                 ${note ? bookingSelectedCustomerExpandableNoteHtml(note, {
                     id: `booking-selected-customer-note-child-${index}`,
                     tag: 'small'
@@ -1881,16 +1969,18 @@ function bookingCustomerChildrenProjection(customer = {}) {
                 name: String(child?.name ?? child?.childName ?? child?.child_name ?? '').trim(),
                 birthday: bookingCustomerDateOnly(child?.birthday ?? child?.birthDate ?? child?.childBirthday ?? child?.child_birthday),
                 ageSnapshot: child?.ageSnapshot ?? child?.age_snapshot ?? null,
-                note: child?.note ?? child?.notes ?? null
+                note: child?.note ?? child?.notes ?? null,
+                dietaryTags: bookingCustomerDietaryTags(child?.dietaryTags ?? child?.dietary_tags ?? child?.allergyTags ?? child?.allergy_tags ?? child?.allergens),
+                dietaryNote: bookingCustomerCleanText(child?.dietaryNote ?? child?.dietary_note ?? child?.dietaryNotes ?? child?.dietary_notes ?? child?.foodNote ?? child?.food_note ?? child?.allergyNote ?? child?.allergy_note)
             }))
-            .filter(child => child.name || child.birthday || child.ageSnapshot !== null || child.note)
+            .filter(bookingCustomerChildHasContext)
         : [];
     if (explicit.length) return explicit;
 
     const legacyName = String(customer.childName ?? customer.child_name ?? '').trim();
     const legacyBirthday = bookingCustomerDateOnly(customer.childBirthday ?? customer.child_birthday);
     if (!legacyName && !legacyBirthday) return [];
-    return [{ name: legacyName, birthday: legacyBirthday, ageSnapshot: null, note: null, legacy: true }];
+    return [{ name: legacyName, birthday: legacyBirthday, ageSnapshot: null, note: null, dietaryTags: [], dietaryNote: '', legacy: true }];
 }
 
 function bookingCustomerPrimaryChild(customer = {}) {

@@ -1680,9 +1680,19 @@ function bookingSelectedCustomerKitchenNoteBlock(customer = {}) {
 }
 
 function bookingKitchenContextNotesAlreadyAdded(noteBlock, currentValue) {
-    const block = bookingCustomerCleanText(noteBlock).replace(/\r\n/g, '\n');
+    const block = bookingCustomerCleanText(noteBlock).replace(/\r\n/g, '\n').replace(/\s+/g, '');
     if (!block) return false;
-    return String(currentValue || '').replace(/\r\n/g, '\n').includes(block);
+    return String(currentValue || '').replace(/\r\n/g, '\n').replace(/\s+/g, '').includes(block);
+}
+
+function bookingKitchenContextNotesValueForInput(noteBlock, input) {
+    const block = String(noteBlock || '');
+    if (String(input?.tagName || '').toUpperCase() === 'TEXTAREA') return block;
+    return block.replace(/\r?\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function bookingKitchenContextNotesSeparatorForInput(input) {
+    return String(input?.tagName || '').toUpperCase() === 'TEXTAREA' ? '\n\n' : ' | ';
 }
 
 function bookingSelectedCustomerContextFromCard(card = document.getElementById('bookingSelectedCustomerCard')) {
@@ -1741,7 +1751,8 @@ function appendBookingKitchenContextToNotes(customer = bookingSelectedCustomerCo
         return true;
     }
     const current = String(input.value || '').trimEnd();
-    input.value = current ? `${current}\n\n${noteBlock}` : noteBlock;
+    const valueBlock = bookingKitchenContextNotesValueForInput(noteBlock, input);
+    input.value = current ? `${current}${bookingKitchenContextNotesSeparatorForInput(input)}${valueBlock}` : valueBlock;
     dispatchBookingKitchenNotesChanged(input);
     setBookingKitchenContextAddState(button, true);
     if (typeof window !== 'undefined' && window.BookingForm) window.BookingForm._dirty = true;

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.66 - Staff Schedule Custom Range
+
+### HR / Графік / Custom range / Bulk safety / (Клешня, 08.07.2026) [codex]
+- **Графік отримав довільний період** - у shared schedule shell додано `from/to`, apply та quick presets `1-15`, `16-кінець`, `Місяць` із validation `from <= to` і максимумом 31 день.
+- **Read-only поверхні рахують один visible range** - таблиця, summary, години, навантаження, export/print labels і пошук співробітників працюють із вибраним періодом, а не з жорстким 9-денним вікном.
+- **Масове заповнення стало безпечним для custom range** - `Заповнити період` створює записи тільки в межах visible range і вибраних weekdays, а великі bulk changes проходять через confirmation із кількістю записів.
+- **`Копія тижня` не копіює 15-31 день випадково** - у custom range дія заблокована з поясненням; старий backend `copy-week` contract лишився сумісним для rolling 9-day режиму.
+- **Додано browser smoke без production writes** - Playwright mock перевіряє desktop/month, mobile/1-15, negative date validation, hours range, search persistence, copy-week guard і bulk fill payload.
+- **DB schema, auth/roles, billing, env/secrets, Railway settings і protected booking/timeline flow не змінювались** - реліз обмежений schedule frontend, стилями, tests/smoke і version/cache refs.
+
+---
+
 ## v0.78.65 - Staff Schedule Search
 
 ### HR / Графік / Пошук співробітників / (Клешня, 08.07.2026) [codex]

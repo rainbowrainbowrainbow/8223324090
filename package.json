@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.65",
+  "version": "0.78.66",
   "eventGenix": {
-    "releaseLabel": "Staff Schedule Search"
+    "releaseLabel": "Staff Schedule Custom Range"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

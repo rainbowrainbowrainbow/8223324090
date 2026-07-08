@@ -197,17 +197,22 @@ function requirePlaywright() {
 
 function disposableCustomerPayload() {
     const phoneTail = String(Date.now()).slice(-7);
+    const customerNote = `QA customer note ${RUN_ID}: right booking context panel. ` +
+        'Довга службова примітка для перевірки inline expand без модалки: менеджер має бачити compact текст, ' +
+        'розгорнути його в правій панелі і не втратити контекст бронювання.';
+    const allergyNote = 'алергія на горіхи, без арахісу; потрібна окрема тарілка, без контакту з горіховими десертами, ' +
+        'попередити кухню перед подачею і не змішувати з загальними снеками';
     return {
         name: `QA Codex Context ${RUN_ID}`,
         phone: `+38063${phoneTail}`,
         instagram: `qa_context_${phoneTail}`,
         source: 'manual',
-        notes: `QA customer note ${RUN_ID}: right booking context panel`,
+        notes: customerNote,
         children: [
             {
                 name: 'QA Nut Child',
                 birthday: '2020-01-02',
-                note: 'алергія на горіхи, без арахісу'
+                note: allergyNote
             },
             {
                 name: 'QA Seat Child',
@@ -325,6 +330,7 @@ async function readContextState(page) {
         const banquetFields = document.getElementById('banquetFields');
         const layout = document.querySelector('.booking-customer-layout');
         const kitchenAddButton = document.querySelector('[data-booking-kitchen-context-add]');
+        const notesInput = document.getElementById('bookingNotes');
         return {
             selectedCustomerId: document.getElementById('selectedCustomerId')?.value || '',
             cardHidden: Boolean(card?.classList.contains('hidden')),
@@ -344,11 +350,21 @@ async function readContextState(page) {
             eventFieldsHidden: Boolean(eventFields?.hidden || eventFields?.classList.contains('hidden')),
             banquetFieldsHidden: Boolean(banquetFields?.hidden || banquetFields?.classList.contains('hidden')),
             kitchenToggleChecked: Boolean(document.getElementById('bookingKitchenToggle')?.checked),
-            bookingNotes: document.getElementById('bookingNotes')?.value || '',
+            bookingNotesTagName: notesInput?.tagName || '',
+            bookingNotesRows: notesInput?.getAttribute('rows') || '',
+            bookingNotes: notesInput?.value || '',
+            longNoteToggleCount: document.querySelectorAll('[data-booking-note-toggle]').length,
             bookingLine: document.getElementById('bookingLine')?.value || '',
             room: document.getElementById('roomSelect')?.value || ''
         };
     });
+}
+
+function expectedKitchenNotesBlock(customer) {
+    return [
+        'Важливо для кухні:',
+        ...customer.children.map(child => `- ${child.name}: ${child.note}`)
+    ].join('\n');
 }
 
 function assertPanelText(state, customer, scenario) {
@@ -373,8 +389,11 @@ function assertScenarioState(state, customer, scenario) {
     assert.equal(state.contextPanelExists, true, `${scenario.name}: context panel is missing`);
     assert.equal(state.cardHidden, false, `${scenario.name}: selected customer card is hidden`);
     assert.equal(state.selectedCustomerId, String(customer.id), `${scenario.name}: selected customer mismatch`);
+    assert.equal(state.bookingNotesTagName, 'TEXTAREA', `${scenario.name}: booking notes field must be textarea`);
+    assert.equal(state.bookingNotesRows, '3', `${scenario.name}: booking notes textarea row baseline changed`);
     assert.equal(state.kitchenBlockCount, 1, `${scenario.name}: kitchen context block missing`);
     assert.ok(state.kitchenPriorityCount >= 1, `${scenario.name}: priority kitchen note is not highlighted`);
+    assert.ok(state.longNoteToggleCount >= 2, `${scenario.name}: long customer/child notes do not expose expand controls`);
     assert.equal(state.bookingNotes, '', `${scenario.name}: booking notes were mutated`);
     assert.equal(state.kitchenAddButtonCount, scenario.kitchenEnabled ? 1 : 0, `${scenario.name}: kitchen add action visibility mismatch`);
     assert.equal(state.eventEnabled, scenario.eventEnabled, `${scenario.name}: event enabled state mismatch`);
@@ -401,6 +420,41 @@ function assertScenarioState(state, customer, scenario) {
     }
 }
 
+async function assertLongNoteExpand(page, scenario) {
+    const firstToggle = page.locator('[data-booking-note-toggle]').first();
+    await firstToggle.click();
+    const expanded = await page.evaluate(() => {
+        const button = document.querySelector('[data-booking-note-toggle]');
+        const note = button ? document.getElementById(button.getAttribute('aria-controls')) : null;
+        return {
+            ariaExpanded: button?.getAttribute('aria-expanded') || '',
+            buttonText: button?.textContent?.trim() || '',
+            noteExpanded: Boolean(note?.classList.contains('is-expanded')),
+            noteClamped: Boolean(note?.classList.contains('is-clamped'))
+        };
+    });
+    assert.equal(expanded.ariaExpanded, 'true', `${scenario.name}: long note did not update aria-expanded on expand`);
+    assert.equal(expanded.buttonText, 'Згорнути', `${scenario.name}: long note expand label did not change`);
+    assert.equal(expanded.noteExpanded, true, `${scenario.name}: long note did not get expanded class`);
+    assert.equal(expanded.noteClamped, false, `${scenario.name}: long note stayed clamped after expand`);
+
+    await firstToggle.click();
+    const collapsed = await page.evaluate(() => {
+        const button = document.querySelector('[data-booking-note-toggle]');
+        const note = button ? document.getElementById(button.getAttribute('aria-controls')) : null;
+        return {
+            ariaExpanded: button?.getAttribute('aria-expanded') || '',
+            buttonText: button?.textContent?.trim() || '',
+            noteExpanded: Boolean(note?.classList.contains('is-expanded')),
+            noteClamped: Boolean(note?.classList.contains('is-clamped'))
+        };
+    });
+    assert.equal(collapsed.ariaExpanded, 'false', `${scenario.name}: long note did not update aria-expanded on collapse`);
+    assert.equal(collapsed.buttonText, 'Показати повністю', `${scenario.name}: long note collapse label did not reset`);
+    assert.equal(collapsed.noteExpanded, false, `${scenario.name}: long note stayed expanded after collapse`);
+    assert.equal(collapsed.noteClamped, true, `${scenario.name}: long note did not return to clamped state`);
+}
+
 async function assertKitchenNotesAction(page, customer, scenario) {
     if (!scenario.kitchenEnabled) return false;
     await page.locator('[data-booking-kitchen-context-add]').click();
@@ -408,6 +462,8 @@ async function assertKitchenNotesAction(page, customer, scenario) {
         return document.getElementById('bookingNotes')?.value.includes('Важливо для кухні:');
     });
     const afterFirstClick = await readContextState(page);
+    assert.equal(afterFirstClick.bookingNotesTagName, 'TEXTAREA', `${scenario.name}: kitchen notes target must be textarea`);
+    assert.equal(afterFirstClick.bookingNotes, expectedKitchenNotesBlock(customer), `${scenario.name}: kitchen notes are not multiline block formatted`);
     assert.ok(afterFirstClick.bookingNotes.includes(customer.children[0].note), `${scenario.name}: first child note was not copied`);
     assert.ok(afterFirstClick.bookingNotes.includes(customer.children[1].note), `${scenario.name}: second child note was not copied`);
     assert.equal(afterFirstClick.kitchenAddStatus, 'Додано', `${scenario.name}: kitchen action added state missing`);
@@ -446,6 +502,7 @@ async function runScenario(browser, base, session, customer, scenario) {
         const state = await readContextState(page);
         assertPanelText(state, customer, scenario);
         assertScenarioState(state, customer, scenario);
+        await assertLongNoteExpand(page, scenario);
         const kitchenNotesAction = await assertKitchenNotesAction(page, customer, scenario);
         assert.deepEqual(bookingPostRequests, [], `${scenario.name}: booking was saved unexpectedly`);
         assert.deepEqual(serverErrors, [], `${scenario.name}: API 500 responses`);

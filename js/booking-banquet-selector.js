@@ -377,6 +377,7 @@ function resetBookingDrawerStateForOpen(mode = inferBookingDrawerModeForOpen()) 
         failedAt: null,
         overrideUsed: false
     };
+    BookingDrawerState.selectedCustomerContext = null;
     BookingDrawerState.validationAttempted = false;
     BookingDrawerState.legacyNotesFallback = false;
     BookingDrawerState.legacyGroupNameFallback = false;

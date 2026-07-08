@@ -2,6 +2,7 @@ var BookingDrawerState = window.BookingDrawerState || {
     drawerMode: 'create_activity',
     drawerGenerationId: 0,
     clientMode: 'search',
+    selectedCustomerContext: null,
     selectedProgramCategory: 'all',
     selectedActivityProgramIds: [],
     selectedActivityPinataFields: {},

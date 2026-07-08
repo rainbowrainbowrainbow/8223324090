@@ -175,9 +175,21 @@ test('selected customer card renders manager context without mutating booking no
             remove(value) { this.removed.push(value); }
         }
     };
+    const customerSection = {
+        classList: {
+            added: [],
+            removed: [],
+            add(value) { this.added.push(value); },
+            remove(value) { this.removed.push(value); }
+        }
+    };
     const context = {
         document: {
-            getElementById: id => (id === 'bookingSelectedCustomerCard' ? card : null)
+            getElementById: id => {
+                if (id === 'bookingSelectedCustomerCard') return card;
+                if (id === 'customerDataSection') return customerSection;
+                return null;
+            }
         },
         escapeHtml: value => String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -214,12 +226,231 @@ test('selected customer card renders manager context without mutating booking no
     assert.match(card.innerHTML, /без горіхів &lt;alert&gt;/);
     assert.match(card.innerHTML, /посадити поруч з мамою/);
     assert.doesNotMatch(card.innerHTML, /<alert>|<nuts>|<X>/);
-    assert.doesNotMatch(card.innerHTML, /bookingMenuNote|bookingNotes|data-menu/);
+    assert.doesNotMatch(card.innerHTML, /bookingMenuNote|bookingNotes|data-menu|data-booking-kitchen-context-add|data-booking-note-toggle/);
     assert.deepEqual(card.classList.removed, ['hidden']);
+    assert.deepEqual(customerSection.classList.added, ['has-selected-customer']);
 
     context.__selectedCustomerCardHooks.renderSelectedCustomerCard({ name: 'No Kids' });
     assert.match(card.innerHTML, /Діти не вказані/);
     assert.doesNotMatch(card.innerHTML, /bookingNotes/);
+
+    context.__selectedCustomerCardHooks.renderSelectedCustomerCard(null);
+    assert.deepEqual(customerSection.classList.removed, ['has-selected-customer']);
+});
+
+test('selected customer kitchen action appends child notes only after explicit click', () => {
+    const bookingJs = read('js', 'booking.js');
+    const renderStart = bookingJs.indexOf('function bookingCustomerCleanText');
+    const renderEnd = bookingJs.indexOf('function renderBookingCustomerSearchState', renderStart);
+    assert.ok(renderStart >= 0 && renderEnd > renderStart, 'selected customer render helper slice exists');
+
+    const notesInput = {
+        value: 'Попередній коментар',
+        events: [],
+        dispatchEvent(event) {
+            this.events.push(event.type);
+        }
+    };
+    const status = { textContent: '' };
+    const button = {
+        listeners: {},
+        attributes: {},
+        classNames: new Set(),
+        classList: {
+            toggle(value, enabled) {
+                if (enabled) button.classNames.add(value);
+                else button.classNames.delete(value);
+            }
+        },
+        setAttribute(name, value) {
+            this.attributes[name] = String(value);
+        },
+        closest() {
+            return {
+                querySelector: () => status
+            };
+        },
+        addEventListener(type, listener) {
+            this.listeners[type] = listener;
+        }
+    };
+    const card = {
+        innerHTML: '',
+        classList: {
+            add() {},
+            remove() {}
+        },
+        querySelector(selector) {
+            return selector === '[data-booking-kitchen-context-add]' && this.innerHTML.includes('data-booking-kitchen-context-add')
+                ? button
+                : null;
+        }
+    };
+    const context = {
+        document: {
+            getElementById: id => {
+                if (id === 'bookingSelectedCustomerCard') return card;
+                if (id === 'bookingNotes') return notesInput;
+                return null;
+            }
+        },
+        Event: function Event(type, options = {}) {
+            this.type = type;
+            this.bubbles = Boolean(options.bubbles);
+        },
+        isBookingKitchenEnabled: () => true,
+        renderBookingPackageSummary() {},
+        updateBookingContextHeaderSummary() {},
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(renderStart, renderEnd)}
+        this.__selectedCustomerKitchenHooks = {
+            renderSelectedCustomerCard,
+            bookingSelectedCustomerKitchenNoteBlock
+        };
+    `, context, { filename: 'js/booking.js' });
+
+    const customer = {
+        name: 'Kitchen Customer',
+        children: [
+            { name: 'Nut Child', note: 'nut allergy, no peanuts' },
+            { name: 'Seat Child', note: 'seat near mother' }
+        ]
+    };
+    const expectedBlock = context.__selectedCustomerKitchenHooks.bookingSelectedCustomerKitchenNoteBlock(customer);
+
+    context.__selectedCustomerKitchenHooks.renderSelectedCustomerCard(customer);
+    assert.match(card.innerHTML, /data-booking-kitchen-context-add/);
+    assert.match(card.innerHTML, /Додати в примітки кухні/);
+    assert.equal(notesInput.value, 'Попередній коментар', 'render must not mutate booking notes');
+    assert.equal(typeof button.listeners.click, 'function', 'kitchen add button listener is wired');
+
+    button.listeners.click({ currentTarget: button });
+    assert.equal(notesInput.value, `Попередній коментар\n\n${expectedBlock}`);
+    assert.equal(status.textContent, 'Додано');
+    assert.equal(button.attributes['aria-pressed'], 'true');
+    assert.equal(button.classNames.has('is-added'), true);
+    assert.deepEqual(notesInput.events, ['input', 'change']);
+
+    button.listeners.click({ currentTarget: button });
+    assert.equal(notesInput.value, `Попередній коментар\n\n${expectedBlock}`, 'second click must not duplicate notes');
+    assert.deepEqual(notesInput.events, ['input', 'change'], 'duplicate click must not dispatch change events');
+});
+
+test('selected customer long notes expand inline with aria state', () => {
+    const bookingJs = read('js', 'booking.js');
+    const renderStart = bookingJs.indexOf('function bookingCustomerCleanText');
+    const renderEnd = bookingJs.indexOf('function renderBookingCustomerSearchState', renderStart);
+    assert.ok(renderStart >= 0 && renderEnd > renderStart, 'selected customer render helper slice exists');
+
+    const noteClasses = new Set(['is-clamped']);
+    const targetNote = {
+        classList: {
+            toggle(value, enabled) {
+                if (enabled) noteClasses.add(value);
+                else noteClasses.delete(value);
+            }
+        }
+    };
+    const toggleButton = {
+        listeners: {},
+        attributes: {
+            'aria-controls': 'booking-selected-customer-note-customer',
+            'aria-expanded': 'false'
+        },
+        dataset: {
+            expandLabel: 'Показати повністю',
+            collapseLabel: 'Згорнути'
+        },
+        textContent: 'Показати повністю',
+        getAttribute(name) {
+            return this.attributes[name] || '';
+        },
+        setAttribute(name, value) {
+            this.attributes[name] = String(value);
+        },
+        addEventListener(type, listener) {
+            this.listeners[type] = listener;
+        }
+    };
+    const card = {
+        innerHTML: '',
+        classList: {
+            add() {},
+            remove() {}
+        },
+        querySelector() {
+            return null;
+        },
+        querySelectorAll(selector) {
+            return selector === '[data-booking-note-toggle]' && this.innerHTML.includes('data-booking-note-toggle')
+                ? [toggleButton]
+                : [];
+        }
+    };
+    const customerSection = {
+        classList: {
+            add() {},
+            remove() {}
+        }
+    };
+    const context = {
+        document: {
+            getElementById: id => {
+                if (id === 'bookingSelectedCustomerCard') return card;
+                if (id === 'customerDataSection') return customerSection;
+                if (id === 'booking-selected-customer-note-customer') return targetNote;
+                return null;
+            }
+        },
+        escapeHtml: value => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${bookingJs.slice(renderStart, renderEnd)}
+        this.__selectedCustomerExpandHooks = { renderSelectedCustomerCard };
+    `, context, { filename: 'js/booking.js' });
+
+    const longCustomerNote = 'Попросили дуже детально врахувати сценарій зустрічі, посадку гостей, час виходу аніматора, контакт мами і кілька окремих побажань для команди.';
+    const longChildNote = 'Дитина швидко втомлюється від шуму, просить не садити біля колонок, дати місце поруч з мамою і попередити кухню про чутливість до горіхів.';
+    context.__selectedCustomerExpandHooks.renderSelectedCustomerCard({
+        name: 'Long Notes',
+        notes: longCustomerNote,
+        children: [
+            { name: 'Long Child', note: longChildNote },
+            { name: 'Short Child', note: 'ок' }
+        ]
+    });
+
+    const toggleCount = (card.innerHTML.match(/data-booking-note-toggle/g) || []).length;
+    assert.equal(toggleCount, 2, 'only long customer and child notes get expand controls');
+    assert.match(card.innerHTML, /aria-expanded="false"/);
+    assert.match(card.innerHTML, /Показати повністю/);
+    assert.match(card.innerHTML, /booking-selected-customer-note-customer/);
+    assert.match(card.innerHTML, /booking-selected-customer-note-child-0/);
+    assert.equal(typeof toggleButton.listeners.click, 'function', 'expand button listener is wired');
+
+    toggleButton.listeners.click({ currentTarget: toggleButton });
+    assert.equal(toggleButton.attributes['aria-expanded'], 'true');
+    assert.equal(toggleButton.textContent, 'Згорнути');
+    assert.equal(noteClasses.has('is-expanded'), true);
+    assert.equal(noteClasses.has('is-clamped'), false);
+
+    toggleButton.listeners.click({ currentTarget: toggleButton });
+    assert.equal(toggleButton.attributes['aria-expanded'], 'false');
+    assert.equal(toggleButton.textContent, 'Показати повністю');
+    assert.equal(noteClasses.has('is-expanded'), false);
+    assert.equal(noteClasses.has('is-clamped'), true);
 });
 
 test('created booking recovery rejects wrong timeline-view projections before cache merge', () => {

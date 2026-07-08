@@ -167,6 +167,14 @@ checkPage('index.html', (doc, html) => {
         '/* v0.77.79: compact date command line removes the empty full-width card shell. */',
         '/* v0.77.83: filters open as a normal-flow collapsible shelf under the date row. */'
     );
+    check('Booking customer context layout uses a class fallback instead of CSS :has()',
+        !!doc.querySelector('#customerDataSection.customer-data-section')
+        && !!doc.querySelector('#bookingSelectedCustomerCard')
+        && panelCss.includes('.customer-data-section.has-selected-customer .booking-customer-layout')
+        && !panelCss.includes('.customer-data-section:has(#bookingSelectedCustomerCard:not(.hidden)) .booking-customer-layout')
+        && bookingCode.includes('function syncBookingSelectedCustomerLayoutState')
+        && bookingCode.includes("section.classList.add('has-selected-customer')")
+        && bookingCode.includes("section.classList.remove('has-selected-customer')"));
     const timelineHeaderLabelBreakpointCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1536px) {');
     const timelineHeaderNarrowDesktopCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 1360px) and (min-width: 1181px) {');
     const timelineHeaderSmallMobileCss = cssAtRuleBlock(responsiveCss, '@media (max-width: 430px) {');

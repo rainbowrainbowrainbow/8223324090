@@ -1549,6 +1549,8 @@ function bookingCustomerInstagramDisplay(value) {
     return `@${text.replace(/^@+/, '')}`;
 }
 
+const BOOKING_SELECTED_CUSTOMER_NOTE_EXPAND_THRESHOLD = 130;
+
 function bookingSelectedCustomerFactHtml(label, value) {
     const text = bookingCustomerCleanText(value);
     if (!text) return '';
@@ -1561,16 +1563,85 @@ function bookingSelectedCustomerFactHtml(label, value) {
     `;
 }
 
+function bookingSelectedCustomerNoteNeedsToggle(text) {
+    const note = bookingCustomerCleanText(text);
+    if (!note) return false;
+    if (note.length > BOOKING_SELECTED_CUSTOMER_NOTE_EXPAND_THRESHOLD) return true;
+    if (note.split(/\r\n|\r|\n/).length > 2) return true;
+    return note.split(/\s+/).some(part => part.length > 44);
+}
+
+function bookingSelectedCustomerSafeNoteId(value) {
+    return String(value || 'booking-selected-customer-note')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        || 'booking-selected-customer-note';
+}
+
+function bookingSelectedCustomerExpandableNoteHtml(text, options = {}) {
+    const note = bookingCustomerCleanText(text);
+    if (!note) return '';
+    const tag = ['p', 'small'].includes(options.tag) ? options.tag : 'p';
+    const noteId = bookingSelectedCustomerSafeNoteId(options.id);
+    const longNote = bookingSelectedCustomerNoteNeedsToggle(note);
+    const safeNote = escapeHtml(note);
+    const safeId = escapeHtml(noteId);
+    const className = [
+        'booking-selected-customer__expandable-note',
+        longNote ? 'is-clamped' : ''
+    ].filter(Boolean).join(' ');
+    return `
+        <${tag} id="${safeId}" class="${className}" title="${safeNote}">${safeNote}</${tag}>
+        ${longNote ? `
+            <button type="button"
+                class="booking-selected-customer__note-toggle"
+                data-booking-note-toggle
+                aria-expanded="false"
+                aria-controls="${safeId}"
+                data-expand-label="Показати повністю"
+                data-collapse-label="Згорнути">
+                Показати повністю
+            </button>
+        ` : ''}
+    `;
+}
+
 function bookingSelectedCustomerNoteHtml(label, text) {
     const note = bookingCustomerCleanText(text);
     if (!note) return '';
-    const safeNote = escapeHtml(note);
     return `
         <div class="booking-selected-customer__note">
             <span>${escapeHtml(label)}</span>
-            <p title="${safeNote}">${safeNote}</p>
+            ${bookingSelectedCustomerExpandableNoteHtml(note, { id: 'booking-selected-customer-note-customer', tag: 'p' })}
         </div>
     `;
+}
+
+function setBookingSelectedCustomerNoteExpanded(button, expanded) {
+    if (!button) return;
+    const noteId = button.getAttribute?.('aria-controls') || '';
+    const note = noteId ? document.getElementById(noteId) : null;
+    if (!note) return;
+    note.classList?.toggle?.('is-expanded', Boolean(expanded));
+    note.classList?.toggle?.('is-clamped', !expanded);
+    button.setAttribute?.('aria-expanded', expanded ? 'true' : 'false');
+    const expandLabel = button.dataset?.expandLabel || 'Показати повністю';
+    const collapseLabel = button.dataset?.collapseLabel || 'Згорнути';
+    button.textContent = expanded ? collapseLabel : expandLabel;
+}
+
+function handleBookingSelectedCustomerNoteToggle(event) {
+    const button = event?.currentTarget || event?.target;
+    if (!button) return;
+    const expanded = button.getAttribute?.('aria-expanded') === 'true';
+    setBookingSelectedCustomerNoteExpanded(button, !expanded);
+}
+
+function bindBookingSelectedCustomerNoteToggles(card) {
+    card?.querySelectorAll?.('[data-booking-note-toggle]')?.forEach(button => {
+        button.addEventListener?.('click', handleBookingSelectedCustomerNoteToggle);
+    });
 }
 
 function bookingCustomerKitchenNoteIsPriority(note) {
@@ -1595,6 +1666,100 @@ function bookingCustomerKitchenNoteRows(customer = {}) {
         .sort((a, b) => Number(b.priority) - Number(a.priority));
 }
 
+function bookingKitchenContextNotesInput() {
+    return document.getElementById('bookingNotes') || null;
+}
+
+function bookingSelectedCustomerKitchenNoteBlock(customer = {}) {
+    const rows = bookingCustomerKitchenNoteRows(customer);
+    if (!rows.length) return '';
+    return [
+        'Важливо для кухні:',
+        ...rows.map(row => `- ${row.childLabel}: ${row.note}`)
+    ].join('\n');
+}
+
+function bookingKitchenContextNotesAlreadyAdded(noteBlock, currentValue) {
+    const block = bookingCustomerCleanText(noteBlock).replace(/\r\n/g, '\n');
+    if (!block) return false;
+    return String(currentValue || '').replace(/\r\n/g, '\n').includes(block);
+}
+
+function bookingSelectedCustomerContextFromCard(card = document.getElementById('bookingSelectedCustomerCard')) {
+    if (typeof BookingDrawerState !== 'undefined' && BookingDrawerState.selectedCustomerContext) {
+        return BookingDrawerState.selectedCustomerContext;
+    }
+    return card?.__bookingSelectedCustomerContext || null;
+}
+
+function bookingSelectedCustomerKitchenActionHtml(customer = {}) {
+    if (typeof isBookingKitchenEnabled !== 'function' || !isBookingKitchenEnabled()) return '';
+    if (!bookingKitchenContextNotesInput()) return '';
+    const noteBlock = bookingSelectedCustomerKitchenNoteBlock(customer);
+    if (!noteBlock) return '';
+    const alreadyAdded = bookingKitchenContextNotesAlreadyAdded(noteBlock, bookingKitchenContextNotesInput().value);
+    return `
+        <div class="booking-selected-customer__kitchen-actions">
+            <button type="button"
+                class="booking-selected-customer__kitchen-add${alreadyAdded ? ' is-added' : ''}"
+                data-booking-kitchen-context-add
+                aria-pressed="${alreadyAdded ? 'true' : 'false'}">
+                Додати в примітки кухні
+            </button>
+            <span class="booking-selected-customer__kitchen-status" aria-live="polite">${alreadyAdded ? 'Додано' : ''}</span>
+        </div>
+    `;
+}
+
+function setBookingKitchenContextAddState(button, added) {
+    if (!button) return;
+    button.classList?.toggle?.('is-added', Boolean(added));
+    button.setAttribute?.('aria-pressed', added ? 'true' : 'false');
+    const status = button.closest?.('.booking-selected-customer__kitchen-actions')
+        ?.querySelector?.('.booking-selected-customer__kitchen-status');
+    if (status) status.textContent = added ? 'Додано' : '';
+}
+
+function dispatchBookingKitchenNotesChanged(input) {
+    if (!input?.dispatchEvent) return;
+    ['input', 'change'].forEach(type => {
+        const event = typeof Event === 'function'
+            ? new Event(type, { bubbles: true })
+            : { type };
+        input.dispatchEvent(event);
+    });
+}
+
+function appendBookingKitchenContextToNotes(customer = bookingSelectedCustomerContextFromCard(), button = null) {
+    if (typeof isBookingKitchenEnabled !== 'function' || !isBookingKitchenEnabled()) return false;
+    const input = bookingKitchenContextNotesInput();
+    if (!input) return false;
+    const noteBlock = bookingSelectedCustomerKitchenNoteBlock(customer);
+    if (!noteBlock) return false;
+    if (bookingKitchenContextNotesAlreadyAdded(noteBlock, input.value)) {
+        setBookingKitchenContextAddState(button, true);
+        return true;
+    }
+    const current = String(input.value || '').trimEnd();
+    input.value = current ? `${current}\n\n${noteBlock}` : noteBlock;
+    dispatchBookingKitchenNotesChanged(input);
+    setBookingKitchenContextAddState(button, true);
+    if (typeof window !== 'undefined' && window.BookingForm) window.BookingForm._dirty = true;
+    if (typeof renderBookingPackageSummary === 'function') renderBookingPackageSummary();
+    if (typeof updateBookingContextHeaderSummary === 'function') updateBookingContextHeaderSummary();
+    return true;
+}
+
+function syncBookingSelectedCustomerLayoutState(hasSelected) {
+    const section = document.getElementById('customerDataSection');
+    if (!section) return;
+    if (hasSelected) {
+        section.classList.add('has-selected-customer');
+    } else {
+        section.classList.remove('has-selected-customer');
+    }
+}
+
 function bookingSelectedCustomerKitchenHtml(customer = {}) {
     const rows = bookingCustomerKitchenNoteRows(customer);
     if (!rows.length) return '';
@@ -1615,6 +1780,7 @@ function bookingSelectedCustomerKitchenHtml(customer = {}) {
             <span class="booking-selected-customer__section-label">Важливо для кухні</span>
             ${rowHtml}
             ${hiddenCount > 0 ? `<small>+${escapeHtml(String(hiddenCount))} ще у списку дітей</small>` : ''}
+            ${bookingSelectedCustomerKitchenActionHtml(customer)}
         </div>
     `;
 }
@@ -1630,15 +1796,17 @@ function bookingSelectedCustomerChildrenHtml(customer = {}) {
         `;
     }
 
-    const childRows = children.map(child => {
+    const childRows = children.map((child, index) => {
         const line = bookingCustomerChildLine(child) || bookingCustomerCleanText(child.name) || 'Дитина';
         const note = bookingCustomerCleanText(child.note);
         const safeLine = escapeHtml(line);
-        const safeNote = escapeHtml(note);
         return `
             <div class="booking-selected-customer__child">
                 <strong title="${safeLine}">${safeLine}</strong>
-                ${note ? `<small title="${safeNote}">${safeNote}</small>` : ''}
+                ${note ? bookingSelectedCustomerExpandableNoteHtml(note, {
+                    id: `booking-selected-customer-note-child-${index}`,
+                    tag: 'small'
+                }) : ''}
             </div>
         `;
     }).join('');
@@ -1655,10 +1823,16 @@ function renderSelectedCustomerCard(customer = null) {
     const card = document.getElementById('bookingSelectedCustomerCard');
     if (!card) return;
     if (!customer) {
+        card.__bookingSelectedCustomerContext = null;
+        if (typeof BookingDrawerState !== 'undefined') BookingDrawerState.selectedCustomerContext = null;
+        syncBookingSelectedCustomerLayoutState(false);
         card.innerHTML = '';
         card.classList.add('hidden');
         return;
     }
+    card.__bookingSelectedCustomerContext = customer;
+    if (typeof BookingDrawerState !== 'undefined') BookingDrawerState.selectedCustomerContext = customer;
+    syncBookingSelectedCustomerLayoutState(true);
     const name = bookingCustomerCleanText(customer.name) || 'Клієнт';
     const visits = bookingCustomerVisitLabel(customer.totalBookings ?? customer.total_bookings);
     const facts = [
@@ -1678,6 +1852,10 @@ function renderSelectedCustomerCard(customer = null) {
         ${bookingSelectedCustomerChildrenHtml(customer)}
     `;
     card.classList.remove('hidden');
+    card.querySelector?.('[data-booking-kitchen-context-add]')?.addEventListener?.('click', event => {
+        appendBookingKitchenContextToNotes(bookingSelectedCustomerContextFromCard(card), event.currentTarget || event.target);
+    });
+    bindBookingSelectedCustomerNoteToggles(card);
 }
 
 function bookingCustomerDateOnly(value) {
@@ -2144,6 +2322,10 @@ function syncBookingWorkspaceMode(options = {}) {
     renderBookingPackageSummary();
     if (kitchenEnabled) requestBookingEntryPriceRulesPreview();
     updateBookingSubmitState();
+    const selectedCustomerContext = bookingSelectedCustomerContextFromCard();
+    if (selectedCustomerContext && document.getElementById('selectedCustomerId')?.value) {
+        renderSelectedCustomerCard(selectedCustomerContext);
+    }
     if (options.markDirty && window.BookingForm) BookingForm._dirty = true;
 }
 

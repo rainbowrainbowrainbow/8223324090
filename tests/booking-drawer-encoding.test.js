@@ -245,7 +245,7 @@ test('selected customer kitchen action appends child notes only after explicit c
     assert.ok(renderStart >= 0 && renderEnd > renderStart, 'selected customer render helper slice exists');
 
     const notesInput = {
-        tagName: 'INPUT',
+        tagName: 'TEXTAREA',
         value: 'Попередній коментар',
         events: [],
         dispatchEvent(event) {
@@ -325,7 +325,6 @@ test('selected customer kitchen action appends child notes only after explicit c
         ]
     };
     const expectedBlock = context.__selectedCustomerKitchenHooks.bookingSelectedCustomerKitchenNoteBlock(customer);
-    const expectedInputBlock = expectedBlock.replace(/\r?\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
 
     context.__selectedCustomerKitchenHooks.renderSelectedCustomerCard(customer);
     assert.match(card.innerHTML, /data-booking-kitchen-context-add/);
@@ -334,14 +333,14 @@ test('selected customer kitchen action appends child notes only after explicit c
     assert.equal(typeof button.listeners.click, 'function', 'kitchen add button listener is wired');
 
     button.listeners.click({ currentTarget: button });
-    assert.equal(notesInput.value, `Попередній коментар | ${expectedInputBlock}`);
+    assert.equal(notesInput.value, `Попередній коментар\n\n${expectedBlock}`);
     assert.equal(status.textContent, 'Додано');
     assert.equal(button.attributes['aria-pressed'], 'true');
     assert.equal(button.classNames.has('is-added'), true);
     assert.deepEqual(notesInput.events, ['input', 'change']);
 
     button.listeners.click({ currentTarget: button });
-    assert.equal(notesInput.value, `Попередній коментар | ${expectedInputBlock}`, 'second click must not duplicate notes');
+    assert.equal(notesInput.value, `Попередній коментар\n\n${expectedBlock}`, 'second click must not duplicate notes');
     assert.deepEqual(notesInput.events, ['input', 'change'], 'duplicate click must not dispatch change events');
 });
 

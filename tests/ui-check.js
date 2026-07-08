@@ -4846,6 +4846,9 @@ const roomBookingAnimationBridgeBlock = bookingCode.slice(
 );
 check('Booking comments use workspace contract instead of legacy notes for new Park kitchen/activity bookings',
     bookingPanelHtml.includes('id="bookingNotesSection"')
+    && bookingPanelHtml.includes('<textarea id="bookingNotes"')
+    && bookingPanelHtml.includes('class="booking-notes-input"')
+    && !bookingPanelHtml.includes('<input type="text" id="bookingNotes"')
     && bookingPanelHtml.includes('id="bookingGroupNameSection"')
     && bookingCode.includes('function syncParkBookingGroupNameVisibility')
     && bookingCode.includes('section.hidden = hidden')

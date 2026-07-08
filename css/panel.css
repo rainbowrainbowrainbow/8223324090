@@ -646,6 +646,11 @@ body.timeline-mode-education .booking-block.education-lesson {
     line-height: 1.45;
 }
 
+.booking-notes-input {
+    min-height: 96px;
+    max-height: 180px;
+}
+
 .booking-active-banquet-context {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

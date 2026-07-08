@@ -1010,6 +1010,17 @@ function crmBusinessDestinationForCurrentPage(context, page = currentCrmBusiness
     return crmBusinessTimelineRoute(key) || `/dashboard?businessContext=${encodeURIComponent(key)}`;
 }
 
+function crmBusinessHasLeadBookingHandoff(url) {
+    const params = url?.searchParams;
+    if (!params) return false;
+    const hasLead = Boolean(params.get('leadId') || params.get('lead'));
+    if (!hasLead) return false;
+    return params.get('convert') === 'booking'
+        || params.get('open') === 'booking'
+        || params.has('bookingMode')
+        || params.has('eventDate');
+}
+
 function crmBusinessDefaultTimelineRouteForUser(user) {
     const policy = resolveCrmBusinessPolicy(user);
     const defaultContext = policy.defaultContext || CRM_BUSINESS_DEFAULT_CONTEXT;
@@ -1033,6 +1044,11 @@ function navigateCrmBusinessDestination(context, page = currentCrmBusinessScoped
     const target = new URL(destination, window.location.origin);
     const current = new URL(window.location.href);
     if (target.pathname === current.pathname && target.search === current.search) return false;
+    if (page?.id === 'timeline'
+        && target.pathname === current.pathname
+        && crmBusinessHasLeadBookingHandoff(current)) {
+        return false;
+    }
     window.__crmBusinessNavigationPending = true;
     window.location.href = `${target.pathname}${target.search}${target.hash}`;
     return true;

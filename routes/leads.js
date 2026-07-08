@@ -1555,10 +1555,11 @@ function normalizeCelebrants(value, legacy = {}) {
         if (items.length >= 20) break;
     }
 
-    if (!items.length && (legacy.childAge || legacy.childrenCount)) {
+    const hasLegacyChildAge = legacy.childAge !== undefined && legacy.childAge !== null && legacy.childAge !== '';
+    if (!items.length && (hasLegacyChildAge || legacy.childrenCount)) {
         items.push({
             name: null,
-            age: Number.isFinite(Number(legacy.childAge)) ? Number(legacy.childAge) : null,
+            age: hasLegacyChildAge && Number.isFinite(Number(legacy.childAge)) ? Number(legacy.childAge) : null,
             birthday: null,
             notes: null,
             source: 'legacy_single_child'

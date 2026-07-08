@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.53 - Lead Workspace Child Sync Fix
+
+### Ліди / Workspace / Діти / Hotfix / (Клешня, 08.07.2026) [codex]
+- **Прибрано phantom child `0 років` у linked customer workspace** - lead sync більше не трактує `child_age = null` як `0`, коли в ліда є тільки `children_count` без реальних celebrants.
+- **Workspace зберігає канонічні 2 дітей клієнта без зайвого третього рядка** - `customer.children` лишається джерелом правди, а службовий count ліда не перетворюється на окремого іменинника.
+- **Додано regression coverage** - route-smoke фіксує, що children-count-only lead не створює `customer_children` рядок з `age_snapshot=0`, але все ще очищає старі lead-owned rows.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - це вузький backend hotfix плюс version/cache refs.
+
+---
+
 ## v0.78.52 - Lead Workspace Children Notes
 
 ### Ліди / Workspace / Іменинники / Нотатки / (Клешня, 08.07.2026) [codex]

@@ -2385,6 +2385,11 @@ function createFakePool() {
                     created_at: '2099-05-01T10:00:00Z',
                     updated_at: '2099-05-02T10:00:00Z'
                 };
+                if (Number(row.id) === 508) {
+                    row.children_count = 2;
+                    row.child_age = null;
+                    row.celebrants = [];
+                }
                 const assignedTo = paramFor('assigned_to');
                 const pipelineStage = paramFor('pipeline_stage');
                 const status = paramFor('status');
@@ -2425,7 +2430,7 @@ function createFakePool() {
                 }
                 return {
                     rows: [{
-                        id: 8701,
+                        id: Number(params[7]) === 508 ? 8708 : 8701,
                         business_context: params[0],
                         name: params[1],
                         phone: params[2],
@@ -4611,6 +4616,25 @@ describe('route-level API safety smoke', () => {
             newStatus: 'proposal',
             source: 'leads.patch'
         });
+    });
+
+    it('does not sync a phantom age-zero child from children-count-only leads', async () => {
+        queries.length = 0;
+        const res = await request('PATCH', '/api/leads/508', { pipeline_stage: 'deal' }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.customer.id, 8708);
+        assert.deepEqual(res.data.customer.children, []);
+
+        const childInserts = queries.filter(q =>
+            /INSERT INTO customer_children/i.test(q.text)
+            && Number(q.params[2]) === 508
+        );
+        assert.equal(childInserts.length, 0, 'children_count without child_age must not create an age 0 child');
+        assert.ok(queries.some(q =>
+            /DELETE FROM customer_children[\s\S]*AND source_kind = \$3[\s\S]*AND lead_id = \$4/i.test(q.text)
+            && Number(q.params[3]) === 508
+        ), 'sync should still clear stale lead-owned child rows');
     });
 
     it('returns retryable conflict metadata when the customer card lead row is locked', async () => {

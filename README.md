@@ -157,6 +157,7 @@ Notes:
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
 - `npm run release:gate` is the pre-deploy gate: it checks current version/branch state and runs the full local verification baseline; with a live URL it also runs live smoke/proof.
 - `npm run smoke:live -- https://<live-crm-host>` is the post-deploy smoke: version, light health, readiness/deep schema diagnostics, and authenticated bookings/lines/leads contracts.
+- `npm run smoke:cake-decorations -- https://8223324090-production.up.railway.app` is the reusable live smoke for cake decoration products and booking catalog behavior; see [docs/CAKE_DECORATIONS_LIVE_SMOKE_RUNBOOK.md](docs/CAKE_DECORATIONS_LIVE_SMOKE_RUNBOOK.md).
 - `npm run version:sync` runs the same version tool in fix mode and edits files.
 - There is no current style lint, TypeScript typecheck, or build pipeline.
 

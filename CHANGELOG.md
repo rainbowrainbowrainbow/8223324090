@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.65 - Staff Schedule Search
+
+### HR / Графік / Пошук співробітників / (Клешня, 08.07.2026) [codex]
+- **Пошук людей перенесено у графік** - shared schedule shell отримав поле пошуку, яке працює і на `/staff`, і в HR-вкладці `#schedule`.
+- **Фільтрація графіка стала живою** - рядки співробітників, summary, attendance summary, load view і bulk fill використовують один visible staff set за ПІБ, професією, відділом, статусом і часом зміни.
+- **Light/dark/mobile вигляд захищено** - search row вирівняно зі стилем HR Today, а UI smoke фіксує markup, JS filtering і responsive CSS.
+- **DB schema, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений schedule frontend, стилями, smoke checks і version/cache refs.
+
+---
+
 ## v0.78.64 - Cake Decorations Follow-up
 
 ### Бронювання / Оформлення торта / (Клешня, 08.07.2026) [codex]

@@ -39,6 +39,7 @@
     "audit:customer-duplicates": "node scripts/audit-customer-duplicate-risks.js",
     "audit:business-context-isolation": "node scripts/audit-business-context-isolation.js",
     "audit:lead-customer-children": "node scripts/audit-lead-customer-children.js",
+    "audit:child-dietary-notes": "node scripts/audit-child-dietary-notes.js",
     "repair:lead-customers": "node scripts/repair-lead-customer-cards.js",
     "repair:lead-customer-children": "node scripts/repair-lead-customer-children.js",
     "audit:booking-summary-layout": "npx --yes --package playwright node scripts/audit-booking-summary-layout.js",

@@ -24,6 +24,36 @@ Discovery only. No database schema, migration, API, auth, secrets, Railway, or p
 
 The current regex/keyword highlight is useful for MVP, but it is not a reliable source of truth for food safety.
 
+## Read-Only Discovery Tool
+
+Use the anonymized audit script before approving schema work:
+
+```bash
+npm run audit:child-dietary-notes -- --business-context event_genix --limit 500
+```
+
+Default output is aggregate-only:
+
+- total child notes in scope;
+- scanned notes;
+- food-safety signal count;
+- category counts;
+- recommendation.
+
+Redacted snippets require an explicit flag:
+
+```bash
+npm run audit:child-dietary-notes -- --business-context event_genix --limit 500 --samples
+```
+
+Safety rules:
+
+- the script opens a read-only transaction;
+- it does not write, update, delete, migrate, or backfill data;
+- it does not print database credentials or environment values;
+- samples redact obvious phone numbers, emails, handles, URLs, and dates;
+- do not paste raw production notes into chat, commits, or release notes.
+
 ## Recommendation
 
 Keep the current free-text flow for the next release cycle, but treat it as a display and reminder feature, not as structured kitchen safety data.
@@ -125,4 +155,3 @@ Any implementation beyond discovery touches protected areas:
 - kitchen/banquet summary display.
 
 Schema work needs explicit approval before code changes.
-

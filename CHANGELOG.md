@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.57 - Booking Customer Context Polish
+
+### Бронювання / Клієнтський контекст / Кухня / UX / (Клешня, 08.07.2026) [codex]
+- **Кухонні нотатки тепер додаються тільки явною дією** - у блоці `Важливо для кухні` зʼявилась кнопка `Додати в примітки кухні`, повторний клік не дублює текст.
+- **Двоколонковий customer layout більше не залежить від CSS `:has()`** - booking drawer ставить клас `has-selected-customer`, тому desktop/mobile fallback стабільніший.
+- **Довгі примітки клієнта і дітей можна розгорнути inline** - compact clamp лишився за замовчуванням, а `Показати повністю` працює без модалки і з `aria-expanded`.
+- **Live smoke винесено в повторюваний npm script** - `smoke:booking-customer-context` створює disposable клієнта, перевіряє activity/kitchen desktop/mobile і прибирає тестові дані.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений booking drawer UI, CSS, smoke script, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.56 - Booking Customer Context
 
 ### Бронювання / Клієнти / Діти / Кухня / (Клешня, 08.07.2026) [codex]

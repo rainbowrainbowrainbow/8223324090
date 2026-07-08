@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.58 - Booking Customer Context Polish Fix
+
+### Бронювання / Кухонні примітки / Hotfix / (Клешня, 08.07.2026) [codex]
+- **Повторний клік `Додати в примітки кухні` більше не дублює текст** - live smoke показав, що `input type="text"` прибирає переноси рядків, тому guard тепер порівнює нормалізований текст без whitespace.
+- **Кухонний note block вставляється читабельно в text input** - для `bookingNotes` використовується single-line формат із розділювачем, а textarea-сумісність з multiline залишена.
+- **Cache/version refs підняті до `0.78.58`** - браузери отримують новий `booking.js` без залежності від старого `?v=0.78.57`.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - hotfix обмежений booking drawer JS, regression test, changelog і version/cache refs.
+
+---
+
 ## v0.78.57 - Booking Customer Context Polish
 
 ### Бронювання / Клієнтський контекст / Кухня / UX / (Клешня, 08.07.2026) [codex]

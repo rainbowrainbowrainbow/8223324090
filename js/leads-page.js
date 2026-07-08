@@ -19,6 +19,20 @@ const LEAD_TYPE_MAP = {
     informational: { label: 'Інформаційний', emoji: '📩', cls: 'type-info' },
     low_quality:   { label: 'Неякісний', emoji: '⬇️', cls: 'type-low' }
 };
+const LEAD_WORKSPACE_CHILD_SOURCE_ORDER = Object.freeze([
+    'customer.children',
+    'lead.celebrants',
+    'customer.childName'
+]);
+const LEAD_WORKSPACE_NOTES_CONTRACT = Object.freeze({
+    mergePolicy: 'render_as_separate_sections',
+    leadNotesPath: 'lead.notes',
+    customerNotesPath: 'customer.notes',
+    childNotePaths: Object.freeze([
+        'customer.children[].note',
+        'lead.celebrants[].notes'
+    ])
+});
 const ACTIVE_KANBAN_LEAD_TYPES = new Set(['quality']);
 const LEAD_TYPE_WORKFLOW_MESSAGES = {
     spam: 'Спам закрито і прибрано з активної воронки',
@@ -1733,6 +1747,198 @@ function renderCelebrantsValue(lead = {}) {
     }).join('<br>');
 }
 
+function normalizeWorkspaceChild(item = {}) {
+    const ageValue = item.ageSnapshot ?? item.age_snapshot ?? item.age ?? item.childAge ?? item.child_age ?? '';
+    const birthdayValue = item.birthday || item.birthDate || item.birth_date || item.childBirthday || item.child_birthday || '';
+    const birthday = birthdayValue instanceof Date
+        ? birthdayValue.toISOString().slice(0, 10)
+        : String(birthdayValue || '').trim().slice(0, 10);
+    return {
+        name: String(item.name || item.childName || item.child_name || '').trim(),
+        birthday,
+        age: ageValue === null || ageValue === undefined ? '' : String(ageValue).trim(),
+        note: String(item.note || item.notes || '').trim()
+    };
+}
+
+function workspaceChildAgeText(child = {}) {
+    if (child.age === '' || child.age === null || child.age === undefined) return '';
+    const numberValue = Number(child.age);
+    return Number.isFinite(numberValue) && Number.isInteger(numberValue)
+        ? `${numberValue} р.`
+        : String(child.age).trim();
+}
+
+function workspaceCustomerChildRows(customer = {}, lead = {}) {
+    const customerChildren = Array.isArray(customer?.children)
+        ? customer.children.map(normalizeWorkspaceChild).filter(child => child.name || child.birthday || child.age || child.note)
+        : [];
+    if (customerChildren.length) return { source: 'customer.children', children: customerChildren };
+
+    const leadChildren = normalizeLeadCelebrants(lead)
+        .map(normalizeWorkspaceChild)
+        .filter(child => child.name || child.birthday || child.age || child.note);
+    if (leadChildren.length) return { source: 'lead.celebrants', children: leadChildren };
+
+    const legacyChild = normalizeWorkspaceChild({
+        name: customer?.childName || customer?.child_name,
+        birthday: customer?.childBirthday || customer?.child_birthday
+    });
+    return legacyChild.name || legacyChild.birthday
+        ? { source: 'customer.childName', children: [legacyChild] }
+        : { source: 'none', children: [] };
+}
+
+function renderWorkspaceCustomerChildren(customer = {}, lead = {}) {
+    const resolved = workspaceCustomerChildRows(customer, lead);
+    if (!resolved.children.length) return workspaceText(null);
+    return `
+        <div class="workspace-child-list" role="list" data-child-source="${escapeHtml(resolved.source)}">
+            ${resolved.children.map((child, index) => {
+                const name = child.name || `#${index + 1}`;
+                const age = workspaceChildAgeText(child);
+                const birthday = child.birthday ? workspaceDate(child.birthday) : '—';
+                const note = child.note || '—';
+                return `
+                    <div class="workspace-row workspace-child-row" role="listitem">
+                        <div class="workspace-child-name">${escapeHtml(name)}</div>
+                        <div class="workspace-child-facts">
+                            <div class="workspace-child-fact">
+                                <span>Вік</span>
+                                <strong>${age ? escapeHtml(age) : '—'}</strong>
+                            </div>
+                            <div class="workspace-child-fact">
+                                <span>ДН</span>
+                                <strong>${escapeHtml(birthday)}</strong>
+                            </div>
+                            <div class="workspace-child-fact workspace-child-note">
+                                <span>Нотатка</span>
+                                <strong>${escapeHtml(note)}</strong>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function workspaceCleanNote(value) {
+    return String(value || '').replace(/\r\n/g, '\n').trim();
+}
+
+function workspaceNoteKey(value) {
+    return workspaceCleanNote(value).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function workspaceStripLeadAutoNoteBlock(value, lead = {}) {
+    const text = workspaceCleanNote(value);
+    const leadId = String(lead.id || '').trim();
+    if (!text || !leadId) return text;
+    const lines = text.split('\n');
+    const markerPattern = new RegExp(`^\\s*(?:Лід|Lead)\\s*#${leadId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const start = lines.findIndex(line => markerPattern.test(line));
+    if (start === -1) return text;
+    let end = start + 1;
+    while (end < lines.length && lines[end].trim()) end += 1;
+    return [
+        ...lines.slice(0, start),
+        ...lines.slice(end + (end < lines.length ? 1 : 0))
+    ].join('\n').trim();
+}
+
+function workspaceCustomerVisibleNotes(customer = {}, lead = {}) {
+    const text = workspaceStripLeadAutoNoteBlock(customer?.notes, lead);
+    const leadNote = workspaceCleanNote(lead?.notes);
+    if (!text || !leadNote) return text;
+    const leadNoteKeys = new Set([
+        workspaceNoteKey(leadNote),
+        workspaceNoteKey(`Нотатки ліда: ${leadNote}`),
+        workspaceNoteKey(`Lead notes: ${leadNote}`)
+    ]);
+    return text
+        .split('\n')
+        .filter(line => !leadNoteKeys.has(workspaceNoteKey(line)))
+        .join('\n')
+        .trim();
+}
+
+function renderWorkspaceNoteText(value) {
+    const text = workspaceCleanNote(value);
+    return text ? `<div class="workspace-note-text">${escapeHtml(text)}</div>` : workspaceText(null);
+}
+
+function workspaceNoteRows(workspace = {}) {
+    const lead = workspace.lead || {};
+    const customer = workspace.customer || {};
+    const rows = [];
+    const seen = new Set();
+    const add = (source, title, text) => {
+        const clean = workspaceCleanNote(text);
+        const key = workspaceNoteKey(clean);
+        if (!clean || seen.has(key)) return;
+        seen.add(key);
+        rows.push({
+            workspaceNote: true,
+            source,
+            title,
+            text: clean
+        });
+    };
+    add('lead.notes', 'Нотатки ліда', lead.notes);
+    add('customer.notes', 'Нотатки клієнта', workspaceCustomerVisibleNotes(customer, lead));
+    return rows;
+}
+
+function workspaceInteractionRows(workspace = {}) {
+    const noteRows = workspaceNoteRows(workspace);
+    const activityRows = [...(workspace.interactions || []), ...(workspace.communications || [])].slice(0, 8);
+    return [...noteRows, ...activityRows].slice(0, 10);
+}
+
+function renderWorkspaceInteractionRow(item = {}) {
+    if (item.workspaceNote) {
+        return `
+            <div class="workspace-row workspace-note-row" data-note-source="${escapeHtml(item.source)}">
+                <div class="workspace-row-title">${workspaceText(item.title)}</div>
+                <div class="workspace-row-meta workspace-note-source">${workspaceText(item.source)}</div>
+                ${renderWorkspaceNoteText(item.text)}
+            </div>
+        `;
+    }
+    return `
+        <div class="workspace-row">
+            <div class="workspace-row-title">${workspaceText(item.summary || item.type || 'Взаємодія')}</div>
+            <div class="workspace-row-meta">${workspaceDateTime(item.created_at)}${item.manager_name || item.created_by_name ? ' · ' + workspaceText(item.manager_name || item.created_by_name) : ''}</div>
+            ${item.details ? `<div class="workspace-row-meta">${workspaceText(item.details)}</div>` : ''}
+        </div>
+    `;
+}
+
+function leadWorkspaceChildSourceOrder(workspace = {}) {
+    const sourceOrder = workspace?.contract?.children?.sourceOrder;
+    return Array.isArray(sourceOrder) && sourceOrder.length
+        ? sourceOrder
+        : [...LEAD_WORKSPACE_CHILD_SOURCE_ORDER];
+}
+
+function leadWorkspaceNotesContract(workspace = {}) {
+    const notes = workspace?.contract?.notes;
+    return notes && typeof notes === 'object'
+        ? {
+            mergePolicy: notes.mergePolicy || LEAD_WORKSPACE_NOTES_CONTRACT.mergePolicy,
+            leadNotesPath: notes.leadNotesPath || LEAD_WORKSPACE_NOTES_CONTRACT.leadNotesPath,
+            customerNotesPath: notes.customerNotesPath || LEAD_WORKSPACE_NOTES_CONTRACT.customerNotesPath,
+            childNotePaths: Array.isArray(notes.childNotePaths) && notes.childNotePaths.length
+                ? notes.childNotePaths
+                : [...LEAD_WORKSPACE_NOTES_CONTRACT.childNotePaths]
+        }
+        : {
+            ...LEAD_WORKSPACE_NOTES_CONTRACT,
+            childNotePaths: [...LEAD_WORKSPACE_NOTES_CONTRACT.childNotePaths]
+        };
+}
+
 function workspaceBadge(text, cls = '') {
     if (!text) return '';
     return `<span class="workspace-badge ${cls}">${escapeHtml(text)}</span>`;
@@ -2070,6 +2276,10 @@ function renderLeadWorkspaceContent(workspace) {
         : `Кейс ліда #${lead.id} · canonical: pipeline_stage`;
 
     const customerHref = customer?.id ? leadCrmContextHref('/customers', { open: customer.id }, leadContextFromRecord(lead)) : null;
+    const childSourceOrder = leadWorkspaceChildSourceOrder(workspace);
+    const notesContract = leadWorkspaceNotesContract(workspace);
+    const customerVisibleNotes = workspaceCustomerVisibleNotes(customer, lead);
+    const noteAndInteractionRows = workspaceInteractionRows(workspace);
     const body = document.getElementById('leadWorkspaceBody');
     if (!body) return;
     currentWorkspaceData = workspace;
@@ -2102,16 +2312,17 @@ function renderLeadWorkspaceContent(workspace) {
 
         ${renderManagerActionStrip(workspace)}
 
-        <div class="workspace-grid">
+        <div class="workspace-grid" data-child-source-order="${escapeHtml(childSourceOrder.join('|'))}" data-notes-merge-policy="${escapeHtml(notesContract.mergePolicy)}">
             <section class="workspace-section">
                 <h3>Клієнт</h3>
                 ${customer ? `
                     <dl class="workspace-kv">
                         <dt>Ім'я</dt><dd>${workspaceText(customer.name)}</dd>
                         <dt>Телефон</dt><dd>${workspaceText(customer.phone)}</dd>
-                        ${maysternyaMode ? '' : `<dt>Дитина</dt><dd>${workspaceText(customer.childName)}</dd>`}
+                        ${maysternyaMode ? '' : `<dt>Діти / іменинники</dt><dd>${renderWorkspaceCustomerChildren(customer, lead)}</dd>`}
                         <dt>${maysternyaMode ? 'Сесії' : 'Візити'}</dt><dd>${customer.totalBookings || 0} · ${workspaceMoney(customer.totalSpent)}</dd>
                         <dt>${maysternyaMode ? 'Остання сесія' : 'Останній'}</dt><dd>${workspaceDate(customer.lastVisit)}</dd>
+                        ${customerVisibleNotes ? `<dt>Нотатки клієнта</dt><dd>${renderWorkspaceNoteText(customerVisibleNotes)}</dd>` : ''}
                     </dl>
                     <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
                         ${workspaceLink(customerHref, 'Відкрити клієнта')}
@@ -2129,7 +2340,7 @@ function renderLeadWorkspaceContent(workspace) {
                     <dt>${maysternyaMode ? 'Бажана дата консультації' : 'Бажана дата'}</dt><dd>${workspaceDate(lead.eventDate)}</dd>
                     <dt>${maysternyaMode ? 'Консультація' : 'Програма'}</dt><dd>${workspaceText(lead.programName || lead.sessionType)}</dd>
                     ${maysternyaMode ? '' : `<dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>`}
-                    <dt>${maysternyaMode ? 'Повідомлення' : 'Нотатки'}</dt><dd>${workspaceText(maysternyaMode ? (lead.message || lead.notes) : lead.notes)}</dd>
+                    <dt>${maysternyaMode ? 'Повідомлення' : 'Нотатки'}</dt><dd>${renderWorkspaceNoteText(maysternyaMode ? (lead.message || lead.notes) : lead.notes)}</dd>
                 </dl>
             </section>
 
@@ -2167,13 +2378,7 @@ function renderLeadWorkspaceContent(workspace) {
 
             <section class="workspace-section">
                 <h3>Нотатки і взаємодії</h3>
-                ${workspaceList([...(workspace.interactions || []), ...(workspace.communications || [])].slice(0, 8), item => `
-                    <div class="workspace-row">
-                        <div class="workspace-row-title">${workspaceText(item.summary || item.type || 'Взаємодія')}</div>
-                        <div class="workspace-row-meta">${workspaceDateTime(item.created_at)}${item.manager_name || item.created_by_name ? ' · ' + workspaceText(item.manager_name || item.created_by_name) : ''}</div>
-                        ${item.details ? `<div class="workspace-row-meta">${workspaceText(item.details)}</div>` : ''}
-                    </div>
-                `, 'Взаємодій і коментарів ще немає')}
+                ${workspaceList(noteAndInteractionRows, renderWorkspaceInteractionRow, 'Взаємодій і коментарів ще немає')}
             </section>
 
             <section class="workspace-section full">

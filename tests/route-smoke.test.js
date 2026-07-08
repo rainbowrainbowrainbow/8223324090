@@ -331,7 +331,37 @@ function createFakePool() {
         onboardingProgress: new Map(),
         tasks: [],
         bookings: [],
-        customerChildren: [],
+        customerChildren: [{
+            id: 1001,
+            business_context: 'event_genix',
+            customer_id: 701,
+            lead_id: 501,
+            booking_id: null,
+            name: 'Mia',
+            birthday: '2099-05-12',
+            age_snapshot: 7,
+            note: 'Allergic to peanuts',
+            source_kind: 'lead_celebrant',
+            source_payload: { source: 'route_smoke_workspace' },
+            sort_order: 10,
+            created_at: '2099-05-01T10:00:00Z',
+            updated_at: '2099-05-01T10:00:00Z'
+        }, {
+            id: 1002,
+            business_context: 'event_genix',
+            customer_id: 701,
+            lead_id: 501,
+            booking_id: null,
+            name: 'Leo',
+            birthday: '2099-05-14',
+            age_snapshot: 5,
+            note: 'Prefers Spider-Man',
+            source_kind: 'lead_celebrant',
+            source_payload: { source: 'route_smoke_workspace' },
+            sort_order: 11,
+            created_at: '2099-05-01T10:00:00Z',
+            updated_at: '2099-05-01T10:00:00Z'
+        }],
         banquetGroups: new Map(),
         banquetMemberships: [],
         banquetDeposits: [],
@@ -353,7 +383,7 @@ function createFakePool() {
         nextOnboardingTemplateId: 12,
         nextOnboardingProgressId: 1001,
         nextTaskId: 880,
-        nextCustomerChildId: 1,
+        nextCustomerChildId: 2000,
         nextBookingSeq: 1,
         nextBanquetMembershipId: 1,
         nextBanquetLinkId: 32,
@@ -4505,6 +4535,19 @@ describe('route-level API safety smoke', () => {
         const res = await request('GET', '/api/leads/501/workspace', undefined, withAuth({}, 'manager'));
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.success, true);
+        assert.equal(res.data.workspace.contract.version, 'lead_workspace_v1');
+        assert.equal(res.data.workspace.contract.schemaChangeRequired, false);
+        assert.deepEqual(res.data.workspace.contract.children.sourceOrder, [
+            'customer.children',
+            'lead.celebrants',
+            'customer.childName'
+        ]);
+        assert.equal(res.data.workspace.contract.children.canonicalSource, 'customer_children');
+        assert.equal(res.data.workspace.contract.notes.mergePolicy, 'render_as_separate_sections');
+        assert.deepEqual(res.data.workspace.contract.notes.childNotePaths, [
+            'customer.children[].note',
+            'lead.celebrants[].notes'
+        ]);
         assert.equal(res.data.workspace.canonical.statusField, 'pipeline_stage');
         assert.equal(res.data.workspace.canonical.stage, 'contacted');
         assert.equal(res.data.workspace.canonical.aggregateStatus, 'contact');
@@ -4518,6 +4561,14 @@ describe('route-level API safety smoke', () => {
         assert.deepEqual(res.data.workspace.lead.contactChannels, ['site_form', 'whatsapp']);
         assert.deepEqual(res.data.workspace.lead.utm, { source: 'google', campaign: 'natal' });
         assert.equal(res.data.workspace.customer.id, 701);
+        assert.equal(res.data.workspace.customer.children.length, 2);
+        assert.deepEqual(res.data.workspace.customer.children.map(child => child.name), ['Mia', 'Leo']);
+        assert.deepEqual(res.data.workspace.customer.children.map(child => child.note), ['Allergic to peanuts', 'Prefers Spider-Man']);
+        assert.equal(res.data.workspace.customer.childName, 'Mia');
+        assert.equal(res.data.workspace.customer.childBirthday, '2099-05-12');
+        assert.equal(res.data.workspace.customer.childNameDisplay, 'Mia, Leo');
+        assert.equal(res.data.workspace.customer.childBirthdayDisplay, '2099-05-12, 2099-05-14');
+        assert.ok(queries.some(q => /FROM customer_children/i.test(q.text) && Number(q.params[0]) === 701));
         assert.equal(res.data.workspace.bookings[0].id, 'BK-WS');
         assert.equal(res.data.workspace.tasks[0].sourceType, 'lead');
         assert.equal(res.data.workspace.conversations[0].channel, 'telegram');

@@ -18,6 +18,7 @@ describe('operations flow v2 comprehensive contracts', () => {
     const customersRoute = readRepoFile('routes', 'customers.js');
     const analyticsRoute = readRepoFile('routes', 'analytics.js');
     const leadsPage = readRepoFile('js', 'leads-page.js');
+    const leadsCss = readRepoFile('css', 'pages-leads.css');
     const leadsHtml = readRepoFile('leads.html');
     const customersPage = readRepoFile('js', 'customers-page.js');
     const customersHtml = readRepoFile('customers.html');
@@ -59,11 +60,48 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(leadsRoute, /source: 'legacy_single_child'/);
         assert.match(leadsRoute, /INSERT INTO leads[\s\S]*celebrants\)/);
         assert.match(leadsRoute, /celebrants = \$\$\{params\.length\}::jsonb/);
+        assert.match(leadsRoute, /LEAD_WORKSPACE_CONTRACT/);
+        assert.match(leadsRoute, /sourceOrder: Object\.freeze\(\[\s*'customer\.children',\s*'lead\.celebrants',\s*'customer\.childName'/);
+        assert.match(leadsRoute, /mergePolicy: 'render_as_separate_sections'/);
+        assert.match(leadsRoute, /function loadWorkspaceCustomerChildren/);
+        assert.match(leadsRoute, /FROM customer_children[\s\S]*WHERE customer_id = \$1[\s\S]*AND business_context = \$2/);
+        assert.match(leadsRoute, /function applyWorkspaceCustomerChildren/);
+        assert.match(leadsRoute, /customerChildrenNameDisplay\(children\)/);
+        assert.match(leadsRoute, /customerChildrenBirthdayDisplay\(children\)/);
         assert.match(leadsPage, /function parseCelebrantsInput/);
         assert.match(leadsPage, /function renderCelebrantsEditor/);
         assert.match(leadsPage, /function getCelebrantsPayload/);
         assert.match(leadsPage, /function isCelebrantsEditorDirty/);
         assert.match(leadsPage, /function renderCelebrantsValue/);
+        assert.match(leadsPage, /function renderWorkspaceCustomerChildren/);
+        assert.match(leadsPage, /function workspaceCustomerChildRows/);
+        assert.match(leadsPage, /source: 'customer\.children'/);
+        assert.match(leadsPage, /source: 'lead\.celebrants'/);
+        assert.match(leadsPage, /source: 'customer\.childName'/);
+        assert.ok(
+            leadsPage.indexOf("source: 'customer.children'") < leadsPage.indexOf("source: 'customer.childName'"),
+            'lead workspace must prefer canonical customer.children before legacy customer.childName'
+        );
+        assert.doesNotMatch(leadsPage, /<dt>Дитина<\/dt><dd>\$\{workspaceText\(customer\.childName\)\}<\/dd>/);
+        assert.match(leadsPage, /const birthday = child\.birthday \? workspaceDate\(child\.birthday\) :/);
+        assert.match(leadsPage, /const note = child\.note \|\|/);
+        assert.match(leadsPage, /workspace-child-note/);
+        assert.match(leadsPage, /workspace-row workspace-child-row/);
+        assert.match(leadsPage, /Діти \/ іменинники/);
+        assert.match(leadsPage, /function workspaceStripLeadAutoNoteBlock/);
+        assert.match(leadsPage, /function workspaceCustomerVisibleNotes/);
+        assert.match(leadsPage, /function workspaceNoteRows/);
+        assert.match(leadsPage, /function renderWorkspaceInteractionRow/);
+        assert.match(leadsPage, /Нотатки клієнта/);
+        assert.match(leadsPage, /data-note-source=/);
+        assert.match(leadsPage, /function leadWorkspaceChildSourceOrder/);
+        assert.match(leadsPage, /function leadWorkspaceNotesContract/);
+        assert.match(leadsPage, /data-child-source-order/);
+        assert.match(leadsPage, /data-notes-merge-policy/);
+        assert.match(leadsCss, /\.workspace-child-list/);
+        assert.match(leadsHtml, /body\.dark-mode \.workspace-row/);
+        assert.match(leadsCss, /\.workspace-note-text[\s\S]*white-space: pre-wrap/);
+        assert.match(leadsCss, /\.workspace-note-row/);
         assert.match(leadsPage, /leadCelebrants/);
         assert.match(leadsHtml, /id="leadCelebrants" hidden/);
         assert.match(leadsHtml, /id="ccCelebrants" hidden/);

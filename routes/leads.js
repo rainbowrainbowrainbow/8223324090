@@ -55,6 +55,8 @@ const {
     replaceCustomerChildren,
     buildCustomerChildrenProjection,
     buildLegacyChildSnapshot,
+    customerChildrenNameDisplay,
+    customerChildrenBirthdayDisplay,
     isCustomerChildrenStorageMissing
 } = require('../services/customerChildren');
 
@@ -2075,6 +2077,47 @@ async function optionalWorkspaceQuery(sql, params = []) {
     }
 }
 
+const LEAD_WORKSPACE_CONTRACT = Object.freeze({
+    version: 'lead_workspace_v1',
+    schemaChangeRequired: false,
+    children: Object.freeze({
+        canonicalSource: 'customer_children',
+        sourceOrder: Object.freeze([
+            'customer.children',
+            'lead.celebrants',
+            'customer.childName'
+        ]),
+        legacyFallback: 'customers.child_name'
+    }),
+    notes: Object.freeze({
+        mergePolicy: 'render_as_separate_sections',
+        leadNotesPath: 'lead.notes',
+        customerNotesPath: 'customer.notes',
+        childNotePaths: Object.freeze([
+            'customer.children[].note',
+            'lead.celebrants[].notes'
+        ])
+    })
+});
+
+function leadWorkspaceContract() {
+    return {
+        version: LEAD_WORKSPACE_CONTRACT.version,
+        schemaChangeRequired: LEAD_WORKSPACE_CONTRACT.schemaChangeRequired,
+        children: {
+            canonicalSource: LEAD_WORKSPACE_CONTRACT.children.canonicalSource,
+            sourceOrder: [...LEAD_WORKSPACE_CONTRACT.children.sourceOrder],
+            legacyFallback: LEAD_WORKSPACE_CONTRACT.children.legacyFallback
+        },
+        notes: {
+            mergePolicy: LEAD_WORKSPACE_CONTRACT.notes.mergePolicy,
+            leadNotesPath: LEAD_WORKSPACE_CONTRACT.notes.leadNotesPath,
+            customerNotesPath: LEAD_WORKSPACE_CONTRACT.notes.customerNotesPath,
+            childNotePaths: [...LEAD_WORKSPACE_CONTRACT.notes.childNotePaths]
+        }
+    };
+}
+
 function mapWorkspaceLead(row) {
     const stage = row.pipeline_stage || 'new';
     const inbound = buildLeadInboundMetadata(row);
@@ -2149,6 +2192,35 @@ function mapWorkspaceCustomer(row) {
     };
     if (Array.isArray(row.children)) customer.children = row.children;
     return customer;
+}
+
+function applyWorkspaceCustomerChildren(customer, childRows = []) {
+    if (!customer) return null;
+    const children = buildCustomerChildrenProjection(customer, childRows);
+    const primary = children.find(child => child && (child.name || child.birthday || child.ageSnapshot !== null || child.note)) || null;
+    return {
+        ...customer,
+        children,
+        childName: primary?.name || customer.childName || null,
+        childBirthday: primary?.birthday || customer.childBirthday || null,
+        childNameDisplay: customerChildrenNameDisplay(children) || customer.childName || null,
+        childBirthdayDisplay: customerChildrenBirthdayDisplay(children) || customer.childBirthday || null
+    };
+}
+
+async function loadWorkspaceCustomerChildren(customerId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const id = parseInt(customerId, 10);
+    if (!Number.isInteger(id) || id <= 0) return [];
+    const result = await optionalWorkspaceQuery(
+        `SELECT id, business_context, customer_id, lead_id, booking_id, name, birthday,
+                age_snapshot, note, source_kind, source_payload, sort_order, created_at, updated_at
+         FROM customer_children
+         WHERE customer_id = $1
+           AND business_context = $2
+         ORDER BY sort_order ASC, id ASC`,
+        [id, normalizeBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT]
+    );
+    return result.rows || [];
 }
 
 function buildCustomerCardCompat(lead = {}, customer = null) {
@@ -3510,9 +3582,13 @@ router.get('/:id/workspace', async (req, res) => {
                 c.updated_at DESC
             LIMIT 1
         `, customerLookupParams);
-        const customer = mapWorkspaceCustomer(customerResult.rows[0]);
+        let customer = mapWorkspaceCustomer(customerResult.rows[0]);
+        if (customer?.id) {
+            const childRows = await loadWorkspaceCustomerChildren(customer.id, businessContext);
+            customer = applyWorkspaceCustomerChildren(customer, childRows);
+        }
         const customerId = customer?.id || bookingCustomerId || null;
-        const customerCard = customer ? buildCustomerCardCompat(rawLead, customerResult.rows[0]) : null;
+        const customerCard = customer ? buildCustomerCardCompat(rawLead, customer) : null;
 
         const bookingConditions = [];
         const bookingParams = [];
@@ -3658,6 +3734,7 @@ router.get('/:id/workspace', async (req, res) => {
             success: true,
             workspace: {
                 lead,
+                contract: leadWorkspaceContract(),
                 canonical: {
                     statusField: 'pipeline_stage',
                     stage: lead.pipelineStage,

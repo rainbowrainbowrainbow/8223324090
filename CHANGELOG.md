@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.52 - Lead Workspace Children Notes
+
+### Ліди / Workspace / Іменинники / Нотатки / (Клешня, 08.07.2026) [codex]
+- **Workspace ліда отримав чіткий контракт даних** - `/api/leads/:id/workspace` фіксує порядок `customer.children -> lead.celebrants -> customer.childName` і окрему політику для нотаток ліда, клієнта та дітей.
+- **Блок `Клієнт` показує всіх дітей linked customer** - API підтягує `customer_children`, повертає `customer.children`, `childNameDisplay`, `childBirthdayDisplay`, а UI рендерить список з іменем, віком, ДН і нотаткою кожної дитини.
+- **Нотатки більше не зливаються в одне поле** - подієві нотатки лишаються в `Кейс і дата`, `customer.notes` показуються в клієнтському блоці, а `Нотатки і взаємодії` додає окремі lead/customer rows з дедуплікацією auto block `Лід #...`.
+- **Додано regression coverage** - route-smoke перевіряє 2 дітей у workspace API, static/UI guards фіксують, що renderer не повертається до одного `customer.childName` і показує child notes/date formatting.
+- **DB schema, migrations, auth/roles, billing, env/secrets, Railway settings і protected booking/timeline flow не змінювались** - реліз обмежений read API workspace, frontend workspace render, CSS, tests, changelog і version/cache refs.
+
+---
+
 ## v0.78.51 - Lead Workspace Cleanup
 
 ### Ліди / Робочий простір / UX / (Клешня, 08.07.2026) [codex]

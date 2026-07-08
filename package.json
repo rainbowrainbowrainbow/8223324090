@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.51",
+  "version": "0.78.52",
   "eventGenix": {
-    "releaseLabel": "Lead Workspace Cleanup"
+    "releaseLabel": "Lead Workspace Children Notes"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

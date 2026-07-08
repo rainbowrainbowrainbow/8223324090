@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.55",
+  "version": "0.78.56",
   "eventGenix": {
-    "releaseLabel": "Lead Conversion Handoff Guard"
+    "releaseLabel": "Booking Customer Context"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.56 - Booking Customer Context
+
+### Бронювання / Клієнти / Діти / Кухня / (Клешня, 08.07.2026) [codex]
+- **Пошук клієнтів у booking drawer підтягує повний контекст** - `/api/customers/search` повертає `customer.notes` разом із canonical `children[].note`.
+- **Вибраний клієнт переїхав у праву панель** - desktop використовує вільну ширину модалки, а mobile складає пошук і контекст в одну колонку без горизонтального скролу.
+- **Менеджер одразу бачить нотатки дітей** - картка показує телефон, Instagram, візити, загальні примітки клієнта, дітей, ДН/вік і дитячі нотатки з акуратним обрізанням довгого тексту.
+- **Для кухні додано read-only блок `Важливо для кухні`** - алергії й харчові ризики піднімаються вище, але не копіюються автоматично в меню або нотатки бронювання.
+- **Додано regression coverage і пройдено повний local baseline** - customer search, booking drawer, package contract, syntax, UI smoke і `npm test` проходять локально.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений search projection, booking drawer UI, CSS, тестами, changelog і version/cache refs.
+
+---
+
 ## v0.78.55 - Lead Conversion Handoff Guard
 
 ### Ліди / Kanban / Timeline / Hotfix / (Клешня, 08.07.2026) [codex]

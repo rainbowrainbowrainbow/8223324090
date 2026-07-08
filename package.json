@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.78.59",
+  "version": "0.78.60",
   "eventGenix": {
-    "releaseLabel": "Booking Notes Multiline"
+    "releaseLabel": "Hermes Approval And Dietary Tags"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

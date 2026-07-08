@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.60 - Hermes Approval And Dietary Tags
+
+### Hermes / Меню-фото / Діти / DB foundation / (Клешня, 08.07.2026) [codex]
+- **Hermes menu-photo approval WIP отримав захищений dry-run API шар** - додано сервіс підготовки approval cards, route guards і тести без відкриття реальних production змін.
+- **Підготовлено additive DB migration для structured child dietary tags** - `customer_children` отримує `dietary_tags` і `dietary_note`, без backfill з `children[].note` і без видалення існуючих даних.
+- **Backend projection тепер підтримує dietary fields** - customer search/review/lead workspace можуть передавати `dietaryTags` і `dietaryNote` разом із старими дитячими примітками.
+- **Додано regression coverage** - Hermes auth/API guards, menu-photo approval cards, customer children, customer search, route smoke, migration governance і syntax checks проходять локально.
+- **Production impact: є DB migration** - зміна schema-only/additive, але потребує нормального CI/deploy контролю; auth/roles, secrets, billing і Railway settings не змінювались.
+
+---
+
 ## v0.78.59 - Booking Notes Multiline
 
 ### Бронювання / Примітки / UX / (Клешня, 08.07.2026) [codex]

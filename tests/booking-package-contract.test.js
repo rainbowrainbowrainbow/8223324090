@@ -660,6 +660,14 @@ function createMultiActivityScheduleHarness(options = {}) {
             BookingActivitySchedule
         },
         BookingActivitySchedule,
+        CONFIG: {
+            TIMELINE: {
+                WEEKDAY_START: 12,
+                WEEKDAY_END: 20,
+                WEEKEND_START: 10,
+                WEEKEND_END: 20
+            }
+        },
         document: {
             getElementById: id => fields.get(id) || { value: '' },
             querySelector: () => null,
@@ -1246,14 +1254,34 @@ test('booking activity schedule helper defaults sequentially from base time', ()
         baseTime: '12:00'
     });
 
-    assert.deepEqual(rows.map(row => row.time), ['12:00', '12:30', '13:10']);
-    assert.deepEqual(rows.map(row => row.endTime), ['12:30', '13:10', '13:30']);
+    assert.deepEqual(rows.map(row => row.time), ['12:00', '12:30', '13:15']);
+    assert.deepEqual(rows.map(row => row.endTime), ['12:30', '13:10', '13:35']);
     assert.deepEqual(
         BookingActivitySchedule.selectedActivityScheduleExtra(rows).map(item => item.startTime),
-        ['12:00', '12:30', '13:10']
+        ['12:00', '12:30', '13:15']
     );
     assert.equal(BookingActivitySchedule.selectedActivityScheduleOverlaps(rows[0], rows[1]), false);
     assert.equal(BookingActivitySchedule.selectedActivityScheduleOverlaps(rows[0], { time: '12:20', duration: 15 }), true);
+});
+
+test('booking activity schedule helper limits selectable starts to 15-minute workday slots', () => {
+    const weekdayOptions = {
+        date: new Date('2099-02-13T00:00:00'),
+        timelineConfig: { WEEKDAY_START: 12, WEEKDAY_END: 20, WEEKEND_START: 10, WEEKEND_END: 20 },
+        latestStartMinutes: BookingActivitySchedule.scheduleTimeToMinutes('19:30')
+    };
+    const slots = BookingActivitySchedule.buildSelectedActivityScheduleTimeOptions(weekdayOptions);
+
+    assert.equal(slots[0], '12:00');
+    assert.equal(slots[1], '12:15');
+    assert.equal(slots.at(-1), '19:30');
+    assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('16:45', weekdayOptions), true);
+    assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('16:47', weekdayOptions), false);
+    assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('09:45', weekdayOptions), false);
+    assert.equal(BookingActivitySchedule.isSelectedActivityScheduleSlotTime('10:00', {
+        ...weekdayOptions,
+        date: new Date('2099-02-14T00:00:00')
+    }), true);
 });
 
 test('booking multi-activity default schedule is persisted into banquetActivities payload', () => {
@@ -1263,30 +1291,30 @@ test('booking multi-activity default schedule is persisted into banquetActivitie
     const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
 
     assert.equal(base.time, '12:00');
-    assert.deepEqual(activities.map(item => item.time), ['12:30', '13:10']);
-    assert.deepEqual(base.extraData.multiActivity.schedule.map(item => item.startTime), ['12:00', '12:30', '13:10']);
+    assert.deepEqual(activities.map(item => item.time), ['12:30', '13:15']);
+    assert.deepEqual(base.extraData.multiActivity.schedule.map(item => item.startTime), ['12:00', '12:30', '13:15']);
 });
 
 test('booking activity schedule helper applies manual second time', () => {
     const rows = BookingActivitySchedule.buildSelectedActivityScheduleRows(multiActivitySchedulePrograms(), {
         baseTime: '12:00',
-        scheduleTimes: { 'show-40': '12:50' }
+        scheduleTimes: { 'show-40': '12:45' }
     });
 
-    assert.deepEqual(rows.map(row => row.time), ['12:00', '12:50', '13:30']);
+    assert.deepEqual(rows.map(row => row.time), ['12:00', '12:45', '13:30']);
     assert.equal(rows[1].manual, true);
     assert.equal(BookingActivitySchedule.selectedActivityScheduleExtra(rows)[1].manual, true);
 });
 
 test('booking multi-activity manual second time is persisted into banquetActivities payload', () => {
-    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:50' } });
+    const context = createMultiActivityScheduleHarness({ scheduleTimes: { 'show-40': '12:45' } });
 
     const base = multiActivityBaseBooking();
     const activities = context.buildMultiActivityBookings(base, { activityPrograms: context.__programs });
 
-    assert.deepEqual(activities.map(item => item.time), ['12:50', '13:30']);
+    assert.deepEqual(activities.map(item => item.time), ['12:45', '13:30']);
     assert.equal(base.extraData.multiActivity.schedule[1].manual, true);
-    assert.equal(base.extraData.multiActivity.schedule[1].startTime, '12:50');
+    assert.equal(base.extraData.multiActivity.schedule[1].startTime, '12:45');
 });
 
 test('booking multi-activity second host payload belongs to its activity row', () => {
@@ -3287,6 +3315,11 @@ test('booking workspace exposes adaptive event toggle, client, lead, kitchen, su
     assert.match(bookingDrawerStateJs, /selectedActivityPreflight:\s*\{/);
     assert.match(bookingBanquetSelectorJs, /BookingDrawerState\.selectedActivityPreflight = \{/);
     assert.match(bookingJs, /data-activity-time-id/);
+    assert.match(bookingJs, /<select class="selected-activity-time-input"/);
+    assert.match(bookingJs, /function selectedActivityScheduleTimeOptionsHtml/);
+    assert.match(bookingActivityScheduleJs, /function buildSelectedActivityScheduleTimeOptions/);
+    assert.match(bookingActivityScheduleJs, /function isSelectedActivityScheduleSlotTime/);
+    assert.doesNotMatch(bookingJs, /type="time" class="selected-activity-time-input"/);
     assert.match(bookingJs, /data-align-activity-schedule/);
     assert.match(bookingJs, /selected-activity-conflict/);
     assert.match(bookingJs, /baseBooking\.time = primaryRow\.time/);

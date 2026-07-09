@@ -2161,10 +2161,17 @@ function selectedActivityScheduleValidationBlockers(formData = {}) {
         });
     };
 
+    const workday = selectedActivityScheduleWorkday();
     rows.forEach(row => {
         const label = row.program?.code || row.program?.name || `активність #${row.index + 1}`;
         if (!row.time) push(row, `Вкажіть старт для ${label}.`);
+        if (row.time && !isSelectedActivityScheduleSlotTime(row.time, row)) {
+            push(row, `${label}: старт має бути в робочих годинах ${workday.start}-${workday.end} з кроком 15 хв.`);
+        }
         if (row.duration <= 0) push(row, `${label}: некоректна тривалість.`);
+        if (Number.isFinite(row.endMinutes) && row.endMinutes > workday.endMinutes) {
+            push(row, `${label}: активність виходить за межі робочого дня (${workday.end}).`);
+        }
         if (row.endMinutes > 1440) push(row, `${label}: активність виходить за межі дня.`);
         const issueText = typeof selectedActivityScheduleIssueText === 'function'
             ? selectedActivityScheduleIssueText(row.programId)
@@ -8356,6 +8363,67 @@ function normalizeSelectedActivityScheduleTime(value) {
     return bookingActivityScheduleApi().normalizeSelectedActivityScheduleTime(value);
 }
 
+function selectedActivityScheduleDate() {
+    return AppState.selectedDate || document.getElementById('bookingDate')?.value || new Date();
+}
+
+function selectedActivityScheduleTimelineConfig() {
+    return (typeof CONFIG !== 'undefined' && CONFIG?.TIMELINE) ? CONFIG.TIMELINE : {};
+}
+
+function selectedActivityScheduleOptions(options = {}) {
+    return {
+        date: selectedActivityScheduleDate(),
+        timelineConfig: selectedActivityScheduleTimelineConfig(),
+        stepMinutes: 15,
+        ...options
+    };
+}
+
+function selectedActivityScheduleWorkday(options = {}) {
+    return bookingActivityScheduleApi().resolveSelectedActivityScheduleWorkday(selectedActivityScheduleOptions(options));
+}
+
+function selectedActivityScheduleLatestStartMinutes(row = {}) {
+    const workday = selectedActivityScheduleWorkday();
+    const duration = Number(row.duration || row.program?.duration || 0) || 0;
+    if (duration <= 0) return workday.endMinutes;
+    return Math.max(workday.startMinutes, workday.endMinutes - duration);
+}
+
+function isSelectedActivityScheduleSlotTime(value, row = {}) {
+    return bookingActivityScheduleApi().isSelectedActivityScheduleSlotTime(
+        value,
+        selectedActivityScheduleOptions({ latestStartMinutes: selectedActivityScheduleLatestStartMinutes(row) })
+    );
+}
+
+function selectedActivityScheduleTimeOptions(row = {}) {
+    const api = bookingActivityScheduleApi();
+    const current = normalizeSelectedActivityScheduleTime(row.time || '');
+    const latestStartMinutes = selectedActivityScheduleLatestStartMinutes(row);
+    const options = api.buildSelectedActivityScheduleTimeOptions(
+        selectedActivityScheduleOptions({ latestStartMinutes })
+    );
+    if (current && !options.includes(current)) {
+        options.push(current);
+        options.sort((a, b) => (api.scheduleTimeToMinutes(a) || 0) - (api.scheduleTimeToMinutes(b) || 0));
+    }
+    return options;
+}
+
+function selectedActivityScheduleTimeOptionsHtml(row = {}) {
+    const current = normalizeSelectedActivityScheduleTime(row.time || '');
+    const validCurrent = current ? isSelectedActivityScheduleSlotTime(current, row) : false;
+    const blankOption = current ? '' : '<option value="">Оберіть час</option>';
+    const rows = selectedActivityScheduleTimeOptions(row).map(time => {
+        const selected = time === current ? ' selected' : '';
+        const suffix = time === current && !validCurrent ? ' · поза сіткою' : '';
+        return `<option value="${escapeHtml(time)}"${selected}>${escapeHtml(time + suffix)}</option>`;
+    });
+    return `${blankOption}${rows.join('')}`;
+}
+
 function selectedActivityScheduleBaseTime() {
     return normalizeSelectedActivityScheduleTime(
         document.getElementById('bookingTime')?.value
@@ -8397,7 +8465,8 @@ function resetSelectedActivityScheduleState(options = {}) {
 function getSelectedActivityScheduleRows(programs = getSelectedActivityPrograms()) {
     return bookingActivityScheduleApi().buildSelectedActivityScheduleRows(programs, {
         scheduleTimes: getSelectedActivityScheduleTimes(),
-        baseTime: selectedActivityScheduleBaseTime()
+        baseTime: selectedActivityScheduleBaseTime(),
+        ...selectedActivityScheduleOptions()
     });
 }
 
@@ -8436,6 +8505,14 @@ function setSelectedActivityScheduleTime(programId, value, options = {}) {
     const raw = String(value || '').trim();
     const time = normalizeSelectedActivityScheduleTime(value);
     if (!id) return false;
+    const program = getSelectedActivityPrograms().find(item => String(item?.id || '') === id) || null;
+    if (time && !isSelectedActivityScheduleSlotTime(time, { program, duration: Number(program?.duration || 0) || 0 })) {
+        if (options.notify !== false && typeof showNotification === 'function') {
+            const workday = selectedActivityScheduleWorkday();
+            showNotification(`Оберіть час у робочих годинах ${workday.start}-${workday.end} з кроком 15 хв.`, 'error');
+        }
+        return false;
+    }
     const scheduleTimes = getSelectedActivityScheduleTimes();
     if (!time) {
         if (raw) return false;
@@ -8782,7 +8859,9 @@ function renderSelectedProgramSummary(program = null) {
                 </span>
                 <label class="selected-activity-time">
                     <span>Старт</span>
-                    <input type="time" class="selected-activity-time-input" data-activity-time-id="${escapeHtml(String(item.id))}" value="${escapeHtml(row.time || '')}" step="300" aria-label="Час старту ${escapeHtml(item.code || item.name || 'активності')}">
+                    <select class="selected-activity-time-input" data-activity-time-id="${escapeHtml(String(item.id))}" aria-label="Час старту ${escapeHtml(item.code || item.name || 'активності')}">
+                        ${selectedActivityScheduleTimeOptionsHtml(row)}
+                    </select>
                 </label>
                 <span class="selected-activity-meta">
                     ${item.duration ? `${escapeHtml(String(item.duration))} хв · ` : ''}${escapeHtml(bookingActivityPriceLabel(item))}
@@ -9688,14 +9767,21 @@ async function validateSelectedActivitySchedule(formData = {}, options = {}) {
     const allBookings = await getBookingsForDate(AppState.selectedDate, { force: options.force !== false });
     clearSelectedActivityPreflightState();
     const existingBookings = existingScheduleBookingsForValidation(allBookings, options.excludeId || null);
+    const workday = selectedActivityScheduleWorkday();
 
     rows.forEach(row => {
         if (!row.time) {
             addSelectedActivityScheduleIssue(issueMap, row.programId, 'Вкажіть час старту.');
             return;
         }
+        if (!isSelectedActivityScheduleSlotTime(row.time, row)) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, `Старт має бути в робочих годинах ${workday.start}-${workday.end} з кроком 15 хв.`);
+        }
         if (row.duration <= 0) {
             addSelectedActivityScheduleIssue(issueMap, row.programId, 'Некоректна тривалість.');
+        }
+        if (Number.isFinite(row.endMinutes) && row.endMinutes > workday.endMinutes) {
+            addSelectedActivityScheduleIssue(issueMap, row.programId, `Активність виходить за межі робочого дня (${workday.end}).`);
         }
         if (row.endMinutes > 1440) {
             addSelectedActivityScheduleIssue(issueMap, row.programId, 'Активність виходить за межі дня.');

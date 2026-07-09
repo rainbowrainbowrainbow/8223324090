@@ -106,6 +106,7 @@ test('booking customer validation and payload distinguish existing, new, search-
         },
         AppState: { selectedDate: '2099-02-10' },
         getBookingFormData: () => ({ time: '12:00', room: 'Room A', programId: 'bubble' }),
+        bookingBoundaryWarningsForFormData: () => [],
         isOptionalTimelineRoomBookingMode: () => false,
         getBookingWorkspaceHasEvent: () => true
     };

@@ -176,6 +176,9 @@ function createHarness() {
             timelineTimeMarkPlacements,
             timelineMiniTimeMarkPlacements,
             timelineTimeToPixel,
+            timelineWorkdayBoundaryForLine,
+            timelineBookingBoundaryStatus,
+            createBookingBlock,
             ensureTimelineBookingTooltip,
             showAfishaTooltip,
             timelineTooltipSuppressed,
@@ -305,6 +308,55 @@ test('booking tooltip lifecycle creates one accessible singleton without pre-ren
     assert.equal(tooltip.hidden, true);
     assert.equal(tooltip.getAttribute('aria-hidden'), 'true');
     assert.doesNotMatch(tooltip.innerHTML, /Drag suppressed/);
+});
+
+test('timeline boundary status flags bookings ending after animator shift', () => {
+    const { api } = createHarness();
+
+    const status = api.timelineBookingBoundaryStatus(
+        { id: 'booking-1', date: '2026-05-26', time: '18:46', duration: 90 },
+        { id: 'line-1', name: 'Lead', shiftEnd: '20:00' },
+        '2026-05-26'
+    );
+
+    assert.equal(status.overrun, true);
+    assert.equal(status.type, 'end_overrun');
+    assert.equal(status.endLabel, '20:16');
+    assert.equal(status.boundary.endLabel, '20:00');
+    assert.equal(status.overrunMin, 16);
+    assert.match(status.message, /20:16/);
+    assert.match(status.message, /\+16/);
+});
+
+test('createBookingBlock marks overrun booking with danger class and boundary metadata', () => {
+    const { window, api } = createHarness();
+    const grid = window.document.createElement('div');
+    grid.className = 'line-grid';
+    grid.innerHTML = '<div class="grid-cell"></div>';
+    window.document.body.appendChild(grid);
+
+    const block = api.createBookingBlock(
+        {
+            id: 'booking-1',
+            date: '2026-05-26',
+            time: '18:46',
+            duration: 90,
+            category: 'show',
+            label: 'Football(90)',
+            room: 'Minecraft',
+            status: 'confirmed'
+        },
+        12,
+        grid,
+        { id: 'line-1', name: 'Lead', shiftEnd: '20:00' }
+    );
+
+    assert.equal(block.classList.contains('booking-block--time-overrun'), true);
+    assert.equal(block.dataset.timelineBoundary, 'end_overrun');
+    assert.equal(block.dataset.timelineBoundaryEnd, '20:00');
+    assert.equal(block.dataset.timelineBoundaryOverrunMin, '16');
+    assert.match(block.dataset.timelineBoundaryMessage, /20:16/);
+    assert.match(block.getAttribute('aria-label'), /20:16/);
 });
 
 test('timeline date cache helpers accept ISO date keys without breaking strict formatDate', async () => {

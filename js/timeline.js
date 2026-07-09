@@ -1193,6 +1193,80 @@ function timelineRangeBoundMinutes(value) {
     return Number.isFinite(numeric) ? Math.round(numeric * 60) : 0;
 }
 
+function timelineWorkdayBoundaryForLine(date, line = {}) {
+    let resolvedDate = date || AppState.selectedDate;
+    if (typeof resolvedDate === 'string') {
+        resolvedDate = new Date(`${resolvedDate}T00:00:00`);
+    }
+    if (!(resolvedDate instanceof Date) || Number.isNaN(resolvedDate.getTime())) {
+        resolvedDate = AppState.selectedDate;
+    }
+    const range = getTimeRange(resolvedDate);
+    const hasShiftStart = line?.shiftStart || line?.shift_start;
+    const hasShiftEnd = line?.shiftEnd || line?.shift_end;
+    const startValue = hasShiftStart || range.start;
+    const endValue = hasShiftEnd || range.end;
+    const startMin = timelineRangeBoundMinutes(startValue);
+    let endMin = timelineRangeBoundMinutes(endValue);
+    if (endMin <= startMin) endMin += 24 * 60;
+
+    return {
+        startMin,
+        endMin,
+        startLabel: timelineDisplayTimeLabel(startMin),
+        endLabel: timelineDisplayTimeLabel(endMin),
+        source: hasShiftEnd ? 'shift' : 'timeline',
+        lineId: line?.id || line?.lineId || line?.line_id || line?.resourceId || line?.resource_id || null,
+        lineName: line?.name || line?.shortName || line?.short_name || ''
+    };
+}
+
+function timelineBookingBoundaryStatus(booking = {}, line = {}, date = null) {
+    const duration = parseInt(booking?.duration, 10) || 0;
+    const time = booking?.time || '';
+    if (!time || duration <= 0) return { overrun: false };
+
+    const boundary = timelineWorkdayBoundaryForLine(date || booking.date || AppState.selectedDate, line);
+    let startMin = timelineRangeBoundMinutes(time);
+    if (startMin < boundary.startMin && boundary.endMin > 24 * 60) startMin += 24 * 60;
+    const endMin = startMin + duration;
+    const startsBefore = startMin < boundary.startMin;
+    const endsAfter = endMin > boundary.endMin;
+    if (!startsBefore && !endsAfter) {
+        return {
+            overrun: false,
+            startMin,
+            endMin,
+            endLabel: timelineDisplayTimeLabel(endMin),
+            boundary
+        };
+    }
+
+    const overrunMin = Math.max(0, endMin - boundary.endMin);
+    const earlyMin = Math.max(0, boundary.startMin - startMin);
+    const lineLabel = boundary.lineName ? `${boundary.lineName}: ` : '';
+    const boundaryLabel = boundary.source === 'shift' ? 'зміна' : 'таймлайн';
+    const overrunText = overrunMin > 0 ? `, +${overrunMin} хв` : '';
+    const earlyText = earlyMin > 0 ? `, старт на ${earlyMin} хв раніше` : '';
+    return {
+        overrun: true,
+        type: startsBefore && endsAfter ? 'outside_boundary' : (endsAfter ? 'end_overrun' : 'start_before_boundary'),
+        severity: 'danger',
+        startMin,
+        endMin,
+        endLabel: timelineDisplayTimeLabel(endMin),
+        overrunMin,
+        earlyMin,
+        boundary,
+        message: `${lineLabel}бронювання завершується о ${timelineDisplayTimeLabel(endMin)}, ${boundaryLabel} до ${boundary.endLabel}${overrunText}${earlyText}.`
+    };
+}
+
+if (typeof window !== 'undefined') {
+    window.timelineWorkdayBoundaryForLine = timelineWorkdayBoundaryForLine;
+    window.timelineBookingBoundaryStatus = timelineBookingBoundaryStatus;
+}
+
 function timelineRangeDurationMinutes(date) {
     const { start, end } = getTimeRange(date);
     const startMinutes = timelineRangeBoundMinutes(start);
@@ -3783,7 +3857,7 @@ async function renderTimeline() {
 
         // v0.73.81: iOS/Safari can paint mobile grid cells after the row is attached.
         // Measure booking geometry from the actual line grid so second-line blocks do not drift or disappear.
-        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start, lineGrid)));
+        lineBookings.forEach(b => lineGrid.appendChild(createBookingBlock(b, start, lineGrid, line)));
         if (isRoomTimelineView()) {
             syncTimelineRoomOperationalLayout(lineGrid);
         }
@@ -4203,7 +4277,7 @@ async function openTimelineCreateBookingFromToolbar() {
 
 window.openTimelineCreateBookingFromToolbar = openTimelineCreateBookingFromToolbar;
 
-function createBookingBlock(booking, startHour, anchor) {
+function createBookingBlock(booking, startHour, anchor, line = null) {
     const block = document.createElement('div');
     const graduationSegments = normalizeGraduationSegments(booking);
     const effectiveDuration = effectiveGraduationDuration(booking, graduationSegments);
@@ -4229,6 +4303,14 @@ function createBookingBlock(booking, startHour, anchor) {
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
     block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}${isMaysternyaSlotClosed ? ' slot-closed' : ''}${isEducationLessonBlock ? ' education-lesson' : ''}`;
     block.classList.add(`booking-block--${bookingBlockDensity}`);
+    const boundaryStatus = timelineBookingBoundaryStatus(renderBooking, line || {}, renderBooking.date || AppState.selectedDate);
+    if (boundaryStatus.overrun) {
+        block.classList.add('booking-block--time-overrun');
+        block.dataset.timelineBoundary = boundaryStatus.type;
+        block.dataset.timelineBoundaryEnd = boundaryStatus.boundary?.endLabel || '';
+        block.dataset.timelineBoundaryOverrunMin = String(boundaryStatus.overrunMin || 0);
+        block.dataset.timelineBoundaryMessage = boundaryStatus.message || '';
+    }
     const isCompactActivityBlock = (bookingBlockDensity === 'micro' || bookingBlockDensity === 'tiny' || bookingBlockDensity === 'short')
         && !isMaysternyaSlotClosed
         && !isEducationLessonBlock
@@ -4313,7 +4395,7 @@ function createBookingBlock(booking, startHour, anchor) {
     const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
     const pinataNumberLabel = timelinePinataNumberValue(booking, renderBooking, bookingTitle, bookingTitleTail, bookingTitle, bookingTitleText);
     const pinataFullLabel = pinataNumberLabel ? `Піньята ${timelinePinataNumberDisplay(pinataNumberLabel)}` : '';
-    const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel]
+    const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel, boundaryStatus.overrun ? boundaryStatus.message : '']
         .concat(pinataFullLabel ? [pinataFullLabel] : [])
         .filter(Boolean)
         .join(' ')
@@ -6806,13 +6888,15 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const isLinked = !!b.linkedTo;
         const filter = AppState.statusFilter || 'all';
         const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
+        const boundaryStatus = timelineBookingBoundaryStatus(b, line, b.date || AppState.selectedDate);
         const classes = [
             'mini-booking-block',
             b.category,
             isPreliminary ? 'preliminary' : '',
             isLinked ? 'linked-ghost' : '',
             isHidden ? 'status-hidden' : '',
-            b.category === 'banquet' ? 'banquet-block' : ''
+            b.category === 'banquet' ? 'banquet-block' : '',
+            boundaryStatus.overrun ? 'booking-block--time-overrun' : ''
         ].filter(Boolean).map(escapeHtml).join(' ');
 
         const bookingIdentity = timelineBookingResourceIdentity(b);
@@ -6820,12 +6904,17 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
         const miniTitleParts = [`${b.label || b.programCode}: ${b.room} (${b.time})`];
         if (costumeLabel) miniTitleParts.push(costumeLabel);
+        if (boundaryStatus.overrun) miniTitleParts.push(boundaryStatus.message);
         html += `
             <div class="${classes}"
                  style="left: ${left}px; width: ${width}px;"
                  data-booking-id="${escapeHtml(b.id)}"
                  data-resource-id="${escapeHtml(bookingIdentity.resourceId)}"
                  data-resource-type="${escapeHtml(bookingIdentity.resourceType)}"
+                 data-timeline-boundary="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.type) : ''}"
+                 data-timeline-boundary-end="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.boundary?.endLabel || '') : ''}"
+                 data-timeline-boundary-overrun-min="${boundaryStatus.overrun ? escapeHtml(String(boundaryStatus.overrunMin || 0)) : ''}"
+                 data-timeline-boundary-message="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.message || '') : ''}"
                  title="${escapeHtml(miniTitleParts.join(' · '))}">
                 <span class="mini-booking-text">${escapeHtml(b.label || b.programCode)}</span>
                 ${miniCostumeText}

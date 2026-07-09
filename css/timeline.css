@@ -481,6 +481,11 @@ body.timeline-mode-education .timeline-line--education:has(.booking-block) .line
     box-shadow: inset 0 0 0 1px var(--timeline-grid-selected-ring, rgba(16,185,129,0.24));
 }
 
+.grid-cell.selected.timeline-selected-overrun {
+    background: rgba(239, 68, 68, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.62), 0 0 0 2px rgba(127, 29, 29, 0.18);
+}
+
 .grid-cell.selected::after {
     opacity: 0;
 }
@@ -706,6 +711,29 @@ body.timeline-dashboard-page .afisha-undist-btn {
 .booking-block.education,
 .booking-block.education-lesson { background: linear-gradient(135deg, #0F766E 0%, #2563EB 100%); }
 .booking-block.graduation { background: linear-gradient(135deg, #7C3AED 0%, #0F766E 100%); }
+
+.booking-block.booking-block--time-overrun,
+.mini-booking-block.booking-block--time-overrun {
+    background: linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%) !important;
+    border-left-color: #FECACA !important;
+    box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.46), 0 12px 26px rgba(127, 29, 29, 0.36);
+}
+
+.booking-block.booking-block--time-overrun:hover,
+.mini-booking-block.booking-block--time-overrun:hover {
+    box-shadow: 0 0 0 1px rgba(254, 202, 202, 0.78), 0 14px 30px rgba(127, 29, 29, 0.44);
+}
+
+.booking-block.booking-block--time-overrun .duration-badge,
+.booking-block.booking-block--time-overrun .user-letter {
+    background: rgba(255, 255, 255, 0.2);
+    color: #FEF2F2;
+}
+
+#bookingPanel.booking-panel--time-overrun #bookingSubmitHint {
+    color: #FECACA;
+    font-weight: 800;
+}
 
 .booking-block.afisha-block.afisha-type-birthday {
     top: 50%;
@@ -4221,6 +4249,11 @@ body:not(.dark-mode) .grid-cell:hover {
 
 body:not(.dark-mode) .grid-cell.selected {
     background: rgba(18, 161, 127, 0.17);
+}
+
+body:not(.dark-mode) .grid-cell.selected.timeline-selected-overrun {
+    background: rgba(220, 38, 38, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.38), 0 0 0 2px rgba(254, 202, 202, 0.34);
 }
 
 body:not(.dark-mode) .booking-block,

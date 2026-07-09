@@ -1368,6 +1368,71 @@ function getBookingLineSnapshot(lineId = document.getElementById('bookingLine')?
     return label ? { id: lineId, name: label } : null;
 }
 
+function bookingLineSnapshotForBoundary(lineId, fallback = {}) {
+    const line = getBookingLineSnapshot(lineId);
+    if (line) return line;
+    const id = String(lineId || fallback.id || fallback.resourceId || '').trim();
+    return id ? { ...fallback, id } : fallback;
+}
+
+function bookingBoundaryWarningsForFormData(formData = null) {
+    if (!formData?.hasEvent || !formData.time || !(Number(formData.duration || 0) > 0)) return [];
+
+    const boundaryResolver = typeof window !== 'undefined' && typeof window.timelineBookingBoundaryStatus === 'function'
+        ? window.timelineBookingBoundaryStatus
+        : (typeof timelineBookingBoundaryStatus === 'function' ? timelineBookingBoundaryStatus : null);
+    if (!boundaryResolver) return [];
+
+    const warnings = [];
+    const bookingDate = normalizeBookingDateKey(AppState.selectedDate);
+    const addBoundaryWarning = (lineId, fallback, role) => {
+        if (!lineId) return;
+        const line = bookingLineSnapshotForBoundary(lineId, fallback);
+        const status = boundaryResolver({
+            time: formData.time,
+            duration: formData.duration,
+            date: bookingDate,
+            lineId
+        }, line, AppState.selectedDate);
+        if (!status?.overrun) return;
+
+        warnings.push({
+            ...status,
+            key: role === 'second' ? 'second_animator_shift_overrun' : 'primary_animator_shift_overrun',
+            lineId,
+            message: role === 'second'
+                ? `Другий ведучий: ${status.message}`
+                : status.message
+        });
+    };
+
+    addBoundaryWarning(formData.lineId, {
+        name: formData.lineName,
+        resourceType: formData.lineResourceType
+    }, 'primary');
+
+    if (formData.secondAnimatorLineId && String(formData.secondAnimatorLineId) !== String(formData.lineId)) {
+        addBoundaryWarning(formData.secondAnimatorLineId, {
+            name: formData.secondAnimatorLineName
+        }, 'second');
+    }
+
+    return warnings;
+}
+
+function syncBookingBoundaryWarningUi(validation = {}) {
+    const hasBoundaryWarning = Array.isArray(validation.boundaryWarnings)
+        && validation.boundaryWarnings.some(warning => warning?.overrun);
+    document.getElementById('bookingPanel')?.classList.toggle('booking-panel--time-overrun', hasBoundaryWarning);
+
+    document.querySelectorAll('.grid-cell.selected.timeline-selected-overrun').forEach(cell => {
+        cell.classList.remove('timeline-selected-overrun');
+    });
+    if (hasBoundaryWarning) {
+        document.querySelector('.grid-cell.selected')?.classList.add('timeline-selected-overrun');
+    }
+}
+
 function bookingContextHeaderText(value, fallback = '-') {
     const text = String(value || '').trim();
     if (!text) return fallback;
@@ -2204,10 +2269,19 @@ function getSmartBookingValidationState() {
         });
     }
 
+    const boundaryWarnings = bookingBoundaryWarningsForFormData(formData);
+    boundaryWarnings.forEach(warning => {
+        if (warning?.message && !state.warnings.includes(warning.message)) {
+            state.warnings.push(warning.message);
+        }
+    });
+    state.boundaryWarnings = boundaryWarnings;
+
     return {
         valid: state.errors.length === 0,
         canSubmit: state.errors.length === 0,
         warnings: state.warnings,
+        boundaryWarnings: state.boundaryWarnings || [],
         errors: state.errors,
         issues: state.issues,
         invalidFields: state.invalidFields,
@@ -5250,6 +5324,7 @@ function updateBookingSubmitState() {
     const hint = document.getElementById('bookingSubmitHint');
     if (!submitBtn || !hint) return;
     const validation = getSmartBookingValidationState();
+    syncBookingBoundaryWarningUi(validation);
     const readyText = rememberBookingSubmitReadyText(submitBtn);
     const isSaving = Boolean(submitBtn.disabled && String(submitBtn.textContent || '').trim() === BOOKING_SUBMIT_SAVING_TEXT);
     const preflightUnavailable = selectedActivityPreflightUnavailable();
@@ -5470,6 +5545,9 @@ function renderBookingPackageSummary() {
     const customCakeDecorationWarning = kitchenEnabled
         ? bookingMenuCustomCakeDecorationZeroPriceWarning(totals.menuPositions || [])
         : '';
+    const validationWarningClass = validation.boundaryWarnings?.length
+        ? 'booking-summary-note--danger'
+        : 'booking-summary-note--warning';
 
     if (!roomValue && !customerId && !customerName && !document.getElementById('selectedProgram')?.value && menuCount === 0) {
         container.innerHTML = `
@@ -5496,7 +5574,7 @@ function renderBookingPackageSummary() {
         ${preflightWarning}
         ${customCakeDecorationWarning ? `<div class="booking-summary-note booking-summary-note--warning">${escapeHtml(customCakeDecorationWarning)}</div>` : ''}
         ${totals.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(totals.warnings[0].message || totals.warnings[0].code)}</div>` : ''}
-        ${validation.warnings?.length ? `<div class="booking-summary-note">${escapeHtml(validation.warnings[0])}</div>` : ''}
+        ${validation.warnings?.length ? `<div class="booking-summary-note ${validationWarningClass}">${escapeHtml(validation.warnings[0])}</div>` : ''}
     `;
     bindSelectedActivityPreflightWarningActions(container);
     bindBookingActivityPromoActions(container);
@@ -7592,13 +7670,13 @@ async function closeBookingPanel(force = false) {
         });
     }
     document.getElementById('bookingPanel')?.classList.add('hidden');
-    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first');
+    document.getElementById('bookingPanel')?.classList.remove('booking-panel--maysternya', 'booking-panel--minimal-timeline', 'booking-panel--education-timeline', 'booking-panel--room-first', 'booking-panel--time-overrun');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
     // v5.35: Hide backdrop overlay
     document.getElementById('panelBackdrop')?.classList.add('hidden');
-    document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected', 'timeline-selected-overrun'));
 
     // v5.5: Скинути режим редагування
     if (AppState.editingBookingId) {

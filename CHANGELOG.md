@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.76 - Timeline Overrun Warnings
+
+### Timeline / Booking overrun warning / (09.07.2026) [codex]
+- **Бронювання, що не вміщаються у зміну ведучого, тепер світяться червоним** - таймлайн рахує кінець бронювання проти `shiftEnd`, а без нього проти кінця робочого таймлайну.
+- **Форма бронювання попереджає до збереження** - selected slot і summary/hint отримують danger state, якщо активність завершиться після робочої межі.
+- **Multi-day і compact timeline також покриті** - mini booking blocks отримують той самий overrun class і tooltip metadata.
+- **Regression coverage додано** - тест фіксує кейс `18:46 + 90 хв = 20:16` проти межі `20:00`, а static guard оновлено під новий `line` contract.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend warning logic, styles, tests і version/cache refs.
+
+---
+
 ## v0.78.75 - Staff Schedule Shift Labels
 
 ### Staff Schedule / Slot modal labels / (09.07.2026) [codex]

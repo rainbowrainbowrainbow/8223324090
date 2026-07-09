@@ -4865,6 +4865,13 @@ body.booking-menu-catalog-active {
     font-weight: 800;
 }
 
+.booking-summary-note--danger {
+    border-color: rgba(248, 113, 113, 0.5);
+    background: rgba(127, 29, 29, 0.28);
+    color: #fecaca;
+    font-weight: 900;
+}
+
 .booking-validation-checklist {
     margin-top: 12px;
     border-color: rgba(245, 158, 11, 0.42);

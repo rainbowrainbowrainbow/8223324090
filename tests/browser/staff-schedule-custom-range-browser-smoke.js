@@ -9,6 +9,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.STAFF_SCHEDULE_BROWSER_SMOKE_HEADLESS !== 'false';
 const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'staff-schedule-custom-range-smoke');
+const STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY = 'pzp_staff_schedule_expanded_groups';
 
 const SMOKE_USER = {
     id: 1,
@@ -338,6 +339,10 @@ async function openStaffPage(browser, base, viewport) {
         localStorage.setItem('pzp_access_token', 'staff-schedule-smoke-token');
         localStorage.setItem('pzp_current_user', JSON.stringify(user));
         localStorage.setItem('pzp_dark_mode', 'false');
+        if (!sessionStorage.getItem('staff_schedule_smoke_storage_ready')) {
+            localStorage.removeItem('pzp_staff_schedule_expanded_groups');
+            sessionStorage.setItem('staff_schedule_smoke_storage_ready', 'true');
+        }
     }, SMOKE_USER);
     const page = await context.newPage();
     page.setDefaultTimeout(20000);
@@ -435,6 +440,39 @@ async function assertScheduleGroupsCollapsedByDefault(page) {
     await firstToggle.click();
     await page.waitForFunction(() => document.querySelector('[data-schedule-group-toggle]')?.getAttribute('aria-expanded') === 'false');
     assert.equal(await scheduleEmployeeRowCount(page), 0, 'repeated click collapses a schedule group');
+}
+
+async function assertScheduleGroupExpansionPersists(page) {
+    const firstToggle = page.locator('[data-schedule-group-toggle]').first();
+    const groupKey = await firstToggle.getAttribute('data-schedule-group-toggle');
+    assert.ok(groupKey, 'first schedule group exposes a stable state key');
+
+    await firstToggle.click();
+    await page.waitForFunction(() => document.querySelector('[data-schedule-group-toggle]')?.getAttribute('aria-expanded') === 'true');
+    await page.waitForFunction(({ storageKey, groupKey }) => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            return Array.isArray(saved) && saved.includes(groupKey);
+        } catch {
+            return false;
+        }
+    }, { storageKey: STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY, groupKey });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => Boolean(window.StaffSchedulePage?.isInitialized?.()), null, { timeout: 20000 });
+    await page.waitForFunction(groupKey => {
+        return Array.from(document.querySelectorAll('[data-schedule-group-toggle]'))
+            .some(button => button.dataset.scheduleGroupToggle === groupKey && button.getAttribute('aria-expanded') === 'true');
+    }, groupKey, { timeout: 20000 });
+    assert.ok(await scheduleEmployeeRowCount(page) > 0, 'expanded schedule group persists after reload');
+
+    await page.evaluate(storageKey => localStorage.removeItem(storageKey), STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => Boolean(window.StaffSchedulePage?.isInitialized?.()), null, { timeout: 20000 });
+    await page.waitForFunction(() => {
+        const toggles = Array.from(document.querySelectorAll('[data-schedule-group-toggle]'));
+        return toggles.length > 0 && toggles.every(button => button.getAttribute('aria-expanded') === 'false');
+    }, null, { timeout: 20000 });
 }
 
 async function assertScheduleSearchAutoExpandsGroups(page) {
@@ -577,6 +615,7 @@ async function runDesktopFlow(browser, base) {
         await assertPeriodPresetLabelsAndSummary(page);
         await assertNoDuplicateDepartmentSubGroups(page);
         await assertScheduleGroupsCollapsedByDefault(page);
+        await assertScheduleGroupExpansionPersists(page);
         await assertScheduleSearchAutoExpandsGroups(page);
         await expandAllScheduleGroups(page);
 
@@ -709,8 +748,8 @@ async function runDesktopFlow(browser, base) {
     }
 }
 
-async function runMobileFlow(browser, base) {
-    const { context, page } = await openStaffPage(browser, base, { width: 390, height: 844 });
+async function runMobileFlow(browser, base, viewport = { width: 390, height: 844 }, label = 'mobile') {
+    const { context, page } = await openStaffPage(browser, base, viewport);
     try {
         await waitForDayColumns(page, 9);
         await assertPeriodPresetLabelsAndSummary(page);
@@ -728,7 +767,7 @@ async function runMobileFlow(browser, base) {
         await waitForDayColumns(page, monthDays);
         await assertNoControlOverlap(page, 'mobile month');
         await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthDays, minDayWidth: 120 });
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-month.png'), fullPage: true });
+        await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}-month.png`), fullPage: true });
     } finally {
         await context.close();
     }
@@ -741,7 +780,8 @@ async function runMobileFlow(browser, base) {
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
         await runDesktopFlow(browser, base);
-        await runMobileFlow(browser, base);
+        await runMobileFlow(browser, base, { width: 390, height: 844 }, 'mobile-390');
+        await runMobileFlow(browser, base, { width: 360, height: 800 }, 'mobile-360');
         console.log('Staff schedule custom range browser smoke passed');
         console.log(`Screenshots: ${path.relative(ROOT, OUTPUT_DIR)}`);
     } catch (err) {

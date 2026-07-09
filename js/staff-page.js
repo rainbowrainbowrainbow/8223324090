@@ -100,6 +100,8 @@ const StaffState = {
     bulkResults: null,      // v39.1: bulk create results
 };
 
+const STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY = 'pzp_staff_schedule_expanded_groups';
+
 const DEPT_ICONS = {
     animators: '🎭',
     trampoline: '🤸',
@@ -1972,6 +1974,38 @@ function scheduleGroupStateKey(value = '') {
     return normalizeScheduleDisplayGroupKey(value) || String(value || '').trim();
 }
 
+function scheduleExpandedGroupKeysFromStorage() {
+    try {
+        const raw = localStorage.getItem(STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        const seen = new Set();
+        return parsed
+            .map(scheduleGroupStateKey)
+            .filter(key => key && !seen.has(key) && seen.add(key));
+    } catch {
+        return [];
+    }
+}
+
+function hydrateScheduleExpandedGroups() {
+    StaffState.expandedScheduleGroups = new Set(scheduleExpandedGroupKeysFromStorage());
+}
+
+function persistScheduleExpandedGroups() {
+    try {
+        const keys = Array.from(StaffState.expandedScheduleGroups instanceof Set ? StaffState.expandedScheduleGroups : [])
+            .map(scheduleGroupStateKey)
+            .filter(Boolean)
+            .sort();
+        if (keys.length) {
+            localStorage.setItem(STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY, JSON.stringify(keys));
+        } else {
+            localStorage.removeItem(STAFF_SCHEDULE_EXPANDED_GROUPS_STORAGE_KEY);
+        }
+    } catch {}
+}
+
 function scheduleSearchAutoExpandsGroups() {
     return Boolean(normalizeScheduleSearchText(StaffState.searchQuery));
 }
@@ -1993,6 +2027,7 @@ function setScheduleGroupExpanded(departmentKey = '', expanded = true) {
     }
     if (expanded) StaffState.expandedScheduleGroups.add(key);
     else StaffState.expandedScheduleGroups.delete(key);
+    persistScheduleExpandedGroups();
     return true;
 }
 
@@ -4999,6 +5034,7 @@ async function initStaffSchedulePage(options = {}) {
         const mode = staffScheduleMode(options);
         const initialFocusStaffId = normalizeScheduleFocusStaffId(options.focusStaffId) || scheduleFocusStaffIdFromLocation();
         applyStaffScheduleHostMode(mode);
+        hydrateScheduleExpandedGroups();
         const host = ensureStaffScheduleShell(options);
         if (!host) throw new Error('Staff schedule shell is not available');
 

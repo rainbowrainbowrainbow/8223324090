@@ -4,6 +4,15 @@
 
 ---
 
+## v0.78.73 - Staff Schedule Final Polish
+
+### Staff Schedule / Final polish / (09.07.2026) [codex]
+- **Відкриті групи графіка зберігаються локально** - після click/Enter/Space стан expanded groups відновлюється після reload без backend або schema змін.
+- **Mobile QA закрито repeatable smoke** - browser і live smoke тепер перевіряють не тільки 390px, а й вузький 360px viewport для month range.
+- **Read-only guardrails посилено** - smoke очищає test storage тільки на старті context, перевіряє persistence після reload і далі не бачить staff mutation requests.
+
+---
+
 ## v0.78.72 - Staff Schedule Group Controls
 
 ### Staff Schedule / UI contract / (09.07.2026) [codex]

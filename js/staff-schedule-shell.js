@@ -69,18 +69,8 @@
                         </div>
                     </div>
                     <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
-                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar" title="Експорт графіку в CSV">Експорт</button>
-                        <button type="button" id="printBtn" class="btn-page-toolbar" title="Друк графіку">Друк</button>
-                        <div id="scheduleActionsDropdown" class="staff-schedule-actions-dropdown" hidden>
-                            <button type="button" id="scheduleActionsMenuBtn" class="btn-page-toolbar staff-schedule-actions-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="scheduleActionsMenu">Дії</button>
-                            <div id="scheduleActionsMenu" class="staff-schedule-actions-menu" role="menu" hidden>
-                                <button type="button" id="addStaffBtn" class="staff-schedule-menu-item" role="menuitem">Додати співробітника</button>
-                                <button type="button" id="fillWeekBtn" class="staff-schedule-menu-item" role="menuitem">Заповнити період</button>
-                                <button type="button" id="copyWeekBtn" class="staff-schedule-menu-item" role="menuitem">Копія тижня</button>
-                                <button type="button" id="importExcelBtn" class="staff-schedule-menu-item" role="menuitem">Excel import</button>
-                                <input type="file" id="excelImportInput" class="hidden" accept=".xlsx,.xls,.csv">
-                            </div>
-                        </div>
+                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в CSV">Експорт</button>
+                        <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк графіку">Друк</button>
                     </div>
                     <div id="scheduleViewSwitch" class="staff-schedule-view-switch" aria-label="Вид графіка">
                         <span class="staff-schedule-view-label">Вид</span>

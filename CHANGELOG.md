@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.70 - Staff Schedule Compact Month Layout
+
+### Staff Schedule / UI / (09.07.2026) [codex]
+- **Action area спрощено** - у графіку прибрано видиме меню `Дії` та зайві admin/bulk кнопки; зверху лишились компактні `Експорт` і `Друк`.
+- **31-day/month layout стабілізовано** - періоди 28/30/31 день переходять у контрольований wide-scroll режим всередині таблиці, без глобального горизонтального overflow.
+- **Sticky first column збережено** - колонка співробітника лишається закріпленою під час горизонтального scroll у графіку та load view.
+- **QA coverage оновлено** - static/browser/live smoke перевіряють новий UI contract, export/print, month layout і read-only guard без production writes.
+
+---
+
 ## v0.78.69 - Staff Schedule Controls QA
 
 ### Release / Versioning / (09.07.2026) [codex]

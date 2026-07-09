@@ -362,6 +362,75 @@ async function applyPreset(page, preset) {
     }, preset, { timeout: 20000 });
 }
 
+async function applyManualRange(page, from, to) {
+    await page.locator('#scheduleDateFrom').fill(from);
+    await page.locator('#scheduleDateTo').fill(to);
+    await page.locator('#applyScheduleRangeBtn').click();
+    await page.waitForFunction(expected => document.getElementById('scheduleDateFrom')?.value === expected.from
+        && document.getElementById('scheduleDateTo')?.value === expected.to, { from, to }, { timeout: 20000 });
+    await waitForDayColumns(page, dateRangeDays(from, to));
+}
+
+async function assertWideScheduleLayout(page, label, options = {}) {
+    const wrapperSelector = options.wrapperSelector || '#scheduleWrapper';
+    const expectedDays = options.expectedDays;
+    const expectedDataDays = options.expectedDataDays || expectedDays;
+    const expectedHeaderCount = options.expectedHeaderCount || expectedDays;
+    const minDayWidth = options.minDayWidth || 96;
+    const metrics = await page.evaluate(({ wrapperSelector, expectedDataDays, expectedHeaderCount }) => {
+        const wrapper = document.querySelector(wrapperSelector);
+        const table = wrapper?.querySelector('.schedule-table');
+        const dayHeaderSelector = wrapperSelector === '#loadViewWrapper'
+            ? 'thead th:not(:first-child):not(:last-child)'
+            : 'thead th:not(:first-child)';
+        const dayHeaders = table ? Array.from(table.querySelectorAll(dayHeaderSelector)) : [];
+        const firstHeader = table?.querySelector('thead th:first-child');
+        const firstBodyCell = table?.querySelector('tbody tr:not(.dept-row):not(.sub-group-row) > td:first-child');
+        if (!wrapper || !table || !firstHeader || !firstBodyCell) return null;
+        wrapper.scrollLeft = Math.min(260, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth));
+        const wrapperBox = wrapper.getBoundingClientRect();
+        const tableBox = table.getBoundingClientRect();
+        const firstHeaderBox = firstHeader.getBoundingClientRect();
+        const firstBodyBox = firstBodyCell.getBoundingClientRect();
+        const dayWidths = dayHeaders.map(header => header.getBoundingClientRect().width).filter(Boolean);
+        return {
+            isLongRange: wrapper.classList.contains('is-long-range'),
+            isFullRange: wrapper.classList.contains('is-full-range'),
+            dataDays: Number(wrapper.dataset.scheduleDayCount || 0),
+            cssMinWidth: getComputedStyle(wrapper).getPropertyValue('--schedule-table-min-width').trim(),
+            wrapperClientWidth: wrapper.clientWidth,
+            wrapperScrollWidth: wrapper.scrollWidth,
+            tableWidth: tableBox.width,
+            minDayWidth: dayWidths.length ? Math.min(...dayWidths) : 0,
+            maxDayWidth: dayWidths.length ? Math.max(...dayWidths) : 0,
+            firstHeaderPosition: getComputedStyle(firstHeader).position,
+            firstBodyPosition: getComputedStyle(firstBodyCell).position,
+            firstHeaderLeft: firstHeaderBox.left,
+            firstBodyLeft: firstBodyBox.left,
+            wrapperLeft: wrapperBox.left,
+            dayHeaderCount: dayHeaders.length,
+            expectedDataDays,
+            expectedHeaderCount,
+            viewportWidth: window.innerWidth,
+            pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
+        };
+    }, { wrapperSelector, expectedDataDays, expectedHeaderCount });
+    assert.ok(metrics, `${label}: wide layout metrics are available`);
+    assert.equal(metrics.isLongRange, true, `${label}: wrapper enters long-range mode`);
+    if (expectedDataDays >= 28) assert.equal(metrics.isFullRange, true, `${label}: wrapper enters full-range mode`);
+    assert.equal(metrics.dataDays, expectedDataDays, `${label}: wrapper records visible day count`);
+    assert.equal(metrics.dayHeaderCount, expectedHeaderCount, `${label}: day header count matches range`);
+    assert.ok(metrics.wrapperScrollWidth > metrics.wrapperClientWidth + 20, `${label}: wrapper owns horizontal scrolling`);
+    assert.ok(metrics.tableWidth >= metrics.wrapperScrollWidth - 2, `${label}: table width matches wrapper scroll width`);
+    assert.ok(metrics.minDayWidth >= minDayWidth, `${label}: day columns remain readable`);
+    assert.ok(metrics.maxDayWidth - metrics.minDayWidth <= 2, `${label}: day columns stay aligned`);
+    assert.equal(metrics.firstHeaderPosition, 'sticky', `${label}: header first column is sticky`);
+    assert.equal(metrics.firstBodyPosition, 'sticky', `${label}: body first column is sticky`);
+    assert.ok(Math.abs(metrics.firstHeaderLeft - metrics.wrapperLeft) <= 3, `${label}: sticky header column stays pinned after scroll`);
+    assert.ok(Math.abs(metrics.firstBodyLeft - metrics.wrapperLeft) <= 3, `${label}: sticky body column stays pinned after scroll`);
+    assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
+}
+
 async function assertNoControlOverlap(page, label) {
     const metrics = await page.evaluate(() => {
         const rect = selector => {
@@ -384,7 +453,6 @@ async function assertNoControlOverlap(page, label) {
         const dateTo = rect('#scheduleDateTo');
         const exportButton = rect('#exportExcelBtn');
         const printButton = rect('#printBtn');
-        const actionsButton = rect('#scheduleActionsMenuBtn');
         const viewSwitch = rect('#scheduleViewSwitch');
         const wrapper = document.querySelector('#scheduleWrapper');
         return {
@@ -395,7 +463,6 @@ async function assertNoControlOverlap(page, label) {
             dateTo,
             exportButton,
             printButton,
-            actionsButton,
             viewSwitch,
             viewportWidth: window.innerWidth,
             pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
@@ -412,7 +479,6 @@ async function assertNoControlOverlap(page, label) {
     assert.ok(metrics.dateFrom?.right <= metrics.dateTo?.left + 1, `${label}: date inputs do not overlap`);
     assert.ok(metrics.exportButton?.right <= metrics.command.right + 2, `${label}: export stays inside command bar`);
     assert.ok(metrics.printButton?.right <= metrics.command.right + 2, `${label}: print stays inside command bar`);
-    if (metrics.actionsButton) assert.ok(metrics.actionsButton.right <= metrics.command.right + 2, `${label}: actions menu stays inside command bar`);
     assert.ok(metrics.viewSwitch?.right <= metrics.command.right + 2, `${label}: view switch stays inside command bar`);
     assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
     assert.ok(metrics.wrapperScrollWidth >= metrics.wrapperClientWidth, `${label}: schedule wrapper owns horizontal width`);
@@ -435,52 +501,25 @@ async function runDesktopFlow(browser, base) {
         await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
         await page.locator('#scheduleViewSwitch').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#scheduleViewMainBtn').getAttribute('aria-pressed'), 'true', 'main schedule view starts active');
-        await page.locator('.staff-schedule-header-actions #scheduleActionsMenuBtn').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('#scheduleActionsMenu').isHidden(), true, 'advanced actions menu starts closed');
-        await page.locator('#scheduleActionsMenuBtn').click();
-        await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
-        for (const actionId of ['addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn']) {
-            await page.locator(`#scheduleActionsMenu #${actionId}`).waitFor({ state: 'visible' });
-        }
-        await page.keyboard.press('Escape');
-        await page.waitForFunction(() => document.getElementById('scheduleActionsMenu')?.hidden === true);
-        assert.equal(await page.locator('.confirm-overlay').count(), 0, 'Escape closes actions menu without triggering fill modal dirty confirmation');
-
-        await page.locator('#scheduleActionsMenuBtn').click();
-        await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
-        assert.equal(await page.locator('#copyWeekBtn').getAttribute('data-schedule-copy-unavailable'), 'true', 'copy-week is marked unavailable for custom range');
-        await page.locator('#copyWeekBtn').click();
-        await page.locator('.confirm-overlay .confirm-ok').waitFor({ state: 'visible' });
-        assert.match(await page.locator('.confirm-overlay .confirm-message').innerText(), /Копія тижня|7-денний/, 'unavailable copy-week explains the weekly-only behavior');
-        await page.locator('.confirm-overlay .confirm-ok').click();
-        assert.equal(apiCalls.copyWeekBodies.length, 0, 'unavailable copy-week does not call backend copy route');
-        assert.equal(apiCalls.bulkBodies.length, 0, 'opening actions menu does not run bulk fill');
-
-        await page.locator('#scheduleActionsMenuBtn').click();
-        await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
-        await page.locator('#fillWeekBtn').click();
-        await page.locator('#fillWeekOverlay.visible').waitFor({ state: 'visible' });
-        await page.locator('#fillStaffSelect').selectOption('101');
-        await page.locator('#fillDaysRow input[type=checkbox]').evaluateAll(inputs => {
-            inputs.forEach(input => { input.checked = false; });
+        const actionMetrics = await page.evaluate(() => {
+            const header = document.querySelector('.staff-schedule-header-actions')?.getBoundingClientRect();
+            const exportButton = document.getElementById('exportExcelBtn')?.getBoundingClientRect();
+            const printButton = document.getElementById('printBtn')?.getBoundingClientRect();
+            return {
+                headerWidth: header?.width || 0,
+                exportHeight: exportButton?.height || 0,
+                printHeight: printButton?.height || 0
+            };
         });
-        await page.locator('#fillDaysRow input[value="1"]').check();
-        await page.locator('#fillSaveBtn').click();
-        await page.locator('.confirm-overlay .confirm-ok').waitFor({ state: 'visible' });
-        await page.locator('.confirm-overlay .confirm-ok').click();
-        await page.waitForFunction(() => !document.getElementById('fillWeekOverlay')?.classList.contains('visible'), null, { timeout: 20000 });
-        assert.equal(apiCalls.bulkBodies.length, 1, 'fill period posts one bulk payload in mock smoke');
-        const bulkEntries = apiCalls.bulkBodies[0].entries || [];
-        const expectedMondayDates = rangeDates(firstHalfFrom, firstHalfTo).filter(date => isWeekday(date, 1));
-        assert.equal(bulkEntries.length, expectedMondayDates.length, 'fill period creates one entry per selected weekday inside range');
-        assert.deepEqual(bulkEntries.map(entry => entry.date), expectedMondayDates, 'fill period payload dates stay inside selected range and weekday');
-        assert.ok(bulkEntries.every(entry => entry.staffId === 101), 'fill period payload targets only selected staff member');
-        assert.ok(bulkEntries.every(entry => entry.status === 'working'), 'fill period payload keeps selected status');
-        assert.ok(bulkEntries.every(entry => entry.professionKey === 'animator'), 'fill period payload keeps normalized profession');
+        assert.ok(actionMetrics.headerWidth > 0 && actionMetrics.headerWidth <= 240, 'export/print header action group stays compact');
+        assert.ok(actionMetrics.exportHeight >= 34, 'export keeps a usable touch target');
+        assert.ok(actionMetrics.printHeight >= 34, 'print keeps a usable touch target');
 
-        for (const removedId of ['bulkCreateBtn']) {
+        for (const removedId of ['scheduleActionsDropdown', 'scheduleActionsMenuBtn', 'scheduleActionsMenu', 'addStaffBtn', 'fillWeekBtn', 'copyWeekBtn', 'importExcelBtn', 'bulkCreateBtn']) {
             assert.equal(await page.locator(`#${removedId}`).count(), 0, `${removedId} is not visible shell UI`);
         }
+        assert.equal(apiCalls.copyWeekBodies.length, 0, 'hidden copy-week UI does not call backend copy route');
+        assert.equal(apiCalls.bulkBodies.length, 0, 'hidden fill UI does not run bulk fill');
 
         const hoursCallsBefore = apiCalls.hoursRanges.length;
         await page.locator('[data-schedule-view="hours"]').click();
@@ -536,6 +575,16 @@ async function runDesktopFlow(browser, base) {
         assert.equal(apiCalls.scheduleRanges.length, scheduleCallsAfterFirstHalf, 'range over 31 days does not refetch schedule');
         await waitForDayColumns(page, 15);
 
+        const manualLongRanges = [
+            ['2026-02-01', '2026-02-28', 28],
+            ['2026-04-01', '2026-04-30', 30],
+            ['2026-07-01', '2026-07-31', 31]
+        ];
+        for (const [from, to, expectedDays] of manualLongRanges) {
+            await applyManualRange(page, from, to);
+            await assertWideScheduleLayout(page, `desktop manual ${expectedDays}d`, { expectedDays, minDayWidth: 110 });
+        }
+
         // Hours toggle is no longer part of the visible command surface.
         await page.locator('#scheduleStaffSearch').fill('Женя');
         await applyPreset(page, 'month');
@@ -546,6 +595,18 @@ async function runDesktopFlow(browser, base) {
         await waitForDayColumns(page, monthDays);
         assert.ok(monthDays >= 28 && monthDays <= 31, 'month preset renders a real month length');
         await assertNoControlOverlap(page, 'desktop month');
+        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 110 });
+
+        await page.locator('[data-schedule-view="load"]').click();
+        await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#loadViewHead th').count(), monthDays + 2, 'load view header uses all month dates plus metric and total columns');
+        await assertWideScheduleLayout(page, 'desktop month load view', {
+            wrapperSelector: '#loadViewWrapper',
+            expectedDays: monthDays,
+            minDayWidth: 78
+        });
+        await page.locator('#scheduleViewMainBtn').click();
+        await page.waitForFunction(() => document.querySelector('#scheduleViewMainBtn')?.getAttribute('aria-pressed') === 'true', { timeout: 20000 });
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month.png'), fullPage: true });
 
         await page.locator('#todayWeekBtn').click();
@@ -561,7 +622,14 @@ async function runMobileFlow(browser, base) {
         await applyPreset(page, 'first-half');
         await waitForDayColumns(page, 15);
         await assertNoControlOverlap(page, 'mobile first-half');
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-first-half.png'), fullPage: true });
+        await applyPreset(page, 'month');
+        const monthFrom = await page.locator('#scheduleDateFrom').inputValue();
+        const monthTo = await page.locator('#scheduleDateTo').inputValue();
+        const monthDays = dateRangeDays(monthFrom, monthTo);
+        await waitForDayColumns(page, monthDays);
+        await assertNoControlOverlap(page, 'mobile month');
+        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthDays, minDayWidth: 98 });
+        await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-month.png'), fullPage: true });
     } finally {
         await context.close();
     }

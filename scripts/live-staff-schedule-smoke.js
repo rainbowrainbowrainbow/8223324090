@@ -280,16 +280,26 @@ async function assertHeaderSurface(page) {
     await page.locator('#applyScheduleRangeBtn').waitFor({ state: 'visible' });
 }
 
-async function assertActionsMenuSurface(page) {
-    const toggle = page.locator('#scheduleActionsMenuBtn');
-    if (await toggle.count() === 0 || !await toggle.isVisible()) return 'hidden';
+async function assertCompactHeaderActions(page) {
+    const legacyActionSelectors = ['#scheduleActionsDropdown', '#scheduleActionsMenuBtn', '#scheduleActionsMenu', '#addStaffBtn', '#fillWeekBtn', '#copyWeekBtn', '#importExcelBtn'];
+    for (const selector of legacyActionSelectors) {
+        assert.equal(await page.locator(selector).count(), 0, `${selector} is not visible staff schedule UI`);
+    }
 
-    await toggle.click();
-    await page.locator('#scheduleActionsMenu').waitFor({ state: 'visible' });
-    assert.ok(await page.locator('#scheduleActionsMenu .staff-schedule-menu-item').count() > 0, 'actions menu exposes at least one menu item');
-    await page.keyboard.press('Escape');
-    await page.waitForFunction(() => document.getElementById('scheduleActionsMenu')?.hidden === true);
-    return 'visible';
+    const metrics = await page.evaluate(() => {
+        const header = document.querySelector('.staff-schedule-header-actions')?.getBoundingClientRect();
+        const exportButton = document.getElementById('exportExcelBtn')?.getBoundingClientRect();
+        const printButton = document.getElementById('printBtn')?.getBoundingClientRect();
+        return {
+            header: header ? { width: header.width, height: header.height } : null,
+            exportButton: exportButton ? { width: exportButton.width, height: exportButton.height } : null,
+            printButton: printButton ? { width: printButton.width, height: printButton.height } : null
+        };
+    });
+    assert.ok(metrics.header?.width > 0, 'compact header actions are measurable');
+    assert.ok(metrics.exportButton?.height >= 34, 'export keeps a usable touch target');
+    assert.ok(metrics.printButton?.height >= 34, 'print keeps a usable touch target');
+    assert.ok(metrics.header.width <= 240, 'export/print action group stays compact');
 }
 
 async function assertViewSwitchReadOnlyModes(page) {
@@ -358,6 +368,64 @@ async function assertSearchPersistence(page) {
     assert.equal(range.dayCount, monthDays, 'month preset renders all month day columns');
     assert.ok(monthDays >= 28 && monthDays <= 31, `month preset day count is ${monthDays}`);
     return range;
+}
+
+async function assertWideScheduleLayout(page, label, options = {}) {
+    const wrapperSelector = options.wrapperSelector || '#scheduleWrapper';
+    const expectedDays = options.expectedDays;
+    const expectedHeaderCount = options.expectedHeaderCount || expectedDays;
+    const minDayWidth = options.minDayWidth || 96;
+    const metrics = await page.evaluate(({ wrapperSelector, expectedDays, expectedHeaderCount }) => {
+        const wrapper = document.querySelector(wrapperSelector);
+        const table = wrapper?.querySelector('.schedule-table');
+        const dayHeaderSelector = wrapperSelector === '#loadViewWrapper'
+            ? 'thead th:not(:first-child):not(:last-child)'
+            : 'thead th:not(:first-child)';
+        const dayHeaders = table ? Array.from(table.querySelectorAll(dayHeaderSelector)) : [];
+        const firstHeader = table?.querySelector('thead th:first-child');
+        const firstBodyCell = table?.querySelector('tbody tr:not(.dept-row):not(.sub-group-row) > td:first-child');
+        if (!wrapper || !table || !firstHeader || !firstBodyCell) return null;
+        wrapper.scrollLeft = Math.min(260, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth));
+        const wrapperBox = wrapper.getBoundingClientRect();
+        const tableBox = table.getBoundingClientRect();
+        const firstHeaderBox = firstHeader.getBoundingClientRect();
+        const firstBodyBox = firstBodyCell.getBoundingClientRect();
+        const dayWidths = dayHeaders.map(header => header.getBoundingClientRect().width).filter(Boolean);
+        return {
+            isLongRange: wrapper.classList.contains('is-long-range'),
+            isFullRange: wrapper.classList.contains('is-full-range'),
+            dataDays: Number(wrapper.dataset.scheduleDayCount || 0),
+            wrapperClientWidth: wrapper.clientWidth,
+            wrapperScrollWidth: wrapper.scrollWidth,
+            tableWidth: tableBox.width,
+            minDayWidth: dayWidths.length ? Math.min(...dayWidths) : 0,
+            maxDayWidth: dayWidths.length ? Math.max(...dayWidths) : 0,
+            dayHeaderCount: dayHeaders.length,
+            expectedDays,
+            expectedHeaderCount,
+            firstHeaderPosition: getComputedStyle(firstHeader).position,
+            firstBodyPosition: getComputedStyle(firstBodyCell).position,
+            firstHeaderLeft: firstHeaderBox.left,
+            firstBodyLeft: firstBodyBox.left,
+            wrapperLeft: wrapperBox.left,
+            viewportWidth: window.innerWidth,
+            pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
+        };
+    }, { wrapperSelector, expectedDays, expectedHeaderCount });
+    assert.ok(metrics, `${label}: wide layout metrics are available`);
+    assert.equal(metrics.isLongRange, true, `${label}: wrapper enters long-range mode`);
+    if (expectedDays >= 28) assert.equal(metrics.isFullRange, true, `${label}: wrapper enters full-range mode`);
+    assert.equal(metrics.dataDays, expectedDays, `${label}: wrapper records visible day count`);
+    assert.equal(metrics.dayHeaderCount, expectedHeaderCount, `${label}: day header count matches range`);
+    assert.ok(metrics.wrapperScrollWidth > metrics.wrapperClientWidth + 20, `${label}: wrapper owns horizontal scrolling`);
+    assert.ok(metrics.tableWidth >= metrics.wrapperScrollWidth - 2, `${label}: table width matches wrapper scroll width`);
+    assert.ok(metrics.minDayWidth >= minDayWidth, `${label}: date columns remain readable`);
+    assert.ok(metrics.maxDayWidth - metrics.minDayWidth <= 2, `${label}: date columns stay aligned`);
+    assert.equal(metrics.firstHeaderPosition, 'sticky', `${label}: header first column is sticky`);
+    assert.equal(metrics.firstBodyPosition, 'sticky', `${label}: body first column is sticky`);
+    assert.ok(Math.abs(metrics.firstHeaderLeft - metrics.wrapperLeft) <= 3, `${label}: sticky header column stays pinned after scroll`);
+    assert.ok(Math.abs(metrics.firstBodyLeft - metrics.wrapperLeft) <= 3, `${label}: sticky body column stays pinned after scroll`);
+    assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
 }
 
 async function assertExportFilename(page, range) {
@@ -444,11 +512,23 @@ async function runDesktopFlow(browser, base, session) {
         assert.equal(firstHalf.dayCount, 15, '1-15 preset renders 15 day columns');
         assert.match(firstHalf.label, /1[\s\S]+15[\s\S]+20\d{2}/, 'period label reflects 1-15 range');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-first-half.png'), fullPage: true });
-        const actionsMenu = await assertActionsMenuSurface(page);
+        await assertCompactHeaderActions(page);
         await assertViewSwitchReadOnlyModes(page);
 
         await assertInvalidRangesStayPut(page, firstHalf.from, firstHalf.to);
         const monthRange = await assertSearchPersistence(page);
+        const monthDays = dateRangeDays(monthRange.from, monthRange.to);
+        await assertWideScheduleLayout(page, 'desktop month schedule', { expectedDays: monthDays, minDayWidth: 110 });
+        await page.locator('[data-schedule-view="load"]').click();
+        await page.locator('#loadViewWrapper').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#loadViewHead th').count(), monthDays + 2, 'live load view header uses all month dates plus metric and total columns');
+        await assertWideScheduleLayout(page, 'desktop month load view', {
+            wrapperSelector: '#loadViewWrapper',
+            expectedDays: monthDays,
+            minDayWidth: 78
+        });
+        await page.locator('[data-schedule-view="schedule"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-schedule-view="schedule"]')?.getAttribute('aria-pressed') === 'true');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month-search.png'), fullPage: true });
 
         await assertExportFilename(page, monthRange);
@@ -460,7 +540,7 @@ async function runDesktopFlow(browser, base, session) {
             firstHalf: `${firstHalf.from}..${firstHalf.to}`,
             month: `${monthRange.from}..${monthRange.to}`,
             exportFilename: `grafik_${monthRange.from}_${monthRange.to}.csv`,
-            actionsMenu
+            headerActions: 'export/print'
         };
     } finally {
         await page?.close().catch(() => {});
@@ -477,18 +557,24 @@ async function runMobileFlow(browser, base, session) {
         forbidden = attachReadOnlyGuard(page, 'mobile');
         await waitForStaffSchedule(page, base);
         await assertHeaderSurface(page);
+        await assertCompactHeaderActions(page);
         await applyPreset(page, 'first-half');
         await waitForDayColumns(page, 15);
         await page.locator('#scheduleStaffSearch').fill('staff-smoke');
         assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), 'staff-smoke', 'mobile search input accepts text');
         await assertMobileLayout(page);
-        await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-first-half.png'), fullPage: true });
+        await page.locator('#scheduleStaffSearch').fill('');
+        await applyPreset(page, 'month');
+        await waitForColumnsToMatchInputs(page);
+        const monthRange = await readRangeState(page);
+        await assertMobileLayout(page);
+        await assertWideScheduleLayout(page, 'mobile month schedule', { expectedDays: monthRange.dayCount, minDayWidth: 98 });
+        await page.screenshot({ path: path.join(OUTPUT_DIR, 'mobile-month.png'), fullPage: true });
         assertNoForbiddenStaffWrites(forbidden, 'mobile');
 
-        const range = await readRangeState(page);
         return {
-            firstHalf: `${range.from}..${range.to}`,
-            dayCount: range.dayCount
+            month: `${monthRange.from}..${monthRange.to}`,
+            dayCount: monthRange.dayCount
         };
     } finally {
         await page?.close().catch(() => {});
@@ -516,10 +602,10 @@ async function run() {
 
         console.log(`Live staff schedule smoke OK: ${base}`);
         console.log(`  OK desktop: default=${desktop.defaultDays}d, firstHalf=${desktop.firstHalf}, month=${desktop.month}`);
-        console.log(`  OK controls: actionsMenu=${desktop.actionsMenu}, viewSwitch=hours/load/accounts/schedule`);
+        console.log(`  OK controls: headerActions=${desktop.headerActions}, viewSwitch=hours/load/accounts/schedule`);
         console.log(`  OK export: ${desktop.exportFilename}`);
         console.log(`  OK print: stubbed window.print`);
-        console.log(`  OK mobile: firstHalf=${mobile.firstHalf}, days=${mobile.dayCount}`);
+        console.log(`  OK mobile: month=${mobile.month}, days=${mobile.dayCount}`);
         console.log(`  OK read-only guard: no staff mutation requests`);
         console.log(`  OK screenshots: ${path.relative(ROOT, OUTPUT_DIR)}`);
     } finally {

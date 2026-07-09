@@ -180,6 +180,20 @@ async function handleApi(req, res, url) {
         });
         return true;
     }
+    const shiftPreferenceMatch = url.pathname.match(/^\/api\/staff\/(\d+)\/shift-preferences$/);
+    if (shiftPreferenceMatch) {
+        const staffId = Number(shiftPreferenceMatch[1]);
+        const staff = STAFF_ROWS.find(row => Number(row.id) === staffId);
+        const professionKey = staff?.role_type || 'animator';
+        sendJson(res, {
+            success: true,
+            data: [
+                { staff_id: staffId, profession_key: professionKey, day_type: 'weekday', start_time: '12:00:00', end_time: '20:00:00', is_active: true },
+                { staff_id: staffId, profession_key: professionKey, day_type: 'weekend', start_time: '10:00:00', end_time: '20:00:00', is_active: true }
+            ]
+        });
+        return true;
+    }
     if (url.pathname === '/api/staff/attendance') {
         sendJson(res, {
             success: true,
@@ -495,6 +509,18 @@ async function expandAllScheduleGroups(page) {
     await page.waitForFunction(() => document.querySelectorAll('#scheduleBody tr:not(.dept-row):not(.sub-group-row):not(.schedule-health-empty-row)').length > 0);
 }
 
+async function assertScheduleShiftPreferenceQuickLabels(page) {
+    await page.locator('.sch-cell[data-staff="101"]').first().click();
+    await page.locator('#schModalOverlay.visible').waitFor({ state: 'visible' });
+    await page.locator('#schShiftPreferencePanel .sch-shift-preference-option').nth(1).waitFor({ state: 'visible' });
+    const labels = await page.locator('#schShiftPreferencePanel .sch-shift-preference-option strong')
+        .evaluateAll(nodes => nodes.map(node => node.textContent.trim()));
+    assert.deepEqual(labels, ['ПН-ПТ', 'СБ-НД'], 'schedule modal quick shift options use explicit weekday/weekend range labels');
+    assert.equal(labels.includes('Будні') || labels.includes('Вихідні'), false, 'schedule modal quick shift options avoid ambiguous day-type labels');
+    await page.locator('#schCancelBtn').click();
+    await page.waitForFunction(() => !document.querySelector('#schModalOverlay')?.classList.contains('visible'));
+}
+
 async function assertWideScheduleLayout(page, label, options = {}) {
     const wrapperSelector = options.wrapperSelector || '#scheduleWrapper';
     const expectedDays = options.expectedDays;
@@ -618,6 +644,7 @@ async function runDesktopFlow(browser, base) {
         await assertScheduleGroupExpansionPersists(page);
         await assertScheduleSearchAutoExpandsGroups(page);
         await expandAllScheduleGroups(page);
+        await assertScheduleShiftPreferenceQuickLabels(page);
 
         await applyPreset(page, 'first-half');
         const firstHalfFrom = await page.locator('#scheduleDateFrom').inputValue();

@@ -3533,8 +3533,8 @@ let _staffScheduleInitialState = '';
 let _staffFillInitialState = '';
 
 const SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS = {
-    weekday: 'Будні',
-    weekend: 'Вихідні'
+    weekday: 'ПН-ПТ',
+    weekend: 'СБ-НД'
 };
 
 function scheduleShiftPreferenceDayType(date) {

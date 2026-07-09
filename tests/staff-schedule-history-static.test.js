@@ -628,6 +628,8 @@ describe('staff schedule safety guards', () => {
         assert.match(staffPage, /function fetchScheduleShiftPreferences/);
         assert.match(staffPage, /function renderScheduleShiftPreferencePanel/);
         assert.match(staffPage, /function applyScheduleShiftPreference/);
+        assert.match(staffPage, /weekday:\s*'ПН-ПТ'/);
+        assert.match(staffPage, /weekend:\s*'СБ-НД'/);
         assert.match(staffPage, /function setScheduleShiftPreferenceActiveDay/);
         assert.match(staffPage, /setScheduleShiftPreferenceActiveDay\(normalized\.dayType\)/);
         assert.match(staffPage, /button\.classList\.toggle\('is-recommended', isActive\)/);

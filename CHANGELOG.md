@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.75 - Staff Schedule Shift Labels
+
+### Staff Schedule / Slot modal labels / (09.07.2026) [codex]
+- **Меню слота стало однозначним** - у блоці `Типові зміни з картки` кнопки тепер показують `ПН-ПТ` і `СБ-НД` замість загальних `Будні` / `Вихідні`.
+- **HR-картку не зачіпали** - редактор типових змін у картці співробітника лишився на старій бізнес-семантиці, змінено тільки quick options у графіку.
+- **Regression coverage посилено** - static test фіксує нові labels, а browser smoke відкриває слот і перевіряє реальний DOM модалки.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend label copy, tests і version/cache refs.
+
+---
+
 ## v0.78.74 - Staff Schedule Group Match Fix
 
 ### Staff Schedule / Group matching / Live cleanup / (09.07.2026) [codex]

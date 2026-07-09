@@ -1698,7 +1698,9 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleRangeApplyRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-apply');
     const staffScheduleRangePresetsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-presets');
     const staffScheduleRangeDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input');
-    const staffScheduleToolbarDisabledRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar.is-disabled');
+    const staffScheduleHeaderActionsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions');
+    const staffScheduleHeaderActionButtonRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar');
+    const staffScheduleHeaderActionDarkRule = cssRuleIncludingSelectorText(staffPagesCss, 'body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar');
     const staffFillPeriodHintRule = cssRuleText(staffPagesCss, '#fillWeekOverlay .fill-period-hint');
     const staffScheduleCommandBarRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar');
     const staffScheduleCommandBarControlsRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls');
@@ -1706,7 +1708,6 @@ checkPage('staff.html', (doc, html) => {
     const staffScheduleCommandBarWeekNavRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav');
     const staffScheduleCommandBarWeekButtonRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button');
     const staffScheduleCommandBarWeekLabelRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-label');
-    const staffScheduleCommandBarToolbarButtonRule = cssRuleText(staffPagesCss, 'body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary,\nbody[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar');
     const staffScheduleCellFocusRule = cssRuleText(staffPagesCss, '.sch-cell:focus-visible');
     const staffScheduleMobileCommandStart = staffPagesCss.indexOf('@media (max-width: 768px) {\n    body[data-page-group="hr"] .staff-schedule-command-bar');
     const staffScheduleMobileCommandBlock = staffScheduleMobileCommandStart > -1
@@ -1715,8 +1716,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.78.66')
-        && html.includes('js/hr-pulse-switcher.js?v=0.78.66')
+        && html.includes('js/staff-schedule-shell.js?v=0.78.67')
+        && html.includes('js/hr-pulse-switcher.js?v=0.78.67')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -1924,56 +1925,71 @@ checkPage('staff.html', (doc, html) => {
         && staffScheduleBulkActionsBlock.includes('Копія тижня недоступна для довільного періоду')
         && staffScheduleBulkActionsBlock.includes('const sourceEnd = formatDateStr(shiftScheduleDate(StaffState.weekStart, 6))')
         && staffScheduleBulkActionsBlock.includes('Довільний visible range не копіюється цією дією.')
-        && /cursor:\s*help;/.test(staffScheduleToolbarDisabledRule)
         && /font-size:\s*13px;/.test(staffFillPeriodHintRule));
     check('Staff schedule people search matches HR Today light dark and mobile control rhythm',
-        /"week range"\s*"search search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
+        /"week actions"\s*"range range"\s*"search search"\s*"dept dept";/.test(staffScheduleCommandBarControlsRule)
         && /grid-area:\s*range;/.test(staffScheduleRangeRowRule)
-        && /repeat\(2,\s*minmax\(132px,\s*1fr\)\)/.test(staffScheduleRangeRowRule)
+        && /grid-template-columns:\s*repeat\(2,\s*168px\)\s*minmax\(124px,\s*max-content\)\s*minmax\(238px,\s*max-content\);/.test(staffScheduleRangeRowRule)
+        && /padding:\s*8px 10px;/.test(staffScheduleRangeRowRule)
+        && /border-radius:\s*14px;/.test(staffScheduleRangeRowRule)
         && /text-transform:\s*uppercase;/.test(staffScheduleDateFieldRule)
         && /background:\s*rgba\(20,184,166,0\.12\);/.test(staffScheduleRangeApplyRule)
         && /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*max-content\)\);/.test(staffScheduleRangePresetsRule)
         && /background:\s*rgba\(15,23,42,0\.54\);/.test(staffScheduleRangeDarkRule)
         && /grid-area:\s*search;/.test(staffScheduleSearchRowRule)
-        && /grid-template-columns:\s*minmax\(220px,\s*1fr\) auto;/.test(staffScheduleSearchRowRule)
+        && /grid-template-columns:\s*minmax\(220px,\s*1fr\);/.test(staffScheduleSearchRowRule)
         && /min-height:\s*38px;/.test(staffScheduleSearchInputRule)
         && /border-radius:\s*10px;/.test(staffScheduleSearchInputRule)
         && /background:\s*rgba\(255,255,255,0\.88\);/.test(staffScheduleSearchInputRule)
         && /border-color:\s*rgba\(20,184,166,0\.54\);/.test(staffScheduleSearchFocusRule)
+        && /position:\s*absolute;/.test(staffScheduleSearchInfoRule)
+        && /clip-path:\s*inset\(50%\);/.test(staffScheduleSearchInfoRule)
         && /white-space:\s*nowrap;/.test(staffScheduleSearchInfoRule)
         && /background:\s*rgba\(15,23,42,0\.54\);/.test(staffScheduleSearchDarkRule)
         && /color:\s*#CBD5E1;/.test(staffScheduleSearchInfoDarkRule)
-        && /"week"\s*"range"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
+        && /grid-area:\s*actions;/.test(staffScheduleHeaderActionsRule)
+        && /justify-content:\s*flex-end;/.test(staffScheduleHeaderActionsRule)
+        && /min-width:\s*104px;/.test(staffScheduleHeaderActionButtonRule)
+        && /background:\s*rgba\(15,23,42,0\.46\);/.test(staffScheduleHeaderActionDarkRule)
+        && /"week"\s*"range"\s*"actions"\s*"search"\s*"dept";/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-range-row[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-search-row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/.test(staffScheduleMobileCommandBlock)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-filter-info[\s\S]*white-space:\s*normal;/.test(staffScheduleMobileCommandBlock));
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-filter-info[\s\S]*position:\s*absolute;[\s\S]*clip-path:\s*inset\(50%\);[\s\S]*white-space:\s*nowrap;/.test(staffScheduleMobileCommandBlock));
     check('Staff schedule mobile controls use compact rails and a stacked command grid',
         staffScheduleMobileCommandBlock.includes('body[data-page-group="hr"] .staff-schedule-command-bar')
         && /display:\s*grid;/.test(staffScheduleMobileCommandBlock)
-        && /"controls"\s*"toolbar";/.test(staffScheduleMobileCommandBlock)
+        && /"controls";/.test(staffScheduleMobileCommandBlock)
         && /grid-area:\s*controls;/.test(staffScheduleMobileCommandBlock)
-        && /grid-area:\s*toolbar;/.test(staffScheduleMobileCommandBlock)
         && /grid-template-columns:\s*36px minmax\(0,\s*1fr\) 36px minmax\(72px,\s*max-content\);/.test(staffScheduleMobileCommandBlock)
         && /grid-column:\s*auto;/.test(staffScheduleMobileCommandBlock)
         && /flex-wrap:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
         && /overflow-x:\s*auto;/.test(staffScheduleMobileCommandBlock)
         && /overscroll-behavior-inline:\s*contain;/.test(staffScheduleMobileCommandBlock)
         && /scrollbar-width:\s*none;/.test(staffScheduleMobileCommandBlock)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar[\s\S]*display:\s*grid;/.test(staffScheduleMobileCommandBlock)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(148px,\s*100%\),\s*1fr\)\);/.test(staffScheduleMobileCommandBlock)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar[\s\S]*overflow:\s*visible;/.test(staffScheduleMobileCommandBlock)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar \.btn-page-toolbar,[\s\S]*body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar \.btn-page-secondary[\s\S]*width:\s*100%;/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions[\s\S]*display:\s*grid;/.test(staffScheduleMobileCommandBlock)
+        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.staff-schedule-header-actions \.btn-page-toolbar[\s\S]*width:\s*100%;/.test(staffScheduleMobileCommandBlock)
         && /white-space:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
         && /max-width:\s*min\(58vw,\s*168px\);/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.schedule-summary[\s\S]*flex-wrap:\s*nowrap;/.test(staffScheduleMobileCommandBlock)
         && /body\[data-page-group="hr"\] \.schedule-summary \.summary-chip[\s\S]*min-height:\s*38px;/.test(staffScheduleMobileCommandBlock));
-    check('Staff schedule desktop toolbar uses a bounded wrapping grid and hides bulk create in HR mode',
-        staffPagesCss.includes('body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar')
-        && staffPagesCss.includes('grid-template-columns: repeat(auto-fit, minmax(min(132px, 100%), 1fr));')
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar[\s\S]*width:\s*100%;/.test(staffPagesCss)
-        && /body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar \.btn-page-secondary,[\s\S]*body\[data-page-group="hr"\] \.staff-schedule-command-bar \.schedule-toolbar \.btn-page-toolbar[\s\S]*white-space:\s*normal;[\s\S]*overflow-wrap:\s*anywhere;/.test(staffPagesCss)
-        && staffPagesCss.includes('body.staff-schedule-hr-mode #bulkCreateBtn')
-        && staffCode.includes("bulkBtn.style.display = isAdmin && mode !== 'hr' ? '' : 'none'"));
+    check('Staff schedule header actions replace the legacy visible toolbar',
+        staffScheduleShellCode.includes('class="staff-schedule-header-actions"')
+        && staffScheduleShellCode.includes('id="exportExcelBtn"')
+        && staffScheduleShellCode.includes('id="printBtn"')
+        && !staffScheduleShellCode.includes('class="schedule-toolbar"')
+        && !staffScheduleShellCode.includes('id="addStaffBtn"')
+        && !staffScheduleShellCode.includes('id="copyWeekBtn"')
+        && !staffScheduleShellCode.includes('id="fillWeekBtn"')
+        && !staffScheduleShellCode.includes('id="toggleHoursBtn"')
+        && !staffScheduleShellCode.includes('id="toggleLoadViewBtn"')
+        && !staffScheduleShellCode.includes('id="toggleLinkViewBtn"')
+        && !staffScheduleShellCode.includes('id="importExcelBtn"')
+        && !staffScheduleShellCode.includes('id="excelImportInput"')
+        && staffCode.includes("document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport)")
+        && staffCode.includes("document.getElementById('printBtn')?.addEventListener('click', handlePrint)")
+        && /display:\s*flex;/.test(staffScheduleHeaderActionsRule)
+        && /min-height:\s*46px;/.test(staffScheduleHeaderActionButtonRule));
     check('Staff HR Pulse command cards do not depend on legacy nav PNG layers',
         legacyStaffPulseNavTokens.every(token => !html.includes(token) && !staffPagesCss.includes(token)));
     check('HR Pulse light theme keeps switcher and schedule command surfaces light-only by default',
@@ -1993,8 +2009,8 @@ checkPage('staff.html', (doc, html) => {
         && /color:\s*#475569;/.test(staffScheduleCommandBarWeekButtonRule)
         && /background:\s*rgba\(255,255,255,0\.90\);/.test(staffScheduleCommandBarWeekLabelRule)
         && /color:\s*#0F172A;/.test(staffScheduleCommandBarWeekLabelRule)
-        && /background:\s*rgba\(255,255,255,0\.84\);/.test(staffScheduleCommandBarToolbarButtonRule)
-        && /color:\s*#334155;/.test(staffScheduleCommandBarToolbarButtonRule)
+        && /background:\s*rgba\(255,255,255,0\.84\);/.test(staffScheduleHeaderActionButtonRule)
+        && /color:\s*#334155;/.test(staffScheduleHeaderActionButtonRule)
         && /background:\s*linear-gradient\(135deg,\s*rgba\(15,23,42,0\.58\),\s*rgba\(15,23,42,0\.40\)\);/.test(staffScheduleCommandBarDarkRule));
     check('HR Pulse browser smoke can verify light theme instead of hardcoding dark mode',
         hrPulseBrowserSmokeCode.includes("const THEME_MODE = String(process.env.HR_PULSE_BROWSER_SMOKE_THEME || 'light').toLowerCase()")
@@ -5285,7 +5301,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.66')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.78.67')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -5294,8 +5310,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.66')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.66')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.67')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.78.67')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -5734,7 +5750,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('class="hr-team-delete"') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.66') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.66') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module and keeps leave request controls', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.78.67') && htmlContains('hr.html', 'js/staff-page.js?v=0.78.67') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && htmlContains('hr.html', 'Заявки на відпустки та вихідні') && htmlContains('hr.html', 'id="leaveStatusFilter"') && htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('await loadLeaves();') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR KPI uses the backend KPI snapshot instead of client-side source merging', htmlContains('hr.html', 'id="tab-kpi"') && htmlContains('hr.html', 'id="kpiSummary"') && htmlContains('hr.html', 'id="kpiSources"') && htmlContains('hr.html', '.hr-kpi-sources') && htmlContains('hr.html', 'class="hr-kpi-refresh"') && hrCode.includes('async function loadKpi') && hrLoadKpiBlock.includes("hrFetch(`/kpi?month=${month}`)") && hrRouteCode.includes("router.get('/kpi'") && hrRouteCode.includes('loadKpiSnapshot') && hrCode.includes('renderKpiSources') && hrCode.includes('HR-зріз') && hrCode.includes('Підсумковий KPI') && hrCode.includes('даних ще немає') && !hrLoadKpiBlock.includes("hrFetch(`/report/monthly?month=${month}`)") && !hrLoadKpiBlock.includes("hrFetch('/ratings')") && !hrCode.includes('monthly report') && !hrCode.includes('ratings context') && !htmlContains('hr.html', 'ratingsBoard'));
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and accordion layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-bucket-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 42px; height: 42px; font-size: 16px; }') && !/\.hr-people-bucket-body\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));

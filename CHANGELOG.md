@@ -4,6 +4,18 @@
 
 ---
 
+## v0.78.67 - Staff Schedule Header Cleanup
+
+### HR / Графік / Compact controls / Release QA / (Клешня, 09.07.2026) [codex]
+- **Верхній control area графіка став компактнішим** - date inputs `Від/До` отримали фіксовані робочі ширини, нормальні відступи labels і окремий range container без розтягування на пів екрана.
+- **Зайвий search count прибрано з видимої поверхні** - текст на кшталт `43 співробітники у графіку` більше не займає місце біля пошуку, але live region лишився доступним для assistive tech.
+- **Старий нижній toolbar прибрано** - великі кнопки `Додати`, `Копія тижня`, `Заповнити`, `Години`, `Навантаження`, `Акаунти`, `Excel` більше не шумлять під фільтрами.
+- **`Експорт` і `Друк` перенесені нагору** - кнопки зберегли старі ID й handlers, тому CSV export і print flow працюють із поточним visible range.
+- **Regression coverage оновлено під новий markup** - static/UI checks і browser smoke перевіряють відсутність legacy toolbar, нові header actions, custom range validation, search persistence, export filename, print call і mobile wrapping.
+- **DB schema, auth/roles, billing, env/secrets, Railway settings і protected booking/timeline flow не змінювались** - реліз обмежений schedule shell, CSS, tests/smoke і version/cache refs.
+
+---
+
 ## v0.78.66 - Staff Schedule Custom Range
 
 ### HR / Графік / Custom range / Bulk safety / (Клешня, 08.07.2026) [codex]

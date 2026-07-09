@@ -303,7 +303,7 @@ async function waitForDayColumns(page, dayCount) {
 }
 
 async function openStaffPage(browser, base, viewport) {
-    const context = await browser.newContext({ viewport });
+    const context = await browser.newContext({ viewport, acceptDownloads: true });
     await context.addInitScript(user => {
         localStorage.setItem('pzp_token', 'staff-schedule-smoke-token');
         localStorage.setItem('pzp_access_token', 'staff-schedule-smoke-token');
@@ -381,7 +381,25 @@ async function runDesktopFlow(browser, base) {
         assert.equal(firstHalfTo.endsWith('-15'), true, 'first-half ends on day 15');
         await waitForDayColumns(page, 15);
         assert.match(await page.locator('#weekLabel').innerText(), /1 .+15 .+20\d{2}/, 'visible label reflects 1-15 range');
-        assert.equal(await page.locator('#copyWeekBtn').getAttribute('aria-disabled'), 'true', 'copy-week is disabled for custom first-half range');
+        assert.equal(await page.locator('.staff-schedule-command-bar .schedule-toolbar').count(), 0, 'legacy visible toolbar is removed from schedule shell');
+        await page.locator('.staff-schedule-header-actions #exportExcelBtn').waitFor({ state: 'visible' });
+        await page.locator('.staff-schedule-header-actions #printBtn').waitFor({ state: 'visible' });
+        for (const removedId of ['addStaffBtn', 'copyWeekBtn', 'fillWeekBtn', 'toggleHoursBtn', 'toggleLoadViewBtn', 'toggleLinkViewBtn', 'importExcelBtn', 'excelImportInput']) {
+            assert.equal(await page.locator(`#${removedId}`).count(), 0, `${removedId} is not visible shell UI`);
+        }
+
+        const downloadPromise = page.waitForEvent('download');
+        await page.locator('#exportExcelBtn').click();
+        const download = await downloadPromise;
+        assert.equal(download.suggestedFilename(), `grafik_${firstHalfFrom}_${firstHalfTo}.csv`, 'export filename uses selected first-half range');
+        await page.evaluate(() => {
+            window.__staffSchedulePrintCount = 0;
+            window.print = () => {
+                window.__staffSchedulePrintCount += 1;
+            };
+        });
+        await page.locator('#printBtn').click();
+        assert.equal(await page.evaluate(() => window.__staffSchedulePrintCount), 1, 'print button calls print flow from header');
 
         const scheduleCallsAfterFirstHalf = apiCalls.scheduleRanges.length;
         await page.locator('#scheduleDateFrom').fill(firstHalfTo);
@@ -400,10 +418,7 @@ async function runDesktopFlow(browser, base) {
         assert.equal(apiCalls.scheduleRanges.length, scheduleCallsAfterFirstHalf, 'range over 31 days does not refetch schedule');
         await waitForDayColumns(page, 15);
 
-        await page.locator('#toggleHoursBtn').click();
-        await page.waitForFunction(() => document.querySelector('.emp-hours')?.textContent?.trim(), null, { timeout: 20000 });
-        assert.deepEqual(apiCalls.hoursRanges.at(-1), { from: firstHalfFrom, to: firstHalfTo }, 'hours endpoint uses selected first-half range');
-
+        // Hours toggle is no longer part of the visible command surface.
         await page.locator('#scheduleStaffSearch').fill('Женя');
         await applyPreset(page, 'month');
         assert.equal(await page.locator('#scheduleStaffSearch').inputValue(), 'Женя', 'search query survives preset changes');
@@ -415,42 +430,7 @@ async function runDesktopFlow(browser, base) {
         await assertNoControlOverlap(page, 'desktop month');
         await page.screenshot({ path: path.join(OUTPUT_DIR, 'desktop-month.png'), fullPage: true });
 
-        await page.locator('#copyWeekBtn').click({ force: true });
-        await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]', { timeout: 20000 });
-        const copyMessage = await page.locator('.confirm-message').innerText();
-        assert.match(copyMessage, /Копія тижня недоступна для довільного періоду/, 'copy-week explains custom range block');
-        assert.equal(apiCalls.copyWeekBodies.length, 0, 'custom range copy-week does not call backend');
-        await page.locator('.confirm-ok').click();
-
-        await applyPreset(page, 'first-half');
-        await page.locator('#fillWeekBtn').click();
-        await page.waitForSelector('#fillWeekOverlay.visible', { timeout: 20000 });
-        assert.equal(await page.locator('#fillWeekTitle').innerText(), 'Заповнити період', 'fill modal title reflects custom period');
-        assert.match(await page.locator('#fillWeekPeriodHint').innerText(), /видимий період/, 'fill modal explains visible period behavior');
-        await page.locator('#fillStaffSelect').selectOption('101');
-        await page.locator('#fillDaysRow input[type="checkbox"]').evaluateAll(inputs => {
-            for (const input of inputs) {
-                input.checked = false;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        });
-        await page.locator('#fillDaysRow input[value="3"]').check();
-        await page.locator('#fillSaveBtn').click();
-        await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]', { timeout: 20000 });
-        const fillConfirmMessage = await page.locator('.confirm-message').innerText();
-        assert.match(fillConfirmMessage, /Заповнити \d+ записів за період/, 'large custom fill shows confirmation');
-        await page.locator('.confirm-ok').click();
-        await waitForCondition(() => apiCalls.bulkBodies.length > 0, 'bulk fill mock API was not called');
-
-        const bulkBody = apiCalls.bulkBodies.at(-1);
-        assert.ok(bulkBody && Array.isArray(bulkBody.entries), 'bulk fill posts entries to mock API');
-        assert.ok(bulkBody.entries.length > 0, 'bulk fill has at least one entry');
-        assert.equal(bulkBody.entries.every(entry => Number(entry.staffId) === 101), true, 'bulk fill targets selected staff only');
-        assert.equal(bulkBody.entries.every(entry => entry.date >= firstHalfFrom && entry.date <= firstHalfTo), true, 'bulk fill stays inside 1-15 range');
-        assert.equal(bulkBody.entries.every(entry => isWeekday(entry.date, 3)), true, 'bulk fill keeps selected weekday filter');
-
         await page.locator('#todayWeekBtn').click();
-        await page.waitForFunction(() => document.querySelector('#copyWeekBtn')?.getAttribute('aria-disabled') === 'false', null, { timeout: 20000 });
         await waitForDayColumns(page, 9);
     } finally {
         await context.close();

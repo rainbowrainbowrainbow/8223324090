@@ -2354,68 +2354,6 @@ body[data-page-group="hr"] .staff-schedule-command .schedule-controls .week-labe
     text-shadow: 0 1px 10px rgba(0,0,0,0.38);
 }
 
-body[data-page-group="hr"] .schedule-toolbar .btn-page-secondary {
-    border: 1px solid color-mix(in srgb, var(--gray-400) 24%, transparent);
-    background: color-mix(in srgb, var(--white) 72%, transparent);
-    color: var(--gray-700);
-    font-weight: 900;
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 34%, transparent);
-}
-
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar {
-    justify-content: flex-end;
-    gap: 8px;
-}
-
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary {
-    min-height: 40px;
-    padding: 0 12px;
-    border-color: rgba(148,163,184,0.20);
-    border-radius: 12px;
-    background: rgba(15,23,42,0.46);
-    color: #E2E8F0;
-    font-size: 12px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
-    backdrop-filter: blur(10px);
-}
-
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary,
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-toolbar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    box-sizing: border-box;
-    min-height: 40px;
-    padding: 8px 12px;
-    border-radius: 12px;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 850;
-    line-height: 1.1;
-    text-align: center;
-    text-decoration: none;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:hover,
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:focus-visible {
-    outline: none;
-    border-color: rgba(94,234,212,0.40);
-    background: rgba(20,184,166,0.16);
-    color: #FFFFFF;
-    transform: translateY(-1px);
-}
-
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary:disabled,
-body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-toolbar:disabled {
-    opacity: 0.56;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
 body[data-page-group="hr"] .dept-filter {
     width: 100%;
     padding-top: 2px;
@@ -2486,9 +2424,10 @@ body[data-page-group="hr"] .staff-schedule-command .dept-chip:disabled {
 
 body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls {
     display: grid;
-    grid-template-columns: minmax(260px, max-content) minmax(360px, 1fr);
+    grid-template-columns: minmax(260px, max-content) minmax(0, 1fr);
     grid-template-areas:
-        "week range"
+        "week actions"
+        "range range"
         "search search"
         "dept dept";
     align-items: center;
@@ -2548,21 +2487,75 @@ body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-row {
     grid-area: range;
     display: grid;
-    grid-template-columns: repeat(2, minmax(132px, 1fr)) minmax(112px, max-content) minmax(220px, max-content);
-    align-items: end;
+    grid-template-columns: repeat(2, 168px) minmax(124px, max-content) minmax(238px, max-content);
+    align-items: center;
+    justify-content: start;
+    gap: 8px 10px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 8px 10px;
+    border: 1px solid rgba(148,163,184,0.20);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.42);
+}
+
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions {
+    grid-area: actions;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
     gap: 8px;
     min-width: 0;
 }
 
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 46px;
+    min-width: 104px;
+    padding: 0 18px;
+    border: 1px solid rgba(148,163,184,0.24);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.84);
+    color: #334155;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+    backdrop-filter: blur(10px);
+    transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+}
+
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:hover,
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:focus-visible {
+    outline: none;
+    border-color: rgba(94,234,212,0.40);
+    background: rgba(240,253,250,0.94);
+    color: #0F766E;
+    transform: translateY(-1px);
+}
+
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-field {
     display: grid;
-    gap: 4px;
+    gap: 6px;
     min-width: 0;
     color: var(--gray-500);
     font-size: 11px;
     font-weight: 900;
     line-height: 1;
     text-transform: uppercase;
+}
+
+body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-field > span {
+    padding-left: 4px;
 }
 
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input,
@@ -2583,9 +2576,10 @@ body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-pre
 }
 
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input {
-    width: 100%;
+    width: 168px;
+    max-width: 100%;
     min-width: 0;
-    padding: 0 10px;
+    padding: 0 12px;
 }
 
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-apply,
@@ -2624,9 +2618,9 @@ body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-pre
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search-row {
     grid-area: search;
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) auto;
+    grid-template-columns: minmax(220px, 1fr);
     align-items: center;
-    gap: 10px;
+    gap: 0;
     min-width: 0;
 }
 
@@ -2654,77 +2648,16 @@ body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search:fo
 }
 
 body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info {
-    justify-self: end;
-    color: var(--gray-500);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1.2;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    border: 0;
     white-space: nowrap;
-}
-
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(132px, 100%), 1fr));
-    align-items: stretch;
-    justify-content: stretch;
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-}
-
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary,
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    box-sizing: border-box;
-    min-height: 40px;
-    min-width: 0;
-    width: 100%;
-    padding: 8px 12px;
-    border-color: rgba(148,163,184,0.24);
-    border-radius: 12px;
-    background: rgba(255,255,255,0.84);
-    color: #334155;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 850;
-    line-height: 1.1;
-    text-align: center;
-    text-decoration: none;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    cursor: pointer;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
-    backdrop-filter: blur(10px);
-}
-
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:hover,
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:focus-visible,
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:hover,
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:focus-visible {
-    outline: none;
-    border-color: rgba(94,234,212,0.40);
-    background: rgba(240,253,250,0.94);
-    color: #0F766E;
-    transform: translateY(-1px);
-}
-
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:disabled,
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:disabled {
-    opacity: 0.56;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
-body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar.is-disabled {
-    opacity: 0.56;
-    cursor: help;
-    border-color: rgba(148,163,184,0.20);
-    color: var(--gray-500);
-    transform: none;
 }
 
 body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
@@ -2734,7 +2667,10 @@ body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
     align-items: center;
     gap: 8px;
     min-width: 0;
-    padding-top: 0;
+    width: 100%;
+    padding: 0 20px 0 0;
+    scroll-padding-inline: 0 20px;
+    box-sizing: border-box;
 }
 
 body[data-page-group="hr"] .staff-schedule-command-bar .dept-chip {
@@ -3164,10 +3100,8 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar,
 
 body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav,
 [data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar {
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar {
     background: rgba(15,23,42,0.46);
     border-color: rgba(148,163,184,0.18);
     color: #E2E8F0;
@@ -3185,14 +3119,10 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-contr
 body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button:focus-visible,
 [data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button:hover,
 [data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-controls .week-nav button:focus-visible,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:hover,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:focus-visible,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:hover,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:focus-visible,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:hover,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:focus-visible,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:hover,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar:focus-visible {
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:hover,
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:focus-visible,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:hover,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:focus-visible {
     background: rgba(20,184,166,0.16);
     border-color: rgba(94,234,212,0.40);
     color: #FFFFFF;
@@ -3210,6 +3140,13 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .schedule-contr
 body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-field,
 [data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-field {
     color: #CBD5E1;
+}
+
+body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-row,
+[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-row {
+    border-color: rgba(148,163,184,0.16);
+    background: rgba(15,23,42,0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 body.dark-mode[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input,
@@ -3304,8 +3241,6 @@ body.dark-mode[data-page-group="hr"] .staff-schedule-command .schedule-controls,
 
 body.dark-mode[data-page-group="hr"] .staff-schedule-command .schedule-controls .week-nav,
 [data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command .schedule-controls .week-nav,
-body.dark-mode[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary,
-[data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary,
 body.dark-mode[data-page-group="hr"] .staff-schedule-command .dept-chip,
 [data-theme="dark"] body[data-page-group="hr"] .staff-schedule-command .dept-chip {
     background: rgba(15,23,42,0.54);
@@ -3895,10 +3830,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         grid-template-columns: 1fr;
         align-items: stretch;
     }
-
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar {
-        justify-content: flex-start;
-    }
 }
 
 @media (max-width: 768px) {
@@ -4061,26 +3992,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         white-space: nowrap;
     }
 
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar {
-        justify-content: flex-start;
-        gap: 6px;
-        overflow-x: auto;
-        padding-bottom: 2px;
-        scrollbar-width: none;
-    }
-
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar::-webkit-scrollbar {
-        display: none;
-    }
-
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary {
-        flex: 0 0 auto;
-        min-height: 36px;
-        padding: 0 10px;
-        border-radius: 10px;
-        font-size: 11px;
-    }
-
     body[data-page-group="hr"] .staff-schedule-command .dept-filter {
         gap: 6px;
         overflow-x: auto;
@@ -4236,7 +4147,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         font-size: 12px;
     }
 
-    body[data-page-group="hr"] .staff-schedule-command .schedule-toolbar .btn-page-secondary,
     body[data-page-group="hr"] .staff-schedule-command .dept-chip {
         font-size: 10px;
     }
@@ -4249,7 +4159,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .staff-pulse-tab-icon,
     .staff-pulse-tab-line,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn,
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary {
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar {
         animation: none !important;
         transition: none !important;
     }
@@ -4261,8 +4171,8 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .staff-pulse-tab:focus-visible .staff-pulse-tab-icon,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn:hover,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-add-staff-btn:focus-visible,
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:hover,
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary:focus-visible {
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:hover,
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar:focus-visible {
         transform: none !important;
     }
 
@@ -4279,8 +4189,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         gap: 6px;
         grid-template-columns: 1fr;
         grid-template-areas:
-            "controls"
-            "toolbar";
+            "controls";
         align-items: stretch;
         margin-bottom: 10px;
         padding: 6px;
@@ -4293,6 +4202,7 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         grid-template-areas:
             "week"
             "range"
+            "actions"
             "search"
             "dept";
         gap: 6px;
@@ -4373,6 +4283,24 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         justify-content: stretch;
     }
 
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions {
+        grid-area: actions;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+        min-width: 0;
+    }
+
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-header-actions .btn-page-toolbar {
+        width: 100%;
+        min-width: 0;
+        min-height: 36px;
+        padding: 6px 10px;
+        border-radius: 10px;
+        font-size: 11px;
+    }
+
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-search-row {
         grid-template-columns: minmax(0, 1fr);
         gap: 6px;
@@ -4386,42 +4314,23 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-filter-info {
-        justify-self: start;
-        white-space: normal;
-        overflow-wrap: anywhere;
-    }
-
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar {
-        grid-area: toolbar;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(148px, 100%), 1fr));
-        align-items: stretch;
-        justify-content: stretch;
-        gap: 6px;
-        width: 100%;
-        min-width: 0;
-        overflow: visible;
-        padding-bottom: 0;
-    }
-
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-toolbar,
-    body[data-page-group="hr"] .staff-schedule-command-bar .schedule-toolbar .btn-page-secondary {
-        flex: initial;
-        width: 100%;
-        min-height: 36px;
-        min-width: 0;
-        padding: 6px 10px;
-        border-radius: 10px;
-        font-size: 11px;
-        line-height: 1.1;
-        white-space: normal;
-        overflow-wrap: anywhere;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        border: 0;
+        white-space: nowrap;
     }
 
     body[data-page-group="hr"] .staff-schedule-command-bar .dept-filter {
         gap: 6px;
         min-width: 0;
-        padding-bottom: 1px;
+        padding: 0 18px 1px 0;
+        scroll-padding-inline: 0 18px;
         justify-content: flex-start;
     }
 
@@ -4529,20 +4438,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     color: var(--gray-800);
     min-width: 200px;
     text-align: center;
-}
-
-.schedule-toolbar {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-.schedule-toolbar .btn-page-secondary {
-    font-size: 12px;
-    padding: 6px 14px;
-    min-height: 36px;
-    white-space: nowrap;
-    border-radius: var(--radius-sm);
 }
 
 .dept-filter {
@@ -5302,9 +5197,6 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
     .schedule-controls .week-nav {
         justify-content: center;
     }
-    .schedule-toolbar {
-        justify-content: center;
-    }
     .dept-filter {
         justify-content: center;
     }
@@ -5488,21 +5380,6 @@ body.dark-mode .schedule-controls .week-nav button:hover,
 body.dark-mode .schedule-controls .week-label,
 [data-theme="dark"] .schedule-controls .week-label {
     color: #C4B5FD;
-}
-
-body.dark-mode .schedule-toolbar .btn-page-secondary,
-[data-theme="dark"] .schedule-toolbar .btn-page-secondary {
-    background: rgba(30, 27, 75, 0.82);
-    border-color: rgba(167, 139, 250, 0.24);
-    color: #EDE9FE;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-body.dark-mode .schedule-toolbar .btn-page-secondary:hover,
-[data-theme="dark"] .schedule-toolbar .btn-page-secondary:hover {
-    background: rgba(49, 46, 129, 0.9);
-    border-color: rgba(196, 181, 253, 0.42);
-    color: #FFFFFF;
 }
 
 body.dark-mode .dept-chip,
@@ -6005,10 +5882,6 @@ body.dark-mode #schModalOverlay .sch-shift-preferences-empty,
     padding: 0 12px;
     font-size: 13px;
     font-weight: 700;
-}
-
-#excelImportInput {
-    display: none;
 }
 
 #fillWeekOverlay .sch-modal {

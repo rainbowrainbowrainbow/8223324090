@@ -68,24 +68,15 @@
                             <button type="button" class="staff-schedule-range-preset" data-schedule-range-preset="month">Місяць</button>
                         </div>
                     </div>
+                    <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
+                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar" title="Експорт графіку в CSV">Експорт</button>
+                        <button type="button" id="printBtn" class="btn-page-toolbar" title="Друк графіку">Друк</button>
+                    </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">
                         <input type="search" id="scheduleStaffSearch" class="staff-schedule-search" aria-label="Пошук співробітників у графіку" placeholder="Пошук: ПІБ, професія, відділ, статус..." autocomplete="off">
                         <div id="scheduleStaffFilterInfo" class="staff-schedule-filter-info" aria-live="polite"></div>
                     </div>
                     <div id="deptFilter" class="dept-filter"></div>
-                </div>
-                <div class="schedule-toolbar">
-                    <button type="button" id="addStaffBtn" class="btn-page-primary staff-schedule-add-staff-btn" style="display:none">+ Додати співробітника</button>
-                    <button type="button" id="copyWeekBtn" class="btn-page-toolbar" style="display:none" title="Скопіювати цей тиждень на наступний">Копія тижня</button>
-                    <button type="button" id="fillWeekBtn" class="btn-page-toolbar" style="display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
-                    <button type="button" id="toggleHoursBtn" class="btn-page-toolbar" title="Показати/сховати години">Години</button>
-                    <button type="button" id="toggleLoadViewBtn" class="btn-page-toolbar" title="Навантаження по дням">Навантаження</button>
-                    <button type="button" id="toggleLinkViewBtn" class="btn-page-toolbar" title="Зв'язки з акаунтами CRM">Акаунти</button>
-                    <button type="button" id="bulkCreateBtn" class="btn-page-toolbar" style="display:none" title="Створити акаунти всім без акаунту">Масове створення</button>
-                    <button type="button" id="importExcelBtn" class="btn-page-toolbar" style="display:none" title="Імпорт з Excel">Excel</button>
-                    <button type="button" id="exportExcelBtn" class="btn-page-toolbar" title="Експорт графіку в CSV">Експорт</button>
-                    <button type="button" id="printBtn" class="btn-page-toolbar" title="Друк графіку">Друк</button>
-                    <input type="file" id="excelImportInput" accept=".xlsx,.xls">
                 </div>
             </div>
 

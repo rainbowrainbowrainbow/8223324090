@@ -4,6 +4,16 @@
 
 ---
 
+## v0.78.68 - Staff Schedule Mobile Polish
+
+### HR / Графік / Mobile controls / QA polish / (Клешня, 09.07.2026) [codex]
+- **Mobile `Від/До` більше не накладаються** - на вузьких viewport date inputs тепер займають ширину своєї grid column замість desktop `168px`.
+- **Mobile QA посилено** - browser smoke тепер перевіряє overlap date inputs, global horizontal overflow і розміщення `Експорт`/`Друк` у command bar.
+- **Live mobile сценарій перевірено read-only** - `1-15`, `16-кінець`, `Місяць`, search persistence, chips scroll, export і print перевіряються без production writes.
+- **DB schema, auth/roles, billing, env/secrets, Railway settings і protected booking/timeline flow не змінювались** - реліз обмежений CSS polish, tests/smoke і version/cache refs.
+
+---
+
 ## v0.78.67 - Staff Schedule Header Cleanup
 
 ### HR / Графік / Compact controls / Release QA / (Клешня, 09.07.2026) [codex]

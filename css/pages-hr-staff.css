@@ -4273,6 +4273,11 @@ body.dark-mode .page-container .hr-team-onboarding-assignment-head button,
         font-size: 11px;
     }
 
+    body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-date-input {
+        width: 100%;
+        padding-inline: 10px;
+    }
+
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-apply,
     body[data-page-group="hr"] .staff-schedule-command-bar .staff-schedule-range-presets {
         grid-column: 1 / -1;

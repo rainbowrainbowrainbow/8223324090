@@ -351,11 +351,21 @@ async function assertNoControlOverlap(page, label) {
         const command = rect('.staff-schedule-command-bar');
         const range = rect('.staff-schedule-range-row');
         const search = rect('.staff-schedule-search-row');
+        const dateFrom = rect('#scheduleDateFrom');
+        const dateTo = rect('#scheduleDateTo');
+        const exportButton = rect('#exportExcelBtn');
+        const printButton = rect('#printBtn');
         const wrapper = document.querySelector('#scheduleWrapper');
         return {
             command,
             range,
             search,
+            dateFrom,
+            dateTo,
+            exportButton,
+            printButton,
+            viewportWidth: window.innerWidth,
+            pageScrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
             wrapperClientWidth: wrapper?.clientWidth || 0,
             wrapperScrollWidth: wrapper?.scrollWidth || 0
         };
@@ -366,6 +376,10 @@ async function assertNoControlOverlap(page, label) {
     assert.ok(metrics.range.right <= metrics.command.right + 2, `${label}: range controls stay inside command bar`);
     assert.ok(metrics.search.right <= metrics.command.right + 2, `${label}: search row stays inside command bar`);
     assert.ok(metrics.search.top >= metrics.range.top - 2, `${label}: search does not float above range controls`);
+    assert.ok(metrics.dateFrom?.right <= metrics.dateTo?.left + 1, `${label}: date inputs do not overlap`);
+    assert.ok(metrics.exportButton?.right <= metrics.command.right + 2, `${label}: export stays inside command bar`);
+    assert.ok(metrics.printButton?.right <= metrics.command.right + 2, `${label}: print stays inside command bar`);
+    assert.ok(metrics.pageScrollWidth <= metrics.viewportWidth + 2, `${label}: page has no global horizontal overflow`);
     assert.ok(metrics.wrapperScrollWidth >= metrics.wrapperClientWidth, `${label}: schedule wrapper owns horizontal width`);
 }
 

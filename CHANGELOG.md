@@ -4,6 +4,17 @@
 
 ---
 
+## v0.78.74 - Staff Schedule Group Match Fix
+
+### Staff Schedule / Group matching / Live cleanup / (09.07.2026) [codex]
+- **Розкриті категорії графіка більше не показують чужі підгрупи** - `Аніматори`, `Батутисти` й `Адміністрація` рендерять тільки підгрупи своєї display-групи, тому заголовок усередині розкритої секції більше не виглядає як інша кнопка.
+- **Технічний відділ зберіг raw security subgroup** - `security` лишається в display-групі `tech`, щоб правка не сховала охорону з технічного блоку.
+- **Тестовий staff cleanup виконано через safe HR status** - live-запис `Співробітник Спіробтничков` деактивовано штатним API без фізичного видалення історії; `QA Codex Shift Preferences` лишився активним.
+- **Regression guard додано** - static test фіксує заборону cross-category subgroup headers і raw-department adapter.
+- **DB schema, migrations, auth/roles, billing, env/secrets і Railway settings не змінювались** - реліз обмежений frontend group matching, safe live staff deactivation, tests і version/cache refs.
+
+---
+
 ## v0.78.73 - Staff Schedule Final Polish
 
 ### Staff Schedule / Final polish / (09.07.2026) [codex]

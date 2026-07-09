@@ -524,6 +524,24 @@ describe('staff schedule safety guards', () => {
         assert.doesNotMatch(staffPage, /placeholder:\s*'host, instructor'/);
     });
 
+    it('does not render cross-category subgroup headers inside expanded schedule groups', () => {
+        const renderableSubGroupsBlock = staffPage.slice(
+            staffPage.indexOf('function scheduleRenderableSubGroups'),
+            staffPage.indexOf('function normalizeScheduleSearchText')
+        );
+
+        assert.match(staffPage, /function scheduleDisplayGroupKeyForRawDepartment/);
+        assert.match(staffPage, /if \(raw === 'security'\) return 'tech'/);
+        assert.match(staffPage, /function scheduleSubGroupMatchesParentDepartment/);
+        assert.match(renderableSubGroupsBlock, /scheduleSubGroupMatchesParentDepartment\(departmentKey, subGroup\)/);
+        assert.ok(
+            renderableSubGroupsBlock.indexOf('scheduleSubGroupMatchesParentDepartment(departmentKey, subGroup)')
+                < renderableSubGroupsBlock.indexOf('shouldSkipScheduleSubGroup(departmentKey, subGroup)'),
+            'cross-category subgroups must be filtered before duplicate-label skipping'
+        );
+        assert.match(staffPage, /function scheduleSubGroupDisplayDepartmentKey/);
+    });
+
     it('keeps staff import and account linking on canonical role aliases', () => {
         const importRoleMap = staffRoute.match(/const EXCEL_TO_CRM_ROLE = \{[\s\S]*?\n\};/)?.[0] || '';
         assert.match(importRoleMap, /'Батутисти':\s*\{\s*dept:\s*'trampoline',\s*role:\s*'trampoline_instructor'\s*\}/);

@@ -1785,6 +1785,14 @@ function scheduleDisplayDepartmentLabel(departmentKey) {
     return scheduleDepartmentLabels()[departmentKey] || departmentKey;
 }
 
+function scheduleDisplayGroupKeyForRawDepartment(departmentKey) {
+    const normalized = normalizeScheduleDisplayGroupKey(departmentKey);
+    if (normalized) return normalized;
+    const raw = String(departmentKey || '').trim();
+    if (raw === 'security') return 'tech';
+    return '';
+}
+
 function scheduleProfessionDisplayGroupKey(professionKey) {
     const key = normalizeProfessionKey(professionKey);
     if (!key) return '';
@@ -1828,7 +1836,7 @@ function scheduleDepartmentCountMap(staffList = StaffState.staff) {
 
 function scheduleSubGroupDisplayDepartmentKey(subGroup = {}) {
     const departmentKeys = departmentSubGroupDepartmentKeys(subGroup)
-        .map(normalizeScheduleDisplayGroupKey)
+        .map(scheduleDisplayGroupKeyForRawDepartment)
         .filter(Boolean);
     if (departmentKeys.length === 1) return departmentKeys[0];
 
@@ -1849,9 +1857,16 @@ function shouldSkipScheduleSubGroup(departmentKey = '', subGroup = {}) {
     return Boolean(parentLabel && subGroupLabel && parentLabel === subGroupLabel);
 }
 
+function scheduleSubGroupMatchesParentDepartment(departmentKey = '', subGroup = {}) {
+    const parentKey = normalizeScheduleDisplayGroupKey(departmentKey);
+    const subGroupKey = scheduleSubGroupDisplayDepartmentKey(subGroup);
+    return Boolean(parentKey && subGroupKey && parentKey === subGroupKey);
+}
+
 function scheduleRenderableSubGroups(departmentKey = '', deptStaff = [], subGroups = null) {
     if (!shouldRenderDepartmentSubGroups(deptStaff, subGroups)) return [];
     return (subGroups || [])
+        .filter(subGroup => scheduleSubGroupMatchesParentDepartment(departmentKey, subGroup))
         .filter(subGroup => !shouldSkipScheduleSubGroup(departmentKey, subGroup))
         .filter(subGroup => deptStaff.some(staff => staffMatchesDepartmentSubGroup(staff, subGroup)));
 }
